@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, time::Time, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{durations, time_array, times},
+	time::Time,
+	value_type::ValueType,
+};
 
 pub struct TimeSubtract {
 	info: RoutineInfo,
@@ -46,10 +50,10 @@ impl<'a> Routine<FunctionContext<'a>> for TimeSubtract {
 		match (time_data, dur_data) {
 			(ColumnBuffer::Time(time_container), ColumnBuffer::Duration(dur_container)) => {
 				let row_count = time_data.len();
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (time_container.get(i), dur_container.get(i)) {
+					match (times(time_container).get(i), durations(dur_container).get(i)) {
 						(Some(time), Some(dur)) => {
 							let time_nanos = time.to_nanos_since_midnight() as i64;
 							let dur_nanos =
@@ -59,14 +63,14 @@ impl<'a> Routine<FunctionContext<'a>> for TimeSubtract {
 								(time_nanos - dur_nanos).rem_euclid(NANOS_PER_DAY);
 							match Time::from_nanos_since_midnight(result_nanos as u64) {
 								Some(result) => container.push(result),
-								None => container.push_default(),
+								None => container.push(Time::default()),
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(Time::default()),
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Time(container);
+				let mut result_data = ColumnBuffer::Time(time_array(container));
 				if let Some(bv) = time_bv {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

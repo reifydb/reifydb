@@ -26,9 +26,10 @@ fn digest_value() -> Value {
 }
 
 fn digest_columns() -> Columns {
-	let (mut buffer, _) = ColumnBuffer::none_typed(digest_value().get_type(), 0).into_unwrap_option();
-	buffer.push_value(digest_value());
-	Columns::new(vec![ColumnWithName::new(Fragment::internal("d"), buffer)])
+	let (buffer, _) = ColumnBuffer::none_typed(digest_value().get_type(), 0).into_unwrap_option();
+	let mut builder = buffer.into_builder();
+	builder.push_value(digest_value());
+	Columns::new(vec![ColumnWithName::new(Fragment::internal("d"), builder.finish())])
 }
 
 fn assert_extern_001(diagnostic: &Diagnostic) {

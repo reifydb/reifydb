@@ -19,10 +19,12 @@ hdrhistogram = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
+arrow-buffer = { workspace = true }
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc", "sub_flow"] }
 reifydb-client = { workspace = true, features = ["http", "ws", "grpc"] }
 reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
+reifydb-column = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
@@ -34,6 +36,7 @@ rustls = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
 
 [[bench]]
 name = "query"
@@ -54,6 +57,10 @@ harness = false
 
 [[bench]]
 name = "queue"
+harness = false
+
+[[bench]]
+name = "columns"
 harness = false
 
 [build-dependencies]

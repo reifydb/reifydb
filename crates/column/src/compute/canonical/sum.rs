@@ -7,7 +7,7 @@ use reifydb_value::{Result, value::Value};
 use crate::error::ColumnError;
 
 pub fn sum(array: &Canonical) -> Result<Value> {
-	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };
+	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) };
 
 	macro_rules! sum_int_slice {
 		($slice:expr, $acc_ty:ty, $variant:ident) => {{
@@ -64,6 +64,9 @@ pub fn sum(array: &Canonical) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::builder::ColumnBuilder;
+	use reifydb_value::value::value_type::ValueType;
+
 	use super::*;
 
 	#[test]
@@ -75,11 +78,12 @@ mod tests {
 
 	#[test]
 	fn sum_skips_nones() {
-		let mut cd = ColumnBuffer::int4_with_capacity(4);
+		let mut cd = ColumnBuilder::with_capacity(ValueType::Int4, 4);
 		cd.push::<i32>(10);
 		cd.push_none();
 		cd.push::<i32>(30);
 		cd.push_none();
+		let cd = cd.finish();
 		let ca = Canonical::from_column_buffer(&cd).unwrap();
 		assert_eq!(sum(&ca).unwrap(), Value::Int8(40));
 	}

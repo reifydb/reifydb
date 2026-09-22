@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -57,9 +58,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if str_container.is_defined(i) && prefix_container.is_defined(i) {
-						let s = str_container.get(i).unwrap();
-						let prefix = prefix_container.get(i).unwrap();
+					if i < str_container.len() && i < prefix_container.len() {
+						let s = str_container.value(i);
+						let prefix = prefix_container.value(i);
 						result_data.push(s.starts_with(prefix));
 						result_bitvec.push(true);
 					} else {
@@ -71,7 +72,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
 				let result_col_data = ColumnBuffer::bool_with_bitvec(result_data, result_bitvec);
 
 				let combined_bv = match (str_bv, prefix_bv) {
-					(Some(b), Some(e)) => Some(b.and(e)),
+					(Some(b), Some(e)) => Some(b & e),
 					(Some(b), None) => Some(b.clone()),
 					(None, Some(e)) => Some(e.clone()),
 					(None, None) => None,

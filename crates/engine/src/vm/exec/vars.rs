@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
@@ -22,11 +22,11 @@ impl<'a> Vm<'a> {
 			}) if c.is_scalar() => {
 				if self.batch_size != 1 {
 					let value = c.scalar_value();
-					let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
+					let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
 					for _ in 0..self.batch_size {
 						data.push_value(value.clone());
 					}
-					let col = ColumnWithName::new(Fragment::internal(name), data);
+					let col = ColumnWithName::new(Fragment::internal(name), data.finish());
 					self.stack.push(Variable::columns(Columns::new(vec![col])));
 				} else {
 					self.stack.push(Variable::columns(c.clone()));

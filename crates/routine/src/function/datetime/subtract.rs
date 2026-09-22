@@ -6,7 +6,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::temporal::TemporalContainer, date::Date, datetime::DateTime, value_type::ValueType,
+	container::temporal_array::{datetime_array, datetimes, durations},
+	date::Date,
+	datetime::DateTime,
+	value_type::ValueType,
 };
 
 pub struct DateTimeSubtract {
@@ -45,10 +48,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
 
 		let result_data = match (dt_data, dur_data) {
 			(ColumnBuffer::DateTime(dt_container), ColumnBuffer::Duration(dur_container)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dt_container.get(i), dur_container.get(i)) {
+					match (datetimes(dt_container).get(i), durations(dur_container).get(i)) {
 						(Some(dt), Some(dur)) => {
 							let date = dt.date();
 							let time = dt.time();
@@ -93,11 +96,11 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
 								});
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(DateTime::default()),
 					}
 				}
 
-				ColumnBuffer::DateTime(container)
+				ColumnBuffer::DateTime(datetime_array(container))
 			}
 			(ColumnBuffer::DateTime(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

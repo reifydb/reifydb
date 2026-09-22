@@ -17,6 +17,8 @@ reifydb-build = { workspace = true }
 default = []
 
 [dependencies]
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
 bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }

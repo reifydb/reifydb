@@ -27,15 +27,15 @@ impl Lcm {
 
 fn numeric_to_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
 		_ => None,
 	}
 }
@@ -120,7 +120,7 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 
 		let result_data = ColumnBuffer::int8_with_bitvec(result, res_bitvec);
 		let combined_bitvec = match (a_bitvec, b_bitvec) {
-			(Some(a), Some(b)) => Some(a.and(b)),
+			(Some(a), Some(b)) => Some(a & b),
 			(Some(a), None) => Some(a.clone()),
 			(None, Some(b)) => Some(b.clone()),
 			(None, None) => None,

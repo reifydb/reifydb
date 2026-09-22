@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
@@ -43,8 +43,7 @@ fn output_type(input: &ValueType) -> ValueType {
 
 fn is_untyped_none(column: &ColumnBuffer) -> bool {
 	let (data, bitvec) = column.unwrap_option();
-	matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
-		&& bitvec.is_some_and(|bits| bits.count_ones() == 0)
+	matches!(data.get_type(), ValueType::Any | ValueType::Boolean) && bitvec.is_some_and(|bits| !bits.has_true())
 }
 
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
@@ -147,7 +146,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 			});
 		}
 
-		let mut result = ColumnBuffer::with_capacity(result_type, row_count);
+		let mut result = ColumnBuilder::with_capacity(result_type, row_count);
 		for row in 0..row_count {
 			if !digest_column.is_defined(row) || !percentile_column.is_defined(row) {
 				result.push_none();
@@ -161,7 +160,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 			result.push_value(value);
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result.finish())]))
 	}
 }
 

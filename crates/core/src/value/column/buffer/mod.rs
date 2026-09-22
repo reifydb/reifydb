@@ -14,25 +14,41 @@ pub mod write;
 
 use std::fmt;
 
+use arrow_array::{
+	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
+	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
+	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
 use reifydb_value::{
-	util::bitvec::BitVec,
+	util::bitmap,
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			digest::DigestContainer, identity_id::IdentityIdContainer, number::NumberContainer,
-			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			bool_array,
+			decimal_array::{deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string},
+			dictionary_array,
+			digest::DigestContainer,
+			number::NumberContainer,
+			primitive,
+			temporal_array::{
+				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
+				deserialize_durations, deserialize_times, durations, serialize_dates,
+				serialize_datetimes, serialize_durations, serialize_times, times,
+			},
+			uuid_array::{
+				self, deserialize_identity_ids, deserialize_uuid4s, deserialize_uuid7s, identity_ids,
+				serialize_identity_ids, serialize_uuid4s, serialize_uuid7s, uuid4s, uuid7s,
+			},
+			varlen_array,
 		},
-		date::Date,
-		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryId,
 		digest::Digest,
-		duration::Duration,
 		int::Int,
-		time::Time,
 		uint::Uint,
-		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
 };
@@ -41,32 +57,32 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::metrics::heap::HeapSize;
 
 pub enum ColumnBuffer {
-	Bool(BoolContainer),
-	Float4(NumberContainer<f32>),
-	Float8(NumberContainer<f64>),
-	Int1(NumberContainer<i8>),
-	Int2(NumberContainer<i16>),
-	Int4(NumberContainer<i32>),
-	Int8(NumberContainer<i64>),
-	Int16(NumberContainer<i128>),
-	Uint1(NumberContainer<u8>),
-	Uint2(NumberContainer<u16>),
-	Uint4(NumberContainer<u32>),
-	Uint8(NumberContainer<u64>),
-	Uint16(NumberContainer<u128>),
+	Bool(BooleanArray),
+	Float4(Float32Array),
+	Float8(Float64Array),
+	Int1(Int8Array),
+	Int2(Int16Array),
+	Int4(Int32Array),
+	Int8(Int64Array),
+	Int16(Decimal128Array),
+	Uint1(UInt8Array),
+	Uint2(UInt16Array),
+	Uint4(UInt32Array),
+	Uint8(UInt64Array),
+	Uint16(Decimal256Array),
 	Utf8 {
-		container: Utf8Container,
+		container: LargeStringArray,
 		max_bytes: MaxBytes,
 	},
-	Date(TemporalContainer<Date>),
-	DateTime(TemporalContainer<DateTime>),
-	Time(TemporalContainer<Time>),
-	Duration(TemporalContainer<Duration>),
-	IdentityId(IdentityIdContainer),
-	Uuid4(UuidContainer<Uuid4>),
-	Uuid7(UuidContainer<Uuid7>),
+	Date(Date32Array),
+	DateTime(UInt64Array),
+	Time(Time64NanosecondArray),
+	Duration(IntervalMonthDayNanoArray),
+	IdentityId(FixedSizeBinaryArray),
+	Uuid4(FixedSizeBinaryArray),
+	Uuid7(FixedSizeBinaryArray),
 	Blob {
-		container: BlobContainer,
+		container: LargeBinaryArray,
 		max_bytes: MaxBytes,
 	},
 	Int {
@@ -85,11 +101,14 @@ pub enum ColumnBuffer {
 
 	Any(AnyContainer),
 
-	DictionaryId(DictionaryContainer),
+	DictionaryId {
+		container: FixedSizeBinaryArray,
+		dictionary_id: Option<DictionaryId>,
+	},
 
 	Option {
 		inner: Box<ColumnBuffer>,
-		bitvec: BitVec,
+		bitvec: BooleanBuffer,
 	},
 
 	Digest {
@@ -160,7 +179,13 @@ impl Clone for ColumnBuffer {
 				scale: *scale,
 			},
 			ColumnBuffer::Any(c) => ColumnBuffer::Any(c.clone()),
-			ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(c.clone()),
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => ColumnBuffer::DictionaryId {
+				container: container.clone(),
+				dictionary_id: *dictionary_id,
+			},
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -184,19 +209,19 @@ impl Clone for ColumnBuffer {
 impl PartialEq for ColumnBuffer {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
-			(ColumnBuffer::Bool(a), ColumnBuffer::Bool(b)) => a == b,
-			(ColumnBuffer::Float4(a), ColumnBuffer::Float4(b)) => a == b,
-			(ColumnBuffer::Float8(a), ColumnBuffer::Float8(b)) => a == b,
-			(ColumnBuffer::Int1(a), ColumnBuffer::Int1(b)) => a == b,
-			(ColumnBuffer::Int2(a), ColumnBuffer::Int2(b)) => a == b,
-			(ColumnBuffer::Int4(a), ColumnBuffer::Int4(b)) => a == b,
-			(ColumnBuffer::Int8(a), ColumnBuffer::Int8(b)) => a == b,
-			(ColumnBuffer::Int16(a), ColumnBuffer::Int16(b)) => a == b,
-			(ColumnBuffer::Uint1(a), ColumnBuffer::Uint1(b)) => a == b,
-			(ColumnBuffer::Uint2(a), ColumnBuffer::Uint2(b)) => a == b,
-			(ColumnBuffer::Uint4(a), ColumnBuffer::Uint4(b)) => a == b,
-			(ColumnBuffer::Uint8(a), ColumnBuffer::Uint8(b)) => a == b,
-			(ColumnBuffer::Uint16(a), ColumnBuffer::Uint16(b)) => a == b,
+			(ColumnBuffer::Bool(a), ColumnBuffer::Bool(b)) => a.values() == b.values(),
+			(ColumnBuffer::Float4(a), ColumnBuffer::Float4(b)) => a.values() == b.values(),
+			(ColumnBuffer::Float8(a), ColumnBuffer::Float8(b)) => a.values() == b.values(),
+			(ColumnBuffer::Int1(a), ColumnBuffer::Int1(b)) => a.values() == b.values(),
+			(ColumnBuffer::Int2(a), ColumnBuffer::Int2(b)) => a.values() == b.values(),
+			(ColumnBuffer::Int4(a), ColumnBuffer::Int4(b)) => a.values() == b.values(),
+			(ColumnBuffer::Int8(a), ColumnBuffer::Int8(b)) => a.values() == b.values(),
+			(ColumnBuffer::Int16(a), ColumnBuffer::Int16(b)) => a.values() == b.values(),
+			(ColumnBuffer::Uint1(a), ColumnBuffer::Uint1(b)) => a.values() == b.values(),
+			(ColumnBuffer::Uint2(a), ColumnBuffer::Uint2(b)) => a.values() == b.values(),
+			(ColumnBuffer::Uint4(a), ColumnBuffer::Uint4(b)) => a.values() == b.values(),
+			(ColumnBuffer::Uint8(a), ColumnBuffer::Uint8(b)) => a.values() == b.values(),
+			(ColumnBuffer::Uint16(a), ColumnBuffer::Uint16(b)) => a.values() == b.values(),
 			(
 				ColumnBuffer::Utf8 {
 					container: a,
@@ -206,14 +231,16 @@ impl PartialEq for ColumnBuffer {
 					container: b,
 					max_bytes: bm,
 				},
-			) => a == b && am == bm,
-			(ColumnBuffer::Date(a), ColumnBuffer::Date(b)) => a == b,
-			(ColumnBuffer::DateTime(a), ColumnBuffer::DateTime(b)) => a == b,
-			(ColumnBuffer::Time(a), ColumnBuffer::Time(b)) => a == b,
-			(ColumnBuffer::Duration(a), ColumnBuffer::Duration(b)) => a == b,
-			(ColumnBuffer::IdentityId(a), ColumnBuffer::IdentityId(b)) => a == b,
-			(ColumnBuffer::Uuid4(a), ColumnBuffer::Uuid4(b)) => a == b,
-			(ColumnBuffer::Uuid7(a), ColumnBuffer::Uuid7(b)) => a == b,
+			) => varlen_array::equals(a, b) && am == bm,
+			(ColumnBuffer::Date(a), ColumnBuffer::Date(b)) => dates(a) == dates(b),
+			(ColumnBuffer::DateTime(a), ColumnBuffer::DateTime(b)) => datetimes(a) == datetimes(b),
+			(ColumnBuffer::Time(a), ColumnBuffer::Time(b)) => times(a) == times(b),
+			(ColumnBuffer::Duration(a), ColumnBuffer::Duration(b)) => durations(a) == durations(b),
+			(ColumnBuffer::IdentityId(a), ColumnBuffer::IdentityId(b)) => {
+				identity_ids(a) == identity_ids(b)
+			}
+			(ColumnBuffer::Uuid4(a), ColumnBuffer::Uuid4(b)) => uuid4s(a) == uuid4s(b),
+			(ColumnBuffer::Uuid7(a), ColumnBuffer::Uuid7(b)) => uuid7s(a) == uuid7s(b),
 			(
 				ColumnBuffer::Blob {
 					container: a,
@@ -223,7 +250,7 @@ impl PartialEq for ColumnBuffer {
 					container: b,
 					max_bytes: bm,
 				},
-			) => a == b && am == bm,
+			) => varlen_array::equals(a, b) && am == bm,
 			(
 				ColumnBuffer::Int {
 					container: a,
@@ -257,7 +284,16 @@ impl PartialEq for ColumnBuffer {
 				},
 			) => a == b && ap == bp && as_ == bs,
 			(ColumnBuffer::Any(a), ColumnBuffer::Any(b)) => a == b,
-			(ColumnBuffer::DictionaryId(a), ColumnBuffer::DictionaryId(b)) => a == b,
+			(
+				ColumnBuffer::DictionaryId {
+					container: a,
+					dictionary_id: ad,
+				},
+				ColumnBuffer::DictionaryId {
+					container: b,
+					dictionary_id: bd,
+				},
+			) => dictionary_array::iter(a).eq(dictionary_array::iter(b)) && ad == bd,
 			(
 				ColumnBuffer::Option {
 					inner: ai,
@@ -334,7 +370,13 @@ impl fmt::Debug for ColumnBuffer {
 				.field("scale", scale)
 				.finish(),
 			ColumnBuffer::Any(c) => f.debug_tuple("Any").field(c).finish(),
-			ColumnBuffer::DictionaryId(c) => f.debug_tuple("DictionaryId").field(c).finish(),
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => f.debug_struct("DictionaryId")
+				.field("container", container)
+				.field("dictionary_id", dictionary_id)
+				.finish(),
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -356,32 +398,34 @@ impl Serialize for ColumnBuffer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		enum Helper<'a> {
-			Bool(&'a BoolContainer),
-			Float4(&'a NumberContainer<f32>),
-			Float8(&'a NumberContainer<f64>),
-			Int1(&'a NumberContainer<i8>),
-			Int2(&'a NumberContainer<i16>),
-			Int4(&'a NumberContainer<i32>),
-			Int8(&'a NumberContainer<i64>),
-			Int16(&'a NumberContainer<i128>),
-			Uint1(&'a NumberContainer<u8>),
-			Uint2(&'a NumberContainer<u16>),
-			Uint4(&'a NumberContainer<u32>),
-			Uint8(&'a NumberContainer<u64>),
-			Uint16(&'a NumberContainer<u128>),
+			Bool(#[serde(serialize_with = "bool_array::serialize")] &'a BooleanArray),
+			Float4(#[serde(serialize_with = "primitive::serialize")] &'a Float32Array),
+			Float8(#[serde(serialize_with = "primitive::serialize")] &'a Float64Array),
+			Int1(#[serde(serialize_with = "primitive::serialize")] &'a Int8Array),
+			Int2(#[serde(serialize_with = "primitive::serialize")] &'a Int16Array),
+			Int4(#[serde(serialize_with = "primitive::serialize")] &'a Int32Array),
+			Int8(#[serde(serialize_with = "primitive::serialize")] &'a Int64Array),
+			Int16(#[serde(serialize_with = "primitive::serialize")] &'a Decimal128Array),
+			Uint1(#[serde(serialize_with = "primitive::serialize")] &'a UInt8Array),
+			Uint2(#[serde(serialize_with = "primitive::serialize")] &'a UInt16Array),
+			Uint4(#[serde(serialize_with = "primitive::serialize")] &'a UInt32Array),
+			Uint8(#[serde(serialize_with = "primitive::serialize")] &'a UInt64Array),
+			Uint16(#[serde(serialize_with = "serialize_uint16s")] &'a Decimal256Array),
 			Utf8 {
-				container: &'a Utf8Container,
+				#[serde(serialize_with = "varlen_array::serialize")]
+				container: &'a LargeStringArray,
 				max_bytes: MaxBytes,
 			},
-			Date(&'a TemporalContainer<Date>),
-			DateTime(&'a TemporalContainer<DateTime>),
-			Time(&'a TemporalContainer<Time>),
-			Duration(&'a TemporalContainer<Duration>),
-			IdentityId(&'a IdentityIdContainer),
-			Uuid4(&'a UuidContainer<Uuid4>),
-			Uuid7(&'a UuidContainer<Uuid7>),
+			Date(#[serde(serialize_with = "serialize_dates")] &'a Date32Array),
+			DateTime(#[serde(serialize_with = "serialize_datetimes")] &'a UInt64Array),
+			Time(#[serde(serialize_with = "serialize_times")] &'a Time64NanosecondArray),
+			Duration(#[serde(serialize_with = "serialize_durations")] &'a IntervalMonthDayNanoArray),
+			IdentityId(#[serde(serialize_with = "serialize_identity_ids")] &'a FixedSizeBinaryArray),
+			Uuid4(#[serde(serialize_with = "serialize_uuid4s")] &'a FixedSizeBinaryArray),
+			Uuid7(#[serde(serialize_with = "serialize_uuid7s")] &'a FixedSizeBinaryArray),
 			Blob {
-				container: &'a BlobContainer,
+				#[serde(serialize_with = "varlen_array::serialize")]
+				container: &'a LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Int {
@@ -398,10 +442,15 @@ impl Serialize for ColumnBuffer {
 				scale: Scale,
 			},
 			Any(&'a AnyContainer),
-			DictionaryId(&'a DictionaryContainer),
+			DictionaryId {
+				#[serde(rename = "data", serialize_with = "dictionary_array::serialize")]
+				container: &'a FixedSizeBinaryArray,
+				dictionary_id: Option<DictionaryId>,
+			},
 			Option {
 				inner: &'a ColumnBuffer,
-				bitvec: &'a BitVec,
+				#[serde(serialize_with = "bitmap::serialize")]
+				bitvec: &'a BooleanBuffer,
 			},
 			Digest {
 				container: &'a DigestContainer,
@@ -468,7 +517,13 @@ impl Serialize for ColumnBuffer {
 				scale: *scale,
 			},
 			ColumnBuffer::Any(c) => Helper::Any(c),
-			ColumnBuffer::DictionaryId(c) => Helper::DictionaryId(c),
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => Helper::DictionaryId {
+				container,
+				dictionary_id: *dictionary_id,
+			},
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -494,32 +549,34 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		enum Helper {
-			Bool(BoolContainer),
-			Float4(NumberContainer<f32>),
-			Float8(NumberContainer<f64>),
-			Int1(NumberContainer<i8>),
-			Int2(NumberContainer<i16>),
-			Int4(NumberContainer<i32>),
-			Int8(NumberContainer<i64>),
-			Int16(NumberContainer<i128>),
-			Uint1(NumberContainer<u8>),
-			Uint2(NumberContainer<u16>),
-			Uint4(NumberContainer<u32>),
-			Uint8(NumberContainer<u64>),
-			Uint16(NumberContainer<u128>),
+			Bool(#[serde(deserialize_with = "bool_array::deserialize")] BooleanArray),
+			Float4(#[serde(deserialize_with = "primitive::deserialize")] Float32Array),
+			Float8(#[serde(deserialize_with = "primitive::deserialize")] Float64Array),
+			Int1(#[serde(deserialize_with = "primitive::deserialize")] Int8Array),
+			Int2(#[serde(deserialize_with = "primitive::deserialize")] Int16Array),
+			Int4(#[serde(deserialize_with = "primitive::deserialize")] Int32Array),
+			Int8(#[serde(deserialize_with = "primitive::deserialize")] Int64Array),
+			Int16(#[serde(deserialize_with = "deserialize_int16s")] Decimal128Array),
+			Uint1(#[serde(deserialize_with = "primitive::deserialize")] UInt8Array),
+			Uint2(#[serde(deserialize_with = "primitive::deserialize")] UInt16Array),
+			Uint4(#[serde(deserialize_with = "primitive::deserialize")] UInt32Array),
+			Uint8(#[serde(deserialize_with = "primitive::deserialize")] UInt64Array),
+			Uint16(#[serde(deserialize_with = "deserialize_uint16s")] Decimal256Array),
 			Utf8 {
-				container: Utf8Container,
+				#[serde(deserialize_with = "varlen_array::deserialize_utf8")]
+				container: LargeStringArray,
 				max_bytes: MaxBytes,
 			},
-			Date(TemporalContainer<Date>),
-			DateTime(TemporalContainer<DateTime>),
-			Time(TemporalContainer<Time>),
-			Duration(TemporalContainer<Duration>),
-			IdentityId(IdentityIdContainer),
-			Uuid4(UuidContainer<Uuid4>),
-			Uuid7(UuidContainer<Uuid7>),
+			Date(#[serde(deserialize_with = "deserialize_dates")] Date32Array),
+			DateTime(#[serde(deserialize_with = "deserialize_datetimes")] UInt64Array),
+			Time(#[serde(deserialize_with = "deserialize_times")] Time64NanosecondArray),
+			Duration(#[serde(deserialize_with = "deserialize_durations")] IntervalMonthDayNanoArray),
+			IdentityId(#[serde(deserialize_with = "deserialize_identity_ids")] FixedSizeBinaryArray),
+			Uuid4(#[serde(deserialize_with = "deserialize_uuid4s")] FixedSizeBinaryArray),
+			Uuid7(#[serde(deserialize_with = "deserialize_uuid7s")] FixedSizeBinaryArray),
 			Blob {
-				container: BlobContainer,
+				#[serde(deserialize_with = "varlen_array::deserialize_blob")]
+				container: LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Int {
@@ -536,10 +593,15 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				scale: Scale,
 			},
 			Any(AnyContainer),
-			DictionaryId(DictionaryContainer),
+			DictionaryId {
+				#[serde(rename = "data", deserialize_with = "dictionary_array::deserialize")]
+				container: FixedSizeBinaryArray,
+				dictionary_id: Option<DictionaryId>,
+			},
 			Option {
 				inner: Box<ColumnBuffer>,
-				bitvec: BitVec,
+				#[serde(deserialize_with = "bitmap::deserialize")]
+				bitvec: BooleanBuffer,
 			},
 			Digest {
 				container: DigestContainer,
@@ -607,7 +669,13 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				scale,
 			},
 			Helper::Any(c) => ColumnBuffer::Any(c),
-			Helper::DictionaryId(c) => ColumnBuffer::DictionaryId(c),
+			Helper::DictionaryId {
+				container,
+				dictionary_id,
+			} => ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			},
 			Helper::Option {
 				inner,
 				bitvec,
@@ -630,35 +698,62 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 
 macro_rules! with_container {
 	($self:expr, |$c:ident| $body:expr) => {
+		with_container!($self, |$c| $body, |_array| unreachable!(
+			"with_container! must not be called on a native variant without a native body"
+		))
+	};
+	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr) => {
+		with_container!(
+			$self,
+			|$c| $body,
+			|$a| $native,
+			|_temporal| unreachable!(
+				"with_container! must not be called on a temporal variant without a temporal body"
+			),
+			|_fixed| unreachable!("with_container! must not be called on an id variant without an id body"),
+			|_varlen| unreachable!(
+				"with_container! must not be called on a varlen variant without a varlen body"
+			)
+		)
+	};
+	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr, |$t:ident| $temporal:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
 		match $self {
-			ColumnBuffer::Bool($c) => $body,
-			ColumnBuffer::Float4($c) => $body,
-			ColumnBuffer::Float8($c) => $body,
-			ColumnBuffer::Int1($c) => $body,
-			ColumnBuffer::Int2($c) => $body,
-			ColumnBuffer::Int4($c) => $body,
-			ColumnBuffer::Int8($c) => $body,
-			ColumnBuffer::Int16($c) => $body,
-			ColumnBuffer::Uint1($c) => $body,
-			ColumnBuffer::Uint2($c) => $body,
-			ColumnBuffer::Uint4($c) => $body,
-			ColumnBuffer::Uint8($c) => $body,
-			ColumnBuffer::Uint16($c) => $body,
+			ColumnBuffer::Float4($a) => $native,
+			ColumnBuffer::Float8($a) => $native,
+			ColumnBuffer::Int1($a) => $native,
+			ColumnBuffer::Int2($a) => $native,
+			ColumnBuffer::Int4($a) => $native,
+			ColumnBuffer::Int8($a) => $native,
+			ColumnBuffer::Uint1($a) => $native,
+			ColumnBuffer::Uint2($a) => $native,
+			ColumnBuffer::Uint4($a) => $native,
+			ColumnBuffer::Uint8($a) => $native,
+			ColumnBuffer::Int16($a) => $native,
+			ColumnBuffer::Date($t) => $temporal,
+			ColumnBuffer::DateTime($t) => $temporal,
+			ColumnBuffer::Time($t) => $temporal,
+			ColumnBuffer::Duration($t) => $temporal,
+			ColumnBuffer::IdentityId($u) => $fixed,
+			ColumnBuffer::Uuid4($u) => $fixed,
+			ColumnBuffer::Uuid7($u) => $fixed,
 			ColumnBuffer::Utf8 {
-				container: $c,
+				container: $v,
 				..
-			} => $body,
-			ColumnBuffer::Date($c) => $body,
-			ColumnBuffer::DateTime($c) => $body,
-			ColumnBuffer::Time($c) => $body,
-			ColumnBuffer::Duration($c) => $body,
-			ColumnBuffer::IdentityId($c) => $body,
-			ColumnBuffer::Uuid4($c) => $body,
-			ColumnBuffer::Uuid7($c) => $body,
+			} => $varlen,
 			ColumnBuffer::Blob {
-				container: $c,
+				container: $v,
 				..
-			} => $body,
+			} => $varlen,
+			ColumnBuffer::Bool(_) => {
+				unreachable!(
+					"with_container! must not be called on Bool variant directly; handle it explicitly"
+				)
+			}
+			ColumnBuffer::Uint16(_) => {
+				unreachable!(
+					"with_container! must not be called on Uint16 variant directly; handle it explicitly"
+				)
+			}
 			ColumnBuffer::Int {
 				container: $c,
 				..
@@ -672,7 +767,13 @@ macro_rules! with_container {
 				..
 			} => $body,
 			ColumnBuffer::Any($c) => $body,
-			ColumnBuffer::DictionaryId($c) => $body,
+			ColumnBuffer::DictionaryId {
+				..
+			} => {
+				unreachable!(
+					"with_container! must not be called on DictionaryId variant directly; handle it explicitly"
+				)
+			}
 			ColumnBuffer::Digest {
 				container: $c,
 				..
@@ -691,7 +792,7 @@ macro_rules! with_container {
 pub(crate) use with_container;
 
 impl ColumnBuffer {
-	pub fn unwrap_option(&self) -> (&ColumnBuffer, Option<&BitVec>) {
+	pub fn unwrap_option(&self) -> (&ColumnBuffer, Option<&BooleanBuffer>) {
 		match self {
 			ColumnBuffer::Option {
 				inner,
@@ -701,7 +802,7 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn into_unwrap_option(self) -> (ColumnBuffer, Option<BitVec>) {
+	pub fn into_unwrap_option(self) -> (ColumnBuffer, Option<BooleanBuffer>) {
 		match self {
 			ColumnBuffer::Option {
 				inner,
@@ -748,7 +849,9 @@ impl ColumnBuffer {
 			ColumnBuffer::Decimal {
 				..
 			} => ValueType::Decimal,
-			ColumnBuffer::DictionaryId(_) => ValueType::DictionaryId,
+			ColumnBuffer::DictionaryId {
+				..
+			} => ValueType::DictionaryId,
 			ColumnBuffer::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
 			ColumnBuffer::Option {
 				inner,
@@ -767,34 +870,34 @@ impl ColumnBuffer {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		match self {
-			ColumnBuffer::Bool(c) => c.is_defined(idx),
-			ColumnBuffer::Float4(c) => c.is_defined(idx),
-			ColumnBuffer::Float8(c) => c.is_defined(idx),
-			ColumnBuffer::Int1(c) => c.is_defined(idx),
-			ColumnBuffer::Int2(c) => c.is_defined(idx),
-			ColumnBuffer::Int4(c) => c.is_defined(idx),
-			ColumnBuffer::Int8(c) => c.is_defined(idx),
-			ColumnBuffer::Int16(c) => c.is_defined(idx),
-			ColumnBuffer::Uint1(c) => c.is_defined(idx),
-			ColumnBuffer::Uint2(c) => c.is_defined(idx),
-			ColumnBuffer::Uint4(c) => c.is_defined(idx),
-			ColumnBuffer::Uint8(c) => c.is_defined(idx),
-			ColumnBuffer::Uint16(c) => c.is_defined(idx),
+			ColumnBuffer::Bool(c) => idx < c.len(),
+			ColumnBuffer::Float4(c) => idx < c.len(),
+			ColumnBuffer::Float8(c) => idx < c.len(),
+			ColumnBuffer::Int1(c) => idx < c.len(),
+			ColumnBuffer::Int2(c) => idx < c.len(),
+			ColumnBuffer::Int4(c) => idx < c.len(),
+			ColumnBuffer::Int8(c) => idx < c.len(),
+			ColumnBuffer::Int16(c) => idx < c.len(),
+			ColumnBuffer::Uint1(c) => idx < c.len(),
+			ColumnBuffer::Uint2(c) => idx < c.len(),
+			ColumnBuffer::Uint4(c) => idx < c.len(),
+			ColumnBuffer::Uint8(c) => idx < c.len(),
+			ColumnBuffer::Uint16(c) => idx < c.len(),
 			ColumnBuffer::Utf8 {
 				container: c,
 				..
-			} => c.is_defined(idx),
-			ColumnBuffer::Date(c) => c.is_defined(idx),
-			ColumnBuffer::DateTime(c) => c.is_defined(idx),
-			ColumnBuffer::Time(c) => c.is_defined(idx),
-			ColumnBuffer::Duration(c) => c.is_defined(idx),
-			ColumnBuffer::IdentityId(container) => container.get(idx).is_some(),
-			ColumnBuffer::Uuid4(c) => c.is_defined(idx),
-			ColumnBuffer::Uuid7(c) => c.is_defined(idx),
+			} => idx < c.len(),
+			ColumnBuffer::Date(c) => idx < c.len(),
+			ColumnBuffer::DateTime(c) => idx < c.len(),
+			ColumnBuffer::Time(c) => idx < c.len(),
+			ColumnBuffer::Duration(c) => idx < c.len(),
+			ColumnBuffer::IdentityId(c) => idx < c.len(),
+			ColumnBuffer::Uuid4(c) => idx < c.len(),
+			ColumnBuffer::Uuid7(c) => idx < c.len(),
 			ColumnBuffer::Blob {
 				container: c,
 				..
-			} => c.is_defined(idx),
+			} => idx < c.len(),
 			ColumnBuffer::Int {
 				container: c,
 				..
@@ -807,12 +910,15 @@ impl ColumnBuffer {
 				container: c,
 				..
 			} => c.is_defined(idx),
-			ColumnBuffer::DictionaryId(c) => c.is_defined(idx),
+			ColumnBuffer::DictionaryId {
+				container: c,
+				..
+			} => idx < c.len(),
 			ColumnBuffer::Any(c) => c.is_defined(idx),
 			ColumnBuffer::Option {
 				bitvec,
 				..
-			} => idx < bitvec.len() && bitvec.get(idx),
+			} => idx < bitvec.len() && bitvec.value(idx),
 			ColumnBuffer::Digest {
 				container,
 				..
@@ -865,7 +971,7 @@ impl ColumnBuffer {
 			ColumnBuffer::Option {
 				bitvec,
 				..
-			} => bitvec.count_zeros(),
+			} => bitvec.len() - bitvec.count_set_bits(),
 			_ => 0,
 		}
 	}
@@ -878,7 +984,13 @@ impl ColumnBuffer {
 				inner,
 				..
 			} => inner.len(),
-			_ => with_container!(self, |c| c.len()),
+			ColumnBuffer::Bool(a) => a.len(),
+			ColumnBuffer::Uint16(a) => a.len(),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => container.len(),
+			_ => with_container!(self, |c| c.len(), |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
 		}
 	}
 
@@ -892,7 +1004,20 @@ impl ColumnBuffer {
 				inner,
 				..
 			} => inner.capacity(),
-			_ => with_container!(self, |c| c.capacity()),
+			ColumnBuffer::Bool(a) => bool_array::capacity(a),
+			ColumnBuffer::Uint16(a) => primitive::capacity(a),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => dictionary_array::capacity(container),
+			_ => with_container!(
+				self,
+				|c| c.capacity(),
+				|a| primitive::capacity(a),
+				|t| primitive::capacity(t),
+				|u| uuid_array::capacity(u),
+				|v| varlen_array::capacity(v)
+			),
 		}
 	}
 
@@ -913,30 +1038,35 @@ impl ColumnBuffer {
 						.map(|digest| size_of::<Digest>() + digest.heap_size())
 						.sum::<usize>()
 			}
-			_ => with_container!(self, |c| c.heap_size()),
+			ColumnBuffer::Bool(a) => bool_array::heap_size(a),
+			ColumnBuffer::Uint16(a) => primitive::heap_size(a),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => dictionary_array::heap_size(container),
+			_ => with_container!(
+				self,
+				|c| c.heap_size(),
+				|a| primitive::heap_size(a),
+				|t| primitive::heap_size(t),
+				|u| uuid_array::heap_size(u),
+				|v| varlen_array::heap_size(v)
+			),
 		}
 	}
 
-	pub fn clear(&mut self) {
-		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.clear();
-				bitvec.clear();
-			}
-			_ => with_container!(self, |c| c.clear()),
-		}
-	}
-
-	pub fn freeze(&mut self) {
+	pub(crate) fn freeze(&mut self) {
 		match self {
 			ColumnBuffer::Option {
 				inner,
 				..
 			} => inner.freeze(),
-			_ => with_container!(self, |c| c.freeze()),
+			ColumnBuffer::Bool(_)
+			| ColumnBuffer::Uint16(_)
+			| ColumnBuffer::DictionaryId {
+				..
+			} => {}
+			_ => with_container!(self, |c| c.freeze(), |_a| {}, |_t| {}, |_u| {}, |_v| {}),
 		}
 	}
 
@@ -946,19 +1076,40 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				if index < bitvec.len() && bitvec.get(index) {
+				if index < bitvec.len() && bitvec.value(index) {
 					inner.as_string(index)
 				} else {
 					"none".to_string()
 				}
 			}
-			_ => with_container!(self, |c| c.as_string(index)),
+			ColumnBuffer::Bool(a) => bool_array::as_string(a, index),
+			ColumnBuffer::Date(a) => temporal_array::as_string(dates(a), index),
+			ColumnBuffer::DateTime(a) => temporal_array::as_string(datetimes(a), index),
+			ColumnBuffer::Time(a) => temporal_array::as_string(times(a), index),
+			ColumnBuffer::Duration(a) => temporal_array::as_string(durations(a), index),
+			ColumnBuffer::IdentityId(a) => uuid_array::as_string(identity_ids(a), index),
+			ColumnBuffer::Uuid4(a) => uuid_array::as_string(uuid4s(a), index),
+			ColumnBuffer::Uuid7(a) => uuid_array::as_string(uuid7s(a), index),
+			ColumnBuffer::Utf8 {
+				container,
+				..
+			} => varlen_array::utf8_as_string(container, index),
+			ColumnBuffer::Blob {
+				container,
+				..
+			} => varlen_array::blob_as_string(container, index),
+			ColumnBuffer::Uint16(a) => uint16_as_string(a, index),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => dictionary_array::as_string(container, index),
+			_ => with_container!(self, |c| c.as_string(index), |a| primitive::as_string(a, index)),
 		}
 	}
 }
 
 impl ColumnBuffer {
-	pub fn with_capacity(target: ValueType, capacity: usize) -> Self {
+	pub(crate) fn with_capacity(target: ValueType, capacity: usize) -> Self {
 		match target {
 			ValueType::Boolean => Self::bool_with_capacity(capacity),
 			ValueType::Float4 => Self::float4_with_capacity(capacity),
@@ -988,7 +1139,7 @@ impl ColumnBuffer {
 			ValueType::DictionaryId => Self::dictionary_id_with_capacity(capacity),
 			ValueType::Option(inner) => ColumnBuffer::Option {
 				inner: Box::new(ColumnBuffer::with_capacity(*inner, capacity)),
-				bitvec: BitVec::with_capacity(capacity),
+				bitvec: BooleanBufferBuilder::new(capacity).finish(),
 			},
 			ValueType::Any | ValueType::Tuple(_) => Self::any_with_capacity(capacity),
 			declared @ (ValueType::List(_) | ValueType::Record(_)) => {
@@ -1005,7 +1156,7 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn empty_like(&self, capacity: usize) -> Self {
+	pub(crate) fn empty_like(&self, capacity: usize) -> Self {
 		let mut buffer = Self::with_capacity(self.get_type(), capacity);
 		match (self, &mut buffer) {
 			(
@@ -1063,11 +1214,16 @@ impl ColumnBuffer {
 				*dst_precision = *src_precision;
 				*dst_scale = *src_scale;
 			}
-			(ColumnBuffer::DictionaryId(src), ColumnBuffer::DictionaryId(dst)) => {
-				if let Some(dictionary_id) = src.dictionary_id() {
-					dst.set_dictionary_id(dictionary_id);
-				}
-			}
+			(
+				ColumnBuffer::DictionaryId {
+					dictionary_id: Some(src),
+					..
+				},
+				ColumnBuffer::DictionaryId {
+					dictionary_id: dst,
+					..
+				},
+			) => *dst = Some(*src),
 			(
 				ColumnBuffer::Option {
 					inner: src_inner,

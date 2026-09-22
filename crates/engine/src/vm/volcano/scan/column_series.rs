@@ -15,7 +15,7 @@ use reifydb_core::{
 		resolved::ResolvedSeries,
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -185,7 +185,7 @@ fn empty_columns(schema: &Schema) -> Columns {
 		.map(|(name, ty, _)| {
 			ColumnWithName::new(
 				Fragment::internal(name.clone()),
-				ColumnBuffer::with_capacity(ty.clone(), 0),
+				ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 			)
 		})
 		.collect();

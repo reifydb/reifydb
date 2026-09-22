@@ -9,7 +9,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_value::{Result, fragment::Fragment};
 
@@ -33,7 +33,7 @@ impl SourceSeriesOperator {
 		let data = series.data_columns().map(|col| {
 			ColumnWithName::new(
 				Fragment::internal(&col.name),
-				ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
+				ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
 			)
 		});
 		self.schema = Columns::new(once(key).chain(data).collect());

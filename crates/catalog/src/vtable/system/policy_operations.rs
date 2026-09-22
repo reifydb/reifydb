@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,9 +49,9 @@ impl BaseVTable for SystemPolicyOperations {
 
 		let ops = CatalogStore::list_all_policy_operations(txn)?;
 
-		let mut policy_ids = ColumnBuffer::uint8_with_capacity(ops.len());
-		let mut operations = ColumnBuffer::utf8_with_capacity(ops.len());
-		let mut body_sources = ColumnBuffer::utf8_with_capacity(ops.len());
+		let mut policy_ids = ColumnBuilder::with_capacity(ValueType::Uint8, ops.len());
+		let mut operations = ColumnBuilder::with_capacity(ValueType::Utf8, ops.len());
+		let mut body_sources = ColumnBuilder::with_capacity(ValueType::Utf8, ops.len());
 
 		for op in ops {
 			policy_ids.push(op.policy_id);
@@ -60,9 +60,9 @@ impl BaseVTable for SystemPolicyOperations {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("policy_id"), policy_ids),
-			ColumnWithName::new(Fragment::internal("operation"), operations),
-			ColumnWithName::new(Fragment::internal("body_source"), body_sources),
+			ColumnWithName::new(Fragment::internal("policy_id"), policy_ids.finish()),
+			ColumnWithName::new(Fragment::internal("operation"), operations.finish()),
+			ColumnWithName::new(Fragment::internal("body_source"), body_sources.finish()),
 		];
 
 		self.exhausted = true;

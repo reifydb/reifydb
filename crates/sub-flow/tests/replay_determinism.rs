@@ -27,7 +27,7 @@ use reifydb_core::{
 		consolidate::consolidate_diffs,
 	},
 	key::operator::state::KeyspaceId,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -457,7 +457,7 @@ mod join {
 				.map(|(name, ty)| {
 					ColumnWithName::new(
 						Fragment::internal(*name),
-						ColumnBuffer::with_capacity(ty.clone(), 0),
+						ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 					)
 				})
 				.collect(),
@@ -471,8 +471,9 @@ mod join {
 			.iter()
 			.zip(values)
 			.map(|((name, ty), value)| {
-				let mut buffer = ColumnBuffer::with_capacity(ty.clone(), 1);
+				let mut buffer = ColumnBuilder::with_capacity(ty.clone(), 1);
 				buffer.push_value(value);
+				let buffer = buffer.finish();
 				ColumnWithName::new(Fragment::internal(*name), buffer)
 			})
 			.collect();

@@ -5,7 +5,14 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{
+	container::{
+		temporal_array::{duration_array, durations},
+		varlen_array,
+	},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DurationTrunc {
 	info: RoutineInfo,
@@ -50,12 +57,11 @@ impl<'a> Routine<FunctionContext<'a>> for DurationTrunc {
 				},
 			) => {
 				let row_count = dur_data.len();
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dur_container.get(i), prec_container.is_defined(i)) {
-						(Some(dur), true) => {
-							let precision = prec_container.get(i).unwrap();
+					match (durations(dur_container).get(i), varlen_array::get(prec_container, i)) {
+						(Some(dur), Some(precision)) => {
 							let months = dur.get_months();
 							let days = dur.get_days();
 							let nanos = dur.get_nanos();
@@ -98,11 +104,11 @@ impl<'a> Routine<FunctionContext<'a>> for DurationTrunc {
 							};
 							container.push(truncated);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(duration_array(container));
 				if let Some(bv) = dur_bv {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

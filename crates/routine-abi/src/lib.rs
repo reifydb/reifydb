@@ -11,6 +11,7 @@ pub mod error;
 pub mod monoid;
 pub mod registry;
 
+use arrow_buffer::BooleanBuffer;
 use error::RoutineError;
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -20,7 +21,6 @@ use reifydb_core::value::column::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
@@ -80,13 +80,13 @@ pub trait Routine<C: Context>: Send + Sync {
 			return self.execute(ctx, args);
 		}
 
-		let mut combined_bv: Option<BitVec> = None;
+		let mut combined_bv: Option<BooleanBuffer> = None;
 		let mut unwrapped = Vec::with_capacity(args.len());
 		for col in args.iter() {
 			let (inner, bv) = col.data().unwrap_option();
 			if let Some(bv) = bv {
 				combined_bv = Some(match combined_bv {
-					Some(existing) => existing.and(bv),
+					Some(existing) => &existing & bv,
 					None => bv.clone(),
 				});
 			}
@@ -94,7 +94,7 @@ pub trait Routine<C: Context>: Send + Sync {
 		}
 
 		if let Some(ref bv) = combined_bv
-			&& bv.count_ones() == 0
+			&& !bv.has_true()
 		{
 			let row_count = args.row_count();
 			let input_types: Vec<ValueType> = unwrapped.iter().map(|c| c.data.get_type()).collect();

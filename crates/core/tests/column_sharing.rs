@@ -3,16 +3,20 @@
 
 use std::{
 	borrow::Cow,
+	mem,
 	panic::{AssertUnwindSafe, catch_unwind},
 };
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
+	builder::ColumnBuilder,
 	data::{Column, canonical::Canonical},
-	mask::RowMask,
-	nones::NoneBitmap,
 };
-use reifydb_value::{util::bitvec::BitVec, value::Value};
+use reifydb_value::{
+	util::bitmap,
+	value::{Value, container::varlen_array::compact_parts, value_type::ValueType},
+};
 
 const ROWS: usize = 1000;
 
@@ -28,7 +32,7 @@ fn strings(n: usize) -> Vec<String> {
 	(0..n).map(|i| format!("s{i}-{}", "z".repeat(i % 6))).collect()
 }
 
-fn option_parts(buffer: &ColumnBuffer) -> (&ColumnBuffer, &BitVec) {
+fn option_parts(buffer: &ColumnBuffer) -> (&ColumnBuffer, &BooleanBuffer) {
 	match buffer {
 		ColumnBuffer::Option {
 			inner,
@@ -43,43 +47,44 @@ fn utf8_bytes(buffer: &ColumnBuffer) -> &[u8] {
 		ColumnBuffer::Utf8 {
 			container,
 			..
-		} => container.inner().compact_parts().0,
+		} => compact_parts(container).0,
 		other => panic!("expected a utf8 buffer, got {:?}", other.get_type()),
 	}
 }
 
-fn packed_ptr(bits: &BitVec) -> *const u8 {
-	match bits.to_packed_bytes() {
+fn packed_bits_ptr(bits: &BooleanBuffer) -> *const u8 {
+	match bitmap::packed_bytes(bits) {
 		Cow::Borrowed(bytes) => bytes.as_ptr(),
 		Cow::Owned(_) => panic!("a view at bit zero must borrow its packed bytes"),
 	}
 }
 
 fn frozen_int8(n: usize) -> ColumnBuffer {
-	let mut buffer = ColumnBuffer::int8(ints(n));
-	buffer.freeze();
-	buffer
+	let buffer = ColumnBuffer::int8(ints(n));
+	buffer.into_builder().finish()
 }
 
 fn thaw_int8(buffer: &mut ColumnBuffer) -> *const i64 {
-	match buffer {
-		ColumnBuffer::Int8(container) => container.data_mut().as_ptr(),
+	let builder = mem::replace(buffer, ColumnBuffer::int8(Vec::<i64>::new())).into_builder();
+	let ptr = match &builder {
+		ColumnBuilder::Int8(values) => values.values_slice().as_ptr(),
 		other => panic!("expected an int8 buffer, got {:?}", other.get_type()),
-	}
+	};
+	*buffer = builder.finish();
+	ptr
 }
 
 fn frozen_option_int8(n: usize) -> ColumnBuffer {
-	let mut buffer = ColumnBuffer::int8_with_bitvec(ints(n), defined(n));
-	buffer.freeze();
-	buffer
+	let buffer = ColumnBuffer::int8_with_bitvec(ints(n), defined(n));
+	buffer.into_builder().finish()
 }
 
 #[test]
 fn freeze_keeps_the_buffer_pointer() {
 	// Freezing a column buffer must wrap its allocation, never copy it.
-	let mut buffer = ColumnBuffer::int8(ints(ROWS));
+	let buffer = ColumnBuffer::int8(ints(ROWS));
 	let before = buffer.as_slice::<i64>().as_ptr();
-	buffer.freeze();
+	let mut buffer = buffer.into_builder().finish();
 	assert_eq!(buffer.as_slice::<i64>().as_ptr(), before);
 	assert_eq!(buffer.as_slice::<i64>(), &ints(ROWS)[..]);
 	assert_eq!(thaw_int8(&mut buffer), before, "a unique frozen buffer must thaw in place, never copy");
@@ -117,14 +122,16 @@ fn slice_and_take_after_freeze_point_into_the_parent() {
 fn push_on_a_shared_buffer_never_leaks_into_another_handle() {
 	// A write through a clone or a head slice must copy first, never write rows another handle reads.
 	let buffer = frozen_int8(ROWS);
-	let mut copy = buffer.clone();
+	let mut copy = buffer.clone().into_builder();
 	copy.push_value(Value::Int8(i64::MIN));
 	assert_eq!(buffer.len(), ROWS);
 	assert_eq!(buffer.as_slice::<i64>(), &ints(ROWS)[..]);
+	let copy = copy.finish();
 	assert_eq!(copy.get_value(ROWS), Value::Int8(i64::MIN));
 
-	let mut head = buffer.slice(0, 10);
+	let mut head = buffer.slice(0, 10).into_builder();
 	head.push_value(Value::Int8(i64::MAX));
+	let head = head.finish();
 	assert_eq!(head.as_slice::<i64>()[10], i64::MAX);
 	assert_eq!(buffer.as_slice::<i64>()[10], ints(ROWS)[10], "a head slice push must never write the parent row");
 }
@@ -136,15 +143,15 @@ fn option_slice_shares_the_inner_rows_and_the_defined_bits() {
 	let buffer = frozen_option_int8(ROWS);
 	let (inner, bits) = option_parts(&buffer);
 	let base = inner.as_slice::<i64>().as_ptr();
-	assert_eq!(bits.to_vec(), defined(ROWS));
+	assert_eq!(bits.iter().collect::<Vec<_>>(), defined(ROWS));
 	for (start, end) in [(0usize, 64usize), (13, 413), (8, 9), (999, 1000)] {
 		let slice = buffer.slice(start, end);
 		let (slice_inner, slice_bits) = option_parts(&slice);
 		assert_eq!(slice_inner.as_slice::<i64>().as_ptr(), base.wrapping_add(start), "slice {start}..{end}");
-		assert_eq!(slice_bits.to_vec(), &defined(ROWS)[start..end], "slice {start}..{end}");
+		assert_eq!(slice_bits.iter().collect::<Vec<_>>(), &defined(ROWS)[start..end], "slice {start}..{end}");
 		assert_eq!(
-			slice_bits.capacity(),
-			bits.capacity(),
+			slice_bits.inner().capacity(),
+			bits.inner().capacity(),
 			"slice {start}..{end} must share the parent defined bits"
 		);
 		for row in 0..slice.len() {
@@ -155,7 +162,7 @@ fn option_slice_shares_the_inner_rows_and_the_defined_bits() {
 			);
 		}
 		if start == 0 {
-			assert_eq!(packed_ptr(slice_bits), packed_ptr(bits));
+			assert_eq!(packed_bits_ptr(slice_bits), packed_bits_ptr(bits));
 		}
 	}
 }
@@ -172,8 +179,8 @@ fn option_slice_rejects_an_end_past_the_length() {
 fn utf8_buffer_slice_references_the_parent_bytes() {
 	// A frozen utf8 buffer slice must reference the parent bytes at exactly its first row's byte.
 	let rows = strings(ROWS);
-	let mut buffer = ColumnBuffer::utf8(rows.clone());
-	buffer.freeze();
+	let buffer = ColumnBuffer::utf8(rows.clone());
+	let buffer = buffer.into_builder().finish();
 	let base = utf8_bytes(&buffer).as_ptr();
 	let start: usize = rows[..100].iter().map(|s| s.len()).sum();
 	let slice = buffer.slice(100, 350);
@@ -205,7 +212,7 @@ fn canonical_from_option_buffer_lifts_the_defined_bits_to_nones() {
 	let buffer = frozen_option_int8(ROWS);
 	let (inner, bits) = option_parts(&buffer);
 	let base = inner.as_slice::<i64>().as_ptr();
-	let bits_ptr = packed_ptr(bits);
+	let bits_ptr = packed_bits_ptr(bits);
 	let canonical = Canonical::from_column_buffer(&buffer).unwrap();
 	assert!(canonical.nullable);
 	assert!(
@@ -216,15 +223,15 @@ fn canonical_from_option_buffer_lifts_the_defined_bits_to_nones() {
 	let nones = canonical.nones.as_ref().expect("an option buffer must lift to a none bitmap");
 	assert_eq!(nones.len(), ROWS);
 	for (row, present) in defined(ROWS).into_iter().enumerate() {
-		assert_eq!(nones.is_none(row), !present, "row {row}");
+		assert_eq!(nones.is_null(row), !present, "row {row}");
 	}
-	assert_eq!(nones.none_count(), defined(ROWS).iter().filter(|d| !**d).count());
-	assert_eq!(packed_ptr(&nones.to_defined_bitvec()), bits_ptr, "lifting must share the defined bits");
+	assert_eq!(nones.null_count(), defined(ROWS).iter().filter(|d| !**d).count());
+	assert_eq!(packed_bits_ptr(nones.inner()), bits_ptr, "lifting must share the defined bits");
 
 	let back = canonical.to_column_buffer().unwrap();
 	let (back_inner, back_bits) = option_parts(&back);
 	assert_eq!(back_inner.as_slice::<i64>().as_ptr(), base);
-	assert_eq!(back_bits.to_vec(), defined(ROWS));
+	assert_eq!(back_bits.iter().collect::<Vec<_>>(), defined(ROWS));
 	for row in 0..ROWS {
 		assert_eq!(back.get_value(row), buffer.get_value(row), "round trip row {row}");
 	}
@@ -260,7 +267,7 @@ fn column_slice_of_an_option_column_keeps_nones_aligned() {
 		let nones = slice.nones().expect("an optional slice must keep its none bitmap");
 		assert_eq!(nones.len(), end - start);
 		for row in 0..slice.len() {
-			assert_eq!(nones.is_none(row), !defined(ROWS)[start + row], "slice {start}..{end} row {row}");
+			assert_eq!(nones.is_null(row), !defined(ROWS)[start + row], "slice {start}..{end} row {row}");
 			assert_eq!(
 				slice.get_value(row),
 				column.get_value(start + row),
@@ -273,112 +280,104 @@ fn column_slice_of_an_option_column_keeps_nones_aligned() {
 }
 
 #[test]
-fn none_bitmap_slices_and_writes_stay_isolated() {
-	// A none bitmap slice must read exactly its rows, and set_none on one handle must never mark a row none in
-	// another.
-	let bits = BitVec::from(defined(ROWS));
-	let nones = NoneBitmap::from_defined_bitvec(&bits);
-	assert_eq!(packed_ptr(&nones.to_defined_bitvec()), packed_ptr(&bits));
-	let slice = nones.slice(13, 413);
-	for row in 0..slice.len() {
-		assert_eq!(slice.is_none(row), !defined(ROWS)[13 + row], "row {row}");
-	}
-	assert_eq!(slice.none_count(), defined(ROWS)[13..413].iter().filter(|d| !**d).count());
-
-	let present_row = (0..ROWS).find(|r| defined(ROWS)[*r]).unwrap();
-	let mut copy = nones.clone();
-	copy.set_none(present_row);
-	assert!(copy.is_none(present_row));
-	assert!(!nones.is_none(present_row), "set_none must never leak into the original bitmap");
-	assert!(bits.get(present_row), "set_none must never leak into the source bitvec");
-	assert_eq!(copy.none_count(), nones.none_count() + 1);
-
-	let mut sliced_copy = nones.slice(present_row, ROWS);
-	sliced_copy.set_none(0);
-	assert!(!nones.is_none(present_row), "set_none on a slice must never leak into the parent");
-
-	assert_eq!(NoneBitmap::all_present(70).none_count(), 0);
-	assert_eq!(NoneBitmap::all_none(70).none_count(), 70);
-	assert!(NoneBitmap::all_none(70).is_none(69));
-	assert!(!NoneBitmap::all_present(70).is_none(69));
-}
-
-#[test]
 fn none_bitmap_filter_and_gather_match_the_model() {
 	// Filtering and gathering must keep each row's none flag with that row, never shift it.
-	let nones = NoneBitmap::from_defined_bitvec(&BitVec::from(defined(ROWS)));
+	let column = Column::from_column_buffer(ColumnBuffer::int8_with_bitvec(ints(ROWS), defined(ROWS)));
+	let nones = column.nones().expect("an optional column must carry a none bitmap");
 	let keep: Vec<bool> = (0..ROWS).map(|i| i % 3 != 1).collect();
-	let mut mask = RowMask::none_set(ROWS);
-	for (row, k) in keep.iter().enumerate() {
-		mask.set(row, *k);
-	}
-	let filtered = nones.filter(&mask);
+	let filtered = column.filter(&BooleanBuffer::from(keep.clone())).unwrap();
+	let filtered_nones = filtered.nones().expect("a filtered optional column must keep its none bitmap");
 	let expected: Vec<bool> = (0..ROWS).filter(|r| keep[*r]).map(|r| !defined(ROWS)[r]).collect();
-	assert_eq!(filtered.len(), expected.len());
+	assert_eq!(filtered_nones.len(), expected.len());
 	for (row, none) in expected.iter().enumerate() {
-		assert_eq!(filtered.is_none(row), *none, "filtered row {row}");
+		assert_eq!(filtered_nones.is_null(row), *none, "filtered row {row}");
 	}
-	assert_eq!(nones.filter(&RowMask::all_set(ROWS)), nones);
-	assert_eq!(nones.filter(&RowMask::none_set(ROWS)).len(), 0);
+	assert_eq!(column.filter(&BooleanBuffer::new_set(ROWS)).unwrap().nones(), Some(nones));
+	assert_eq!(column.filter(&BooleanBuffer::new_unset(ROWS)).unwrap().nones().map(|n| n.len()), Some(0));
 
 	let indices = [999usize, 0, 7, 7, 13, 500];
-	let gathered = nones.gather(&indices);
+	let positions = Column::from_column_buffer(ColumnBuffer::uint8(indices.iter().map(|i| *i as u64)));
+	let gathered = column.take(&positions).unwrap();
+	let gathered_nones = gathered.nones().expect("a gathered optional column must keep its none bitmap");
 	for (row, index) in indices.iter().enumerate() {
-		assert_eq!(gathered.is_none(row), !defined(ROWS)[*index], "gathered row {row}");
+		assert_eq!(gathered_nones.is_null(row), !defined(ROWS)[*index], "gathered row {row}");
 	}
 }
 
-fn mask_from(bits: &[bool]) -> RowMask {
-	let mut mask = RowMask::none_set(bits.len());
-	for (row, bit) in bits.iter().enumerate() {
-		mask.set(row, *bit);
+const VIEW_OFFSETS: [usize; 8] = [0, 1, 7, 8, 9, 63, 64, 65];
+const VIEW_LENGTHS: [usize; 8] = [0, 1, 7, 8, 9, 64, 65, 200];
+const VIEW_PARENT_ROWS: usize = 300;
+
+fn pattern(len: usize, seed: u64) -> Vec<bool> {
+	let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+	(0..len).map(|_| {
+		state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+		(state >> 33) & 1 == 1
+	})
+	.collect()
+}
+
+fn option_int4(values: Vec<i32>, defined: Vec<bool>) -> ColumnBuffer {
+	ColumnBuffer::Option {
+		inner: Box::new(ColumnBuffer::int4(values)),
+		bitvec: BooleanBuffer::from(defined),
 	}
-	mask
+}
+
+#[track_caller]
+fn assert_option_rows(buffer: &ColumnBuffer, values: &[i32], defined: &[bool], ctx: &str) {
+	let (_, bits) = option_parts(buffer);
+	assert_eq!(buffer.len(), defined.len(), "{ctx}: len");
+	assert_eq!(bits.iter().collect::<Vec<_>>(), defined, "{ctx}: defined flags");
+	assert_eq!(bits.count_set_bits(), defined.iter().filter(|d| **d).count(), "{ctx}: defined count");
+	for (row, (value, present)) in values.iter().zip(defined).enumerate() {
+		let expected = if *present {
+			Value::Int4(*value)
+		} else {
+			Value::none_of(ValueType::Int4)
+		};
+		assert_eq!(buffer.get_value(row), expected, "{ctx}: row {row}");
+	}
 }
 
 #[test]
-fn row_mask_operations_match_the_model() {
-	// Every mask operation must agree bit for bit with a plain bool model, including on offset slices.
-	let a: Vec<bool> = (0..ROWS).map(|i| i % 3 == 0).collect();
-	let b: Vec<bool> = (0..ROWS).map(|i| i % 4 == 1 || i % 7 == 0).collect();
-	let ma = mask_from(&a);
-	let mb = mask_from(&b);
-	assert_eq!(ma.len(), ROWS);
-	assert_eq!(ma.popcount(), a.iter().filter(|x| **x).count());
-	let and: Vec<bool> = a.iter().zip(&b).map(|(x, y)| *x && *y).collect();
-	let or: Vec<bool> = a.iter().zip(&b).map(|(x, y)| *x || *y).collect();
-	let not: Vec<bool> = a.iter().map(|x| !*x).collect();
-	assert_eq!(ma.and(&mb).as_bitvec().to_vec(), and);
-	assert_eq!(ma.or(&mb).as_bitvec().to_vec(), or);
-	assert_eq!(ma.not().as_bitvec().to_vec(), not);
-	assert_eq!(ma.not().popcount(), ROWS - ma.popcount());
+fn extend_from_a_view_reads_at_its_offset() {
+	// Extending from an offset slice must copy the slice's defined bits, never the bits at the start of its parent.
+	let bits = pattern(VIEW_PARENT_ROWS, 14);
+	let values: Vec<i32> = (0..VIEW_PARENT_ROWS as i32).map(|i| i * 31 - 7).collect();
+	let parent = option_int4(values.clone(), bits.clone());
+	let prefix_bits = pattern(11, 15);
+	let prefix_values: Vec<i32> = (0..11).map(|i| -1000 - i).collect();
+	for offset in VIEW_OFFSETS {
+		for len in VIEW_LENGTHS {
+			let ctx = format!("view {offset}+{len}");
+			let view = parent.slice(offset, offset + len);
+			let mut expected_bits = prefix_bits.clone();
+			expected_bits.extend_from_slice(&bits[offset..offset + len]);
+			let mut expected_values = prefix_values.clone();
+			expected_values.extend_from_slice(&values[offset..offset + len]);
 
-	let sa = ma.slice(13, 413);
-	let sb = mb.slice(200, 600);
-	for row in 0..sa.len() {
-		assert_eq!(sa.get(row), a[13 + row], "slice row {row}");
+			let mut target = option_int4(prefix_values.clone(), prefix_bits.clone());
+			target.extend(view.clone()).unwrap();
+			assert_option_rows(&target, &expected_values, &expected_bits, &ctx);
+
+			let mut builder = option_int4(prefix_values.clone(), prefix_bits.clone()).into_builder();
+			builder.extend(view.clone()).unwrap();
+			assert_option_rows(
+				&builder.finish(),
+				&expected_values,
+				&expected_bits,
+				&format!("{ctx} builder"),
+			);
+
+			let mut thawed = view.into_builder();
+			thawed.push_value(Value::Int4(i32::MAX));
+			thawed.push_none();
+			let mut thawed_bits = bits[offset..offset + len].to_vec();
+			thawed_bits.extend([true, false]);
+			let mut thawed_values = values[offset..offset + len].to_vec();
+			thawed_values.extend([i32::MAX, 0]);
+			assert_option_rows(&thawed.finish(), &thawed_values, &thawed_bits, &format!("{ctx} thawed"));
+		}
 	}
-	let sliced_and: Vec<bool> = (0..400).map(|r| a[13 + r] && b[200 + r]).collect();
-	assert_eq!(sa.and(&sb).as_bitvec().to_vec(), sliced_and, "and across different offsets");
-	let sliced_or: Vec<bool> = (0..400).map(|r| a[13 + r] || b[200 + r]).collect();
-	assert_eq!(sa.or(&sb).as_bitvec().to_vec(), sliced_or, "or across different offsets");
-	assert_eq!(sa.not().as_bitvec().to_vec(), (0..400).map(|r| !a[13 + r]).collect::<Vec<_>>());
-
-	let parts = [ma.slice(0, 13), ma.slice(13, 413), ma.slice(413, ROWS)];
-	assert_eq!(RowMask::concat(&parts), ma, "concat of adjacent slices must rebuild exactly the original");
-
-	let mut written = ma.slice(0, 100);
-	written.set(5, !a[5]);
-	assert_eq!(ma.get(5), a[5], "a write through a slice must never leak into the parent mask");
-	assert_eq!(written.get(5), !a[5]);
-}
-
-#[test]
-fn row_mask_rejects_mismatched_lengths() {
-	// Combining masks of different lengths must fail loudly, never silently truncate.
-	let a = RowMask::all_set(10);
-	let b = RowMask::all_set(11);
-	assert!(catch_unwind(AssertUnwindSafe(|| a.and(&b))).is_err());
-	assert!(catch_unwind(AssertUnwindSafe(|| a.or(&b))).is_err());
-	assert!(catch_unwind(AssertUnwindSafe(|| a.slice(3, 11))).is_err());
 }

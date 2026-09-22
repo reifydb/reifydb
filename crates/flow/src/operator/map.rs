@@ -9,7 +9,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -140,7 +140,7 @@ pub(crate) fn schema_column(parent: Option<&Columns>, expression: &Expression) -
 	};
 	ColumnWithName::new(
 		Fragment::internal(display_label(expression).text()),
-		ColumnBuffer::with_capacity(ty.unwrap_or(ValueType::Any), 0),
+		ColumnBuilder::with_capacity(ty.unwrap_or(ValueType::Any), 0).finish(),
 	)
 }
 

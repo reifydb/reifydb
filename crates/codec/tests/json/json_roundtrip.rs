@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{BooleanArray, Int32Array, LargeStringArray, UInt64Array};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::json::{from::frames_from_json, to::frames_to_json};
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		blob::Blob,
-		container::{blob::BlobContainer, bool::BoolContainer, number::NumberContainer, utf8::Utf8Container},
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	},
+use reifydb_value::value::{
+	blob::Blob,
+	container::varlen_array::blob_array,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 };
 
 fn round_trip(frame: Frame) {
@@ -36,19 +35,19 @@ fn primitives() {
 	round_trip(Frame::new(vec![
 		FrameColumn {
 			name: "b".to_string(),
-			data: FrameColumnData::Bool(BoolContainer::new(vec![true, false, true])),
+			data: FrameColumnData::Bool(BooleanArray::from(vec![true, false, true])),
 		},
 		FrameColumn {
 			name: "i4".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![-1, 0, i32::MAX])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![-1, 0, i32::MAX])),
 		},
 		FrameColumn {
 			name: "u8".to_string(),
-			data: FrameColumnData::Uint8(NumberContainer::new(vec![0, 1, u64::MAX])),
+			data: FrameColumnData::Uint8(UInt64Array::from(vec![0, 1, u64::MAX])),
 		},
 		FrameColumn {
 			name: "s".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec![
+			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 				"".to_string(),
 				"hello".to_string(),
 				"日本語".to_string(),
@@ -56,7 +55,7 @@ fn primitives() {
 		},
 		FrameColumn {
 			name: "blob".to_string(),
-			data: FrameColumnData::Blob(BlobContainer::new(vec![
+			data: FrameColumnData::Blob(blob_array(&[
 				Blob::new(vec![]),
 				Blob::new(vec![0xde, 0xad, 0xbe, 0xef]),
 				Blob::new(vec![0x00, 0xff]),
@@ -67,8 +66,8 @@ fn primitives() {
 
 #[test]
 fn option_with_nones() {
-	let inner = FrameColumnData::Int4(NumberContainer::new(vec![10, 0, 30]));
-	let bitvec = BitVec::from_slice(&[true, false, true]);
+	let inner = FrameColumnData::Int4(Int32Array::from(vec![10, 0, 30]));
+	let bitvec = BooleanBuffer::from(vec![true, false, true]);
 	round_trip(Frame::new(vec![FrameColumn {
 		name: "maybe".to_string(),
 		data: FrameColumnData::Option {
@@ -83,11 +82,11 @@ fn multi_frame_serialization() {
 	let frames = vec![
 		Frame::new(vec![FrameColumn {
 			name: "a".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![1, 2])),
 		}]),
 		Frame::new(vec![FrameColumn {
 			name: "b".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec!["x".to_string()])),
+			data: FrameColumnData::Utf8(LargeStringArray::from(vec!["x".to_string()])),
 		}]),
 	];
 	let json = frames_to_json(&frames).expect("to_json failed");

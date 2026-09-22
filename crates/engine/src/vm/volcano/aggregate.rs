@@ -235,14 +235,14 @@ impl AggregateNode {
 					let key_type = first_key_type
 						.or_else(|| key_types.get(col_idx).cloned().flatten())
 						.unwrap_or(ValueType::Boolean);
-					let mut c = ColumnWithName {
-						name: Fragment::internal(alias.fragment()),
-						data: ColumnBuffer::none_typed(key_type, 0),
-					};
+					let mut data = ColumnBuffer::none_typed(key_type, 0).into_builder();
 					for (_, key) in dict.iter() {
-						c.data_mut().push_value(key[col_idx].clone());
+						data.push_value(key[col_idx].clone());
 					}
-					result_columns.push(c);
+					result_columns.push(ColumnWithName {
+						name: Fragment::internal(alias.fragment()),
+						data: data.finish(),
+					});
 				}
 				Projection::Computed {
 					alias,

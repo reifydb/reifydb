@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -52,9 +52,9 @@ impl BaseVTable for SystemEvents {
 			.filter(|st| st.kind == SumTypeKind::Event)
 			.collect();
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(sumtypes.len());
-		let mut namespaces = ColumnBuffer::uint8_with_capacity(sumtypes.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(sumtypes.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, sumtypes.len());
+		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, sumtypes.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, sumtypes.len());
 
 		for st in sumtypes {
 			ids.push(st.id.0);
@@ -63,9 +63,9 @@ impl BaseVTable for SystemEvents {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
-			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
 		];
 
 		self.exhausted = true;

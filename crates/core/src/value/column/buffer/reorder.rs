@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::util::bitvec::BitVec;
+use reifydb_value::{
+	util::bitmap,
+	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+};
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
 
@@ -13,17 +16,22 @@ impl ColumnBuffer {
 				bitvec,
 			} => {
 				inner.reorder(indices);
-				let mut new_bitvec = BitVec::with_capacity(indices.len());
-				for &idx in indices {
-					if idx < bitvec.len() {
-						new_bitvec.push(bitvec.get(idx));
-					} else {
-						new_bitvec.push(false);
-					}
-				}
-				*bitvec = new_bitvec;
+				*bitvec = bitmap::reorder(bitvec, indices);
 			}
-			_ => with_container!(self, |c| c.reorder(indices)),
+			ColumnBuffer::Bool(a) => *a = bool_array::reorder(a, indices),
+			ColumnBuffer::Uint16(a) => *a = primitive::reorder(a, indices),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => *container = dictionary_array::reorder(container, indices),
+			_ => with_container!(
+				self,
+				|c| c.reorder(indices),
+				|a| *a = primitive::reorder(a, indices),
+				|t| *t = primitive::reorder(t, indices),
+				|u| *u = uuid_array::reorder(u, indices),
+				|v| *v = varlen_array::reorder(v, indices)
+			),
 		}
 	}
 }

@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{container::temporal_array::datetimes, value_type::ValueType};
 
 pub struct DateTimeNanosecond {
 	info: RoutineInfo,
@@ -45,7 +45,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNanosecond {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(dt) = container.get(i) {
+					if let Some(dt) = datetimes(container).get(i) {
 						result.push(dt.nanosecond() as i32);
 						res_bitvec.push(true);
 					} else {

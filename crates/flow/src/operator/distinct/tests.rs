@@ -3,6 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use arrow_array::Int64Array;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -19,10 +20,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{
-		container::number::NumberContainer, datetime::DateTime, row_number::RowNumber,
-		system_columns::SystemColumns,
-	},
+	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::{
@@ -50,10 +48,8 @@ fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'
 }
 
 fn build_insert(value: i64, row_num: u64) -> Change {
-	let cols = vec![ColumnWithName::new(
-		Fragment::internal("k"),
-		ColumnBuffer::Int8(NumberContainer::from_parts(vec![value])),
-	)];
+	let cols =
+		vec![ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::Int8(Int64Array::from(vec![value])))];
 	let now = DateTime::default();
 	let columns = Columns::with_system(
 		cols,
@@ -65,10 +61,8 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 }
 
 fn build_remove(value: i64, row_num: u64) -> Change {
-	let cols = vec![ColumnWithName::new(
-		Fragment::internal("k"),
-		ColumnBuffer::Int8(NumberContainer::from_parts(vec![value])),
-	)];
+	let cols =
+		vec![ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::Int8(Int64Array::from(vec![value])))];
 	let now = DateTime::default();
 	let columns = Columns::with_system(
 		cols,

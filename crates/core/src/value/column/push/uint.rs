@@ -3,23 +3,23 @@
 
 use reifydb_value::value::uint::Uint;
 
-use crate::value::column::{ColumnBuffer, push::Push};
+use crate::value::column::{ColumnBuffer, builder::ColumnBuilder, push::Push};
 
-impl Push<Uint> for ColumnBuffer {
+impl Push<Uint> for ColumnBuilder {
 	fn push(&mut self, value: Uint) {
 		match self {
-			ColumnBuffer::Uint {
+			ColumnBuilder::Buffer(ColumnBuffer::Uint {
 				container,
 				..
-			} => {
+			}) => {
 				container.push(value);
 			}
-			ColumnBuffer::Option {
+			ColumnBuilder::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
-				bitvec.push(true);
+				bitvec.append(true);
 			}
 			_ => unreachable!("Push<Uint> for ColumnBuffer with incompatible type"),
 		}

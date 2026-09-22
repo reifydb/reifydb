@@ -5,7 +5,10 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{
+	container::{temporal_array::times, varlen_array::get},
+	value_type::ValueType,
+};
 
 pub struct TimeFormat {
 	info: RoutineInfo,
@@ -116,9 +119,9 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (time_container.get(i), fmt_container.is_defined(i)) {
+					match (times(time_container).get(i), get(fmt_container, i).is_some()) {
 						(Some(t), true) => {
-							let fmt_str = fmt_container.get(i).unwrap();
+							let fmt_str = get(fmt_container, i).unwrap();
 							match format_time(
 								t.hour(),
 								t.minute(),
@@ -145,10 +148,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 					}
 				}
 
-				let mut final_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
-					max_bytes: MaxBytes::MAX,
-				};
+				let mut final_data = ColumnBuffer::utf8(result_data);
 				if let Some(bv) = time_bv {
 					final_data = ColumnBuffer::Option {
 						inner: Box::new(final_data),

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{Result, util::bitvec::BitVec};
+use arrow_buffer::BooleanBuffer;
+use reifydb_value::Result;
 
 use crate::value::column::columns::Columns;
 
 impl Columns {
-	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
+	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
 		self.system.filter(mask);
 
 		let columns = &mut self.columns;

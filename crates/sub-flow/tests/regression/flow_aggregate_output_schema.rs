@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -31,9 +31,12 @@ const OUTPUTS: [&str; 3] = [
 
 fn parent() -> Columns {
 	Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("a"), ColumnBuffer::with_capacity(ValueType::Int4, 0)),
-		ColumnWithName::new(Fragment::internal("b"), ColumnBuffer::with_capacity(ValueType::Int4, 0)),
-		ColumnWithName::new(Fragment::internal("latency"), ColumnBuffer::with_capacity(ValueType::Float8, 0)),
+		ColumnWithName::new(Fragment::internal("a"), ColumnBuilder::with_capacity(ValueType::Int4, 0).finish()),
+		ColumnWithName::new(Fragment::internal("b"), ColumnBuilder::with_capacity(ValueType::Int4, 0).finish()),
+		ColumnWithName::new(
+			Fragment::internal("latency"),
+			ColumnBuilder::with_capacity(ValueType::Float8, 0).finish(),
+		),
 	])
 }
 

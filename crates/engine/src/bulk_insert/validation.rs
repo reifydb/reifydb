@@ -3,7 +3,10 @@
 
 use std::iter;
 
-use reifydb_core::{interface::catalog::column::Column, value::column::buffer::ColumnBuffer};
+use reifydb_core::{
+	interface::catalog::column::Column,
+	value::column::{buffer::ColumnBuffer, builder::ColumnBuilder},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -35,8 +38,10 @@ fn collect_rows_to_columns(
 	coercer: &RowCoercer,
 ) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnBuffer> =
-		columns.iter().map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0)).collect();
+	let mut column_data: Vec<ColumnBuilder> = columns
+		.iter()
+		.map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0).into_builder())
+		.collect();
 
 	for (row_idx, params) in rows.iter().enumerate() {
 		match params {
@@ -92,7 +97,7 @@ fn collect_rows_to_columns(
 		}
 	}
 
-	Ok(column_data)
+	Ok(column_data.into_iter().map(ColumnBuilder::finish).collect())
 }
 
 fn columns_to_rows(columns: &[ColumnBuffer], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {

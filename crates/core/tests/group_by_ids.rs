@@ -19,11 +19,11 @@ fn frame(spec: Vec<(&str, ColumnBuffer)>) -> Columns {
 }
 
 fn column_of(ty: ValueType, values: Vec<Value>) -> ColumnBuffer {
-	let mut buffer = ColumnBuffer::none_typed(ty, 0);
+	let mut builder = ColumnBuffer::none_typed(ty, 0).into_builder();
 	for value in values {
-		buffer.push_value(value);
+		builder.push_value(value);
 	}
-	buffer
+	builder.finish()
 }
 
 fn utf8_column(values: &[&str]) -> ColumnBuffer {

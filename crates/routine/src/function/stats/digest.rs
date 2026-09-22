@@ -8,6 +8,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		columns::Columns,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
@@ -274,7 +275,7 @@ impl Accumulator for DigestAccumulator {
 			}
 		};
 		let mut keys = Vec::with_capacity(digests.len());
-		let mut data = ColumnBuffer::with_capacity(output, digests.len());
+		let mut data = ColumnBuilder::with_capacity(output, digests.len());
 		for (group, digest) in digests {
 			keys.push(group);
 			match digest {
@@ -282,6 +283,6 @@ impl Accumulator for DigestAccumulator {
 				None => data.push_none(),
 			}
 		}
-		Ok((keys, data))
+		Ok((keys, data.finish()))
 	}
 }

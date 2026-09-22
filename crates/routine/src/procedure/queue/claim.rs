@@ -16,7 +16,7 @@ use reifydb_core::{
 		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::single::SingleTransaction;
@@ -337,10 +337,10 @@ fn claimed_columns(
 	let mut items = Vec::with_capacity(leases.len());
 	let mut attempts = Vec::with_capacity(leases.len());
 	let mut deadlines = Vec::with_capacity(leases.len());
-	let mut payloads: Vec<ColumnBuffer> = queue
+	let mut payloads: Vec<ColumnBuilder> = queue
 		.columns
 		.iter()
-		.map(|column| ColumnBuffer::with_capacity(column.constraint.get_type(), leases.len()))
+		.map(|column| ColumnBuilder::with_capacity(column.constraint.get_type(), leases.len()))
 		.collect();
 
 	for lease in leases {
@@ -381,7 +381,7 @@ fn claimed_columns(
 	for (column, data) in queue.columns.iter().zip(payloads) {
 		columns.push(ColumnWithName {
 			name: Fragment::internal(column.name.clone()),
-			data,
+			data: data.finish(),
 		});
 	}
 
@@ -394,7 +394,7 @@ fn push_payload(
 	ctx: &mut ProcedureContext<'_, '_>,
 	queue: &Queue,
 	row: RowNumber,
-	payloads: &mut [ColumnBuffer],
+	payloads: &mut [ColumnBuilder],
 ) -> Result<(), RoutineError> {
 	let stored = ctx.tx.get(&RowKey::new(queue.id, row))?;
 

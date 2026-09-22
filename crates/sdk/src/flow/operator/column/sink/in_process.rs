@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -17,7 +17,7 @@ use crate::{error::SdkError, flow::operator::column::sink::RowSink};
 pub struct InProcessRowSink {
 	names: Vec<&'static str>,
 	types: Vec<ValueType>,
-	cols: Vec<ColumnBuffer>,
+	cols: Vec<ColumnBuilder>,
 }
 
 impl InProcessRowSink {
@@ -28,7 +28,7 @@ impl InProcessRowSink {
 		for (name, code) in columns {
 			let ty = code_to_type(*code)?;
 			names.push(*name);
-			cols.push(ColumnBuffer::with_capacity(ty.clone(), 0));
+			cols.push(ColumnBuilder::with_capacity(ty.clone(), 0));
 			types.push(ty);
 		}
 		Ok(Self {
@@ -45,7 +45,7 @@ impl InProcessRowSink {
 			.zip(self.cols)
 			.map(|(name, data)| ColumnWithName {
 				name: Fragment::internal(name),
-				data,
+				data: data.finish(),
 			})
 			.collect();
 		let row_count = out.first().map_or(0, |c| c.data.len());

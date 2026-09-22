@@ -15,7 +15,6 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::framework::generator;
 
-pub const SOURCE_OPERATOR: OperatorId = OperatorId(0);
 pub const GATE_OPERATOR: OperatorId = OperatorId(1);
 
 pub const IDENTITY_COLUMN: &str = "g";

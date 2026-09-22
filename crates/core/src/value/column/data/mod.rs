@@ -5,15 +5,15 @@ pub mod canonical;
 
 use std::{any::Any, sync::Arc};
 
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use canonical::Canonical;
 use reifydb_value::{
 	Result,
+	util::bitmap,
 	value::{Value, value_type::ValueType},
 };
 
-use crate::value::column::{
-	buffer::ColumnBuffer, encoding::EncodingId, mask::RowMask, nones::NoneBitmap, stats::StatsSet,
-};
+use crate::value::column::{buffer::ColumnBuffer, encoding::EncodingId, stats::StatsSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompareOp {
@@ -40,9 +40,9 @@ pub trait ColumnData: Send + Sync + 'static {
 	fn encoding(&self) -> EncodingId;
 
 	fn is_nullable(&self) -> bool;
-	fn nones(&self) -> Option<&NoneBitmap>;
+	fn nones(&self) -> Option<&NullBuffer>;
 	fn is_defined(&self, idx: usize) -> bool {
-		!self.nones().map(|n| n.is_none(idx)).unwrap_or(false)
+		!self.nones().map(|n| n.is_null(idx)).unwrap_or(false)
 	}
 
 	fn stats(&self) -> &StatsSet;
@@ -58,7 +58,7 @@ pub trait ColumnData: Send + Sync + 'static {
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>>;
 
-	fn filter(&self, mask: &RowMask) -> Result<Column> {
+	fn filter(&self, mask: &BooleanBuffer) -> Result<Column> {
 		let canon = self.to_canonical()?;
 		Ok(Column::from_canonical(canonical_filter(&canon, mask)?))
 	}
@@ -119,7 +119,7 @@ impl Column {
 		self.0.stats()
 	}
 
-	pub fn nones(&self) -> Option<&NoneBitmap> {
+	pub fn nones(&self) -> Option<&NullBuffer> {
 		self.0.nones()
 	}
 
@@ -143,7 +143,7 @@ impl Column {
 		self.0.to_canonical()
 	}
 
-	pub fn filter(&self, mask: &RowMask) -> Result<Column> {
+	pub fn filter(&self, mask: &BooleanBuffer) -> Result<Column> {
 		self.0.filter(mask)
 	}
 
@@ -168,18 +168,21 @@ impl Column {
 	}
 }
 
-fn canonical_filter(canon: &Canonical, mask: &RowMask) -> Result<Canonical> {
+fn canonical_filter(canon: &Canonical, mask: &BooleanBuffer) -> Result<Canonical> {
 	assert_eq!(canon.len(), mask.len(), "filter: length mismatch");
-	let new_nones = canon.nones.as_ref().map(|n| n.filter(mask));
+	let new_nones = canon.nones.as_ref().map(|n| filter_nones(n, mask));
 
 	let mut new_buffer = canon.buffer.clone();
-	new_buffer.filter(mask.as_bitvec())?;
+	new_buffer.filter(mask)?;
 
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
 }
 
 fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
-	let new_nones = canon.nones.as_ref().map(|n| n.gather(indices));
+	let new_nones = canon
+		.nones
+		.as_ref()
+		.map(|n| NullBuffer::new(BooleanBuffer::collect_bool(indices.len(), |row| n.is_valid(indices[row]))));
 	let new_buffer = canon.buffer.gather(indices);
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
 }
@@ -187,9 +190,23 @@ fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
 fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);
 	assert!(end <= canon.len());
-	let new_nones = canon.nones.as_ref().map(|n| n.slice(start, end));
+	let new_nones = canon.nones.as_ref().map(|n| slice_nones(n, start, end));
 	let new_buffer = canon.buffer.slice(start, end);
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
+}
+
+fn filter_nones(nones: &NullBuffer, mask: &BooleanBuffer) -> NullBuffer {
+	assert_eq!(nones.len(), mask.len(), "filter: nones length mismatch");
+	if mask.count_set_bits() == nones.len() {
+		return nones.clone();
+	}
+	NullBuffer::new(bitmap::filter(nones.inner(), mask))
+}
+
+fn slice_nones(nones: &NullBuffer, start: usize, end: usize) -> NullBuffer {
+	assert!(start <= end, "slice: nones start {start} > end {end}");
+	assert!(end <= nones.len(), "slice: nones end {end} > len {}", nones.len());
+	NullBuffer::new(bitmap::slice(nones.inner(), start, end))
 }
 
 fn canon_indices(indices: &Column) -> Result<Vec<usize>> {

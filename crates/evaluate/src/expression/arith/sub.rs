@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer},
+		container::temporal_array::{duration_array, durations},
+		duration::Duration,
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},
 		value_type::{ValueType, get::GetType},
@@ -34,13 +35,11 @@ pub fn sub_columns(
 
 
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
-				let mut container = TemporalContainer::with_capacity(l.len());
-				for i in 0..l.len() {
-					match (l.get(i), r.get(i)) {
-						(Some(lv), Some(rv)) => container.push(*lv - *rv),
-						_ => container.push_default(),
-					}
-				}
+				let (l, r) = (durations(l), durations(r));
+				let container = duration_array((0..l.len()).map(|i| match (l.get(i), r.get(i)) {
+					(Some(lv), Some(rv)) => *lv - *rv,
+					_ => Duration::default(),
+				}));
 				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
 			}
 
@@ -56,8 +55,8 @@ pub fn sub_columns(
 
 fn sub_numeric<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -66,17 +65,15 @@ where
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeSub,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
-	let l_data = l.data();
-	let r_data = r.data();
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		if let Some(value) = ctx.sub(&l_data[i], &r_data[i], fragment)? {
+		if let Some(value) = ctx.sub(&l[i], &r[i], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -84,14 +81,14 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }
 
 fn sub_numeric_clone<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -100,18 +97,16 @@ where
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeSub,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
-	let l_data = l.data();
-	let r_data = r.data();
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		let l_clone = l_data[i].clone();
-		let r_clone = r_data[i].clone();
+		let l_clone = l[i].clone();
+		let r_clone = r[i].clone();
 		if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
 			data.push(value);
 		} else {
@@ -120,6 +115,6 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }

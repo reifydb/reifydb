@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_sub_server::response::{resolve_change_json, resolve_response_json};
 use reifydb_value::{
-	util::{bitvec::BitVec, hex::encode},
+	util::hex::encode,
 	value::{
 		Value,
 		container::digest::DigestContainer,
@@ -46,7 +47,7 @@ fn digest_frame(rows: Vec<Option<Digest>>) -> Frame {
 		name: "d".to_string(),
 		data: FrameColumnData::Option {
 			inner: Box::new(data),
-			bitvec: BitVec::from_slice(&defined),
+			bitvec: BooleanBuffer::from(defined),
 		},
 	}])
 }

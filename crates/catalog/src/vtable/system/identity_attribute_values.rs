@@ -5,10 +5,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::{identity::IdentityAttributeId, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::Value};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -57,10 +60,10 @@ impl BaseVTable for SystemIdentityAttributeValues {
 			.collect();
 		rows.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.value.cmp(&b.1.value)));
 
-		let mut identities = ColumnBuffer::identity_id_with_capacity(rows.len());
-		let mut attribute_ids = ColumnBuffer::uint8_with_capacity(rows.len());
-		let mut attributes = ColumnBuffer::utf8_with_capacity(rows.len());
-		let mut values = ColumnBuffer::any_with_capacity(rows.len());
+		let mut identities = ColumnBuilder::with_capacity(ValueType::IdentityId, rows.len());
+		let mut attribute_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
+		let mut attributes = ColumnBuilder::with_capacity(ValueType::Utf8, rows.len());
+		let mut values = ColumnBuilder::with_capacity(ValueType::Any, rows.len());
 
 		for (name, v) in rows {
 			identities.push(v.identity);
@@ -70,10 +73,10 @@ impl BaseVTable for SystemIdentityAttributeValues {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("identity"), identities),
-			ColumnWithName::new(Fragment::internal("attribute_id"), attribute_ids),
-			ColumnWithName::new(Fragment::internal("attribute"), attributes),
-			ColumnWithName::new(Fragment::internal("value"), values),
+			ColumnWithName::new(Fragment::internal("identity"), identities.finish()),
+			ColumnWithName::new(Fragment::internal("attribute_id"), attribute_ids.finish()),
+			ColumnWithName::new(Fragment::internal("attribute"), attributes.finish()),
+			ColumnWithName::new(Fragment::internal("value"), values.finish()),
 		];
 
 		self.exhausted = true;

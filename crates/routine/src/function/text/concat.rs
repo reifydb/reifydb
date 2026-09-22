@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType},
-};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 pub struct TextConcat {
 	info: RoutineInfo,
@@ -38,7 +37,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let mut unwrapped: Vec<(&ColumnBuffer, Option<&BitVec>)> = Vec::with_capacity(args.len());
+		let mut unwrapped: Vec<(&ColumnBuffer, Option<&BooleanBuffer>)> = Vec::with_capacity(args.len());
 		for col in args.iter() {
 			unwrapped.push(col.data().unwrap_option());
 		}
@@ -73,8 +72,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 					..
 				} = data
 				{
-					if container.is_defined(i) {
-						concatenated.push_str(container.get(i).unwrap());
+					if i < container.len() {
+						concatenated.push_str(container.value(i));
 					} else {
 						all_defined = false;
 						break;
@@ -90,15 +89,15 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 		}
 
 		let result_col_data = ColumnBuffer::Utf8 {
-			container: Utf8Container::new(result_data),
+			container: LargeStringArray::from(result_data),
 			max_bytes: MaxBytes::MAX,
 		};
 
-		let mut combined_bv: Option<BitVec> = None;
+		let mut combined_bv: Option<BooleanBuffer> = None;
 		for (_, bv) in unwrapped.iter() {
 			if let Some(bv) = bv {
 				combined_bv = Some(match combined_bv {
-					Some(existing) => existing.and(bv),
+					Some(existing) => &existing & *bv,
 					None => (*bv).clone(),
 				});
 			}

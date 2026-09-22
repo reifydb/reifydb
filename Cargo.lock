@@ -18,6 +18,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "ahash"
+version = "0.8.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+dependencies = [
+ "cfg-if",
+ "const-random",
+ "getrandom 0.3.4",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,6 +136,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-array"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
+dependencies = [
+ "ahash",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "chrono",
+ "half",
+ "hashbrown 0.17.1",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "arrow-buffer"
 version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -130,6 +162,51 @@ dependencies = [
  "bytes",
  "half",
  "num-bigint 0.5.1",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-cmp"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+]
+
+[[package]]
+name = "arrow-data"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
+dependencies = [
+ "arrow-buffer",
+ "arrow-schema",
+ "half",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-schema"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
+
+[[package]]
+name = "arrow-select"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
+dependencies = [
+ "ahash",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-cmp",
+ "arrow-data",
+ "arrow-schema",
  "num-traits",
 ]
 
@@ -432,6 +509,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "iana-time-zone",
+ "num-traits",
+ "windows-link",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,6 +627,26 @@ name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "const-random"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87e00182fe74b066627d63b85fd550ac2998d4b0bd86bfed477a0ae4c7c71359"
+dependencies = [
+ "const-random-macro",
+]
+
+[[package]]
+name = "const-random-macro"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d839f2a20b0aee515dc581a6172f2321f96cab76c1a38a4c584a194955390e"
+dependencies = [
+ "getrandom 0.2.17",
+ "once_cell",
+ "tiny-keccak",
+]
 
 [[package]]
 name = "convert_case"
@@ -1369,6 +1477,7 @@ checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
 dependencies = [
  "cfg-if",
  "crunchy",
+ "num-traits",
  "zerocopy",
 ]
 
@@ -2255,6 +2364,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-complex"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2965,6 +3083,7 @@ dependencies = [
 name = "reifydb-benches"
 version = "0.9.3"
 dependencies = [
+ "arrow-buffer",
  "hdrhistogram",
  "rand 0.10.1",
  "reifydb",
@@ -2972,6 +3091,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-client",
  "reifydb-codec",
+ "reifydb-column",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -2983,6 +3103,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -3046,6 +3167,7 @@ dependencies = [
 name = "reifydb-client"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "async-trait",
  "bs58",
  "ed25519-dalek",
@@ -3085,6 +3207,8 @@ dependencies = [
 name = "reifydb-codec"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "bigdecimal",
  "crc32fast",
  "num-bigint 0.4.6",
@@ -3107,6 +3231,7 @@ dependencies = [
 name = "reifydb-column"
 version = "0.9.3"
 dependencies = [
+ "arrow-buffer",
  "postcard",
  "reifydb-build",
  "reifydb-core",
@@ -3119,6 +3244,8 @@ dependencies = [
 name = "reifydb-core"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "bigdecimal",
  "crossbeam-skiplist",
  "indexmap",
@@ -3135,6 +3262,7 @@ dependencies = [
  "reifydb-value",
  "serde",
  "serde_bytes",
+ "serde_json",
  "smallvec",
  "thiserror 2.0.18",
  "tracing",
@@ -3152,6 +3280,7 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.9.3"
 dependencies = [
+ "arrow-buffer",
  "bumpalo",
  "indexmap",
  "postcard",
@@ -3189,6 +3318,8 @@ dependencies = [
 name = "reifydb-evaluate"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "reifydb-build",
  "reifydb-core",
  "reifydb-routine-abi",
@@ -3211,6 +3342,8 @@ dependencies = [
 name = "reifydb-extension"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "libloading 0.9.0",
  "postcard",
  "reifydb-build",
@@ -3224,6 +3357,7 @@ dependencies = [
  "reifydb-value",
  "reifydb-wasm",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -3243,6 +3377,7 @@ dependencies = [
 name = "reifydb-flow"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "dashmap",
  "indexmap",
  "postcard",
@@ -3273,6 +3408,8 @@ dependencies = [
 name = "reifydb-macro"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "reifydb-codec",
  "reifydb-macro-impl",
  "reifydb-runtime",
@@ -3352,6 +3489,8 @@ dependencies = [
 name = "reifydb-routine"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "bumpalo",
  "indexmap",
  "num-traits",
@@ -3379,6 +3518,7 @@ dependencies = [
 name = "reifydb-routine-abi"
 version = "0.9.3"
 dependencies = [
+ "arrow-buffer",
  "indexmap",
  "reifydb-build",
  "reifydb-catalog",
@@ -3464,6 +3604,8 @@ dependencies = [
 name = "reifydb-sdk"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "bumpalo",
  "postcard",
  "rand 0.10.1",
@@ -3769,6 +3911,7 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.9.3"
 dependencies = [
+ "arrow-buffer",
  "futures-util",
  "indexmap",
  "libc",
@@ -3809,6 +3952,8 @@ dependencies = [
 name = "reifydb-sub-server-grpc"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "futures-util",
  "num-bigint 0.4.6",
  "prost",
@@ -3875,6 +4020,8 @@ dependencies = [
 name = "reifydb-sub-server-ws"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
@@ -4084,6 +4231,9 @@ dependencies = [
 name = "reifydb-testing-sdk"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "postcard",
  "rand 0.10.1",
  "reifydb-build",
  "reifydb-codec",
@@ -4095,6 +4245,7 @@ dependencies = [
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
+ "serde_json",
 ]
 
 [[package]]
@@ -4161,7 +4312,11 @@ dependencies = [
 name = "reifydb-value"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "arrow-select",
  "bigdecimal",
  "libm",
  "num-bigint 0.4.6",
@@ -5085,6 +5240,15 @@ checksum = "0359b4327f954e0567e69fb191cf1436617748813819c94b8cd4a431422d053a"
 dependencies = [
  "libc",
  "tikv-jemalloc-sys",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+dependencies = [
+ "crunchy",
 ]
 
 [[package]]

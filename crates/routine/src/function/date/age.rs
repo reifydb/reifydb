@@ -7,7 +7,12 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::{
 	error::TypeError,
-	value::{container::temporal::TemporalContainer, date::Date, duration::Duration, value_type::ValueType},
+	value::{
+		container::temporal_array::{dates, duration_array},
+		date::Date,
+		duration::Duration,
+		value_type::ValueType,
+	},
 };
 
 pub struct DateAge {
@@ -84,18 +89,18 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 
 		let result_data = match (data1, data2) {
 			(ColumnBuffer::Date(container1), ColumnBuffer::Date(container2)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (container1.get(i), container2.get(i)) {
+					match (dates(container1).get(i), dates(container2).get(i)) {
 						(Some(d1), Some(d2)) => {
 							container.push(date_age(d1, d2)?);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				ColumnBuffer::Duration(container)
+				ColumnBuffer::Duration(duration_array(container))
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

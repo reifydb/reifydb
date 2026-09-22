@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_value::{
 	Result,
 	error::TypeError,
@@ -8,7 +9,7 @@ use reifydb_value::{
 	value::{blob::Blob, value_type::ValueType},
 };
 
-use crate::value::column::buffer::ColumnBuffer;
+use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 
 pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
@@ -16,16 +17,16 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 			container,
 			..
 		} => {
-			let mut out = ColumnBuffer::with_capacity(ValueType::Blob, container.len());
+			let mut out = ColumnBuilder::with_capacity(ValueType::Blob, container.len());
 			for idx in 0..container.len() {
-				if container.is_defined(idx) {
-					let temp_fragment = Fragment::internal(container.get(idx).unwrap());
+				if container.is_valid(idx) {
+					let temp_fragment = Fragment::internal(container.value(idx));
 					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_none()
 				}
 			}
-			Ok(out)
+			Ok(out.finish())
 		}
 		_ => {
 			let from = data.get_type();
@@ -41,14 +42,15 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_value::{fragment::Fragment, util::bitvec::BitVec};
+	use arrow_buffer::BooleanBuffer;
+	use reifydb_value::{fragment::Fragment, value::container::varlen_array::get};
 
 	use super::*;
 
 	#[test]
 	fn test_from_utf8() {
 		let strings = vec!["Hello".to_string(), "World".to_string()];
-		let bitvec = BitVec::repeat(2, true);
+		let bitvec = BooleanBuffer::new_set(2);
 		let container = ColumnBuffer::utf8_with_bitvec(strings, bitvec);
 
 		let result = to_blob(&container, || Fragment::testing_empty()).unwrap();
@@ -58,8 +60,8 @@ pub mod tests {
 				container,
 				..
 			} => {
-				assert_eq!(container.get(0), Some(b"Hello".as_slice()));
-				assert_eq!(container.get(1), Some(b"World".as_slice()));
+				assert_eq!(get(&container, 0), Some(b"Hello".as_slice()));
+				assert_eq!(get(&container, 1), Some(b"World".as_slice()));
 			}
 			_ => panic!("Expected BLOB column data"),
 		}
@@ -68,7 +70,7 @@ pub mod tests {
 	#[test]
 	fn test_unsupported() {
 		let ints = vec![42i32];
-		let bitvec = BitVec::repeat(1, true);
+		let bitvec = BooleanBuffer::new_set(1);
 		let container = ColumnBuffer::int4_with_bitvec(ints, bitvec);
 
 		let result = to_blob(&container, || Fragment::testing_empty());

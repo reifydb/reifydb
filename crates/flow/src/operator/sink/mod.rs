@@ -26,7 +26,9 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		flow::OperatorCapability,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+	value::column::{
+		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
+	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
@@ -258,7 +260,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, host: &mut dyn Ho
 
 	for (col_pos, dictionary, value_type) in &dict_columns {
 		let row_count = columns[*col_pos].len();
-		let mut new_data = ColumnBuffer::with_capacity(value_type.clone(), row_count);
+		let mut new_data = ColumnBuilder::with_capacity(value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
 			let id_value = columns[*col_pos].get_value(row_idx);
@@ -269,7 +271,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, host: &mut dyn Ho
 			new_data.push_value(value);
 		}
 
-		columns.columns[*col_pos] = new_data;
+		columns.columns[*col_pos] = new_data.finish();
 	}
 
 	Ok(())
@@ -320,11 +322,10 @@ mod tests {
 	}
 
 	fn dictionary_column_with_id(dictionary: DictionaryId, entry_id: DictionaryEntryId) -> Columns {
-		let mut buffer = ColumnBuffer::with_capacity(ValueType::DictionaryId, 1);
-		buffer.push_value(entry_id.to_value());
-		if let ColumnBuffer::DictionaryId(container) = &mut buffer {
-			container.set_dictionary_id(dictionary);
-		}
+		let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, 1);
+		builder.push_value(entry_id.to_value());
+		builder.set_dictionary_id(dictionary);
+		let buffer = builder.finish();
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("m"), buffer)],
 			SystemColumns::new(
@@ -343,8 +344,9 @@ mod tests {
 	}
 
 	fn columns_with_stamps(created_at: u64, updated_at: u64, time: u64) -> Columns {
-		let mut buffer = ColumnBuffer::with_capacity(ValueType::Int4, 1);
-		buffer.push_value(Value::Int4(7));
+		let mut builder = ColumnBuilder::with_capacity(ValueType::Int4, 1);
+		builder.push_value(Value::Int4(7));
+		let buffer = builder.finish();
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("n"), buffer)],
 			SystemColumns::new(

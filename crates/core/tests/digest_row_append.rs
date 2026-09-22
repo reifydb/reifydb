@@ -5,7 +5,7 @@ use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::{
 	Result,
 	value::{Value, digest::Digest, row_number::RowNumber, value_type::ValueType},
@@ -52,7 +52,7 @@ fn empty_columns(shape: &RowShape) -> Columns {
 			.map(|field| {
 				ColumnWithName::new(
 					field.name.as_str(),
-					ColumnBuffer::with_capacity(field.constraint.get_type(), 0),
+					ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(),
 				)
 			})
 			.collect(),
@@ -130,7 +130,7 @@ fn a_digest_column_of_another_accuracy_is_a_type_mismatch_naming_the_column() {
 	let shape = shape_of(&[("lat", digest_type(ValueType::Int4, ACCURACY))]);
 	let mut columns = Columns::new(vec![ColumnWithName::new(
 		"lat",
-		ColumnBuffer::with_capacity(digest_type(ValueType::Int4, 20_000), 0),
+		ColumnBuilder::with_capacity(digest_type(ValueType::Int4, 20_000), 0).finish(),
 	)]);
 	let err = append(&shape, &mut columns, &[vec![digest_value(ValueType::Int4, ACCURACY, &[1])]]).unwrap_err();
 	assert!(err.to_string().contains("'lat'"), "{err}");

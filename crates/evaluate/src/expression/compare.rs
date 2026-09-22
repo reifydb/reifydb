@@ -3,6 +3,7 @@
 
 use std::cmp::Ordering;
 
+use arrow_array::{Array, BooleanArray, LargeBinaryArray, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_value::{
 	error::Diagnostic,
@@ -10,10 +11,11 @@ use reifydb_value::{
 	reifydb_assertions, return_error,
 	value::{
 		container::{
-			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+			temporal_array::{dates, datetimes, durations, times},
+			uuid_array::{identity_ids, uuid4s, uuid7s},
 		},
 		decimal::Decimal,
+		identity::IdentityId,
 		int::Int,
 		is::{IsNumber, IsTemporal, IsUuid},
 		number::{compare::partial_cmp, promote::Promote},
@@ -53,21 +55,21 @@ macro_rules! dispatch_compare {
 			{$($extra)*}
 			{
 				$($acc)*
-				(ColumnBuffer::$L(l), ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, $Lt, f32>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, $Lt, f64>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, $Lt, i8>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, $Lt, i16>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, $Lt, i32>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, $Lt, i64>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, $Lt, i128>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, $Lt, u8>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, $Lt, u16>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, $Lt, u32>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, $Lt, u64>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, $Lt, u128>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Int>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Uint>(l, r, $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Decimal>(l, r, $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, $Lt, f32>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, $Lt, f64>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, $Lt, i8>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, $Lt, i16>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, $Lt, i32>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, $Lt, i64>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, $Lt, i128>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, $Lt, u8>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, $Lt, u16>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, $Lt, u32>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, $Lt, u64>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, $Lt, u128>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Int>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Uint>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Decimal>(l.values(), r.values(), $fragment)); },
 			}
 		)
 	};
@@ -84,55 +86,55 @@ macro_rules! dispatch_compare {
 			$($acc)*
 
 
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Int, f32>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Int, f64>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Int, i8>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Int, i16>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Int, i32>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Int, i64>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Int, i128>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Int, u8>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Int, u16>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Int, u32>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Int, u64>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Int, u128>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Int, Int>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Int, Uint>(l, r, $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Int, Decimal>(l, r, $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Int, f32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Int, f64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Int, i8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Int, i16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Int, i32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Int, i64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Int, i128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Int, u8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Int, u16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Int, u32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Int, u64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Int, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Int, Int>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Int, Uint>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Int, Decimal>(l.values(), r.values(), $fragment)); },
 
 
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Uint, f32>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Uint, f64>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Uint, i8>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Uint, i16>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Uint, i32>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Uint, i64>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Uint, i128>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Uint, u8>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Uint, u16>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Uint, u32>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Uint, u64>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Uint, u128>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Int>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Uint>(l, r, $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Decimal>(l, r, $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Uint, f32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Uint, f64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Uint, i8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Uint, i16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Uint, i32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Uint, i64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Uint, i128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Uint, u8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Uint, u16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Uint, u32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Uint, u64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Uint, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Int>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Uint>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Decimal>(l.values(), r.values(), $fragment)); },
 
 
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Decimal, f32>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Decimal, f64>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Decimal, i8>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Decimal, i16>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Decimal, i32>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Decimal, i64>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Decimal, i128>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Decimal, u8>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Decimal, u16>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Decimal, u32>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Decimal, u64>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Decimal, u128>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Int>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Uint>(l, r, $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Decimal>(l, r, $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Decimal, f32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Decimal, f64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Decimal, i8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, Decimal, i16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, Decimal, i32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, Decimal, i64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, Decimal, i128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, Decimal, u8>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Decimal, u16>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Decimal, u32>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Decimal, u64>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Decimal, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Int>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Uint>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Decimal>(l.values(), r.values(), $fragment)); },
 
 
 			$($extra)*
@@ -205,11 +207,7 @@ impl CompareOp for LessThanEqual {
 }
 
 #[inline]
-fn compare_number<Op: CompareOp, L, R>(
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
-	fragment: Fragment,
-) -> ColumnWithName
+fn compare_number<Op: CompareOp, L, R>(l: &[L], r: &[R], fragment: Fragment) -> ColumnWithName
 where
 	L: Promote<R> + IsNumber,
 	R: IsNumber,
@@ -220,20 +218,13 @@ where
 	}
 
 	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.map(|(l_val, r_val)| Op::compare_ordering(partial_cmp(l_val, r_val)))
-			.collect();
+		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(partial_cmp(l_val, r_val))).collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }
 
 #[inline]
-fn compare_temporal<Op: CompareOp, T>(
-	l: &TemporalContainer<T>,
-	r: &TemporalContainer<T>,
-	fragment: Fragment,
-) -> ColumnWithName
+fn compare_temporal<Op: CompareOp, T>(l: &[T], r: &[T], fragment: Fragment) -> ColumnWithName
 where
 	T: IsTemporal + Copy + PartialOrd,
 {
@@ -242,16 +233,13 @@ where
 	}
 
 	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
-			.collect();
+		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val))).collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }
 
 #[inline]
-fn compare_uuid<Op: CompareOp, T>(l: &UuidContainer<T>, r: &UuidContainer<T>, fragment: Fragment) -> ColumnWithName
+fn compare_uuid<Op: CompareOp, T>(l: &[T], r: &[T], fragment: Fragment) -> ColumnWithName
 where
 	T: IsUuid + PartialOrd,
 {
@@ -260,39 +248,32 @@ where
 	}
 
 	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
-			.collect();
+		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val))).collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }
 
 #[inline]
-fn compare_identity_id<Op: CompareOp>(
-	l: &IdentityIdContainer,
-	r: &IdentityIdContainer,
-	fragment: Fragment,
-) -> ColumnWithName {
+fn compare_identity_id<Op: CompareOp>(l: &[IdentityId], r: &[IdentityId], fragment: Fragment) -> ColumnWithName {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
 	let data: Vec<bool> =
-		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(&r_val))).collect();
+		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val))).collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }
 
 #[inline]
-fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> ColumnWithName {
+fn compare_blob<Op: CompareOp>(l: &LargeBinaryArray, r: &LargeBinaryArray, fragment: Fragment) -> ColumnWithName {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let data: Vec<bool> = l
-		.iter_bytes()
-		.zip(r.iter_bytes())
+	let data: Vec<bool> = (0..l.len())
+		.map(|i| l.value(i))
+		.zip((0..r.len()).map(|i| r.value(i)))
 		.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
 		.collect();
 
@@ -300,14 +281,14 @@ fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: F
 }
 
 #[inline]
-fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> ColumnWithName {
+fn compare_utf8<Op: CompareOp>(l: &LargeStringArray, r: &LargeStringArray, fragment: Fragment) -> ColumnWithName {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let data: Vec<bool> = l
-		.iter_str()
-		.zip(r.iter_str())
+	let data: Vec<bool> = (0..l.len())
+		.map(|i| l.value(i))
+		.zip((0..r.len()).map(|i| r.value(i)))
 		.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
 		.collect();
 
@@ -315,16 +296,17 @@ fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: F
 }
 
 #[inline]
-fn compare_bool<Op: CompareOp>(l: &BoolContainer, r: &BoolContainer, fragment: Fragment) -> Option<ColumnWithName> {
+fn compare_bool<Op: CompareOp>(l: &BooleanArray, r: &BooleanArray, fragment: Fragment) -> Option<ColumnWithName> {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.filter_map(|(l_val, r_val)| Op::compare_bool(l_val, r_val))
-			.collect();
+	let data: Vec<bool> = l
+		.values()
+		.iter()
+		.zip(r.values().iter())
+		.filter_map(|(l_val, r_val)| Op::compare_bool(l_val, r_val))
+		.collect();
 
 	if data.len() == l.len() {
 		Some(ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data)))
@@ -352,16 +334,16 @@ pub fn compare_columns<Op: CompareOp>(
 			}
 
 			(ColumnBuffer::Date(l), ColumnBuffer::Date(r)) => {
-				Ok(compare_temporal::<Op, _>(l, r, fragment))
+				Ok(compare_temporal::<Op, _>(dates(l), dates(r), fragment))
 			},
 			(ColumnBuffer::DateTime(l), ColumnBuffer::DateTime(r)) => {
-				Ok(compare_temporal::<Op, _>(l, r, fragment))
+				Ok(compare_temporal::<Op, _>(datetimes(l), datetimes(r), fragment))
 			},
 			(ColumnBuffer::Time(l), ColumnBuffer::Time(r)) => {
-				Ok(compare_temporal::<Op, _>(l, r, fragment))
+				Ok(compare_temporal::<Op, _>(times(l), times(r), fragment))
 			},
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
-				Ok(compare_temporal::<Op, _>(l, r, fragment))
+				Ok(compare_temporal::<Op, _>(durations(l), durations(r), fragment))
 			},
 
 			(
@@ -378,13 +360,13 @@ pub fn compare_columns<Op: CompareOp>(
 			},
 
 			(ColumnBuffer::Uuid4(l), ColumnBuffer::Uuid4(r)) => {
-				Ok(compare_uuid::<Op, _>(l, r, fragment))
+				Ok(compare_uuid::<Op, _>(uuid4s(l), uuid4s(r), fragment))
 			},
 			(ColumnBuffer::Uuid7(l), ColumnBuffer::Uuid7(r)) => {
-				Ok(compare_uuid::<Op, _>(l, r, fragment))
+				Ok(compare_uuid::<Op, _>(uuid7s(l), uuid7s(r), fragment))
 			},
 			(ColumnBuffer::IdentityId(l), ColumnBuffer::IdentityId(r)) => {
-				Ok(compare_identity_id::<Op>(l, r, fragment))
+				Ok(compare_identity_id::<Op>(identity_ids(l), identity_ids(r), fragment))
 			},
 			(
 				ColumnBuffer::Blob {

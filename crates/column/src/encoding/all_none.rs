@@ -3,11 +3,11 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_buffer::NullBuffer;
 use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
+	builder::ColumnBuilder,
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
-	nones::NoneBitmap,
 	stats::StatsSet,
 };
 use reifydb_value::{
@@ -30,7 +30,7 @@ impl AllNoneEncoding {
 pub struct AllNoneData {
 	ty: ValueType,
 	len: usize,
-	nones: NoneBitmap,
+	nones: NullBuffer,
 	stats: StatsSet,
 }
 
@@ -39,7 +39,7 @@ impl AllNoneData {
 		Self {
 			ty,
 			len,
-			nones: NoneBitmap::all_none(len),
+			nones: NullBuffer::new_null(len),
 			stats: StatsSet::new(),
 		}
 	}
@@ -62,7 +62,7 @@ impl ColumnData for AllNoneData {
 		true
 	}
 
-	fn nones(&self) -> Option<&NoneBitmap> {
+	fn nones(&self) -> Option<&NullBuffer> {
 		Some(&self.nones)
 	}
 
@@ -99,11 +99,11 @@ impl ColumnData for AllNoneData {
 	}
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>> {
-		let mut buffer = ColumnBuffer::with_capacity(self.ty.clone(), self.len);
+		let mut buffer = ColumnBuilder::with_capacity(self.ty.clone(), self.len);
 		for _ in 0..self.len {
 			buffer.push_none();
 		}
-		Ok(Arc::new(Canonical::from_buffer(buffer)))
+		Ok(Arc::new(Canonical::from_buffer(buffer.finish())))
 	}
 }
 
@@ -117,7 +117,7 @@ impl Encoding for AllNoneEncoding {
 			return Ok(None);
 		}
 		match &input.nones {
-			Some(nones) if nones.none_count() == input.len() => {
+			Some(nones) if nones.null_count() == input.len() => {
 				Ok(Some(Column::from_data(Arc::new(AllNoneData::new(input.ty.clone(), input.len())))))
 			}
 			_ => Ok(None),

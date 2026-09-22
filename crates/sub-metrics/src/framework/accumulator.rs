@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use reifydb_core::{
 	internal_error,
 	metrics::sample::{MetricKind, Reading},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_value::{
 	Result,
@@ -253,12 +253,12 @@ fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result
 }
 
 fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
-	let mut ts = ColumnBuffer::datetime_with_capacity(0);
-	let mut scope = ColumnBuffer::utf8_with_capacity(0);
-	let mut metric = ColumnBuffer::utf8_with_capacity(0);
-	let mut value = ColumnBuffer::float8_with_capacity(0);
-	let mut unit = ColumnBuffer::utf8_with_capacity(0);
-	let mut kind = ColumnBuffer::utf8_with_capacity(0);
+	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, 0);
+	let mut scope = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+	let mut metric = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+	let mut value = ColumnBuilder::with_capacity(ValueType::Float8, 0);
+	let mut unit = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+	let mut kind = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 
 	for (dimensions, row) in &state.rows {
 		let Some(Value::Utf8(row_scope)) = dimensions.first() else {
@@ -340,12 +340,12 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 	}
 
 	Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("ts"), ts),
-		ColumnWithName::new(Fragment::internal("scope"), scope),
-		ColumnWithName::new(Fragment::internal("metric"), metric),
-		ColumnWithName::new(Fragment::internal("value"), value),
-		ColumnWithName::new(Fragment::internal("unit"), unit),
-		ColumnWithName::new(Fragment::internal("kind"), kind),
+		ColumnWithName::new(Fragment::internal("ts"), ts.finish()),
+		ColumnWithName::new(Fragment::internal("scope"), scope.finish()),
+		ColumnWithName::new(Fragment::internal("metric"), metric.finish()),
+		ColumnWithName::new(Fragment::internal("value"), value.finish()),
+		ColumnWithName::new(Fragment::internal("unit"), unit.finish()),
+		ColumnWithName::new(Fragment::internal("kind"), kind.finish()),
 	])
 }
 
@@ -354,14 +354,14 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Co
 	let measures = spec.surface_measures(surface);
 	let capacity = state.rows.len();
 
-	let mut ts = ColumnBuffer::datetime_with_capacity(capacity);
-	let mut dimension_buffers: Vec<ColumnBuffer> = spec
+	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, capacity);
+	let mut dimension_buffers: Vec<ColumnBuilder> = spec
 		.dimensions
 		.iter()
-		.map(|dimension| ColumnBuffer::with_capacity(dimension.buffer_type(), capacity))
+		.map(|dimension| ColumnBuilder::with_capacity(dimension.buffer_type(), capacity))
 		.collect();
-	let mut measure_buffers: Vec<ColumnBuffer> =
-		measures.iter().map(|measure| ColumnBuffer::with_capacity(measure.buffer_type(), capacity)).collect();
+	let mut measure_buffers: Vec<ColumnBuilder> =
+		measures.iter().map(|measure| ColumnBuilder::with_capacity(measure.buffer_type(), capacity)).collect();
 
 	for (dimensions, row) in &state.rows {
 		ts.push(now);
@@ -379,12 +379,12 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Co
 		}
 	}
 
-	let mut out = vec![ColumnWithName::new(Fragment::internal("ts"), ts)];
+	let mut out = vec![ColumnWithName::new(Fragment::internal("ts"), ts.finish())];
 	for (dimension, buffer) in spec.dimensions.iter().zip(dimension_buffers) {
-		out.push(ColumnWithName::new(Fragment::internal(dimension.name), buffer));
+		out.push(ColumnWithName::new(Fragment::internal(dimension.name), buffer.finish()));
 	}
 	for (measure, buffer) in measures.iter().zip(measure_buffers) {
-		out.push(ColumnWithName::new(Fragment::internal(measure.name), buffer));
+		out.push(ColumnWithName::new(Fragment::internal(measure.name), buffer.finish()));
 	}
 	Ok(Columns::new(out))
 }

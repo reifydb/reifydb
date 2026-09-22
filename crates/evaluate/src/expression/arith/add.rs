@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
+use arrow_array::{Array, LargeStringArray};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container},
+		container::{
+			temporal_array::{duration_array, durations},
+			varlen_array::get,
+		},
+		duration::Duration,
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
 		value_type::{ValueType, get::GetType},
@@ -34,13 +39,11 @@ pub fn add_columns(
 
 
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
-				let mut container = TemporalContainer::with_capacity(l.len());
-				for i in 0..l.len() {
-					match (l.get(i), r.get(i)) {
-						(Some(lv), Some(rv)) => container.push(*lv + *rv),
-						_ => container.push_default(),
-					}
-				}
+				let (l, r) = (durations(l), durations(r));
+				let container = duration_array((0..l.len()).map(|i| match (l.get(i), r.get(i)) {
+					(Some(lv), Some(rv)) => *lv + *rv,
+					_ => Duration::default(),
+				}));
 				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
 			}
 
@@ -86,8 +89,8 @@ pub fn add_columns(
 
 fn add_numeric<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -96,17 +99,15 @@ where
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeAdd,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
-	let l_data = l.data();
-	let r_data = r.data();
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		if let Some(value) = ctx.add(&l_data[i], &r_data[i], fragment)? {
+		if let Some(value) = ctx.add(&l[i], &r[i], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -114,14 +115,14 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }
 
 fn add_numeric_clone<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -130,13 +131,13 @@ where
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeAdd,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_val), Some(r_val)) => {
@@ -153,7 +154,7 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }
 
@@ -187,8 +188,8 @@ fn can_promote_to_string(data: &ColumnBuffer) -> bool {
 }
 
 fn concat_strings(
-	l: &Utf8Container,
-	r: &Utf8Container,
+	l: &LargeStringArray,
+	r: &LargeStringArray,
 	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
@@ -196,9 +197,9 @@ fn concat_strings(
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
+		match (get(l, i), get(r, i)) {
 			(Some(l_str), Some(r_str)) => {
 				let concatenated = format!("{}{}", l_str, r_str);
 				data.push(concatenated);
@@ -208,12 +209,12 @@ fn concat_strings(
 	}
 	Ok(ColumnWithName {
 		name: fragment,
-		data,
+		data: data.finish(),
 	})
 }
 
 fn concat_string_with_other(
-	string_data: &Utf8Container,
+	string_data: &LargeStringArray,
 	other_data: &ColumnBuffer,
 	string_is_left: bool,
 	target: ValueType,
@@ -223,9 +224,9 @@ fn concat_string_with_other(
 		assert_eq!(string_data.len(), other_data.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, string_data.len());
+	let mut data = ColumnBuilder::with_capacity(target, string_data.len());
 	for i in 0..string_data.len() {
-		match (string_data.get(i), other_data.is_defined(i)) {
+		match (get(string_data, i), other_data.is_defined(i)) {
 			(Some(str_val), true) => {
 				let other_str = other_data.as_string(i);
 				let concatenated = if string_is_left {
@@ -240,6 +241,6 @@ fn concat_string_with_other(
 	}
 	Ok(ColumnWithName {
 		name: fragment,
-		data,
+		data: data.finish(),
 	})
 }

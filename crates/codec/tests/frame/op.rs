@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Int32Array;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	json::{from::frames_from_json, to::convert_frames},
 };
 use reifydb_value::value::{
-	container::number::NumberContainer,
 	diff_type::DiffType,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	row_number::RowNumber,
@@ -17,7 +17,7 @@ fn frame_with_op(op: Option<DiffType>) -> Frame {
 	let mut frame = Frame::with_row_numbers(
 		vec![FrameColumn {
 			name: "id".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![7])),
 		}],
 		vec![RowNumber::new(42)],
 	);

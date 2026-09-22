@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -53,13 +53,13 @@ impl BaseVTable for SystemTagVariants {
 			.filter(|st| st.kind == SumTypeKind::Tag)
 			.collect();
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(0);
-		let mut variant_tags = ColumnBuffer::uint1_with_capacity(0);
-		let mut variant_names = ColumnBuffer::utf8_with_capacity(0);
-		let mut field_counts = ColumnBuffer::uint1_with_capacity(0);
-		let mut field_indices = ColumnBuffer::uint1_with_capacity(0);
-		let mut field_names = ColumnBuffer::utf8_with_capacity(0);
-		let mut field_types = ColumnBuffer::uint1_with_capacity(0);
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, 0);
+		let mut variant_tags = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
+		let mut variant_names = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+		let mut field_counts = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
+		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
+		let mut field_names = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+		let mut field_types = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
 
 		for st in &sumtypes {
 			for variant in &st.variants {
@@ -88,13 +88,13 @@ impl BaseVTable for SystemTagVariants {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("variant_tag"), variant_tags),
-			ColumnWithName::new(Fragment::internal("variant_name"), variant_names),
-			ColumnWithName::new(Fragment::internal("field_count"), field_counts),
-			ColumnWithName::new(Fragment::internal("field_index"), field_indices),
-			ColumnWithName::new(Fragment::internal("field_name"), field_names),
-			ColumnWithName::new(Fragment::internal("field_type"), field_types),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("variant_tag"), variant_tags.finish()),
+			ColumnWithName::new(Fragment::internal("variant_name"), variant_names.finish()),
+			ColumnWithName::new(Fragment::internal("field_count"), field_counts.finish()),
+			ColumnWithName::new(Fragment::internal("field_index"), field_indices.finish()),
+			ColumnWithName::new(Fragment::internal("field_name"), field_names.finish()),
+			ColumnWithName::new(Fragment::internal("field_type"), field_types.finish()),
 		];
 
 		self.exhausted = true;

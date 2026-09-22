@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{container::number::NumberContainer, date::Date, value_type::ValueType},
-};
+use reifydb_value::value::{date::Date, value_type::ValueType};
 
 use crate::function::support::coerce::{CoerceMode, coerce_column};
 
@@ -55,8 +53,8 @@ fn ensure_integer(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: us
 	Ok(())
 }
 
-fn defined(c: &NumberContainer<i32>, bv: Option<&BitVec>, i: usize) -> bool {
-	c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+fn defined(c: &[i32], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+	i < c.len() && bv.is_none_or(|b| b.value(i))
 }
 
 impl<'a> Routine<FunctionContext<'a>> for DateNew {
@@ -96,14 +94,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		let mut bits = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			if !defined(years, year_bv, i) || !defined(months, month_bv, i) || !defined(days, day_bv, i) {
+			if !defined(years.values(), year_bv, i)
+				|| !defined(months.values(), month_bv, i)
+				|| !defined(days.values(), day_bv, i)
+			{
 				values.push(Date::default());
 				bits.push(false);
 				continue;
 			}
-			let y = *years.get(i).expect("defined row has a value");
-			let m = *months.get(i).expect("defined row has a value");
-			let d = *days.get(i).expect("defined row has a value");
+			let y = *years.values().get(i).expect("defined row has a value");
+			let m = *months.values().get(i).expect("defined row has a value");
+			let d = *days.values().get(i).expect("defined row has a value");
 
 			let date = if m >= 1 && d >= 1 {
 				Date::new(y, m as u32, d as u32)

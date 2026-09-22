@@ -7,11 +7,12 @@ use std::{
 	result::Result as StdResult,
 };
 
+use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	util::{bitvec::BitVec, shared_vec::SharedVec},
+	util::shared_vec::SharedVec,
 	value::{Value, is::IsNumber},
 };
 
@@ -129,10 +130,6 @@ where
 		self.data.is_empty()
 	}
 
-	pub fn clear(&mut self) {
-		self.data.clear();
-	}
-
 	pub fn push(&mut self, value: T) {
 		self.data.push(value);
 	}
@@ -151,6 +148,10 @@ where
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		idx < self.len()
+	}
+
+	pub fn values(&self) -> &[T] {
+		self.data.as_slice()
 	}
 
 	pub fn data(&self) -> &[T] {
@@ -182,21 +183,14 @@ where
 		Ok(())
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = Option<T>> + '_
-	where
-		T: Copy,
-	{
-		self.data.iter().map(|&v| Some(v))
-	}
-
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		Self {
 			data: self.data.slice(start, end),
 		}
 	}
 
-	pub fn filter(&mut self, mask: &BitVec) {
-		let mut new_data = Vec::with_capacity(mask.count_ones());
+	pub fn filter(&mut self, mask: &BooleanBuffer) {
+		let mut new_data = Vec::with_capacity(mask.count_set_bits());
 
 		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {
@@ -231,7 +225,6 @@ where
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new_i32() {
@@ -300,15 +293,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_iter_u8() {
-		let data = vec![1u8, 2, 3];
-		let container = NumberContainer::new(data);
-
-		let collected: Vec<Option<u8>> = container.iter().collect();
-		assert_eq!(collected, vec![Some(1), Some(2), Some(3)]);
-	}
-
-	#[test]
 	fn test_slice() {
 		let container = NumberContainer::from_vec(vec![10i16, 20, 30, 40]);
 		let sliced = container.slice(1, 3);
@@ -321,7 +305,7 @@ pub mod tests {
 	#[test]
 	fn test_filter() {
 		let mut container = NumberContainer::from_vec(vec![1f32, 2.0, 3.0, 4.0]);
-		let mask = BitVec::from_slice(&[true, false, true, false]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false]);
 
 		container.filter(&mask);
 

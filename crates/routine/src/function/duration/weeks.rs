@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{container::temporal_array::duration_array, duration::Duration, value_type::ValueType};
 
 pub struct DurationWeeks {
 	info: RoutineInfo,
@@ -27,15 +27,15 @@ impl DurationWeeks {
 
 fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
@@ -91,17 +91,17 @@ impl<'a> Routine<FunctionContext<'a>> for DurationWeeks {
 			});
 		}
 
-		let mut container = TemporalContainer::with_capacity(row_count);
+		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
 			if let Some(val) = extract_i64(data, i) {
 				container.push(Duration::from_weeks(val)?);
 			} else {
-				container.push_default();
+				container.push(Duration::default());
 			}
 		}
 
-		let mut result_data = ColumnBuffer::Duration(container);
+		let mut result_data = ColumnBuffer::Duration(duration_array(container));
 		if let Some(bv) = bitvec {
 			result_data = ColumnBuffer::Option {
 				inner: Box::new(result_data),

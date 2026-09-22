@@ -3,26 +3,25 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_buffer::NullBuffer;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, value_type::ValueType},
 };
 
-use crate::value::column::{
-	buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId, nones::NoneBitmap, stats::StatsSet,
-};
+use crate::value::column::{buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId, stats::StatsSet};
 
 #[derive(Clone, Debug)]
 pub struct Canonical {
 	pub ty: ValueType,
 	pub nullable: bool,
-	pub nones: Option<NoneBitmap>,
+	pub nones: Option<NullBuffer>,
 	pub buffer: ColumnBuffer,
 	stats: StatsSet,
 }
 
 impl Canonical {
-	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, mut buffer: ColumnBuffer) -> Self {
+	pub fn new(ty: ValueType, nullable: bool, nones: Option<NullBuffer>, mut buffer: ColumnBuffer) -> Self {
 		reifydb_assertions! {
 			assert!(
 				!matches!(buffer, ColumnBuffer::Option { .. }),
@@ -47,7 +46,7 @@ impl Canonical {
 			} => {
 				let mut inner_c = Self::from_buffer(*inner);
 				inner_c.nullable = true;
-				inner_c.nones = Some(NoneBitmap::from_defined_bitvec(&bitvec));
+				inner_c.nones = Some(NullBuffer::new(bitvec));
 				inner_c
 			}
 			mut other => {
@@ -73,7 +72,7 @@ impl Canonical {
 			None => self.buffer.clone(),
 			Some(nones) => ColumnBuffer::Option {
 				inner: Box::new(self.buffer.clone()),
-				bitvec: nones.to_defined_bitvec(),
+				bitvec: nones.inner().clone(),
 			},
 		}
 	}
@@ -129,12 +128,12 @@ impl ColumnData for Canonical {
 		&self.stats
 	}
 
-	fn nones(&self) -> Option<&NoneBitmap> {
+	fn nones(&self) -> Option<&NullBuffer> {
 		self.nones.as_ref()
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
-		if self.nones.as_ref().map(|n| n.is_none(idx)).unwrap_or(false) {
+		if self.nones.as_ref().map(|n| n.is_null(idx)).unwrap_or(false) {
 			Value::none_of(self.ty.clone())
 		} else {
 			self.buffer.get_value(idx)

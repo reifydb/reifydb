@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use reifydb_core::{
 	internal_error,
 	testing::CapturedEvent,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
@@ -91,11 +91,11 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 		return Ok(Columns::empty());
 	}
 
-	let mut seq_data = ColumnBuffer::uint8_with_capacity(events.len());
-	let mut ns_data = ColumnBuffer::utf8_with_capacity(events.len());
-	let mut event_data = ColumnBuffer::utf8_with_capacity(events.len());
-	let mut variant_data = ColumnBuffer::utf8_with_capacity(events.len());
-	let mut depth_data = ColumnBuffer::uint1_with_capacity(events.len());
+	let mut seq_data = ColumnBuilder::with_capacity(ValueType::Uint8, events.len());
+	let mut ns_data = ColumnBuilder::with_capacity(ValueType::Utf8, events.len());
+	let mut event_data = ColumnBuilder::with_capacity(ValueType::Utf8, events.len());
+	let mut variant_data = ColumnBuilder::with_capacity(ValueType::Utf8, events.len());
+	let mut depth_data = ColumnBuilder::with_capacity(ValueType::Uint1, events.len());
 
 	let mut field_names: Vec<String> = Vec::new();
 	for event in &events {
@@ -127,11 +127,11 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 	}
 
 	let mut columns = vec![
-		ColumnWithName::new("sequence", seq_data),
-		ColumnWithName::new("namespace", ns_data),
-		ColumnWithName::new("event", event_data),
-		ColumnWithName::new("variant", variant_data),
-		ColumnWithName::new("depth", depth_data),
+		ColumnWithName::new("sequence", seq_data.finish()),
+		ColumnWithName::new("namespace", ns_data.finish()),
+		ColumnWithName::new("event", event_data.finish()),
+		ColumnWithName::new("variant", variant_data.finish()),
+		ColumnWithName::new("depth", depth_data.finish()),
 	];
 
 	for (i, name) in field_names.iter().enumerate() {
@@ -139,13 +139,13 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 		for val in &field_columns[i] {
 			data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(name.as_str(), data));
+		columns.push(ColumnWithName::new(name.as_str(), data.finish()));
 	}
 
 	Ok(Columns::new(columns))
 }
 
-fn column_for_values(values: &[Value]) -> ColumnBuffer {
+fn column_for_values(values: &[Value]) -> ColumnBuilder {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None
@@ -154,7 +154,7 @@ fn column_for_values(values: &[Value]) -> ColumnBuffer {
 		}
 	});
 	match first_type {
-		Some(ty) => ColumnBuffer::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none_typed(ValueType::Boolean, 0),
+		Some(ty) => ColumnBuilder::with_capacity(ty, values.len()),
+		None => ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder(),
 	}
 }

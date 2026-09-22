@@ -3,13 +3,13 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
 use reifydb_routine::function::{default_in_process_functions, stats::approx_percentile::ApproxPercentile};
 use reifydb_routine_abi::{Function, Routine, context::FunctionContext, error::RoutineError, registry::Routines};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{Value, digest::Digest, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 
@@ -52,23 +52,23 @@ fn duration_digest(millis: impl IntoIterator<Item = i64>) -> Digest {
 }
 
 fn digest_column(inner: ValueType, rows: &[Option<Digest>]) -> ColumnBuffer {
-	let mut column = ColumnBuffer::with_capacity(digest_type(inner), rows.len());
+	let mut builder = ColumnBuilder::with_capacity(digest_type(inner), rows.len());
 	for row in rows {
 		match row {
-			Some(digest) => column.push_value(Value::Digest(Box::new(digest.clone()))),
-			None => column.push_none(),
+			Some(digest) => builder.push_value(Value::Digest(Box::new(digest.clone()))),
+			None => builder.push_none(),
 		}
 	}
-	column
+	builder.finish()
 }
 
 fn column(values: impl IntoIterator<Item = Value>, ty: ValueType) -> ColumnBuffer {
 	let values: Vec<Value> = values.into_iter().collect();
-	let mut column = ColumnBuffer::with_capacity(ty, values.len());
+	let mut builder = ColumnBuilder::with_capacity(ty, values.len());
 	for value in values {
-		column.push_value(value);
+		builder.push_value(value);
 	}
-	column
+	builder.finish()
 }
 
 fn call(args: Vec<ColumnBuffer>) -> Result<ColumnBuffer, RoutineError> {
@@ -197,9 +197,10 @@ fn a_none_digest_or_a_none_p_gives_none_for_that_row_only() {
 	// A none row must not hide the neighbours' answers or turn into an error from its placeholder p.
 	let digest = duration_digest([10, 20, 30]);
 	let digests = vec![Some(digest.clone()), None, Some(digest.clone()), Some(digest.clone())];
-	let mut ps = column([Value::float8(0.5), Value::float8(0.5)], ValueType::Float8);
+	let mut ps = column([Value::float8(0.5), Value::float8(0.5)], ValueType::Float8).into_builder();
 	ps.push_none();
 	ps.push_value(Value::float8(1.0));
+	let ps = ps.finish();
 
 	let out = call(vec![digest_column(ValueType::Duration, &digests), ps]).unwrap();
 
@@ -217,7 +218,7 @@ fn a_none_p_that_is_out_of_range_underneath_is_not_checked() {
 	let digest = float_digest([1.0, 2.0]);
 	let ps = ColumnBuffer::Option {
 		inner: Box::new(column([Value::float8(7.0)], ValueType::Float8)),
-		bitvec: BitVec::from_slice(&[false]),
+		bitvec: BooleanBuffer::from(vec![false]),
 	};
 
 	let out = call(vec![digest_column(ValueType::Float8, &[Some(digest)]), ps]).unwrap();

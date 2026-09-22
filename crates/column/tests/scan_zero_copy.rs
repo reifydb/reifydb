@@ -8,7 +8,9 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::Column};
-use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{
+	Value, container::varlen_array::compact_parts, datetime::DateTime, row_number::RowNumber, value_type::ValueType,
+};
 
 const ROWS: usize = 10_007;
 const BATCH: usize = 1_024;
@@ -60,7 +62,7 @@ fn utf8_bytes(buffer: &ColumnBuffer) -> &[u8] {
 		ColumnBuffer::Utf8 {
 			container,
 			..
-		} => container.inner().compact_parts().0,
+		} => compact_parts(container).0,
 		other => panic!("expected a utf8 buffer, got {:?}", other.get_type()),
 	}
 }

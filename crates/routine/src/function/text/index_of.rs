@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -57,9 +58,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if str_container.is_defined(i) && substr_container.is_defined(i) {
-						let s = str_container.get(i).unwrap();
-						let substr = substr_container.get(i).unwrap();
+					if i < str_container.len() && i < substr_container.len() {
+						let s = str_container.value(i);
+						let substr = substr_container.value(i);
 						let index = s
 							.find(substr)
 							.map(|pos| s[..pos].chars().count() as i32)
@@ -75,7 +76,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 				let result_col_data = ColumnBuffer::int4_with_bitvec(result_data, result_bitvec);
 
 				let combined_bv = match (str_bv, substr_bv) {
-					(Some(b), Some(e)) => Some(b.and(e)),
+					(Some(b), Some(e)) => Some(b & e),
 					(Some(b), None) => Some(b.clone()),
 					(None, Some(e)) => Some(e.clone()),
 					(None, None) => None,

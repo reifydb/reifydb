@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{binding::BindingProtocol, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use super::common_vtable_columns;
 use crate::{
@@ -53,9 +53,9 @@ impl BaseVTable for SystemBindingsHttp {
 			.filter(|b| matches!(b.protocol, BindingProtocol::Http { .. }))
 			.collect();
 
-		let mut methods = ColumnBuffer::utf8_with_capacity(bindings.len());
-		let mut paths = ColumnBuffer::utf8_with_capacity(bindings.len());
-		let mut formats = ColumnBuffer::utf8_with_capacity(bindings.len());
+		let mut methods = ColumnBuilder::with_capacity(ValueType::Utf8, bindings.len());
+		let mut paths = ColumnBuilder::with_capacity(ValueType::Utf8, bindings.len());
+		let mut formats = ColumnBuilder::with_capacity(ValueType::Utf8, bindings.len());
 
 		for b in &bindings {
 			let BindingProtocol::Http {
@@ -72,9 +72,9 @@ impl BaseVTable for SystemBindingsHttp {
 
 		let mut columns = common_vtable_columns(&bindings);
 		columns.extend(vec![
-			ColumnWithName::new(Fragment::internal("method"), methods),
-			ColumnWithName::new(Fragment::internal("path"), paths),
-			ColumnWithName::new(Fragment::internal("format"), formats),
+			ColumnWithName::new(Fragment::internal("method"), methods.finish()),
+			ColumnWithName::new(Fragment::internal("path"), paths.finish()),
+			ColumnWithName::new(Fragment::internal("format"), formats.finish()),
 		]);
 
 		self.exhausted = true;

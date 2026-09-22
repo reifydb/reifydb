@@ -69,7 +69,7 @@ impl Encoding for CanonicalEncoding {
 	fn derive_stats(&self, array: &Column) -> StatsSet {
 		let mut s = StatsSet::new();
 		if let Some(nones) = array.nones() {
-			s.set(Stat::NoneCount, Value::Uint8(nones.none_count() as u64));
+			s.set(Stat::NoneCount, Value::Uint8(nones.null_count() as u64));
 		}
 		s
 	}
@@ -77,7 +77,7 @@ impl Encoding for CanonicalEncoding {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 
 	use super::*;
 	use crate::encoding::EncodingRegistry;
@@ -97,11 +97,12 @@ mod tests {
 
 	#[test]
 	fn derive_stats_includes_none_count_when_nullable() {
-		let mut cd = ColumnBuffer::int4_with_capacity(4);
+		let mut cd = ColumnBuilder::with_capacity(ValueType::Int4, 4);
 		cd.push::<i32>(10);
 		cd.push_none();
 		cd.push::<i32>(30);
 		cd.push_none();
+		let cd = cd.finish();
 		let canon = Canonical::from_column_buffer(&cd).unwrap();
 		let array = Column::from_canonical(canon);
 		let stats = CanonicalEncoding::FIXED.derive_stats(&array);

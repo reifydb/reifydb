@@ -33,12 +33,12 @@ pub mod tests {
 		let mut test_instance = Columns::new(vec![ColumnWithName::bool_with_bitvec(
 			"flag",
 			[true, true, false],
-			[false, true, true],
+			vec![false, true, true],
 		)]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::bool_with_bitvec([true], [false]));
+		assert_eq!(test_instance[0], ColumnBuffer::bool_with_bitvec([true], vec![false]));
 	}
 
 	#[test]
@@ -46,12 +46,12 @@ pub mod tests {
 		let mut test_instance = Columns::new(vec![ColumnWithName::float4_with_bitvec(
 			"a",
 			[1.0, 2.0, 3.0],
-			[true, false, true],
+			vec![true, false, true],
 		)]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::float4_with_bitvec([1.0, 2.0], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::float4_with_bitvec([1.0, 2.0], vec![true, false]));
 	}
 
 	#[test]
@@ -59,22 +59,22 @@ pub mod tests {
 		let mut test_instance = Columns::new(vec![ColumnWithName::float8_with_bitvec(
 			"a",
 			[1f64, 2.0, 3.0, 4.0],
-			[true, true, false, true],
+			vec![true, true, false, true],
 		)]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::float8_with_bitvec([1.0, 2.0], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::float8_with_bitvec([1.0, 2.0], vec![true, true]));
 	}
 
 	#[test]
 	fn test_int1_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::int1_with_bitvec("a", [1, 2, 3], [true, false, true])]);
+			Columns::new(vec![ColumnWithName::int1_with_bitvec("a", [1, 2, 3], vec![true, false, true])]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int1_with_bitvec([1, 2], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::int1_with_bitvec([1, 2], vec![true, false]));
 	}
 
 	#[test]
@@ -82,82 +82,85 @@ pub mod tests {
 		let mut test_instance = Columns::new(vec![ColumnWithName::int2_with_bitvec(
 			"a",
 			[1, 2, 3, 4],
-			[true, true, false, true],
+			vec![true, true, false, true],
 		)]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([1, 2], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([1, 2], vec![true, true]));
 	}
 
 	#[test]
 	fn test_int4_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::int4_with_bitvec("a", [1, 2], [true, false])]);
+			Columns::new(vec![ColumnWithName::int4_with_bitvec("a", [1, 2], vec![true, false])]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int4_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int4_with_bitvec([1], vec![true]));
 	}
 
 	#[test]
 	fn test_int8_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::int8_with_bitvec("a", [1, 2, 3], [false, true, true])]);
+			Columns::new(vec![ColumnWithName::int8_with_bitvec("a", [1, 2, 3], vec![false, true, true])]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int8_with_bitvec([1, 2], [false, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int8_with_bitvec([1, 2], vec![false, true]));
 	}
 
 	#[test]
 	fn test_int16_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::int16_with_bitvec("a", [1, 2], [true, true])]);
+			Columns::new(vec![ColumnWithName::int16_with_bitvec("a", [1, 2], vec![true, true])]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int16_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int16_with_bitvec([1], vec![true]));
 	}
 
 	#[test]
 	fn test_uint1_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::uint1_with_bitvec("a", [1, 2, 3], [false, false, true])]);
+			Columns::new(vec![ColumnWithName::uint1_with_bitvec("a", [1, 2, 3], vec![false, false, true])]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::uint1_with_bitvec([1, 2], [false, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint1_with_bitvec([1, 2], vec![false, false]));
 	}
 
 	#[test]
 	fn test_uint2_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::uint2_with_bitvec("a", [1, 2], [true, false])]);
+			Columns::new(vec![ColumnWithName::uint2_with_bitvec("a", [1, 2], vec![true, false])]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::uint2_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint2_with_bitvec([1], vec![true]));
 	}
 
 	#[test]
 	fn test_uint4_column() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::uint4_with_bitvec("a", [10, 20], [false, true])]);
+			Columns::new(vec![ColumnWithName::uint4_with_bitvec("a", [10, 20], vec![false, true])]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::uint4_with_bitvec([10], [false]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint4_with_bitvec([10], vec![false]));
 	}
 
 	#[test]
 	fn test_uint8_column() {
-		let mut test_instance =
-			Columns::new(vec![ColumnWithName::uint8_with_bitvec("a", [10, 20, 30], [true, true, false])]);
+		let mut test_instance = Columns::new(vec![ColumnWithName::uint8_with_bitvec(
+			"a",
+			[10, 20, 30],
+			vec![true, true, false],
+		)]);
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::uint8_with_bitvec([10, 20], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint8_with_bitvec([10, 20], vec![true, true]));
 	}
 
 	#[test]
@@ -165,12 +168,12 @@ pub mod tests {
 		let mut test_instance = Columns::new(vec![ColumnWithName::uint16_with_bitvec(
 			"a",
 			[100, 200, 300],
-			[true, false, true],
+			vec![true, false, true],
 		)]);
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::uint16_with_bitvec([100], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint16_with_bitvec([100], vec![true]));
 	}
 
 	#[test]
@@ -185,7 +188,7 @@ pub mod tests {
 
 		assert_eq!(
 			test_instance[0],
-			ColumnBuffer::utf8_with_bitvec(["a".to_string(), "b".to_string()], [true, false])
+			ColumnBuffer::utf8_with_bitvec(["a".to_string(), "b".to_string()], vec![true, false])
 		);
 	}
 
@@ -213,10 +216,10 @@ pub mod tests {
 	#[test]
 	fn test_n_larger_than_len_is_safe() {
 		let mut test_instance =
-			Columns::new(vec![ColumnWithName::int2_with_bitvec("a", [10, 20], [true, false])]);
+			Columns::new(vec![ColumnWithName::int2_with_bitvec("a", [10, 20], vec![true, false])]);
 
 		test_instance.take(10).unwrap();
 
-		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([10, 20], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([10, 20], vec![true, false]));
 	}
 }

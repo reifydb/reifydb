@@ -6,7 +6,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::temporal::TemporalContainer, date::Date, duration::Duration, value_type::ValueType,
+	container::temporal_array::{datetimes, duration_array},
+	date::Date,
+	duration::Duration,
+	value_type::ValueType,
 };
 
 pub struct DateTimeAge {
@@ -45,10 +48,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 
 		let result_data = match (data1, data2) {
 			(ColumnBuffer::DateTime(container1), ColumnBuffer::DateTime(container2)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (container1.get(i), container2.get(i)) {
+					match (datetimes(container1).get(i), datetimes(container2).get(i)) {
 						(Some(dt1), Some(dt2)) => {
 							let nanos1 = dt1.time().to_nanos_since_midnight() as i64;
 							let nanos2 = dt2.time().to_nanos_since_midnight() as i64;
@@ -101,11 +104,11 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 							let total_months = years * 12 + months;
 							container.push(Duration::new(total_months, days, nanos_diff)?);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				ColumnBuffer::Duration(container)
+				ColumnBuffer::Duration(duration_array(container))
 			}
 			(ColumnBuffer::DateTime(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

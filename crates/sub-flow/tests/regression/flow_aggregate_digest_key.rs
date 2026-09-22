@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::operator::{HostOperator, aggregation::operator::AggregateOperator, host::TxnHostContext};
 use reifydb_rql::expression::parse_expression;
@@ -48,9 +48,10 @@ fn flow_aggregate_by_a_digest_column_is_an_error_like_the_batch_group_by() {
 		inner: Box::new(ValueType::Float8),
 		accuracy: 10_000,
 	};
-	let mut digests = ColumnBuffer::with_capacity(ty, 2);
+	let mut digests = ColumnBuilder::with_capacity(ty, 2);
 	digests.push_value(digest(&[1.0, 2.0]));
 	digests.push_value(digest(&[3.0, 4.0]));
+	let digests = digests.finish();
 	let at = DateTime::from_millis(1_000_000);
 	let input = Columns::with_system(
 		vec![

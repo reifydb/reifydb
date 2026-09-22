@@ -15,7 +15,6 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::framework::generator;
 
-pub const SOURCE_OPERATOR: OperatorId = OperatorId(0);
 pub const DISTINCT_OPERATOR: OperatorId = OperatorId(1);
 
 /// The column the operator is told to be distinct on.

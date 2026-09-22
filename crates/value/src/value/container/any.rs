@@ -7,11 +7,12 @@ use std::{
 	result::Result as StdResult,
 };
 
+use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	util::{bitvec::BitVec, shared_vec::SharedVec},
+	util::shared_vec::SharedVec,
 	value::{Value, value_type::ValueType},
 };
 
@@ -49,7 +50,6 @@ impl Serialize for AnyContainer {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a [Value],
-			#[serde(default, skip_serializing_if = "Option::is_none")]
 			declared_type: &'a Option<ValueType>,
 		}
 		Helper {
@@ -144,10 +144,6 @@ impl AnyContainer {
 		self.data.is_empty()
 	}
 
-	pub fn clear(&mut self) {
-		self.data.clear();
-	}
-
 	pub fn push(&mut self, value: Value) {
 		self.data.push(value);
 	}
@@ -209,8 +205,8 @@ impl AnyContainer {
 		}
 	}
 
-	pub fn filter(&mut self, mask: &BitVec) {
-		let mut new_data = Vec::with_capacity(mask.count_ones());
+	pub fn filter(&mut self, mask: &BooleanBuffer) {
+		let mut new_data = Vec::with_capacity(mask.count_set_bits());
 
 		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {

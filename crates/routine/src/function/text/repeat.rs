@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 pub struct TextRepeat {
 	info: RoutineInfo,
@@ -50,19 +51,19 @@ impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if !str_container.is_defined(i) {
+					if i >= str_container.len() {
 						result_data.push(String::new());
 						continue;
 					}
 
 					let count = match count_data {
-						ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int8(c) => c.get(i).copied(),
-						ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int8(c) => c.values().get(i).copied(),
+						ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
 						_ => {
 							return Err(RoutineError::FunctionInvalidArgumentType {
 								function: ctx.fragment.clone(),
@@ -80,7 +81,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
 
 					match count {
 						Some(n) if n >= 0 => {
-							let s = str_container.get(i).unwrap();
+							let s = str_container.value(i);
 							result_data.push(s.repeat(n as usize));
 						}
 						Some(_) => {
@@ -93,12 +94,12 @@ impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
 
 				let combined_bv = match (str_bv, count_bv) {
-					(Some(b), Some(e)) => Some(b.and(e)),
+					(Some(b), Some(e)) => Some(b & e),
 					(Some(b), None) => Some(b.clone()),
 					(None, Some(e)) => Some(e.clone()),
 					(None, None) => None,

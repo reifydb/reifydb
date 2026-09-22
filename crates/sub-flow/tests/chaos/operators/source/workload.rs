@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::dictionary::Dictionary,
 		change::{Change, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_testing_chaos::operator::workload::{Lanes, Workload};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
@@ -75,15 +75,15 @@ impl SourceWorkload {
 	}
 
 	fn columns(&self, rows: &[SourceRow]) -> Columns {
-		let mut symbols = ColumnBuffer::with_capacity(ValueType::DictionaryId, rows.len());
-		let mut values = ColumnBuffer::with_capacity(ValueType::Int8, rows.len());
+		let mut symbols = ColumnBuilder::with_capacity(ValueType::DictionaryId, rows.len());
+		let mut values = ColumnBuilder::with_capacity(ValueType::Int8, rows.len());
 		for row in rows {
 			symbols.push_value(self.entry_id(row.symbol).to_value());
 			values.push_value(Value::Int8(row.value));
 		}
-		if let ColumnBuffer::DictionaryId(container) = &mut symbols {
-			container.set_dictionary_id(self.dictionary.id);
-		}
+		symbols.set_dictionary_id(self.dictionary.id);
+		let symbols = symbols.finish();
+		let values = values.finish();
 
 		let stamps: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
 		Columns::with_system(

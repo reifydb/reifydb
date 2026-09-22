@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Int32Array;
 use reifydb_value::value::{
-	container::number::NumberContainer,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	row_number::RowNumber,
 	system_columns::SystemColumns,
@@ -11,7 +11,7 @@ use reifydb_value::value::{
 fn no_rows() -> Vec<FrameColumn> {
 	vec![FrameColumn {
 		name: "x".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![])),
+		data: FrameColumnData::Int4(Int32Array::from(Vec::<i32>::new())),
 	}]
 }
 

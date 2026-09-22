@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::{Index, IndexMut};
+use std::{
+	mem,
+	ops::{Index, IndexMut},
+};
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
@@ -28,7 +31,7 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,
-	value::column::{ColumnBuffer, ColumnWithName, data::Column},
+	value::column::{ColumnBuffer, ColumnWithName, builder::ColumnBuilder, data::Column},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,7 +270,7 @@ impl Columns {
 		let mut buffers = Vec::with_capacity(cols.len());
 		for col in cols {
 			names.push(Fragment::internal(&col.name));
-			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+			buffers.push(ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish());
 		}
 		Self {
 			system: SystemColumns::empty(),
@@ -391,15 +394,17 @@ impl Columns {
 		let column_count = names.len();
 
 		let mut name_vec: Vec<Fragment> = names.iter().map(Fragment::internal).collect();
-		let mut buffers: Vec<ColumnBuffer> =
-			(0..column_count).map(|_| ColumnBuffer::none_typed(ValueType::Boolean, 0)).collect();
+		let mut builders: Vec<ColumnBuilder> = (0..column_count)
+			.map(|_| ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder())
+			.collect();
 
 		for row in result_rows {
 			assert_eq!(row.len(), column_count, "row length does not match column count");
 			for (i, value) in row.iter().enumerate() {
-				buffers[i].push_value(value.clone());
+				builders[i].push_value(value.clone());
 			}
 		}
+		let buffers: Vec<ColumnBuffer> = builders.into_iter().map(ColumnBuilder::finish).collect();
 
 		let _ = &mut name_vec;
 		Self {
@@ -447,26 +452,31 @@ impl Columns {
 		let fields = shape.fields();
 		let row_count = bytes_slice.len();
 
-		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
+		let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
-			let mut data = ColumnBuffer::with_capacity(field.constraint.get_type(), row_count);
+			let mut builder = ColumnBuilder::with_capacity(field.constraint.get_type(), row_count);
 			if field.constraint.get_type() == ValueType::DictionaryId
-				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
-				container.set_dictionary_id(*dict_id);
+				builder.set_dictionary_id(*dict_id);
 			}
-			columns_vec.push(ColumnWithName {
-				name: Fragment::internal(&field.name),
-				data,
-			});
+			builders.push(builder);
 		}
 
 		for encoded in bytes_slice {
 			for (i, _) in fields.iter().enumerate() {
-				push_keeping_option(&mut columns_vec[i].data, shape.get_value(encoded, i));
+				builders[i].push_keeping_option(shape.get_value(encoded, i));
 			}
 		}
+
+		let columns_vec: Vec<ColumnWithName> = fields
+			.iter()
+			.zip(builders)
+			.map(|(field, builder)| ColumnWithName {
+				name: Fragment::internal(&field.name),
+				data: builder.finish(),
+			})
+			.collect();
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
 		let (created_at, updated_at): (Vec<DateTime>, Vec<DateTime>) = match shape.family() {
@@ -519,11 +529,11 @@ impl Columns {
 
 		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
 		for col in self.columns.iter() {
-			let mut new_data = col.empty_like(indices.len());
+			let mut builder = ColumnBuilder::like(col, indices.len());
 			for &idx in indices {
-				push_keeping_option(&mut new_data, col.get_value(idx));
+				builder.push_keeping_option(col.get_value(idx));
 			}
-			new_buffers.push(new_data);
+			new_buffers.push(builder.finish());
 		}
 
 		Columns {
@@ -566,7 +576,7 @@ impl Columns {
 
 	#[inline]
 	fn extend_data_columns(&mut self, source_columns: Vec<ColumnBuffer>) -> Result<()> {
-		let dest_cols = &mut self.columns;
+		let dest_cols = mem::take(&mut self.columns);
 		reifydb_assertions! {
 			let dest_len = dest_cols.len();
 			let src_len = source_columns.len();
@@ -577,9 +587,13 @@ impl Columns {
 				 partially extended (dest_len={dest_len}, src_len={src_len})"
 			);
 		}
-		for (i, src_col) in source_columns.into_iter().enumerate() {
-			dest_cols[i].extend(src_col)?;
+		let mut merged = Vec::with_capacity(dest_cols.len());
+		for (dest_col, src_col) in dest_cols.into_iter().zip(source_columns) {
+			let mut builder = dest_col.into_builder();
+			builder.extend(src_col)?;
+			merged.push(builder.finish());
 		}
+		self.columns = merged;
 		Ok(())
 	}
 
@@ -637,38 +651,25 @@ impl Columns {
 				value.get_type()
 			};
 
-			let mut data = if column_type.is_option() {
-				ColumnBuffer::none_typed(column_type.clone(), 0)
+			let mut builder = if column_type.is_option() {
+				ColumnBuffer::none_typed(column_type.clone(), 0).into_builder()
 			} else {
-				ColumnBuffer::with_capacity(column_type.clone(), 1)
+				ColumnBuilder::with_capacity(column_type.clone(), 1)
 			};
-			data.push_value(value);
+			builder.push_value(value);
 
 			if column_type == ValueType::DictionaryId
-				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
-				container.set_dictionary_id(*dict_id);
+				builder.set_dictionary_id(*dict_id);
 			}
+			let data = builder.finish();
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
 			self.names.push(Fragment::internal(name));
 			self.columns.push(data);
 		}
-	}
-}
-
-fn push_keeping_option(buffer: &mut ColumnBuffer, value: Value) {
-	match buffer {
-		ColumnBuffer::Option {
-			inner,
-			bitvec,
-		} if !matches!(value, Value::None { .. }) => {
-			inner.push_value(value);
-			bitvec.push(true);
-		}
-		data => data.push_value(value),
 	}
 }
 
@@ -904,11 +905,12 @@ pub mod tests {
 
 	#[test]
 	fn extract_by_indices_preserves_option_values_including_none() {
-		let mut buffer = ColumnBuffer::with_capacity(ValueType::Option(Box::new(ValueType::Int4)), 0);
-		buffer.push_value(Value::Int4(1));
-		buffer.push_value(Value::none());
-		buffer.push_value(Value::Int4(3));
-		buffer.push_value(Value::none());
+		let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(ValueType::Int4)), 0);
+		builder.push_value(Value::Int4(1));
+		builder.push_value(Value::none());
+		builder.push_value(Value::Int4(3));
+		builder.push_value(Value::none());
+		let buffer = builder.finish();
 		assert_extract_preserves_values(buffer, &[3, 1, 2, 0]);
 	}
 
@@ -1039,7 +1041,10 @@ pub mod tests {
 			DictionaryEntryId::U2(30),
 		]);
 		match &mut buffer {
-			ColumnBuffer::DictionaryId(container) => container.set_dictionary_id(DictionaryId(42)),
+			ColumnBuffer::DictionaryId {
+				dictionary_id,
+				..
+			} => *dictionary_id = Some(DictionaryId(42)),
 			_ => unreachable!("dictionary_id factory must build a DictionaryId buffer"),
 		}
 
@@ -1047,9 +1052,12 @@ pub mod tests {
 		let extracted = original.extract_by_indices(&[2, 0]);
 
 		match extracted.data_at(0) {
-			ColumnBuffer::DictionaryId(container) => {
+			ColumnBuffer::DictionaryId {
+				dictionary_id,
+				..
+			} => {
 				assert_eq!(
-					container.dictionary_id(),
+					*dictionary_id,
 					Some(DictionaryId(42)),
 					"dictionary_id metadata must survive extraction"
 				);

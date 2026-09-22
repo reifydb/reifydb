@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_testing_chaos::operator::{
 	view::OutputKey,
@@ -41,8 +41,8 @@ pub struct AppendRow {
 }
 
 fn columns_of(rows: &[&AppendRow]) -> Columns {
-	let mut buffers: Vec<ColumnBuffer> =
-		COLUMNS.iter().map(|(_, ty)| ColumnBuffer::with_capacity(ty.clone(), rows.len())).collect();
+	let mut buffers: Vec<ColumnBuilder> =
+		COLUMNS.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), rows.len())).collect();
 	for row in rows {
 		buffers[0].push_value(Value::Int4(row.input as i32));
 		buffers[1].push_value(Value::Int8(row.source.0 as i64));
@@ -51,7 +51,7 @@ fn columns_of(rows: &[&AppendRow]) -> Columns {
 	let columns = COLUMNS
 		.iter()
 		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
+		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 		.collect();
 	Columns::new(columns).with_row_numbers(rows.iter().map(|row| row.source).collect())
 }

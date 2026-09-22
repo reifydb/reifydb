@@ -62,7 +62,7 @@ pub(crate) fn coerce_column(
 
 pub(crate) fn all_rows_none(col: &ColumnBuffer) -> bool {
 	let (inner, bv) = col.unwrap_option();
-	(0..inner.len()).all(|i| !(inner.is_defined(i) && bv.is_none_or(|b| b.get(i))))
+	(0..inner.len()).all(|i| !(inner.is_defined(i) && bv.is_none_or(|b| b.value(i))))
 }
 
 pub(crate) fn promote_pair(left: ValueType, right: ValueType) -> ValueType {
@@ -81,6 +81,7 @@ pub(crate) fn promote_all(types: impl IntoIterator<Item = ValueType>) -> ValueTy
 mod tests {
 	use std::sync::LazyLock;
 
+	use arrow_buffer::BooleanBuffer;
 	use reifydb_core::value::column::{
 		buffer::ColumnBuffer,
 		cast::convert::{Convert, TargetConvert},
@@ -90,7 +91,6 @@ mod tests {
 	use reifydb_value::{
 		error::IntoDiagnostic,
 		fragment::Fragment,
-		util::bitvec::BitVec,
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
@@ -147,7 +147,7 @@ mod tests {
 		let inner = ColumnBuffer::int2([1, 2, 3]);
 		let data = ColumnBuffer::Option {
 			inner: Box::new(inner),
-			bitvec: BitVec::from_slice(&[true, false, true]),
+			bitvec: BooleanBuffer::from(vec![true, false, true]),
 		};
 		let cast = coerce_column(&ctx, &data, ValueType::Int4, CoerceMode::Error).unwrap();
 		assert_eq!(cast.get_type(), ValueType::Option(Box::new(ValueType::Int4)));

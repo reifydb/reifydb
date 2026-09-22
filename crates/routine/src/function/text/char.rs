@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::LargeStringArray;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 pub struct TextChar {
 	info: RoutineInfo,
@@ -41,24 +42,26 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 
 		let result_data = match data {
 			ColumnBuffer::Int1(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
 			ColumnBuffer::Int2(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
 			ColumnBuffer::Int4(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
 			ColumnBuffer::Int8(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
 			ColumnBuffer::Uint1(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
 			ColumnBuffer::Uint2(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
 			}
-			ColumnBuffer::Uint4(c) => convert_to_char(row_count, c.data().len(), |i| c.get(i).copied()),
+			ColumnBuffer::Uint4(c) => {
+				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).copied())
+			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
@@ -117,7 +120,7 @@ where
 	}
 
 	ColumnBuffer::Utf8 {
-		container: Utf8Container::new(result_data),
+		container: LargeStringArray::from(result_data),
 		max_bytes: MaxBytes::MAX,
 	}
 }

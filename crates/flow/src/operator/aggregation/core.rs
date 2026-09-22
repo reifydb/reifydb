@@ -446,11 +446,11 @@ mod tests {
 	const PPM: u32 = 10_000;
 
 	fn column(values: Vec<Value>) -> ColumnBuffer {
-		let mut data = ColumnBuffer::none_typed(ValueType::Float8, 0);
+		let mut builder = ColumnBuffer::none_typed(ValueType::Float8, 0).into_builder();
 		for value in values {
-			data.push_value(value);
+			builder.push_value(value);
 		}
-		data
+		builder.finish()
 	}
 
 	fn digest_of(values: &[f64]) -> Value {

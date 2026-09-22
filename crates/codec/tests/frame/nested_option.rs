@@ -1,20 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Int32Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::frame::{
 	decode::decode_frames,
 	encode::encode_frames,
 	format::{COLUMN_DESCRIPTOR_SIZE, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE},
 	options::EncodeOptions,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		container::{number::NumberContainer, utf8::Utf8Container},
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 
 const DESCRIPTOR: usize = MESSAGE_HEADER_SIZE + FRAME_HEADER_SIZE;
@@ -24,12 +22,12 @@ const FLAGS_AT: usize = DESCRIPTOR + 2;
 fn option(inner: FrameColumnData, defined: &[bool]) -> FrameColumnData {
 	FrameColumnData::Option {
 		inner: Box::new(inner),
-		bitvec: BitVec::from_slice(defined),
+		bitvec: BooleanBuffer::from(defined),
 	}
 }
 
 fn int4(values: Vec<i32>) -> FrameColumnData {
-	FrameColumnData::Int4(NumberContainer::new(values))
+	FrameColumnData::Int4(Int32Array::from(values))
 }
 
 fn frame(data: FrameColumnData) -> Frame {
@@ -72,7 +70,7 @@ fn layers(data: &FrameColumnData) -> Vec<Vec<bool>> {
 		bitvec,
 	} = cur
 	{
-		out.push(bitvec.to_vec());
+		out.push(bitvec.iter().collect());
 		cur = inner;
 	}
 	out
@@ -146,7 +144,7 @@ fn option_option_utf8_round_trips_under_every_encoding_choice() {
 	let strings: Vec<String> = (0..40).map(|i| format!("v{}", i % 4)).collect();
 	let outer: Vec<bool> = (0..40).map(|i| i % 5 != 0).collect();
 	let inner: Vec<bool> = (0..40).map(|i| outer[i] && i % 3 != 0).collect();
-	let column = option(option(FrameColumnData::Utf8(Utf8Container::new(strings.clone())), &inner), &outer);
+	let column = option(option(FrameColumnData::Utf8(LargeStringArray::from(strings.clone())), &inner), &outer);
 	for options in [EncodeOptions::none(), EncodeOptions::default(), EncodeOptions::fast()] {
 		let bytes = encode(column.clone(), &options);
 		let d = descriptor(&bytes);

@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::operator::InputOrder;
 use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
@@ -85,7 +85,7 @@ pub fn schema(spec: &[(&str, ValueType)]) -> Columns {
 			.map(|(name, ty)| {
 				ColumnWithName::new(
 					Fragment::internal(*name),
-					ColumnBuffer::with_capacity(ty.clone(), 0),
+					ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 				)
 			})
 			.collect(),
@@ -94,8 +94,8 @@ pub fn schema(spec: &[(&str, ValueType)]) -> Columns {
 
 fn columns_of(rows: &[&JoinRow]) -> Columns {
 	let spec = rows[0].side.spec();
-	let mut buffers: Vec<ColumnBuffer> =
-		spec.iter().map(|(_, ty)| ColumnBuffer::with_capacity(ty.clone(), rows.len())).collect();
+	let mut buffers: Vec<ColumnBuilder> =
+		spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), rows.len())).collect();
 	for row in rows {
 		buffers[0].push_value(Value::Int8(row.number.0 as i64));
 		buffers[1].push_value(match row.key {
@@ -107,7 +107,7 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 	let columns = spec
 		.iter()
 		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
+		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 		.collect();
 
 	// `with_row_numbers` would stamp every system time at the epoch, so the times have to be written

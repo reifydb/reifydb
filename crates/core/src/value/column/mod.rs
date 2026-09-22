@@ -3,9 +3,9 @@
 
 use std::fmt;
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{
 		dictionary::DictionaryEntryId,
 		uuid::{Uuid4, Uuid7},
@@ -16,14 +16,13 @@ use reifydb_value::{
 use crate::value::column::{buffer::ColumnBuffer, data::Column};
 
 pub mod buffer;
+pub mod builder;
 pub mod cast;
 pub mod columns;
 pub mod data;
 pub mod encoding;
 pub mod frame;
 pub mod headers;
-pub mod mask;
-pub mod nones;
 pub mod push;
 pub mod row;
 pub mod row_ref;
@@ -100,10 +99,6 @@ impl ColumnWithName {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut ColumnBuffer {
-		&mut self.data
-	}
-
 	pub fn column(&self) -> Column {
 		Column::from_column_buffer(self.data.clone())
 	}
@@ -120,7 +115,7 @@ impl ColumnWithName {
 	pub fn int1_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i8>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -138,7 +133,7 @@ impl ColumnWithName {
 	pub fn int2_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i16>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -156,7 +151,7 @@ impl ColumnWithName {
 	pub fn int4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i32>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -174,7 +169,7 @@ impl ColumnWithName {
 	pub fn int8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i64>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -192,7 +187,7 @@ impl ColumnWithName {
 	pub fn int16_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i128>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -210,7 +205,7 @@ impl ColumnWithName {
 	pub fn uint1_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u8>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -228,7 +223,7 @@ impl ColumnWithName {
 	pub fn uint2_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u16>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -246,7 +241,7 @@ impl ColumnWithName {
 	pub fn uint4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u32>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -264,7 +259,7 @@ impl ColumnWithName {
 	pub fn uint8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u64>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -282,7 +277,7 @@ impl ColumnWithName {
 	pub fn uint16_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u128>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -300,7 +295,7 @@ impl ColumnWithName {
 	pub fn float4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f32>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -318,7 +313,7 @@ impl ColumnWithName {
 	pub fn float8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f64>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -336,7 +331,7 @@ impl ColumnWithName {
 	pub fn bool_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = bool>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -354,7 +349,7 @@ impl ColumnWithName {
 	pub fn utf8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = String>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -372,7 +367,7 @@ impl ColumnWithName {
 	pub fn uuid4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = Uuid4>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -390,7 +385,7 @@ impl ColumnWithName {
 	pub fn uuid7_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = Uuid7>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),
@@ -408,7 +403,7 @@ impl ColumnWithName {
 	pub fn dictionary_id_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = DictionaryEntryId>,
-		bitvec: impl Into<BitVec>,
+		bitvec: impl Into<BooleanBuffer>,
 	) -> Self {
 		ColumnWithName {
 			name: name.into(),

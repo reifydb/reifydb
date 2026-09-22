@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,10 +49,10 @@ impl BaseVTable for SystemOperators {
 
 		let operators = CatalogStore::list_operators_all(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(operators.len());
-		let mut flow_ids = ColumnBuffer::uint8_with_capacity(operators.len());
-		let mut node_types = ColumnBuffer::uint1_with_capacity(operators.len());
-		let mut data_column = ColumnBuffer::blob_with_capacity(operators.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, operators.len());
+		let mut flow_ids = ColumnBuilder::with_capacity(ValueType::Uint8, operators.len());
+		let mut node_types = ColumnBuilder::with_capacity(ValueType::Uint1, operators.len());
+		let mut data_column = ColumnBuilder::with_capacity(ValueType::Blob, operators.len());
 
 		for operator in operators {
 			ids.push(operator.id.0);
@@ -62,10 +62,10 @@ impl BaseVTable for SystemOperators {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
-			ColumnWithName::new(Fragment::internal("node_type"), node_types),
-			ColumnWithName::new(Fragment::internal("data"), data_column),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids.finish()),
+			ColumnWithName::new(Fragment::internal("node_type"), node_types.finish()),
+			ColumnWithName::new(Fragment::internal("data"), data_column.finish()),
 		];
 
 		self.exhausted = true;

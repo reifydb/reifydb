@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
@@ -17,11 +17,11 @@ use crate::{Result, vm::vm::Vm};
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_push_const(&mut self, value: &Value) {
 		if self.batch_size != 1 {
-			let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
+			let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
 			for _ in 0..self.batch_size {
 				data.push_value(value.clone());
 			}
-			let col = ColumnWithName::new(Fragment::internal("const"), data);
+			let col = ColumnWithName::new(Fragment::internal("const"), data.finish());
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {
 			self.stack.push(Variable::scalar(value.clone()));

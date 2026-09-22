@@ -1,27 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Int32Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::json::{from::frames_from_json, to::convert_frames};
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		container::{number::NumberContainer, utf8::Utf8Container},
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 use serde_json::{json, to_string, to_value};
 
 fn option(inner: FrameColumnData, defined: &[bool]) -> FrameColumnData {
 	FrameColumnData::Option {
 		inner: Box::new(inner),
-		bitvec: BitVec::from_slice(defined),
+		bitvec: BooleanBuffer::from(defined),
 	}
 }
 
 fn int4(values: Vec<i32>) -> FrameColumnData {
-	FrameColumnData::Int4(NumberContainer::new(values))
+	FrameColumnData::Int4(Int32Array::from(values))
 }
 
 fn frame(data: FrameColumnData) -> Frame {
@@ -39,7 +37,7 @@ fn layers(data: &FrameColumnData) -> Vec<Vec<bool>> {
 		bitvec,
 	} = cur
 	{
-		out.push(bitvec.to_vec());
+		out.push(bitvec.iter().collect());
 		cur = inner;
 	}
 	out
@@ -127,7 +125,7 @@ fn a_fully_populated_option_column_keeps_its_option_type() {
 
 #[test]
 fn option_option_utf8_round_trips_every_state() {
-	let strings = FrameColumnData::Utf8(Utf8Container::new(vec![
+	let strings = FrameColumnData::Utf8(LargeStringArray::from(vec![
 		String::new(),
 		String::new(),
 		"seven".to_string(),

@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{uuid::Uuid7, value_type::ValueType};
+use reifydb_value::value::{container::varlen_array, uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
 
 pub struct UuidV7 {
@@ -53,7 +53,7 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 			} => {
 				let mut result = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					let s = container.get(i).unwrap();
+					let s = varlen_array::get(container, i).unwrap();
 					let parsed = Uuid::parse_str(s).map_err(|e| {
 						RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),

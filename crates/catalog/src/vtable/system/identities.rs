@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,10 +49,10 @@ impl BaseVTable for SystemIdentities {
 
 		let identities = CatalogStore::list_all_identities(txn)?;
 
-		let mut ids = ColumnBuffer::identity_id_with_capacity(identities.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(identities.len());
-		let mut enabled_flags = ColumnBuffer::bool_with_capacity(identities.len());
-		let mut kinds = ColumnBuffer::utf8_with_capacity(identities.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::IdentityId, identities.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, identities.len());
+		let mut enabled_flags = ColumnBuilder::with_capacity(ValueType::Boolean, identities.len());
+		let mut kinds = ColumnBuilder::with_capacity(ValueType::Utf8, identities.len());
 
 		for u in identities {
 			ids.push(u.id);
@@ -62,10 +62,10 @@ impl BaseVTable for SystemIdentities {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("enabled"), enabled_flags),
-			ColumnWithName::new(Fragment::internal("kind"), kinds),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("enabled"), enabled_flags.finish()),
+			ColumnWithName::new(Fragment::internal("kind"), kinds.finish()),
 		];
 
 		self.exhausted = true;

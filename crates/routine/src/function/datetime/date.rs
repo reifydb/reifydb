@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{date_array, datetimes},
+	date::Date,
+	value_type::ValueType,
+};
 
 pub struct DateTimeDate {
 	info: RoutineInfo,
@@ -41,17 +45,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeDate {
 
 		let result_data = match data {
 			ColumnBuffer::DateTime(container) => {
-				let mut result = TemporalContainer::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(dt) = container.get(i) {
+					if let Some(dt) = datetimes(container).get(i) {
 						result.push(dt.date());
 					} else {
-						result.push_default();
+						result.push(Date::default());
 					}
 				}
 
-				ColumnBuffer::Date(result)
+				ColumnBuffer::Date(date_array(result))
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

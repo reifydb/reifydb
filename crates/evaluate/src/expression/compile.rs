@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		cast::{cast_column_data, error::CastError},
 		columns::Columns,
 	},
@@ -206,13 +207,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							other => other,
 						};
 						let mut data =
-							ColumnBuffer::with_capacity(value.get_type(), ctx.row_count);
+							ColumnBuilder::with_capacity(value.get_type(), ctx.row_count);
 						for _ in 0..ctx.row_count {
 							data.push_value(value.clone());
 						}
 						Ok(ColumnWithName {
 							name: Fragment::internal(variable_name),
-							data,
+							data: data.finish(),
 						})
 					}
 					Some(Variable::Columns {
@@ -233,7 +234,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					.into()),
 					None => {
 						if let Some(value) = ctx.params.get_named(variable_name) {
-							let mut data = ColumnBuffer::with_capacity(
+							let mut data = ColumnBuilder::with_capacity(
 								value.get_type(),
 								ctx.row_count,
 							);
@@ -242,7 +243,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							}
 							return Ok(ColumnWithName {
 								name: Fragment::internal(variable_name),
-								data,
+								data: data.finish(),
 							});
 						}
 						Err(TypeError::Runtime {
@@ -474,9 +475,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						let mut bitvec = Vec::with_capacity(ge_container.len());
 
 						for i in 0..ge_container.len() {
-							if ge_container.is_defined(i) && le_container.is_defined(i) {
-								data.push(ge_container.data().get(i)
-									&& le_container.data().get(i));
+							if i < ge_container.len() && i < le_container.len() {
+								data.push(
+									ge_container.value(i) && le_container.value(i)
+								);
 								bitvec.push(true);
 							} else {
 								data.push(false);
@@ -773,7 +775,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 									let value = columns.columns[pos].get_value(0);
 									let row_count =
 										ctx.take.unwrap_or(ctx.row_count);
-									let mut data = ColumnBuffer::with_capacity(
+									let mut data = ColumnBuilder::with_capacity(
 										value.get_type(),
 										row_count,
 									);
@@ -782,7 +784,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 									}
 									Ok(ColumnWithName {
 										name: Fragment::internal(&field_name),
-										data,
+										data: data.finish(),
 									})
 								}
 								None => {
@@ -885,10 +887,10 @@ fn combine_bool_columns(
 			let mut bitvec = Vec::with_capacity(len);
 
 			for i in 0..len {
-				let l_defined = l.is_defined(i);
-				let r_defined = r.is_defined(i);
-				let l_val = l.data().get(i);
-				let r_val = r.data().get(i);
+				let l_defined = i < l.len();
+				let r_defined = i < r.len();
+				let l_val = l.value(i);
+				let r_val = r.value(i);
 
 				if l_defined && r_defined {
 					data.push(combine_fn(l_val, r_val));
@@ -953,7 +955,7 @@ fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Frag
 		})
 		.ok()
 		.and_then(|c| match c.data() {
-			ColumnBuffer::Bool(b) => Some(b.data().get(0)),
+			ColumnBuffer::Bool(b) => Some(b.value(0)),
 			_ => None,
 		})
 		.unwrap_or(false)
@@ -962,14 +964,14 @@ fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Frag
 
 fn bool_column_has_true(col: &ColumnWithName) -> bool {
 	match col.data() {
-		ColumnBuffer::Bool(b) => b.data().any(),
+		ColumnBuffer::Bool(b) => b.values().has_true(),
 		ColumnBuffer::Option {
 			inner,
 			bitvec,
 		} => match inner.as_ref() {
 			ColumnBuffer::Bool(b) => {
 				let n = bitvec.len().min(b.len());
-				(0..n).any(|i| bitvec.get(i) && b.data().get(i))
+				(0..n).any(|i| bitvec.value(i) && b.value(i))
 			}
 			_ => false,
 		},
@@ -1065,8 +1067,8 @@ fn negate_column(col: ColumnWithName, fragment: Fragment) -> ColumnWithName {
 			let mut bitvec = Vec::with_capacity(len);
 
 			for i in 0..len {
-				if container.is_defined(i) {
-					data.push(!container.data().get(i));
+				if i < container.len() {
+					data.push(!container.value(i));
 					bitvec.push(true);
 				} else {
 					data.push(false);
@@ -1171,7 +1173,7 @@ fn execute_if_multi(
 		expected.admit(named_types, _fragment)?;
 	}
 
-	let mut result_data: Option<Vec<ColumnBuffer>> = None;
+	let mut result_data: Option<Vec<ColumnBuilder>> = None;
 	let mut result_names: Vec<Fragment> = Vec::new();
 
 	for (row_idx, &selected) in selection.iter().enumerate() {
@@ -1190,9 +1192,9 @@ fn execute_if_multi(
 		}
 
 		if result_data.is_none() {
-			let mut data: Vec<ColumnBuffer> = branch_results
+			let mut data: Vec<ColumnBuilder> = branch_results
 				.iter()
-				.map(|col| ColumnBuffer::with_capacity(col.data().get_type(), ctx.row_count))
+				.map(|col| ColumnBuilder::with_capacity(col.data().get_type(), ctx.row_count))
 				.collect();
 			for _ in 0..row_idx {
 				for col_data in data.iter_mut() {
@@ -1215,7 +1217,7 @@ fn execute_if_multi(
 		.enumerate()
 		.map(|(i, data)| ColumnWithName {
 			name: result_names.get(i).cloned().unwrap_or_else(|| Fragment::internal("column")),
-			data,
+			data: data.finish(),
 		})
 		.collect();
 

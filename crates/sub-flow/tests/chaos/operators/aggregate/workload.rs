@@ -13,7 +13,6 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::framework::generator;
 
-pub const SOURCE_OPERATOR: OperatorId = OperatorId(0);
 pub const AGGREGATE_OPERATOR: OperatorId = OperatorId(1);
 
 /// Rows are stamped from their own number rather than a constant, so an output row carrying a time is

@@ -5,9 +5,9 @@
 //! whose metadata arrays are present shifts the byte offsets of everything after it, so a decoder
 //! that mistakes their length reads the next column descriptor misaligned.
 
+use arrow_array::{Int32Array, LargeStringArray};
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 use reifydb_value::value::{
-	container::{number::NumberContainer, utf8::Utf8Container},
 	datetime::DateTime,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	row_number::RowNumber,
@@ -67,7 +67,7 @@ fn assert_frame_eq_with_idx(idx: usize, a: &Frame, b: &Frame) {
 fn frame_int4(name: &str, values: Vec<i32>) -> Frame {
 	Frame::new(vec![FrameColumn {
 		name: name.to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(values)),
+		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}])
 }
 
@@ -85,7 +85,7 @@ fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 		op: None,
 		columns: vec![FrameColumn {
 			name: name.to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(values)),
+			data: FrameColumnData::Int4(Int32Array::from(values)),
 		}],
 	}
 }
@@ -133,7 +133,7 @@ fn two_frames_only_row_numbers() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![10, 20])),
 		}],
 	};
 	let frame2 = Frame {
@@ -141,7 +141,7 @@ fn two_frames_only_row_numbers() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![30])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![30])),
 		}],
 	};
 	round_trip_multi(vec![frame1, frame2]);
@@ -161,7 +161,7 @@ fn two_frames_only_created_at() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![1, 2])),
 		}],
 	};
 	let frame2 = Frame {
@@ -176,7 +176,7 @@ fn two_frames_only_created_at() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![3])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![3])),
 		}],
 	};
 	round_trip_multi(vec![frame1, frame2]);
@@ -199,27 +199,27 @@ fn frame_with_only_metadata_take_one_then_aggregate() {
 		columns: vec![
 			FrameColumn {
 				name: "base_mint".to_string(),
-				data: FrameColumnData::Utf8(Utf8Container::new(vec![
+				data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 					"So11111111111111111111111111111111111111112".to_string(),
 				])),
 			},
 			FrameColumn {
 				name: "close_usd".to_string(),
-				data: FrameColumnData::Int4(NumberContainer::new(vec![86])),
+				data: FrameColumnData::Int4(Int32Array::from(vec![86])),
 			},
 		],
 	};
 	let aggregate_frame = Frame::new(vec![
 		FrameColumn {
 			name: "quote_mint".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec![
+			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 				"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
 				"Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
 			])),
 		},
 		FrameColumn {
 			name: "c".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![19, 21])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![19, 21])),
 		},
 	]);
 	round_trip_multi(vec![sort_take_frame, aggregate_frame]);

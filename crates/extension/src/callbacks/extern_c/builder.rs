@@ -3,6 +3,8 @@
 
 use std::{cell::Cell, collections::HashMap, ffi::c_void, fmt, mem, ptr, slice, str};
 
+use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
+use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer, ScalarBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
 		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
@@ -13,19 +15,23 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::common::extern_c::wire::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
-	status::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_OK},
+	status::{
+		EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_ERROR_NULL_PTR,
+		EXTERN_C_OK,
+	},
 };
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	util::bitvec::BitVec,
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			dictionary::DictionaryContainer,
+			number::NumberContainer,
+			temporal_array::{date_array, datetime_array, duration_array, time_array},
+			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
 		date::Date,
 		datetime::DateTime,
@@ -320,8 +326,8 @@ impl RegistryInner {
 			active.bitvec,
 			written_count,
 		) {
-			Some(b) => b,
-			None => return EXTERN_C_ERROR_INTERNAL,
+			Ok(b) => b,
+			Err(code) => return code,
 		};
 		self.slots.insert(
 			h.id,
@@ -601,13 +607,13 @@ fn finalize_buffer(
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
 	written_count: usize,
-) -> Option<ColumnBuffer> {
+) -> Result<ColumnBuffer, i32> {
 	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
-		Some(bytes) => {
-			let bv = BitVec::from_raw(bytes, written_count);
+		Some(mut bytes) => {
+			bytes.truncate(written_count.div_ceil(8));
 			ColumnBuffer::Option {
 				inner: Box::new(inner),
-				bitvec: bv,
+				bitvec: BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count),
 			}
 		}
 		None => inner,
@@ -615,56 +621,87 @@ fn finalize_buffer(
 
 	let inner = match type_code {
 		ValueKind::Boolean => {
-			let bv = BitVec::from_raw(data, written_count);
-			ColumnBuffer::Bool(BoolContainer::from_parts(bv))
+			data.truncate(written_count.div_ceil(8));
+			ColumnBuffer::Bool(BooleanArray::from(BooleanBuffer::new(
+				Buffer::from_vec(data),
+				0,
+				written_count,
+			)))
 		}
-		ValueKind::Float4 => from_numeric_bytes::<f32>(&data, written_count, ColumnBuffer::Float4)?,
-		ValueKind::Float8 => from_numeric_bytes::<f64>(&data, written_count, ColumnBuffer::Float8)?,
-		ValueKind::Int1 => from_numeric_bytes::<i8>(&data, written_count, ColumnBuffer::Int1)?,
-		ValueKind::Int2 => from_numeric_bytes::<i16>(&data, written_count, ColumnBuffer::Int2)?,
-		ValueKind::Int4 => from_numeric_bytes::<i32>(&data, written_count, ColumnBuffer::Int4)?,
-		ValueKind::Int8 => from_numeric_bytes::<i64>(&data, written_count, ColumnBuffer::Int8)?,
-		ValueKind::Int16 => from_numeric_bytes::<i128>(&data, written_count, ColumnBuffer::Int16)?,
-		ValueKind::Uint1 => from_numeric_bytes::<u8>(&data, written_count, ColumnBuffer::Uint1)?,
-		ValueKind::Uint2 => from_numeric_bytes::<u16>(&data, written_count, ColumnBuffer::Uint2)?,
-		ValueKind::Uint4 => from_numeric_bytes::<u32>(&data, written_count, ColumnBuffer::Uint4)?,
-		ValueKind::Uint8 => from_numeric_bytes::<u64>(&data, written_count, ColumnBuffer::Uint8)?,
-		ValueKind::Uint16 => from_numeric_bytes::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
+		ValueKind::Float4 => ColumnBuffer::float4(
+			numeric_bytes_to_vec::<f32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Float8 => ColumnBuffer::float8(
+			numeric_bytes_to_vec::<f64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Int1 => ColumnBuffer::int1(
+			numeric_bytes_to_vec::<i8>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Int2 => ColumnBuffer::int2(
+			numeric_bytes_to_vec::<i16>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Int4 => ColumnBuffer::int4(
+			numeric_bytes_to_vec::<i32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Int8 => ColumnBuffer::int8(
+			numeric_bytes_to_vec::<i64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Int16 => from_numeric_bytes::<i128>(&data, written_count, ColumnBuffer::Int16)
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		ValueKind::Uint1 => ColumnBuffer::uint1(
+			numeric_bytes_to_vec::<u8>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Uint2 => ColumnBuffer::uint2(
+			numeric_bytes_to_vec::<u16>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Uint4 => ColumnBuffer::uint4(
+			numeric_bytes_to_vec::<u32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Uint8 => ColumnBuffer::uint8(
+			numeric_bytes_to_vec::<u64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
+		ValueKind::Uint16 => from_numeric_bytes::<u128>(&data, written_count, ColumnBuffer::Uint16)
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?,
 		ValueKind::Date => {
-			let v = numeric_bytes_to_vec::<Date>(&data, written_count)?;
-			ColumnBuffer::Date(TemporalContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<Date>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::Date(date_array(v))
 		}
 		ValueKind::DateTime => {
-			let v = numeric_bytes_to_vec::<DateTime>(&data, written_count)?;
-			ColumnBuffer::DateTime(TemporalContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<DateTime>(&data, written_count)
+				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::DateTime(datetime_array(v))
 		}
 		ValueKind::Time => {
-			let v = numeric_bytes_to_vec::<Time>(&data, written_count)?;
-			ColumnBuffer::Time(TemporalContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<Time>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::Time(time_array(v))
 		}
 		ValueKind::Duration => {
-			let v = numeric_bytes_to_vec::<Duration>(&data, written_count)?;
-			ColumnBuffer::Duration(TemporalContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<Duration>(&data, written_count)
+				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::Duration(duration_array(v))
 		}
 		ValueKind::IdentityId => {
-			let v = numeric_bytes_to_vec::<IdentityId>(&data, written_count)?;
-			ColumnBuffer::IdentityId(IdentityIdContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<IdentityId>(&data, written_count)
+				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::IdentityId(identity_id_array(v))
 		}
 		ValueKind::Uuid4 => {
-			let v = numeric_bytes_to_vec::<Uuid4>(&data, written_count)?;
-			ColumnBuffer::Uuid4(UuidContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<Uuid4>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::Uuid4(uuid4_array(v))
 		}
 		ValueKind::Uuid7 => {
-			let v = numeric_bytes_to_vec::<Uuid7>(&data, written_count)?;
-			ColumnBuffer::Uuid7(UuidContainer::from_parts(v))
+			let v = numeric_bytes_to_vec::<Uuid7>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			ColumnBuffer::Uuid7(uuid7_array(v))
 		}
 		ValueKind::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
+			let (offsets, values) = checked_varlen_parts(data, offsets)?;
 			ColumnBuffer::Utf8 {
-				container: Utf8Container::from_bytes_offsets(data, offsets),
+				container: LargeStringArray::try_new(offsets, values, None)
+					.map_err(|_| EXTERN_C_ERROR_INVALID_UTF8)?,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -672,15 +709,18 @@ fn finalize_buffer(
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
+			let (offsets, values) = checked_varlen_parts(data, offsets)?;
 			ColumnBuffer::Blob {
-				container: BlobContainer::from_bytes_offsets(data, offsets),
+				container: LargeBinaryArray::try_new(offsets, values, None)
+					.map_err(|_| EXTERN_C_ERROR_MARSHAL)?,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ValueKind::Int => {
 			let v = decode_per_element::<Int>(&data, &offsets, written_count, |bytes| {
 				Some(decode_int_cell(bytes))
-			})?;
+			})
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Int {
 				container: NumberContainer::from_vec(v),
 				max_bytes: MaxBytes::MAX,
@@ -689,7 +729,8 @@ fn finalize_buffer(
 		ValueKind::Uint => {
 			let v = decode_per_element::<Uint>(&data, &offsets, written_count, |bytes| {
 				Some(decode_uint_cell(bytes))
-			})?;
+			})
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Uint {
 				container: NumberContainer::from_vec(v),
 				max_bytes: MaxBytes::MAX,
@@ -698,7 +739,8 @@ fn finalize_buffer(
 		ValueKind::Decimal => {
 			let v = decode_per_element::<Decimal>(&data, &offsets, written_count, |bytes| {
 				decode_decimal_cell(bytes).ok()
-			})?;
+			})
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Decimal {
 				container: NumberContainer::from_vec(v),
 				precision: Precision::MAX,
@@ -706,22 +748,37 @@ fn finalize_buffer(
 			}
 		}
 		ValueKind::Any => {
-			let values: Vec<Value> =
-				decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
-					decode_any_cell(bytes).ok()
-				})?;
+			let values: Vec<Value> = decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
+				decode_any_cell(bytes).ok()
+			})
+			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Any(AnyContainer::from_vec(values))
 		}
 		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =
 				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
 					decode_dictionary_id_cell(bytes).ok()
-				})?;
+				})
+				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::DictionaryId(DictionaryContainer::from_vec(entries))
 		}
-		_ => return None,
+		_ => return Err(EXTERN_C_ERROR_INTERNAL),
 	};
-	Some(make_option_wrapped(inner))
+	Ok(make_option_wrapped(inner))
+}
+
+fn checked_varlen_parts(data: Vec<u8>, offsets: Vec<u64>) -> Result<(OffsetBuffer<i64>, Buffer), i32> {
+	let offsets = offsets
+		.into_iter()
+		.map(i64::try_from)
+		.collect::<Result<Vec<i64>, _>>()
+		.map_err(|_| EXTERN_C_ERROR_MARSHAL)?;
+	let within_data =
+		offsets.last().is_some_and(|&last| usize::try_from(last).is_ok_and(|last| last <= data.len()));
+	if !within_data || !offsets.is_sorted() {
+		return Err(EXTERN_C_ERROR_MARSHAL);
+	}
+	Ok((OffsetBuffer::new(ScalarBuffer::from(offsets)), Buffer::from_vec(data)))
 }
 
 fn decode_per_element<T>(
@@ -767,4 +824,145 @@ fn from_numeric_bytes<T: Copy + IsNumber + fmt::Debug + Default>(
 ) -> Option<ColumnBuffer> {
 	let v = numeric_bytes_to_vec::<T>(data, count)?;
 	Some(wrap(NumberContainer::from_parts(v)))
+}
+
+#[cfg(test)]
+mod tests {
+	use std::ptr;
+
+	use postcard::to_allocvec;
+	use reifydb_codec::tag::ValueKind;
+	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_sdk::common::extern_c::wire::{
+		callbacks::builder::ColumnBufferHandle,
+		status::{EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_OK},
+	};
+	use reifydb_value::value::blob::Blob;
+	use serde_json::to_string;
+
+	use super::{
+		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
+		host_builder_data_ptr, host_builder_offsets_ptr, with_registry,
+	};
+
+	fn commit_varlen(
+		registry: &BuilderRegistry,
+		type_code: ValueKind,
+		data: &[u8],
+		offsets: &[u64],
+	) -> (i32, *mut ColumnBufferHandle) {
+		// Capacity must cover every byte and offset, otherwise the commit fails before the checks run.
+		let rows = offsets.len() - 1;
+		with_registry(registry, || {
+			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
+			unsafe {
+				let handle = host_builder_acquire(ptr::null_mut(), type_code, data.len().max(rows));
+				ptr::copy_nonoverlapping(data.as_ptr(), host_builder_data_ptr(handle), data.len());
+				ptr::copy_nonoverlapping(
+					offsets.as_ptr(),
+					host_builder_offsets_ptr(handle),
+					offsets.len(),
+				);
+				(host_builder_commit(handle, rows), handle)
+			}
+		})
+	}
+
+	fn committed_buffer(registry: &BuilderRegistry, handle: *mut ColumnBufferHandle) -> ColumnBuffer {
+		match registry.inner.lock().slots.remove(&Handle::decode(handle).id) {
+			Some(BuilderSlot::Committed(committed)) => committed.buffer,
+			_ => panic!("a successful commit must leave a committed column behind"),
+		}
+	}
+
+	#[test]
+	fn guest_utf8_round_trips_through_checked_construction() {
+		// Checking offsets and UTF-8 must not reject or reshape well formed guest strings.
+		let registry = BuilderRegistry::new();
+		let (code, handle) = commit_varlen(&registry, ValueKind::Utf8, "abcdéf".as_bytes(), &[0, 1, 3, 7]);
+		assert_eq!(code, EXTERN_C_OK);
+		assert_eq!(committed_buffer(&registry, handle), ColumnBuffer::utf8(["a", "bc", "déf"]));
+	}
+
+	#[test]
+	fn guest_blob_round_trips_through_checked_construction() {
+		// Checking offsets must not reject or reshape well formed guest blobs, including non UTF-8 bytes.
+		let registry = BuilderRegistry::new();
+		let (code, handle) = commit_varlen(&registry, ValueKind::Blob, &[0xff, 1, 2, 0xfe], &[0, 1, 1, 4]);
+		assert_eq!(code, EXTERN_C_OK);
+		assert_eq!(
+			committed_buffer(&registry, handle),
+			ColumnBuffer::blob([Blob::new(vec![0xff]), Blob::new(vec![]), Blob::new(vec![1, 2, 0xfe])])
+		);
+	}
+
+	#[test]
+	fn guest_invalid_utf8_is_rejected_without_a_column() {
+		// Unchecked construction would hand bytes that are not UTF-8 to code that assumes they are.
+		let registry = BuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, &[b'a', 0xff, 0xfe], &[0, 1, 3]);
+		assert_eq!(code, EXTERN_C_ERROR_INVALID_UTF8);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_utf8_offset_inside_a_char_is_rejected_without_a_column() {
+		// Validating only the whole buffer misses rows that split a multi-byte char.
+		let registry = BuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, "é".as_bytes(), &[0, 1, 2]);
+		assert_eq!(code, EXTERN_C_ERROR_INVALID_UTF8);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_utf8_non_monotonic_offsets_are_a_marshal_error() {
+		// A decreasing offset would describe a row with negative length.
+		let registry = BuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, b"abc", &[0, 3, 1]);
+		assert_eq!(code, EXTERN_C_ERROR_MARSHAL);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_blob_non_monotonic_offsets_are_a_marshal_error() {
+		// A decreasing offset would describe a row with negative length.
+		let registry = BuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Blob, &[1, 2, 3], &[0, 3, 1]);
+		assert_eq!(code, EXTERN_C_ERROR_MARSHAL);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn utf8_last_offset_past_the_data_is_a_marshal_error() {
+		// A last offset past the data would read bytes the guest never wrote.
+		let result = finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2);
+		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+	}
+
+	#[test]
+	fn blob_last_offset_past_the_data_is_a_marshal_error() {
+		// A last offset past the data would read bytes the guest never wrote.
+		let result = finalize_buffer(ValueKind::Blob, vec![1, 2], Some(vec![0, 1, 5]), None, 2);
+		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+	}
+
+	#[test]
+	fn utf8_offset_beyond_i64_is_a_marshal_error() {
+		// Arrow offsets are i64, so a larger u64 offset cannot be represented and must not wrap negative.
+		let result = finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1);
+		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+	}
+
+	#[test]
+	fn guest_bool_column_serializes_like_an_equal_host_column() {
+		// A guest hands over one data byte per row, yet equal Bool columns must serialize byte for byte alike.
+		let guest = finalize_buffer(ValueKind::Boolean, vec![5, 0, 0], None, None, 3).expect("a Bool column");
+		let host = ColumnBuffer::bool([true, false, true]);
+		assert_eq!(to_string(&guest).unwrap(), to_string(&host).unwrap());
+		assert_eq!(to_allocvec(&guest).unwrap(), to_allocvec(&host).unwrap());
+		let ColumnBuffer::Bool(bits) = &guest else {
+			panic!("expected a Bool column, got {:?}", guest.get_type())
+		};
+		assert_eq!(bits.values().inner().len(), 1, "3 rows must pack into exactly ceil(3 / 8) bytes");
+	}
 }

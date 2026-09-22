@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::LargeStringArray;
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::json::{
 	from::{parse_json_value, parse_value},
 	none_marker,
 	to::convert_frames,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		container::utf8::Utf8Container,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 
 // An empty string is a value. A column holding one must stay distinguishable from a column holding
@@ -27,10 +25,10 @@ fn frame_with(values: Vec<&str>, defined: &[bool]) -> Frame {
 	Frame::new(vec![FrameColumn {
 		name: "value".to_string(),
 		data: FrameColumnData::Option {
-			inner: Box::new(FrameColumnData::Utf8(Utf8Container::new(
-				values.into_iter().map(|v| v.to_string()).collect(),
+			inner: Box::new(FrameColumnData::Utf8(LargeStringArray::from(
+				values.into_iter().map(|v| v.to_string()).collect::<Vec<String>>(),
 			))),
-			bitvec: BitVec::from_slice(defined),
+			bitvec: BooleanBuffer::from(defined),
 		},
 	}])
 }

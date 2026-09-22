@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData, value_type::ValueType};
+use arrow_array::Int8Array;
+use reifydb_value::value::{frame::data::FrameColumnData, value_type::ValueType};
 
 fn make(v: Vec<i8>) -> FrameColumnData {
-	FrameColumnData::Int1(NumberContainer::new(v))
+	FrameColumnData::Int1(Int8Array::from(v))
 }
 
 crate::nones_tests! {

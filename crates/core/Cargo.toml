@@ -22,6 +22,8 @@ reifydb-runtime = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-macro = { workspace = true }
 reifydb-value = { workspace = true }
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
 thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 serde = { workspace = true }
@@ -41,3 +43,4 @@ tracing = { workspace = true }
 reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 postcard = { workspace = true }
+serde_json = { workspace = true }

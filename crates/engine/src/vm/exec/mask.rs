@@ -3,12 +3,14 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::column::{
+	ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
+};
 use reifydb_evaluate::{expression::branch::BranchLayout, stack::Variable};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	reifydb_assertions,
-	util::bitvec::BitVec,
 	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
@@ -35,11 +37,11 @@ pub(crate) fn value_is_truthy(value: &Value) -> bool {
 
 #[derive(Debug)]
 pub(crate) struct MaskFrame {
-	pub parent_mask: BitVec,
+	pub parent_mask: BooleanBuffer,
 
-	pub then_mask: BitVec,
+	pub then_mask: BooleanBuffer,
 
-	pub else_mask: BitVec,
+	pub else_mask: BooleanBuffer,
 
 	pub else_addr: usize,
 
@@ -63,16 +65,16 @@ pub(crate) enum MaskPhase {
 
 #[derive(Debug)]
 pub(crate) struct LoopMaskState {
-	pub parent_mask: BitVec,
+	pub parent_mask: BooleanBuffer,
 
-	pub active_mask: BitVec,
+	pub active_mask: BooleanBuffer,
 
-	pub broken_mask: BitVec,
+	pub broken_mask: BooleanBuffer,
 
 	pub loop_end_addr: usize,
 }
 
-pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitVec) -> Result<Columns> {
+pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BooleanBuffer) -> Result<Columns> {
 	let len = existing.row_count();
 	reifydb_assertions! {
 		assert_eq!(new_value.row_count(), len);
@@ -86,15 +88,15 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 		.enumerate()
 		.map(|(idx, (old_col, new_col))| {
 			let result_type = old_col.get_type();
-			let mut data = ColumnBuffer::with_capacity(result_type, len);
+			let mut data = ColumnBuilder::with_capacity(result_type, len);
 			for i in 0..len {
-				if mask.get(i) {
+				if mask.value(i) {
 					data.push_value(new_col.get_value(i));
 				} else {
 					data.push_value(old_col.get_value(i));
 				}
 			}
-			ColumnWithName::new(existing.name_at(idx).clone(), data)
+			ColumnWithName::new(existing.name_at(idx).clone(), data.finish())
 		})
 		.collect();
 
@@ -104,8 +106,8 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 pub(crate) fn scatter_merge_variables(
 	then_var: &Variable,
 	else_var: &Variable,
-	then_mask: &BitVec,
-	else_mask: &BitVec,
+	then_mask: &BooleanBuffer,
+	else_mask: &BooleanBuffer,
 	total_len: usize,
 ) -> Variable {
 	let then_cols = variable_to_columns(then_var);
@@ -157,7 +159,7 @@ fn variable_to_columns(var: &Variable) -> Columns {
 	}
 }
 
-pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
+pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer> {
 	let cols = match var {
 		Variable::Columns {
 			columns: c,
@@ -174,30 +176,30 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 		}
 	};
 	if cols.is_empty() {
-		return Ok(BitVec::repeat(0, false));
+		return Ok(BooleanBuffer::new_unset(0));
 	}
 	let col = &cols.columns[0];
 	let (inner_data, opt_bv) = col.unwrap_option();
 	match inner_data {
 		ColumnBuffer::Bool(container) => {
-			let bv = container.data().clone();
+			let bv = container.values().clone();
 			match opt_bv {
-				Some(defined_bv) => Ok(bv.and(defined_bv)),
+				Some(defined_bv) => Ok(&bv & defined_bv),
 				None => Ok(bv),
 			}
 		}
 		_ => {
 			let len = col.len();
-			Ok(BitVec::from_fn(len, |i| value_is_truthy(&col.get_value(i))))
+			Ok(BooleanBuffer::collect_bool(len, |i| value_is_truthy(&col.get_value(i))))
 		}
 	}
 }
 
 impl<'a> Vm<'a> {
-	pub(crate) fn effective_mask(&self) -> BitVec {
-		let active = self.active_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, true));
+	pub(crate) fn effective_mask(&self) -> BooleanBuffer {
+		let active = self.active_mask.clone().unwrap_or_else(|| BooleanBuffer::new_set(self.batch_size));
 		match &self.returned_mask {
-			Some(returned) => active.and(&returned.not()),
+			Some(returned) => &active & &!returned,
 			None => active,
 		}
 	}
@@ -293,7 +295,7 @@ impl<'a> Vm<'a> {
 		let write_mask = self.effective_mask();
 
 		let already_returned =
-			self.returned_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, false));
+			self.returned_mask.clone().unwrap_or_else(|| BooleanBuffer::new_unset(self.batch_size));
 
 		let merged = match self.pending_return.take() {
 			Some(pending) => {
@@ -327,11 +329,11 @@ impl<'a> Vm<'a> {
 		};
 
 		for loop_state in self.loop_mask_stack.iter_mut() {
-			loop_state.active_mask = loop_state.active_mask.and(&write_mask.not());
+			loop_state.active_mask = &loop_state.active_mask & &!&write_mask;
 		}
 
-		let returned = already_returned.or(&write_mask);
-		let all_returned = returned.all_ones();
+		let returned = &already_returned | &write_mask;
+		let all_returned = !returned.has_false();
 
 		self.returned_mask = Some(returned);
 		self.pending_return = Some(merged);
@@ -356,18 +358,18 @@ impl<'a> Vm<'a> {
 		self.active_mask.is_some()
 	}
 
-	pub(crate) fn intersect_condition(&self, bool_bv: &BitVec) -> BitVec {
+	pub(crate) fn intersect_condition(&self, bool_bv: &BooleanBuffer) -> BooleanBuffer {
 		let parent = self.effective_mask();
 		if bool_bv.len() == parent.len() {
-			parent.and(bool_bv)
+			&parent & bool_bv
 		} else if bool_bv.len() == 1 {
-			if bool_bv.get(0) {
+			if bool_bv.value(0) {
 				parent
 			} else {
-				BitVec::repeat(parent.len(), false)
+				BooleanBuffer::new_unset(parent.len())
 			}
 		} else {
-			parent.and(bool_bv)
+			&parent & bool_bv
 		}
 	}
 
@@ -378,9 +380,9 @@ impl<'a> Vm<'a> {
 		if let Some(loop_state) = self.loop_mask_stack.last_mut()
 			&& loop_state.loop_end_addr == target_addr
 		{
-			let candidate = loop_state.active_mask.and(&bool_bv);
+			let candidate = &loop_state.active_mask & &bool_bv;
 
-			if candidate.none() {
+			if !candidate.has_true() {
 				let state = self.loop_mask_stack.pop().unwrap();
 				self.active_mask = if self.loop_mask_stack.is_empty() && self.mask_stack.is_empty() {
 					None
@@ -403,12 +405,12 @@ impl<'a> Vm<'a> {
 			return Ok(false);
 		}
 
-		if candidate.none() {
+		if !candidate.has_true() {
 			self.ip = target_addr;
 			return Ok(true);
 		}
 
-		let else_mask = parent.and(&candidate.not());
+		let else_mask = &parent & &!&candidate;
 
 		self.mask_stack.push(MaskFrame {
 			parent_mask: parent,
@@ -434,7 +436,7 @@ impl<'a> Vm<'a> {
 
 		let jumping = self.intersect_condition(&bool_bv);
 
-		if jumping.none() {
+		if !jumping.has_true() {
 			return Ok(false);
 		}
 
@@ -443,7 +445,7 @@ impl<'a> Vm<'a> {
 			return Ok(true);
 		}
 
-		let continuing = parent.and(&jumping.not());
+		let continuing = &parent & &!&jumping;
 
 		self.mask_stack.push(MaskFrame {
 			parent_mask: parent,
@@ -461,12 +463,12 @@ impl<'a> Vm<'a> {
 		Ok(false)
 	}
 
-	pub(crate) fn enter_loop_mask(&mut self, loop_end_addr: usize, active_rows: BitVec) {
+	pub(crate) fn enter_loop_mask(&mut self, loop_end_addr: usize, active_rows: BooleanBuffer) {
 		let parent = self.effective_mask();
 		self.loop_mask_stack.push(LoopMaskState {
 			parent_mask: parent,
 			active_mask: active_rows.clone(),
-			broken_mask: BitVec::repeat(self.batch_size, false),
+			broken_mask: BooleanBuffer::new_unset(self.batch_size),
 			loop_end_addr,
 		});
 		self.active_mask = Some(active_rows);
@@ -475,12 +477,12 @@ impl<'a> Vm<'a> {
 	pub(crate) fn exec_break_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
 		let breaking_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
-			loop_state.broken_mask = loop_state.broken_mask.or(&breaking_rows);
+			loop_state.broken_mask = &loop_state.broken_mask | &breaking_rows;
 
-			let remaining = loop_state.active_mask.and(&breaking_rows.not());
+			let remaining = &loop_state.active_mask & &!&breaking_rows;
 			loop_state.active_mask = remaining.clone();
 
-			if remaining.none() {
+			if !remaining.has_true() {
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
@@ -506,14 +508,14 @@ impl<'a> Vm<'a> {
 	pub(crate) fn exec_continue_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
 		let continuing_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
-			let remaining = loop_state.active_mask.and(&continuing_rows.not());
+			let remaining = &loop_state.active_mask & &!&continuing_rows;
 
-			if remaining.none() {
+			if !remaining.has_true() {
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
 
-				loop_state.active_mask = loop_state.parent_mask.and(&loop_state.broken_mask.not());
+				loop_state.active_mask = &loop_state.parent_mask & &!&loop_state.broken_mask;
 				self.active_mask = Some(loop_state.active_mask.clone());
 				self.ip = addr;
 			} else {
@@ -671,29 +673,28 @@ impl<'a> Vm<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+	use reifydb_core::value::column::{ColumnWithName, columns::Columns};
 	use reifydb_value::{
 		fragment::Fragment,
-		util::bitvec::BitVec,
 		value::{Value, value_type::ValueType},
 	};
 
 	use super::*;
 
 	fn int4_column(name: &str, values: &[i32]) -> ColumnWithName {
-		let mut data = ColumnBuffer::with_capacity(ValueType::Int4, values.len());
+		let mut builder = ColumnBuilder::with_capacity(ValueType::Int4, values.len());
 		for &v in values {
-			data.push(v);
+			builder.push(v);
 		}
-		ColumnWithName::new(Fragment::internal(name), data)
+		ColumnWithName::new(Fragment::internal(name), builder.finish())
 	}
 
 	#[test]
 	fn scatter_merge_all_then() {
 		let then_col = int4_column("x", &[10, 20, 30]);
 		let else_col = int4_column("x", &[40, 50, 60]);
-		let then_mask = BitVec::from_slice(&[true, true, true]);
-		let else_mask = BitVec::from_slice(&[false, false, false]);
+		let then_mask = BooleanBuffer::from(vec![true, true, true]);
+		let else_mask = BooleanBuffer::from(vec![false, false, false]);
 
 		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
 		assert_eq!(merged.get_value(0), Value::Int4(10));
@@ -705,8 +706,8 @@ mod tests {
 	fn scatter_merge_all_else() {
 		let then_col = int4_column("x", &[10, 20, 30]);
 		let else_col = int4_column("x", &[40, 50, 60]);
-		let then_mask = BitVec::from_slice(&[false, false, false]);
-		let else_mask = BitVec::from_slice(&[true, true, true]);
+		let then_mask = BooleanBuffer::from(vec![false, false, false]);
+		let else_mask = BooleanBuffer::from(vec![true, true, true]);
 
 		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
 		assert_eq!(merged.get_value(0), Value::Int4(40));
@@ -718,8 +719,8 @@ mod tests {
 	fn scatter_merge_alternating() {
 		let then_col = int4_column("x", &[10, 20, 30, 40]);
 		let else_col = int4_column("x", &[90, 80, 70, 60]);
-		let then_mask = BitVec::from_slice(&[true, false, true, false]);
-		let else_mask = BitVec::from_slice(&[false, true, false, true]);
+		let then_mask = BooleanBuffer::from(vec![true, false, true, false]);
+		let else_mask = BooleanBuffer::from(vec![false, true, false, true]);
 
 		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 4);
 		assert_eq!(merged.get_value(0), Value::Int4(10));
@@ -732,7 +733,7 @@ mod tests {
 	fn merge_by_mask_selective_update() {
 		let existing = Columns::new(vec![int4_column("x", &[1, 2, 3])]);
 		let new_value = Columns::new(vec![int4_column("x", &[10, 20, 30])]);
-		let mask = BitVec::from_slice(&[true, false, true]);
+		let mask = BooleanBuffer::from(vec![true, false, true]);
 
 		let merged = merge_by_mask(&existing, &new_value, &mask).unwrap();
 		let col = &merged.columns[0];

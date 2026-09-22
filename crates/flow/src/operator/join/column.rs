@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
@@ -78,22 +78,22 @@ impl JoinedColumnsBuilder {
 
 		for (i, left_col) in left.columns.iter().enumerate() {
 			let left_value = left_col.get_value(left_idx);
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), right_count);
+			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), right_count);
 			for _ in 0..right_count {
 				col_data.push_value(left_value.clone());
 			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
 		}
 
 		for (&right_col_idx, aliased_name) in
 			self.included_right_cols.iter().zip(self.right_column_names.iter())
 		{
 			let right_col = &right.columns[right_col_idx];
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), right_count);
+			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), right_count);
 			for row_idx in 0..right_count {
 				col_data.push_value(right_col.get_value(row_idx));
 			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
 		}
 
 		Columns::with_system(
@@ -125,11 +125,11 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), left_count);
+			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), left_count);
 			for row_idx in 0..left_count {
 				col_data.push_value(left_col.get_value(row_idx));
 			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
 		}
 
 		for (&right_col_idx, aliased_name) in
@@ -137,11 +137,11 @@ impl JoinedColumnsBuilder {
 		{
 			let right_col = &right.columns[right_col_idx];
 			let right_value = right_col.get_value(right_idx);
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), left_count);
+			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), left_count);
 			for _ in 0..left_count {
 				col_data.push_value(right_value.clone());
 			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
 		}
 
 		Columns::with_system(
@@ -198,27 +198,27 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), result_count);
+			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), result_count);
 			for &left_idx in left_indices {
 				let left_value = left_col.get_value(left_idx);
 				for _ in 0..right_count {
 					col_data.push_value(left_value.clone());
 				}
 			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
 		}
 
 		for (&right_col_idx, aliased_name) in
 			self.included_right_cols.iter().zip(self.right_column_names.iter())
 		{
 			let right_col = &right.columns[right_col_idx];
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), result_count);
+			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), result_count);
 			for _ in 0..left_count {
 				for &right_idx in right_indices {
 					col_data.push_value(right_col.get_value(right_idx));
 				}
 			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
 		}
 
 		Columns::with_system(
@@ -245,18 +245,18 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), 1);
+			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), 1);
 			col_data.push_value(left_col.get_value(left_idx));
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
 		}
 
 		for (&right_col_idx, aliased_name) in
 			self.included_right_cols.iter().zip(self.right_column_names.iter())
 		{
 			let right_col = &right_shape.columns[right_col_idx];
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), 1);
+			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), 1);
 			col_data.push_value(Value::none());
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
 		}
 
 		Columns::with_system(
@@ -288,22 +288,22 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), count);
+			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), count);
 			for &idx in left_indices {
 				col_data.push_value(left_col.get_value(idx));
 			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
 		}
 
 		for (&right_col_idx, aliased_name) in
 			self.included_right_cols.iter().zip(self.right_column_names.iter())
 		{
 			let right_col = &right_shape.columns[right_col_idx];
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), count);
+			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), count);
 			for _ in 0..count {
 				col_data.push_value(Value::none());
 			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
 		}
 
 		Columns::with_system(

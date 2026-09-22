@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -52,12 +52,12 @@ impl BaseVTable for SystemQueuePartitions {
 
 		let queues = CatalogStore::list_queues(txn)?;
 
-		let mut queue_ids = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut partitions = ColumnBuffer::uint2_with_capacity(queues.len());
-		let mut depths = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut in_flights = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut blocked_keys = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut oldest_due_at = ColumnBuffer::datetime_with_capacity(queues.len());
+		let mut queue_ids = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut partitions = ColumnBuilder::with_capacity(ValueType::Uint2, queues.len());
+		let mut depths = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut in_flights = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut blocked_keys = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut oldest_due_at = ColumnBuilder::with_capacity(ValueType::DateTime, queues.len());
 
 		for queue in queues {
 			let Some(stats) = partition_stats(txn, &queue)? else {
@@ -80,12 +80,12 @@ impl BaseVTable for SystemQueuePartitions {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("queue_id"), queue_ids),
-			ColumnWithName::new(Fragment::internal("partition"), partitions),
-			ColumnWithName::new(Fragment::internal("depth"), depths),
-			ColumnWithName::new(Fragment::internal("in_flight"), in_flights),
-			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys),
-			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at),
+			ColumnWithName::new(Fragment::internal("queue_id"), queue_ids.finish()),
+			ColumnWithName::new(Fragment::internal("partition"), partitions.finish()),
+			ColumnWithName::new(Fragment::internal("depth"), depths.finish()),
+			ColumnWithName::new(Fragment::internal("in_flight"), in_flights.finish()),
+			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys.finish()),
+			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at.finish()),
 		];
 
 		self.exhausted = true;

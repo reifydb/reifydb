@@ -36,7 +36,7 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let start_value = match &args[0] {
-			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(1),
+			ColumnBuffer::Int4(container) => container.values().get(0).copied().unwrap_or(1),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -46,7 +46,7 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 		};
 
 		let end_value = match &args[1] {
-			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(10),
+			ColumnBuffer::Int4(container) => container.values().get(0).copied().unwrap_or(10),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -92,13 +92,13 @@ impl Series {
 
 fn extract_i32(data: &ColumnBuffer, index: usize) -> Option<i32> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(index).map(|&v| v as i32),
-		ColumnBuffer::Int2(c) => c.get(index).map(|&v| v as i32),
-		ColumnBuffer::Int4(c) => c.get(index).copied(),
-		ColumnBuffer::Int8(c) => c.get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint1(c) => c.get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint2(c) => c.get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint4(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int1(c) => c.values().get(index).map(|&v| v as i32),
+		ColumnBuffer::Int2(c) => c.values().get(index).map(|&v| v as i32),
+		ColumnBuffer::Int4(c) => c.values().get(index).copied(),
+		ColumnBuffer::Int8(c) => c.values().get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint1(c) => c.values().get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint2(c) => c.values().get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint4(c) => c.values().get(index).map(|&v| v as i32),
 		_ => None,
 	}
 }

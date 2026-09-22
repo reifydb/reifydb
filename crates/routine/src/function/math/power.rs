@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
@@ -8,11 +9,7 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::{
 	error::TypeError,
-	util::bitvec::BitVec,
-	value::{
-		container::number::NumberContainer, decimal::Decimal, int::Int, is::IsNumber, uint::Uint,
-		value_type::ValueType,
-	},
+	value::{decimal::Decimal, int::Int, is::IsNumber, uint::Uint, value_type::ValueType},
 };
 
 use crate::function::{
@@ -95,7 +92,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				else {
 					unreachable!()
 				};
-				let (values, bits) = pow_rows(b, base_bv, e, exp_bv, $op, &overflow)?;
+				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
 				ColumnBuffer::$factory(values, bits)
 			}};
 			($variant:ident { .. }, $factory:ident, $op:expr) => {{
@@ -112,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				else {
 					unreachable!()
 				};
-				let (values, bits) = pow_rows(b, base_bv, e, exp_bv, $op, &overflow)?;
+				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
 				ColumnBuffer::$factory(values, bits)
 			}};
 		}
@@ -171,10 +168,10 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 }
 
 fn pow_rows<T, F>(
-	b: &NumberContainer<T>,
-	b_bv: Option<&BitVec>,
-	e: &NumberContainer<T>,
-	e_bv: Option<&BitVec>,
+	b: &[T],
+	b_bv: Option<&BooleanBuffer>,
+	e: &[T],
+	e_bv: Option<&BooleanBuffer>,
 	op: F,
 	overflow: &dyn Fn() -> RoutineError,
 ) -> Result<(Vec<T>, Vec<bool>), RoutineError>
@@ -182,8 +179,8 @@ where
 	T: IsNumber + Clone + Default,
 	F: Fn(&T, &T) -> Option<T>,
 {
-	fn defined<T: IsNumber>(c: &NumberContainer<T>, bv: Option<&BitVec>, i: usize) -> bool {
-		c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+		i < c.len() && bv.is_none_or(|b| b.value(i))
 	}
 
 	let row_count = b.len();

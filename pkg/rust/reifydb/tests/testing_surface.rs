@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb::{
 	core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Change, Diffs},
@@ -58,7 +58,7 @@ fn a_guest_operator_is_driven_through_the_published_testing_surface() {
 
 	let changed_at = DateTime::from_epoch_millis(0).expect("the epoch is representable");
 	let out = harness
-		.apply(Change::from_flow(NODE, CommitVersion(1), Diffs::new(), changed_at))
+		.apply(Change::from_flow(NODE, ChangeVersion::from(CommitVersion(1)), Diffs::new(), changed_at))
 		.expect("the published surface must carry a change to the guest");
 
 	assert_eq!(calls.load(Ordering::SeqCst), 1, "the guest must be reached exactly once per applied change");

@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, LazyLock};
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::{internal_error, value::column::columns::Columns};
 use reifydb_evaluate::{
 	expression::context::EvalContext,
@@ -15,7 +16,6 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	util::bitvec::BitVec,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
 };
 
@@ -91,13 +91,13 @@ pub struct Vm<'a> {
 
 	pub(crate) batch_size: usize,
 
-	pub(crate) active_mask: Option<BitVec>,
+	pub(crate) active_mask: Option<BooleanBuffer>,
 
 	pub(crate) mask_stack: Vec<MaskFrame>,
 
 	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
 
-	pub(crate) returned_mask: Option<BitVec>,
+	pub(crate) returned_mask: Option<BooleanBuffer>,
 
 	pub(crate) pending_return: Option<Variable>,
 
@@ -325,7 +325,7 @@ impl<'a> Vm<'a> {
 							let candidate = self.intersect_condition(&bool_bv);
 
 							if candidate == parent {
-							} else if candidate.none() {
+							} else if !candidate.has_true() {
 								self.ip = *addr;
 								continue;
 							} else {

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -55,19 +55,19 @@ impl BaseVTable for SystemQueues {
 
 		let queues = CatalogStore::list_queues(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut namespaces = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut partitions = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut ordered_by = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut deduplicate_by = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut deduplicate_ttl = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut times = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut timestamps = ColumnBuffer::utf8_with_capacity(queues.len());
-		let mut depths = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut in_flights = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut blocked_keys = ColumnBuffer::uint8_with_capacity(queues.len());
-		let mut oldest_due_at = ColumnBuffer::datetime_with_capacity(queues.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut partitions = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut ordered_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut deduplicate_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut deduplicate_ttl = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut times = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut timestamps = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut depths = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut in_flights = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut blocked_keys = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut oldest_due_at = ColumnBuilder::with_capacity(ValueType::DateTime, queues.len());
 
 		for queue in queues {
 			ids.push(queue.id.0);
@@ -126,19 +126,19 @@ impl BaseVTable for SystemQueues {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("partitions"), partitions),
-			ColumnWithName::new(Fragment::internal("ordered_by"), ordered_by),
-			ColumnWithName::new(Fragment::internal("deduplicate_by"), deduplicate_by),
-			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl),
-			ColumnWithName::new(Fragment::internal("time"), times),
-			ColumnWithName::new(Fragment::internal("ts"), timestamps),
-			ColumnWithName::new(Fragment::internal("depth"), depths),
-			ColumnWithName::new(Fragment::internal("in_flight"), in_flights),
-			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys),
-			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("partitions"), partitions.finish()),
+			ColumnWithName::new(Fragment::internal("ordered_by"), ordered_by.finish()),
+			ColumnWithName::new(Fragment::internal("deduplicate_by"), deduplicate_by.finish()),
+			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl.finish()),
+			ColumnWithName::new(Fragment::internal("time"), times.finish()),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps.finish()),
+			ColumnWithName::new(Fragment::internal("depth"), depths.finish()),
+			ColumnWithName::new(Fragment::internal("in_flight"), in_flights.finish()),
+			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys.finish()),
+			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at.finish()),
 		];
 
 		self.exhausted = true;

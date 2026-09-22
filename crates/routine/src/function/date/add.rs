@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{date_array, dates, durations},
+	date::Date,
+	value_type::ValueType,
+};
 
 pub struct DateAdd {
 	info: RoutineInfo,
@@ -43,10 +47,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateAdd {
 
 		let result_data = match (date_data, dur_data) {
 			(ColumnBuffer::Date(date_container), ColumnBuffer::Duration(dur_container)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (date_container.get(i), dur_container.get(i)) {
+					match (dates(date_container).get(i), durations(dur_container).get(i)) {
 						(Some(date), Some(dur)) => {
 							let mut year = date.year();
 							let mut month = date.month() as i32;
@@ -68,17 +72,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateAdd {
 									as i32;
 								match Date::from_days_since_epoch(total_days) {
 									Some(result) => container.push(result),
-									None => container.push_default(),
+									None => container.push(Date::default()),
 								}
 							} else {
-								container.push_default();
+								container.push(Date::default());
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(Date::default()),
 					}
 				}
 
-				ColumnBuffer::Date(container)
+				ColumnBuffer::Date(date_array(container))
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

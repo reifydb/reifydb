@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{duration_array, durations},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DurationNegate {
 	info: RoutineInfo,
@@ -41,17 +45,17 @@ impl<'a> Routine<FunctionContext<'a>> for DurationNegate {
 
 		match data {
 			ColumnBuffer::Duration(container_in) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(val) = container_in.get(i) {
+					if let Some(val) = durations(container_in).get(i) {
 						container.push(val.negate());
 					} else {
-						container.push_default();
+						container.push(Duration::default());
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(duration_array(container));
 				if let Some(bv) = bitvec {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::{catalog::config::ConfigKey, change::Diff},
 	internal,
 	key::operator::state::GroupId,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_value::{
 	Result,
@@ -31,7 +31,7 @@ use crate::operator::{
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_core::{interface::catalog::flow::OperatorId, value::column::buffer::ColumnBuffer};
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
@@ -408,7 +408,7 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 			.iter()
 			.find_map(|run| run.column(name).map(|col| col.data().get_type()))
 			.unwrap_or(ValueType::Any);
-		let mut buf = ColumnBuffer::with_capacity(target_type, total);
+		let mut buf = ColumnBuilder::with_capacity(target_type, total);
 		for run in &runs {
 			match run.column(name) {
 				Some(col) => {
@@ -423,7 +423,7 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 				}
 			}
 		}
-		result_columns.push(ColumnWithName::new(Fragment::internal(name.as_str()), buf));
+		result_columns.push(ColumnWithName::new(Fragment::internal(name.as_str()), buf.finish()));
 	}
 
 	let row_numbers: Vec<RowNumber> = runs.iter().flat_map(|run| run.row_numbers().iter().copied()).collect();

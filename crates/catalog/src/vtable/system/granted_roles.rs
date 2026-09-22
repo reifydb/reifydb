@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,8 +49,8 @@ impl BaseVTable for SystemGrantedRoles {
 
 		let granted_roles = CatalogStore::list_all_granted_roles(txn)?;
 
-		let mut identities = ColumnBuffer::identity_id_with_capacity(granted_roles.len());
-		let mut role_ids = ColumnBuffer::uint8_with_capacity(granted_roles.len());
+		let mut identities = ColumnBuilder::with_capacity(ValueType::IdentityId, granted_roles.len());
+		let mut role_ids = ColumnBuilder::with_capacity(ValueType::Uint8, granted_roles.len());
 
 		for ir in granted_roles {
 			identities.push(ir.identity);
@@ -58,8 +58,8 @@ impl BaseVTable for SystemGrantedRoles {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("identity"), identities),
-			ColumnWithName::new(Fragment::internal("role_id"), role_ids),
+			ColumnWithName::new(Fragment::internal("identity"), identities.finish()),
+			ColumnWithName::new(Fragment::internal("role_id"), role_ids.finish()),
 		];
 
 		self.exhausted = true;

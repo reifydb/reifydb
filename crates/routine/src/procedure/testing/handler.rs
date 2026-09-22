@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
@@ -91,14 +91,14 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 		return Ok(Columns::empty());
 	}
 
-	let mut seq_data = ColumnBuffer::uint8_with_capacity(invocations.len());
-	let mut ns_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut handler_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut event_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut variant_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut duration_data = ColumnBuffer::duration_with_capacity(invocations.len());
-	let mut outcome_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut message_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut seq_data = ColumnBuilder::with_capacity(ValueType::Uint8, invocations.len());
+	let mut ns_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
+	let mut handler_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
+	let mut event_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
+	let mut variant_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
+	let mut duration_data = ColumnBuilder::with_capacity(ValueType::Duration, invocations.len());
+	let mut outcome_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
+	let mut message_data = ColumnBuilder::with_capacity(ValueType::Utf8, invocations.len());
 
 	for inv in &invocations {
 		seq_data.push(inv.sequence);
@@ -112,13 +112,13 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 	}
 
 	Ok(Columns::new(vec![
-		ColumnWithName::new("sequence", seq_data),
-		ColumnWithName::new("namespace", ns_data),
-		ColumnWithName::new("handler", handler_data),
-		ColumnWithName::new("event", event_data),
-		ColumnWithName::new("variant", variant_data),
-		ColumnWithName::new("duration", duration_data),
-		ColumnWithName::new("outcome", outcome_data),
-		ColumnWithName::new("message", message_data),
+		ColumnWithName::new("sequence", seq_data.finish()),
+		ColumnWithName::new("namespace", ns_data.finish()),
+		ColumnWithName::new("handler", handler_data.finish()),
+		ColumnWithName::new("event", event_data.finish()),
+		ColumnWithName::new("variant", variant_data.finish()),
+		ColumnWithName::new("duration", duration_data.finish()),
+		ColumnWithName::new("outcome", outcome_data.finish()),
+		ColumnWithName::new("message", message_data.finish()),
 	]))
 }

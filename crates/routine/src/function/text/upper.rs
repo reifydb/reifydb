@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 pub struct TextUpper {
 	info: RoutineInfo,
@@ -47,8 +48,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextUpper {
 				let mut result_data = Vec::with_capacity(container.len());
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let original_str = container.get(i).unwrap();
+					if i < container.len() {
+						let original_str = container.value(i);
 						let upper_str = original_str.to_uppercase();
 						result_data.push(upper_str);
 					} else {
@@ -57,7 +58,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextUpper {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: *max_bytes,
 				};
 				let final_data = match bitvec {

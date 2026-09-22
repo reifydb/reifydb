@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -91,9 +91,9 @@ impl SerializedRow {
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
 			let value = values.get(i).cloned().unwrap_or(Value::none());
-			let mut col_data = ColumnBuffer::with_capacity(typ.clone(), 1);
+			let mut col_data = ColumnBuilder::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
-			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data));
+			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data.finish()));
 		}
 
 		Columns::with_system(

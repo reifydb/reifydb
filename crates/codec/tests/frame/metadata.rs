@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{BooleanArray, Int32Array, Int64Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
 	error::DecodeError,
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		container::{
-			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
-		},
-		date::Date,
-		datetime::DateTime,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		row_number::RowNumber,
-		system_columns::SystemColumns,
-	},
+use reifydb_value::value::{
+	container::temporal_array::date_array,
+	date::Date,
+	datetime::DateTime,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	row_number::RowNumber,
+	system_columns::SystemColumns,
 };
 
 fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
@@ -83,7 +80,7 @@ fn frame_with_metadata() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "x".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20, 30])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![10, 20, 30])),
 		}],
 	};
 	round_trip(frame);
@@ -93,11 +90,11 @@ fn frame_with_metadata() {
 fn multi_frame() {
 	let frame1 = Frame::new(vec![FrameColumn {
 		name: "a".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
+		data: FrameColumnData::Int4(Int32Array::from(vec![1, 2])),
 	}]);
 	let frame2 = Frame::new(vec![FrameColumn {
 		name: "b".to_string(),
-		data: FrameColumnData::Utf8(Utf8Container::new(vec!["x".to_string(), "y".to_string()])),
+		data: FrameColumnData::Utf8(LargeStringArray::from(vec!["x".to_string(), "y".to_string()])),
 	}]);
 	let encoded =
 		encode_frames(&[frame1.clone(), frame2.clone()], &EncodeOptions::default()).expect("encode failed");
@@ -112,11 +109,11 @@ fn empty_columns() {
 	let frame = Frame::new(vec![
 		FrameColumn {
 			name: "empty_ints".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![])),
+			data: FrameColumnData::Int4(Int32Array::from(Vec::<i32>::new())),
 		},
 		FrameColumn {
 			name: "empty_strings".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec![])),
+			data: FrameColumnData::Utf8(LargeStringArray::from(Vec::<String>::new())),
 		},
 	]);
 	round_trip(frame);
@@ -133,7 +130,7 @@ fn empty_frame_keeps_the_row_numbers_flag() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "x".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![])),
+			data: FrameColumnData::Int4(Int32Array::from(Vec::<i32>::new())),
 		}],
 	};
 
@@ -162,7 +159,7 @@ fn invalid_magic() {
 fn column_decode_error_includes_name() {
 	let frame = Frame::new(vec![FrameColumn {
 		name: "test_col".to_string(),
-		data: FrameColumnData::Date(TemporalContainer::new(vec![
+		data: FrameColumnData::Date(date_array(vec![
 			Date::from_days_since_epoch(0).unwrap(),
 			Date::from_days_since_epoch(1).unwrap(),
 			Date::from_days_since_epoch(2).unwrap(),
@@ -222,7 +219,7 @@ fn metadata_combinations() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![10])),
 		}],
 	};
 	round_trip(frame1);
@@ -239,7 +236,7 @@ fn metadata_combinations() {
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![10])),
 		}],
 	};
 	round_trip(frame2);
@@ -249,7 +246,7 @@ fn metadata_combinations() {
 fn empty_column_name() {
 	let frame = Frame::new(vec![FrameColumn {
 		name: "".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2, 3])),
+		data: FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3])),
 	}]);
 	round_trip(frame);
 }
@@ -259,11 +256,11 @@ fn mixed_types_frame() {
 	let frame = Frame::new(vec![
 		FrameColumn {
 			name: "id".to_string(),
-			data: FrameColumnData::Int8(NumberContainer::new(vec![1, 2, 3])),
+			data: FrameColumnData::Int8(Int64Array::from(vec![1, 2, 3])),
 		},
 		FrameColumn {
 			name: "name".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec![
+			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 				"alice".to_string(),
 				"bob".to_string(),
 				"charlie".to_string(),
@@ -271,17 +268,17 @@ fn mixed_types_frame() {
 		},
 		FrameColumn {
 			name: "active".to_string(),
-			data: FrameColumnData::Bool(BoolContainer::new(vec![true, false, true])),
+			data: FrameColumnData::Bool(BooleanArray::from(vec![true, false, true])),
 		},
 		FrameColumn {
 			name: "email".to_string(),
 			data: FrameColumnData::Option {
-				inner: Box::new(FrameColumnData::Utf8(Utf8Container::new(vec![
+				inner: Box::new(FrameColumnData::Utf8(LargeStringArray::from(vec![
 					"a@b.com".to_string(),
 					"".to_string(),
 					"c@d.com".to_string(),
 				]))),
-				bitvec: BitVec::from_slice(&[true, false, true]),
+				bitvec: BooleanBuffer::from(vec![true, false, true]),
 			},
 		},
 	]);
@@ -295,7 +292,7 @@ fn heuristics_threshold_small_columns() {
 	let values: Vec<i32> = (1..=3).collect();
 	let frame = Frame::new(vec![FrameColumn {
 		name: "small".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(values)),
+		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}]);
 	let encoded = encode_frames(&[frame], &EncodeOptions::default()).expect("encode failed");
 	// Byte 29 is the first column's encoding byte: msg header 16 + frame header 12 + type code 1.
@@ -307,7 +304,7 @@ fn compression_none_forces_plain() {
 	let values: Vec<i32> = (1..=500).collect();
 	let frame = Frame::new(vec![FrameColumn {
 		name: "seq".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(values)),
+		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}]);
 	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::none()).expect("encode failed");
 	// A sequence this regular would delta-encode to a fraction of its size, so exceeding the raw
@@ -323,7 +320,7 @@ fn compression_max_round_trip() {
 	let values: Vec<i32> = (1..=500).collect();
 	let frame = Frame::new(vec![FrameColumn {
 		name: "seq".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(values)),
+		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}]);
 	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::max()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");

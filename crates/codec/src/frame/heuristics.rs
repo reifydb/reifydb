@@ -3,7 +3,10 @@
 
 use std::collections::HashSet;
 
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::{
+	container::{decimal_array::u128s, temporal_array::times},
+	frame::data::FrameColumnData,
+};
 
 use crate::frame::{format::Encoding, options::CompressionLevel};
 
@@ -40,9 +43,9 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		FrameColumnData::Int2(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c),
-		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c),
-		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(c),
+		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c.values()),
+		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c.values()),
+		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(c.values()),
 		FrameColumnData::Uint1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
@@ -52,8 +55,8 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		FrameColumnData::Uint4(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c),
-		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(c),
+		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c.values()),
+		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&u128s(c)),
 		FrameColumnData::Float4(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
 		}
@@ -61,16 +64,10 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
 		}
 
-		FrameColumnData::Date(c) => {
-			let raw: Vec<i32> = (**c).iter().map(|d| d.to_days_since_epoch()).collect();
-			try_numeric_heuristic_i32(&raw)
-		}
-		FrameColumnData::DateTime(c) => {
-			let raw: Vec<u64> = (**c).iter().map(|d| d.to_nanos()).collect();
-			try_numeric_heuristic_u64(&raw)
-		}
+		FrameColumnData::Date(c) => try_numeric_heuristic_i32(c.values()),
+		FrameColumnData::DateTime(c) => try_numeric_heuristic_u64(c.values()),
 		FrameColumnData::Time(c) => {
-			let raw: Vec<u64> = (**c).iter().map(|t| t.to_nanos_since_midnight()).collect();
+			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			try_numeric_heuristic_u64(&raw)
 		}
 
@@ -274,21 +271,20 @@ fn count_runs_generic<T: PartialEq>(slice: &[T]) -> usize {
 
 #[cfg(test)]
 mod tests {
+	use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
+	use arrow_buffer::BooleanBuffer;
 	use num_bigint::BigInt;
-	use reifydb_value::{
-		util::bitvec::BitVec,
-		value::{
-			container::{
-				bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
-				utf8::Utf8Container,
-			},
-			date::Date,
-			datetime::DateTime,
-			decimal::Decimal,
-			int::Int,
-			time::Time,
-			uint::Uint,
+	use reifydb_value::value::{
+		container::{
+			number::NumberContainer,
+			temporal_array::{date_array, datetime_array, time_array},
 		},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		int::Int,
+		time::Time,
+		uint::Uint,
 	};
 
 	use super::*;
@@ -338,18 +334,22 @@ mod tests {
 
 	#[test]
 	fn try_dict_heuristic_picks_dict_only_below_the_half_cardinality_threshold() {
-		let repeated =
-			FrameColumnData::Utf8(Utf8Container::new((0..100).map(|i| format!("v{}", i % 5)).collect()));
+		let repeated = FrameColumnData::Utf8(LargeStringArray::from(
+			(0..100).map(|i| format!("v{}", i % 5)).collect::<Vec<String>>(),
+		));
 		assert_eq!(try_dict_heuristic(&repeated), Encoding::Dict);
 
-		let unique = FrameColumnData::Utf8(Utf8Container::new((0..100).map(|i| format!("v{i}")).collect()));
+		let unique = FrameColumnData::Utf8(LargeStringArray::from(
+			(0..100).map(|i| format!("v{i}")).collect::<Vec<String>>(),
+		));
 		assert_eq!(try_dict_heuristic(&unique), Encoding::Plain);
 
-		let half =
-			FrameColumnData::Utf8(Utf8Container::new((0..100).map(|i| format!("v{}", i % 50)).collect()));
+		let half = FrameColumnData::Utf8(LargeStringArray::from(
+			(0..100).map(|i| format!("v{}", i % 50)).collect::<Vec<String>>(),
+		));
 		assert_eq!(try_dict_heuristic(&half), Encoding::Plain);
 
-		let empty = FrameColumnData::Utf8(Utf8Container::new(vec![]));
+		let empty = FrameColumnData::Utf8(LargeStringArray::from(Vec::<String>::new()));
 		assert_eq!(try_dict_heuristic(&empty), Encoding::Plain);
 	}
 
@@ -409,47 +409,48 @@ mod tests {
 
 	#[test]
 	fn choose_encoding_ignores_the_heuristic_entirely_when_compression_is_off() {
-		let data = FrameColumnData::Int4(NumberContainer::new((0..100).map(|i| i * 3).collect()));
+		let data = FrameColumnData::Int4(Int32Array::from_iter_values((0..100).map(|i| i * 3)));
 		assert_eq!(choose_encoding(&data, CompressionLevel::None), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_stays_plain_below_min_rows_even_with_compression_on() {
-		let data = FrameColumnData::Int4(NumberContainer::new(vec![1, 2, 3]));
+		let data = FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3]));
 		assert_eq!(choose_encoding(&data, CompressionLevel::Fast), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_peels_the_option_wrapper_before_applying_the_heuristic() {
-		let inner =
-			FrameColumnData::Utf8(Utf8Container::new((0..100).map(|i| format!("v{}", i % 5)).collect()));
+		let inner = FrameColumnData::Utf8(LargeStringArray::from(
+			(0..100).map(|i| format!("v{}", i % 5)).collect::<Vec<String>>(),
+		));
 		let wrapped = FrameColumnData::Option {
 			inner: Box::new(inner),
-			bitvec: BitVec::from_slice(&vec![true; 100]),
+			bitvec: BooleanBuffer::from(vec![true; 100]),
 		};
 		assert_eq!(choose_encoding(&wrapped, CompressionLevel::Fast), Encoding::Dict);
 	}
 
 	#[test]
 	fn choose_encoding_falls_back_to_plain_for_types_with_no_dedicated_heuristic() {
-		let data = FrameColumnData::Bool(BoolContainer::new(vec![true, false, true, false, true]));
+		let data = FrameColumnData::Bool(BooleanArray::from(vec![true, false, true, false, true]));
 		assert_eq!(choose_encoding(&data, CompressionLevel::Fast), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_dispatches_temporal_columns_through_their_raw_representation() {
-		let dates = FrameColumnData::Date(TemporalContainer::new(
-			(0..100).map(|i| Date::from_days_since_epoch(i * 2).unwrap()).collect(),
+		let dates = FrameColumnData::Date(date_array(
+			(0..100).map(|i| Date::from_days_since_epoch(i * 2).unwrap()),
 		));
 		assert_eq!(choose_encoding(&dates, CompressionLevel::Fast), Encoding::DeltaRle);
 
-		let datetimes = FrameColumnData::DateTime(TemporalContainer::new(
-			(0..100).map(|i| DateTime::from_nanos(i as u64 * 1_000)).collect(),
+		let datetimes = FrameColumnData::DateTime(datetime_array(
+			(0..100).map(|i| DateTime::from_nanos(i as u64 * 1_000)),
 		));
 		assert_eq!(choose_encoding(&datetimes, CompressionLevel::Fast), Encoding::DeltaRle);
 
-		let times = FrameColumnData::Time(TemporalContainer::new(
-			(0..100).map(|i| Time::from_nanos_since_midnight(i as u64 * 1_000).unwrap()).collect(),
+		let times = FrameColumnData::Time(time_array(
+			(0..100).map(|i| Time::from_nanos_since_midnight(i as u64 * 1_000).unwrap()),
 		));
 		assert_eq!(choose_encoding(&times, CompressionLevel::Fast), Encoding::DeltaRle);
 	}

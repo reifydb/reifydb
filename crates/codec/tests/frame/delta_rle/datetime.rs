@@ -2,10 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::frame::format::Encoding;
-use reifydb_value::value::{container::temporal::TemporalContainer, datetime::DateTime, frame::data::FrameColumnData};
+use reifydb_value::value::{
+	container::temporal_array::datetime_array, datetime::DateTime, frame::data::FrameColumnData,
+};
 
 fn make(v: Vec<DateTime>) -> FrameColumnData {
-	FrameColumnData::DateTime(TemporalContainer::new(v))
+	FrameColumnData::DateTime(datetime_array(v))
 }
 
 crate::delta_rle_tests! {

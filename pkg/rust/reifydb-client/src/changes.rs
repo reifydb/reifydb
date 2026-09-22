@@ -24,9 +24,9 @@ pub(crate) fn read_op_kind(frame: &Frame) -> ChangeKind {
 
 #[cfg(test)]
 mod tests {
+	use arrow_array::Int32Array;
 	use reifydb_value::value::{
 		Value,
-		container::number::NumberContainer,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	};
 
@@ -35,7 +35,7 @@ mod tests {
 	fn frame_with_op(op: DiffType, id: i32) -> Frame {
 		Frame::new(vec![FrameColumn {
 			name: "id".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::from_vec(vec![id])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![id])),
 		}])
 		.with_op(op)
 	}
@@ -73,7 +73,7 @@ mod tests {
 		// inserts is what a subscriber needs to seed its initial state.
 		let changes = frames_to_changes(vec![Frame::new(vec![FrameColumn {
 			name: "id".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::from_vec(vec![1])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![1])),
 		}])]);
 		assert_eq!(changes[0].kind, ChangeKind::Insert);
 	}

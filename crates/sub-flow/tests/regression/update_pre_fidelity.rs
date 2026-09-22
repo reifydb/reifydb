@@ -306,7 +306,7 @@ mod join {
 			change::{Change, ChangeOrigin, Diff},
 		},
 		row::JoinPick,
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
 	use reifydb_flow::{
 		context::FlowContext,
@@ -356,7 +356,7 @@ mod join {
 				.map(|(name, ty)| {
 					ColumnWithName::new(
 						Fragment::internal(*name),
-						ColumnBuffer::with_capacity(ty.clone(), 0),
+						ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 					)
 				})
 				.collect(),
@@ -364,15 +364,15 @@ mod join {
 	}
 
 	fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Columns {
-		let mut buffers: Vec<ColumnBuffer> =
-			spec.iter().map(|(_, ty)| ColumnBuffer::with_capacity(ty.clone(), 1)).collect();
+		let mut buffers: Vec<ColumnBuilder> =
+			spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), 1)).collect();
 		buffers[0].push_value(Value::Int8(number as i64));
 		buffers[1].push_value(Value::Int4(key));
 		buffers[2].push_value(Value::Int8(value));
 		let columns = spec
 			.iter()
 			.zip(buffers)
-			.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
+			.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 			.collect();
 		let at = DateTime::from_millis(1_000_000 + number);
 		Columns::with_system(
@@ -561,7 +561,7 @@ mod source {
 			},
 			change::{Change, Diff},
 		},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
 	use reifydb_flow::operator::{
 		HostOperator,
@@ -642,11 +642,10 @@ mod source {
 	}
 
 	fn encoded(dictionary_id: DictionaryId, entry: &DictionaryEntryId) -> Columns {
-		let mut symbols = ColumnBuffer::with_capacity(ValueType::DictionaryId, 1);
+		let mut symbols = ColumnBuilder::with_capacity(ValueType::DictionaryId, 1);
 		symbols.push_value(entry.to_value());
-		if let ColumnBuffer::DictionaryId(container) = &mut symbols {
-			container.set_dictionary_id(dictionary_id);
-		}
+		symbols.set_dictionary_id(dictionary_id);
+		let symbols = symbols.finish();
 		let at = DateTime::from_millis(1_000_000);
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("sym"), symbols)],

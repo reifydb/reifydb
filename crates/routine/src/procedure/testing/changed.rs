@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::{catalog::object::ObjectId, change::Diff},
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
@@ -164,13 +164,13 @@ fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Object
 fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 	if entries.is_empty() {
 		return Ok(Columns::new(vec![
-			ColumnWithName::new("op", ColumnBuffer::utf8_with_capacity(0)),
-			ColumnWithName::new("target", ColumnBuffer::utf8_with_capacity(0)),
+			ColumnWithName::new("op", ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish()),
+			ColumnWithName::new("target", ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish()),
 		]));
 	}
 
-	let mut op_data = ColumnBuffer::utf8_with_capacity(entries.len());
-	let mut target_data = ColumnBuffer::utf8_with_capacity(entries.len());
+	let mut op_data = ColumnBuilder::with_capacity(ValueType::Utf8, entries.len());
+	let mut target_data = ColumnBuilder::with_capacity(ValueType::Utf8, entries.len());
 
 	let mut field_names: Vec<String> = Vec::new();
 	for entry in entries {
@@ -267,26 +267,27 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 		}
 	}
 
-	let mut columns = vec![ColumnWithName::new("op", op_data), ColumnWithName::new("target", target_data)];
+	let mut columns =
+		vec![ColumnWithName::new("op", op_data.finish()), ColumnWithName::new("target", target_data.finish())];
 
 	for (i, name) in field_names.iter().enumerate() {
 		let mut old_data = column_for_values(&old_columns[i]);
 		for val in &old_columns[i] {
 			old_data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(format!("old_{}", name), old_data));
+		columns.push(ColumnWithName::new(format!("old_{}", name), old_data.finish()));
 
 		let mut new_data = column_for_values(&new_columns[i]);
 		for val in &new_columns[i] {
 			new_data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(format!("new_{}", name), new_data));
+		columns.push(ColumnWithName::new(format!("new_{}", name), new_data.finish()));
 	}
 
 	Ok(Columns::new(columns))
 }
 
-fn column_for_values(values: &[Value]) -> ColumnBuffer {
+fn column_for_values(values: &[Value]) -> ColumnBuilder {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None
@@ -295,7 +296,7 @@ fn column_for_values(values: &[Value]) -> ColumnBuffer {
 		}
 	});
 	match first_type {
-		Some(ty) => ColumnBuffer::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none_typed(ValueType::Boolean, 0),
+		Some(ty) => ColumnBuilder::with_capacity(ty, values.len()),
+		None => ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder(),
 	}
 }

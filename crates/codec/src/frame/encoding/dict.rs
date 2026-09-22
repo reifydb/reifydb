@@ -3,10 +3,8 @@
 
 use std::{collections::HashMap, str};
 
-use reifydb_value::value::{
-	blob::Blob,
-	container::{blob::BlobContainer, utf8::Utf8Container},
-};
+use arrow_array::{Array, LargeBinaryArray, LargeStringArray};
+use reifydb_value::value::blob::Blob;
 
 use super::plain::PlainEncoded;
 use crate::{error::DecodeError, frame::format::dict_index_width_to_flags, tag::ValueKind};
@@ -21,7 +19,7 @@ pub struct DictEncoded {
 	pub flags_bits: u8,
 }
 
-pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option<DictEncoded> {
+pub fn try_dict_encode_utf8(container: &LargeStringArray, min_ratio: f64) -> Option<DictEncoded> {
 	let row_count = container.len();
 	if row_count == 0 {
 		return None;
@@ -30,7 +28,7 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	let mut dict_map: HashMap<&str, u32> = HashMap::new();
 	let mut dict_entries: Vec<&str> = Vec::new();
 
-	for s in container.iter_str() {
+	for s in (0..row_count).map(|i| container.value(i)) {
 		if !dict_map.contains_key(s) {
 			let idx = dict_entries.len() as u32;
 			dict_map.insert(s, idx);
@@ -53,7 +51,7 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	};
 
 	let mut data = Vec::with_capacity(row_count * index_width);
-	for s in container.iter_str() {
+	for s in (0..row_count).map(|i| container.value(i)) {
 		let idx = dict_map[s];
 		match index_width {
 			1 => data.push(idx as u8),
@@ -85,7 +83,7 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	})
 }
 
-pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option<DictEncoded> {
+pub fn try_dict_encode_blob(container: &LargeBinaryArray, min_ratio: f64) -> Option<DictEncoded> {
 	let row_count = container.len();
 	if row_count == 0 {
 		return None;
@@ -94,7 +92,7 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 	let mut dict_map: HashMap<&[u8], u32> = HashMap::new();
 	let mut dict_entries: Vec<&[u8]> = Vec::new();
 
-	for bytes in container.iter_bytes() {
+	for bytes in (0..row_count).map(|i| container.value(i)) {
 		if !dict_map.contains_key(bytes) {
 			let idx = dict_entries.len() as u32;
 			dict_map.insert(bytes, idx);
@@ -117,7 +115,7 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 	};
 
 	let mut data = Vec::with_capacity(row_count * index_width);
-	for bytes in container.iter_bytes() {
+	for bytes in (0..row_count).map(|i| container.value(i)) {
 		let idx = dict_map[bytes];
 		match index_width {
 			1 => data.push(idx as u8),

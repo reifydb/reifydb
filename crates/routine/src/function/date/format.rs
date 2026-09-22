@@ -6,7 +6,9 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, value_type::ValueType,
+	container::{temporal_array::dates, varlen_array},
+	date::Date,
+	value_type::ValueType,
 };
 
 pub struct DateFormat {
@@ -85,9 +87,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (date_container.get(i), fmt_container.is_defined(i)) {
-						(Some(d), true) => {
-							let fmt_str = fmt_container.get(i).unwrap();
+					match (dates(date_container).get(i), varlen_array::get(fmt_container, i)) {
+						(Some(d), Some(fmt_str)) => {
 							let doy = compute_day_of_year(d.year(), d.month(), d.day());
 							match format_date(d.year(), d.month(), d.day(), doy, fmt_str) {
 								Ok(formatted) => {
@@ -109,10 +110,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 					}
 				}
 
-				ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result),
-					max_bytes: MaxBytes::MAX,
-				}
+				ColumnBuffer::utf8(result)
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

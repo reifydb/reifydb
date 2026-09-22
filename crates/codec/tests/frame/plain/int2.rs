@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData};
+use arrow_array::Int16Array;
+use reifydb_value::value::frame::data::FrameColumnData;
 
 fn make(v: Vec<i16>) -> FrameColumnData {
-	FrameColumnData::Int2(NumberContainer::new(v))
+	FrameColumnData::Int2(Int16Array::from(v))
 }
 
 crate::plain_tests! {

@@ -51,31 +51,31 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let (p_data, _) = prec_col.data().unwrap_option();
 				match p_data {
 					ColumnBuffer::Int4(prec_container) => {
-						prec_container.get(row_idx).copied().unwrap_or(0)
+						prec_container.values().get(row_idx).copied().unwrap_or(0)
 					}
 					ColumnBuffer::Int1(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Int2(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Int8(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Int16(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint1(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint2(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint4(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint8(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint16(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
@@ -92,7 +92,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(&value) = container.values().get(i) {
 						let precision = get_precision(i);
 						let multiplier = 10_f32.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;
@@ -109,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(&value) = container.values().get(i) {
 						let precision = get_precision(i);
 						let multiplier = 10_f64.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;

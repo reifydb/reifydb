@@ -154,22 +154,21 @@ impl Frame {
 
 #[cfg(test)]
 pub mod tests {
+	use arrow_array::{Int32Array, Int64Array, LargeStringArray};
+
 	use super::*;
-	use crate::value::{
-		container::{number::NumberContainer, utf8::Utf8Container},
-		frame::data::FrameColumnData,
-	};
+	use crate::value::frame::data::FrameColumnData;
 
 	fn make_test_frame() -> Frame {
 		Frame::with_row_numbers(
 			vec![
 				FrameColumn {
 					name: "id".to_string(),
-					data: FrameColumnData::Int8(NumberContainer::from_vec(vec![1i64, 2, 3])),
+					data: FrameColumnData::Int8(Int64Array::from(vec![1i64, 2, 3])),
 				},
 				FrameColumn {
 					name: "name".to_string(),
-					data: FrameColumnData::Utf8(Utf8Container::new(vec![
+					data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 						"Alice".to_string(),
 						"Bob".to_string(),
 						String::new(),
@@ -177,7 +176,7 @@ pub mod tests {
 				},
 				FrameColumn {
 					name: "score".to_string(),
-					data: FrameColumnData::Int4(NumberContainer::from_vec(vec![100i32, 85, 92])),
+					data: FrameColumnData::Int4(Int32Array::from(vec![100i32, 85, 92])),
 				},
 			],
 			vec![1.into(), 2.into(), 3.into()],

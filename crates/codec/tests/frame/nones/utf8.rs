@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::utf8::Utf8Container, frame::data::FrameColumnData, value_type::ValueType};
+use arrow_array::LargeStringArray;
+use reifydb_value::value::{frame::data::FrameColumnData, value_type::ValueType};
 
 fn make(v: Vec<String>) -> FrameColumnData {
-	FrameColumnData::Utf8(Utf8Container::new(v))
+	FrameColumnData::Utf8(LargeStringArray::from(v))
 }
 
 crate::nones_tests! {

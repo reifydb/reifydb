@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		columns::Columns,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
@@ -212,19 +213,19 @@ impl Accumulator for SumAccumulator {
 
 		match data {
 			ColumnBuffer::Int1(container) => {
-				sum_arm!(self, column, groups, container, i8, Int1);
+				sum_arm!(self, column, groups, container.values(), i8, Int1);
 				Ok(())
 			}
 			ColumnBuffer::Int2(container) => {
-				sum_arm!(self, column, groups, container, i16, Int2);
+				sum_arm!(self, column, groups, container.values(), i16, Int2);
 				Ok(())
 			}
 			ColumnBuffer::Int4(container) => {
-				sum_arm!(self, column, groups, container, i32, Int4);
+				sum_arm!(self, column, groups, container.values(), i32, Int4);
 				Ok(())
 			}
 			ColumnBuffer::Int8(container) => {
-				sum_arm!(self, column, groups, container, i64, Int8);
+				sum_arm!(self, column, groups, container.values(), i64, Int8);
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
@@ -232,19 +233,19 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
-				sum_arm!(self, column, groups, container, u8, Uint1);
+				sum_arm!(self, column, groups, container.values(), u8, Uint1);
 				Ok(())
 			}
 			ColumnBuffer::Uint2(container) => {
-				sum_arm!(self, column, groups, container, u16, Uint2);
+				sum_arm!(self, column, groups, container.values(), u16, Uint2);
 				Ok(())
 			}
 			ColumnBuffer::Uint4(container) => {
-				sum_arm!(self, column, groups, container, u32, Uint4);
+				sum_arm!(self, column, groups, container.values(), u32, Uint4);
 				Ok(())
 			}
 			ColumnBuffer::Uint8(container) => {
-				sum_arm!(self, column, groups, container, u64, Uint8);
+				sum_arm!(self, column, groups, container.values(), u64, Uint8);
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
@@ -252,11 +253,11 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
-				sum_arm_float!(self, column, groups, container, f32, Float4, Value::float4);
+				sum_arm_float!(self, column, groups, container.values(), f32, Float4, Value::float4);
 				Ok(())
 			}
 			ColumnBuffer::Float8(container) => {
-				sum_arm_float!(self, column, groups, container, f64, Float8, Value::float8);
+				sum_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
 				Ok(())
 			}
 			ColumnBuffer::Int {
@@ -352,14 +353,14 @@ impl Accumulator for SumAccumulator {
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(ValueType::Int8);
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data = ColumnBuffer::with_capacity(ty, self.sums.len());
+		let mut data = ColumnBuilder::with_capacity(ty, self.sums.len());
 
 		for (key, sum) in mem::take(&mut self.sums) {
 			keys.push(key);
 			data.push_value(sum);
 		}
 
-		Ok((keys, data))
+		Ok((keys, data.finish()))
 	}
 
 	fn kind_name(&self) -> &'static str {
@@ -376,19 +377,19 @@ impl Accumulator for SumAccumulator {
 
 		match data {
 			ColumnBuffer::Int1(container) => {
-				sub_arm!(self, column, groups, container, i8, Int1);
+				sub_arm!(self, column, groups, container.values(), i8, Int1);
 				Ok(())
 			}
 			ColumnBuffer::Int2(container) => {
-				sub_arm!(self, column, groups, container, i16, Int2);
+				sub_arm!(self, column, groups, container.values(), i16, Int2);
 				Ok(())
 			}
 			ColumnBuffer::Int4(container) => {
-				sub_arm!(self, column, groups, container, i32, Int4);
+				sub_arm!(self, column, groups, container.values(), i32, Int4);
 				Ok(())
 			}
 			ColumnBuffer::Int8(container) => {
-				sub_arm!(self, column, groups, container, i64, Int8);
+				sub_arm!(self, column, groups, container.values(), i64, Int8);
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
@@ -396,19 +397,19 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
-				sub_arm!(self, column, groups, container, u8, Uint1);
+				sub_arm!(self, column, groups, container.values(), u8, Uint1);
 				Ok(())
 			}
 			ColumnBuffer::Uint2(container) => {
-				sub_arm!(self, column, groups, container, u16, Uint2);
+				sub_arm!(self, column, groups, container.values(), u16, Uint2);
 				Ok(())
 			}
 			ColumnBuffer::Uint4(container) => {
-				sub_arm!(self, column, groups, container, u32, Uint4);
+				sub_arm!(self, column, groups, container.values(), u32, Uint4);
 				Ok(())
 			}
 			ColumnBuffer::Uint8(container) => {
-				sub_arm!(self, column, groups, container, u64, Uint8);
+				sub_arm!(self, column, groups, container.values(), u64, Uint8);
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
@@ -416,11 +417,11 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
-				sub_arm_float!(self, column, groups, container, f32, Float4, Value::float4);
+				sub_arm_float!(self, column, groups, container.values(), f32, Float4, Value::float4);
 				Ok(())
 			}
 			ColumnBuffer::Float8(container) => {
-				sub_arm_float!(self, column, groups, container, f64, Float8, Value::float8);
+				sub_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
 				Ok(())
 			}
 			ColumnBuffer::Int {

@@ -3,14 +3,12 @@
 
 use std::fmt::Display;
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{container::number::NumberContainer, is::IsNumber, value_type::ValueType},
-};
+use reifydb_value::value::{is::IsNumber, value_type::ValueType};
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
@@ -91,7 +89,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				else {
 					unreachable!()
 				};
-				clamp_rows(ctx, v, v_bv, lo, lo_bv, hi, hi_bv)?
+				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
 			}};
 			($variant:ident { .. }) => {{
 				let (
@@ -111,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				else {
 					unreachable!()
 				};
-				clamp_rows(ctx, v, v_bv, lo, lo_bv, hi, hi_bv)?
+				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
 			}};
 		}
 
@@ -185,18 +183,18 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 
 fn clamp_rows<T>(
 	ctx: &FunctionContext,
-	v: &NumberContainer<T>,
-	v_bv: Option<&BitVec>,
-	lo: &NumberContainer<T>,
-	lo_bv: Option<&BitVec>,
-	hi: &NumberContainer<T>,
-	hi_bv: Option<&BitVec>,
+	v: &[T],
+	v_bv: Option<&BooleanBuffer>,
+	lo: &[T],
+	lo_bv: Option<&BooleanBuffer>,
+	hi: &[T],
+	hi_bv: Option<&BooleanBuffer>,
 ) -> Result<(Vec<T>, Vec<bool>), RoutineError>
 where
 	T: IsNumber + PartialOrd + Clone + Default + Display,
 {
-	fn defined<T: IsNumber>(c: &NumberContainer<T>, bv: Option<&BitVec>, i: usize) -> bool {
-		c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+		i < c.len() && bv.is_none_or(|b| b.value(i))
 	}
 
 	let row_count = v.len();

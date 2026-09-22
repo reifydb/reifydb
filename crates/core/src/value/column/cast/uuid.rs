@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, FixedSizeBinaryArray, LargeStringArray};
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
-		container::{identity_id::IdentityIdContainer, utf8::Utf8Container, uuid::UuidContainer},
 		identity::IdentityId,
 		uuid::{
 			Uuid4, Uuid7,
@@ -17,7 +17,7 @@ use reifydb_value::{
 };
 
 use super::error::CastError;
-use crate::value::column::buffer::ColumnBuffer;
+use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 
 pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
@@ -41,7 +41,11 @@ pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyF
 }
 
 #[inline]
-fn from_text(container: &Utf8Container, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+fn from_text(
+	container: &LargeStringArray,
+	target: ValueType,
+	lazy_fragment: impl LazyFragment,
+) -> Result<ColumnBuffer> {
 	match target {
 		ValueType::Uuid4 => to_uuid4(container, lazy_fragment),
 		ValueType::Uuid7 => to_uuid7(container, lazy_fragment),
@@ -61,11 +65,11 @@ fn from_text(container: &Utf8Container, target: ValueType, lazy_fragment: impl L
 macro_rules! impl_to_uuid {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-			let mut out = ColumnBuffer::with_capacity($target_type, container.len());
+		fn $fn_name(container: &LargeStringArray, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+			let mut out = ColumnBuilder::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
-				if container.is_defined(idx) {
-					let val = container.get(idx).unwrap();
+				if container.is_valid(idx) {
+					let val = container.value(idx);
 					let temp_fragment = Fragment::internal(val);
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
@@ -85,7 +89,7 @@ macro_rules! impl_to_uuid {
 					out.push_none();
 				}
 			}
-			Ok(out)
+			Ok(out.finish())
 		}
 	};
 }
@@ -96,12 +100,12 @@ impl_to_uuid!(to_identity_id, IdentityId, ValueType::IdentityId, parse_identity_
 
 #[inline]
 fn from_uuid4(
-	container: &UuidContainer<Uuid4>,
+	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		ValueType::Uuid4 => Ok(ColumnBuffer::Uuid4(UuidContainer::new(container.data().to_vec()))),
+		ValueType::Uuid4 => Ok(ColumnBuffer::Uuid4(container.clone())),
 		_ => {
 			let object_type = ValueType::Uuid4;
 			Err(TypeError::UnsupportedCast {
@@ -116,15 +120,13 @@ fn from_uuid4(
 
 #[inline]
 fn from_uuid7(
-	container: &UuidContainer<Uuid7>,
+	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().to_vec()))),
-		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(
-			container.data().iter().map(|u| IdentityId(*u)).collect(),
-		))),
+		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(container.clone())),
+		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(container.clone())),
 		_ => {
 			let object_type = ValueType::Uuid7;
 			Err(TypeError::UnsupportedCast {
@@ -139,17 +141,13 @@ fn from_uuid7(
 
 #[inline]
 fn from_identity_id(
-	container: &IdentityIdContainer,
+	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		ValueType::IdentityId => {
-			Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
-		}
-		ValueType::Uuid7 => {
-			Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().iter().map(|id| id.0).collect())))
-		}
+		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(container.clone())),
+		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(container.clone())),
 		_ => Err(TypeError::UnsupportedCast {
 			from: ValueType::IdentityId,
 			to: target,

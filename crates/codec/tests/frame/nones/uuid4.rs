@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	container::uuid::UuidContainer, frame::data::FrameColumnData, uuid::Uuid4, value_type::ValueType,
+	container::uuid_array::uuid4_array, frame::data::FrameColumnData, uuid::Uuid4, value_type::ValueType,
 };
 
 fn make(v: Vec<Uuid4>) -> FrameColumnData {
-	FrameColumnData::Uuid4(UuidContainer::new(v))
+	FrameColumnData::Uuid4(uuid4_array(v))
 }
 
 crate::nones_tests! {

@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupKeyDict,
+	ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, view::group_by::GroupKeyDict,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		digest::Digest,
-		duration::Duration,
-		frame::{data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	digest::Digest,
+	duration::Duration,
+	frame::{data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 
 const ACCURACY: u32 = 10_000;
@@ -45,14 +43,14 @@ fn digest_value(digest: &Digest) -> Value {
 }
 
 fn column_of(ty: ValueType, rows: &[Option<Digest>]) -> ColumnBuffer {
-	let mut column = ColumnBuffer::with_capacity(ty, rows.len());
+	let mut builder = ColumnBuilder::with_capacity(ty, rows.len());
 	for row in rows {
 		match row {
-			Some(digest) => column.push_value(digest_value(digest)),
-			None => column.push_none(),
+			Some(digest) => builder.push_value(digest_value(digest)),
+			None => builder.push_none(),
 		}
 	}
-	column
+	builder.finish()
 }
 
 fn rows() -> Vec<Option<Digest>> {
@@ -94,7 +92,7 @@ fn take_slice_gather_filter_and_reorder_keep_digests_equal() {
 	assert_eq!(values(&column.gather(&[3, 0, 1])), vec![all[3].clone(), all[0].clone(), all[1].clone()]);
 
 	let mut filtered = column.clone();
-	filtered.filter(&BitVec::from_slice(&[true, true, false, true])).unwrap();
+	filtered.filter(&BooleanBuffer::from(vec![true, true, false, true])).unwrap();
 	assert_eq!(values(&filtered), vec![all[0].clone(), all[1].clone(), all[3].clone()]);
 
 	let mut reordered = column.clone();
@@ -134,8 +132,8 @@ fn extend_refuses_a_digest_column_with_another_accuracy_or_inner_type() {
 #[should_panic(expected = "cannot push a Digest(Duration, 10000) into a Digest(Float8, 10000) column")]
 fn a_digest_pushed_into_a_column_with_other_params_panics_with_both_types() {
 	// Pushing silently would store a digest the column type misdescribes.
-	let mut column = ColumnBuffer::with_capacity(digest_type(ValueType::Float8, ACCURACY), 1);
-	column.push_value(digest_value(&duration_digest([1])));
+	let mut builder = ColumnBuilder::with_capacity(digest_type(ValueType::Float8, ACCURACY), 1);
+	builder.push_value(digest_value(&duration_digest([1])));
 }
 
 #[test]

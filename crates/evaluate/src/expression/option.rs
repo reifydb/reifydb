@@ -1,38 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_value::{fragment::Fragment, util::bitvec::BitVec, value::value_type::ValueType};
+use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::Result;
 
-fn is_all_none(bv: Option<&BitVec>) -> bool {
+fn is_all_none(bv: Option<&BooleanBuffer>) -> bool {
 	match bv {
-		Some(bv) => bv.count_ones() == 0,
+		Some(bv) => !bv.has_true(),
 		None => false,
 	}
 }
 
-fn is_untyped_none(data: &ColumnBuffer, bv: Option<&BitVec>) -> bool {
+fn is_untyped_none(data: &ColumnBuffer, bv: Option<&BooleanBuffer>) -> bool {
 	is_all_none(bv) && matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
 }
 
-pub(crate) fn combine_option_bitvecs(a: Option<&BitVec>, b: Option<&BitVec>) -> Option<BitVec> {
+pub(crate) fn combine_option_bitvecs(a: Option<&BooleanBuffer>, b: Option<&BooleanBuffer>) -> Option<BooleanBuffer> {
 	match (a, b) {
-		(Some(a), Some(b)) => Some(a.and(b)),
+		(Some(a), Some(b)) => Some(a & b),
 		(Some(a), None) => Some(a.clone()),
 		(None, Some(b)) => Some(b.clone()),
 		(None, None) => None,
 	}
 }
 
-pub(crate) fn apply_option_bitvec(result: ColumnBuffer, bitvec: BitVec) -> ColumnBuffer {
+pub(crate) fn apply_option_bitvec(result: ColumnBuffer, bitvec: BooleanBuffer) -> ColumnBuffer {
 	match result {
 		ColumnBuffer::Option {
 			inner,
 			bitvec: existing,
 		} => {
-			let combined = existing.and(&bitvec);
+			let combined = &existing & &bitvec;
 			ColumnBuffer::Option {
 				inner,
 				bitvec: combined,
@@ -79,8 +80,8 @@ pub(crate) fn binary_op_unwrap_option(
 		let ty = if is_untyped_none(left_data, left_bv) || is_untyped_none(right_data, right_bv) {
 			ValueType::Boolean
 		} else {
-			let l = ColumnWithName::new(left.name().clone(), left_data.empty_like(0));
-			let r = ColumnWithName::new(right.name().clone(), right_data.empty_like(0));
+			let l = ColumnWithName::new(left.name().clone(), ColumnBuilder::like(left_data, 0).finish());
+			let r = ColumnWithName::new(right.name().clone(), ColumnBuilder::like(right_data, 0).finish());
 			inner(&l, &r)?.data().get_type()
 		};
 		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ty, left_data.len())));
@@ -109,7 +110,9 @@ pub(crate) fn unary_op_unwrap_option(
 		let ty = if is_untyped_none(inner_data, bv) {
 			ValueType::Boolean
 		} else {
-			inner(&ColumnWithName::new(col.name().clone(), inner_data.empty_like(0)))?.data().get_type()
+			inner(&ColumnWithName::new(col.name().clone(), ColumnBuilder::like(inner_data, 0).finish()))?
+				.data()
+				.get_type()
 		};
 		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(ty, inner_data.len())));
 	}

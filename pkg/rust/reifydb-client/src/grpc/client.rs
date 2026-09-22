@@ -888,10 +888,10 @@ impl ReifyClient for GrpcClient {
 
 #[cfg(test)]
 mod tests {
+	use arrow_array::Int32Array;
 	use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 	use reifydb_value::value::{
 		Value,
-		container::number::NumberContainer,
 		diff_type::DiffType,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	};
@@ -902,7 +902,7 @@ mod tests {
 	fn update_frame(id: i32) -> Frame {
 		Frame::new(vec![FrameColumn {
 			name: "id".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::from_vec(vec![id])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![id])),
 		}])
 		.with_op(DiffType::Update)
 	}

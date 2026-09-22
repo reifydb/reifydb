@@ -31,6 +31,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+arrow-buffer = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["test-util"] }
 

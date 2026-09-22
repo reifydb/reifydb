@@ -21,7 +21,6 @@ use reifydb_testing_chaos::{
 	fuzz::run_reported,
 	operator::{
 		session::Session,
-		subject::Subject,
 		view::{MaterializedView, RowKey},
 		workload::Workload,
 	},

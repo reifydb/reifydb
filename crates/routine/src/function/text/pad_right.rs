@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType},
-};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 pub struct TextPadRight {
 	info: RoutineInfo,
@@ -70,19 +69,19 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if !str_container.is_defined(i) || !pad_container.is_defined(i) {
+					if i >= str_container.len() || i >= pad_container.len() {
 						result_data.push(String::new());
 						continue;
 					}
 
 					let target_len = match len_data {
-						ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Int8(c) => c.get(i).copied(),
-						ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
-						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Int8(c) => c.values().get(i).copied(),
+						ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
 						_ => {
 							return Err(RoutineError::FunctionInvalidArgumentType {
 								function: ctx.fragment.clone(),
@@ -100,8 +99,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 
 					match target_len {
 						Some(n) if n >= 0 => {
-							let s = str_container.get(i).unwrap();
-							let pad_char = pad_container.get(i).unwrap();
+							let s = str_container.value(i);
+							let pad_char = pad_container.value(i);
 							let char_count = s.chars().count();
 							let target = n as usize;
 
@@ -137,14 +136,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
 
-				let mut combined_bv: Option<BitVec> = None;
+				let mut combined_bv: Option<BooleanBuffer> = None;
 				for bv in [str_bv, len_bv, pad_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {
-						Some(existing) => existing.and(bv),
+						Some(existing) => &existing & bv,
 						None => bv.clone(),
 					});
 				}

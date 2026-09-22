@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Nones bitmap: LSB-first per byte. A set bit means the value is defined (present).
-// Mirrors Rust BitVec::from_raw used in crates/wire-format/src/encoding/plain.rs:encode_bitvec
-// and reifydb_type::util::bitvec::BitVec semantics.
-
 export function decodeBitvec(data: Uint8Array, len: number): boolean[] {
     const out = new Array<boolean>(len);
     for (let i = 0; i < len; i++) {

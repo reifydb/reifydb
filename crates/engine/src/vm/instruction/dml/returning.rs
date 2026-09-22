@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::{
 	expression::{
@@ -31,12 +31,9 @@ use crate::{
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Columns {
 	let fields = shape.fields();
 
-	let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
+	let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
 	for field in fields.iter() {
-		columns_vec.push(ColumnWithName {
-			name: Fragment::internal(&field.name),
-			data: ColumnBuffer::with_capacity(field.constraint.get_type(), rows.len()),
-		});
+		builders.push(ColumnBuilder::with_capacity(field.constraint.get_type(), rows.len()));
 	}
 
 	let mut row_numbers = Vec::with_capacity(rows.len());
@@ -51,9 +48,18 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 			time.push(t);
 		}
 		for (i, _) in fields.iter().enumerate() {
-			columns_vec[i].data.push_value(shape.get_value(encoded, i));
+			builders[i].push_value(shape.get_value(encoded, i));
 		}
 	}
+
+	let columns_vec: Vec<ColumnWithName> = fields
+		.iter()
+		.zip(builders)
+		.map(|(field, data)| ColumnWithName {
+			name: Fragment::internal(&field.name),
+			data: data.finish(),
+		})
+		.collect();
 
 	Columns::with_system(
 		columns_vec,

@@ -120,7 +120,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -134,7 +134,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -148,7 +148,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -191,7 +191,7 @@ macro_rules! dict_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -238,7 +238,7 @@ macro_rules! rle_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -290,7 +290,7 @@ macro_rules! delta_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}
@@ -352,7 +352,7 @@ macro_rules! nones_tests {
 			($defined:expr) => {
 				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make($values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&$defined),
+					bitvec: arrow_buffer::BooleanBuffer::from($defined.as_slice()),
 				}
 			};
 		}
@@ -412,7 +412,7 @@ macro_rules! nones_tests {
 				assert_eq!(v.len(), 1);
 				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make(v)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				}
 			};
 			crate::common::assert_option_round_trip(col, $inner_type, &defined);
@@ -427,7 +427,7 @@ macro_rules! nones_tests {
 				assert_eq!(v.len(), 1);
 				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make(v)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				}
 			};
 			crate::common::assert_option_round_trip(col, $inner_type, &defined);
@@ -487,7 +487,7 @@ macro_rules! delta_rle_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				},
 			);
 		}

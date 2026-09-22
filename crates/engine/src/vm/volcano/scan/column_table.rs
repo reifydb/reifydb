@@ -7,7 +7,7 @@ use reifydb_column::snapshot::{Schema, SystemColumn};
 use reifydb_core::{
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::resolved::ResolvedTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::transaction::Transaction;
@@ -82,7 +82,7 @@ fn empty_columns(schema: &Schema) -> Columns {
 		.map(|(name, ty, _)| {
 			ColumnWithName::new(
 				Fragment::internal(name.clone()),
-				ColumnBuffer::with_capacity(ty.clone(), 0),
+				ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 			)
 		})
 		.collect();

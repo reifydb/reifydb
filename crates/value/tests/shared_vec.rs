@@ -244,43 +244,6 @@ fn push_and_extend_after_clone_never_leak_into_the_other_handle() {
 }
 
 #[test]
-fn clear_on_unique_frozen_storage_keeps_capacity() {
-	// Clearing unique storage must keep the allocation so the pool can reuse it, otherwise pooling is pointless.
-	let mut vec = Vec::with_capacity(2048);
-	vec.extend(0..100i64);
-	let cap = vec.capacity();
-	let mut v = SharedVec::from_vec(vec);
-	v.freeze();
-	let before = v.as_ptr();
-	v.clear();
-	assert!(v.is_empty());
-	assert_eq!(v.capacity(), cap);
-	v.push(1);
-	assert_eq!(v.as_ptr(), before, "the cleared storage must be reused in place");
-	assert_eq!(&v[..], &[1]);
-}
-
-#[test]
-fn clear_on_shared_storage_leaves_the_other_handle_intact() {
-	// Clearing one handle must never clear the data another handle still reads.
-	let mut v = frozen_range(100);
-	let base = v.as_ptr();
-	let mut c = v.clone();
-	c.clear();
-	assert!(c.is_empty());
-	assert_eq!(&v[..], &(0..100).collect::<Vec<_>>()[..]);
-	c.push(5);
-	assert_eq!(&c[..], &[5]);
-	assert_eq!(v[0], 0);
-
-	let mut s = v.slice(10, 20);
-	s.clear();
-	assert!(s.is_empty());
-	assert_eq!(v.len(), 100, "clearing a slice must never truncate the parent");
-	assert_eq!(v.make_mut().as_ptr(), base, "every cleared handle must drop its reference to the shared storage");
-}
-
-#[test]
 fn owned_capacity_is_the_vec_capacity() {
 	// An owned vector must report the real Vec capacity so pooled buffers can be sized.
 	let v: SharedVec<u64> = SharedVec::with_capacity(300);

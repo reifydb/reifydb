@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -62,7 +62,7 @@ fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
 		inner: Box::new(ValueType::Float8),
 		accuracy: 10_000,
 	};
-	let mut buffer = ColumnBuffer::with_capacity(ty, rows.len());
+	let mut buffer = ColumnBuilder::with_capacity(ty, rows.len());
 	for values in rows {
 		let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
 		for value in *values {
@@ -70,7 +70,7 @@ fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
 		}
 		buffer.push_value(Value::Digest(Box::new(digest)));
 	}
-	buffer
+	buffer.finish()
 }
 
 fn change(origin: OperatorId, diffs: Vec<Diff>) -> Change {

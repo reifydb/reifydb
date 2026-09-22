@@ -3,12 +3,18 @@
 
 use std::iter;
 
+use arrow_array::{Array, FixedSizeBinaryArray, LargeBinaryArray, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	encoding::LeBytes,
-	util::bitvec::BitVec,
 	value::{
 		Value,
-		container::{blob::BlobContainer, dictionary::DictionaryContainer, utf8::Utf8Container},
+		container::{
+			decimal_array::u128s,
+			dictionary_array,
+			temporal_array::{dates, datetimes, durations, times},
+			uuid_array::{identity_ids, uuid4s, uuid7s},
+		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -27,8 +33,11 @@ use reifydb_value::{
 use crate::{error::EncodeError, frame::encode::any::encode_any_value, tag::ValueKind};
 
 macro_rules! encode_fixed {
-	($container:expr, $ty:expr, $elem:ty) => {{
-		let slice: &[$elem] = &**$container;
+	($container:expr, $ty:expr, $elem:ty) => {
+		encode_fixed!(slice: $container.values(), $ty, $elem)
+	};
+	(slice: $slice:expr, $ty:expr, $elem:ty) => {{
+		let slice: &[$elem] = $slice;
 		let mut buf = Vec::with_capacity(slice.len() * <$elem as LeBytes>::ENCODED_SIZE);
 		for v in slice {
 			buf.extend_from_slice(LeBytes::to_le_bytes(v).as_ref());
@@ -72,16 +81,13 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 
 fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> {
 	let result = match col {
-		FrameColumnData::Bool(c) => {
-			let bv: &BitVec = c;
-			PlainEncoded {
-				data: encode_bitvec(bv),
-				offsets: vec![],
-				nones: vec![],
-				type_code: ValueKind::Boolean.byte(),
-				has_nones: false,
-			}
-		}
+		FrameColumnData::Bool(c) => PlainEncoded {
+			data: encode_bitvec(c.values()),
+			offsets: vec![],
+			nones: vec![],
+			type_code: ValueKind::Boolean.byte(),
+			has_nones: false,
+		},
 		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, f32),
 		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, f64),
 		FrameColumnData::Int1(c) => encode_fixed!(c, ValueType::Int1, i8),
@@ -93,9 +99,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, u16),
 		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, u32),
 		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, u64),
-		FrameColumnData::Uint16(c) => encode_fixed!(c, ValueType::Uint16, u128),
+		FrameColumnData::Uint16(c) => encode_fixed!(slice: &u128s(c), ValueType::Uint16, u128),
 		FrameColumnData::Date(c) => {
-			let slice: &[Date] = c;
+			let slice: &[Date] = dates(c);
 			let mut buf = Vec::with_capacity(slice.len() * Date::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -109,7 +115,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::DateTime(c) => {
-			let slice: &[DateTime] = c;
+			let slice: &[DateTime] = datetimes(c);
 			let mut buf = Vec::with_capacity(slice.len() * DateTime::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -123,7 +129,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::Time(c) => {
-			let slice: &[Time] = c;
+			let slice: &[Time] = times(c);
 			let mut buf = Vec::with_capacity(slice.len() * Time::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -137,7 +143,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::Duration(c) => {
-			let slice: &[Duration] = c;
+			let slice: &[Duration] = durations(c);
 			let mut buf = Vec::with_capacity(slice.len() * Duration::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -151,7 +157,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::IdentityId(c) => {
-			let slice: &[IdentityId] = c;
+			let slice: &[IdentityId] = identity_ids(c);
 			let mut buf = Vec::with_capacity(slice.len() * IdentityId::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -165,7 +171,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::Uuid4(c) => {
-			let slice: &[Uuid4] = c;
+			let slice: &[Uuid4] = uuid4s(c);
 			let mut buf = Vec::with_capacity(slice.len() * Uuid4::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -179,7 +185,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			}
 		}
 		FrameColumnData::Uuid7(c) => {
-			let slice: &[Uuid7] = c;
+			let slice: &[Uuid7] = uuid7s(c);
 			let mut buf = Vec::with_capacity(slice.len() * Uuid7::ENCODED_SIZE);
 			for v in slice {
 				buf.extend_from_slice(v.to_le_bytes().as_ref());
@@ -221,7 +227,10 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				has_nones: false,
 			});
 		}
-		FrameColumnData::DictionaryId(c) => encode_dictionary_ids(c),
+		FrameColumnData::DictionaryId {
+			container,
+			..
+		} => encode_dictionary_ids(container),
 		FrameColumnData::Digest {
 			container,
 			..
@@ -260,20 +269,20 @@ fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: ValueTy
 	}
 }
 
-fn encode_varlen_strings(c: &Utf8Container, ty: ValueType) -> PlainEncoded {
-	encode_varlen(c.len(), |i| c.get(i).unwrap().as_bytes().to_vec(), ty)
+fn encode_varlen_strings(c: &LargeStringArray, ty: ValueType) -> PlainEncoded {
+	encode_varlen(c.len(), |i| c.value(i).as_bytes().to_vec(), ty)
 }
 
-fn encode_varlen_blobs(c: &BlobContainer, ty: ValueType) -> PlainEncoded {
-	encode_varlen(c.len(), |i| c.get(i).unwrap_or(&[]).to_vec(), ty)
+fn encode_varlen_blobs(c: &LargeBinaryArray, ty: ValueType) -> PlainEncoded {
+	encode_varlen(c.len(), |i| c.value(i).to_vec(), ty)
 }
 
-fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {
+fn encode_dictionary_ids(c: &FixedSizeBinaryArray) -> PlainEncoded {
 	let mut buf = Vec::new();
 	if !c.is_empty() {
 		let mut disc = 1u8;
 		for i in 0..c.len() {
-			if let Some(id) = c.get(i) {
+			if let Some(id) = dictionary_array::get(c, i) {
 				let d = match id {
 					DictionaryEntryId::U1(_) => 1u8,
 					DictionaryEntryId::U2(_) => 2u8,
@@ -289,7 +298,7 @@ fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {
 
 		buf.push(disc);
 		for i in 0..c.len() {
-			if let Some(id) = c.get(i) {
+			if let Some(id) = dictionary_array::get(c, i) {
 				match disc {
 					1 => buf.push(id.to_u128() as u8),
 					2 => buf.extend_from_slice(&(id.to_u128() as u16).to_le_bytes()),
@@ -312,7 +321,7 @@ fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {
 	}
 }
 
-pub fn encode_bitvec(bv: &BitVec) -> Vec<u8> {
+pub fn encode_bitvec(bv: &BooleanBuffer) -> Vec<u8> {
 	let len = bv.len();
 	let byte_count = len.div_ceil(8);
 	let mut buf = Vec::with_capacity(byte_count);
@@ -320,7 +329,7 @@ pub fn encode_bitvec(bv: &BitVec) -> Vec<u8> {
 		let mut byte = 0u8;
 		for bit in 0..8 {
 			let idx = i * 8 + bit;
-			if idx < len && bv.get(idx) {
+			if idx < len && bv.value(idx) {
 				byte |= 1 << bit;
 			}
 		}

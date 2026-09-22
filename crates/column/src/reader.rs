@@ -3,13 +3,13 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
-};
+use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	reifydb_assertions,
+	util::bitmap,
 	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
@@ -135,7 +135,12 @@ fn materialize_view_full(schema: &Schema, view: &ColumnBlock, _start: usize, _en
 	materialize(schema, |i| concat_view_chunks(&view.columns[i]))
 }
 
-fn materialize_filtered(schema: &Schema, view: &ColumnBlock, _batch_start: usize, mask: &RowMask) -> Result<Columns> {
+fn materialize_filtered(
+	schema: &Schema,
+	view: &ColumnBlock,
+	_batch_start: usize,
+	mask: &BooleanBuffer,
+) -> Result<Columns> {
 	materialize(schema, |i| filter_view_column(&view.columns[i], mask))
 }
 
@@ -167,14 +172,16 @@ fn extract_datetimes(data: &ColumnBuffer) -> Vec<DateTime> {
 	out
 }
 
-fn filter_view_column(view_chunks: &ColumnChunks, mask: &RowMask) -> Result<ColumnBuffer> {
+fn filter_view_column(view_chunks: &ColumnChunks, mask: &BooleanBuffer) -> Result<ColumnBuffer> {
 	let mut chunk_offset = 0usize;
 	let mut out: Option<ColumnBuffer> = None;
 	for chunk in &view_chunks.chunks {
 		let chunk_len = chunk.len();
-		let chunk_mask = mask.slice(chunk_offset, chunk_offset + chunk_len);
+		let chunk_end = chunk_offset + chunk_len;
+		assert!(chunk_end <= mask.len(), "filter_view_column: mask end {chunk_end} > len {}", mask.len());
+		let chunk_mask = bitmap::slice(mask, chunk_offset, chunk_end);
 		chunk_offset += chunk_len;
-		if chunk_mask.popcount() == 0 {
+		if chunk_mask.count_set_bits() == 0 {
 			continue;
 		}
 		let filtered: Column = compute::filter(chunk, &chunk_mask)?;
@@ -230,7 +237,10 @@ impl Iterator for SnapshotReader {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::data::{Column, canonical::Canonical};
+	use reifydb_core::value::column::{
+		builder::ColumnBuilder,
+		data::{Column, canonical::Canonical},
+	};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
@@ -449,14 +459,16 @@ mod tests {
 	#[test]
 	fn pushdown_is_none_over_multi_chunk_nullable() {
 		// A none at position 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
-		let mut a = ColumnBuffer::int4_with_capacity(3);
+		let mut a = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		a.push::<i32>(10);
 		a.push_none();
 		a.push::<i32>(30);
-		let mut b = ColumnBuffer::int4_with_capacity(3);
+		let a = a.finish();
+		let mut b = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		b.push::<i32>(40);
 		b.push_none();
 		b.push::<i32>(60);
+		let b = b.finish();
 		let chunks = vec![array_from_column_data(&a), array_from_column_data(&b)];
 		let id_col = ColumnChunks::new(ValueType::Int4, true, chunks);
 		let mut schema_entries: Vec<(String, ValueType, bool)> = vec![("a".to_string(), ValueType::Int4, true)];
@@ -474,5 +486,62 @@ mod tests {
 		assert_eq!(batch.row_count(), 2);
 		assert_eq!(batch.row_numbers()[0], RowNumber(1));
 		assert_eq!(batch.row_numbers()[1], RowNumber(4));
+	}
+
+	#[test]
+	fn pushdown_mask_over_a_mid_chunk_window_keeps_rows_and_nones_aligned() {
+		// Batch 2 starts mid-chunk: an (offset, len) chunk mask, not (start, end), panics or keeps wrong rows.
+		let first = ColumnBuffer::int4_optional([
+			Some(0),
+			None,
+			Some(20),
+			Some(30),
+			None,
+			Some(50),
+			Some(60),
+			Some(70),
+			None,
+			Some(90),
+			Some(100),
+		]);
+		let second = ColumnBuffer::int4_optional([Some(110), None, Some(130), Some(140), None, Some(160)]);
+		let chunks = vec![array_from_column_data(&first), array_from_column_data(&second)];
+		let a_col = ColumnChunks::new(ValueType::Int4, true, chunks);
+		let mut schema_entries: Vec<(String, ValueType, bool)> = vec![("a".to_string(), ValueType::Int4, true)];
+		let mut block_chunks: Vec<ColumnChunks> = vec![a_col];
+		for (entry, chunk) in system_chunked(17) {
+			schema_entries.push(entry);
+			block_chunks.push(chunk);
+		}
+		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
+
+		let p = Predicate::Or(vec![
+			Predicate::IsNone(ColRef::from("a")),
+			Predicate::Gt(ColRef::from("a"), Value::Int4(125)),
+		]);
+		let reader = SnapshotReader::new(block, 8).with_predicate(p);
+
+		let mut rows = Vec::new();
+		for batch in reader {
+			let batch = batch.unwrap();
+			let a = batch.column("a").unwrap();
+			for i in 0..batch.row_count() {
+				rows.push((batch.row_numbers()[i], a.data().get_value(i)));
+			}
+		}
+		let none = || Value::none_of(ValueType::Int4);
+		assert_eq!(
+			rows,
+			vec![
+				(RowNumber(1), none()),
+				(RowNumber(4), none()),
+				(RowNumber(8), none()),
+				(RowNumber(12), none()),
+				(RowNumber(13), Value::Int4(130)),
+				(RowNumber(14), Value::Int4(140)),
+				(RowNumber(15), none()),
+				(RowNumber(16), Value::Int4(160)),
+			]
+		);
 	}
 }

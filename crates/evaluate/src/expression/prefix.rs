@@ -16,9 +16,10 @@ use crate::{Result, expression::option::unary_op_unwrap_option};
 
 macro_rules! prefix_signed_int {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident) => {{
-		let mut result = Vec::with_capacity($container.data().len());
-		for (idx, val) in $container.data().iter().enumerate() {
-			if $container.is_defined(idx) {
+		let values: &[_] = $container.values();
+		let mut result = Vec::with_capacity(values.len());
+		for (idx, val) in values.iter().enumerate() {
+			if idx < values.len() {
 				result.push(match $operator {
 					PrefixOperator::Minus(_) => -*val,
 					PrefixOperator::Plus(_) => *val,
@@ -42,8 +43,9 @@ macro_rules! prefix_signed_int {
 
 macro_rules! prefix_unsigned_int {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
-		let mut result = Vec::with_capacity($container.data().len());
-		for val in $container.data().iter() {
+		let values: &[_] = $container.values();
+		let mut result = Vec::with_capacity(values.len());
+		for val in values.iter() {
 			let signed = *val as $signed_ty;
 			result.push(match $operator {
 				PrefixOperator::Minus(_) => -signed,
@@ -65,9 +67,10 @@ macro_rules! prefix_unsigned_int {
 
 macro_rules! prefix_float {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $zero:expr, $constructor:ident) => {{
-		let mut result = Vec::with_capacity($container.data().len());
-		for (idx, val) in $container.data().iter().enumerate() {
-			if $container.is_defined(idx) {
+		let values: &[_] = $container.values();
+		let mut result = Vec::with_capacity(values.len());
+		for (idx, val) in values.iter().enumerate() {
+			if idx < values.len() {
 				result.push(match $operator {
 					PrefixOperator::Minus(_) => -*val,
 					PrefixOperator::Plus(_) => *val,
@@ -107,9 +110,9 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 	unary_op_unwrap_option(column, |column| match column.data() {
 		ColumnBuffer::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
-				let mut result = Vec::with_capacity(container.data().len());
-				for (idx, val) in container.data().iter().enumerate() {
-					if container.is_defined(idx) {
+				let mut result = Vec::with_capacity(container.len());
+				for (idx, val) in container.values().iter().enumerate() {
+					if idx < container.len() {
 						result.push(!val);
 					} else {
 						result.push(false);

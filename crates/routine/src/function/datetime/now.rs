@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, datetime::DateTime, value_type::ValueType};
+use reifydb_value::value::{container::temporal_array::datetime_array, datetime::DateTime, value_type::ValueType};
 
 pub struct DateTimeNow {
 	info: RoutineInfo,
@@ -40,12 +40,15 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNow {
 		let millis = ctx.runtime_context.clock.now().to_millis();
 		let dt = DateTime::from_epoch_millis(millis)?;
 
-		let mut container = TemporalContainer::with_capacity(row_count);
+		let mut container = Vec::with_capacity(row_count);
 		for _ in 0..row_count {
 			container.push(dt);
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::DateTime(container))]))
+		Ok(Columns::new(vec![ColumnWithName::new(
+			ctx.fragment.clone(),
+			ColumnBuffer::DateTime(datetime_array(container)),
+		)]))
 	}
 }
 

@@ -1,47 +1,61 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::util::bitvec::BitVec;
+use arrow_buffer::BooleanBuffer;
+use reifydb_value::{
+	util::bitmap,
+	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+};
 
 use crate::value::column::ColumnBuffer;
 
 macro_rules! map_container {
-	($self:expr, |$c:ident| $body:expr) => {
+	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
 		match $self {
-			ColumnBuffer::Bool($c) => ColumnBuffer::Bool($body),
-			ColumnBuffer::Float4($c) => ColumnBuffer::Float4($body),
-			ColumnBuffer::Float8($c) => ColumnBuffer::Float8($body),
-			ColumnBuffer::Int1($c) => ColumnBuffer::Int1($body),
-			ColumnBuffer::Int2($c) => ColumnBuffer::Int2($body),
-			ColumnBuffer::Int4($c) => ColumnBuffer::Int4($body),
-			ColumnBuffer::Int8($c) => ColumnBuffer::Int8($body),
-			ColumnBuffer::Int16($c) => ColumnBuffer::Int16($body),
-			ColumnBuffer::Uint1($c) => ColumnBuffer::Uint1($body),
-			ColumnBuffer::Uint2($c) => ColumnBuffer::Uint2($body),
-			ColumnBuffer::Uint4($c) => ColumnBuffer::Uint4($body),
-			ColumnBuffer::Uint8($c) => ColumnBuffer::Uint8($body),
-			ColumnBuffer::Uint16($c) => ColumnBuffer::Uint16($body),
+			ColumnBuffer::Float4($a) => ColumnBuffer::Float4($native),
+			ColumnBuffer::Float8($a) => ColumnBuffer::Float8($native),
+			ColumnBuffer::Int1($a) => ColumnBuffer::Int1($native),
+			ColumnBuffer::Int2($a) => ColumnBuffer::Int2($native),
+			ColumnBuffer::Int4($a) => ColumnBuffer::Int4($native),
+			ColumnBuffer::Int8($a) => ColumnBuffer::Int8($native),
+			ColumnBuffer::Uint1($a) => ColumnBuffer::Uint1($native),
+			ColumnBuffer::Uint2($a) => ColumnBuffer::Uint2($native),
+			ColumnBuffer::Uint4($a) => ColumnBuffer::Uint4($native),
+			ColumnBuffer::Uint8($a) => ColumnBuffer::Uint8($native),
+			ColumnBuffer::Int16($a) => ColumnBuffer::Int16($native),
+			ColumnBuffer::Uint16($a) => ColumnBuffer::Uint16($native),
+			ColumnBuffer::Bool(_) => {
+				unreachable!(
+					"map_container! must not be called on Bool variant directly; handle it explicitly"
+				)
+			}
 			ColumnBuffer::Utf8 {
-				container: $c,
+				container: $v,
 				max_bytes,
 			} => ColumnBuffer::Utf8 {
-				container: $body,
+				container: $varlen,
 				max_bytes: *max_bytes,
 			},
-			ColumnBuffer::Date($c) => ColumnBuffer::Date($body),
-			ColumnBuffer::DateTime($c) => ColumnBuffer::DateTime($body),
-			ColumnBuffer::Time($c) => ColumnBuffer::Time($body),
-			ColumnBuffer::Duration($c) => ColumnBuffer::Duration($body),
+			ColumnBuffer::Date($a) => ColumnBuffer::Date($native),
+			ColumnBuffer::DateTime($a) => ColumnBuffer::DateTime($native),
+			ColumnBuffer::Time($a) => ColumnBuffer::Time($native),
+			ColumnBuffer::Duration($a) => ColumnBuffer::Duration($native),
 
-			ColumnBuffer::IdentityId($c) => ColumnBuffer::IdentityId($body),
-			ColumnBuffer::DictionaryId($c) => ColumnBuffer::DictionaryId($body),
-			ColumnBuffer::Uuid4($c) => ColumnBuffer::Uuid4($body),
-			ColumnBuffer::Uuid7($c) => ColumnBuffer::Uuid7($body),
+			ColumnBuffer::IdentityId($u) => ColumnBuffer::IdentityId($fixed),
+			ColumnBuffer::DictionaryId {
+				..
+			} => {
+				unreachable!(
+					"map_container! must not be called on DictionaryId variant directly; handle it explicitly"
+				)
+			}
+			ColumnBuffer::Uuid4($u) => ColumnBuffer::Uuid4($fixed),
+			ColumnBuffer::Uuid7($u) => ColumnBuffer::Uuid7($fixed),
 			ColumnBuffer::Blob {
-				container: $c,
+				container: $v,
 				max_bytes,
 			} => ColumnBuffer::Blob {
-				container: $body,
+				container: $varlen,
 				max_bytes: *max_bytes,
 			},
 			ColumnBuffer::Int {
@@ -95,9 +109,9 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				let new_bitvec = bitvec.take(num);
+				let new_bitvec = bitmap::take(bitvec, num);
 
-				if new_bitvec.count_ones() == new_bitvec.len() && !new_bitvec.is_empty() {
+				if !new_bitvec.has_false() && !new_bitvec.is_empty() {
 					inner.take(num)
 				} else {
 					ColumnBuffer::Option {
@@ -106,7 +120,21 @@ impl ColumnBuffer {
 					}
 				}
 			}
-			_ => map_container!(self, |c| c.take(num)),
+			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::take(a, num)),
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => ColumnBuffer::DictionaryId {
+				container: dictionary_array::take(container, num),
+				dictionary_id: *dictionary_id,
+			},
+			_ => map_container!(
+				self,
+				|c| c.take(num),
+				|a| primitive::take(a, num),
+				|u| uuid_array::take(u, num),
+				|v| varlen_array::take(v, num)
+			),
 		}
 	}
 
@@ -120,10 +148,24 @@ impl ColumnBuffer {
 				assert!(end <= bitvec.len(), "ColumnBuffer::slice: end {end} > len {}", bitvec.len());
 				ColumnBuffer::Option {
 					inner: Box::new(inner.slice(start, end)),
-					bitvec: bitvec.slice(start, end),
+					bitvec: bitmap::slice(bitvec, start, end),
 				}
 			}
-			_ => map_container!(self, |c| c.slice(start, end)),
+			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::slice(a, start, end)),
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => ColumnBuffer::DictionaryId {
+				container: dictionary_array::slice(container, start, end),
+				dictionary_id: *dictionary_id,
+			},
+			_ => map_container!(
+				self,
+				|c| c.slice(start, end),
+				|a| primitive::slice(a, start, end),
+				|u| uuid_array::slice(u, start, end),
+				|v| varlen_array::slice(v, start, end)
+			),
 		}
 	}
 
@@ -134,7 +176,7 @@ impl ColumnBuffer {
 				bitvec,
 			} => ColumnBuffer::Option {
 				inner: Box::new(inner.gather(indices)),
-				bitvec: BitVec::from_fn(indices.len(), |row| bitvec.get(indices[row])),
+				bitvec: BooleanBuffer::collect_bool(indices.len(), |row| bitvec.value(indices[row])),
 			},
 			_ => {
 				let mut cloned = self.clone();

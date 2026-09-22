@@ -36,7 +36,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{expression::Expression, nodes::InsertSeriesNode};
@@ -464,11 +464,11 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 		series.key_column_data(vec![snapshot.key_value]),
 	));
 	for (i, col_def) in snapshot.data_columns.iter().enumerate() {
-		let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
+		let mut data = ColumnBuilder::with_capacity(col_def.constraint.get_type(), 1);
 		data.push_value(snapshot.data_values[i].clone());
 		cols.push(ColumnWithName {
 			name: Fragment::internal(&col_def.name),
-			data,
+			data: data.finish(),
 		});
 	}
 	let post = Columns::with_system(

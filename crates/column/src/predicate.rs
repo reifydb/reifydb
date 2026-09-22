@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{buffer::ColumnBuffer, data::Column, mask::RowMask};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::Column};
 use reifydb_value::{Result, value::Value};
 
 use crate::{
@@ -48,7 +49,7 @@ pub fn evaluate(block: &ColumnBlock, predicate: &Predicate) -> Result<Selection>
 	Ok(mask_to_selection(mask))
 }
 
-fn evaluate_mask(block: &ColumnBlock, predicate: &Predicate, len: usize) -> Result<RowMask> {
+fn evaluate_mask(block: &ColumnBlock, predicate: &Predicate, len: usize) -> Result<BooleanBuffer> {
 	match predicate {
 		Predicate::Eq(col, v) => compare_mask(block, col, v, CompareOp::Eq),
 		Predicate::Ne(col, v) => compare_mask(block, col, v, CompareOp::Ne),
@@ -57,60 +58,61 @@ fn evaluate_mask(block: &ColumnBlock, predicate: &Predicate, len: usize) -> Resu
 		Predicate::Gt(col, v) => compare_mask(block, col, v, CompareOp::Gt),
 		Predicate::GtEq(col, v) => compare_mask(block, col, v, CompareOp::GtEq),
 		Predicate::In(col, values) => {
-			let mut acc = RowMask::none_set(len);
+			let mut acc = BooleanBuffer::new_unset(len);
 			for v in values {
-				acc = acc.or(&compare_mask(block, col, v, CompareOp::Eq)?);
+				acc = &acc | &compare_mask(block, col, v, CompareOp::Eq)?;
 			}
 			Ok(acc)
 		}
 		Predicate::IsNone(col) => Ok(is_none_mask(column(block, col)?)),
-		Predicate::IsNotNone(col) => Ok(is_none_mask(column(block, col)?).not()),
+		Predicate::IsNotNone(col) => Ok(!&is_none_mask(column(block, col)?)),
 		Predicate::And(clauses) => {
-			let mut acc = RowMask::all_set(len);
+			let mut acc = BooleanBuffer::new_set(len);
 			for c in clauses {
-				acc = acc.and(&evaluate_mask(block, c, len)?);
+				acc = &acc & &evaluate_mask(block, c, len)?;
 			}
 			Ok(acc)
 		}
 		Predicate::Or(clauses) => {
-			let mut acc = RowMask::none_set(len);
+			let mut acc = BooleanBuffer::new_unset(len);
 			for c in clauses {
-				acc = acc.or(&evaluate_mask(block, c, len)?);
+				acc = &acc | &evaluate_mask(block, c, len)?;
 			}
 			Ok(acc)
 		}
-		Predicate::Not(inner) => Ok(evaluate_mask(block, inner, len)?.not()),
+		Predicate::Not(inner) => Ok(!&evaluate_mask(block, inner, len)?),
 	}
 }
 
-fn compare_mask(block: &ColumnBlock, col: &ColRef, rhs: &Value, op: CompareOp) -> Result<RowMask> {
+fn compare_mask(block: &ColumnBlock, col: &ColRef, rhs: &Value, op: CompareOp) -> Result<BooleanBuffer> {
 	let ch = column(block, col)?;
 	if ch.chunks.is_empty() {
-		return Ok(RowMask::none_set(0));
+		return Ok(BooleanBuffer::new_unset(0));
 	}
-	let mut parts = Vec::with_capacity(ch.chunks.len());
+	let mut mask = BooleanBufferBuilder::new(ch.len());
 	for chunk in &ch.chunks {
 		let result = compute::compare(chunk, rhs, op)?;
-		parts.push(bool_array_to_mask(&result)?);
+		mask.append_buffer(&bool_array_to_mask(&result)?);
 	}
-	Ok(RowMask::concat(&parts))
+	Ok(mask.finish())
 }
 
-fn is_none_mask(ch: &ColumnChunks) -> RowMask {
+fn is_none_mask(ch: &ColumnChunks) -> BooleanBuffer {
 	let total = ch.len();
-	let mut mask = RowMask::none_set(total);
+	let mut mask = BooleanBufferBuilder::new(total);
+	mask.append_n(total, false);
 	let mut row_offset = 0;
 	for chunk in &ch.chunks {
 		if let Some(nones) = chunk.nones() {
 			for i in 0..chunk.len() {
-				if nones.is_none(i) {
-					mask.set(row_offset + i, true);
+				if nones.is_null(i) {
+					mask.set_bit(row_offset + i, true);
 				}
 			}
 		}
 		row_offset += chunk.len();
 	}
-	mask
+	mask.finish()
 }
 
 fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> {
@@ -123,25 +125,26 @@ fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> 
 	})
 }
 
-fn bool_array_to_mask(array: &Column) -> Result<RowMask> {
+fn bool_array_to_mask(array: &Column) -> Result<BooleanBuffer> {
 	let canon = array.to_canonical()?;
 	if !matches!(canon.buffer, ColumnBuffer::Bool(_)) {
 		return Err(ColumnError::PredicateCompareNotBool.into());
 	}
 	let len = canon.len();
-	let mut mask = RowMask::none_set(len);
+	let mut mask = BooleanBufferBuilder::new(len);
+	mask.append_n(len, false);
 	let nones = canon.nones.as_ref();
 	for i in 0..len {
 		let is_true = matches!(canon.buffer.get_value(i), Value::Boolean(true));
-		if is_true && !nones.map(|n| n.is_none(i)).unwrap_or(false) {
-			mask.set(i, true);
+		if is_true && !nones.map(|n| n.is_null(i)).unwrap_or(false) {
+			mask.set_bit(i, true);
 		}
 	}
-	Ok(mask)
+	Ok(mask.finish())
 }
 
-fn mask_to_selection(mask: RowMask) -> Selection {
-	let kept = mask.popcount();
+fn mask_to_selection(mask: BooleanBuffer) -> Selection {
+	let kept = mask.count_set_bits();
 	if kept == 0 {
 		Selection::None_
 	} else if kept == mask.len() {
@@ -157,6 +160,7 @@ mod tests {
 
 	use reifydb_core::value::column::{
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		data::{Column, canonical::Canonical},
 	};
 	use reifydb_value::value::value_type::ValueType;
@@ -190,9 +194,9 @@ mod tests {
 		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
 			panic!("expected Mask selection");
 		};
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(1));
-		assert!(m.get(3));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(1));
+		assert!(m.value(3));
 	}
 
 	#[test]
@@ -219,9 +223,9 @@ mod tests {
 		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
 			panic!("expected Mask selection");
 		};
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(2));
-		assert!(m.get(4));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(2));
+		assert!(m.value(4));
 	}
 
 	#[test]
@@ -231,18 +235,19 @@ mod tests {
 		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
 			panic!("expected Mask selection");
 		};
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(1));
-		assert!(m.get(4));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(1));
+		assert!(m.value(4));
 	}
 
 	#[test]
 	fn evaluate_is_none_on_nullable_column() {
-		let mut nullable_ids = ColumnBuffer::int4_with_capacity(4);
+		let mut nullable_ids = ColumnBuilder::with_capacity(ValueType::Int4, 4);
 		nullable_ids.push::<i32>(10);
 		nullable_ids.push_none();
 		nullable_ids.push::<i32>(30);
 		nullable_ids.push_none();
+		let nullable_ids = nullable_ids.finish();
 		let id_col = ColumnChunks::single(
 			ValueType::Int4,
 			true,
@@ -254,9 +259,9 @@ mod tests {
 		let Selection::Mask(m) = evaluate(&t, &Predicate::IsNone(ColRef::from("id"))).unwrap() else {
 			panic!("expected Mask selection");
 		};
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(1));
-		assert!(m.get(3));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(1));
+		assert!(m.value(3));
 	}
 
 	fn int4_chunked(parts: &[&[i32]]) -> ColumnChunks {
@@ -286,11 +291,11 @@ mod tests {
 			panic!("expected Mask selection");
 		};
 		assert_eq!(m.len(), 8);
-		assert_eq!(m.popcount(), 4);
-		assert!(m.get(1));
-		assert!(m.get(3));
-		assert!(m.get(5));
-		assert!(m.get(7));
+		assert_eq!(m.count_set_bits(), 4);
+		assert!(m.value(1));
+		assert!(m.value(3));
+		assert!(m.value(5));
+		assert!(m.value(7));
 	}
 
 	#[test]
@@ -312,22 +317,24 @@ mod tests {
 			panic!("expected Mask selection");
 		};
 		assert_eq!(m.len(), 6);
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(3));
-		assert!(m.get(5));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(3));
+		assert!(m.value(5));
 	}
 
 	#[test]
 	fn evaluate_is_none_across_multi_chunk_nullable() {
 		// A none at row 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
-		let mut a = ColumnBuffer::int4_with_capacity(3);
+		let mut a = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		a.push::<i32>(10);
 		a.push_none();
 		a.push::<i32>(30);
-		let mut b = ColumnBuffer::int4_with_capacity(3);
+		let a = a.finish();
+		let mut b = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		b.push::<i32>(40);
 		b.push_none();
 		b.push::<i32>(60);
+		let b = b.finish();
 		let chunks = vec![
 			Column::from_canonical(Canonical::from_column_buffer(&a).unwrap()),
 			Column::from_canonical(Canonical::from_column_buffer(&b).unwrap()),
@@ -340,9 +347,9 @@ mod tests {
 			panic!("expected Mask selection");
 		};
 		assert_eq!(m.len(), 6);
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(1));
-		assert!(m.get(4));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(1));
+		assert!(m.value(4));
 	}
 
 	#[test]
@@ -353,8 +360,8 @@ mod tests {
 			panic!("expected Mask selection");
 		};
 		assert_eq!(m.len(), 6);
-		assert_eq!(m.popcount(), 2);
-		assert!(m.get(1));
-		assert!(m.get(4));
+		assert_eq!(m.count_set_bits(), 2);
+		assert!(m.value(1));
+		assert!(m.value(4));
 	}
 }

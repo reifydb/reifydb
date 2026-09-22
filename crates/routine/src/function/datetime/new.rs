@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, datetime::DateTime, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{dates, datetime_array, times},
+	datetime::DateTime,
+	value_type::ValueType,
+};
 
 pub struct DateTimeNew {
 	info: RoutineInfo,
@@ -43,10 +47,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNew {
 
 		let result_data = match (date_data, time_data) {
 			(ColumnBuffer::Date(date_container), ColumnBuffer::Time(time_container)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (date_container.get(i), time_container.get(i)) {
+					match (dates(date_container).get(i), times(time_container).get(i)) {
 						(Some(date), Some(time)) => {
 							match DateTime::new(
 								date.year(),
@@ -58,14 +62,14 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNew {
 								time.nanosecond(),
 							) {
 								Some(dt) => container.push(dt),
-								None => container.push_default(),
+								None => container.push(DateTime::default()),
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(DateTime::default()),
 					}
 				}
 
-				ColumnBuffer::DateTime(container)
+				ColumnBuffer::DateTime(datetime_array(container))
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

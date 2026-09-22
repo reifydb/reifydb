@@ -314,6 +314,10 @@ num-bigint = { version = "0.4.6", features = ["serde"] }
 bigdecimal = { version = "0.4.10", features = ["serde"] }
 num-traits = { version = "0.2.19" }
 arrow-buffer = { version = "60.0.0" }
+arrow-array = { version = "60.0.0" }
+arrow-data = { version = "60.0.0" }
+arrow-schema = { version = "60.0.0" }
+arrow-select = { version = "60.0.0" }
 rand = { version = "0.10" }
 argon2 = { version = "0.6.0-rc.8" }
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }

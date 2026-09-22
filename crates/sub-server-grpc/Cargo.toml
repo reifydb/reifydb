@@ -45,6 +45,8 @@ num-bigint = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 
 [build-dependencies]

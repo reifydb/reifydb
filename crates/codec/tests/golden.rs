@@ -7,6 +7,7 @@
 
 use std::{fs, path::PathBuf, str::FromStr};
 
+use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
 use num_bigint::BigInt;
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
@@ -17,7 +18,7 @@ use reifydb_codec::{
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
-	container::{any::AnyContainer, bool::BoolContainer, number::NumberContainer, utf8::Utf8Container},
+	container::any::AnyContainer,
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -158,15 +159,15 @@ fn golden_rbcf_frames() {
 	let concrete_columns = vec![
 		FrameColumn {
 			name: "bools".to_string(),
-			data: FrameColumnData::Bool(BoolContainer::new(vec![true, false, true])),
+			data: FrameColumnData::Bool(BooleanArray::from(vec![true, false, true])),
 		},
 		FrameColumn {
 			name: "ints".to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2, 3])),
+			data: FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3])),
 		},
 		FrameColumn {
 			name: "texts".to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(vec![
+			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
 				"a".to_string(),
 				"bb".to_string(),
 				"ccc".to_string(),

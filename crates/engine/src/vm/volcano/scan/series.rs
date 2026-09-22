@@ -12,7 +12,9 @@ use reifydb_core::{
 		bound::TaggedKeyBoundRange,
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -356,12 +358,12 @@ impl QueryNode for SeriesScanNode {
 }
 
 pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: ValueType) -> Result<ColumnWithName> {
-	let mut data = ColumnBuffer::with_capacity(col_type, values.len());
+	let mut data = ColumnBuilder::with_capacity(col_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
 	Ok(ColumnWithName {
 		name: Fragment::internal(name),
-		data,
+		data: data.finish(),
 	})
 }

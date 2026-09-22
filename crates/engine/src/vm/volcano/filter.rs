@@ -3,6 +3,7 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::resolved::ResolvedObject,
@@ -15,7 +16,7 @@ use reifydb_evaluate::expression::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, IsVariantExpression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{reifydb_assertions, util::bitvec::BitVec};
+use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
 use super::NoopNode;
@@ -72,33 +73,20 @@ impl FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::mask")]
-	fn build_mask(result: &ColumnBuffer, row_count: usize) -> BitVec {
+	fn build_mask(result: &ColumnBuffer, row_count: usize) -> BooleanBuffer {
 		match result {
 			ColumnBuffer::Bool(container) => {
-				let mut mask = BitVec::repeat(row_count, false);
-				for i in 0..row_count {
-					if i < container.len() {
-						let valid = container.is_defined(i);
-						let filter_result = container.data().get(i);
-						mask.set(i, valid & filter_result);
-					}
-				}
-				mask
+				BooleanBuffer::collect_bool(row_count, |i| i < container.len() && container.value(i))
 			}
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => match inner.as_ref() {
-				ColumnBuffer::Bool(container) => {
-					let mut mask = BitVec::repeat(row_count, false);
-					for i in 0..row_count {
-						let defined = i < bitvec.len() && bitvec.get(i);
-						let valid = defined && container.is_defined(i);
-						let value = valid && container.data().get(i);
-						mask.set(i, value);
-					}
-					mask
-				}
+				ColumnBuffer::Bool(container) => BooleanBuffer::collect_bool(row_count, |i| {
+					let defined = i < bitvec.len() && bitvec.value(i);
+					let valid = defined && i < container.len();
+					valid && container.value(i)
+				}),
 				_ => panic!("filter expression must evaluate to a boolean column"),
 			},
 			_ => panic!("filter expression must evaluate to a boolean column"),
@@ -106,7 +94,7 @@ impl FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::compact")]
-	fn compact(columns: &mut Columns, mask: &BitVec) -> Result<()> {
+	fn compact(columns: &mut Columns, mask: &BooleanBuffer) -> Result<()> {
 		columns.filter(mask)
 	}
 }

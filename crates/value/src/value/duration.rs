@@ -668,6 +668,24 @@ pub mod tests {
 	use super::*;
 	use crate::error::TemporalKind;
 
+	mod arrow_layout {
+		use std::mem::offset_of;
+
+		use arrow_buffer::IntervalMonthDayNano;
+
+		use super::*;
+
+		#[test]
+		fn fields_sit_at_the_interval_month_day_nano_offsets() {
+			// Fields must sit at the interval offsets, otherwise the typed slice misreads every row.
+			assert_eq!(offset_of!(Duration, months), offset_of!(IntervalMonthDayNano, months));
+			assert_eq!(offset_of!(Duration, days), offset_of!(IntervalMonthDayNano, days));
+			assert_eq!(offset_of!(Duration, nanos), offset_of!(IntervalMonthDayNano, nanoseconds));
+			assert_eq!(size_of::<Duration>(), size_of::<IntervalMonthDayNano>());
+			assert_eq!(align_of::<Duration>(), align_of::<IntervalMonthDayNano>());
+		}
+	}
+
 	mod max {
 		use super::*;
 

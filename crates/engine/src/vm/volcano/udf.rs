@@ -409,9 +409,9 @@ pub(crate) fn evaluate_udfs_no_input(
 				&udf.fragment,
 			)?,
 			None => {
-				let mut data = ColumnBuffer::none_typed(value.get_type(), 0);
+				let mut data = ColumnBuffer::none_typed(value.get_type(), 0).into_builder();
 				data.push_value(value);
-				data
+				data.finish()
 			}
 		};
 		result_columns.push(ColumnWithName {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
@@ -53,8 +54,8 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let query = container.get(i).unwrap();
+					if i < container.len() {
+						let query = container.value(i);
 						let bump = Bump::new();
 						let stmts = parse_str(&bump, query).map_err(|e| {
 							RoutineError::FunctionExecutionFailed {

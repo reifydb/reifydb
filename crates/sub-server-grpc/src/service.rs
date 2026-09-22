@@ -815,23 +815,19 @@ fn hydrate_error_to_status(err: HydrateError, rql: &str, cap: u64) -> Status {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::{
-		util::bitvec::BitVec,
-		value::{
-			container::number::NumberContainer,
-			frame::{column::FrameColumn, data::FrameColumnData},
-		},
-	};
+	use arrow_array::Int32Array;
+	use arrow_buffer::BooleanBuffer;
+	use reifydb_value::value::frame::{column::FrameColumn, data::FrameColumnData};
 
 	use super::*;
 
 	#[test]
 	fn a_response_that_fails_to_rbcf_encode_is_an_error_not_an_empty_body() {
 		// Empty rbcf bytes leave the client decoding nothing, so an encode failure must travel as a status.
-		let deep = (0..4).fold(FrameColumnData::Int4(NumberContainer::new(vec![7])), |inner, _| {
+		let deep = (0..4).fold(FrameColumnData::Int4(Int32Array::from(vec![7])), |inner, _| {
 			FrameColumnData::Option {
 				inner: Box::new(inner),
-				bitvec: BitVec::from_slice(&[true]),
+				bitvec: BooleanBuffer::from(vec![true]),
 			}
 		});
 		let frames = vec![Frame::new(vec![FrameColumn {

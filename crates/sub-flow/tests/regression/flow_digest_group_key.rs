@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -42,7 +42,7 @@ fn digest_type() -> ValueType {
 }
 
 fn filled_key() -> ColumnBuffer {
-	let mut buffer = ColumnBuffer::with_capacity(digest_type(), 2);
+	let mut buffer = ColumnBuilder::with_capacity(digest_type(), 2);
 	for values in [[1.0, 2.0], [3.0, 4.0]] {
 		let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
 		for value in values {
@@ -50,7 +50,7 @@ fn filled_key() -> ColumnBuffer {
 		}
 		buffer.push_value(Value::Digest(Box::new(digest)));
 	}
-	buffer
+	buffer.finish()
 }
 
 fn all_none_key() -> ColumnBuffer {

@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,9 +49,9 @@ impl BaseVTable for SystemIdentityAttributes {
 
 		let attributes = CatalogStore::list_all_identity_attributes(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(attributes.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(attributes.len());
-		let mut value_types = ColumnBuffer::utf8_with_capacity(attributes.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, attributes.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, attributes.len());
+		let mut value_types = ColumnBuilder::with_capacity(ValueType::Utf8, attributes.len());
 
 		for a in attributes {
 			ids.push(a.id);
@@ -60,9 +60,9 @@ impl BaseVTable for SystemIdentityAttributes {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("value_type"), value_types),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("value_type"), value_types.finish()),
 		];
 
 		self.exhausted = true;

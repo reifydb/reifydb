@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{duration_array, durations},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DurationAdd {
 	info: RoutineInfo,
@@ -44,18 +48,18 @@ impl<'a> Routine<FunctionContext<'a>> for DurationAdd {
 		match (lhs_data, rhs_data) {
 			(ColumnBuffer::Duration(lhs_container), ColumnBuffer::Duration(rhs_container)) => {
 				let row_count = lhs_data.len();
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (lhs_container.get(i), rhs_container.get(i)) {
+					match (durations(lhs_container).get(i), durations(rhs_container).get(i)) {
 						(Some(lv), Some(rv)) => {
 							container.push(*lv + *rv);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(duration_array(container));
 				if let Some(bv) = lhs_bv {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

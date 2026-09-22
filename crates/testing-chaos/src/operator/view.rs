@@ -260,7 +260,7 @@ mod fold_tests {
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
 		interface::catalog::flow::OperatorId,
-		value::column::{ColumnWithName, buffer::ColumnBuffer},
+		value::column::{ColumnWithName, builder::ColumnBuilder},
 	};
 	use reifydb_value::{
 		fragment::Fragment,
@@ -270,10 +270,11 @@ mod fold_tests {
 	use super::*;
 
 	fn columns(numbers: &[u64]) -> Columns {
-		let mut buffer = ColumnBuffer::with_capacity(ValueType::Int8, numbers.len());
+		let mut buffer = ColumnBuilder::with_capacity(ValueType::Int8, numbers.len());
 		for number in numbers {
 			buffer.push_value(Value::Int8(*number as i64));
 		}
+		let buffer = buffer.finish();
 		Columns::new(vec![ColumnWithName::new(Fragment::internal("v"), buffer)])
 			.with_row_numbers(numbers.iter().map(|n| RowNumber(*n)).collect())
 	}

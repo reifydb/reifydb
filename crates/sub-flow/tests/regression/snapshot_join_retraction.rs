@@ -17,7 +17,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	row::JoinPick,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -51,7 +51,7 @@ fn schema(spec: &[(&str, ValueType)]) -> Columns {
 			.map(|(name, ty)| {
 				ColumnWithName::new(
 					Fragment::internal(*name),
-					ColumnBuffer::with_capacity(ty.clone(), 0),
+					ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
 				)
 			})
 			.collect(),
@@ -59,15 +59,15 @@ fn schema(spec: &[(&str, ValueType)]) -> Columns {
 }
 
 fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Columns {
-	let mut buffers: Vec<ColumnBuffer> =
-		spec.iter().map(|(_, ty)| ColumnBuffer::with_capacity(ty.clone(), 1)).collect();
+	let mut buffers: Vec<ColumnBuilder> =
+		spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), 1)).collect();
 	buffers[0].push_value(Value::Int8(number as i64));
 	buffers[1].push_value(Value::Int4(key));
 	buffers[2].push_value(Value::Int8(value));
 	let columns = spec
 		.iter()
 		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
+		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 		.collect();
 	let at = DateTime::from_millis(1_000_000 + number);
 	Columns::with_system(

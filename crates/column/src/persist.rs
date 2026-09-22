@@ -160,6 +160,7 @@ mod tests {
 
 	use reifydb_core::value::column::{
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		data::{Column, canonical::Canonical},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
@@ -227,11 +228,12 @@ mod tests {
 
 	#[test]
 	fn round_trips_nullable_column_preserving_none_positions() {
-		let mut buffer = ColumnBuffer::int4_with_capacity(4);
+		let mut buffer = ColumnBuilder::with_capacity(ValueType::Int4, 4);
 		buffer.push::<i32>(10);
 		buffer.push_none();
 		buffer.push::<i32>(30);
 		buffer.push_none();
+		let buffer = buffer.finish();
 		let canonical = Canonical::from_column_buffer(&buffer).unwrap();
 		assert!(canonical.nullable, "buffer with push_none must canonicalize to a nullable column");
 

@@ -6,6 +6,11 @@ pub mod util;
 
 use std::{mem, mem::size_of, ptr, slice, str};
 
+use arrow_array::{
+	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, IntervalMonthDayNanoArray, LargeBinaryArray,
+	LargeStringArray, Time64NanosecondArray, UInt64Array,
+};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
 	extern_c::cells::{
 		decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell,
@@ -17,15 +22,20 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{
 		Value,
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			dictionary::DictionaryContainer,
+			number::NumberContainer,
+			temporal_array::{
+				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
+				times,
+			},
+			uuid_array::{identity_id_array, identity_ids, uuid4_array, uuid4s, uuid7_array, uuid7s},
+			varlen_array::blob_array,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -87,7 +97,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 		let (bitvec_offset, bitvec_len) = if let Some(bv) = opt_bitvec {
 			marshal_bitvec_to_buf(&mut buf, bv)
 		} else if data_row_count > 0 {
-			let all_ones = BitVec::repeat(data_row_count as usize, true);
+			let all_ones = BooleanBuffer::new_set(data_row_count as usize);
 			marshal_bitvec_to_buf(&mut buf, &all_ones)
 		} else {
 			(0u32, 0u32)
@@ -180,7 +190,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 			let end = start + desc.bitvec_len as usize;
 			unmarshal_bitvec_from_bytes(&bytes[start..end], data_row_count)
 		} else {
-			BitVec::repeat(data_row_count, true)
+			BooleanBuffer::new_set(data_row_count)
 		};
 
 		let data_slice = if desc.data_len > 0 {
@@ -223,7 +233,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	}
 }
 
-fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BitVec) -> (u32, u32) {
+fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BooleanBuffer) -> (u32, u32) {
 	let len = bitvec.len();
 	if len == 0 {
 		return (0, 0);
@@ -244,7 +254,7 @@ fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BitVec) -> (u32, u32) {
 	(offset, byte_count as u32)
 }
 
-fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BitVec {
+fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BooleanBuffer {
 	let mut bits = Vec::with_capacity(len);
 	for i in 0..len {
 		let byte_idx = i / 8;
@@ -256,7 +266,7 @@ fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BitVec {
 		};
 		bits.push(bit);
 	}
-	BitVec::from_slice(&bits)
+	BooleanBuffer::from(bits)
 }
 
 fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (u32, u32, u32, u32) {
@@ -271,60 +281,55 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			buf.resize(buf.len() + byte_count, 0);
 			let start = offset as usize;
 			for i in 0..len {
-				if let Some(val) = container.get(i)
-					&& val
-				{
+				if container.value(i) {
 					buf[start + i / 8] |= 1 << (i % 8);
 				}
 			}
 			(offset, byte_count as u32, 0, 0)
 		}
 
-		ColumnBuffer::Float4(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Float8(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Int1(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Int2(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Int4(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Int8(container) => marshal_numeric_to_buf(buf, container),
+		ColumnBuffer::Float4(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Float8(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Int1(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Int2(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Int4(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Int8(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Int16(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Uint1(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Uint2(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Uint4(container) => marshal_numeric_to_buf(buf, container),
-		ColumnBuffer::Uint8(container) => marshal_numeric_to_buf(buf, container),
+		ColumnBuffer::Uint1(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Uint2(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Uint4(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Uint8(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint16(container) => marshal_numeric_to_buf(buf, container),
 
 		ColumnBuffer::Date(container) => {
-			let dates: &[Date] = container;
-			let encoded: Vec<i32> = dates.iter().map(|d| d.to_days_since_epoch()).collect();
+			let encoded: Vec<i32> = dates(container).iter().map(|d| d.to_days_since_epoch()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::DateTime(container) => {
-			let datetimes: &[DateTime] = container;
-			let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.to_epoch_secs()).collect();
+			let encoded: Vec<i64> = datetimes(container).iter().map(|dt| dt.to_epoch_secs()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::Time(container) => {
-			let times: &[Time] = container;
-			let encoded: Vec<u64> = times.iter().map(|t| t.to_nanos_since_midnight()).collect();
+			let encoded: Vec<u64> = times(container).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::Duration(container) => {
-			let durations: &[Duration] = container;
-			marshal_cells_to_buf(buf, durations.len(), |i, out| encode_duration_cell(&durations[i], out))
+			let values: &[Duration] = durations(container);
+			marshal_cells_to_buf(buf, values.len(), |i, out| encode_duration_cell(&values[i], out))
 		}
 
 		ColumnBuffer::IdentityId(container) => {
-			let ids: &[IdentityId] = container;
+			let ids: &[IdentityId] = identity_ids(container);
 			let bytes: Vec<u8> = ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
 		ColumnBuffer::Uuid4(container) => {
-			let uuids: &[Uuid4] = container;
+			let uuids: &[Uuid4] = uuid4s(container);
 			let bytes: Vec<u8> = uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
 		ColumnBuffer::Uuid7(container) => {
-			let uuids: &[Uuid7] = container;
+			let uuids: &[Uuid7] = uuid7s(container);
 			let bytes: Vec<u8> = uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
@@ -332,11 +337,11 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		ColumnBuffer::Utf8 {
 			container,
 			..
-		} => marshal_strings_iter_to_buf(buf, container.iter_str()),
+		} => marshal_strings_iter_to_buf(buf, (0..container.len()).map(|i| container.value(i))),
 		ColumnBuffer::Blob {
 			container,
 			..
-		} => marshal_blobs_iter_to_buf(buf, container.iter_bytes()),
+		} => marshal_blobs_iter_to_buf(buf, (0..container.len()).map(|i| container.value(i))),
 
 		ColumnBuffer::Int {
 			container,
@@ -469,7 +474,7 @@ fn unmarshal_column_data(
 	type_code: ValueKind,
 	row_count: usize,
 	data: &[u8],
-	bitvec: BitVec,
+	bitvec: BooleanBuffer,
 	offsets_bytes: &[u8],
 ) -> ColumnBuffer {
 	if row_count == 0 {
@@ -489,20 +494,24 @@ fn unmarshal_column_data(
 				};
 				values.push(val);
 			}
-			ColumnBuffer::Bool(BoolContainer::new(values))
+			ColumnBuffer::Bool(BooleanArray::from(values))
 		}
-		ValueKind::Float4 => ColumnBuffer::Float4(unmarshal_numeric::<f32>(data, row_count)),
-		ValueKind::Float8 => ColumnBuffer::Float8(unmarshal_numeric::<f64>(data, row_count)),
-		ValueKind::Int1 => ColumnBuffer::Int1(unmarshal_numeric::<i8>(data, row_count)),
-		ValueKind::Int2 => ColumnBuffer::Int2(unmarshal_numeric::<i16>(data, row_count)),
-		ValueKind::Int4 => ColumnBuffer::Int4(unmarshal_numeric::<i32>(data, row_count)),
-		ValueKind::Int8 => ColumnBuffer::Int8(unmarshal_numeric::<i64>(data, row_count)),
-		ValueKind::Int16 => ColumnBuffer::Int16(unmarshal_numeric::<i128>(data, row_count)),
-		ValueKind::Uint1 => ColumnBuffer::Uint1(unmarshal_numeric::<u8>(data, row_count)),
-		ValueKind::Uint2 => ColumnBuffer::Uint2(unmarshal_numeric::<u16>(data, row_count)),
-		ValueKind::Uint4 => ColumnBuffer::Uint4(unmarshal_numeric::<u32>(data, row_count)),
-		ValueKind::Uint8 => ColumnBuffer::Uint8(unmarshal_numeric::<u64>(data, row_count)),
-		ValueKind::Uint16 => ColumnBuffer::Uint16(unmarshal_numeric::<u128>(data, row_count)),
+		ValueKind::Float4 => ColumnBuffer::float4(unmarshal_numeric::<f32>(data, row_count)),
+		ValueKind::Float8 => ColumnBuffer::float8(unmarshal_numeric::<f64>(data, row_count)),
+		ValueKind::Int1 => ColumnBuffer::int1(unmarshal_numeric::<i8>(data, row_count)),
+		ValueKind::Int2 => ColumnBuffer::int2(unmarshal_numeric::<i16>(data, row_count)),
+		ValueKind::Int4 => ColumnBuffer::int4(unmarshal_numeric::<i32>(data, row_count)),
+		ValueKind::Int8 => ColumnBuffer::int8(unmarshal_numeric::<i64>(data, row_count)),
+		ValueKind::Int16 => {
+			ColumnBuffer::Int16(NumberContainer::new(unmarshal_numeric::<i128>(data, row_count)))
+		}
+		ValueKind::Uint1 => ColumnBuffer::uint1(unmarshal_numeric::<u8>(data, row_count)),
+		ValueKind::Uint2 => ColumnBuffer::uint2(unmarshal_numeric::<u16>(data, row_count)),
+		ValueKind::Uint4 => ColumnBuffer::uint4(unmarshal_numeric::<u32>(data, row_count)),
+		ValueKind::Uint8 => ColumnBuffer::uint8(unmarshal_numeric::<u64>(data, row_count)),
+		ValueKind::Uint16 => {
+			ColumnBuffer::Uint16(NumberContainer::new(unmarshal_numeric::<u128>(data, row_count)))
+		}
 		ValueKind::Utf8 => {
 			let container = unmarshal_utf8(data, row_count, offsets_bytes);
 			ColumnBuffer::Utf8 {
@@ -550,9 +559,10 @@ fn unmarshal_column_data(
 		}
 		ValueKind::Any => ColumnBuffer::Any(unmarshal_any(data, row_count, offsets_bytes)),
 		ValueKind::DictionaryId => {
-			let u128_container = unmarshal_numeric::<u128>(data, row_count);
-			let entries: Vec<DictionaryEntryId> =
-				u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
+			let entries: Vec<DictionaryEntryId> = unmarshal_numeric::<u128>(data, row_count)
+				.into_iter()
+				.map(DictionaryEntryId::U16)
+				.collect();
 			ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
 		}
 		ValueKind::None
@@ -572,7 +582,7 @@ fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()
 }
 
-fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BitVec) -> ColumnBuffer {
+fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BooleanBuffer) -> ColumnBuffer {
 	let has_nulls = bitvec.iter().any(|b| !b);
 	if has_nulls {
 		ColumnBuffer::Option {
@@ -584,9 +594,9 @@ fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BitVec) -> ColumnBuffer {
 	}
 }
 
-fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> NumberContainer<T> {
+fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> Vec<T> {
 	if data.is_empty() {
-		return NumberContainer::new(vec![T::default(); row_count]);
+		return vec![T::default(); row_count];
 	}
 	let count = data.len() / size_of::<T>();
 	let mut values = vec![T::default(); count];
@@ -596,12 +606,12 @@ fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, count * size_of::<T>());
 	}
-	NumberContainer::new(values)
+	values
 }
 
-fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Utf8Container {
+fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeStringArray {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return Utf8Container::new(vec![String::new(); row_count]);
+		return LargeStringArray::from(vec![String::new(); row_count]);
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut strings = Vec::with_capacity(row_count);
@@ -611,12 +621,12 @@ fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Utf8Co
 		let s = str::from_utf8(&data[start..end]).unwrap_or("").to_string();
 		strings.push(s);
 	}
-	Utf8Container::new(strings)
+	LargeStringArray::from(strings)
 }
 
-fn unmarshal_date(data: &[u8], row_count: usize) -> TemporalContainer<Date> {
+fn unmarshal_date(data: &[u8], row_count: usize) -> Date32Array {
 	if data.is_empty() {
-		return TemporalContainer::new(vec![Date::default(); row_count]);
+		return date_array(vec![Date::default(); row_count]);
 	}
 	let count = data.len() / size_of::<i32>();
 	let mut raw = vec![0i32; count];
@@ -627,12 +637,12 @@ fn unmarshal_date(data: &[u8], row_count: usize) -> TemporalContainer<Date> {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i32>());
 	}
 	let dates: Vec<Date> = raw.iter().map(|&days| Date::from_days_since_epoch(days).unwrap_or_default()).collect();
-	TemporalContainer::new(dates)
+	date_array(dates)
 }
 
-fn unmarshal_datetime(data: &[u8], row_count: usize) -> TemporalContainer<DateTime> {
+fn unmarshal_datetime(data: &[u8], row_count: usize) -> UInt64Array {
 	if data.is_empty() {
-		return TemporalContainer::new(vec![DateTime::default(); row_count]);
+		return datetime_array(vec![DateTime::default(); row_count]);
 	}
 	let count = data.len() / size_of::<i64>();
 	let mut raw = vec![0i64; count];
@@ -644,12 +654,12 @@ fn unmarshal_datetime(data: &[u8], row_count: usize) -> TemporalContainer<DateTi
 	}
 	let datetimes: Vec<DateTime> =
 		raw.iter().map(|&ts| DateTime::from_epoch_secs(ts).unwrap_or_default()).collect();
-	TemporalContainer::new(datetimes)
+	datetime_array(datetimes)
 }
 
-fn unmarshal_time(data: &[u8], row_count: usize) -> TemporalContainer<Time> {
+fn unmarshal_time(data: &[u8], row_count: usize) -> Time64NanosecondArray {
 	if data.is_empty() {
-		return TemporalContainer::new(vec![Time::default(); row_count]);
+		return time_array(vec![Time::default(); row_count]);
 	}
 	let count = data.len() / size_of::<u64>();
 	let mut raw = vec![0u64; count];
@@ -660,12 +670,12 @@ fn unmarshal_time(data: &[u8], row_count: usize) -> TemporalContainer<Time> {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<u64>());
 	}
 	let times: Vec<Time> = raw.iter().map(|&ns| Time::from_nanos_since_midnight(ns).unwrap_or_default()).collect();
-	TemporalContainer::new(times)
+	time_array(times)
 }
 
-fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> TemporalContainer<Duration> {
+fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> IntervalMonthDayNanoArray {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return TemporalContainer::new(vec![Duration::default(); row_count]);
+		return duration_array(vec![Duration::default(); row_count]);
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut durations = Vec::with_capacity(row_count);
@@ -675,12 +685,12 @@ fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Te
 		let duration: Duration = decode_duration_cell(&data[start..end]).unwrap_or_default();
 		durations.push(duration);
 	}
-	TemporalContainer::new(durations)
+	duration_array(durations)
 }
 
-fn unmarshal_identity_id(data: &[u8], row_count: usize) -> IdentityIdContainer {
+fn unmarshal_identity_id(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
 	if data.is_empty() {
-		return IdentityIdContainer::new(vec![IdentityId::default(); row_count]);
+		return identity_id_array(vec![IdentityId::default(); row_count]);
 	}
 	let ids: Vec<IdentityId> = data
 		.chunks(16)
@@ -690,12 +700,12 @@ fn unmarshal_identity_id(data: &[u8], row_count: usize) -> IdentityIdContainer {
 			IdentityId(Uuid7(Uuid::from_bytes(arr)))
 		})
 		.collect();
-	IdentityIdContainer::new(ids)
+	identity_id_array(ids)
 }
 
-fn unmarshal_uuid4(data: &[u8], row_count: usize) -> UuidContainer<Uuid4> {
+fn unmarshal_uuid4(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
 	if data.is_empty() {
-		return UuidContainer::new(vec![Uuid4::default(); row_count]);
+		return uuid4_array(vec![Uuid4::default(); row_count]);
 	}
 	let uuids: Vec<Uuid4> = data
 		.chunks(16)
@@ -705,12 +715,12 @@ fn unmarshal_uuid4(data: &[u8], row_count: usize) -> UuidContainer<Uuid4> {
 			Uuid4(Uuid::from_bytes(arr))
 		})
 		.collect();
-	UuidContainer::new(uuids)
+	uuid4_array(uuids)
 }
 
-fn unmarshal_uuid7(data: &[u8], row_count: usize) -> UuidContainer<Uuid7> {
+fn unmarshal_uuid7(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
 	if data.is_empty() {
-		return UuidContainer::new(vec![Uuid7::default(); row_count]);
+		return uuid7_array(vec![Uuid7::default(); row_count]);
 	}
 	let uuids: Vec<Uuid7> = data
 		.chunks(16)
@@ -720,12 +730,12 @@ fn unmarshal_uuid7(data: &[u8], row_count: usize) -> UuidContainer<Uuid7> {
 			Uuid7(Uuid::from_bytes(arr))
 		})
 		.collect();
-	UuidContainer::new(uuids)
+	uuid7_array(uuids)
 }
 
-fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> BlobContainer {
+fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeBinaryArray {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return BlobContainer::new(vec![Blob::empty(); row_count]);
+		return blob_array(&vec![Blob::empty(); row_count]);
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut blobs = Vec::with_capacity(row_count);
@@ -734,7 +744,7 @@ fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> BlobCo
 		let end = offsets[i + 1] as usize;
 		blobs.push(Blob::new(data[start..end].to_vec()));
 	}
-	BlobContainer::new(blobs)
+	blob_array(&blobs)
 }
 
 fn unmarshal_cells<T: Default + Clone + IsNumber>(

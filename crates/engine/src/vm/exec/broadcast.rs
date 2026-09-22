@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder};
 use reifydb_value::reifydb_assertions;
 
 use crate::{Result, vm::vm::Vm};
@@ -34,11 +34,11 @@ pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> Colum
 		assert_eq!(col.data.len(), 1);
 	}
 	let value = col.data.get_value(0);
-	let mut data = ColumnBuffer::with_capacity(col.data.get_type(), target_len);
+	let mut data = ColumnBuilder::with_capacity(col.data.get_type(), target_len);
 	for _ in 0..target_len {
 		data.push_value(value.clone());
 	}
-	ColumnWithName::new(col.name.clone(), data)
+	ColumnWithName::new(col.name.clone(), data.finish())
 }
 
 pub(crate) fn broadcast_many(cols: Vec<ColumnWithName>) -> Vec<ColumnWithName> {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -51,8 +52,8 @@ impl<'a> Routine<FunctionContext<'a>> for BlobHex {
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let hex_str = container.get(i).unwrap();
+					if i < container.len() {
+						let hex_str = container.value(i);
 						let blob = Blob::from_hex(Fragment::internal(hex_str))?;
 						result_data.push(blob);
 						result_bitvec.push(true);

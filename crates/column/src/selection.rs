@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::mask::RowMask;
+use arrow_buffer::BooleanBuffer;
 
 #[derive(Clone, Debug)]
 pub enum Selection {
 	All,
 	None_,
-	Mask(RowMask),
+	Mask(BooleanBuffer),
 }
 
 impl Selection {
@@ -19,7 +19,7 @@ impl Selection {
 		matches!(self, Self::None_)
 	}
 
-	pub fn as_mask(&self) -> Option<&RowMask> {
+	pub fn as_mask(&self) -> Option<&BooleanBuffer> {
 		match self {
 			Self::Mask(m) => Some(m),
 			_ => None,

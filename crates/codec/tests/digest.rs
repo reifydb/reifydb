@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
 	json::{
@@ -14,16 +15,13 @@ use reifydb_codec::{
 	typeinfo::{decode_value_type, encode_value_type},
 	value::{decode_value, encode_value},
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		container::digest::DigestContainer,
-		digest::Digest,
-		duration::Duration,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	container::digest::DigestContainer,
+	digest::Digest,
+	duration::Duration,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 use serde_json::json;
 
@@ -90,7 +88,7 @@ fn digest_column(rows: Vec<Option<Digest>>, inner: ValueType) -> FrameColumnData
 	} else {
 		FrameColumnData::Option {
 			inner: Box::new(data),
-			bitvec: BitVec::from_slice(&defined),
+			bitvec: BooleanBuffer::from(defined.as_slice()),
 		}
 	}
 }

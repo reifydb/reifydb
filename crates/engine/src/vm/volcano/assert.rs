@@ -51,8 +51,8 @@ impl AssertNode {
 		match data {
 			ColumnBuffer::Bool(container) => {
 				for i in 0..row_count {
-					let valid = container.is_defined(i);
-					let value = container.data().get(i);
+					let valid = i < container.len();
+					let value = container.value(i);
 					if !valid || !value {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
@@ -69,9 +69,9 @@ impl AssertNode {
 			} => match inner.as_ref() {
 				ColumnBuffer::Bool(container) => {
 					for i in 0..row_count {
-						let defined = i < bitvec.len() && bitvec.get(i);
-						let valid = defined && container.is_defined(i);
-						let value = valid && container.data().get(i);
+						let defined = i < bitvec.len() && bitvec.value(i);
+						let valid = defined && i < container.len();
+						let value = valid && container.value(i);
 						if !value {
 							return Err(EngineError::AssertionFailed {
 								fragment: frag.clone(),
@@ -168,8 +168,8 @@ impl AssertWithoutInputNode {
 		let label = display_label(assert_expr);
 		match data {
 			ColumnBuffer::Bool(container) => {
-				let valid = container.is_defined(0);
-				let value = container.data().get(0);
+				let valid = !container.is_empty();
+				let value = container.value(0);
 				if !valid || !value {
 					return Err(EngineError::AssertionFailed {
 						fragment: frag.clone(),
@@ -184,9 +184,9 @@ impl AssertWithoutInputNode {
 				bitvec,
 			} => match inner.as_ref() {
 				ColumnBuffer::Bool(container) => {
-					let defined = !bitvec.is_empty() && bitvec.get(0);
-					let valid = defined && container.is_defined(0);
-					let value = valid && container.data().get(0);
+					let defined = !bitvec.is_empty() && bitvec.value(0);
+					let valid = defined && !container.is_empty();
+					let value = valid && container.value(0);
 					if !value {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),

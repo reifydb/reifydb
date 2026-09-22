@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::fragment::Fragment;
 
@@ -42,7 +42,7 @@ fn empty_columns(columns: &[UserVTableColumn]) -> Columns {
 			.map(|c| {
 				ColumnWithName::new(
 					Fragment::internal(c.name.clone()),
-					ColumnBuffer::with_capacity(c.data_type.clone(), 0),
+					ColumnBuilder::with_capacity(c.data_type.clone(), 0).finish(),
 				)
 			})
 			.collect(),

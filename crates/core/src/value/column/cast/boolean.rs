@@ -3,34 +3,30 @@
 
 use std::{fmt::Display, sync::Arc};
 
+use arrow_array::{Array, LargeStringArray};
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	value::{
-		boolean::parse::parse_bool,
-		container::{number::NumberContainer, utf8::Utf8Container},
-		is::IsNumber,
-		value_type::ValueType,
-	},
+	value::{boolean::parse::parse_bool, container::decimal_array::u128s, is::IsNumber, value_type::ValueType},
 };
 
-use crate::value::column::buffer::ColumnBuffer;
+use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 
 pub fn to_boolean(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
-		ColumnBuffer::Int1(container) => from_int1(container, lazy_fragment),
-		ColumnBuffer::Int2(container) => from_int2(container, lazy_fragment),
-		ColumnBuffer::Int4(container) => from_int4(container, lazy_fragment),
-		ColumnBuffer::Int8(container) => from_int8(container, lazy_fragment),
-		ColumnBuffer::Int16(container) => from_int16(container, lazy_fragment),
-		ColumnBuffer::Uint1(container) => from_uint1(container, lazy_fragment),
-		ColumnBuffer::Uint2(container) => from_uint2(container, lazy_fragment),
-		ColumnBuffer::Uint4(container) => from_uint4(container, lazy_fragment),
-		ColumnBuffer::Uint8(container) => from_uint8(container, lazy_fragment),
-		ColumnBuffer::Uint16(container) => from_uint16(container, lazy_fragment),
-		ColumnBuffer::Float4(container) => from_float4(container, lazy_fragment),
-		ColumnBuffer::Float8(container) => from_float8(container, lazy_fragment),
+		ColumnBuffer::Int1(container) => from_int1(container.values(), lazy_fragment),
+		ColumnBuffer::Int2(container) => from_int2(container.values(), lazy_fragment),
+		ColumnBuffer::Int4(container) => from_int4(container.values(), lazy_fragment),
+		ColumnBuffer::Int8(container) => from_int8(container.values(), lazy_fragment),
+		ColumnBuffer::Int16(container) => from_int16(container.values(), lazy_fragment),
+		ColumnBuffer::Uint1(container) => from_uint1(container.values(), lazy_fragment),
+		ColumnBuffer::Uint2(container) => from_uint2(container.values(), lazy_fragment),
+		ColumnBuffer::Uint4(container) => from_uint4(container.values(), lazy_fragment),
+		ColumnBuffer::Uint8(container) => from_uint8(container.values(), lazy_fragment),
+		ColumnBuffer::Uint16(container) => from_uint16(&u128s(container), lazy_fragment),
+		ColumnBuffer::Float4(container) => from_float4(container.values(), lazy_fragment),
+		ColumnBuffer::Float8(container) => from_float8(container.values(), lazy_fragment),
 		ColumnBuffer::Utf8 {
 			container,
 			..
@@ -48,45 +44,38 @@ pub fn to_boolean(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Resu
 }
 
 fn to_bool<T>(
-	container: &NumberContainer<T>,
+	container: &[T],
 	lazy_fragment: impl LazyFragment,
 	validate: impl Fn(T) -> Option<bool>,
 ) -> Result<ColumnBuffer>
 where
 	T: Copy + Display + IsNumber + Default,
 {
-	let mut out = ColumnBuffer::with_capacity(ValueType::Boolean, container.len());
+	let mut out = ColumnBuilder::with_capacity(ValueType::Boolean, container.len());
 	for idx in 0..container.len() {
-		if container.is_defined(idx) {
-			match validate(container[idx]) {
-				Some(b) => out.push::<bool>(b),
-				None => {
-					let base_fragment = lazy_fragment.fragment();
-					let error_fragment = Fragment::Statement {
-						text: Arc::from(container[idx].to_string()),
-						line: base_fragment.line(),
-						column: base_fragment.column(),
-					};
-					return Err(TypeError::InvalidNumberBoolean {
-						fragment: error_fragment,
-					}
-					.into());
+		match validate(container[idx]) {
+			Some(b) => out.push::<bool>(b),
+			None => {
+				let base_fragment = lazy_fragment.fragment();
+				let error_fragment = Fragment::Statement {
+					text: Arc::from(container[idx].to_string()),
+					line: base_fragment.line(),
+					column: base_fragment.column(),
+				};
+				return Err(TypeError::InvalidNumberBoolean {
+					fragment: error_fragment,
 				}
+				.into());
 			}
-		} else {
-			out.push_none();
 		}
 	}
-	Ok(out)
+	Ok(out.finish())
 }
 
 macro_rules! impl_integer_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name(
-			container: &NumberContainer<$type>,
-			lazy_fragment: impl LazyFragment,
-		) -> Result<ColumnBuffer> {
+		fn $fn_name(container: &[$type], lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 			to_bool(container, lazy_fragment, |val| match val {
 				0 => Some(false),
 				1 => Some(true),
@@ -99,10 +88,7 @@ macro_rules! impl_integer_to_bool {
 macro_rules! impl_float_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name(
-			container: &NumberContainer<$type>,
-			lazy_fragment: impl LazyFragment,
-		) -> Result<ColumnBuffer> {
+		fn $fn_name(container: &[$type], lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 			to_bool(container, lazy_fragment, |val| {
 				if val == 0.0 {
 					Some(false)
@@ -129,11 +115,11 @@ impl_integer_to_bool!(from_uint16, u128);
 impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
-fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	let mut out = ColumnBuffer::with_capacity(ValueType::Boolean, container.len());
+fn from_utf8(container: &LargeStringArray, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+	let mut out = ColumnBuilder::with_capacity(ValueType::Boolean, container.len());
 	for idx in 0..container.len() {
-		if container.is_defined(idx) {
-			let temp_fragment = Fragment::internal(container.get(idx).unwrap());
+		if container.is_valid(idx) {
+			let temp_fragment = Fragment::internal(container.value(idx));
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {
@@ -145,5 +131,5 @@ fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Res
 			out.push_none();
 		}
 	}
-	Ok(out)
+	Ok(out.finish())
 }

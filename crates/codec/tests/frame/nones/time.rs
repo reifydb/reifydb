@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	container::temporal::TemporalContainer, frame::data::FrameColumnData, time::Time, value_type::ValueType,
+	container::temporal_array::time_array, frame::data::FrameColumnData, time::Time, value_type::ValueType,
 };
 
 fn make(v: Vec<Time>) -> FrameColumnData {
-	FrameColumnData::Time(TemporalContainer::new(v))
+	FrameColumnData::Time(time_array(v))
 }
 
 crate::nones_tests! {

@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::builder::ColumnBuilder;
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	expectation::ViewClaim,
@@ -22,8 +22,9 @@ use crate::operators::join::workload::{JoinRow, LEFT_COLUMNS, RIGHT_COLUMNS, Sid
 /// how a buffer of the column's type represents absence, so this builds it the way the operator does
 /// rather than naming a variant - naming the wrong one makes every unmatched row read as divergent.
 fn absent(ty: ValueType) -> Value {
-	let mut buffer = ColumnBuffer::with_capacity(ty, 1);
+	let mut buffer = ColumnBuilder::with_capacity(ty, 1);
 	buffer.push_value(Value::none());
+	let buffer = buffer.finish();
 	buffer.get_value(0)
 }
 
@@ -72,18 +73,6 @@ fn empty_view() -> MaterializedView {
 	view
 }
 
-/// What a reclaiming run reached, measured at the end of it. `reached` is cumulative over the run and
-/// `pinned` describes the view as it finally stands, so comparing the two would fail a perfectly good
-/// run that reached many keys and ended small.
-#[derive(Debug, Clone, Copy)]
-pub struct Envelope {
-	/// Output keys the sweep put beyond the claim at any point in the run.
-	pub reached: usize,
-
-	/// Of the view as it stands, how many keys the claim still pins exactly.
-	pub pinned: usize,
-}
-
 /// The two hash strategies: every live right row that shares a live left row's key produces an
 /// output row, so the view is a pure function of the two live sets and nothing about the order they
 /// arrived in survives.
@@ -130,16 +119,6 @@ impl HashOracle {
 		if let Some(key) = row.key {
 			let high = self.key_high.entry((key, row.side)).or_default();
 			*high = (*high).max(row.coord_ms);
-		}
-	}
-
-	/// How much of the view the sweep has put beyond the claim's reach, against how much it still pins
-	/// exactly. A reclaim suite needs both ends: nothing reached proves nothing about reclamation,
-	/// nothing pinned proves nothing about the join.
-	pub fn envelope(&self) -> Envelope {
-		Envelope {
-			reached: self.unconstrained.len(),
-			pinned: self.pairs().into_iter().filter(|(_, _, gone)| !*gone).count(),
 		}
 	}
 

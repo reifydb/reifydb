@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
-		container::number::NumberContainer,
 		is::IsNumber,
 		number::{promote::Promote, safe::mul::SafeMul},
 		value_type::{ValueType, get::GetType},
@@ -44,8 +43,8 @@ pub fn mul_columns(
 
 fn mul_numeric<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -54,17 +53,15 @@ where
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeMul,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
-	let l_data = l.data();
-	let r_data = r.data();
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		if let Some(value) = ctx.mul(&l_data[i], &r_data[i], fragment)? {
+		if let Some(value) = ctx.mul(&l[i], &r[i], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -72,14 +69,14 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }
 
 fn mul_numeric_clone<L, R>(
 	ctx: &EvalContext,
-	l: &NumberContainer<L>,
-	r: &NumberContainer<R>,
+	l: &[L],
+	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
@@ -88,18 +85,16 @@ where
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeMul,
-	ColumnBuffer: Push<<L as Promote<R>>::Output>,
+	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuffer::with_capacity(target, l.len());
-	let l_data = l.data();
-	let r_data = r.data();
+	let mut data = ColumnBuilder::with_capacity(target, l.len());
 	for i in 0..l.len() {
-		let l_clone = l_data[i].clone();
-		let r_clone = r_data[i].clone();
+		let l_clone = l[i].clone();
+		let r_clone = r[i].clone();
 		if let Some(value) = ctx.mul(&l_clone, &r_clone, fragment)? {
 			data.push(value);
 		} else {
@@ -108,6 +103,6 @@ where
 	}
 	Ok(ColumnWithName {
 		name: fragment.fragment(),
-		data,
+		data: data.finish(),
 	})
 }

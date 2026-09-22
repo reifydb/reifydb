@@ -3,13 +3,11 @@
 
 use std::time::Duration;
 
+use arrow_array::Int32Array;
 use futures_util::{SinkExt, StreamExt};
 use reifydb_client::{BatchPushEvent, BatchSubscribeItem, HttpClient, SubscriptionConfig, WireFormat, ws::WsClient};
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
-use reifydb_value::value::{
-	container::number::NumberContainer,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-};
+use reifydb_value::value::frame::{column::FrameColumn, data::FrameColumnData, frame::Frame};
 use rustls::crypto::ring::default_provider;
 use serde_json::{Value, from_str, json};
 use tokio::{net::TcpListener, spawn, time::timeout};
@@ -45,7 +43,7 @@ async fn ws_server_replying(reply: impl FnOnce(&str) -> Message + Send + 'static
 fn one_row_rbcf() -> Vec<u8> {
 	let frame = Frame::new(vec![FrameColumn {
 		name: "a".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+		data: FrameColumnData::Int4(Int32Array::from(vec![7])),
 	}]);
 	encode_frames(&[frame], &EncodeOptions::default()).unwrap()
 }

@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		columns::Columns,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
@@ -126,14 +127,14 @@ impl Accumulator for CountAccumulator {
 
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let mut keys = Vec::with_capacity(self.counts.len());
-		let mut data = ColumnBuffer::int8_with_capacity(self.counts.len());
+		let mut data = ColumnBuilder::with_capacity(ValueType::Int8, self.counts.len());
 
 		for (key, count) in mem::take(&mut self.counts) {
 			keys.push(key);
 			data.push_value(Value::Int8(count));
 		}
 
-		Ok((keys, data))
+		Ok((keys, data.finish()))
 	}
 
 	fn kind_name(&self) -> &'static str {

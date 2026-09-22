@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{binding::BindingProtocol, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use super::common_vtable_columns;
 use crate::{
@@ -53,8 +53,8 @@ impl BaseVTable for SystemBindingsWs {
 			.filter(|b| matches!(b.protocol, BindingProtocol::Ws { .. }))
 			.collect();
 
-		let mut rpc_names = ColumnBuffer::utf8_with_capacity(bindings.len());
-		let mut formats = ColumnBuffer::utf8_with_capacity(bindings.len());
+		let mut rpc_names = ColumnBuilder::with_capacity(ValueType::Utf8, bindings.len());
+		let mut formats = ColumnBuilder::with_capacity(ValueType::Utf8, bindings.len());
 
 		for b in &bindings {
 			let BindingProtocol::Ws {
@@ -69,8 +69,8 @@ impl BaseVTable for SystemBindingsWs {
 
 		let mut columns = common_vtable_columns(&bindings);
 		columns.extend(vec![
-			ColumnWithName::new(Fragment::internal("rpc_name"), rpc_names),
-			ColumnWithName::new(Fragment::internal("format"), formats),
+			ColumnWithName::new(Fragment::internal("rpc_name"), rpc_names.finish()),
+			ColumnWithName::new(Fragment::internal("format"), formats.finish()),
 		]);
 
 		self.exhausted = true;

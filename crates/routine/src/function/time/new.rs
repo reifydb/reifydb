@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, time::Time, value_type::ValueType};
+use reifydb_value::value::{container::temporal_array::time_array, time::Time, value_type::ValueType};
 
 pub struct TimeNew {
 	info: RoutineInfo,
@@ -27,15 +27,15 @@ impl TimeNew {
 
 fn extract_i32(data: &ColumnBuffer, i: usize) -> Option<i32> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Int4(c) => c.get(i).copied(),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i32),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i32),
+		ColumnBuffer::Int4(c) => c.values().get(i).copied(),
+		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i32),
 		_ => None,
 	}
@@ -158,7 +158,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		}
 
 		let row_count = hour_data.len();
-		let mut container = TemporalContainer::with_capacity(row_count);
+		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
 			let hour = extract_i32(hour_data, i);
@@ -175,17 +175,17 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 					if h >= 0 && m >= 0 && s >= 0 && n >= 0 {
 						match Time::new(h as u32, m as u32, s as u32, n as u32) {
 							Some(time) => container.push(time),
-							None => container.push_default(),
+							None => container.push(Time::default()),
 						}
 					} else {
-						container.push_default();
+						container.push(Time::default());
 					}
 				}
-				_ => container.push_default(),
+				_ => container.push(Time::default()),
 			}
 		}
 
-		let result_data = ColumnBuffer::Time(container);
+		let result_data = ColumnBuffer::Time(time_array(container));
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }

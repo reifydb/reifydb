@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, row::RowKeyRange},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -138,7 +138,7 @@ impl QueueScan {
 			.enumerate()
 			.map(|(idx, col)| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
 			})
 			.collect();
 
@@ -148,7 +148,7 @@ impl QueueScan {
 			})?;
 			storage_columns.push(ColumnWithName {
 				name: Fragment::internal(field.name.clone()),
-				data: ColumnBuffer::with_capacity(field.constraint.get_type(), 0),
+				data: ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(),
 			});
 		}
 
@@ -177,7 +177,7 @@ impl QueueScan {
 				.iter()
 				.map(|col| ColumnWithName {
 					name: Fragment::internal(&col.name),
-					data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
+					data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
 				})
 				.collect(),
 		)

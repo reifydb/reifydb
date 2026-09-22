@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	blob::Blob, container::blob::BlobContainer, frame::data::FrameColumnData, value_type::ValueType,
+	blob::Blob, container::varlen_array::blob_array, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<Blob>) -> FrameColumnData {
-	FrameColumnData::Blob(BlobContainer::new(v))
+	FrameColumnData::Blob(blob_array(&v))
 }
 
 crate::nones_tests! {

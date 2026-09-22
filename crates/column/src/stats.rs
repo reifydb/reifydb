@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::catalog::column_snapshot::ColumnStats,
-	value::column::{data::Column, nones::NoneBitmap},
-};
+use arrow_buffer::NullBuffer;
+use reifydb_core::{interface::catalog::column_snapshot::ColumnStats, value::column::data::Column};
 use reifydb_value::{
 	Result,
 	value::{Value, value_type::ValueType},
@@ -70,8 +68,8 @@ fn chunk_none_count(chunk: &Column) -> usize {
 	}
 }
 
-fn count_nones(nones: &NoneBitmap, len: usize) -> usize {
-	(0..len).filter(|&row| nones.is_none(row)).count()
+fn count_nones(nones: &NullBuffer, len: usize) -> usize {
+	(0..len).filter(|&row| nones.is_null(row)).count()
 }
 
 #[cfg(test)]

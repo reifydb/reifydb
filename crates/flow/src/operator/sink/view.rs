@@ -30,7 +30,7 @@ use reifydb_core::{
 	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
-	value::column::{buffer::ColumnBuffer, columns::Columns},
+	value::column::{builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
@@ -390,11 +390,11 @@ pub(crate) fn dictionary_encode_view_columns(
 		let registry = txn.dictionary_allocators();
 		let outcomes = registry.intern_batch(dictionary, &values)?;
 
-		let mut new_data = ColumnBuffer::with_capacity(ValueType::DictionaryId, row_count);
+		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
 		for outcome in &outcomes {
 			new_data.push_value(outcome.id.to_value());
 		}
-		encoded.columns[*col_pos] = new_data;
+		encoded.columns[*col_pos] = new_data.finish();
 	}
 
 	Ok(Some(encoded))
@@ -419,7 +419,7 @@ mod tests {
 			store::SingleVersionGet,
 		},
 		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey},
-		value::column::ColumnWithName,
+		value::column::{ColumnWithName, buffer::ColumnBuffer},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore};

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{container::utf8::Utf8Container, value_type::ValueType},
-};
+use reifydb_value::value::value_type::ValueType;
 
 pub struct TextSubstring {
 	info: RoutineInfo,
@@ -59,12 +58,12 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				let mut result_data = Vec::with_capacity(text_container.len());
 
 				for i in 0..row_count {
-					if text_container.is_defined(i)
-						&& start_container.is_defined(i) && length_container.is_defined(i)
+					if i < text_container.len()
+						&& i < start_container.len() && i < length_container.len()
 					{
-						let original_str = text_container.get(i).unwrap();
-						let start_pos = start_container.get(i).copied().unwrap_or(0);
-						let length = length_container.get(i).copied().unwrap_or(0);
+						let original_str = text_container.value(i);
+						let start_pos = start_container.values().get(i).copied().unwrap_or(0);
+						let length = length_container.values().get(i).copied().unwrap_or(0);
 
 						let chars: Vec<char> = original_str.chars().collect();
 						let chars_len = chars.len();
@@ -94,14 +93,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: *max_bytes,
 				};
 
-				let mut combined_bv: Option<BitVec> = None;
+				let mut combined_bv: Option<BooleanBuffer> = None;
 				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {
-						Some(existing) => existing.and(bv),
+						Some(existing) => &existing & bv,
 						None => bv.clone(),
 					});
 				}
@@ -127,38 +126,50 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				let mut result_data = Vec::with_capacity(text_container.len());
 
 				for i in 0..row_count {
-					if text_container.is_defined(i) {
-						let original_str = text_container.get(i).unwrap();
+					if i < text_container.len() {
+						let original_str = text_container.value(i);
 
 						let start_pos = match start_d {
-							ColumnBuffer::Int1(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
-							ColumnBuffer::Int2(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
+							ColumnBuffer::Int1(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
+							ColumnBuffer::Int2(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
 							ColumnBuffer::Int4(container) => {
-								container.get(i).copied().unwrap_or(0)
+								container.values().get(i).copied().unwrap_or(0)
 							}
-							ColumnBuffer::Int8(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
+							ColumnBuffer::Int8(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
 							_ => 0,
 						};
 
 						let length = match length_d {
-							ColumnBuffer::Int1(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
-							ColumnBuffer::Int2(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
+							ColumnBuffer::Int1(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
+							ColumnBuffer::Int2(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
 							ColumnBuffer::Int4(container) => {
-								container.get(i).copied().unwrap_or(0)
+								container.values().get(i).copied().unwrap_or(0)
 							}
-							ColumnBuffer::Int8(container) => {
-								container.get(i).map(|&v| v as i32).unwrap_or(0)
-							}
+							ColumnBuffer::Int8(container) => container
+								.values()
+								.get(i)
+								.map(|&v| v as i32)
+								.unwrap_or(0),
 							_ => 0,
 						};
 
@@ -190,14 +201,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: *max_bytes,
 				};
 
-				let mut combined_bv: Option<BitVec> = None;
+				let mut combined_bv: Option<BooleanBuffer> = None;
 				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {
-						Some(existing) => existing.and(bv),
+						Some(existing) => &existing & bv,
 						None => bv.clone(),
 					});
 				}

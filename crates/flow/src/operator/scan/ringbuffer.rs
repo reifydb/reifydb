@@ -7,7 +7,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_value::{Result, fragment::Fragment};
 
@@ -85,7 +85,7 @@ impl SourceRingBufferOperator {
 			.iter()
 			.map(|col| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
+				data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
 			})
 			.collect();
 		Columns::new(columns)

@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -49,15 +49,15 @@ impl BaseVTable for SystemRowShapeFields {
 
 		let total_fields: usize = shapes.iter().map(|s| s.field_count()).sum();
 
-		let mut fingerprints = ColumnBuffer::uint8_with_capacity(total_fields);
-		let mut field_indices = ColumnBuffer::uint2_with_capacity(total_fields);
-		let mut names = ColumnBuffer::utf8_with_capacity(total_fields);
-		let mut types = ColumnBuffer::uint1_with_capacity(total_fields);
-		let mut constraint_types = ColumnBuffer::uint1_with_capacity(total_fields);
-		let mut constraint_p1s = ColumnBuffer::uint4_with_capacity(total_fields);
-		let mut constraint_p2s = ColumnBuffer::uint4_with_capacity(total_fields);
-		let mut offsets = ColumnBuffer::uint4_with_capacity(total_fields);
-		let mut sizes = ColumnBuffer::uint4_with_capacity(total_fields);
+		let mut fingerprints = ColumnBuilder::with_capacity(ValueType::Uint8, total_fields);
+		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint2, total_fields);
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, total_fields);
+		let mut types = ColumnBuilder::with_capacity(ValueType::Uint1, total_fields);
+		let mut constraint_types = ColumnBuilder::with_capacity(ValueType::Uint1, total_fields);
+		let mut constraint_p1s = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
+		let mut constraint_p2s = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
+		let mut offsets = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
+		let mut sizes = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
 
 		for shape in shapes {
 			let fingerprint = *shape.fingerprint();
@@ -79,15 +79,15 @@ impl BaseVTable for SystemRowShapeFields {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints),
-			ColumnWithName::new(Fragment::internal("field_index"), field_indices),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("type"), types),
-			ColumnWithName::new(Fragment::internal("constraint_type"), constraint_types),
-			ColumnWithName::new(Fragment::internal("constraint_p1"), constraint_p1s),
-			ColumnWithName::new(Fragment::internal("constraint_p2"), constraint_p2s),
-			ColumnWithName::new(Fragment::internal("offset"), offsets),
-			ColumnWithName::new(Fragment::internal("size"), sizes),
+			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints.finish()),
+			ColumnWithName::new(Fragment::internal("field_index"), field_indices.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("type"), types.finish()),
+			ColumnWithName::new(Fragment::internal("constraint_type"), constraint_types.finish()),
+			ColumnWithName::new(Fragment::internal("constraint_p1"), constraint_p1s.finish()),
+			ColumnWithName::new(Fragment::internal("constraint_p2"), constraint_p2s.finish()),
+			ColumnWithName::new(Fragment::internal("offset"), offsets.finish()),
+			ColumnWithName::new(Fragment::internal("size"), sizes.finish()),
 		];
 
 		self.exhausted = true;

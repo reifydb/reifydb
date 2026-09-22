@@ -8,7 +8,9 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::DictionaryEntryIndexKey},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -182,12 +184,12 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<Colu
 }
 
 fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
-	let mut data = ColumnBuffer::with_capacity(value_type, values.len());
+	let mut data = ColumnBuilder::with_capacity(value_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
 	ColumnWithName {
 		name: Fragment::internal("value"),
-		data,
+		data: data.finish(),
 	}
 }

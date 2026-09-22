@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -66,10 +66,10 @@ impl BaseVTable for SystemProceduresInProcess {
 		}
 
 		let len = ids.len();
-		let mut id_col = ColumnBuffer::uint8_with_capacity(len);
-		let mut ns_col = ColumnBuffer::uint8_with_capacity(len);
-		let mut name_col = ColumnBuffer::utf8_with_capacity(len);
-		let mut handler_col = ColumnBuffer::utf8_with_capacity(len);
+		let mut id_col = ColumnBuilder::with_capacity(ValueType::Uint8, len);
+		let mut ns_col = ColumnBuilder::with_capacity(ValueType::Uint8, len);
+		let mut name_col = ColumnBuilder::with_capacity(ValueType::Utf8, len);
+		let mut handler_col = ColumnBuilder::with_capacity(ValueType::Utf8, len);
 
 		for v in &ids {
 			id_col.push(*v);
@@ -85,10 +85,10 @@ impl BaseVTable for SystemProceduresInProcess {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), id_col),
-			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
-			ColumnWithName::new(Fragment::internal("name"), name_col),
-			ColumnWithName::new(Fragment::internal("handler_name"), handler_col),
+			ColumnWithName::new(Fragment::internal("id"), id_col.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col.finish()),
+			ColumnWithName::new(Fragment::internal("name"), name_col.finish()),
+			ColumnWithName::new(Fragment::internal("handler_name"), handler_col.finish()),
 		];
 
 		self.exhausted = true;

@@ -5,7 +5,14 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, value_type::ValueType};
+use reifydb_value::value::{
+	container::{
+		temporal_array::{date_array, dates},
+		varlen_array,
+	},
+	date::Date,
+	value_type::ValueType,
+};
 
 pub struct DateTrunc {
 	info: RoutineInfo,
@@ -49,12 +56,11 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 					..
 				},
 			) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (date_container.get(i), prec_container.is_defined(i)) {
-						(Some(d), true) => {
-							let precision = prec_container.get(i).unwrap();
+					match (dates(date_container).get(i), varlen_array::get(prec_container, i)) {
+						(Some(d), Some(precision)) => {
 							let truncated =
 								match precision {
 									"year" => Date::new(d.year(), 1, 1),
@@ -68,14 +74,14 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 								};
 							match truncated {
 								Some(val) => container.push(val),
-								None => container.push_default(),
+								None => container.push(Date::default()),
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(Date::default()),
 					}
 				}
 
-				ColumnBuffer::Date(container)
+				ColumnBuffer::Date(date_array(container))
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

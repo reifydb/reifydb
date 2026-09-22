@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Debug;
-
 use reifydb_value::value::{
-	blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,
-	number::safe::convert::SafeConvert, time::Time,
+	blob::Blob,
+	container::{
+		decimal_array::uint16_to_native,
+		dictionary_array::push_entry,
+		temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
+	},
+	date::Date,
+	datetime::DateTime,
+	dictionary::DictionaryEntryId,
+	duration::Duration,
+	number::safe::convert::SafeConvert,
+	time::Time,
 };
 
-use crate::value::column::ColumnBuffer;
+use crate::value::column::builder::ColumnBuilder;
 
 pub mod decimal;
 pub mod int;
@@ -22,30 +30,46 @@ pub trait Push<T> {
 	fn push(&mut self, value: T);
 }
 
-impl ColumnBuffer {
-	pub fn push<T>(&mut self, value: T)
-	where
-		Self: Push<T>,
-		T: Debug,
-	{
-		<Self as Push<T>>::push(self, value)
-	}
-}
-
-macro_rules! impl_push {
-	($t:ty, $variant:ident, $factory:ident) => {
-		impl Push<$t> for ColumnBuffer {
+macro_rules! impl_native_push {
+	($t:ty, $variant:ident) => {
+		impl Push<$t> for ColumnBuilder {
 			fn push(&mut self, value: $t) {
 				match self {
-					ColumnBuffer::$variant(container) => {
-						container.push(value);
+					ColumnBuilder::$variant(builder) => {
+						builder.append_value(value);
 					}
-					ColumnBuffer::Option {
+					ColumnBuilder::Option {
 						inner,
 						bitvec,
 					} => {
 						inner.push(value);
-						bitvec.push(true);
+						bitvec.append(true);
+					}
+					other => panic!(
+						"called `push::<{}>()` on ColumnBuffer::{:?}",
+						stringify!($t),
+						other.get_type()
+					),
+				}
+			}
+		}
+	};
+}
+
+macro_rules! impl_temporal_push {
+	($t:ty, $variant:ident, $to_native:ident) => {
+		impl Push<$t> for ColumnBuilder {
+			fn push(&mut self, value: $t) {
+				match self {
+					ColumnBuilder::$variant(builder) => {
+						builder.append_value($to_native(value));
+					}
+					ColumnBuilder::Option {
+						inner,
+						bitvec,
+					} => {
+						inner.push(value);
+						bitvec.append(true);
 					}
 					other => panic!(
 						"called `push::<{}>()` on ColumnBuffer::{:?}",
@@ -59,22 +83,70 @@ macro_rules! impl_push {
 }
 
 macro_rules! impl_numeric_push {
-	($from:ty, $native_variant:ident, $factory:ident, $default:expr, [$(($variant:ident, $target:ty)),* $(,)?]) => {
-		impl Push<$from> for ColumnBuffer {
+	(native $from:ty,
+		$own:ident,
+		native [$(($variant:ident, $target:ty)),* $(,)?],
+		wide [$(($wide_variant:ident, $wide_target:ty, $wide_to_native:path)),* $(,)?]
+	) => {
+		impl Push<$from> for ColumnBuilder {
 			fn push(&mut self, value: $from) {
 				match self {
 					$(
-						ColumnBuffer::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
-							Some(v) => container.push(v),
-							None => container.push_default(),
+						ColumnBuilder::$variant(builder) => match <$from as SafeConvert<$target>>::checked_convert(value) {
+							Some(v) => builder.append_value(v),
+							None => builder.append_value(<$target>::default()),
 						},
 					)*
-					ColumnBuffer::$native_variant(container) => {
-						container.push(value);
+					$(
+						ColumnBuilder::$wide_variant(builder) => match <$from as SafeConvert<$wide_target>>::checked_convert(value) {
+							Some(v) => builder.append_value($wide_to_native(v)),
+							None => builder.append_value(Default::default()),
+						},
+					)*
+					ColumnBuilder::$own(builder) => {
+						builder.append_value(value);
 					}
-					ColumnBuffer::Option { inner, bitvec } => {
+					ColumnBuilder::Option { inner, bitvec } => {
 						inner.push(value);
-						bitvec.push(true);
+						bitvec.append(true);
+					}
+					other => {
+						panic!(
+							"called `push::<{}>()` on incompatible ColumnBuffer::{:?}",
+							stringify!($from),
+							other.get_type()
+						);
+					}
+				}
+			}
+		}
+	};
+	(wide $from:ty,
+		$own:ident via $own_to_native:path,
+		native [$(($variant:ident, $target:ty)),* $(,)?],
+		wide [$(($wide_variant:ident, $wide_target:ty, $wide_to_native:path)),* $(,)?]
+	) => {
+		impl Push<$from> for ColumnBuilder {
+			fn push(&mut self, value: $from) {
+				match self {
+					$(
+						ColumnBuilder::$variant(builder) => match <$from as SafeConvert<$target>>::checked_convert(value) {
+							Some(v) => builder.append_value(v),
+							None => builder.append_value(<$target>::default()),
+						},
+					)*
+					$(
+						ColumnBuilder::$wide_variant(builder) => match <$from as SafeConvert<$wide_target>>::checked_convert(value) {
+							Some(v) => builder.append_value($wide_to_native(v)),
+							None => builder.append_value(Default::default()),
+						},
+					)*
+					ColumnBuilder::$own(builder) => {
+						builder.append_value($own_to_native(value));
+					}
+					ColumnBuilder::Option { inner, bitvec } => {
+						inner.push(value);
+						bitvec.append(true);
 					}
 					other => {
 						panic!(
@@ -89,267 +161,135 @@ macro_rules! impl_numeric_push {
 	};
 }
 
-impl Push<bool> for ColumnBuffer {
+impl Push<bool> for ColumnBuilder {
 	fn push(&mut self, value: bool) {
 		match self {
-			ColumnBuffer::Bool(container) => {
-				container.push(value);
-			}
-			ColumnBuffer::Option {
+			ColumnBuilder::Bool(builder) => builder.append(value),
+			ColumnBuilder::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
-				bitvec.push(true);
+				bitvec.append(true);
 			}
 			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl_push!(f32, Float4, float4);
-impl_push!(f64, Float8, float8);
-impl_push!(Date, Date, date);
-impl_push!(DateTime, DateTime, datetime);
-impl_push!(Time, Time, time);
-impl_push!(Duration, Duration, duration);
+impl_native_push!(f32, Float4);
+impl_native_push!(f64, Float8);
+impl_temporal_push!(Date, Date, date_to_native);
+impl_temporal_push!(DateTime, DateTime, datetime_to_native);
+impl_temporal_push!(Time, Time, time_to_native);
+impl_temporal_push!(Duration, Duration, duration_to_native);
 
 impl_numeric_push!(
-	i8,
+	native i8,
 	Int1,
-	int1,
-	0i8,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-	]
+	native [(Float4, f32), (Float8, f64), (Int2, i16), (Int4, i32), (Int8, i64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	i16,
+	native i16,
 	Int2,
-	int2,
-	0i16,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Int1, i8),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-	]
+	native [(Float4, f32), (Float8, f64), (Int1, i8), (Int4, i32), (Int8, i64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	i32,
+	native i32,
 	Int4,
-	int4,
-	0i32,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Int1, i8),
-		(Int2, i16),
-		(Int8, i64),
-		(Int16, i128),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-	]
+	native [(Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int8, i64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	i64,
+	native i64,
 	Int8,
-	int8,
-	0i64,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int16, i128),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-	]
+	native [(Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	i128,
-	Int16,
-	int16,
-	0i128,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-	]
+	wide i128,
+	Int16 via i128::from,
+	native [(Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	u8,
+	native u8,
 	Uint1,
-	uint1,
-	0u8,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-	]
+	native [(Float4, f32), (Float8, f64), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	u16,
+	native u16,
 	Uint2,
-	uint2,
-	0u16,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Uint1, u8),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Uint16, u128),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-	]
+	native [(Float4, f32), (Float8, f64), (Uint1, u8), (Uint4, u32), (Uint8, u64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	u32,
+	native u32,
 	Uint4,
-	uint4,
-	0u32,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint8, u64),
-		(Uint16, u128),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-	]
+	native [(Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint8, u64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	u64,
+	native u64,
 	Uint8,
-	uint8,
-	0u64,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint16, u128),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-	]
+	native [(Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+	wide [(Uint16, u128, uint16_to_native)]
 );
 
 impl_numeric_push!(
-	u128,
-	Uint16,
-	uint16,
-	0u128,
-	[
-		(Float4, f32),
-		(Float8, f64),
-		(Uint1, u8),
-		(Uint2, u16),
-		(Uint4, u32),
-		(Uint8, u64),
-		(Int1, i8),
-		(Int2, i16),
-		(Int4, i32),
-		(Int8, i64),
-		(Int16, i128),
-	]
+	wide u128,
+	Uint16 via uint16_to_native,
+	native [(Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+	wide []
 );
 
-impl Push<Blob> for ColumnBuffer {
+impl Push<Blob> for ColumnBuilder {
 	fn push(&mut self, value: Blob) {
 		match self {
-			ColumnBuffer::Blob {
-				container,
+			ColumnBuilder::Blob {
+				builder,
 				..
 			} => {
-				container.push(value);
+				builder.append_value(value.as_bytes());
 			}
-			ColumnBuffer::Option {
+			ColumnBuilder::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
-				bitvec.push(true);
+				bitvec.append(true);
 			}
 			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<String> for ColumnBuffer {
+impl Push<String> for ColumnBuilder {
 	fn push(&mut self, value: String) {
 		match self {
-			ColumnBuffer::Utf8 {
-				container,
+			ColumnBuilder::Utf8 {
+				builder,
 				..
 			} => {
-				container.push(value);
+				builder.append_value(value);
 			}
-			ColumnBuffer::Option {
+			ColumnBuilder::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
-				bitvec.push(true);
+				bitvec.append(true);
 			}
 			other => {
 				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
@@ -358,25 +298,26 @@ impl Push<String> for ColumnBuffer {
 	}
 }
 
-impl Push<DictionaryEntryId> for ColumnBuffer {
+impl Push<DictionaryEntryId> for ColumnBuilder {
 	fn push(&mut self, value: DictionaryEntryId) {
 		match self {
-			ColumnBuffer::DictionaryId(container) => {
-				container.push(value);
-			}
-			ColumnBuffer::Option {
+			ColumnBuilder::DictionaryId {
+				buffer,
+				..
+			} => push_entry(buffer, value),
+			ColumnBuilder::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
-				bitvec.push(true);
+				bitvec.append(true);
 			}
 			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<&str> for ColumnBuffer {
+impl Push<&str> for ColumnBuilder {
 	fn push(&mut self, value: &str) {
 		self.push(value.to_string());
 	}

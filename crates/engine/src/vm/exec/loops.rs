@@ -66,9 +66,9 @@ impl<'a> Vm<'a> {
 			let mut row_columns = Vec::new();
 			for (name, col) in columns.names.iter().zip(columns.columns.iter()) {
 				let value = col.get_value(index);
-				let mut data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
+				let mut data = ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder();
 				data.push_value(value);
-				row_columns.push(ColumnWithName::new(name.clone(), data));
+				row_columns.push(ColumnWithName::new(name.clone(), data.finish()));
 			}
 			let row_frame = Columns::new(row_columns);
 			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -52,13 +52,13 @@ impl BaseVTable for SystemRingBuffers {
 
 		let ringbuffers = CatalogStore::list_ringbuffers(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
-		let mut namespaces = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
-		let mut capacities = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
-		let mut primary_keys = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
-		let mut times = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
-		let mut timestamps = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, ringbuffers.len());
+		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, ringbuffers.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, ringbuffers.len());
+		let mut capacities = ColumnBuilder::with_capacity(ValueType::Uint8, ringbuffers.len());
+		let mut primary_keys = ColumnBuilder::with_capacity(ValueType::Uint8, ringbuffers.len());
+		let mut times = ColumnBuilder::with_capacity(ValueType::Utf8, ringbuffers.len());
+		let mut timestamps = ColumnBuilder::with_capacity(ValueType::Utf8, ringbuffers.len());
 
 		for ringbuffer in ringbuffers {
 			ids.push(ringbuffer.id.0);
@@ -77,13 +77,13 @@ impl BaseVTable for SystemRingBuffers {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("capacity"), capacities),
-			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
-			ColumnWithName::new(Fragment::internal("time"), times),
-			ColumnWithName::new(Fragment::internal("ts"), timestamps),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("capacity"), capacities.finish()),
+			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys.finish()),
+			ColumnWithName::new(Fragment::internal("time"), times.finish()),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps.finish()),
 		];
 
 		self.exhausted = true;

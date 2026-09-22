@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -49,13 +49,13 @@ impl BaseVTable for SystemVersions {
 			None => vec![],
 		};
 
-		let mut names_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
+		let mut names_to_insert = ColumnBuilder::with_capacity(ValueType::Utf8, versions.len());
 
-		let mut versions_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
+		let mut versions_to_insert = ColumnBuilder::with_capacity(ValueType::Utf8, versions.len());
 
-		let mut descriptions_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
+		let mut descriptions_to_insert = ColumnBuilder::with_capacity(ValueType::Utf8, versions.len());
 
-		let mut types_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
+		let mut types_to_insert = ColumnBuilder::with_capacity(ValueType::Utf8, versions.len());
 
 		for version in versions {
 			names_to_insert.push(version.name.as_str());
@@ -65,10 +65,10 @@ impl BaseVTable for SystemVersions {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("name"), names_to_insert),
-			ColumnWithName::new(Fragment::internal("version"), versions_to_insert),
-			ColumnWithName::new(Fragment::internal("description"), descriptions_to_insert),
-			ColumnWithName::new(Fragment::internal("type"), types_to_insert),
+			ColumnWithName::new(Fragment::internal("name"), names_to_insert.finish()),
+			ColumnWithName::new(Fragment::internal("version"), versions_to_insert.finish()),
+			ColumnWithName::new(Fragment::internal("description"), descriptions_to_insert.finish()),
+			ColumnWithName::new(Fragment::internal("type"), types_to_insert.finish()),
 		];
 
 		self.exhausted = true;

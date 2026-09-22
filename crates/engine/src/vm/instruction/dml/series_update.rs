@@ -32,7 +32,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::PartitionError,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{expression::Expression, nodes::UpdateSeriesNode, query::QueryPlan};
@@ -493,11 +493,11 @@ fn track_series_update_flow_change(
 	let read_fields = read_shape.fields();
 	for (i, col_def) in series.data_columns().enumerate() {
 		let val = read_shape.get_value(event.pre, i + 1);
-		let mut data = ColumnBuffer::with_capacity(read_fields[i + 1].constraint.get_type(), 1);
+		let mut data = ColumnBuilder::with_capacity(read_fields[i + 1].constraint.get_type(), 1);
 		data.push_value(val);
 		pre_col_vec.push(ColumnWithName {
 			name: Fragment::internal(&col_def.name),
-			data,
+			data: data.finish(),
 		});
 	}
 
@@ -508,11 +508,11 @@ fn track_series_update_flow_change(
 	));
 	for col in event.columns.iter() {
 		if col.name().text() != series.key.column() && col.name().text() != "tag" {
-			let mut data = ColumnBuffer::with_capacity(col.data().get_type(), 1);
+			let mut data = ColumnBuilder::with_capacity(col.data().get_type(), 1);
 			data.push_value(col.data().get_value(event.row_idx));
 			post_col_vec.push(ColumnWithName {
 				name: col.name().clone(),
-				data,
+				data: data.finish(),
 			});
 		}
 	}

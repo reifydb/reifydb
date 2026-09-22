@@ -3,6 +3,8 @@
 
 use std::{cell::Cell, collections::HashMap, ffi::c_void, fmt, mem, ptr, slice, str};
 
+use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
+use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer, ScalarBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
 		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
@@ -17,14 +19,15 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::common::extern_c::wire::callbacks::builder::{ColumnBufferHandle, EmitDiffKind};
 use reifydb_value::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			dictionary::DictionaryContainer,
+			number::NumberContainer,
+			temporal_array::{date_array, datetime_array, duration_array, time_array},
+			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
 		date::Date,
 		datetime::DateTime,
@@ -538,11 +541,11 @@ pub(crate) fn finalize_buffer(
 	written_count: usize,
 ) -> Option<ColumnBuffer> {
 	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
-		Some(bytes) => {
-			let bv = BitVec::from_raw(bytes, written_count);
+		Some(mut bytes) => {
+			bytes.truncate(written_count.div_ceil(8));
 			ColumnBuffer::Option {
 				inner: Box::new(inner),
-				bitvec: bv,
+				bitvec: BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count),
 			}
 		}
 		None => inner,
@@ -550,55 +553,60 @@ pub(crate) fn finalize_buffer(
 
 	let inner = match type_code {
 		ValueKind::Boolean => {
-			let bv = BitVec::from_raw(data, written_count);
-			ColumnBuffer::Bool(BoolContainer::from_parts(bv))
+			data.truncate(written_count.div_ceil(8));
+			ColumnBuffer::Bool(BooleanArray::from(BooleanBuffer::new(
+				Buffer::from_vec(data),
+				0,
+				written_count,
+			)))
 		}
-		ValueKind::Float4 => to_numeric::<f32>(&data, written_count, ColumnBuffer::Float4)?,
-		ValueKind::Float8 => to_numeric::<f64>(&data, written_count, ColumnBuffer::Float8)?,
-		ValueKind::Int1 => to_numeric::<i8>(&data, written_count, ColumnBuffer::Int1)?,
-		ValueKind::Int2 => to_numeric::<i16>(&data, written_count, ColumnBuffer::Int2)?,
-		ValueKind::Int4 => to_numeric::<i32>(&data, written_count, ColumnBuffer::Int4)?,
-		ValueKind::Int8 => to_numeric::<i64>(&data, written_count, ColumnBuffer::Int8)?,
+		ValueKind::Float4 => ColumnBuffer::float4(bytes_to_vec::<f32>(&data, written_count)?),
+		ValueKind::Float8 => ColumnBuffer::float8(bytes_to_vec::<f64>(&data, written_count)?),
+		ValueKind::Int1 => ColumnBuffer::int1(bytes_to_vec::<i8>(&data, written_count)?),
+		ValueKind::Int2 => ColumnBuffer::int2(bytes_to_vec::<i16>(&data, written_count)?),
+		ValueKind::Int4 => ColumnBuffer::int4(bytes_to_vec::<i32>(&data, written_count)?),
+		ValueKind::Int8 => ColumnBuffer::int8(bytes_to_vec::<i64>(&data, written_count)?),
 		ValueKind::Int16 => to_numeric::<i128>(&data, written_count, ColumnBuffer::Int16)?,
-		ValueKind::Uint1 => to_numeric::<u8>(&data, written_count, ColumnBuffer::Uint1)?,
-		ValueKind::Uint2 => to_numeric::<u16>(&data, written_count, ColumnBuffer::Uint2)?,
-		ValueKind::Uint4 => to_numeric::<u32>(&data, written_count, ColumnBuffer::Uint4)?,
-		ValueKind::Uint8 => to_numeric::<u64>(&data, written_count, ColumnBuffer::Uint8)?,
+		ValueKind::Uint1 => ColumnBuffer::uint1(bytes_to_vec::<u8>(&data, written_count)?),
+		ValueKind::Uint2 => ColumnBuffer::uint2(bytes_to_vec::<u16>(&data, written_count)?),
+		ValueKind::Uint4 => ColumnBuffer::uint4(bytes_to_vec::<u32>(&data, written_count)?),
+		ValueKind::Uint8 => ColumnBuffer::uint8(bytes_to_vec::<u64>(&data, written_count)?),
 		ValueKind::Uint16 => to_numeric::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
 		ValueKind::Date => {
 			let v = bytes_to_vec::<Date>(&data, written_count)?;
-			ColumnBuffer::Date(TemporalContainer::from_parts(v))
+			ColumnBuffer::Date(date_array(v))
 		}
 		ValueKind::DateTime => {
 			let v = bytes_to_vec::<DateTime>(&data, written_count)?;
-			ColumnBuffer::DateTime(TemporalContainer::from_parts(v))
+			ColumnBuffer::DateTime(datetime_array(v))
 		}
 		ValueKind::Time => {
 			let v = bytes_to_vec::<Time>(&data, written_count)?;
-			ColumnBuffer::Time(TemporalContainer::from_parts(v))
+			ColumnBuffer::Time(time_array(v))
 		}
 		ValueKind::Duration => {
 			let v = bytes_to_vec::<Duration>(&data, written_count)?;
-			ColumnBuffer::Duration(TemporalContainer::from_parts(v))
+			ColumnBuffer::Duration(duration_array(v))
 		}
 		ValueKind::IdentityId => {
 			let v = bytes_to_vec::<IdentityId>(&data, written_count)?;
-			ColumnBuffer::IdentityId(IdentityIdContainer::from_parts(v))
+			ColumnBuffer::IdentityId(identity_id_array(v))
 		}
 		ValueKind::Uuid4 => {
 			let v = bytes_to_vec::<Uuid4>(&data, written_count)?;
-			ColumnBuffer::Uuid4(UuidContainer::from_parts(v))
+			ColumnBuffer::Uuid4(uuid4_array(v))
 		}
 		ValueKind::Uuid7 => {
 			let v = bytes_to_vec::<Uuid7>(&data, written_count)?;
-			ColumnBuffer::Uuid7(UuidContainer::from_parts(v))
+			ColumnBuffer::Uuid7(uuid7_array(v))
 		}
 		ValueKind::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
+			let (offsets, values) = checked_varlen_parts(data, offsets)?;
 			ColumnBuffer::Utf8 {
-				container: Utf8Container::from_bytes_offsets(data, offsets),
+				container: LargeStringArray::try_new(offsets, values, None).ok()?,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -606,8 +614,9 @@ pub(crate) fn finalize_buffer(
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
+			let (offsets, values) = checked_varlen_parts(data, offsets)?;
 			ColumnBuffer::Blob {
-				container: BlobContainer::from_bytes_offsets(data, offsets),
+				container: LargeBinaryArray::try_new(offsets, values, None).ok()?,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -656,6 +665,16 @@ pub(crate) fn finalize_buffer(
 		_ => return None,
 	};
 	Some(make_option_wrapped(inner))
+}
+
+fn checked_varlen_parts(data: Vec<u8>, offsets: Vec<u64>) -> Option<(OffsetBuffer<i64>, Buffer)> {
+	let offsets = offsets.into_iter().map(i64::try_from).collect::<Result<Vec<i64>, _>>().ok()?;
+	let within_data =
+		offsets.last().is_some_and(|&last| usize::try_from(last).is_ok_and(|last| last <= data.len()));
+	if !within_data || !offsets.is_sorted() {
+		return None;
+	}
+	Some((OffsetBuffer::new(ScalarBuffer::from(offsets)), Buffer::from_vec(data)))
 }
 
 fn decode_per_element<T>(
@@ -717,4 +736,135 @@ pub fn into_diffs(emitted: Vec<EmittedDiff>) -> Diffs {
 			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(Columns::empty)),
 		})
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use std::ptr;
+
+	use postcard::to_allocvec;
+	use reifydb_codec::tag::ValueKind;
+	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_sdk::common::extern_c::wire::callbacks::builder::ColumnBufferHandle;
+	use reifydb_value::value::blob::Blob;
+	use serde_json::to_string;
+
+	use super::{
+		Handle, Slot, TestBuilderRegistry, finalize_buffer, test_acquire, test_commit, test_data_ptr,
+		test_offsets_ptr, with_registry,
+	};
+
+	fn commit_varlen(
+		registry: &TestBuilderRegistry,
+		type_code: ValueKind,
+		data: &[u8],
+		offsets: &[u64],
+	) -> (i32, *mut ColumnBufferHandle) {
+		// Capacity must cover every byte and offset, otherwise the commit fails before the checks run.
+		let rows = offsets.len() - 1;
+		with_registry(registry, || {
+			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
+			unsafe {
+				let handle = test_acquire(ptr::null_mut(), type_code, data.len().max(rows));
+				ptr::copy_nonoverlapping(data.as_ptr(), test_data_ptr(handle), data.len());
+				ptr::copy_nonoverlapping(offsets.as_ptr(), test_offsets_ptr(handle), offsets.len());
+				(test_commit(handle, rows), handle)
+			}
+		})
+	}
+
+	fn committed_buffer(registry: &TestBuilderRegistry, handle: *mut ColumnBufferHandle) -> ColumnBuffer {
+		match registry.inner.lock().slots.remove(&Handle::decode(handle).id) {
+			Some(Slot::Committed(committed)) => committed.buffer,
+			_ => panic!("a successful commit must leave a committed column behind"),
+		}
+	}
+
+	#[test]
+	fn guest_utf8_round_trips_through_checked_construction() {
+		// Checking offsets and UTF-8 must not reject or reshape well formed guest strings.
+		let registry = TestBuilderRegistry::new();
+		let (code, handle) = commit_varlen(&registry, ValueKind::Utf8, "abcdéf".as_bytes(), &[0, 1, 3, 7]);
+		assert_eq!(code, 0);
+		assert_eq!(committed_buffer(&registry, handle), ColumnBuffer::utf8(["a", "bc", "déf"]));
+	}
+
+	#[test]
+	fn guest_blob_round_trips_through_checked_construction() {
+		// Checking offsets must not reject or reshape well formed guest blobs, including non UTF-8 bytes.
+		let registry = TestBuilderRegistry::new();
+		let (code, handle) = commit_varlen(&registry, ValueKind::Blob, &[0xff, 1, 2, 0xfe], &[0, 1, 1, 4]);
+		assert_eq!(code, 0);
+		assert_eq!(
+			committed_buffer(&registry, handle),
+			ColumnBuffer::blob([Blob::new(vec![0xff]), Blob::new(vec![]), Blob::new(vec![1, 2, 0xfe])])
+		);
+	}
+
+	#[test]
+	fn guest_invalid_utf8_is_rejected_without_a_column() {
+		// Unchecked construction would hand bytes that are not UTF-8 to code that assumes they are.
+		let registry = TestBuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, &[b'a', 0xff, 0xfe], &[0, 1, 3]);
+		assert_eq!(code, -1);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_utf8_offset_inside_a_char_is_rejected_without_a_column() {
+		// Validating only the whole buffer misses rows that split a multi-byte char.
+		let registry = TestBuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, "é".as_bytes(), &[0, 1, 2]);
+		assert_eq!(code, -1);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_utf8_non_monotonic_offsets_are_rejected_without_a_column() {
+		// A decreasing offset would describe a row with negative length.
+		let registry = TestBuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Utf8, b"abc", &[0, 3, 1]);
+		assert_eq!(code, -1);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn guest_blob_non_monotonic_offsets_are_rejected_without_a_column() {
+		// A decreasing offset would describe a row with negative length.
+		let registry = TestBuilderRegistry::new();
+		let (code, _) = commit_varlen(&registry, ValueKind::Blob, &[1, 2, 3], &[0, 3, 1]);
+		assert_eq!(code, -1);
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected commit must not leave a column behind");
+	}
+
+	#[test]
+	fn utf8_last_offset_past_the_data_is_rejected() {
+		// A last offset past the data would read bytes the guest never wrote.
+		assert!(finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2).is_none());
+	}
+
+	#[test]
+	fn blob_last_offset_past_the_data_is_rejected() {
+		// A last offset past the data would read bytes the guest never wrote.
+		assert!(finalize_buffer(ValueKind::Blob, vec![1, 2], Some(vec![0, 1, 5]), None, 2).is_none());
+	}
+
+	#[test]
+	fn utf8_offset_beyond_i64_is_rejected() {
+		// Arrow offsets are i64, so a larger u64 offset cannot be represented and must not wrap negative.
+		assert!(finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1).is_none());
+	}
+
+	#[test]
+	fn guest_bool_column_serializes_like_an_equal_host_column() {
+		// A guest hands over one data byte per row, yet equal Bool columns must serialize byte for byte alike.
+		let guest = finalize_buffer(ValueKind::Boolean, vec![5, 0, 0], None, None, 3).expect("a Bool column");
+		let host = ColumnBuffer::bool([true, false, true]);
+		assert_eq!(to_string(&guest).unwrap(), to_string(&host).unwrap());
+		assert_eq!(to_allocvec(&guest).unwrap(), to_allocvec(&host).unwrap());
+		let ColumnBuffer::Bool(bits) = &guest else {
+			panic!("expected a Bool column, got {:?}", guest.get_type())
+		};
+		assert_eq!(bits.values().inner().len(), 1, "3 rows must pack into exactly ceil(3 / 8) bytes");
+	}
 }

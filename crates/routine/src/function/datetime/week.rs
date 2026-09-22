@@ -7,7 +7,7 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{date::Date, value_type::ValueType},
+	value::{container::temporal_array::datetimes, date::Date, value_type::ValueType},
 };
 
 pub struct DateTimeWeek {
@@ -71,7 +71,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeWeek {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(dt) = container.get(i) {
+					if let Some(dt) = datetimes(container).get(i) {
 						let date = dt.date();
 						result.push(iso_week_number(&date)?);
 						res_bitvec.push(true);

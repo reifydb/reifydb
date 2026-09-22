@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{flow::FlowStatus, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -49,10 +49,10 @@ impl BaseVTable for SystemFlows {
 
 		let flows = CatalogStore::list_flows_all(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(flows.len());
-		let mut namespaces = ColumnBuffer::uint8_with_capacity(flows.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(flows.len());
-		let mut statuses = ColumnBuffer::utf8_with_capacity(flows.len());
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, flows.len());
+		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, flows.len());
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, flows.len());
+		let mut statuses = ColumnBuilder::with_capacity(ValueType::Utf8, flows.len());
 
 		for flow in flows {
 			ids.push(flow.id.0);
@@ -68,10 +68,10 @@ impl BaseVTable for SystemFlows {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("status"), statuses),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("status"), statuses.finish()),
 		];
 
 		self.exhausted = true;

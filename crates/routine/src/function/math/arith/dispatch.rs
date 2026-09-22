@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
-	util::bitvec::BitVec,
 	value::{
-		container::number::NumberContainer,
+		container::varlen_array,
 		is::IsNumber,
 		number::safe::div::SafeDiv,
 		value_type::{ValueType, input_types::InputTypes},
@@ -78,7 +78,7 @@ fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnBuffer, i: usize) ->
 		ColumnBuffer::Utf8 {
 			container,
 			..
-		} => container.get(i).unwrap_or("overflow").to_string(),
+		} => varlen_array::get(container, i).unwrap_or("overflow").to_string(),
 		_ => "overflow".to_string(),
 	};
 	RoutineError::FunctionExecutionFailed {
@@ -160,9 +160,17 @@ fn execute_arith<Op: ArithOp>(
 				let ColumnBuffer::$container_variant(c) = inner else {
 					unreachable!()
 				};
-				(c, *bv)
+				(&c.values()[..], *bv)
 			});
-			compute_rows::<_, Op>(ctx, &promoted, (l, a_bv), (r, b_bv), &mode, d, strict_msg)?
+			compute_rows::<_, Op>(
+				ctx,
+				&promoted,
+				(l.values(), a_bv),
+				(r.values(), b_bv),
+				&mode,
+				d,
+				strict_msg,
+			)?
 		}};
 		($container_variant:ident { .. }) => {{
 			let (
@@ -186,9 +194,17 @@ fn execute_arith<Op: ArithOp>(
 				else {
 					unreachable!()
 				};
-				(c, *bv)
+				(&c.values()[..], *bv)
 			});
-			compute_rows::<_, Op>(ctx, &promoted, (l, a_bv), (r, b_bv), &mode, d, strict_msg)?
+			compute_rows::<_, Op>(
+				ctx,
+				&promoted,
+				(l.values(), a_bv),
+				(r.values(), b_bv),
+				&mode,
+				d,
+				strict_msg,
+			)?
 		}};
 	}
 
@@ -269,14 +285,14 @@ fn execute_arith<Op: ArithOp>(
 fn compute_rows<T: SafeNum, Op: ArithOp>(
 	ctx: &FunctionContext,
 	promoted: &ValueType,
-	l: (&NumberContainer<T>, Option<&BitVec>),
-	r: (&NumberContainer<T>, Option<&BitVec>),
+	l: (&[T], Option<&BooleanBuffer>),
+	r: (&[T], Option<&BooleanBuffer>),
 	mode: &RowMode,
-	fallback: Option<(&NumberContainer<T>, Option<&BitVec>)>,
+	fallback: Option<(&[T], Option<&BooleanBuffer>)>,
 	strict_msg: Option<&ColumnBuffer>,
 ) -> Result<(Vec<T>, Vec<bool>), RoutineError> {
-	fn defined<T: IsNumber>(c: &NumberContainer<T>, bv: Option<&BitVec>, i: usize) -> bool {
-		c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+		i < c.len() && bv.is_none_or(|b| b.value(i))
 	}
 
 	let (l, l_bv) = l;

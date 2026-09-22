@@ -12,6 +12,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::{ColumnBuffer, write::check_digest_write_type},
+		builder::ColumnBuilder,
 		cast::cast_value,
 		columns::Columns,
 	},
@@ -234,12 +235,12 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 }
 
 fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
-	let mut data = ColumnBuffer::with_capacity(value_type, values.len());
+	let mut data = ColumnBuilder::with_capacity(value_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
 	ColumnWithName {
 		name: Fragment::internal("value"),
-		data,
+		data: data.finish(),
 	}
 }

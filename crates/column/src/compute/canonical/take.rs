@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical, nones::NoneBitmap};
+use arrow_buffer::{BooleanBufferBuilder, NullBuffer};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_value::{Result, value::Value};
 
 use crate::error::ColumnError;
@@ -15,14 +16,15 @@ pub fn take(array: &Canonical, indices: &Canonical) -> Result<Canonical> {
 	Ok(Canonical::new(array.ty.clone(), array.nullable, new_nones, new_buffer))
 }
 
-fn take_nones(nones: &NoneBitmap, idx: &[usize]) -> NoneBitmap {
-	let mut out = NoneBitmap::all_present(idx.len());
+fn take_nones(nones: &NullBuffer, idx: &[usize]) -> NullBuffer {
+	let mut out = BooleanBufferBuilder::new(idx.len());
+	out.append_n(idx.len(), true);
 	for (j, &i) in idx.iter().enumerate() {
-		if nones.is_none(i) {
-			out.set_none(j);
+		if nones.is_null(i) {
+			out.set_bit(j, false);
 		}
 	}
-	out
+	NullBuffer::new(out.finish())
 }
 
 fn extract_indices(indices: &Canonical) -> Result<Vec<usize>> {

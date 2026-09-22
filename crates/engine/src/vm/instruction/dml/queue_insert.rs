@@ -30,7 +30,7 @@ use reifydb_core::{
 	internal_error,
 	key::{queue::QueueDeduplicationKey, row::RowKey},
 	return_internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns},
+	value::column::{builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{
@@ -42,7 +42,10 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -294,11 +297,11 @@ fn project_returning(
 	decode_returning_dictionaries(services, txn, &queue.columns, &mut columns)?;
 	let mut columns = with_absent_pre_image(columns);
 
-	let mut created = ColumnBuffer::bool_with_capacity(returned.len());
+	let mut created = ColumnBuilder::with_capacity(ValueType::Boolean, returned.len());
 	for row in returned {
 		created.push_value(Value::Boolean(row.created));
 	}
-	columns.columns.push(created);
+	columns.columns.push(created.finish());
 	columns.names.push(Fragment::internal(QUEUE_CREATED_COLUMN));
 
 	evaluate_returning(services, symbols, returning_exprs, columns, txn.identity())

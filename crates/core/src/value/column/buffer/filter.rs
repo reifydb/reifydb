@@ -1,33 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{Result, util::bitvec::BitVec};
+use arrow_buffer::BooleanBuffer;
+use reifydb_value::{
+	Result,
+	util::bitmap,
+	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+};
 
 use crate::value::column::{ColumnBuffer, ColumnWithName, buffer::with_container};
 
 impl ColumnWithName {
-	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
-		self.data_mut().filter(mask)
+	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
+		self.data.filter(mask)
 	}
 }
 
 impl ColumnBuffer {
-	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
+	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
 		match self {
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.filter(mask)?;
-				let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
-				for (i, keep) in mask.iter().enumerate() {
-					if keep && i < bitvec.len() {
-						new_bitvec.push(bitvec.get(i));
-					}
-				}
-				*bitvec = new_bitvec;
+				*bitvec = bitmap::filter(bitvec, mask);
 			}
-			_ => with_container!(self, |c| c.filter(mask)),
+			ColumnBuffer::Bool(a) => *a = bool_array::filter(a, mask),
+			ColumnBuffer::Uint16(a) => *a = primitive::filter(a, mask),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => *container = dictionary_array::filter(container, mask),
+			_ => with_container!(
+				self,
+				|c| c.filter(mask),
+				|a| *a = primitive::filter(a, mask),
+				|t| *t = primitive::filter(t, mask),
+				|u| *u = uuid_array::filter(u, mask),
+				|v| *v = varlen_array::filter(v, mask)
+			),
 		}
 		Ok(())
 	}
@@ -35,14 +47,12 @@ impl ColumnBuffer {
 
 #[cfg(test)]
 pub mod tests {
+	use arrow_buffer::BooleanBuffer;
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_value::{
-		util::bitvec::BitVec,
-		value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType},
-	};
+	use reifydb_value::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType};
 
 	use crate::value::column::ColumnBuffer;
 
@@ -56,7 +66,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_bool() {
 		let mut col = ColumnBuffer::bool([true, false, true, false]);
-		let mask = BitVec::from_slice(&[true, false, true, false]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false]);
 
 		col.filter(&mask).unwrap();
 
@@ -68,7 +78,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_int4() {
 		let mut col = ColumnBuffer::int4([1, 2, 3, 4, 5]);
-		let mask = BitVec::from_slice(&[true, false, true, false, true]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false, true]);
 
 		col.filter(&mask).unwrap();
 
@@ -81,7 +91,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_float4() {
 		let mut col = ColumnBuffer::float4([1.0, 2.0, 3.0, 4.0]);
-		let mask = BitVec::from_slice(&[false, true, false, true]);
+		let mask = BooleanBuffer::from(vec![false, true, false, true]);
 
 		col.filter(&mask).unwrap();
 
@@ -99,7 +109,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_string() {
 		let mut col = ColumnBuffer::utf8(["a", "b", "c", "d"]);
-		let mask = BitVec::from_slice(&[true, false, false, true]);
+		let mask = BooleanBuffer::from(vec![true, false, false, true]);
 
 		col.filter(&mask).unwrap();
 
@@ -111,7 +121,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_none() {
 		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 5);
-		let mask = BitVec::from_slice(&[true, false, true, false, false]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false, false]);
 
 		col.filter(&mask).unwrap();
 
@@ -123,7 +133,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_empty_mask() {
 		let mut col = ColumnBuffer::int4([1, 2, 3]);
-		let mask = BitVec::from_slice(&[false, false, false]);
+		let mask = BooleanBuffer::from(vec![false, false, false]);
 
 		col.filter(&mask).unwrap();
 
@@ -133,7 +143,7 @@ pub mod tests {
 	#[test]
 	fn test_filter_all_true_mask() {
 		let mut col = ColumnBuffer::int4([1, 2, 3]);
-		let mask = BitVec::from_slice(&[true, true, true]);
+		let mask = BooleanBuffer::from(vec![true, true, true]);
 
 		col.filter(&mask).unwrap();
 
@@ -155,7 +165,7 @@ pub mod tests {
 		let id4 = IdentityId::generate(&clock, &rng);
 
 		let mut col = ColumnBuffer::identity_id([id1, id2, id3, id4]);
-		let mask = BitVec::from_slice(&[true, false, true, false]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false]);
 
 		col.filter(&mask).unwrap();
 
@@ -172,7 +182,7 @@ pub mod tests {
 		let e4 = DictionaryEntryId::U4(40);
 
 		let mut col = ColumnBuffer::dictionary_id([e1, e2, e3, e4]);
-		let mask = BitVec::from_slice(&[true, false, true, false]);
+		let mask = BooleanBuffer::from(vec![true, false, true, false]);
 
 		col.filter(&mask).unwrap();
 
@@ -188,9 +198,9 @@ pub mod tests {
 
 		let mut col = ColumnBuffer::dictionary_id_with_bitvec(
 			[e1, DictionaryEntryId::default(), e2, DictionaryEntryId::default()],
-			BitVec::from_slice(&[true, false, true, false]),
+			BooleanBuffer::from(vec![true, false, true, false]),
 		);
-		let mask = BitVec::from_slice(&[true, true, false, true]);
+		let mask = BooleanBuffer::from(vec![true, true, false, true]);
 
 		col.filter(&mask).unwrap();
 

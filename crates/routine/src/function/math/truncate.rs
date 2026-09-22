@@ -49,7 +49,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(&value) = container.values().get(i) {
 						data.push(value.trunc());
 						res_bitvec.push(true);
 					} else {
@@ -63,7 +63,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(&value) = container.values().get(i) {
 						data.push(value.trunc());
 						res_bitvec.push(true);
 					} else {

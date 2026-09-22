@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType},
-};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 pub struct TextReplace {
 	info: RoutineInfo,
@@ -65,12 +64,11 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if str_container.is_defined(i)
-						&& from_container.is_defined(i) && to_container.is_defined(i)
+					if i < str_container.len() && i < from_container.len() && i < to_container.len()
 					{
-						let s = str_container.get(i).unwrap();
-						let from = from_container.get(i).unwrap();
-						let to = to_container.get(i).unwrap();
+						let s = str_container.value(i);
+						let from = from_container.value(i);
+						let to = to_container.value(i);
 						result_data.push(s.replace(from, to));
 					} else {
 						result_data.push(String::new());
@@ -78,14 +76,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
 
-				let mut combined_bv: Option<BitVec> = None;
+				let mut combined_bv: Option<BooleanBuffer> = None;
 				for bv in [str_bv, from_bv, to_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {
-						Some(existing) => existing.and(bv),
+						Some(existing) => &existing & bv,
 						None => bv.clone(),
 					});
 				}

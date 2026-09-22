@@ -3,11 +3,12 @@
 
 use std::mem;
 
+use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	util::{bitvec::BitVec, shared_vec::SharedVec},
+	util::shared_vec::SharedVec,
 	value::{Value, digest::Digest},
 };
 
@@ -41,10 +42,6 @@ impl DigestContainer {
 
 	pub fn is_empty(&self) -> bool {
 		self.data.is_empty()
-	}
-
-	pub fn clear(&mut self) {
-		self.data.clear();
 	}
 
 	pub fn push(&mut self, digest: Box<Digest>) {
@@ -95,7 +92,7 @@ impl DigestContainer {
 		}
 	}
 
-	pub fn filter(&mut self, mask: &BitVec) {
+	pub fn filter(&mut self, mask: &BooleanBuffer) {
 		let data = mem::take(self.data.make_mut());
 		self.data = data.into_iter().zip(mask.iter()).filter_map(|(slot, keep)| keep.then_some(slot)).collect();
 	}

@@ -50,7 +50,7 @@ use reifydb_core::{
 		timer::TimerKind,
 		typed::{SuffixBytes, typed_key},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_macro::operator_state;
 use reifydb_transaction::multi::RangeScope;
@@ -994,7 +994,7 @@ impl SinkRingBufferViewOperator {
 				};
 				ColumnWithName {
 					name: Fragment::internal(&col.name),
-					data: ColumnBuffer::with_capacity(ty, 0),
+					data: ColumnBuilder::with_capacity(ty, 0).finish(),
 				}
 			})
 			.collect();
@@ -1158,6 +1158,7 @@ mod tests {
 			resolved::ResolvedNamespace,
 		},
 		key::{any::TaggedKey, tag::KeyTag},
+		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};

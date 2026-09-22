@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{date::Date, value_type::ValueType};
+use reifydb_value::value::{container::temporal_array::dates, date::Date, value_type::ValueType};
 
 pub struct DateIsLeapYear {
 	info: RoutineInfo,
@@ -45,7 +45,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateIsLeapYear {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(date) = container.get(i) {
+					if let Some(date) = dates(container).get(i) {
 						result.push(Date::is_leap_year(date.year()));
 						res_bitvec.push(true);
 					} else {

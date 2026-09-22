@@ -139,23 +139,6 @@ impl<T: Clone> SharedVec<T> {
 		self.make_mut().extend_from_slice(other);
 	}
 
-	pub fn clear(&mut self) {
-		match &mut self.repr {
-			Repr::Owned(vec) => vec.clear(),
-			Repr::Shared {
-				data,
-				..
-			} => match Arc::get_mut(data) {
-				Some(vec) => {
-					vec.clear();
-					let vec = mem::take(vec);
-					self.repr = Repr::Owned(vec);
-				}
-				None => self.repr = Repr::Owned(Vec::new()),
-			},
-		}
-	}
-
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let range = self.clamp(start, end);
 		match &self.repr {
@@ -172,10 +155,6 @@ impl<T: Clone> SharedVec<T> {
 				},
 			},
 		}
-	}
-
-	pub fn into_vec(mut self) -> Vec<T> {
-		mem::take(self.make_mut())
 	}
 
 	fn thaw(&mut self) {

@@ -20,7 +20,7 @@ use reifydb_core::{
 		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -265,7 +265,7 @@ impl ViewScanNode {
 			.enumerate()
 			.map(|(idx, col)| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
 			})
 			.collect()
 	}

@@ -5,7 +5,10 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{
+	container::{temporal_array::durations, varlen_array},
+	value_type::ValueType,
+};
 
 pub struct DurationFormat {
 	info: RoutineInfo,
@@ -89,9 +92,8 @@ impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dur_container.get(i), fmt_container.is_defined(i)) {
-						(Some(d), true) => {
-							let fmt_str = fmt_container.get(i).unwrap();
+					match (durations(dur_container).get(i), varlen_array::get(fmt_container, i)) {
+						(Some(d), Some(fmt_str)) => {
 							match format_duration(
 								d.get_months(),
 								d.get_days(),
@@ -117,10 +119,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
 					}
 				}
 
-				let mut final_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
-					max_bytes: MaxBytes::MAX,
-				};
+				let mut final_data = ColumnBuffer::utf8(result_data);
 				if let Some(bv) = dur_bv {
 					final_data = ColumnBuffer::Option {
 						inner: Box::new(final_data),

@@ -3,12 +3,12 @@
 
 use std::panic::catch_unwind;
 
+use arrow_array::Int32Array;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	wire::RawChangePayload,
 };
 use reifydb_value::value::{
-	container::number::NumberContainer,
 	diff_type::DiffType,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 };
@@ -16,7 +16,7 @@ use reifydb_value::value::{
 fn frame(op: Option<DiffType>) -> Frame {
 	let mut frame = Frame::new(vec![FrameColumn {
 		name: "a".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+		data: FrameColumnData::Int4(Int32Array::from(vec![7])),
 	}]);
 	frame.op = op;
 	frame

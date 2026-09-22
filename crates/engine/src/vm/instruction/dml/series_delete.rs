@@ -21,7 +21,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
@@ -307,11 +307,11 @@ fn build_series_delete_pre_columns_from_input(
 	));
 	for col in columns.iter() {
 		if col.name().text() != series.key.column() && col.name().text() != "tag" {
-			let mut data = ColumnBuffer::with_capacity(col.data().get_type(), 1);
+			let mut data = ColumnBuilder::with_capacity(col.data().get_type(), 1);
 			data.push_value(col.data().get_value(row_idx));
 			pre_col_vec.push(ColumnWithName {
 				name: col.name().clone(),
-				data,
+				data: data.finish(),
 			});
 		}
 	}

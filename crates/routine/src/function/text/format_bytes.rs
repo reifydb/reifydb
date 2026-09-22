@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::LargeStringArray;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -46,7 +47,7 @@ macro_rules! process_int_column {
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
-			if let Some(&value) = $container.get(i) {
+			if let Some(&value) = $container.values().get(i) {
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
 			} else {
 				result_data.push(String::new());
@@ -54,7 +55,7 @@ macro_rules! process_int_column {
 		}
 
 		ColumnBuffer::Utf8 {
-			container: Utf8Container::new(result_data),
+			container: LargeStringArray::from(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}};
@@ -66,7 +67,7 @@ macro_rules! process_float_column {
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
-			if let Some(&value) = $container.get(i) {
+			if let Some(&value) = $container.values().get(i) {
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
 			} else {
 				result_data.push(String::new());
@@ -74,7 +75,7 @@ macro_rules! process_float_column {
 		}
 
 		ColumnBuffer::Utf8 {
-			container: Utf8Container::new(result_data),
+			container: LargeStringArray::from(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}};
@@ -97,7 +98,7 @@ macro_rules! process_decimal_column {
 		}
 
 		ColumnBuffer::Utf8 {
-			container: Utf8Container::new(result_data),
+			container: LargeStringArray::from(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}};

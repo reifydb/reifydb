@@ -5,7 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{container::temporal_array::dates, value_type::ValueType};
 
 pub struct DateYear {
 	info: RoutineInfo,
@@ -45,7 +45,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateYear {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(date) = container.get(i) {
+					if let Some(date) = dates(container).get(i) {
 						result.push(date.year());
 						res_bitvec.push(true);
 					} else {

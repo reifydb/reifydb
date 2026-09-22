@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 pub struct TextReverse {
 	info: RoutineInfo,
@@ -47,9 +48,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextReverse {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let reversed: String =
-							container.get(i).unwrap().chars().rev().collect();
+					if i < container.len() {
+						let reversed: String = container.value(i).chars().rev().collect();
 						result_data.push(reversed);
 					} else {
 						result_data.push(String::new());
@@ -57,7 +57,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextReverse {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: *max_bytes,
 				};
 				let final_data = match bitvec {

@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{date_array, dates},
+	date::Date,
+	value_type::ValueType,
+};
 
 pub struct DateStartOfMonth {
 	info: RoutineInfo,
@@ -41,20 +45,20 @@ impl<'a> Routine<FunctionContext<'a>> for DateStartOfMonth {
 
 		let result_data = match data {
 			ColumnBuffer::Date(container) => {
-				let mut result = TemporalContainer::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(date) = container.get(i) {
+					if let Some(date) = dates(container).get(i) {
 						match Date::new(date.year(), date.month(), 1) {
 							Some(d) => result.push(d),
-							None => result.push_default(),
+							None => result.push(Date::default()),
 						}
 					} else {
-						result.push_default();
+						result.push(Date::default());
 					}
 				}
 
-				ColumnBuffer::Date(result)
+				ColumnBuffer::Date(date_array(result))
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

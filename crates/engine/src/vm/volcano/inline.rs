@@ -15,7 +15,8 @@ use reifydb_core::{
 	},
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
 	value::column::{
-		ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns, headers::ColumnHeaders,
+		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
+		headers::ColumnHeaders,
 	},
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
@@ -768,7 +769,7 @@ impl InlineDataNode {
 				.unwrap_or(ValueType::Boolean);
 			ColumnBuffer::none_typed(none_type, all_values.len())
 		} else {
-			let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
+			let mut data = ColumnBuilder::with_capacity(wide_type.clone().unwrap(), 0);
 
 			for (value, fragment) in all_values {
 				if matches!(value, Value::None { .. }) {
@@ -793,7 +794,7 @@ impl InlineDataNode {
 				}
 			}
 
-			data
+			data.finish()
 		};
 
 		if wide_type == Some(ValueType::Int16) {
@@ -879,9 +880,9 @@ impl InlineDataNode {
 		let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
 		let mut column_data = if let Some(tc) = table_column {
-			ColumnBuffer::none_typed(tc.constraint.get_type(), 0)
+			ColumnBuffer::none_typed(tc.constraint.get_type(), 0).into_builder()
 		} else {
-			ColumnBuffer::with_capacity(ValueType::Uint1, 0)
+			ColumnBuilder::with_capacity(ValueType::Uint1, 0)
 		};
 		let mut column_fragment: Option<Fragment> = None;
 
@@ -937,7 +938,7 @@ impl InlineDataNode {
 
 		Ok(ColumnWithName::new(
 			column_fragment.map(|f| f.with_text(column_name.text())).unwrap_or_else(|| column_name.clone()),
-			column_data,
+			column_data.finish(),
 		))
 	}
 }

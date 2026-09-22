@@ -3,7 +3,8 @@
 
 pub mod canonical;
 
-use reifydb_core::value::column::{data::Column, mask::RowMask};
+use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::column::data::Column;
 use reifydb_value::{Result, value::Value};
 
 use crate::encoding;
@@ -25,7 +26,7 @@ pub enum SearchResult {
 }
 
 pub trait Compute: Send + Sync {
-	fn filter(&self, _array: &Column, _mask: &RowMask) -> Option<Result<Column>> {
+	fn filter(&self, _array: &Column, _mask: &BooleanBuffer) -> Option<Result<Column>> {
 		None
 	}
 
@@ -58,7 +59,7 @@ pub struct DefaultCompute;
 
 impl Compute for DefaultCompute {}
 
-pub fn filter(array: &Column, mask: &RowMask) -> Result<Column> {
+pub fn filter(array: &Column, mask: &BooleanBuffer) -> Result<Column> {
 	if let Some(result) = specialized(array, |c| c.filter(array, mask)) {
 		return result;
 	}

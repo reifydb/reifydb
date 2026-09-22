@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{duration_array, durations},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DurationScale {
 	info: RoutineInfo,
@@ -27,15 +31,15 @@ impl DurationScale {
 
 fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
@@ -96,18 +100,18 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 				}
 
 				let row_count = dur_data.len();
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dur_container.get(i), extract_i64(scalar_data, i)) {
+					match (durations(dur_container).get(i), extract_i64(scalar_data, i)) {
 						(Some(dur), Some(scalar)) => {
 							container.push(*dur * scalar);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(duration_array(container));
 				if let Some(bv) = dur_bv {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

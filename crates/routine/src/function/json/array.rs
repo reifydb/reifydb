@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 pub struct JsonArray {
 	info: RoutineInfo,
@@ -46,13 +44,13 @@ impl<'a> Routine<FunctionContext<'a>> for JsonArray {
 		}
 
 		let mut unwrapped: Vec<_> = Vec::with_capacity(args.len());
-		let mut combined_bv: Option<BitVec> = None;
+		let mut combined_bv: Option<BooleanBuffer> = None;
 
 		for col in args.iter() {
 			let (data, bitvec) = col.data().unwrap_option();
 			if let Some(bv) = bitvec {
 				combined_bv = Some(match combined_bv {
-					Some(existing) => existing.and(bv),
+					Some(existing) => &existing & bv,
 					None => bv.clone(),
 				});
 			}

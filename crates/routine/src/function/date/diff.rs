@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{
+	container::temporal_array::{dates, duration_array},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DateDiff {
 	info: RoutineInfo,
@@ -43,20 +47,20 @@ impl<'a> Routine<FunctionContext<'a>> for DateDiff {
 
 		let result_data = match (data1, data2) {
 			(ColumnBuffer::Date(container1), ColumnBuffer::Date(container2)) => {
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (container1.get(i), container2.get(i)) {
+					match (dates(container1).get(i), dates(container2).get(i)) {
 						(Some(d1), Some(d2)) => {
 							let diff_days = (d1.to_days_since_epoch()
 								- d2.to_days_since_epoch()) as i64;
 							container.push(Duration::from_days(diff_days)?);
 						}
-						_ => container.push_default(),
+						_ => container.push(Duration::default()),
 					}
 				}
 
-				ColumnBuffer::Duration(container)
+				ColumnBuffer::Duration(duration_array(container))
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {

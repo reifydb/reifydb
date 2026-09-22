@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		columns::Columns,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
@@ -123,7 +124,7 @@ fn execute_float4<'a>(
 		let (data, _bitvec) = col.data().unwrap_option();
 		if let ColumnBuffer::Float4(container) = data {
 			for i in 0..row_count {
-				if let Some(value) = container.get(i) {
+				if let Some(value) = container.values().get(i) {
 					sums[i] += *value;
 					counts[i] += 1;
 				}
@@ -168,7 +169,7 @@ fn execute_float8<'a>(
 		let (data, _bitvec) = col.data().unwrap_option();
 		if let ColumnBuffer::Float8(container) = data {
 			for i in 0..row_count {
-				if let Some(value) = container.get(i) {
+				if let Some(value) = container.values().get(i) {
 					sums[i] += *value;
 					counts[i] += 1;
 				}
@@ -212,15 +213,15 @@ fn execute_decimal<'a>(
 	for (col_idx, col) in args.iter().enumerate() {
 		let (data, _bitvec) = col.data().unwrap_option();
 		match data {
-			ColumnBuffer::Int1(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Int2(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Int4(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Int8(container) => exec_int_arm!(container, row_count, sums, counts),
+			ColumnBuffer::Int1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Int2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Int4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Int8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Int16(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Uint1(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Uint2(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Uint4(container) => exec_int_arm!(container, row_count, sums, counts),
-			ColumnBuffer::Uint8(container) => exec_int_arm!(container, row_count, sums, counts),
+			ColumnBuffer::Uint1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Uint2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Uint4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Uint8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Uint16(container) => exec_int_arm!(container, row_count, sums, counts),
 			ColumnBuffer::Int {
 				container,
@@ -357,31 +358,31 @@ impl Accumulator for AvgAccumulator {
 
 		match (&mut self.state, data) {
 			(AvgState::Int(sums), ColumnBuffer::Int1(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int2(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int4(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int8(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int16(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint1(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint2(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint4(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint8(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container);
@@ -485,7 +486,7 @@ impl Accumulator for AvgAccumulator {
 					let mut count = 0u64;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(&val) = container.get(i)
+							&& let Some(&val) = container.values().get(i)
 						{
 							delta += val;
 							count += 1;
@@ -507,7 +508,7 @@ impl Accumulator for AvgAccumulator {
 					let mut count = 0u64;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(&val) = container.get(i)
+							&& let Some(&val) = container.values().get(i)
 						{
 							delta += val;
 							count += 1;
@@ -540,7 +541,9 @@ impl Accumulator for AvgAccumulator {
 		let counts = mem::take(&mut self.counts);
 
 		match state {
-			AvgState::Unset => Ok((Vec::new(), ColumnBuffer::with_capacity(ValueType::Decimal, 0))),
+			AvgState::Unset => {
+				Ok((Vec::new(), ColumnBuilder::with_capacity(ValueType::Decimal, 0).finish()))
+			}
 			AvgState::Int(sums) | AvgState::Decimal(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
 				let mut out = Vec::with_capacity(sums.len());

@@ -7,14 +7,15 @@ mod varlen;
 
 use std::str;
 
+use arrow_array::LargeStringArray;
+use arrow_buffer::{BooleanBuffer, Buffer};
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::{
 	encoding::LeBytes,
 	reifydb_assertions,
-	util::bitvec::BitVec,
 	value::{
-		container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},
+		container::{number::NumberContainer, varlen_array::blob_array},
 		datetime::DateTime,
 		decimal::Decimal,
 		diff_type::DiffType,
@@ -256,7 +257,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			)));
 		}
 		check_len(data, pos, nones_len)?;
-		let layers: Vec<BitVec> = (0..depth)
+		let layers: Vec<BooleanBuffer> = (0..depth)
 			.map(|layer| {
 				let start = pos + layer * layer_len;
 				decode_bitvec(&data[start..start + layer_len], row_count)
@@ -351,12 +352,12 @@ fn decode_column_dispatch(
 			ValueType::Utf8 => {
 				let index_width = dict_index_width_from_flags(flags);
 				let strings = decode_dict_utf8(data, extra, row_count, index_width)?;
-				Ok(FrameColumnData::Utf8(Utf8Container::new(strings)))
+				Ok(FrameColumnData::Utf8(LargeStringArray::from(strings)))
 			}
 			ValueType::Blob => {
 				let index_width = dict_index_width_from_flags(flags);
 				let blobs = decode_dict_blob(data, extra, row_count, index_width)?;
-				Ok(FrameColumnData::Blob(BlobContainer::new(blobs)))
+				Ok(FrameColumnData::Blob(blob_array(&blobs)))
 			}
 			ValueType::Int => {
 				let index_width = dict_index_width_from_flags(flags);
@@ -430,8 +431,8 @@ fn decode_column_dispatch(
 	}
 }
 
-fn decode_bitvec(data: &[u8], len: usize) -> BitVec {
-	BitVec::from_raw(data.to_vec(), len)
+fn decode_bitvec(data: &[u8], len: usize) -> BooleanBuffer {
+	BooleanBuffer::new(Buffer::from_vec(data.to_vec()), 0, len)
 }
 
 #[inline]

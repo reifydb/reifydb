@@ -28,18 +28,18 @@ impl Atan2 {
 
 fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Float4(c) => c.get(i).map(|&v| v as f64),
-		ColumnBuffer::Float8(c) => c.get(i).copied(),
+		ColumnBuffer::Float4(c) => c.values().get(i).map(|&v| v as f64),
+		ColumnBuffer::Float8(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int {
 			container,
 			..
@@ -110,7 +110,7 @@ impl<'a> Routine<FunctionContext<'a>> for Atan2 {
 		let result_data = ColumnBuffer::float8_with_bitvec(result, res_bitvec);
 
 		let combined_bitvec = match (y_bitvec, x_bitvec) {
-			(Some(y_bv), Some(x_bv)) => Some(y_bv.and(x_bv)),
+			(Some(y_bv), Some(x_bv)) => Some(y_bv & x_bv),
 			(Some(y_bv), None) => Some(y_bv.clone()),
 			(None, Some(x_bv)) => Some(x_bv.clone()),
 			(None, None) => None,

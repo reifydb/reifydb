@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -44,12 +44,12 @@ impl BaseVTable for SystemProceduresExternC {
 			return Ok(None);
 		}
 
-		let mut id_col = ColumnBuffer::uint8_with_capacity(0);
-		let mut ns_col = ColumnBuffer::uint8_with_capacity(0);
-		let mut name_col = ColumnBuffer::utf8_with_capacity(0);
-		let mut handler_col = ColumnBuffer::utf8_with_capacity(0);
-		let mut library_col = ColumnBuffer::utf8_with_capacity(0);
-		let mut entry_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut id_col = ColumnBuilder::with_capacity(ValueType::Uint8, 0);
+		let mut ns_col = ColumnBuilder::with_capacity(ValueType::Uint8, 0);
+		let mut name_col = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+		let mut handler_col = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+		let mut library_col = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
+		let mut entry_col = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 
 		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(Procedure::ExternC {
@@ -72,12 +72,12 @@ impl BaseVTable for SystemProceduresExternC {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), id_col),
-			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
-			ColumnWithName::new(Fragment::internal("name"), name_col),
-			ColumnWithName::new(Fragment::internal("handler_name"), handler_col),
-			ColumnWithName::new(Fragment::internal("library_path"), library_col),
-			ColumnWithName::new(Fragment::internal("entry_symbol"), entry_col),
+			ColumnWithName::new(Fragment::internal("id"), id_col.finish()),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col.finish()),
+			ColumnWithName::new(Fragment::internal("name"), name_col.finish()),
+			ColumnWithName::new(Fragment::internal("handler_name"), handler_col.finish()),
+			ColumnWithName::new(Fragment::internal("library_path"), library_col.finish()),
+			ColumnWithName::new(Fragment::internal("entry_symbol"), entry_col.finish()),
 		];
 
 		self.exhausted = true;

@@ -11,11 +11,11 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
 
@@ -58,7 +58,7 @@ pub fn cast_column_data(
 			other => other.clone(),
 		};
 		let total_len = inner.len();
-		let defined_count = bitvec.count_ones();
+		let defined_count = bitvec.count_set_bits();
 
 		if defined_count == 0 {
 			return Ok(ColumnBuffer::none_typed(inner_target, total_len));
@@ -74,7 +74,7 @@ pub fn cast_column_data(
 			let mut expand_indices = Vec::with_capacity(total_len);
 			let mut src_idx = 0usize;
 			for i in 0..total_len {
-				if bitvec.get(i) {
+				if bitvec.value(i) {
 					expand_indices.push(src_idx);
 					src_idx += 1;
 				} else {
@@ -113,7 +113,7 @@ pub fn cast_column_data(
 				..
 			} => already,
 			other => {
-				let bitvec = BitVec::repeat(other.len(), true);
+				let bitvec = BooleanBuffer::new_set(other.len());
 				ColumnBuffer::Option {
 					inner: Box::new(other),
 					bitvec,

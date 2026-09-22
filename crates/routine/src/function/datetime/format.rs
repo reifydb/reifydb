@@ -6,7 +6,9 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, value_type::ValueType,
+	container::{temporal_array::datetimes, varlen_array::get},
+	date::Date,
+	value_type::ValueType,
 };
 
 pub struct DateTimeFormat {
@@ -141,70 +143,68 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
 		let row_count = dt_data.len();
 
-		let result_data =
-			match (dt_data, fmt_data) {
-				(
-					ColumnBuffer::DateTime(dt_container),
-					ColumnBuffer::Utf8 {
-						container: fmt_container,
-						..
-					},
-				) => {
-					let mut result = Vec::with_capacity(row_count);
+		let result_data = match (dt_data, fmt_data) {
+			(
+				ColumnBuffer::DateTime(dt_container),
+				ColumnBuffer::Utf8 {
+					container: fmt_container,
+					..
+				},
+			) => {
+				let mut result = Vec::with_capacity(row_count);
 
-					for i in 0..row_count {
-						match (dt_container.get(i), fmt_container.is_defined(i)) {
-							(Some(dt), true) => {
-								let fmt_str = fmt_container.get(i).unwrap();
-								match format_datetime(
-									dt.year(),
-									dt.month(),
-									dt.day(),
-									dt.hour(),
-									dt.minute(),
-									dt.second(),
-									dt.nanosecond(),
-									fmt_str,
-								) {
-									Ok(formatted) => {
-										result.push(formatted);
-									}
-									Err(reason) => {
-										return Err(RoutineError::FunctionExecutionFailed {
-										function: ctx.fragment.clone(),
-										reason,
-									});
-									}
+				for i in 0..row_count {
+					match (datetimes(dt_container).get(i), get(fmt_container, i).is_some()) {
+						(Some(dt), true) => {
+							let fmt_str = get(fmt_container, i).unwrap();
+							match format_datetime(
+								dt.year(),
+								dt.month(),
+								dt.day(),
+								dt.hour(),
+								dt.minute(),
+								dt.second(),
+								dt.nanosecond(),
+								fmt_str,
+							) {
+								Ok(formatted) => {
+									result.push(formatted);
+								}
+								Err(reason) => {
+									return Err(
+										RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason,
+										},
+									);
 								}
 							}
-							_ => {
-								result.push(String::new());
-							}
+						}
+						_ => {
+							result.push(String::new());
 						}
 					}
+				}
 
-					ColumnBuffer::Utf8 {
-						container: Utf8Container::new(result),
-						max_bytes: MaxBytes::MAX,
-					}
-				}
-				(ColumnBuffer::DateTime(_), other) => {
-					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.fragment.clone(),
-						argument_index: 1,
-						expected: vec![ValueType::Utf8],
-						actual: other.get_type(),
-					});
-				}
-				(other, _) => {
-					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.fragment.clone(),
-						argument_index: 0,
-						expected: vec![ValueType::DateTime],
-						actual: other.get_type(),
-					});
-				}
-			};
+				ColumnBuffer::utf8(result)
+			}
+			(ColumnBuffer::DateTime(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![ValueType::Utf8],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![ValueType::DateTime],
+					actual: other.get_type(),
+				});
+			}
+		};
 
 		let final_data = match (dt_bitvec, fmt_bitvec) {
 			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {

@@ -3,13 +3,14 @@
 
 use std::panic::catch_unwind;
 
+use arrow_array::Int32Array;
 use reifydb_codec::json::{
 	from::{frames_from_envelope, frames_from_json},
 	to::frames_to_json,
 };
 use reifydb_value::value::{
 	Value,
-	container::{digest::DigestContainer, number::NumberContainer},
+	container::digest::DigestContainer,
 	datetime::DateTime,
 	digest::Digest,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -37,7 +38,7 @@ fn digest_frame() -> Frame {
 fn int4_frame() -> Frame {
 	Frame::new(vec![FrameColumn {
 		name: "a".to_string(),
-		data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+		data: FrameColumnData::Int4(Int32Array::from(vec![7])),
 	}])
 }
 

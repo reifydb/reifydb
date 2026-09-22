@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::tag::value_type_from_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -50,8 +50,8 @@ impl BaseVTable for SystemTypes {
 
 		const TYPE_COUNT: usize = 27;
 
-		let mut ids = ColumnBuffer::uint1_with_capacity(TYPE_COUNT);
-		let mut names = ColumnBuffer::utf8_with_capacity(TYPE_COUNT);
+		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint1, TYPE_COUNT);
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, TYPE_COUNT);
 
 		for i in 1..=TYPE_COUNT as u8 {
 			let ty = value_type_from_tag_byte(i);
@@ -60,8 +60,8 @@ impl BaseVTable for SystemTypes {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids),
-			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
 		];
 
 		self.exhausted = true;

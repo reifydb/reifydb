@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use super::operator_libary::OperatorLibrary;
 use crate::{
@@ -49,11 +49,11 @@ impl BaseVTable for SystemOperatorLibraryInputs {
 
 		let capacity: usize = infos.iter().map(|op| op.input_columns.len()).sum();
 
-		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut positions = ColumnBuffer::uint1_with_capacity(capacity);
-		let mut names = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut column_types = ColumnBuffer::uint1_with_capacity(capacity);
-		let mut descriptions = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut operators = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+		let mut positions = ColumnBuilder::with_capacity(ValueType::Uint1, capacity);
+		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+		let mut column_types = ColumnBuilder::with_capacity(ValueType::Uint1, capacity);
+		let mut descriptions = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 
 		for info in infos {
 			for (position, col) in info.input_columns.iter().enumerate() {
@@ -66,11 +66,11 @@ impl BaseVTable for SystemOperatorLibraryInputs {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("operator"), operators),
-			ColumnWithName::new(Fragment::internal("position"), positions),
-			ColumnWithName::new(Fragment::internal("name"), names),
-			ColumnWithName::new(Fragment::internal("type"), column_types),
-			ColumnWithName::new(Fragment::internal("description"), descriptions),
+			ColumnWithName::new(Fragment::internal("operator"), operators.finish()),
+			ColumnWithName::new(Fragment::internal("position"), positions.finish()),
+			ColumnWithName::new(Fragment::internal("name"), names.finish()),
+			ColumnWithName::new(Fragment::internal("type"), column_types.finish()),
+			ColumnWithName::new(Fragment::internal("description"), descriptions.finish()),
 		];
 
 		self.exhausted = true;

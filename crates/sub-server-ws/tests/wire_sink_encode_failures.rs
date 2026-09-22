@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Int32Array;
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	wire::RawChangePayload,
@@ -10,13 +12,9 @@ use reifydb_sub_core::wire_sink::WireSink;
 use reifydb_sub_server::format::WireFormat;
 use reifydb_sub_server_ws::subscription::registry::{PushMessage, WsWireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_value::{
-	util::bitvec::BitVec,
-	value::{
-		container::number::NumberContainer,
-		diff_type::DiffType,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	},
+use reifydb_value::value::{
+	diff_type::DiffType,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 };
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
@@ -34,13 +32,13 @@ fn change(data: FrameColumnData) -> Vec<Frame> {
 }
 
 fn int4() -> FrameColumnData {
-	FrameColumnData::Int4(NumberContainer::new(vec![7]))
+	FrameColumnData::Int4(Int32Array::from(vec![7]))
 }
 
 fn option_layers(depth: usize) -> FrameColumnData {
 	(0..depth).fold(int4(), |inner, _| FrameColumnData::Option {
 		inner: Box::new(inner),
-		bitvec: BitVec::from_slice(&[true]),
+		bitvec: BooleanBuffer::from(vec![true]),
 	})
 }
 

@@ -1,65 +1,129 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{
+	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
+	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
+	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+};
+use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	util::{
-		bitvec::BitVec,
+		bitmap,
 		float_format::{format_f32, format_f64},
 	},
 	value::{
 		Value,
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			digest::DigestContainer, identity_id::IdentityIdContainer, number::NumberContainer,
-			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			bool_array,
+			decimal_array::{
+				deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string,
+				uint16_get_value,
+			},
+			dictionary_array,
+			digest::DigestContainer,
+			number::NumberContainer,
+			primitive,
+			temporal_array::{
+				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
+				deserialize_durations, deserialize_times, durations, serialize_dates,
+				serialize_datetimes, serialize_durations, serialize_times, times,
+			},
+			uuid_array::{
+				self, deserialize_identity_ids, deserialize_uuid4s, deserialize_uuid7s, identity_ids,
+				serialize_identity_ids, serialize_uuid4s, serialize_uuid7s, uuid4s, uuid7s,
+			},
+			varlen_array::{self, blob_as_string, blob_get_value, utf8_as_string, utf8_get_value},
 		},
-		date::Date,
-		datetime::DateTime,
 		decimal::Decimal,
-		duration::Duration,
+		dictionary::DictionaryId,
 		int::Int,
-		time::Time,
 		uint::Uint,
-		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum FrameColumnData {
-	Bool(BoolContainer),
-	Float4(NumberContainer<f32>),
-	Float8(NumberContainer<f64>),
-	Int1(NumberContainer<i8>),
-	Int2(NumberContainer<i16>),
-	Int4(NumberContainer<i32>),
-	Int8(NumberContainer<i64>),
-	Int16(NumberContainer<i128>),
-	Uint1(NumberContainer<u8>),
-	Uint2(NumberContainer<u16>),
-	Uint4(NumberContainer<u32>),
-	Uint8(NumberContainer<u64>),
-	Uint16(NumberContainer<u128>),
-	Utf8(Utf8Container),
-	Date(TemporalContainer<Date>),
-	DateTime(TemporalContainer<DateTime>),
-	Time(TemporalContainer<Time>),
-	Duration(TemporalContainer<Duration>),
-	IdentityId(IdentityIdContainer),
-	Uuid4(UuidContainer<Uuid4>),
-	Uuid7(UuidContainer<Uuid7>),
-	Blob(BlobContainer),
+	Bool(#[serde(with = "bool_array")] BooleanArray),
+	Float4(#[serde(with = "primitive")] Float32Array),
+	Float8(#[serde(with = "primitive")] Float64Array),
+	Int1(#[serde(with = "primitive")] Int8Array),
+	Int2(#[serde(with = "primitive")] Int16Array),
+	Int4(#[serde(with = "primitive")] Int32Array),
+	Int8(#[serde(with = "primitive")] Int64Array),
+	Int16(
+		#[serde(serialize_with = "primitive::serialize", deserialize_with = "deserialize_int16s")]
+		Decimal128Array,
+	),
+	Uint1(#[serde(with = "primitive")] UInt8Array),
+	Uint2(#[serde(with = "primitive")] UInt16Array),
+	Uint4(#[serde(with = "primitive")] UInt32Array),
+	Uint8(#[serde(with = "primitive")] UInt64Array),
+	Uint16(
+		#[serde(serialize_with = "serialize_uint16s", deserialize_with = "deserialize_uint16s")]
+		Decimal256Array,
+	),
+	Utf8(
+		#[serde(
+			serialize_with = "varlen_array::serialize",
+			deserialize_with = "varlen_array::deserialize_utf8"
+		)]
+		LargeStringArray,
+	),
+	Date(#[serde(serialize_with = "serialize_dates", deserialize_with = "deserialize_dates")] Date32Array),
+	DateTime(
+		#[serde(serialize_with = "serialize_datetimes", deserialize_with = "deserialize_datetimes")]
+		UInt64Array,
+	),
+	Time(
+		#[serde(serialize_with = "serialize_times", deserialize_with = "deserialize_times")]
+		Time64NanosecondArray,
+	),
+	Duration(
+		#[serde(serialize_with = "serialize_durations", deserialize_with = "deserialize_durations")]
+		IntervalMonthDayNanoArray,
+	),
+	IdentityId(
+		#[serde(serialize_with = "serialize_identity_ids", deserialize_with = "deserialize_identity_ids")]
+		FixedSizeBinaryArray,
+	),
+	Uuid4(
+		#[serde(serialize_with = "serialize_uuid4s", deserialize_with = "deserialize_uuid4s")]
+		FixedSizeBinaryArray,
+	),
+	Uuid7(
+		#[serde(serialize_with = "serialize_uuid7s", deserialize_with = "deserialize_uuid7s")]
+		FixedSizeBinaryArray,
+	),
+	Blob(
+		#[serde(
+			serialize_with = "varlen_array::serialize",
+			deserialize_with = "varlen_array::deserialize_blob"
+		)]
+		LargeBinaryArray,
+	),
 	Int(NumberContainer<Int>),
 	Uint(NumberContainer<Uint>),
 	Decimal(NumberContainer<Decimal>),
 	Any(AnyContainer),
-	DictionaryId(DictionaryContainer),
+	DictionaryId {
+		#[serde(
+			rename = "data",
+			serialize_with = "dictionary_array::serialize",
+			deserialize_with = "dictionary_array::deserialize"
+		)]
+		container: FixedSizeBinaryArray,
+		dictionary_id: Option<DictionaryId>,
+	},
 
 	Option {
 		inner: Box<FrameColumnData>,
-		bitvec: BitVec,
+		#[serde(with = "bitmap")]
+		bitvec: BooleanBuffer,
 	},
 
 	Digest {
@@ -67,6 +131,77 @@ pub enum FrameColumnData {
 		inner: ValueType,
 		accuracy: u32,
 	},
+}
+
+impl PartialEq for FrameColumnData {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(FrameColumnData::Bool(a), FrameColumnData::Bool(b)) => a.values() == b.values(),
+			(FrameColumnData::Float4(a), FrameColumnData::Float4(b)) => a.values() == b.values(),
+			(FrameColumnData::Float8(a), FrameColumnData::Float8(b)) => a.values() == b.values(),
+			(FrameColumnData::Int1(a), FrameColumnData::Int1(b)) => a.values() == b.values(),
+			(FrameColumnData::Int2(a), FrameColumnData::Int2(b)) => a.values() == b.values(),
+			(FrameColumnData::Int4(a), FrameColumnData::Int4(b)) => a.values() == b.values(),
+			(FrameColumnData::Int8(a), FrameColumnData::Int8(b)) => a.values() == b.values(),
+			(FrameColumnData::Int16(a), FrameColumnData::Int16(b)) => a.values() == b.values(),
+			(FrameColumnData::Uint1(a), FrameColumnData::Uint1(b)) => a.values() == b.values(),
+			(FrameColumnData::Uint2(a), FrameColumnData::Uint2(b)) => a.values() == b.values(),
+			(FrameColumnData::Uint4(a), FrameColumnData::Uint4(b)) => a.values() == b.values(),
+			(FrameColumnData::Uint8(a), FrameColumnData::Uint8(b)) => a.values() == b.values(),
+			(FrameColumnData::Uint16(a), FrameColumnData::Uint16(b)) => a.values() == b.values(),
+			(FrameColumnData::Utf8(a), FrameColumnData::Utf8(b)) => varlen_array::equals(a, b),
+			(FrameColumnData::Date(a), FrameColumnData::Date(b)) => dates(a) == dates(b),
+			(FrameColumnData::DateTime(a), FrameColumnData::DateTime(b)) => datetimes(a) == datetimes(b),
+			(FrameColumnData::Time(a), FrameColumnData::Time(b)) => times(a) == times(b),
+			(FrameColumnData::Duration(a), FrameColumnData::Duration(b)) => durations(a) == durations(b),
+			(FrameColumnData::IdentityId(a), FrameColumnData::IdentityId(b)) => {
+				identity_ids(a) == identity_ids(b)
+			}
+			(FrameColumnData::Uuid4(a), FrameColumnData::Uuid4(b)) => uuid4s(a) == uuid4s(b),
+			(FrameColumnData::Uuid7(a), FrameColumnData::Uuid7(b)) => uuid7s(a) == uuid7s(b),
+			(FrameColumnData::Blob(a), FrameColumnData::Blob(b)) => varlen_array::equals(a, b),
+			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => a == b,
+			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => a == b,
+			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => a == b,
+			(FrameColumnData::Any(a), FrameColumnData::Any(b)) => a == b,
+			(
+				FrameColumnData::DictionaryId {
+					container: a_container,
+					dictionary_id: a_dictionary_id,
+				},
+				FrameColumnData::DictionaryId {
+					container: b_container,
+					dictionary_id: b_dictionary_id,
+				},
+			) => {
+				dictionary_array::iter(a_container).eq(dictionary_array::iter(b_container))
+					&& a_dictionary_id == b_dictionary_id
+			}
+			(
+				FrameColumnData::Option {
+					inner: a_inner,
+					bitvec: a_bitvec,
+				},
+				FrameColumnData::Option {
+					inner: b_inner,
+					bitvec: b_bitvec,
+				},
+			) => a_inner == b_inner && a_bitvec == b_bitvec,
+			(
+				FrameColumnData::Digest {
+					container: a_container,
+					inner: a_inner,
+					accuracy: a_accuracy,
+				},
+				FrameColumnData::Digest {
+					container: b_container,
+					inner: b_inner,
+					accuracy: b_accuracy,
+				},
+			) => a_container == b_container && a_inner == b_inner && a_accuracy == b_accuracy,
+			_ => false,
+		}
+	}
 }
 
 impl FrameColumnData {
@@ -98,7 +233,9 @@ impl FrameColumnData {
 			FrameColumnData::Uint(_) => ValueType::Uint,
 			FrameColumnData::Decimal(_) => ValueType::Decimal,
 			FrameColumnData::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
-			FrameColumnData::DictionaryId(_) => ValueType::DictionaryId,
+			FrameColumnData::DictionaryId {
+				..
+			} => ValueType::DictionaryId,
 			FrameColumnData::Option {
 				inner,
 				..
@@ -116,37 +253,40 @@ impl FrameColumnData {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		match self {
-			FrameColumnData::Bool(container) => container.is_defined(idx),
-			FrameColumnData::Float4(container) => container.is_defined(idx),
-			FrameColumnData::Float8(container) => container.is_defined(idx),
-			FrameColumnData::Int1(container) => container.is_defined(idx),
-			FrameColumnData::Int2(container) => container.is_defined(idx),
-			FrameColumnData::Int4(container) => container.is_defined(idx),
-			FrameColumnData::Int8(container) => container.is_defined(idx),
-			FrameColumnData::Int16(container) => container.is_defined(idx),
-			FrameColumnData::Uint1(container) => container.is_defined(idx),
-			FrameColumnData::Uint2(container) => container.is_defined(idx),
-			FrameColumnData::Uint4(container) => container.is_defined(idx),
-			FrameColumnData::Uint8(container) => container.is_defined(idx),
-			FrameColumnData::Uint16(container) => container.is_defined(idx),
-			FrameColumnData::Utf8(container) => container.is_defined(idx),
-			FrameColumnData::Date(container) => container.is_defined(idx),
-			FrameColumnData::DateTime(container) => container.is_defined(idx),
-			FrameColumnData::Time(container) => container.is_defined(idx),
-			FrameColumnData::Duration(container) => container.is_defined(idx),
-			FrameColumnData::IdentityId(container) => container.is_defined(idx),
-			FrameColumnData::Uuid4(container) => container.is_defined(idx),
-			FrameColumnData::Uuid7(container) => container.is_defined(idx),
-			FrameColumnData::Blob(container) => container.is_defined(idx),
+			FrameColumnData::Bool(container) => idx < container.len(),
+			FrameColumnData::Float4(container) => idx < container.len(),
+			FrameColumnData::Float8(container) => idx < container.len(),
+			FrameColumnData::Int1(container) => idx < container.len(),
+			FrameColumnData::Int2(container) => idx < container.len(),
+			FrameColumnData::Int4(container) => idx < container.len(),
+			FrameColumnData::Int8(container) => idx < container.len(),
+			FrameColumnData::Int16(container) => idx < container.len(),
+			FrameColumnData::Uint1(container) => idx < container.len(),
+			FrameColumnData::Uint2(container) => idx < container.len(),
+			FrameColumnData::Uint4(container) => idx < container.len(),
+			FrameColumnData::Uint8(container) => idx < container.len(),
+			FrameColumnData::Uint16(container) => idx < container.len(),
+			FrameColumnData::Utf8(container) => idx < container.len(),
+			FrameColumnData::Date(container) => idx < container.len(),
+			FrameColumnData::DateTime(container) => idx < container.len(),
+			FrameColumnData::Time(container) => idx < container.len(),
+			FrameColumnData::Duration(container) => idx < container.len(),
+			FrameColumnData::IdentityId(container) => idx < container.len(),
+			FrameColumnData::Uuid4(container) => idx < container.len(),
+			FrameColumnData::Uuid7(container) => idx < container.len(),
+			FrameColumnData::Blob(container) => idx < container.len(),
 			FrameColumnData::Int(container) => container.is_defined(idx),
 			FrameColumnData::Uint(container) => container.is_defined(idx),
 			FrameColumnData::Decimal(container) => container.is_defined(idx),
 			FrameColumnData::Any(container) => container.is_defined(idx),
-			FrameColumnData::DictionaryId(container) => container.is_defined(idx),
+			FrameColumnData::DictionaryId {
+				container,
+				..
+			} => idx < container.len(),
 			FrameColumnData::Option {
 				bitvec,
 				..
-			} => idx < bitvec.len() && bitvec.get(idx),
+			} => idx < bitvec.len() && bitvec.value(idx),
 			FrameColumnData::Digest {
 				container,
 				..
@@ -225,7 +365,10 @@ impl FrameColumnData {
 			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Any(container) => container.len(),
-			FrameColumnData::DictionaryId(container) => container.len(),
+			FrameColumnData::DictionaryId {
+				container,
+				..
+			} => container.len(),
 			FrameColumnData::Option {
 				inner,
 				..
@@ -243,50 +386,53 @@ impl FrameColumnData {
 
 	pub fn as_string(&self, index: usize) -> String {
 		match self {
-			FrameColumnData::Bool(container) => container.as_string(index),
+			FrameColumnData::Bool(container) => bool_array::as_string(container, index),
 			FrameColumnData::Float4(container) => {
-				if let Some(&v) = container.get(index) {
-					format_f32(v)
+				if index < container.len() {
+					format_f32(container.value(index))
 				} else {
 					"none".to_string()
 				}
 			}
 			FrameColumnData::Float8(container) => {
-				if let Some(&v) = container.get(index) {
-					format_f64(v)
+				if index < container.len() {
+					format_f64(container.value(index))
 				} else {
 					"none".to_string()
 				}
 			}
-			FrameColumnData::Int1(container) => container.as_string(index),
-			FrameColumnData::Int2(container) => container.as_string(index),
-			FrameColumnData::Int4(container) => container.as_string(index),
-			FrameColumnData::Int8(container) => container.as_string(index),
-			FrameColumnData::Int16(container) => container.as_string(index),
-			FrameColumnData::Uint1(container) => container.as_string(index),
-			FrameColumnData::Uint2(container) => container.as_string(index),
-			FrameColumnData::Uint4(container) => container.as_string(index),
-			FrameColumnData::Uint8(container) => container.as_string(index),
-			FrameColumnData::Uint16(container) => container.as_string(index),
-			FrameColumnData::Utf8(container) => container.as_string(index),
-			FrameColumnData::Date(container) => container.as_string(index),
-			FrameColumnData::DateTime(container) => container.as_string(index),
-			FrameColumnData::Time(container) => container.as_string(index),
-			FrameColumnData::Duration(container) => container.as_string(index),
-			FrameColumnData::IdentityId(container) => container.as_string(index),
-			FrameColumnData::Uuid4(container) => container.as_string(index),
-			FrameColumnData::Uuid7(container) => container.as_string(index),
-			FrameColumnData::Blob(container) => container.as_string(index),
+			FrameColumnData::Int1(container) => primitive::as_string(container, index),
+			FrameColumnData::Int2(container) => primitive::as_string(container, index),
+			FrameColumnData::Int4(container) => primitive::as_string(container, index),
+			FrameColumnData::Int8(container) => primitive::as_string(container, index),
+			FrameColumnData::Int16(container) => primitive::as_string(container, index),
+			FrameColumnData::Uint1(container) => primitive::as_string(container, index),
+			FrameColumnData::Uint2(container) => primitive::as_string(container, index),
+			FrameColumnData::Uint4(container) => primitive::as_string(container, index),
+			FrameColumnData::Uint8(container) => primitive::as_string(container, index),
+			FrameColumnData::Uint16(container) => uint16_as_string(container, index),
+			FrameColumnData::Utf8(container) => utf8_as_string(container, index),
+			FrameColumnData::Date(container) => temporal_array::as_string(dates(container), index),
+			FrameColumnData::DateTime(container) => temporal_array::as_string(datetimes(container), index),
+			FrameColumnData::Time(container) => temporal_array::as_string(times(container), index),
+			FrameColumnData::Duration(container) => temporal_array::as_string(durations(container), index),
+			FrameColumnData::IdentityId(container) => uuid_array::as_string(identity_ids(container), index),
+			FrameColumnData::Uuid4(container) => uuid_array::as_string(uuid4s(container), index),
+			FrameColumnData::Uuid7(container) => uuid_array::as_string(uuid7s(container), index),
+			FrameColumnData::Blob(container) => blob_as_string(container, index),
 			FrameColumnData::Int(container) => container.as_string(index),
 			FrameColumnData::Uint(container) => container.as_string(index),
 			FrameColumnData::Decimal(container) => container.as_string(index),
 			FrameColumnData::Any(container) => container.as_string(index),
-			FrameColumnData::DictionaryId(container) => container.as_string(index),
+			FrameColumnData::DictionaryId {
+				container,
+				..
+			} => dictionary_array::as_string(container, index),
 			FrameColumnData::Option {
 				inner,
 				bitvec,
 			} => {
-				if bitvec.get(index) {
+				if bitvec.value(index) {
 					inner.as_string(index)
 				} else {
 					"none".to_string()
@@ -303,38 +449,43 @@ impl FrameColumnData {
 impl FrameColumnData {
 	pub fn get_value(&self, index: usize) -> Value {
 		match self {
-			FrameColumnData::Bool(container) => container.get_value(index),
-			FrameColumnData::Float4(container) => container.get_value(index),
-			FrameColumnData::Float8(container) => container.get_value(index),
-			FrameColumnData::Int1(container) => container.get_value(index),
-			FrameColumnData::Int2(container) => container.get_value(index),
-			FrameColumnData::Int4(container) => container.get_value(index),
-			FrameColumnData::Int8(container) => container.get_value(index),
-			FrameColumnData::Int16(container) => container.get_value(index),
-			FrameColumnData::Uint1(container) => container.get_value(index),
-			FrameColumnData::Uint2(container) => container.get_value(index),
-			FrameColumnData::Uint4(container) => container.get_value(index),
-			FrameColumnData::Uint8(container) => container.get_value(index),
-			FrameColumnData::Uint16(container) => container.get_value(index),
-			FrameColumnData::Utf8(container) => container.get_value(index),
-			FrameColumnData::Date(container) => container.get_value(index),
-			FrameColumnData::DateTime(container) => container.get_value(index),
-			FrameColumnData::Time(container) => container.get_value(index),
-			FrameColumnData::Duration(container) => container.get_value(index),
-			FrameColumnData::IdentityId(container) => container.get_value(index),
-			FrameColumnData::Uuid4(container) => container.get_value(index),
-			FrameColumnData::Uuid7(container) => container.get_value(index),
-			FrameColumnData::Blob(container) => container.get_value(index),
+			FrameColumnData::Bool(container) => bool_array::get_value(container, index),
+			FrameColumnData::Float4(container) => primitive::get_value(container, index),
+			FrameColumnData::Float8(container) => primitive::get_value(container, index),
+			FrameColumnData::Int1(container) => primitive::get_value(container, index),
+			FrameColumnData::Int2(container) => primitive::get_value(container, index),
+			FrameColumnData::Int4(container) => primitive::get_value(container, index),
+			FrameColumnData::Int8(container) => primitive::get_value(container, index),
+			FrameColumnData::Int16(container) => primitive::get_value(container, index),
+			FrameColumnData::Uint1(container) => primitive::get_value(container, index),
+			FrameColumnData::Uint2(container) => primitive::get_value(container, index),
+			FrameColumnData::Uint4(container) => primitive::get_value(container, index),
+			FrameColumnData::Uint8(container) => primitive::get_value(container, index),
+			FrameColumnData::Uint16(container) => uint16_get_value(container, index),
+			FrameColumnData::Utf8(container) => utf8_get_value(container, index),
+			FrameColumnData::Date(container) => temporal_array::get_value(dates(container), index),
+			FrameColumnData::DateTime(container) => temporal_array::get_value(datetimes(container), index),
+			FrameColumnData::Time(container) => temporal_array::get_value(times(container), index),
+			FrameColumnData::Duration(container) => temporal_array::get_value(durations(container), index),
+			FrameColumnData::IdentityId(container) => {
+				uuid_array::identity_id_get_value(identity_ids(container), index)
+			}
+			FrameColumnData::Uuid4(container) => uuid_array::get_value(uuid4s(container), index),
+			FrameColumnData::Uuid7(container) => uuid_array::get_value(uuid7s(container), index),
+			FrameColumnData::Blob(container) => blob_get_value(container, index),
 			FrameColumnData::Int(container) => container.get_value(index),
 			FrameColumnData::Uint(container) => container.get_value(index),
 			FrameColumnData::Decimal(container) => container.get_value(index),
 			FrameColumnData::Any(container) => container.get_value(index),
-			FrameColumnData::DictionaryId(container) => container.get_value(index),
+			FrameColumnData::DictionaryId {
+				container,
+				..
+			} => dictionary_array::get_value(container, index),
 			FrameColumnData::Option {
 				inner,
 				bitvec,
 			} => {
-				if bitvec.get(index) {
+				if bitvec.value(index) {
 					inner.get_value(index)
 				} else {
 					Value::none_of(inner.get_type())

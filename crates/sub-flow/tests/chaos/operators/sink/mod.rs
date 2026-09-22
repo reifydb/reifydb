@@ -57,7 +57,6 @@ use crate::{
 	operators::{aggregate::workload::AggregateWorkload, sink::oracle::SinkOracle},
 };
 
-const SOURCE: OperatorId = OperatorId(0);
 const SINK: OperatorId = OperatorId(1);
 const VIEW: ViewId = ViewId(42);
 const NAMESPACE: NamespaceId = NamespaceId(1);

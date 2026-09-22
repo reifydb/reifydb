@@ -1,15 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::LazyFragment,
-	value::{blob::Blob, value_type::ValueType},
+	value::{
+		blob::Blob,
+		container::{
+			decimal_array::u128_at,
+			dictionary_array,
+			temporal_array::{dates, datetimes, durations, times},
+			uuid_array::{identity_ids, uuid4s, uuid7s},
+		},
+		value_type::ValueType,
+	},
 };
 
 use super::{cast_column_data, convert::Convert};
-use crate::value::column::buffer::ColumnBuffer;
+use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 
 pub fn from_any(
 	ctx: impl Convert + Copy,
@@ -30,7 +40,7 @@ pub fn from_any(
 	};
 
 	if any_container.is_empty() {
-		return Ok(ColumnBuffer::with_capacity(target.clone(), 0));
+		return Ok(ColumnBuilder::with_capacity(target.clone(), 0).finish());
 	}
 
 	let mut temp_results = Vec::with_capacity(any_container.len());
@@ -60,7 +70,7 @@ pub fn from_any(
 		}
 	}
 
-	let mut result = ColumnBuffer::with_capacity(target, any_container.len());
+	let mut result = ColumnBuilder::with_capacity(target, any_container.len());
 
 	for temp_result in temp_results {
 		match temp_result {
@@ -69,92 +79,89 @@ pub fn from_any(
 			}
 			Some(casted_column) => match &casted_column {
 				ColumnBuffer::Bool(c) => {
-					if c.is_defined(0) {
-						result.push::<bool>(c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<bool>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Int1(c) => {
-					if c.is_defined(0) {
-						result.push::<i8>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<i8>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Int2(c) => {
-					if c.is_defined(0) {
-						result.push::<i16>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<i16>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Int4(c) => {
-					if c.is_defined(0) {
-						result.push::<i32>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<i32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Int8(c) => {
-					if c.is_defined(0) {
-						result.push::<i64>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<i64>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Int16(c) => {
-					if c.is_defined(0) {
-						result.push::<i128>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<i128>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uint1(c) => {
-					if c.is_defined(0) {
-						result.push::<u8>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<u8>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uint2(c) => {
-					if c.is_defined(0) {
-						result.push::<u16>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<u16>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uint4(c) => {
-					if c.is_defined(0) {
-						result.push::<u32>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<u32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uint8(c) => {
-					if c.is_defined(0) {
-						result.push::<u64>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<u64>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint16(c) => {
-					if c.is_defined(0) {
-						result.push::<u128>(*c.get(0).unwrap());
-					} else {
-						result.push_none();
-					}
-				}
+				ColumnBuffer::Uint16(c) => match u128_at(c, 0) {
+					Some(value) => result.push::<u128>(value),
+					None => result.push_none(),
+				},
 				ColumnBuffer::Float4(c) => {
-					if c.is_defined(0) {
-						result.push::<f32>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<f32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Float8(c) => {
-					if c.is_defined(0) {
-						result.push::<f64>(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push::<f64>(c.value(0));
 					} else {
 						result.push_none();
 					}
@@ -163,8 +170,8 @@ pub fn from_any(
 					container: c,
 					..
 				} => {
-					if c.is_defined(0) {
-						result.push::<String>(c.get(0).unwrap().to_string());
+					if !c.is_empty() {
+						result.push::<String>(c.value(0).to_string());
 					} else {
 						result.push_none();
 					}
@@ -173,57 +180,57 @@ pub fn from_any(
 					container: c,
 					..
 				} => {
-					if c.is_defined(0) {
-						result.push(Blob::new(c.get(0).unwrap().to_vec()));
+					if !c.is_empty() {
+						result.push(Blob::new(c.value(0).to_vec()));
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Date(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(dates(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::DateTime(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(datetimes(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Time(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(times(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Duration(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(durations(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::IdentityId(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(*identity_ids(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uuid4(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(uuid4s(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
 				ColumnBuffer::Uuid7(c) => {
-					if c.is_defined(0) {
-						result.push(*c.get(0).unwrap());
+					if !c.is_empty() {
+						result.push(uuid7s(c)[0]);
 					} else {
 						result.push_none();
 					}
@@ -258,13 +265,13 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::DictionaryId(c) => {
-					if c.is_defined(0) {
-						result.push(c.get(0).unwrap());
-					} else {
-						result.push_none();
-					}
-				}
+				ColumnBuffer::DictionaryId {
+					container,
+					..
+				} => match dictionary_array::get(container, 0) {
+					Some(entry) => result.push(entry),
+					None => result.push_none(),
+				},
 				ColumnBuffer::Any(_) => {
 					unreachable!("Casting from Any should not produce Any")
 				}
@@ -281,5 +288,5 @@ pub fn from_any(
 		}
 	}
 
-	Ok(result)
+	Ok(result.finish())
 }

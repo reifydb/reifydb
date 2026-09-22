@@ -5,7 +5,14 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal::TemporalContainer, time::Time, value_type::ValueType};
+use reifydb_value::value::{
+	container::{
+		temporal_array::{time_array, times},
+		varlen_array::get,
+	},
+	time::Time,
+	value_type::ValueType,
+};
 
 pub struct TimeTrunc {
 	info: RoutineInfo,
@@ -50,12 +57,12 @@ impl<'a> Routine<FunctionContext<'a>> for TimeTrunc {
 				},
 			) => {
 				let row_count = time_data.len();
-				let mut container = TemporalContainer::with_capacity(row_count);
+				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (time_container.get(i), prec_container.is_defined(i)) {
+					match (times(time_container).get(i), get(prec_container, i).is_some()) {
 						(Some(t), true) => {
-							let precision = prec_container.get(i).unwrap();
+							let precision = get(prec_container, i).unwrap();
 							let truncated = match precision {
 								"hour" => Time::new(t.hour(), 0, 0, 0),
 								"minute" => Time::new(t.hour(), t.minute(), 0, 0),
@@ -76,14 +83,14 @@ impl<'a> Routine<FunctionContext<'a>> for TimeTrunc {
 							};
 							match truncated {
 								Some(val) => container.push(val),
-								None => container.push_default(),
+								None => container.push(Time::default()),
 							}
 						}
-						_ => container.push_default(),
+						_ => container.push(Time::default()),
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Time(container);
+				let mut result_data = ColumnBuffer::Time(time_array(container));
 				if let Some(bv) = time_bv {
 					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),

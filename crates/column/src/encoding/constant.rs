@@ -3,11 +3,12 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_buffer::NullBuffer;
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
+	builder::ColumnBuilder,
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
-	nones::NoneBitmap,
 	stats::StatsSet,
 };
 use reifydb_value::{
@@ -49,11 +50,11 @@ impl ConstantData {
 	}
 
 	fn repeated(&self, count: usize) -> ColumnBuffer {
-		let mut buffer = ColumnBuffer::with_capacity(self.ty.clone(), count);
+		let mut buffer = ColumnBuilder::with_capacity(self.ty.clone(), count);
 		for _ in 0..count {
 			buffer.push_value(self.value.clone());
 		}
-		buffer
+		buffer.finish()
 	}
 }
 
@@ -74,7 +75,7 @@ impl ColumnData for ConstantData {
 		false
 	}
 
-	fn nones(&self) -> Option<&NoneBitmap> {
+	fn nones(&self) -> Option<&NullBuffer> {
 		None
 	}
 

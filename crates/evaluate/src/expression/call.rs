@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{
 	ColumnWithName,
-	buffer::ColumnBuffer,
+	builder::ColumnBuilder,
 	columns::Columns,
 	view::group_by::{GroupId, GroupRows},
 };
@@ -51,7 +51,7 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 		let column = if call.args.is_empty() {
 			ColumnWithName {
 				name: Fragment::internal("dummy"),
-				data: ColumnBuffer::with_capacity(ValueType::Int4, ctx.row_count),
+				data: ColumnBuilder::with_capacity(ValueType::Int4, ctx.row_count).finish(),
 			}
 		} else {
 			ColumnWithName::new(arguments.name_at(0).clone(), arguments[0].clone())

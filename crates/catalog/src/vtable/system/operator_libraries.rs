@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, flow::OperatorCapability},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use super::operator_libary::OperatorLibrary;
 use crate::{
@@ -47,12 +47,12 @@ impl BaseVTable for SystemOperatorLibraries {
 		let infos = self.operator_store.list();
 
 		let capacity = infos.len();
-		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut library_paths = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut abis = ColumnBuffer::uint4_with_capacity(capacity);
-		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
+		let mut operators = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+		let mut library_paths = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+		let mut abis = ColumnBuilder::with_capacity(ValueType::Uint4, capacity);
+		let mut cap_inserts = ColumnBuilder::with_capacity(ValueType::Boolean, capacity);
+		let mut cap_updates = ColumnBuilder::with_capacity(ValueType::Boolean, capacity);
+		let mut cap_deletes = ColumnBuilder::with_capacity(ValueType::Boolean, capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
@@ -68,12 +68,12 @@ impl BaseVTable for SystemOperatorLibraries {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("operator"), operators),
-			ColumnWithName::new(Fragment::internal("library_path"), library_paths),
-			ColumnWithName::new(Fragment::internal("abi"), abis),
-			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
-			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
-			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
+			ColumnWithName::new(Fragment::internal("operator"), operators.finish()),
+			ColumnWithName::new(Fragment::internal("library_path"), library_paths.finish()),
+			ColumnWithName::new(Fragment::internal("abi"), abis.finish()),
+			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts.finish()),
+			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates.finish()),
+			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes.finish()),
 		];
 
 		self.exhausted = true;

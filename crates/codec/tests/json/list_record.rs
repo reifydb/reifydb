@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::json::{
 	from::{frames_from_json, parse_json_value},
 	to::convert_frames,
@@ -88,7 +89,7 @@ fn a_none_list_column_still_renders_as_the_none_marker() {
 		inner: Box::new(FrameColumnData::Any(
 			AnyContainer::from_vec(vec![Value::List(vec![Value::Int4(1)])]).with_declared_type(list_int4()),
 		)),
-		bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&[false]),
+		bitvec: BooleanBuffer::from(vec![false]),
 	};
 	let frame = Frame::new(vec![FrameColumn {
 		name: "maybe_regions".to_string(),

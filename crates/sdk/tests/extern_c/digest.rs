@@ -34,9 +34,10 @@ fn digest_type() -> ValueType {
 }
 
 fn digest_buffer() -> ColumnBuffer {
-	let (mut buffer, _) = ColumnBuffer::none_typed(digest_type(), 0).into_unwrap_option();
-	buffer.push_value(digest_value());
-	buffer
+	let (buffer, _) = ColumnBuffer::none_typed(digest_type(), 0).into_unwrap_option();
+	let mut builder = buffer.into_builder();
+	builder.push_value(digest_value());
+	builder.finish()
 }
 
 fn columns(name: &str, buffer: ColumnBuffer) -> Columns {
@@ -87,8 +88,9 @@ fn marshal_change_with_a_digest_insert_reports_extern_001() {
 #[test]
 fn marshal_change_with_an_optional_digest_column_reports_extern_001() {
 	// An Option wrapper must not hide the digest from the check, since the marshaller unwraps it before encoding.
-	let mut buffer = ColumnBuffer::none_typed(digest_type(), 1);
-	buffer.push_value(digest_value());
+	let mut builder = ColumnBuffer::none_typed(digest_type(), 1).into_builder();
+	builder.push_value(digest_value());
+	let buffer = builder.finish();
 
 	let diagnostic = marshal_change_error(&change(vec![Diff::insert(columns("o", buffer))]));
 

@@ -11,7 +11,7 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		return Err(ColumnError::MinMaxEmpty.into());
 	}
 
-	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };
+	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) };
 
 	macro_rules! reduce_int {
 		($slice:expr, $variant:ident) => {{
@@ -66,7 +66,7 @@ fn reduce_ordered(array: &Canonical) -> Result<(Value, Value)> {
 	let mut min: Option<Value> = None;
 	let mut max: Option<Value> = None;
 	for row in 0..array.len() {
-		if array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) {
+		if array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) {
 			continue;
 		}
 		let value = array.buffer.get_value(row);
@@ -85,6 +85,9 @@ fn reduce_ordered(array: &Canonical) -> Result<(Value, Value)> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::builder::ColumnBuilder;
+	use reifydb_value::value::value_type::ValueType;
+
 	use super::*;
 
 	#[test]
@@ -98,12 +101,13 @@ mod tests {
 
 	#[test]
 	fn min_max_skips_nones() {
-		let mut cd = ColumnBuffer::int4_with_capacity(5);
+		let mut cd = ColumnBuilder::with_capacity(ValueType::Int4, 5);
 		cd.push::<i32>(30);
 		cd.push_none();
 		cd.push::<i32>(10);
 		cd.push_none();
 		cd.push::<i32>(50);
+		let cd = cd.finish();
 		let ca = Canonical::from_column_buffer(&cd).unwrap();
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int4(10));

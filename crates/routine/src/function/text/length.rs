@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -48,8 +49,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextLength {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let text = container.get(i).unwrap();
+					if i < container.len() {
+						let text = container.value(i);
 						result.push(text.len() as i32);
 						res_bitvec.push(true);
 					} else {

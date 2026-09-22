@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, flow::FlowWatermarkSampler},
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -49,10 +49,10 @@ impl BaseVTable for SystemFlowWatermarks {
 			None => vec![],
 		};
 
-		let mut flow_ids = ColumnBuffer::uint8_with_capacity(rows.len());
-		let mut object_ids = ColumnBuffer::uint8_with_capacity(rows.len());
-		let mut lags = ColumnBuffer::uint8_with_capacity(rows.len());
-		let mut outstanding = ColumnBuffer::uint8_with_capacity(rows.len());
+		let mut flow_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
+		let mut object_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
+		let mut lags = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
+		let mut outstanding = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
 
 		for row in rows {
 			flow_ids.push(row.flow_id.0);
@@ -62,10 +62,10 @@ impl BaseVTable for SystemFlowWatermarks {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
-			ColumnWithName::new(Fragment::internal("object_id"), object_ids),
-			ColumnWithName::new(Fragment::internal("lag"), lags),
-			ColumnWithName::new(Fragment::internal("outstanding"), outstanding),
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids.finish()),
+			ColumnWithName::new(Fragment::internal("object_id"), object_ids.finish()),
+			ColumnWithName::new(Fragment::internal("lag"), lags.finish()),
+			ColumnWithName::new(Fragment::internal("outstanding"), outstanding.finish()),
 		];
 
 		self.exhausted = true;

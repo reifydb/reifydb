@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod bitvec;
+pub mod bitmap;
 pub mod cowvec;
 pub mod float_format;
 pub mod shared_vec;

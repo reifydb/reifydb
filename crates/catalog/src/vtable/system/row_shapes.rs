@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -46,8 +46,8 @@ impl BaseVTable for SystemRowShapes {
 
 		let shapes = self.catalog.cache.list_row_shapes();
 
-		let mut fingerprints = ColumnBuffer::uint8_with_capacity(shapes.len());
-		let mut field_counts = ColumnBuffer::uint2_with_capacity(shapes.len());
+		let mut fingerprints = ColumnBuilder::with_capacity(ValueType::Uint8, shapes.len());
+		let mut field_counts = ColumnBuilder::with_capacity(ValueType::Uint2, shapes.len());
 
 		for shape in shapes {
 			fingerprints.push(*shape.fingerprint());
@@ -55,8 +55,8 @@ impl BaseVTable for SystemRowShapes {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints),
-			ColumnWithName::new(Fragment::internal("field_count"), field_counts),
+			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints.finish()),
+			ColumnWithName::new(Fragment::internal("field_count"), field_counts.finish()),
 		];
 
 		self.exhausted = true;

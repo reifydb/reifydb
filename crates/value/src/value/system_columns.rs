@@ -3,12 +3,10 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	util::bitvec::BitVec,
-	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
-};
+use crate::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SystemColumns {
@@ -86,11 +84,11 @@ fn gather<T: Copy + PartialEq>(src: &[T], indices: &[usize]) -> Vec<T> {
 }
 
 #[inline]
-fn retain<T: Copy + PartialEq>(src: &[T], mask: &BitVec) -> Vec<T> {
+fn retain<T: Copy + PartialEq>(src: &[T], mask: &BooleanBuffer) -> Vec<T> {
 	if src.is_empty() {
 		return Vec::new();
 	}
-	src.iter().enumerate().filter(|(i, _)| *i < mask.len() && mask.get(*i)).map(|(_, &v)| v).collect()
+	src.iter().enumerate().filter(|(i, _)| *i < mask.len() && mask.value(*i)).map(|(_, &v)| v).collect()
 }
 
 #[inline]
@@ -263,7 +261,7 @@ impl SystemColumns {
 		*self = self.permute(indices);
 	}
 
-	pub fn filter(&mut self, mask: &BitVec) {
+	pub fn filter(&mut self, mask: &BooleanBuffer) {
 		let Self {
 			row_numbers,
 			has_row_numbers: _,
@@ -533,7 +531,7 @@ mod tests {
 	fn filter_keeps_masked_rows_intact() {
 		let source = populated();
 		let mut filtered = source.clone();
-		filtered.filter(&BitVec::from_slice(&[false, true, false, true]));
+		filtered.filter(&BooleanBuffer::from(vec![false, true, false, true]));
 
 		assert_eq!(filtered.row_count(), Some(2));
 		assert_row_matches(&filtered, 0, &source, 1);
@@ -607,7 +605,7 @@ mod tests {
 		assert!(source.permute(&[1, 0]).partitions().is_empty(), "permute");
 
 		let mut filtered = source.clone();
-		filtered.filter(&BitVec::from_slice(&[true, false, true, false]));
+		filtered.filter(&BooleanBuffer::from(vec![true, false, true, false]));
 		assert!(filtered.partitions().is_empty(), "filter");
 
 		let mut taken = source.clone();

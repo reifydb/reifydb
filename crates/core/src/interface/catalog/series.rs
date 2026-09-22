@@ -16,7 +16,7 @@ use crate::{
 		key::PrimaryKey,
 	},
 	return_internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns},
+	value::column::{buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -179,11 +179,11 @@ impl Series {
 		let key_type = self.key_column_type();
 		match &key_type {
 			Some(ty) => {
-				let mut data = ColumnBuffer::with_capacity(ty.clone(), keys.len());
+				let mut builder = ColumnBuilder::with_capacity(ty.clone(), keys.len());
 				for k in keys {
-					data.push_value(self.key_from_u64(k));
+					builder.push_value(self.key_from_u64(k));
 				}
-				data
+				builder.finish()
 			}
 			None => ColumnBuffer::uint8(keys),
 		}

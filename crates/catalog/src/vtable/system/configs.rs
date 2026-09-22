@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -61,11 +61,11 @@ impl BaseVTable for SystemConfigs {
 			}
 		}
 
-		let mut keys = ColumnBuffer::utf8_with_capacity(configs.len());
-		let mut values = ColumnBuffer::utf8_with_capacity(configs.len());
-		let mut default_values = ColumnBuffer::utf8_with_capacity(configs.len());
-		let mut descriptions = ColumnBuffer::utf8_with_capacity(configs.len());
-		let mut requires_restarts = ColumnBuffer::bool_with_capacity(configs.len());
+		let mut keys = ColumnBuilder::with_capacity(ValueType::Utf8, configs.len());
+		let mut values = ColumnBuilder::with_capacity(ValueType::Utf8, configs.len());
+		let mut default_values = ColumnBuilder::with_capacity(ValueType::Utf8, configs.len());
+		let mut descriptions = ColumnBuilder::with_capacity(ValueType::Utf8, configs.len());
+		let mut requires_restarts = ColumnBuilder::with_capacity(ValueType::Boolean, configs.len());
 
 		for cfg in &configs {
 			let key_str = cfg.key.to_string();
@@ -77,11 +77,11 @@ impl BaseVTable for SystemConfigs {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("key"), keys),
-			ColumnWithName::new(Fragment::internal("value"), values),
-			ColumnWithName::new(Fragment::internal("default_value"), default_values),
-			ColumnWithName::new(Fragment::internal("description"), descriptions),
-			ColumnWithName::new(Fragment::internal("requires_restart"), requires_restarts),
+			ColumnWithName::new(Fragment::internal("key"), keys.finish()),
+			ColumnWithName::new(Fragment::internal("value"), values.finish()),
+			ColumnWithName::new(Fragment::internal("default_value"), default_values.finish()),
+			ColumnWithName::new(Fragment::internal("description"), descriptions.finish()),
+			ColumnWithName::new(Fragment::internal("requires_restart"), requires_restarts.finish()),
 		];
 
 		self.exhausted = true;

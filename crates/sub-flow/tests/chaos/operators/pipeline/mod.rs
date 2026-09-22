@@ -48,8 +48,6 @@ use crate::{
 	},
 };
 
-const SOURCE_OPERATOR: OperatorId = OperatorId(0);
-
 /// The first stage. Distinct from the terminal aggregate's id so the two cannot share state.
 const STAGE_OPERATOR: OperatorId = OperatorId(1);
 

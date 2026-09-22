@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use postcard::from_bytes;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -12,7 +13,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::operator::OperatorDef};
-use reifydb_value::{error::Error, value::value_type::ValueType};
+use reifydb_value::{
+	error::Error,
+	value::{container::varlen_array, value_type::ValueType},
+};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
@@ -260,8 +264,8 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let bytes = match container.get(i) {
+					if i < container.len() {
+						let bytes = match varlen_array::get(container, i) {
 							Some(b) => b,
 							None => continue,
 						};

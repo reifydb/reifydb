@@ -13,6 +13,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		cast::{cast_column_data, convert::Convert},
 		columns::Columns,
 	},
@@ -96,8 +97,9 @@ impl<'a> Vm<'a> {
 	}
 
 	fn coerce_value(&self, value: Value, target: &ValueType, fragment: Fragment) -> Result<Value> {
-		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
+		let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
 		data.push_value(value);
+		let data = data.finish();
 		let ctx = self.eval_ctx();
 		let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
 		Ok(cast.get_value(0))
@@ -142,11 +144,11 @@ pub(crate) fn declared_return_column(
 	name: &str,
 	fragment: &Fragment,
 ) -> Result<ColumnBuffer> {
-	let mut data = ColumnBuffer::with_capacity(declared.get_type(), values.len());
+	let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
 	for value in values {
 		data.extend(cast_to_declared_return_type(ctx, &ColumnBuffer::from(value), declared, name, fragment)?)?;
 	}
-	Ok(data)
+	Ok(data.finish())
 }
 
 pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &Fragment) -> Result<ColumnBuffer> {
@@ -160,11 +162,11 @@ pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &F
 		expected.admit(named_type, fragment)?;
 	}
 	let column_type = values.first().map(Value::get_type).unwrap_or(ValueType::Any);
-	let mut data = ColumnBuffer::none_typed(column_type, 0);
+	let mut data = ColumnBuffer::none_typed(column_type, 0).into_builder();
 	for value in values {
 		data.push_value(value);
 	}
-	Ok(data)
+	Ok(data.finish())
 }
 
 pub(crate) fn check_arity(
@@ -972,9 +974,9 @@ impl<'a> Vm<'a> {
 			.into_iter()
 			.enumerate()
 			.map(|(i, v)| {
-				let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
+				let mut data = ColumnBuilder::with_capacity(v.get_type(), 1);
 				data.push_value(v);
-				ColumnWithName::new(format!("arg{}", i), data)
+				ColumnWithName::new(format!("arg{}", i), data.finish())
 			})
 			.collect();
 		let columns_args = Columns::new(arg_columns);
@@ -1011,9 +1013,9 @@ impl<'a> Vm<'a> {
 			.into_iter()
 			.enumerate()
 			.map(|(i, v)| {
-				let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
+				let mut data = ColumnBuilder::with_capacity(v.get_type(), 1);
 				data.push_value(v);
-				ColumnWithName::new(format!("arg{}", i), data)
+				ColumnWithName::new(format!("arg{}", i), data.finish())
 			})
 			.collect();
 		let columns_args = Columns::new(arg_columns);

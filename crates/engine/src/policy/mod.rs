@@ -113,16 +113,16 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 
 		let denied = match result.data() {
 			ColumnBuffer::Bool(container) => {
-				(0..row_count).any(|i| !container.is_defined(i) || !container.data().get(i))
+				(0..row_count).any(|i| i >= container.len() || !container.value(i))
 			}
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => match inner.as_ref() {
 				ColumnBuffer::Bool(container) => (0..row_count).any(|i| {
-					let defined = i < bitvec.len() && bitvec.get(i);
-					let valid = defined && container.is_defined(i);
-					!(valid && container.data().get(i))
+					let defined = i < bitvec.len() && bitvec.value(i);
+					let valid = defined && i < container.len();
+					!(valid && container.value(i))
 				}),
 				_ => true,
 			},

@@ -3,11 +3,12 @@
 
 use std::str;
 
+use arrow_array::LargeStringArray;
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::value::{
 	blob::Blob,
-	container::{blob::BlobContainer, digest::DigestContainer, number::NumberContainer, utf8::Utf8Container},
+	container::{digest::DigestContainer, number::NumberContainer, varlen_array::blob_array},
 	decimal::Decimal,
 	digest::Digest,
 	frame::data::FrameColumnData,
@@ -36,14 +37,14 @@ pub(crate) fn decode_varlen_plain(
 		ValueType::Utf8 => {
 			let strings = decode_varlen_strings(data, offsets, row_count);
 			match strings {
-				Ok(s) => Ok(FrameColumnData::Utf8(Utf8Container::new(s))),
+				Ok(s) => Ok(FrameColumnData::Utf8(LargeStringArray::from(s))),
 				Err(e) => Err(e),
 			}
 		}
 		ValueType::Blob => {
 			let blobs = decode_varlen_blobs(data, offsets, row_count);
 			match blobs {
-				Ok(b) => Ok(FrameColumnData::Blob(BlobContainer::new(b))),
+				Ok(b) => Ok(FrameColumnData::Blob(blob_array(&b))),
 				Err(e) => Err(e),
 			}
 		}

@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{BooleanArray, LargeStringArray};
+use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	fragment::Fragment,
-	util::{bitvec::BitVec, hex::decode},
+	util::hex::decode,
 	value::{
 		Value,
 		blob::Blob,
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, digest::DigestContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer,
+			decimal_array::{int16_array, uint16_array},
+			digest::DigestContainer,
+			number::NumberContainer,
+			temporal_array::{date_array, datetime_array, duration_array, time_array},
+			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
+			varlen_array::blob_array,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -368,7 +374,7 @@ pub fn convert_column_to_data(
 	let base = base_column(name, base, rows)?;
 	Ok(layers.into_iter().rev().fold(base, |inner, layer| FrameColumnData::Option {
 		inner: Box::new(inner),
-		bitvec: BitVec::from_slice(&layer),
+		bitvec: BooleanBuffer::from(layer),
 	}))
 }
 
@@ -415,7 +421,7 @@ fn convert_list_or_record_column(
 	let base_col = FrameColumnData::Any(AnyContainer::from_vec(values).with_declared_type(base.clone()));
 	Ok(layers.into_iter().rev().fold(base_col, |inner, layer| FrameColumnData::Option {
 		inner: Box::new(inner),
-		bitvec: BitVec::from_slice(&layer),
+		bitvec: BooleanBuffer::from(layer),
 	}))
 }
 
@@ -423,108 +429,80 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 	Ok(match base {
 		ValueType::Option(inner) => base_column(name, inner, rows)?,
 		ValueType::Boolean => {
-			FrameColumnData::Bool(BoolContainer::new(cells(name, base, rows, false, |s| s.parse().ok())?))
+			FrameColumnData::Bool(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?))
 		}
 		ValueType::Float4 => {
-			FrameColumnData::Float4(NumberContainer::new(cells(name, base, rows, 0.0f32, |s| {
-				s.parse().ok()
-			})?))
+			FrameColumnData::Float4(cells(name, base, rows, 0.0f32, |s| s.parse().ok())?.into())
 		}
 		ValueType::Float8 => {
-			FrameColumnData::Float8(NumberContainer::new(cells(name, base, rows, 0.0f64, |s| {
-				s.parse().ok()
-			})?))
+			FrameColumnData::Float8(cells(name, base, rows, 0.0f64, |s| s.parse().ok())?.into())
 		}
-		ValueType::Int1 => {
-			FrameColumnData::Int1(NumberContainer::new(cells(name, base, rows, 0i8, |s| s.parse().ok())?))
-		}
-		ValueType::Int2 => {
-			FrameColumnData::Int2(NumberContainer::new(cells(name, base, rows, 0i16, |s| s.parse().ok())?))
-		}
-		ValueType::Int4 => {
-			FrameColumnData::Int4(NumberContainer::new(cells(name, base, rows, 0i32, |s| s.parse().ok())?))
-		}
-		ValueType::Int8 => {
-			FrameColumnData::Int8(NumberContainer::new(cells(name, base, rows, 0i64, |s| s.parse().ok())?))
-		}
+		ValueType::Int1 => FrameColumnData::Int1(cells(name, base, rows, 0i8, |s| s.parse().ok())?.into()),
+		ValueType::Int2 => FrameColumnData::Int2(cells(name, base, rows, 0i16, |s| s.parse().ok())?.into()),
+		ValueType::Int4 => FrameColumnData::Int4(cells(name, base, rows, 0i32, |s| s.parse().ok())?.into()),
+		ValueType::Int8 => FrameColumnData::Int8(cells(name, base, rows, 0i64, |s| s.parse().ok())?.into()),
 		ValueType::Int16 => {
-			FrameColumnData::Int16(NumberContainer::new(cells(name, base, rows, 0i128, |s| {
-				s.parse().ok()
-			})?))
+			FrameColumnData::Int16(int16_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
 		}
-		ValueType::Uint1 => {
-			FrameColumnData::Uint1(NumberContainer::new(cells(name, base, rows, 0u8, |s| s.parse().ok())?))
-		}
-		ValueType::Uint2 => {
-			FrameColumnData::Uint2(NumberContainer::new(cells(name, base, rows, 0u16, |s| s.parse().ok())?))
-		}
-		ValueType::Uint4 => {
-			FrameColumnData::Uint4(NumberContainer::new(cells(name, base, rows, 0u32, |s| s.parse().ok())?))
-		}
-		ValueType::Uint8 => {
-			FrameColumnData::Uint8(NumberContainer::new(cells(name, base, rows, 0u64, |s| s.parse().ok())?))
-		}
+		ValueType::Uint1 => FrameColumnData::Uint1(cells(name, base, rows, 0u8, |s| s.parse().ok())?.into()),
+		ValueType::Uint2 => FrameColumnData::Uint2(cells(name, base, rows, 0u16, |s| s.parse().ok())?.into()),
+		ValueType::Uint4 => FrameColumnData::Uint4(cells(name, base, rows, 0u32, |s| s.parse().ok())?.into()),
+		ValueType::Uint8 => FrameColumnData::Uint8(cells(name, base, rows, 0u64, |s| s.parse().ok())?.into()),
 		ValueType::Uint16 => {
-			FrameColumnData::Uint16(NumberContainer::new(cells(name, base, rows, 0u128, |s| {
-				s.parse().ok()
-			})?))
+			FrameColumnData::Uint16(uint16_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
 		}
-		ValueType::Date => FrameColumnData::Date(TemporalContainer::new(cells(
+		ValueType::Date => FrameColumnData::Date(date_array(cells(
 			name,
 			base,
 			rows,
 			Date::from_ymd(1970, 1, 1).unwrap(),
 			parse_date_text,
 		)?)),
-		ValueType::DateTime => FrameColumnData::DateTime(TemporalContainer::new(cells(
+		ValueType::DateTime => FrameColumnData::DateTime(datetime_array(cells(
 			name,
 			base,
 			rows,
 			DateTime::from_epoch_secs(0).unwrap(),
 			parse_datetime_text,
 		)?)),
-		ValueType::Time => FrameColumnData::Time(TemporalContainer::new(cells(
+		ValueType::Time => FrameColumnData::Time(time_array(cells(
 			name,
 			base,
 			rows,
 			Time::from_hms(0, 0, 0).unwrap(),
 			parse_time_text,
 		)?)),
-		ValueType::Duration => FrameColumnData::Duration(TemporalContainer::new(cells(
+		ValueType::Duration => FrameColumnData::Duration(duration_array(cells(
 			name,
 			base,
 			rows,
 			Duration::zero(),
 			parse_duration_text,
 		)?)),
-		ValueType::Uuid4 => FrameColumnData::Uuid4(UuidContainer::new(cells(
+		ValueType::Uuid4 => FrameColumnData::Uuid4(uuid4_array(cells(
 			name,
 			base,
 			rows,
 			parse_uuid4_text("00000000-0000-4000-8000-000000000000").unwrap(),
 			parse_uuid4_text,
 		)?)),
-		ValueType::Uuid7 => FrameColumnData::Uuid7(UuidContainer::new(cells(
+		ValueType::Uuid7 => FrameColumnData::Uuid7(uuid7_array(cells(
 			name,
 			base,
 			rows,
 			parse_uuid7_text("00000000-0000-7000-8000-000000000000").unwrap(),
 			parse_uuid7_text,
 		)?)),
-		ValueType::IdentityId => FrameColumnData::IdentityId(IdentityIdContainer::new(cells(
+		ValueType::IdentityId => FrameColumnData::IdentityId(identity_id_array(cells(
 			name,
 			base,
 			rows,
 			parse_identity_id("00000000-0000-7000-8000-000000000000").unwrap(),
 			parse_identity_id,
 		)?)),
-		ValueType::Blob => FrameColumnData::Blob(BlobContainer::new(cells(
-			name,
-			base,
-			rows,
-			Blob::new(vec![]),
-			parse_blob,
-		)?)),
+		ValueType::Blob => {
+			FrameColumnData::Blob(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?))
+		}
 		ValueType::Int => FrameColumnData::Int(NumberContainer::new(cells(
 			name,
 			base,
@@ -572,8 +550,10 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		| ValueType::DictionaryId
 		| ValueType::List(_)
 		| ValueType::Record(_)
-		| ValueType::Tuple(_) => FrameColumnData::Utf8(Utf8Container::new(cells(name, base, rows, String::new(), |s| {
-			Some(s.to_string())
-		})?)),
+		| ValueType::Tuple(_) => {
+			FrameColumnData::Utf8(LargeStringArray::from(cells(name, base, rows, String::new(), |s| {
+				Some(s.to_string())
+			})?))
+		}
 	})
 }

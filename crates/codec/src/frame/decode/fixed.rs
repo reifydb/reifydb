@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::BooleanArray;
+use arrow_buffer::{BooleanBuffer, bit_util::get_bit};
 use reifydb_value::{
 	encoding::LeBytes,
-	util::bitvec::BitVec,
 	value::{
 		container::{
-			bool::BoolContainer, dictionary::DictionaryContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer,
+			decimal_array::{int16_array, uint16_array},
+			dictionary_array::dictionary_array,
+			temporal_array::{date_array, datetime_array, duration_array, time_array},
+			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
 		date::Date,
 		datetime::DateTime,
@@ -49,56 +52,56 @@ pub(crate) fn decode_fixed_plain(
 
 	let result = match ty {
 		ValueType::Boolean => {
-			let bv = decode_bitvec(data, row_count);
-			Ok(FrameColumnData::Bool(BoolContainer::new(bv.to_vec())))
+			let bits = BooleanBuffer::collect_bool(row_count, |i| get_bit(data, i));
+			Ok(FrameColumnData::Bool(BooleanArray::from(bits)))
 		}
 		ValueType::Float4 => {
 			let values = decode_le_array::<f32>(data, row_count);
-			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float4(values.into()))
 		}
 		ValueType::Float8 => {
 			let values = decode_le_array::<f64>(data, row_count);
-			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float8(values.into()))
 		}
 		ValueType::Int1 => {
 			let values = decode_le_array::<i8>(data, row_count);
-			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int1(values.into()))
 		}
 		ValueType::Int2 => {
 			let values = decode_le_array::<i16>(data, row_count);
-			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int2(values.into()))
 		}
 		ValueType::Int4 => {
 			let values = decode_le_array::<i32>(data, row_count);
-			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int4(values.into()))
 		}
 		ValueType::Int8 => {
 			let values = decode_le_array::<i64>(data, row_count);
-			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int8(values.into()))
 		}
 		ValueType::Int16 => {
 			let values = decode_le_array::<i128>(data, row_count);
-			Ok(FrameColumnData::Int16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int16(int16_array(values)))
 		}
 		ValueType::Uint1 => {
 			let values = decode_le_array::<u8>(data, row_count);
-			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint1(values.into()))
 		}
 		ValueType::Uint2 => {
 			let values = decode_le_array::<u16>(data, row_count);
-			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint2(values.into()))
 		}
 		ValueType::Uint4 => {
 			let values = decode_le_array::<u32>(data, row_count);
-			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint4(values.into()))
 		}
 		ValueType::Uint8 => {
 			let values = decode_le_array::<u64>(data, row_count);
-			Ok(FrameColumnData::Uint8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint8(values.into()))
 		}
 		ValueType::Uint16 => {
 			let values = decode_le_array::<u128>(data, row_count);
-			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint16(uint16_array(values)))
 		}
 		ValueType::Date => decode_date_plain(data, row_count),
 		ValueType::DateTime => decode_datetime_plain(data, row_count),
@@ -106,15 +109,15 @@ pub(crate) fn decode_fixed_plain(
 		ValueType::Duration => decode_duration_plain(data, row_count),
 		ValueType::IdentityId => {
 			let values = decode_le_array::<IdentityId>(data, row_count);
-			Ok(FrameColumnData::IdentityId(IdentityIdContainer::new(values)))
+			Ok(FrameColumnData::IdentityId(identity_id_array(values)))
 		}
 		ValueType::Uuid4 => {
 			let values = decode_le_array::<Uuid4>(data, row_count);
-			Ok(FrameColumnData::Uuid4(UuidContainer::new(values)))
+			Ok(FrameColumnData::Uuid4(uuid4_array(values)))
 		}
 		ValueType::Uuid7 => {
 			let values = decode_le_array::<Uuid7>(data, row_count);
-			Ok(FrameColumnData::Uuid7(UuidContainer::new(values)))
+			Ok(FrameColumnData::Uuid7(uuid7_array(values)))
 		}
 		ValueType::DictionaryId => decode_dictionary_ids(data, row_count),
 		_ => return None,
@@ -128,35 +131,35 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 	match ty {
 		ValueType::Int1 => {
 			let values = decode_rle(data, row_count, 1, |b| b[0] as i8)?;
-			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int1(values.into()))
 		}
 		ValueType::Int2 => {
 			let values = decode_rle(data, row_count, 2, |b| i16::from_le_bytes([b[0], b[1]]))?;
-			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int2(values.into()))
 		}
 		ValueType::Int4 => {
 			let values = decode_rle_i32(data, row_count)?;
-			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int4(values.into()))
 		}
 		ValueType::Int8 => {
 			let values = decode_rle_i64(data, row_count)?;
-			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int8(values.into()))
 		}
 		ValueType::Uint1 => {
 			let values = decode_rle(data, row_count, 1, |b| b[0])?;
-			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint1(values.into()))
 		}
 		ValueType::Uint2 => {
 			let values = decode_rle(data, row_count, 2, |b| u16::from_le_bytes([b[0], b[1]]))?;
-			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint2(values.into()))
 		}
 		ValueType::Uint4 => {
 			let values = decode_rle(data, row_count, 4, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
-			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint4(values.into()))
 		}
 		ValueType::Uint8 => {
 			let values = decode_rle_u64(data, row_count)?;
-			Ok(FrameColumnData::Uint8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint8(values.into()))
 		}
 		ValueType::Int16 => {
 			let values = decode_rle(data, row_count, 16, |b| {
@@ -165,7 +168,7 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					b[12], b[13], b[14], b[15],
 				])
 			})?;
-			Ok(FrameColumnData::Int16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int16(int16_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_rle(data, row_count, 16, |b| {
@@ -174,17 +177,17 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					b[12], b[13], b[14], b[15],
 				])
 			})?;
-			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint16(uint16_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_rle(data, row_count, 4, |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
-			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float4(values.into()))
 		}
 		ValueType::Float8 => {
 			let values = decode_rle(data, row_count, 8, |b| {
 				f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 			})?;
-			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float8(values.into()))
 		}
 		ValueType::Date => {
 			let raw = decode_rle_i32(data, row_count)?;
@@ -196,12 +199,12 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Date(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Date(date_array(values?)))
 		}
 		ValueType::DateTime => {
 			let raw = decode_rle_u64(data, row_count)?;
 			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
-			Ok(FrameColumnData::DateTime(TemporalContainer::new(values)))
+			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}
 		ValueType::Time => {
 			let raw = decode_rle_u64(data, row_count)?;
@@ -213,7 +216,7 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Time(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Time(time_array(values?)))
 		}
 		_ => Err(DecodeError::InvalidData(format!("RLE not supported for type {:?}", ty))),
 	}
@@ -228,51 +231,51 @@ pub(crate) fn decode_delta_column(
 	match ty {
 		ValueType::Int1 => {
 			let values = decode_delta_i8(data, row_count)?;
-			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int1(values.into()))
 		}
 		ValueType::Int2 => {
 			let values = decode_delta_i16(data, row_count)?;
-			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int2(values.into()))
 		}
 		ValueType::Int4 => {
 			let values = decode_delta_i32(data, row_count)?;
-			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int4(values.into()))
 		}
 		ValueType::Int8 => {
 			let values = decode_delta_i64(data, row_count)?;
-			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int8(values.into()))
 		}
 		ValueType::Uint1 => {
 			let values = decode_delta_u8(data, row_count)?;
-			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint1(values.into()))
 		}
 		ValueType::Uint2 => {
 			let values = decode_delta_u16(data, row_count)?;
-			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint2(values.into()))
 		}
 		ValueType::Uint4 => {
 			let values = decode_delta_u32(data, row_count)?;
-			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint4(values.into()))
 		}
 		ValueType::Uint8 => {
 			let values = decode_delta_u64(data, row_count)?;
-			Ok(FrameColumnData::Uint8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint8(values.into()))
 		}
 		ValueType::Int16 => {
 			let values = decode_delta_i128(data, row_count)?;
-			Ok(FrameColumnData::Int16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int16(int16_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_delta_u128(data, row_count)?;
-			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint16(uint16_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_delta_f32(data, row_count)?;
-			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float4(values.into()))
 		}
 		ValueType::Float8 => {
 			let values = decode_delta_f64(data, row_count)?;
-			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float8(values.into()))
 		}
 		ValueType::Date => {
 			let raw = decode_delta_i32(data, row_count)?;
@@ -284,12 +287,12 @@ pub(crate) fn decode_delta_column(
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Date(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Date(date_array(values?)))
 		}
 		ValueType::DateTime => {
 			let raw = decode_delta_u64(data, row_count)?;
 			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
-			Ok(FrameColumnData::DateTime(TemporalContainer::new(values)))
+			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}
 		ValueType::Time => {
 			let raw = decode_delta_u64(data, row_count)?;
@@ -301,7 +304,7 @@ pub(crate) fn decode_delta_column(
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Time(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Time(time_array(values?)))
 		}
 		_ => Err(DecodeError::InvalidData(format!("Delta not supported for type {:?}", ty))),
 	}
@@ -316,51 +319,51 @@ pub(crate) fn decode_delta_rle_column(
 	match ty {
 		ValueType::Int1 => {
 			let values = decode_delta_rle_i8(data, row_count)?;
-			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int1(values.into()))
 		}
 		ValueType::Int2 => {
 			let values = decode_delta_rle_i16(data, row_count)?;
-			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int2(values.into()))
 		}
 		ValueType::Int4 => {
 			let values = decode_delta_rle_i32(data, row_count)?;
-			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int4(values.into()))
 		}
 		ValueType::Int8 => {
 			let values = decode_delta_rle_i64(data, row_count)?;
-			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int8(values.into()))
 		}
 		ValueType::Uint1 => {
 			let values = decode_delta_rle_u8(data, row_count)?;
-			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint1(values.into()))
 		}
 		ValueType::Uint2 => {
 			let values = decode_delta_rle_u16(data, row_count)?;
-			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint2(values.into()))
 		}
 		ValueType::Uint4 => {
 			let values = decode_delta_rle_u32(data, row_count)?;
-			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint4(values.into()))
 		}
 		ValueType::Uint8 => {
 			let values = decode_delta_rle_u64(data, row_count)?;
-			Ok(FrameColumnData::Uint8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint8(values.into()))
 		}
 		ValueType::Int16 => {
 			let values = decode_delta_rle_i128(data, row_count)?;
-			Ok(FrameColumnData::Int16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int16(int16_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_delta_rle_u128(data, row_count)?;
-			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint16(uint16_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_delta_rle_f32(data, row_count)?;
-			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float4(values.into()))
 		}
 		ValueType::Float8 => {
 			let values = decode_delta_rle_f64(data, row_count)?;
-			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
+			Ok(FrameColumnData::Float8(values.into()))
 		}
 		ValueType::Date => {
 			let raw = decode_delta_rle_i32(data, row_count)?;
@@ -372,12 +375,12 @@ pub(crate) fn decode_delta_rle_column(
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Date(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Date(date_array(values?)))
 		}
 		ValueType::DateTime => {
 			let raw = decode_delta_rle_u64(data, row_count)?;
 			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
-			Ok(FrameColumnData::DateTime(TemporalContainer::new(values)))
+			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}
 		ValueType::Time => {
 			let raw = decode_delta_rle_u64(data, row_count)?;
@@ -389,7 +392,7 @@ pub(crate) fn decode_delta_rle_column(
 					})
 				})
 				.collect();
-			Ok(FrameColumnData::Time(TemporalContainer::new(values?)))
+			Ok(FrameColumnData::Time(time_array(values?)))
 		}
 		_ => Err(DecodeError::InvalidData(format!("DeltaRLE not supported for type {:?}", ty))),
 	}
@@ -412,10 +415,6 @@ fn fixed_slot(data: &[u8], index: usize, width: usize) -> Result<&[u8], DecodeEr
 	})
 }
 
-fn decode_bitvec(data: &[u8], len: usize) -> BitVec {
-	BitVec::from_raw(data.to_vec(), len)
-}
-
 fn decode_date_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
@@ -424,7 +423,7 @@ fn decode_date_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, D
 			.ok_or_else(|| DecodeError::InvalidData(format!("invalid date days: {}", days)))?;
 		values.push(date);
 	}
-	Ok(FrameColumnData::Date(TemporalContainer::new(values)))
+	Ok(FrameColumnData::Date(date_array(values)))
 }
 
 fn decode_datetime_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
@@ -432,7 +431,7 @@ fn decode_datetime_plain(data: &[u8], row_count: usize) -> Result<FrameColumnDat
 	for i in 0..row_count {
 		values.push(DateTime::read_le(fixed_slot(data, i, DateTime::ENCODED_SIZE)?));
 	}
-	Ok(FrameColumnData::DateTime(TemporalContainer::new(values)))
+	Ok(FrameColumnData::DateTime(datetime_array(values)))
 }
 
 fn decode_time_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
@@ -443,7 +442,7 @@ fn decode_time_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, D
 			.ok_or_else(|| DecodeError::InvalidData(format!("invalid time nanos: {}", nanos)))?;
 		values.push(time);
 	}
-	Ok(FrameColumnData::Time(TemporalContainer::new(values)))
+	Ok(FrameColumnData::Time(time_array(values)))
 }
 
 fn decode_duration_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
@@ -457,12 +456,15 @@ fn decode_duration_plain(data: &[u8], row_count: usize) -> Result<FrameColumnDat
 			.map_err(|e| DecodeError::InvalidData(format!("invalid duration: {}", e)))?;
 		values.push(dur);
 	}
-	Ok(FrameColumnData::Duration(TemporalContainer::new(values)))
+	Ok(FrameColumnData::Duration(duration_array(values)))
 }
 
 fn decode_dictionary_ids(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	if row_count == 0 || data.is_empty() {
-		return Ok(FrameColumnData::DictionaryId(DictionaryContainer::new(vec![])));
+		return Ok(FrameColumnData::DictionaryId {
+			container: dictionary_array([]),
+			dictionary_id: None,
+		});
 	}
 	let disc = data[0];
 	let mut values = Vec::with_capacity(row_count);
@@ -529,5 +531,8 @@ fn decode_dictionary_ids(data: &[u8], row_count: usize) -> Result<FrameColumnDat
 		};
 		values.push(id);
 	}
-	Ok(FrameColumnData::DictionaryId(DictionaryContainer::new(values)))
+	Ok(FrameColumnData::DictionaryId {
+		container: dictionary_array(values),
+		dictionary_id: None,
+	})
 }
