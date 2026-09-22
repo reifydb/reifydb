@@ -26,6 +26,7 @@ use reifydb_sub_server::{
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_value::Result;
 use tokio::{
+	io::{AsyncRead, AsyncWrite},
 	net::{TcpListener, TcpStream},
 	runtime::Handle,
 	select,
@@ -33,7 +34,11 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 
-use crate::{handler::handle_connection, subscription::registry::SubscriptionRegistry};
+use crate::{
+	acceptor::WsStreamAcceptor,
+	handler::{configure_stream, handle_connection},
+	subscription::registry::SubscriptionRegistry,
+};
 
 pub struct WsSubsystem {
 	bind_addr: Option<String>,
@@ -50,7 +55,7 @@ pub struct WsSubsystem {
 
 	active_connections: Arc<AtomicUsize>,
 
-	shutdown_tx: Mutex<Option<watch::Sender<bool>>>,
+	shutdown_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
 
 	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
@@ -86,7 +91,7 @@ impl WsSubsystem {
 			state,
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
-			shutdown_tx: Mutex::new(None),
+			shutdown_tx: Arc::new(Mutex::new(None)),
 			shutdown_complete_rx: Mutex::new(None),
 			admin_shutdown_complete_rx: Mutex::new(None),
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
@@ -126,6 +131,17 @@ impl WsSubsystem {
 
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
+	}
+
+	pub fn acceptor(&self) -> WsStreamAcceptor {
+		WsStreamAcceptor::new(
+			self.state.clone(),
+			self.registry.clone(),
+			self.connection_semaphore.clone(),
+			self.active_connections.clone(),
+			self.shutdown_tx.clone(),
+			self.runtime.clone(),
+		)
 	}
 
 	#[inline]
@@ -360,9 +376,27 @@ fn handle_accept_result(
 	shutdown_rx: &watch::Receiver<bool>,
 	runtime: &Handle,
 ) {
-	let (stream, peer) = accept;
+	let (stream, addr) = accept;
+	let peer = Some(addr);
+	configure_stream(&stream, peer);
+	spawn_connection(stream, peer, state, registry, semaphore, active_connections, shutdown_rx, runtime);
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn spawn_connection<S>(
+	stream: S,
+	peer: Option<SocketAddr>,
+	state: &AppState,
+	registry: &Arc<SubscriptionRegistry>,
+	semaphore: &Arc<Semaphore>,
+	active_connections: &Arc<AtomicUsize>,
+	shutdown_rx: &watch::Receiver<bool>,
+	runtime: &Handle,
+) where
+	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
 	let Ok(permit) = semaphore.clone().try_acquire_owned() else {
-		warn!("Connection limit reached, rejecting {}", peer);
+		warn!("Connection limit reached, rejecting {:?}", peer);
 		return;
 	};
 	let conn_state = state.clone();
@@ -370,9 +404,9 @@ fn handle_accept_result(
 	let conn_shutdown_rx = shutdown_rx.clone();
 	let active = active_connections.clone();
 	active.fetch_add(1, Ordering::SeqCst);
-	debug!("Accepted connection from {}", peer);
+	debug!("Accepted connection from {:?}", peer);
 	runtime.spawn(async move {
-		handle_connection(stream, conn_state, conn_registry, conn_shutdown_rx).await;
+		handle_connection(stream, peer, conn_state, conn_registry, conn_shutdown_rx).await;
 		active.fetch_sub(1, Ordering::SeqCst);
 		drop(permit);
 	});

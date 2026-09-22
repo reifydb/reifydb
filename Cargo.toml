@@ -66,6 +66,7 @@ members = [
     "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-console",
+    "crates/console-protocol",
     "crates/sub-subscription",
     "crates/subscription",
     "crates/remote-proxy",
@@ -286,6 +287,8 @@ reifydb-sub-server-grpc = { version = "0.9.3", path = "crates/sub-server-grpc" }
 reifydb-sub-server-http = { version = "0.9.3", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.9.3", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.9.3", path = "crates/sub-server-ws" }
+reifydb-console-protocol = { version = "0.9.3", path = "crates/console-protocol" }
+reifydb-sub-console = { version = "0.9.3", path = "crates/sub-console" }
 reifydb-sub-subscription = { version = "0.9.3", path = "crates/sub-subscription" }
 reifydb-remote-proxy = { version = "0.9.3", path = "crates/remote-proxy" }
 reifydb-subscription = { version = "0.9.3", path = "crates/subscription" }
@@ -349,6 +352,8 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "net", "sync", "mac
 tokio-stream = { version = "0.1.18" }
 tokio-tungstenite = { version = "0.29.0" }
 yamux = { version = "0.14.0" }
+tokio-util = { version = "0.7.18", features = ["compat"] }
+socket2 = { version = "0.6.4", features = ["all"] }
 tonic = { version = "0.14.6", default-features = false, features = ["default"] }
 tonic-prost = { version = "0.14.6" }
 prost = { version = "0.14.3" }
@@ -377,6 +382,7 @@ zstd = { version = "0.13" }
 # hashing
 crc32fast = { version = "1.5.0" }
 hashbrown = { version = "0.15" }
+sha2 = { version = "0.10.9" }
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 
 # serde

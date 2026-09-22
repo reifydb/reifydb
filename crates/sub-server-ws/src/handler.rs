@@ -42,6 +42,7 @@ use reifydb_value::{
 };
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
+	io::{AsyncRead, AsyncWrite},
 	net::TcpStream,
 	select, spawn,
 	sync::{mpsc, watch},
@@ -69,15 +70,16 @@ pub(crate) enum WsResponse {
 	Binary(Vec<u8>),
 }
 
-pub async fn handle_connection(
-	stream: TcpStream,
+pub async fn handle_connection<S>(
+	stream: S,
+	peer: Option<SocketAddr>,
 	state: AppState,
 	registry: Arc<SubscriptionRegistry>,
 	mut shutdown: watch::Receiver<bool>,
-) {
-	let peer = stream.peer_addr().ok();
+) where
+	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
 	let connection_id = generate_connection_id(&state);
-	configure_stream(&stream, peer);
 
 	let Some(ws_stream) = accept_ws_with_timeout(stream).await else {
 		return;
@@ -274,14 +276,14 @@ fn generate_connection_id(state: &AppState) -> Uuid7 {
 }
 
 #[inline]
-fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
+pub(crate) fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
 	if let Err(e) = stream.set_nodelay(true) {
 		warn!("Failed to set TCP_NODELAY for {:?}: {}", peer, e);
 	}
 }
 
 #[inline]
-async fn accept_ws_with_timeout(stream: TcpStream) -> Option<WebSocketStream<TcpStream>> {
+async fn accept_ws_with_timeout<S: AsyncRead + AsyncWrite + Unpin>(stream: S) -> Option<WebSocketStream<S>> {
 	match timeout(Duration::from_seconds(30).unwrap().to_std(), accept_async(stream)).await {
 		Ok(Ok(ws)) => Some(ws),
 		_ => None,

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 ReifyDB
+
+CREATE NAMESPACE test;
+
+CREATE TEST test::sha256_of_abc {
+    ASSERT { crypto::sha256('abc') == 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' }
+};
+
+CREATE TEST test::sha256_of_empty {
+    ASSERT { crypto::sha256('') == 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' }
+};
+
+CREATE TEST test::sha256_is_64_lowercase_hex {
+    ASSERT { crypto::sha256('ABC') == text::lower(crypto::sha256('ABC')) }
+};
+
+CREATE TABLE test::maybe { id: int4, v: Option(utf8) };
+INSERT test::maybe [{ id: 1, v: none }, { id: 2, v: 'abc' }];
+
+CREATE TEST test::sha256_of_none_is_none {
+    FROM test::maybe | FILTER id == 1 | MAP { h: crypto::sha256(v) } | ASSERT { is::none(h) }
+};
+
+CREATE TEST test::sha256_of_some_in_optional_column {
+    FROM test::maybe | FILTER id == 2 | MAP { h: crypto::sha256(v) } | ASSERT { h == 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' }
+};
+
+RUN TESTS

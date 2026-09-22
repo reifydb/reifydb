@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
+use std::{
+	error::Error as StdError,
+	fmt::{self, Display, Formatter},
+	io,
+};
+
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const MAX_FRAME: usize = 64 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Register {
+	pub protocol_version: u32,
+	pub token: String,
+	pub fingerprint: Option<String>,
+	pub version: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Reply {
+	Registered {
+		fingerprint: String,
+		protocol_version: u32,
+	},
+	Refused {
+		reason: Refusal,
+	},
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum Refusal {
+	UnknownToken,
+	UnsupportedVersion {
+		supported: u32,
+	},
+	FingerprintInUse,
+	Unavailable,
+}
+
+impl Refusal {
+	pub fn is_final(&self) -> bool {
+		!matches!(self, Refusal::Unavailable)
+	}
+}
+
+#[derive(Debug)]
+pub enum ProtocolError {
+	Io(io::Error),
+	TooLarge(usize),
+	Malformed(String),
+}
+
+impl Display for ProtocolError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			ProtocolError::Io(e) => write!(f, "io: {e}"),
+			ProtocolError::TooLarge(len) => write!(f, "frame of {len} bytes exceeds {MAX_FRAME}"),
+			ProtocolError::Malformed(why) => write!(f, "malformed message: {why}"),
+		}
+	}
+}
+
+impl StdError for ProtocolError {}
+
+impl From<io::Error> for ProtocolError {
+	fn from(value: io::Error) -> Self {
+		ProtocolError::Io(value)
+	}
+}
+
+pub async fn write_message<W, T>(writer: &mut W, message: &T) -> Result<(), ProtocolError>
+where
+	W: AsyncWrite + Unpin,
+	T: Serialize,
+{
+	let body = serde_json::to_vec(message).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
+	if body.len() > MAX_FRAME {
+		return Err(ProtocolError::TooLarge(body.len()));
+	}
+	writer.write_u32(body.len() as u32).await?;
+	writer.write_all(&body).await?;
+	writer.flush().await?;
+	Ok(())
+}
+
+pub async fn read_message<R, T>(reader: &mut R) -> Result<T, ProtocolError>
+where
+	R: AsyncRead + Unpin,
+	T: DeserializeOwned,
+{
+	let len = reader.read_u32().await? as usize;
+	if len > MAX_FRAME {
+		return Err(ProtocolError::TooLarge(len));
+	}
+	let mut body = vec![0u8; len];
+	reader.read_exact(&mut body).await?;
+	serde_json::from_slice(&body).map_err(|e| ProtocolError::Malformed(e.to_string()))
+}

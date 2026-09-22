@@ -60,6 +60,7 @@ reifydb-sub-server-grpc = { workspace = true, optional = true }
 reifydb-sub-server-http = { workspace = true, optional = true }
 reifydb-sub-server-otel = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
+reifydb-sub-console = { workspace = true, optional = true }
 reifydb-testing = { workspace = true, optional = true }
 reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true, optional = true }
@@ -80,6 +81,12 @@ reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { path = ".", features = ["testing"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
+futures-util = { workspace = true }
+serde_json = { workspace = true }
+tokio-tungstenite = { workspace = true }
+reifydb-console-protocol = { workspace = true }
+tokio-util = { workspace = true }
+yamux = { workspace = true }
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -103,6 +110,7 @@ sub_server_grpc = ["dep:reifydb-sub-server-grpc", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
 sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
+sub_console = ["dep:reifydb-sub-console", "sub_server_ws"]
 server = ["sub_server_admin", "sub_server_grpc", "sub_server_http", "sub_server_otel", "sub_server_ws", "sub_tracing"]
 testing = ["reifydb-core/testing", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
@@ -115,3 +123,13 @@ required-features = ["flow_testing"]
 name = "dst_subscription"
 path = "tests/dst_subscription.rs"
 required-features = ["sub_flow"]
+
+[[test]]
+name = "ws_stream_acceptor"
+path = "tests/ws_stream_acceptor.rs"
+required-features = ["sub_server_ws", "sub_flow"]
+
+[[test]]
+name = "console"
+path = "tests/console.rs"
+required-features = ["sub_console"]

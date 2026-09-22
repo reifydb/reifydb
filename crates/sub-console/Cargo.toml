@@ -11,6 +11,17 @@ description = "Console subsystem for ReifyDB"
 default = []
 
 [dependencies]
+reifydb-console-protocol = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-sub-server-ws = { workspace = true }
+reifydb-value = { workspace = true }
+
+socket2 = { workspace = true }
+tokio = { workspace = true, features = ["net", "time", "macros", "sync", "rt"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
 yamux = { workspace = true }
 
 [build-dependencies]

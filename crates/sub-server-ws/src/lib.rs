@@ -7,6 +7,8 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 #[cfg(not(reifydb_single_threaded))]
+pub mod acceptor;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
 #[cfg(not(reifydb_single_threaded))]
 pub mod handler;

@@ -190,6 +190,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			config.poll_batch_size,
 			subscription_store,
 		)?;
+		ioc.register_service(subsystem.acceptor());
 
 		Ok(Box::new(subsystem))
 	}
