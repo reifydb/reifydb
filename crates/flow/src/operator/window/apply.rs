@@ -23,8 +23,8 @@ use crate::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{
-				EngineBuckets, WindowGroups, finish_tumbling_engine, intern_window_groups,
-				route_into_buckets, slot_coord,
+				EngineBuckets, SessionBounds, WindowGroups, finish_tumbling_engine,
+				intern_window_groups, route_into_buckets, slot_coord,
 			},
 		},
 		host::HostContext,
@@ -392,6 +392,7 @@ pub fn apply_tumbling_engine(
 		engine_immutable,
 		expiry_anchor,
 		count_based,
+		None,
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -661,6 +662,7 @@ pub fn apply_sliding_engine(
 		engine_immutable,
 		expiry_anchor,
 		true,
+		None,
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -673,14 +675,16 @@ fn session_assign(
 	event_ts: DateTime,
 	kind: &SessionKind,
 	trackers: &mut HashMap<Hash128, SessionTracker>,
+	bounds: &mut SessionBounds,
 ) -> Result<Option<u64>> {
 	let mut tracker = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
 		None => operator.load_session_tracker(host, hash)?,
 	};
 	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
-	if assignment.session_id().is_some() {
+	if let Some(session_id) = assignment.session_id() {
 		trackers.insert(hash, tracker);
+		bounds.insert((hash, session_id), (tracker.start, tracker.last));
 	}
 	Ok(assignment.session_id())
 }
@@ -699,6 +703,7 @@ pub fn apply_session_engine(
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 	let mut trackers: HashMap<Hash128, SessionTracker> = HashMap::new();
+	let mut bounds: SessionBounds = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -712,9 +717,15 @@ pub fn apply_session_engine(
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					if let Some(session_id) =
-						session_assign(operator, host, *hash, event_ts, &kind, &mut trackers)?
-					{
+					if let Some(session_id) = session_assign(
+						operator,
+						host,
+						*hash,
+						event_ts,
+						&kind,
+						&mut trackers,
+						&mut bounds,
+					)? {
 						operator.store_row_index(
 							host,
 							*hash,
@@ -801,6 +812,7 @@ pub fn apply_session_engine(
 							event_ts,
 							&kind,
 							&mut trackers,
+							&mut bounds,
 						)? {
 							operator.store_row_index(
 								host,
@@ -889,6 +901,7 @@ pub fn apply_session_engine(
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
+	let gap = operator.session_gap();
 	let armed_before = armed_engine_seal(operator, host, rule)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
@@ -904,6 +917,7 @@ pub fn apply_session_engine(
 		engine_immutable,
 		ExpiryAnchor::LastEvent,
 		true,
+		Some((gap, &bounds)),
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))

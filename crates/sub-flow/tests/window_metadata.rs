@@ -222,3 +222,102 @@ fn a_grouped_aggregate_is_refused_a_window_function() {
 	let message = err.to_string();
 	assert!(message.contains("FLOW_013") || message.contains("FLOW_015"), "expected a rejection, got: {message}");
 }
+
+#[test]
+fn a_session_window_starts_at_its_first_event_and_ends_one_gap_past_its_last() {
+	// A session span must come from its events, never from the internal session ordinal near the epoch.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime, d: duration } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end(), d: window::duration() }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "d")), vec!["40s".to_string()]);
+	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
+	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()], "#time must stamp the session start");
+}
+
+#[test]
+fn a_late_event_that_extends_a_session_backwards_moves_its_start() {
+	// An out-of-order event inside the gap must pull the start back, otherwise the span omits a row it counts.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end() }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:20Z");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
+	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
+	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+}
+
+#[test]
+fn two_sessions_of_one_group_each_report_their_own_span() {
+	// A rotation must not let the closed session take the new session's bounds or lose its own.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end() }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 7, "2026-01-01T00:03:00Z");
+	insert(&db, 3, 1, 7, "2026-01-01T00:03:05Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut spans: Vec<(String, String)> =
+		text(&column_values(&frames[0], "s")).into_iter().zip(text(&column_values(&frames[0], "e"))).collect();
+	spans.sort();
+	assert_eq!(
+		spans,
+		vec![
+			("2026-01-01T00:01:10.000000000Z".to_string(), "2026-01-01T00:01:40.000000000Z".to_string()),
+			("2026-01-01T00:03:00.000000000Z".to_string(), "2026-01-01T00:03:35.000000000Z".to_string()),
+		]
+	);
+}
+
+#[test]
+fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
+	// A removal must render from the stored session bounds, which never shrink, otherwise the span loses its start.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end() }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { n == 1 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
+}

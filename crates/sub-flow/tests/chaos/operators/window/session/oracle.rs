@@ -10,9 +10,8 @@
 //! boundary and updates that must not reassign a row. A rule this short is worth restating to get at
 //! that.
 //!
-//! Sessions are numbered per group from zero and the operator publishes each under an ordinal span,
-//! so a group with three sessions is three rows sharing a group value. That is why the expectation is
-//! keyed on the group plus the published time.
+//! A group with three sessions is three rows sharing a group value, each stamped with its session's
+//! start. That is why the expectation is keyed on the group plus the published time.
 
 use std::collections::BTreeMap;
 
@@ -137,7 +136,7 @@ impl SessionOracle {
 	}
 }
 
-/// The group plus the published time, which carries the session ordinal. Keying on the group alone
+/// The group plus the published time, which carries the session start. Keying on the group alone
 /// would let a group's sessions satisfy each other's totals.
 fn session_row_key() -> RowKey {
 	RowKey::columns(["g"]).with_time()

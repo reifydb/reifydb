@@ -2170,6 +2170,7 @@ fn a_rolling_retraction_older_than_immutable_rebuilds_the_percentile_and_the_min
 		kind: WindowKind::Rolling {
 			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
 			lag: None,
+			pane: None,
 		},
 		group_by: "g",
 		aggregations: percentile::MEDIAN_NEXT_TO_MIN,

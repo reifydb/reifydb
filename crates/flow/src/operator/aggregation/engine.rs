@@ -32,7 +32,7 @@ use crate::{
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		meta::{EngineMeta, EngineMetaKey},
+		meta::{EngineMeta, EngineMetaKey, SessionKey, SessionState},
 		span::WindowSpan,
 	},
 };
@@ -40,6 +40,8 @@ use crate::{
 pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
+
+pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTime, DateTime)>;
 
 #[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
 pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
@@ -121,6 +123,7 @@ pub(crate) fn finish_tumbling_engine(
 	immutable: Option<Duration>,
 	anchor: ExpiryAnchor,
 	indexed_retractions: bool,
+	session: Option<(Duration, &SessionBounds)>,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
 		.tumbling_engine_slot()
@@ -145,6 +148,7 @@ pub(crate) fn finish_tumbling_engine(
 		);
 	}
 
+	let mut spans = Vec::with_capacity(results.len());
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
 		let window_start = r.span.start.to_order();
@@ -183,27 +187,67 @@ pub(crate) fn finish_tumbling_engine(
 				put(host, &EngineMetaKey(group), meta)?;
 			}
 		}
+		spans.push(match session {
+			None => (r.span, r.span),
+			Some((gap, bounds)) => {
+				let before =
+					get_classified::<_, SessionState>(host, &SessionKey(group))?.map(|state| {
+						(
+							<DateTime as Coord>::from_order(state.session_start),
+							<DateTime as Coord>::from_order(state.last_event_time),
+						)
+					});
+				let now = bounds.get(&(r.group, window_start)).copied().or(before);
+				let pre = match r.kind {
+					EmitKind::Insert => now,
+					EmitKind::Update | EmitKind::Remove => before,
+				};
+				let (Some(pre), Some(now)) = (pre, now) else {
+					panic!(
+						"session {window_start}: a published session window has no bounds record"
+					);
+				};
+				match r.kind {
+					EmitKind::Remove => remove(host, &SessionKey(group))?,
+					EmitKind::Insert | EmitKind::Update => put(
+						host,
+						&SessionKey(group),
+						SessionState {
+							session_id: window_start,
+							last_event_time: now.1.to_order(),
+							session_start: now.0.to_order(),
+						},
+					)?,
+				}
+				let span = |(start, last): (DateTime, DateTime)| WindowSpan {
+					start,
+					end: last.add_span(gap),
+				};
+				(span(pre), span(now))
+			}
+		});
 	}
 	*core.tumbling_engine_slot() = Some(engine);
 
 	let ts = change.changed_at;
 	let mut diffs = Vec::new();
-	for r in results {
+	for (r, (pre_span, post_span)) in results.into_iter().zip(spans) {
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		match r.kind {
 			EmitKind::Insert => {
-				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(r.span))?;
+				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(r.span))?;
-				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(r.span))?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
+				let post =
+					core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(r.span))?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
 		}
