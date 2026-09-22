@@ -7,8 +7,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { Utf8Value } from '@reifydb/core'
-import { Option, Shape, type Store } from '@reifydb/react'
+import { Option, Shape, rql, type Store } from '@reifydb/react'
 import { loadBackend } from '../../support/backend'
+import { commandRoot, queryRoot } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import { addRegion, caughtUp, monitorInDb, monitorRegionsInDb, regionNamed } from '../../support/monitors'
@@ -19,15 +20,33 @@ vi.mock('@tanstack/react-router', async () => (await import('../../support/route
 
 let create: TestFactory
 
-const OPTIONALS_RQL =
-  'from uptime::monitors filter { name == $name } map { http_method, expected_status, keyword, expected_ip }'
+const optionalsByName = rql(
+  Shape.object({
+    http_method: Shape.option(Shape.string()),
+    expected_status: Shape.option(Shape.int2()),
+    keyword: Shape.option(Shape.string()),
+    expected_ip: Shape.option(Shape.string()),
+  }),
+)<{ name: string }>`from uptime::monitors filter { name == $name } map { http_method, expected_status, keyword, expected_ip }`
 
-const OPTIONALS = Shape.object({
-  http_method: Shape.option(Shape.string()),
-  expected_status: Shape.option(Shape.int2()),
-  keyword: Shape.option(Shape.string()),
-  expected_ip: Shape.option(Shape.string()),
-})
+const reifydbMonitor = rql(
+  Shape.object({
+    name: Shape.utf8Value(),
+    kind: Shape.utf8Value(),
+    target: Shape.utf8Value(),
+    status: Shape.utf8Value(),
+  }),
+)`from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }`
+
+const nameAndKeywordById = rql(Shape.object({ name: Shape.utf8(), keyword: Shape.option(Shape.utf8()) }))<{
+  id: string
+}>`from uptime::monitors filter { id == $id } map { name, keyword }`
+
+const monitorNames = rql(Shape.object({ name: Shape.utf8() }))`from uptime::monitors map { name }`
+
+const monitorRegionIds = rql(Shape.object({ region_id: Shape.uuid7() }))`from uptime::monitor_regions map { region_id }`
+
+const DELETE_REGION = rql.write([])<{ id: string }>`delete uptime::regions filter { id == $id }`
 
 beforeAll(() => {
   create = loadBackend()
@@ -61,18 +80,7 @@ describe('create monitor flow', () => {
     expect(params.monitorId).toBeTruthy()
 
     // Asserts against the real db, not the mock response - otherwise a broken migration would go undetected.
-    const [rows] = await db.queryRoot(
-      'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
-      {},
-      [
-        Shape.object({
-          name: Shape.utf8Value(),
-          kind: Shape.utf8Value(),
-          target: Shape.utf8Value(),
-          status: Shape.utf8Value(),
-        }),
-      ],
-    )
+    const rows = await queryRoot(db, reifydbMonitor, null)
     expect(rows).toEqual([
       {
         '#rownum': 1,
@@ -93,7 +101,7 @@ describe('create monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalled())
-    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'db-port' }, [OPTIONALS])
+    const rows = await queryRoot(db, optionalsByName, { name: 'db-port' })
     expect(rows).toEqual([
       {
         '#rownum': 1,
@@ -116,7 +124,7 @@ describe('create monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalled())
-    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'api-health' }, [OPTIONALS])
+    const rows = await queryRoot(db, optionalsByName, { name: 'api-health' })
     expect(rows).toEqual([
       {
         '#rownum': 1,
@@ -138,7 +146,7 @@ describe('create monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalled())
-    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'dns-check' }, [OPTIONALS])
+    const rows = await queryRoot(db, optionalsByName, { name: 'dns-check' })
     expect(rows).toEqual([
       {
         '#rownum': 1,
@@ -162,11 +170,7 @@ describe('create monitor flow', () => {
 
     await waitFor(() => expect(navigate).toHaveBeenCalled())
     const [{ params }] = navigate.mock.calls[0]
-    const [rows] = await db.queryRoot(
-      'from uptime::monitors filter { id == $id } map { name, keyword }',
-      { id: params.monitorId },
-      [Shape.object({ name: Shape.utf8(), keyword: Shape.option(Shape.utf8()) })],
-    )
+    const rows = await queryRoot(db, nameAndKeywordById, { id: params.monitorId })
     expect(rows).toEqual([{ '#rownum': 1, name: uuidLike, keyword: Option.some(uuidLike) }])
   })
 
@@ -199,19 +203,15 @@ describe('create monitor flow', () => {
     await userEvent.type(screen.getByLabelText('URL'), 'https://reifydb.com/health')
     await userEvent.click(screen.getByRole('button', { name: 'Zanzibar' }))
     // Removed after ticking, so the form still sends the id and only the server can refuse it.
-    await db.commandRoot('delete uptime::regions filter { id == $id }', { id: gone }, [])
+    await commandRoot(db, DELETE_REGION, { id: gone })
     await caughtUp(client)
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     expect(await screen.findByText(/unknown region/)).toBeInTheDocument()
     expect(navigate).not.toHaveBeenCalled()
-    const [monitorRows] = await db.queryRoot('from uptime::monitors map { name }', {}, [
-      Shape.object({ name: Shape.utf8() }),
-    ])
+    const monitorRows = await queryRoot(db, monitorNames, null)
     expect(monitorRows).toEqual([])
-    const [regionRows] = await db.queryRoot('from uptime::monitor_regions map { region_id }', {}, [
-      Shape.object({ region_id: Shape.uuid7() }),
-    ])
+    const regionRows = await queryRoot(db, monitorRegionIds, null)
     expect(regionRows).toEqual([])
   })
 

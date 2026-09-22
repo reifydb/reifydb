@@ -4,7 +4,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Store } from '@reifydb/react'
+import { Store, type SubscriptionCallbacks } from '@reifydb/react'
 import type { BridgeClient, TestFactory } from '@reifydb/reifydb'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { regions } from '@/store/queries'
@@ -110,15 +110,18 @@ describe('a create error the command runner did not record', () => {
   it('is rethrown out of the submit instead of being swallowed', async () => {
     // The form only shows errors the runner recorded, so swallowing any other one would leave a failed create with no trace anywhere.
     const pending = () => new Promise<never>(() => undefined)
-    const command = vi.fn(async () => [])
+    const command = vi.fn(pending)
     // Only a hand-built row can carry an id that is not a uuid; the engine never returns one.
     const store = new Store({
       query: pending,
       command,
+      admin: pending,
       unsubscribe: async () => undefined,
       subscribe: async (rql, _params, _shape, callbacks) => {
         if (rql !== regions.rql) return pending()
-        callbacks.onInsert?.([{ '#rownum': 1, id: 'not-a-uuid', label: 'US East' }])
+        ;(callbacks as SubscriptionCallbacks<{ id: string; label: string }>).onInsert?.([
+          { '#rownum': 1, id: 'not-a-uuid', label: 'US East' },
+        ])
         return 'regions'
       },
     })

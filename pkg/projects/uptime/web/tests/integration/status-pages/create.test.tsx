@@ -4,18 +4,21 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Store, Uuid7Value, type StoreClient } from '@reifydb/react'
+import { Store, Uuid7Value, rql, type StoreClient } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { StatusPageNewPage } from '@/pages/status-pages/form.tsx'
 import { STORE_OPTIONS } from '@/store/client'
 import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
+import { commandAs } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import { createMonitor } from '../../support/monitors'
 import { countMembers, createStatusPage, readMembers, readPages } from '../../support/status-pages'
 
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
+
+const DELETE_MONITOR = rql.write([])<{ id: Uuid7Value }>`CALL uptime::delete_monitor($id)`
 
 let create: TestFactory
 
@@ -27,10 +30,11 @@ describe('create status page flow', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
     navigate.mockClear()
   })
 
@@ -50,9 +54,9 @@ describe('create status page flow', () => {
 
   it('saves the page and its monitors in the order they were ticked, in one command', async () => {
     // Ticking order is the display order on the public page; one command keeps page and members atomic (F1).
-    const alpha = await createMonitor(client, 'alpha')
-    await createMonitor(client, 'beta')
-    const gamma = await createMonitor(client, 'gamma')
+    const alpha = await createMonitor(db, identity, 'alpha')
+    await createMonitor(db, identity, 'beta')
+    const gamma = await createMonitor(db, identity, 'gamma')
     await renderPage()
 
     await userEvent.type(screen.getByLabelText('Title'), 'Acme Status')
@@ -72,8 +76,8 @@ describe('create status page flow', () => {
 
   it('shows the taken slug error from RQL in the form and writes nothing', async () => {
     // The uniqueness check lives only in RQL now, so its message is the only thing telling the user why.
-    const alpha = await createMonitor(client, 'alpha')
-    await createStatusPage(client, 'acme', 'Existing', [alpha])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    await createStatusPage(db, identity, 'acme', 'Existing', [alpha])
     await renderPage()
 
     await userEvent.type(screen.getByLabelText('Title'), 'Another')
@@ -90,14 +94,14 @@ describe('create status page flow', () => {
 
   it('rolls the page back when a ticked monitor was deleted before submit', async () => {
     // A page committed without its failing member would publish an incomplete status page.
-    await createMonitor(client, 'alpha')
-    const beta = await createMonitor(client, 'beta')
+    await createMonitor(db, identity, 'alpha')
+    const beta = await createMonitor(db, identity, 'beta')
     await renderPage()
 
     await userEvent.type(screen.getByLabelText('Title'), 'Acme Status')
     await userEvent.click(screen.getByRole('checkbox', { name: /alpha/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /beta/ }))
-    await client.command('CALL uptime::delete_monitor($id)', { id: new Uuid7Value(beta) }, [])
+    await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(beta) })
     await caughtUp()
     expect(screen.queryByRole('checkbox', { name: /beta/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /create status page/i }))
@@ -110,7 +114,7 @@ describe('create status page flow', () => {
 
   it('stores a uuid-shaped title exactly as typed', async () => {
     // A bare string that looks like a uuid is sent as a uuid7, and the engine would store its normalised text.
-    await createMonitor(client, 'alpha')
+    await createMonitor(db, identity, 'alpha')
     const uuid = Uuid7Value.generate().toString()
     await renderPage()
 
@@ -126,7 +130,7 @@ describe('create status page flow', () => {
 
   it('blocks a submit with no monitor ticked, never touching the database', async () => {
     // "At least one monitor" is a form-only rule, so nothing else would stop an empty page.
-    await createMonitor(client, 'alpha')
+    await createMonitor(db, identity, 'alpha')
     await renderPage()
 
     await userEvent.type(screen.getByLabelText('Title'), 'Acme Status')

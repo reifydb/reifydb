@@ -25,7 +25,7 @@ export const signOut = vi.fn(async () => {
   setSessionToken(null)
 })
 
-export const signIn = vi.fn(async () => undefined)
+export const signIn = vi.fn(async (): Promise<void> => undefined)
 
 export const adoptSession = vi.fn((session: { token: string }) => {
   // Must install the token like the real provider, otherwise a minted guest session never reaches the layout.

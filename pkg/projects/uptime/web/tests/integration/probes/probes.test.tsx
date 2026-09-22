@@ -3,15 +3,24 @@
 
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IdentityIdValue, StoreProvider, type Store } from '@reifydb/react'
+import { IdentityIdValue, StoreProvider, rql, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { probes, useProbeNames, useProbes } from '@/hooks/use-probes'
 import { ProbesPage } from '@/pages/probes'
 import { loadBackend } from '../../support/backend'
+import { commandAs } from '../../support/db'
 import { identityNamed } from '../../support/identity'
 import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
 
 const MINUTE = 60_000
+
+const REGISTER_PROBE = rql.write([])<{
+  probe: IdentityIdValue
+  name: string
+  seen: Date
+}>`CALL uptime::register_probe($probe, $name, $seen)`
+
+const PROBE_HEARTBEAT = rql.write([])<{ probe: IdentityIdValue; seen: Date }>`CALL uptime::probe_heartbeat($probe, $seen)`
 
 let create: TestFactory
 
@@ -25,21 +34,11 @@ async function createProbeService(db: TestDb, name: string): Promise<string> {
 }
 
 function registerProbe(db: TestDb, probe: string, name: string, seen: Date) {
-  return db.commandAs(
-    probe,
-    'CALL uptime::register_probe($probe, $name, $seen)',
-    { probe: new IdentityIdValue(probe), name, seen },
-    [],
-  )
+  return commandAs(db, probe, REGISTER_PROBE, { probe: new IdentityIdValue(probe), name, seen })
 }
 
 function heartbeat(db: TestDb, probe: string, seen: Date) {
-  return db.commandAs(
-    probe,
-    'CALL uptime::probe_heartbeat($probe, $seen)',
-    { probe: new IdentityIdValue(probe), seen },
-    [],
-  )
+  return commandAs(db, probe, PROBE_HEARTBEAT, { probe: new IdentityIdValue(probe), seen })
 }
 
 function ProbeNames() {

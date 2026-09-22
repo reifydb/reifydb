@@ -34,6 +34,7 @@ describe('per-monitor results over the batched store', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
   let owner: string
   let usEast: string
   let alpha: string
@@ -41,11 +42,11 @@ describe('per-monitor results over the batched store', () => {
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
     owner = await identityOf(db, 'tester')
     usEast = await regionNamed(db, 'US East')
-    alpha = await createMonitor(client, 'alpha', [usEast])
-    beta = await createMonitor(client, 'beta', [usEast])
+    alpha = await createMonitor(db, identity, 'alpha', [usEast])
+    beta = await createMonitor(db, identity, 'beta', [usEast])
   })
 
   it('shows a result reported for this monitor live, and never one reported for another monitor', async () => {

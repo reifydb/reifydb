@@ -11,18 +11,31 @@
 
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DurationValue, Option, Uuid7Value, type Store } from '@reifydb/react'
+import { DurationValue, Option, Uuid7Value, rql, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
 import { loadBackend } from '../../support/backend'
+import { commandAs } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
-const CREATE_MONITOR =
-  'CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)'
+const CREATE_MONITOR = rql.write([])<{
+  id: string
+  name: string
+  kind: string
+  target: string
+  interval: DurationValue
+  timeout: DurationValue
+  http_method: Option<string>
+  expected_status: Option<number>
+  keyword: Option<string>
+  expected_ip: Option<string>
+  failure_threshold: number
+  enabled: boolean
+}>`CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)`
 
 let create: TestFactory
 
@@ -36,31 +49,28 @@ describe('the dashboard over a live subscription, unbatched', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester', { batch: false }))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester', { batch: false }))
   })
 
   function createMonitor(name: string, target: string) {
-    return client.command(
-      CREATE_MONITOR,
-      {
-        id: Uuid7Value.generate().toString(),
-        name,
-        kind: 'http',
-        target,
-        interval: DurationValue.fromMilliseconds(60_000),
-        timeout: DurationValue.fromMilliseconds(10_000),
-        http_method: Option.none('Utf8'),
-        expected_status: Option.none('Int2'),
-        keyword: Option.none('Utf8'),
-        expected_ip: Option.none('Utf8'),
-        failure_threshold: 3,
-        enabled: true,
-      },
-      [],
-    )
+    return commandAs(db, identity, CREATE_MONITOR, {
+      id: Uuid7Value.generate().toString(),
+      name,
+      kind: 'http',
+      target,
+      interval: DurationValue.fromMilliseconds(60_000),
+      timeout: DurationValue.fromMilliseconds(10_000),
+      http_method: Option.none('Utf8'),
+      expected_status: Option.none('Int2'),
+      keyword: Option.none('Utf8'),
+      expected_ip: Option.none('Utf8'),
+      failure_threshold: 3,
+      enabled: true,
+    })
   }
 
   // Inside act so the subscription callbacks reach React state under the test's control.
@@ -102,12 +112,13 @@ describe('the dashboard over one batched subscription', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
 
   beforeEach(async () => {
     db = create()
     // No override: this is uptime's own STORE_OPTIONS, so the assertions below fail if production
     // ever stops batching.
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
   })
 
   async function caughtUp() {
@@ -138,47 +149,39 @@ describe('the dashboard over one batched subscription', () => {
   it('hydrates the page from a batch, then keeps it live', async () => {
     // Batching must not cost the page anything it had before. Hydration rides the batch envelope
     // rather than a plain change, and forward changes have to keep arriving afterwards.
-    await client.command(
-      CREATE_MONITOR,
-      {
-        id: Uuid7Value.generate().toString(),
-        name: 'gamma-api',
-        kind: 'http',
-        target: 'https://gamma.example.com/health',
-        interval: DurationValue.fromMilliseconds(60_000),
-        timeout: DurationValue.fromMilliseconds(10_000),
-        http_method: Option.none('Utf8'),
-        expected_status: Option.none('Int2'),
-        keyword: Option.none('Utf8'),
-        expected_ip: Option.none('Utf8'),
-        failure_threshold: 3,
-        enabled: true,
-      },
-      [],
-    )
+    await commandAs(db, identity, CREATE_MONITOR, {
+      id: Uuid7Value.generate().toString(),
+      name: 'gamma-api',
+      kind: 'http',
+      target: 'https://gamma.example.com/health',
+      interval: DurationValue.fromMilliseconds(60_000),
+      timeout: DurationValue.fromMilliseconds(10_000),
+      http_method: Option.none('Utf8'),
+      expected_status: Option.none('Int2'),
+      keyword: Option.none('Utf8'),
+      expected_ip: Option.none('Utf8'),
+      failure_threshold: 3,
+      enabled: true,
+    })
 
     renderWithProviders(<DashboardPage />, store)
     await caughtUp()
     expect(await screen.findByRole('row', { name: /gamma-api/i })).toBeInTheDocument()
 
-    await client.command(
-      CREATE_MONITOR,
-      {
-        id: Uuid7Value.generate().toString(),
-        name: 'delta-api',
-        kind: 'http',
-        target: 'https://delta.example.com/health',
-        interval: DurationValue.fromMilliseconds(60_000),
-        timeout: DurationValue.fromMilliseconds(10_000),
-        http_method: Option.none('Utf8'),
-        expected_status: Option.none('Int2'),
-        keyword: Option.none('Utf8'),
-        expected_ip: Option.none('Utf8'),
-        failure_threshold: 3,
-        enabled: true,
-      },
-      [],
-    )
+    await commandAs(db, identity, CREATE_MONITOR, {
+      id: Uuid7Value.generate().toString(),
+      name: 'delta-api',
+      kind: 'http',
+      target: 'https://delta.example.com/health',
+      interval: DurationValue.fromMilliseconds(60_000),
+      timeout: DurationValue.fromMilliseconds(10_000),
+      http_method: Option.none('Utf8'),
+      expected_status: Option.none('Int2'),
+      keyword: Option.none('Utf8'),
+      expected_ip: Option.none('Utf8'),
+      failure_threshold: 3,
+      enabled: true,
+    })
     await caughtUp()
 
     await waitFor(() => expect(screen.getByRole('row', { name: /delta-api/i })).toBeInTheDocument())

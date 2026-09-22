@@ -5,13 +5,14 @@ import type { ReactNode } from 'react'
 import { act, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IdentityIdValue, Int2Value, Store, StoreProvider, Uuid7Value, type StoreClient } from '@reifydb/react'
+import { IdentityIdValue, Int2Value, Store, StoreProvider, Uuid7Value, rql, type StoreClient } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { useCreateStatusPage, useUpdateStatusPage } from '@/hooks/use-status-pages'
 import { StatusPageEditPage } from '@/pages/status-pages/form.tsx'
 import { STORE_OPTIONS } from '@/store/client'
 import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
+import { commandAs, commandRoot } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import { createMonitor, identityOf } from '../../support/monitors'
@@ -24,6 +25,15 @@ vi.mock('@tanstack/react-router', async () => ({
   useParams: () => route,
 }))
 
+const PLANT_MEMBER = rql.write([])<{
+  id: string
+  owner: IdentityIdValue
+  monitor_id: string
+  position: Int2Value
+}>`INSERT uptime::status_page_monitors [{ status_page_id: $id, owner: $owner, monitor_id: $monitor_id, position: $position }]`
+
+const DELETE_MONITOR = rql.write([])<{ id: Uuid7Value }>`CALL uptime::delete_monitor($id)`
+
 let create: TestFactory
 
 beforeAll(() => {
@@ -34,16 +44,17 @@ describe('edit status page flow', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
   let alpha: string
   let beta: string
   let gamma: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
-    alpha = await createMonitor(client, 'alpha')
-    beta = await createMonitor(client, 'beta')
-    gamma = await createMonitor(client, 'gamma')
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
+    alpha = await createMonitor(db, identity, 'alpha')
+    beta = await createMonitor(db, identity, 'beta')
+    gamma = await createMonitor(db, identity, 'gamma')
     navigate.mockClear()
   })
 
@@ -64,7 +75,7 @@ describe('edit status page flow', () => {
 
   it('pre-fills the form from the live rows, then saves the new title, slug and member order', async () => {
     // A form mounted before the member rows hydrate would start unticked and silently drop every member.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha, beta])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha, beta])
     await renderPage(id)
 
     expect(await screen.findByLabelText('Title')).toHaveValue('Acme')
@@ -92,13 +103,11 @@ describe('edit status page flow', () => {
 
   it('keeps the member order when an untouched page is saved, whatever order the rows arrived in', async () => {
     // Members read in arrival order instead of by position would silently reorder the public page on save.
-    const id = await createStatusPage(client, 'acme', 'Acme', [])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [])
     const owner = new IdentityIdValue(await identityOf(db, 'tester'))
-    const plant =
-      'INSERT uptime::status_page_monitors [{ status_page_id: $id, owner: $owner, monitor_id: $monitor_id, position: $position }]'
-    await db.commandRoot(plant, { id, owner, monitor_id: gamma, position: new Int2Value(1) }, [])
-    await db.commandRoot(plant, { id, owner, monitor_id: alpha, position: new Int2Value(0) }, [])
-    await db.commandRoot(plant, { id, owner, monitor_id: beta, position: new Int2Value(2) }, [])
+    await commandRoot(db, PLANT_MEMBER, { id, owner, monitor_id: gamma, position: new Int2Value(1) })
+    await commandRoot(db, PLANT_MEMBER, { id, owner, monitor_id: alpha, position: new Int2Value(0) })
+    await commandRoot(db, PLANT_MEMBER, { id, owner, monitor_id: beta, position: new Int2Value(2) })
     await renderPage(id)
 
     await userEvent.click(await screen.findByRole('button', { name: /save changes/i }))
@@ -113,8 +122,8 @@ describe('edit status page flow', () => {
 
   it('shows the taken slug error from RQL and leaves the page as it was', async () => {
     // Slugs are unique per owner only in RQL, so a clash must surface in the form and change nothing.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha])
-    await createStatusPage(client, 'other', 'Other', [beta])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha])
+    await createStatusPage(db, identity, 'other', 'Other', [beta])
     await renderPage(id)
 
     await userEvent.clear(await screen.findByLabelText('Slug'))
@@ -130,7 +139,7 @@ describe('edit status page flow', () => {
 
   it('keeps the old title and members when an add fails after the clear', async () => {
     // Update, clear and re-add in separate commands would commit the title and wipe the members when an add fails.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha, beta])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha, beta])
     await renderPage(id)
 
     await userEvent.clear(await screen.findByLabelText('Title'))
@@ -138,7 +147,7 @@ describe('edit status page flow', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /gamma/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /alpha/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /beta/ }))
-    await client.command('CALL uptime::delete_monitor($id)', { id: new Uuid7Value(gamma) }, [])
+    await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(gamma) })
     await caughtUp()
     await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
@@ -153,11 +162,11 @@ describe('edit status page flow', () => {
 
   it('lists a ticked monitor deleted elsewhere as a removable row, so the page can still be saved', async () => {
     // A ticked monitor deleted elsewhere has no checkbox left; without a row to remove it, every save fails on an unknown monitor id.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha, beta])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha, beta])
     await renderPage(id)
     expect(await screen.findByRole('checkbox', { name: /beta/ })).toBeChecked()
 
-    await client.command('CALL uptime::delete_monitor($id)', { id: new Uuid7Value(beta) }, [])
+    await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(beta) })
     await caughtUp()
 
     expect(screen.queryByRole('checkbox', { name: /beta/ })).not.toBeInTheDocument()
@@ -173,9 +182,9 @@ describe('edit status page flow', () => {
 
   it("shows not found for another owner's page id and never writes to it", async () => {
     // The from-policy is the only thing keeping a guessed page id from opening someone else's page.
-    const { client: other } = await bridgeStore(db, 'mallory')
-    const theirs = await createMonitor(other, 'theirs')
-    const id = await createStatusPage(other, 'mallory', 'Mallory', [theirs])
+    const { identity: mallory } = await bridgeStore(db, 'mallory')
+    const theirs = await createMonitor(db, mallory, 'theirs')
+    const id = await createStatusPage(db, mallory, 'mallory', 'Mallory', [theirs])
     await renderPage(id)
 
     expect(await screen.findByText('Status page not found')).toBeInTheDocument()
@@ -186,7 +195,7 @@ describe('edit status page flow', () => {
 
   it('says the monitors failed to load instead of spinning forever', async () => {
     // A refused monitors subscription would otherwise leave the page spinning with nothing saying why.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha])
     const refused: StoreClient = {
       ...client,
       batchSubscribe: async (subscriptions) => {
@@ -208,15 +217,15 @@ describe('edit status page flow', () => {
 describe('the at-least-one-monitor check', () => {
   let db: TestDb
   let store: Store
-  let client: BridgeClient
+  let identity: string
   let alpha: string
   let beta: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
-    alpha = await createMonitor(client, 'alpha')
-    beta = await createMonitor(client, 'beta')
+    ;({ store, identity } = await bridgeStore(db, 'tester'))
+    alpha = await createMonitor(db, identity, 'alpha')
+    beta = await createMonitor(db, identity, 'beta')
   })
 
   function wrapper({ children }: { children: ReactNode }) {
@@ -225,7 +234,7 @@ describe('the at-least-one-monitor check', () => {
 
   it('refuses an update that leaves no member and rolls the clear and the rename back', async () => {
     // The update clears every member before re-adding; with nothing re-added the page would publish an empty status.
-    const id = await createStatusPage(client, 'acme', 'Acme', [alpha, beta])
+    const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha, beta])
     const { result } = renderHook(() => useUpdateStatusPage(id), { wrapper })
 
     await act(async () => {

@@ -4,15 +4,28 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Store } from '@reifydb/react'
+import { rql, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
 import { loadBackend } from '../../support/backend'
+import { commandRoot } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { addRegion, caughtUp, createMonitor, regionNamed } from '../../support/monitors'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
+
+const SET_REGION_STATUS = rql.write([])<{
+  monitor_id: string
+  region_id: string
+  status: string
+}>`update uptime::monitor_regions { status: $status } filter { monitor_id == $monitor_id and region_id == $region_id }`
+
+const DISABLE_AS_DOWN = rql.write([])<{
+  id: string
+}>`update uptime::monitors { enabled: false, status: "down" } filter { id == $id }`
+
+const MARK_DEGRADED = rql.write([])<{ id: string }>`update uptime::monitors { status: "degraded" } filter { id == $id }`
 
 let create: TestFactory
 
@@ -24,10 +37,11 @@ describe('monitors list', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
   })
 
   async function renderPage() {
@@ -36,11 +50,7 @@ describe('monitors list', () => {
   }
 
   function setRegionStatus(monitorId: string, regionId: string, status: string) {
-    return db.commandRoot(
-      'update uptime::monitor_regions { status: $status } filter { monitor_id == $monitor_id and region_id == $region_id }',
-      { monitor_id: monitorId, region_id: regionId, status },
-      [],
-    )
+    return commandRoot(db, SET_REGION_STATUS, { monitor_id: monitorId, region_id: regionId, status })
   }
 
   it('shows a loading indicator before monitors are ready', () => {
@@ -59,7 +69,7 @@ describe('monitors list', () => {
   })
 
   it('renders a monitor row with its name, type, target and last-checked time', async () => {
-    await createMonitor(client, 'alpha-api')
+    await createMonitor(db, identity, 'alpha-api')
     await renderPage()
 
     const row = await screen.findByRole('row', { name: /alpha-api/i })
@@ -69,7 +79,7 @@ describe('monitors list', () => {
   })
 
   it('links the monitor name to its detail page', async () => {
-    const id = await createMonitor(client, 'alpha-api')
+    const id = await createMonitor(db, identity, 'alpha-api')
     await renderPage()
 
     expect(await screen.findByRole('link', { name: 'alpha-api' })).toHaveAttribute(
@@ -79,8 +89,8 @@ describe('monitors list', () => {
   })
 
   it('shows Paused instead of a status badge for a disabled monitor', async () => {
-    const id = await createMonitor(client, 'beta-db')
-    await db.commandRoot('update uptime::monitors { enabled: false, status: "down" } filter { id == $id }', { id }, [])
+    const id = await createMonitor(db, identity, 'beta-db')
+    await commandRoot(db, DISABLE_AS_DOWN, { id })
     await renderPage()
 
     const row = await screen.findByRole('row', { name: /beta-db/i })
@@ -92,8 +102,8 @@ describe('monitors list', () => {
     const usEast = await regionNamed(db, 'US East')
     const euWest = await regionNamed(db, 'EU West')
     const apSouth = await addRegion(db, 'AP South')
-    const id = await createMonitor(client, 'alpha-api', [usEast, euWest, apSouth])
-    await db.commandRoot('update uptime::monitors { status: "degraded" } filter { id == $id }', { id }, [])
+    const id = await createMonitor(db, identity, 'alpha-api', [usEast, euWest, apSouth])
+    await commandRoot(db, MARK_DEGRADED, { id })
     await setRegionStatus(id, usEast, 'up')
     await setRegionStatus(id, euWest, 'up')
     await setRegionStatus(id, apSouth, 'down')
@@ -104,8 +114,8 @@ describe('monitors list', () => {
   })
 
   it('only offers the region-expand toggle for monitors with regions, and it reveals region rows', async () => {
-    await createMonitor(client, 'alpha-api', [await regionNamed(db, 'US East')])
-    await createMonitor(client, 'beta-db')
+    await createMonitor(db, identity, 'alpha-api', [await regionNamed(db, 'US East')])
+    await createMonitor(db, identity, 'beta-db')
     await renderPage()
 
     const rowWithoutRegions = await screen.findByRole('row', { name: /beta-db/i })
