@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 use sha2::{Digest, Sha256};
 
 pub struct CryptoSha256 {
@@ -36,8 +37,7 @@ impl<'a> Routine<FunctionContext<'a>> for CryptoSha256 {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		match data {
@@ -48,8 +48,8 @@ impl<'a> Routine<FunctionContext<'a>> for CryptoSha256 {
 				let mut result_data = Vec::with_capacity(container.len());
 
 				for i in 0..row_count {
-					if container.is_defined(i) {
-						let original_str = container.get(i).unwrap();
+					if i < container.len() {
+						let original_str = container.value(i);
 						let digest = Sha256::digest(original_str.as_bytes());
 						let hex = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
 						result_data.push(hex);
@@ -59,17 +59,10 @@ impl<'a> Routine<FunctionContext<'a>> for CryptoSha256 {
 				}
 
 				let result_col_data = ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result_data),
+					container: LargeStringArray::from(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
-				let final_data = match bitvec {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(result_col_data),
-						bitvec: bv.clone(),
-					},
-					None => result_col_data,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),

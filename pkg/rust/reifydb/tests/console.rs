@@ -11,7 +11,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use reifydb::{Database, server, sub::subsystem::Subsystem};
 use reifydb_console_protocol::{PROTOCOL_VERSION, Refusal, Register, Reply, read_message, write_message};
-use reifydb_sub_console::subsystem::ConsoleSubsystem;
+use reifydb_sub_console::{config::ExternalAccess, subsystem::ConsoleSubsystem};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_value::{params::Params, value::duration::Duration};
 use serde_json::{Value, from_str};
@@ -71,12 +71,17 @@ fn seconds(n: i64) -> Duration {
 }
 
 fn database(address: &str, fingerprint_path: Option<&Path>) -> Database {
+	// Admin, so tests about dialing and serving are not closed by the level, which has its own tests.
+	database_at(address, fingerprint_path, ExternalAccess::Admin)
+}
+
+fn database_at(address: &str, fingerprint_path: Option<&Path>, access: ExternalAccess) -> Database {
 	let address = address.to_string();
 	let path = fingerprint_path.map(Path::to_path_buf);
 	server::memory()
 		.with_ws(|ws| ws)
 		.with_console(move |console| {
-			let console = console.address(address).token(TOKEN);
+			let console = console.address(address).token(TOKEN).external_access(access);
 			match path {
 				Some(path) => console.fingerprint_path(path),
 				None => console,
@@ -301,4 +306,105 @@ fn with_console_without_a_token_fails_to_build() {
 	let result = server::memory().with_ws(|ws| ws).with_console(|console| console.address("127.0.0.1:1")).build();
 	let error = result.err().expect("build without a token must fail");
 	assert!(error.to_string().contains("token"), "{error}");
+}
+
+const COMMAND: &str =
+	r#"{"id":"3","type":"Command","payload":{"rql":"INSERT demo::note [{ id: 2, body: 'second' }]"}}"#;
+const ADMIN: &str = r#"{"id":"4","type":"Admin","payload":{"rql":"CREATE NAMESPACE other"}}"#;
+const CALL: &str = r#"{"id":"5","type":"Call","payload":{"name":"demo::anything"}}"#;
+const CLAIM: &str = r#"{"id":"6","type":"QueueClaim","payload":{"queue":"demo::jobs","worker":"w"}}"#;
+
+fn code(response: &Value) -> &str {
+	response["payload"]["diagnostic"]["code"].as_str().unwrap_or("")
+}
+
+async fn tunneled(fake: &mut FakeTunnel, access: ExternalAccess) -> WebSocketStream<Compat<yamux::Stream>> {
+	let (mut tcp, register) = fake.next_register().await;
+	assert_eq!(register.external_access, access, "the instance must announce the level it was built with");
+	reply(&mut tcp, registered("fp-1")).await;
+	let stream = open_stream(tcp).await;
+	let (mut ws, _) = client_async(PROJECT_URL, stream).await.expect("upgrade through the tunnel");
+	let auth = request(&mut ws, AUTH).await;
+	assert_eq!(auth["type"], "Auth", "{auth}");
+	ws
+}
+
+#[test]
+fn a_query_level_stream_reads_and_refuses_every_write() {
+	// The tunnel server cannot see requests, so the instance is the only place a write through the console is stopped.
+	let runtime = Runtime::new().expect("test runtime");
+	let mut fake = runtime.block_on(FakeTunnel::start());
+	let db = database_at(&fake.address, None, ExternalAccess::Query);
+	seed(&db);
+	runtime.block_on(async {
+		let mut ws = tunneled(&mut fake, ExternalAccess::Query).await;
+
+		let query = request(&mut ws, QUERY).await;
+		assert_eq!(query["type"], "Query", "{query}");
+
+		for write in [COMMAND, CALL, CLAIM, ADMIN] {
+			let refused = request(&mut ws, write).await;
+			assert_eq!(code(&refused), "FORBIDDEN", "{write} must be refused at query level: {refused}");
+		}
+
+		let after = request(&mut ws, QUERY).await;
+		assert!(!after["payload"]["body"].to_string().contains("second"), "a refused write must not land: {after}");
+	});
+}
+
+#[test]
+fn a_command_level_stream_writes_and_refuses_admin() {
+	// Command must not quietly include admin, otherwise the level below admin could still change the schema.
+	let runtime = Runtime::new().expect("test runtime");
+	let mut fake = runtime.block_on(FakeTunnel::start());
+	let db = database_at(&fake.address, None, ExternalAccess::Command);
+	seed(&db);
+	runtime.block_on(async {
+		let mut ws = tunneled(&mut fake, ExternalAccess::Command).await;
+
+		let written = request(&mut ws, COMMAND).await;
+		assert_eq!(written["type"], "Command", "{written}");
+		let after = request(&mut ws, QUERY).await;
+		assert!(after["payload"]["body"].to_string().contains("second"), "the write must land: {after}");
+
+		let refused = request(&mut ws, ADMIN).await;
+		assert_eq!(code(&refused), "FORBIDDEN", "admin must be refused at command level: {refused}");
+	});
+}
+
+#[test]
+fn an_admin_level_stream_is_not_refused_by_the_level() {
+	// Admin is the top level, so nothing it sends may be refused for the level itself.
+	let runtime = Runtime::new().expect("test runtime");
+	let mut fake = runtime.block_on(FakeTunnel::start());
+	let db = database_at(&fake.address, None, ExternalAccess::Admin);
+	seed(&db);
+	runtime.block_on(async {
+		let mut ws = tunneled(&mut fake, ExternalAccess::Admin).await;
+
+		for sent in [COMMAND, CALL, CLAIM, ADMIN] {
+			let answered = request(&mut ws, sent).await;
+			assert_ne!(code(&answered), "FORBIDDEN", "{sent} must pass the level check at admin: {answered}");
+		}
+	});
+}
+
+#[test]
+fn an_off_instance_registers_but_serves_no_stream() {
+	// Off must hold on the instance too, otherwise a stale tunnel gate would reach the database.
+	let runtime = Runtime::new().expect("test runtime");
+	let mut fake = runtime.block_on(FakeTunnel::start());
+	let db = database_at(&fake.address, None, ExternalAccess::Off);
+	seed(&db);
+	runtime.block_on(async {
+		let (mut tcp, register) = fake.next_register().await;
+		assert_eq!(register.external_access, ExternalAccess::Off);
+		reply(&mut tcp, registered("fp-1")).await;
+
+		let stream = open_stream(tcp).await;
+		let upgraded = timeout(seconds(10).to_std(), client_async(PROJECT_URL, stream))
+			.await
+			.expect("the dropped stream must end the upgrade within 10 s");
+		assert!(upgraded.is_err(), "an off instance must never serve a websocket");
+	});
 }

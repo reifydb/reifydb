@@ -35,7 +35,7 @@ use tokio::{
 use tracing::{debug, info, warn};
 
 use crate::{
-	acceptor::WsStreamAcceptor,
+	acceptor::{Access, WsStreamAcceptor},
 	handler::{configure_stream, handle_connection},
 	subscription::registry::SubscriptionRegistry,
 };
@@ -379,7 +379,7 @@ fn handle_accept_result(
 	let (stream, addr) = accept;
 	let peer = Some(addr);
 	configure_stream(&stream, peer);
-	spawn_connection(stream, peer, state, registry, semaphore, active_connections, shutdown_rx, runtime);
+	spawn_connection(stream, peer, state, registry, semaphore, active_connections, shutdown_rx, runtime, Access::Admin);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -392,6 +392,7 @@ pub(crate) fn spawn_connection<S>(
 	active_connections: &Arc<AtomicUsize>,
 	shutdown_rx: &watch::Receiver<bool>,
 	runtime: &Handle,
+	access: Access,
 ) where
 	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -406,7 +407,7 @@ pub(crate) fn spawn_connection<S>(
 	active.fetch_add(1, Ordering::SeqCst);
 	debug!("Accepted connection from {:?}", peer);
 	runtime.spawn(async move {
-		handle_connection(stream, peer, conn_state, conn_registry, conn_shutdown_rx).await;
+		handle_connection(stream, peer, conn_state, conn_registry, conn_shutdown_rx, access).await;
 		active.fetch_sub(1, Ordering::SeqCst);
 		drop(permit);
 	});

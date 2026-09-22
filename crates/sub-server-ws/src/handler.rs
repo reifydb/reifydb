@@ -54,6 +54,7 @@ use tracing::{debug, error, warn};
 use uuid::Builder;
 
 use crate::{
+	acceptor::Access,
 	protocol::{
 		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, QueueClaimRequest, Request,
 		RequestPayload, UnsubscribeRequest,
@@ -76,6 +77,7 @@ pub async fn handle_connection<S>(
 	state: AppState,
 	registry: Arc<SubscriptionRegistry>,
 	mut shutdown: watch::Receiver<bool>,
+	access: Access,
 ) where
 	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -208,6 +210,7 @@ pub async fn handle_connection<S>(
 								claim_tasks: &mut claim_tasks,
 								deferred_tx: deferred_tx.clone(),
 								shutdown: shutdown.clone(),
+								access,
 							},
 						).await.unwrap_or_else(|error| panic!("websocket connection {connection_id} failed: {error}"));
 						if let Some(resp) = response {
@@ -344,6 +347,7 @@ pub(crate) struct ConnectionContext<'a> {
 	pub claim_tasks: &'a mut Vec<JoinHandle<()>>,
 	pub deferred_tx: mpsc::UnboundedSender<WsResponse>,
 	pub shutdown: watch::Receiver<bool>,
+	pub access: Access,
 }
 
 async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result<Option<WsResponse>, Error> {
@@ -357,6 +361,15 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 			))));
 		}
 	};
+
+	let required = required_access(&request.payload);
+	if required > conn.access {
+		return Ok(Some(WsResponse::Text(build_error(
+			&request.id,
+			"FORBIDDEN",
+			&format!("this connection allows {:?} requests at most, this request needs {:?}", conn.access, required),
+		))));
+	}
 
 	Ok(match request.payload {
 		RequestPayload::Auth(auth) => handle_auth(&request.id, auth, conn).await,
@@ -384,6 +397,20 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 		RequestPayload::Logout => handle_logout(&request.id, conn).await,
 		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await?,
 	})
+}
+
+fn required_access(payload: &RequestPayload) -> Access {
+	match payload {
+		RequestPayload::Admin(_) => Access::Admin,
+		RequestPayload::Command(_) | RequestPayload::Call(_) | RequestPayload::QueueClaim(_) => Access::Command,
+		RequestPayload::Auth(_)
+		| RequestPayload::Query(_)
+		| RequestPayload::Subscribe(_)
+		| RequestPayload::BatchSubscribe(_)
+		| RequestPayload::BatchUnsubscribe(_)
+		| RequestPayload::Unsubscribe(_)
+		| RequestPayload::Logout => Access::Query,
+	}
 }
 
 #[inline]

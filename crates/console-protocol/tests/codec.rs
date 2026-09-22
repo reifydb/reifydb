@@ -4,7 +4,7 @@
 use std::io::ErrorKind;
 
 use reifydb_console_protocol::{
-	MAX_FRAME, PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message, write_message,
+	ExternalAccess, MAX_FRAME, PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message, write_message,
 };
 use tokio::io::{AsyncWriteExt, duplex};
 
@@ -14,6 +14,7 @@ fn register(fingerprint: Option<&str>) -> Register {
 		token: "token".to_string(),
 		fingerprint: fingerprint.map(str::to_string),
 		version: "0.9.3".to_string(),
+		external_access: ExternalAccess::Off,
 	}
 }
 
@@ -147,4 +148,33 @@ fn only_unavailable_is_retried() {
 	for refusal in every_refusal() {
 		assert_eq!(refusal.is_final(), refusal != Refusal::Unavailable, "{refusal:?}");
 	}
+}
+
+#[tokio::test]
+async fn an_instance_that_sends_no_level_is_off() {
+	// A missing level must close access, otherwise an instance that predates the field would be opened by default.
+	let (mut instance, mut server) = duplex(MAX_FRAME + 16);
+	let old = br#"{"protocol_version":1,"token":"token","version":"0.9.2"}"#;
+	instance.write_u32(old.len() as u32).await.unwrap();
+	instance.write_all(old).await.unwrap();
+
+	let received: Register = read_message(&mut server).await.unwrap();
+	assert_eq!(received.external_access, ExternalAccess::Off);
+}
+
+#[test]
+fn the_level_names_are_pinned_and_agree_with_the_wire() {
+	// The control plane stores as_str and the tunnel reads it back with parse, so all three spellings must be one.
+	for (level, name) in [
+		(ExternalAccess::Off, "off"),
+		(ExternalAccess::Query, "query"),
+		(ExternalAccess::Command, "command"),
+		(ExternalAccess::Admin, "admin"),
+	] {
+		assert_eq!(level.as_str(), name);
+		assert_eq!(ExternalAccess::parse(name), Some(level));
+		assert_eq!(serde_json::to_string(&level).unwrap(), format!("\"{name}\""));
+	}
+	assert_eq!(ExternalAccess::parse("Query"), None, "parsing must not guess at case");
+	assert_eq!(ExternalAccess::parse("read_only"), None, "an unknown level must not map to any level");
 }

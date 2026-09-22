@@ -3,6 +3,8 @@
 
 use std::path::PathBuf;
 
+pub use reifydb_console_protocol::ExternalAccess;
+
 #[derive(Default)]
 pub struct ConsoleConfigurator {
 	address: Option<String>,
@@ -10,6 +12,8 @@ pub struct ConsoleConfigurator {
 	token: Option<String>,
 
 	fingerprint_path: Option<PathBuf>,
+
+	external_access: ExternalAccess,
 }
 
 impl ConsoleConfigurator {
@@ -32,11 +36,17 @@ impl ConsoleConfigurator {
 		self
 	}
 
+	pub fn external_access(mut self, access: ExternalAccess) -> Self {
+		self.external_access = access;
+		self
+	}
+
 	pub(crate) fn configure(self) -> ConsoleConfig {
 		ConsoleConfig {
 			address: self.address,
 			token: self.token,
 			fingerprint_path: self.fingerprint_path,
+			external_access: self.external_access,
 		}
 	}
 }
@@ -48,4 +58,6 @@ pub struct ConsoleConfig {
 	pub token: Option<String>,
 
 	pub fingerprint_path: Option<PathBuf>,
+
+	pub external_access: ExternalAccess,
 }

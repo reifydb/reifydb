@@ -17,6 +17,13 @@ use tracing::warn;
 
 use crate::{subscription::registry::SubscriptionRegistry, subsystem::spawn_connection};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Access {
+	Query,
+	Command,
+	Admin,
+}
+
 #[derive(Clone)]
 pub struct WsStreamAcceptor {
 	state: AppState,
@@ -46,7 +53,7 @@ impl WsStreamAcceptor {
 		}
 	}
 
-	pub fn accept<S>(&self, stream: S, peer: Option<SocketAddr>)
+	pub fn accept<S>(&self, stream: S, peer: Option<SocketAddr>, access: Access)
 	where
 		S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 	{
@@ -63,6 +70,7 @@ impl WsStreamAcceptor {
 			&self.active_connections,
 			&shutdown_rx,
 			&self.runtime,
+			access,
 		);
 	}
 }

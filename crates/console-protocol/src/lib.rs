@@ -23,6 +23,39 @@ pub struct Register {
 	pub token: String,
 	pub fingerprint: Option<String>,
 	pub version: String,
+	#[serde(default)]
+	pub external_access: ExternalAccess,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalAccess {
+	#[default]
+	Off,
+	Query,
+	Command,
+	Admin,
+}
+
+impl ExternalAccess {
+	pub fn as_str(self) -> &'static str {
+		match self {
+			ExternalAccess::Off => "off",
+			ExternalAccess::Query => "query",
+			ExternalAccess::Command => "command",
+			ExternalAccess::Admin => "admin",
+		}
+	}
+
+	pub fn parse(value: &str) -> Option<ExternalAccess> {
+		match value {
+			"off" => Some(ExternalAccess::Off),
+			"query" => Some(ExternalAccess::Query),
+			"command" => Some(ExternalAccess::Command),
+			"admin" => Some(ExternalAccess::Admin),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

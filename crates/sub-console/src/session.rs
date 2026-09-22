@@ -10,9 +10,9 @@ use std::{
 };
 
 use reifydb_console_protocol::{
-	PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message, write_message,
+	ExternalAccess, PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message, write_message,
 };
-use reifydb_sub_server_ws::acceptor::WsStreamAcceptor;
+use reifydb_sub_server_ws::acceptor::{Access, WsStreamAcceptor};
 use reifydb_value::value::duration::Duration;
 use socket2::{SockRef, TcpKeepalive};
 use tokio::{net::TcpStream, select, sync::watch, time::sleep};
@@ -28,6 +28,8 @@ pub(crate) struct SessionConfig {
 	pub(crate) token: String,
 
 	pub(crate) fingerprint_path: Option<PathBuf>,
+
+	pub(crate) external_access: ExternalAccess,
 }
 
 #[derive(Debug)]
@@ -88,7 +90,7 @@ pub(crate) async fn run(
 				info!(fingerprint = %minted, "registered with the tunnel server");
 				fingerprint = Some(minted);
 				backoff.reset();
-				if let Served::Shutdown = serve(tcp, &acceptor, &mut shutdown).await {
+				if let Served::Shutdown = serve(tcp, &acceptor, stream_access(config.external_access), &mut shutdown).await {
 					return Ok(());
 				}
 			}
@@ -117,6 +119,7 @@ async fn register(config: &SessionConfig, fingerprint: Option<String>) -> Result
 		token: config.token.clone(),
 		fingerprint,
 		version: env!("CARGO_PKG_VERSION").to_string(),
+		external_access: config.external_access,
 	};
 	match handshake(&mut tcp, &register).await {
 		Ok(Reply::Registered {
@@ -144,13 +147,30 @@ fn configure_socket(tcp: &TcpStream) -> io::Result<()> {
 	SockRef::from(tcp).set_tcp_keepalive(&keepalive)
 }
 
-async fn serve(tcp: TcpStream, acceptor: &WsStreamAcceptor, shutdown: &mut watch::Receiver<bool>) -> Served {
+fn stream_access(external: ExternalAccess) -> Option<Access> {
+	match external {
+		ExternalAccess::Off => None,
+		ExternalAccess::Query => Some(Access::Query),
+		ExternalAccess::Command => Some(Access::Command),
+		ExternalAccess::Admin => Some(Access::Admin),
+	}
+}
+
+async fn serve(
+	tcp: TcpStream,
+	acceptor: &WsStreamAcceptor,
+	access: Option<Access>,
+	shutdown: &mut watch::Receiver<bool>,
+) -> Served {
 	let mut connection = Connection::new(tcp.compat(), Config::default(), Mode::Server);
 	loop {
 		select! {
 			_ = shutdown.changed() => return Served::Shutdown,
 			inbound = poll_fn(|cx| connection.poll_next_inbound(cx)) => match inbound {
-				Some(Ok(stream)) => acceptor.accept(stream.compat(), None),
+				Some(Ok(stream)) => match access {
+					Some(access) => acceptor.accept(stream.compat(), None, access),
+					None => drop(stream),
+				},
 				Some(Err(e)) => {
 					warn!(error = %e, "tunnel session failed");
 					return Served::Lost;

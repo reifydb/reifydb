@@ -44,6 +44,7 @@ impl SubsystemFactory for ConsoleSubsystemFactory {
 			address,
 			token,
 			fingerprint_path: config.fingerprint_path,
+			external_access: config.external_access,
 		};
 		Ok(Box::new(ConsoleSubsystem::new(session, acceptor, handle)))
 	}
