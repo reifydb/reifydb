@@ -12,11 +12,12 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
+	operator_with::ApplyWith,
 	row::Row as CoreRow,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::state::seal::coord::Coord,
+	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
 		span::WindowSpan,
@@ -347,17 +348,21 @@ where
 
 pub fn rolling_accumulator_oracle<A>(
 	aggregate: &A,
-	settings: &WindowSettings<A::Coord>,
+	with: &ApplyWith,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedView
 where
-	A: Emit,
+	A: Emit + WindowedOperator<Coord = DateTime>,
 	A::Accumulator: MergeAccumulator,
 	A::Output: Row,
 {
-	let pane = rolling_pane::<A>(settings);
+	let settings = <DateTime as SealDomain>::window_settings_of(with).expect("rolling oracle window settings");
+	let seal_span = <DateTime as SealDomain>::seal_span_of(with)
+		.expect("rolling oracle seal span")
+		.expect("a rolling window has a seal span");
+	let pane = rolling_pane::<A>(&settings);
 	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = HashMap::new();
 	let mut high_water: HashMap<RollingGroup<A>, RollingCoord<A>> = HashMap::new();
 	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
@@ -375,7 +380,7 @@ where
 		for group in touched {
 			match buffers
 				.get(&group)
-				.and_then(|buffer| combine_rolling(aggregate, settings, pane, &group, buffer))
+				.and_then(|buffer| combine_rolling(aggregate, &settings, pane, &group, buffer))
 			{
 				Some(out) => {
 					last_visible.insert(group, out);
@@ -387,6 +392,16 @@ where
 		}
 	}
 
+	let drain = DateTime::from_epoch_millis(ctx.drain_at_ms).expect("rolling oracle drain time");
+	let horizon = <DateTime as SealDomain>::horizon(drain, seal_span);
+	if horizon >= <DateTime as Coord>::from_order(0).add_span(settings.fixed_size()) {
+		let cutoff = horizon.saturating_sub_span(settings.fixed_size());
+		last_visible.retain(|group, _| {
+			buffers.get(group)
+				.and_then(|buffer| buffer.last_key_value())
+				.is_some_and(|(newest, _)| *newest > cutoff)
+		});
+	}
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 

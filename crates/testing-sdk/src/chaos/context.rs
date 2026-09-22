@@ -10,6 +10,7 @@ use reifydb_value::value::datetime::DateTime;
 pub struct ChaosContext {
 	pub seed: u64,
 	pub clock: Clock,
+	pub drain_at_ms: u64,
 }
 
 impl ChaosContext {
@@ -17,6 +18,7 @@ impl ChaosContext {
 		Self {
 			seed,
 			clock: Clock::Mock(MockClock::new(seed)),
+			drain_at_ms: 0,
 		}
 	}
 
@@ -27,6 +29,8 @@ impl ChaosContext {
 
 impl Debug for ChaosContext {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ChaosContext").field("seed", &self.seed).field("now", &self.now()).finish()
+		f.debug_struct("ChaosContext").field("seed", &self.seed).field("now", &self.now())
+			.field("drain_at_ms", &self.drain_at_ms)
+			.finish()
 	}
 }
