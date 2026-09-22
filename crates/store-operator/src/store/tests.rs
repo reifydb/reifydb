@@ -3,7 +3,10 @@
 
 use std::{
 	cmp::Reverse,
-	sync::atomic::{AtomicBool, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicU64, Ordering},
+	},
 };
 
 use reifydb_codec::{
@@ -16,6 +19,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, group_inner_range, keyspace_inner_range},
 	metrics::scan::PageRequests,
 };
+use reifydb_filter::source::KeyFilterSource;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_testing::keyspace::state_key;
@@ -24,7 +28,10 @@ use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 use crate::{
 	actor::resident_flush::flush_now,
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	persistent::{PersistentTier, sqlite::SqlitePersistent},
+	error::{OperatorError, Result},
+	persistent::{
+		PersistentTier, filter::OperatorStateKeySource, sqlite::SqlitePersistent, testing::PersistentHooks,
+	},
 	range::OperatorRangeConfig,
 	store::{CheckpointInterlock, StandardOperatorStore},
 	types::{LayeredPre, OperatorWrite},
@@ -410,4 +417,99 @@ fn an_emptiness_probe_crosses_a_tombstone_wall_in_pages_not_in_handfuls() {
 		 the same {dead} tombstones: {pages_at_one} against {pages_at_max}"
 	);
 	assert!(pages_at_max < 32, "a full page must cross the wall in a handful of requests, not {pages_at_max}");
+}
+
+struct EnumerateFault {
+	from_call: u64,
+	calls: AtomicU64,
+	armed: AtomicBool,
+}
+
+impl EnumerateFault {
+	fn from_call(from_call: u64) -> Arc<Self> {
+		Arc::new(Self {
+			from_call,
+			calls: AtomicU64::new(0),
+			armed: AtomicBool::new(true),
+		})
+	}
+
+	fn disarmed() -> Arc<Self> {
+		Arc::new(Self {
+			from_call: 1,
+			calls: AtomicU64::new(0),
+			armed: AtomicBool::new(false),
+		})
+	}
+}
+
+impl PersistentHooks for EnumerateFault {
+	fn on_enumerate(&self) -> Result<()> {
+		let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+		if self.armed.load(Ordering::SeqCst) && call >= self.from_call {
+			return Err(OperatorError::Backend {
+				message: "enumeration refused".to_string(),
+			});
+		}
+		Ok(())
+	}
+}
+
+fn faulted_store(fault: Arc<EnumerateFault>) -> StandardOperatorStore {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	StandardOperatorStore::new(OperatorStoreConfig {
+		resident: Default::default(),
+		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::testing(fault))),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner,
+		clock,
+	})
+}
+
+#[test]
+#[should_panic(expected = "a failed one skips the key filter")]
+fn a_failed_census_at_start_stops_the_store_before_it_skips_the_key_filter() {
+	// Read as empty, a failed census starts no key filter and every durable key reads as absent.
+	faulted_store(EnumerateFault::from_call(1));
+}
+
+#[test]
+#[should_panic(expected = "an empty seed under-reports")]
+fn a_failed_census_seed_stops_the_store_instead_of_seeding_it_empty() {
+	// An empty seed bills every operator zero bytes until each of its keys is rewritten.
+	faulted_store(EnumerateFault::from_call(2));
+}
+
+#[test]
+fn a_failed_keyspace_enumeration_fails_the_group_page() {
+	// Read as no keyspaces, a failed enumeration pages a group as empty while it still holds rows.
+	let fault = EnumerateFault::disarmed();
+	let store = faulted_store(fault.clone());
+	fault.armed.store(true, Ordering::SeqCst);
+
+	let page = store.group_page(OP, &[group()], 16);
+
+	assert!(page.is_err(), "a group page over a failed enumeration must fail, got {page:?}");
+}
+
+#[test]
+fn a_failed_keyspace_enumeration_fails_a_group_range_batch() {
+	// Read as no keyspaces, a failed enumeration pages a group range as empty while it still holds rows.
+	let fault = EnumerateFault::disarmed();
+	let store = faulted_store(fault.clone());
+	fault.armed.store(true, Ordering::SeqCst);
+
+	let batch = store.range_batch(OP, group_inner_range(group()), 16);
+
+	assert!(batch.is_err(), "a group range over a failed enumeration must fail, got {batch:?}");
+}
+
+#[test]
+#[should_panic(expected = "a filter built on a partial one misses live keys")]
+fn a_failed_census_stops_the_key_filter_rebuild() {
+	// A filter rebuilt from no keyspaces answers absent for keys the store still holds.
+	let mut source = OperatorStateKeySource::new(PersistentTier::testing(EnumerateFault::from_call(1)));
+	source.restart();
 }

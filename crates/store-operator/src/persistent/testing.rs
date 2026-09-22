@@ -73,6 +73,10 @@ pub trait PersistentHooks: Send + Sync {
 
 	fn during_apply(&self, _batch: &FlushBatch) {}
 
+	fn on_enumerate(&self) -> Result<()> {
+		Ok(())
+	}
+
 	fn on_call(&self, _call: u64) -> Continue {
 		Continue::Yes
 	}
@@ -223,16 +227,19 @@ impl Measure for TestingPersistent {
 impl Enumerate for TestingPersistent {
 	fn census(&self) -> Result<Vec<OperatorStateCensus>> {
 		self.call();
+		self.0.hooks.on_enumerate()?;
 		self.0.durable.census()
 	}
 
 	fn operators(&self) -> Result<Vec<OperatorId>> {
 		self.call();
+		self.0.hooks.on_enumerate()?;
 		self.0.durable.operators()
 	}
 
 	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
 		self.call();
+		self.0.hooks.on_enumerate()?;
 		self.0.durable.keyspaces(operator)
 	}
 }
