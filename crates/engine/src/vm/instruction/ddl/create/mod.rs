@@ -327,7 +327,7 @@ fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith)
 		) {
 		return Err(error!(flow_operator_with_pane_missing()));
 	}
-	Ok(())
+	with.check_session_window()
 }
 
 pub(crate) fn create_deferred_view_flow(

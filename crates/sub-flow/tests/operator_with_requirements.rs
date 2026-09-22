@@ -439,6 +439,58 @@ fn a_rolling_window_without_a_pane_creates_on_an_operator_that_needs_none() {
 }
 
 #[test]
+fn a_session_window_with_a_lateness_fails_the_create() {
+	// A session seals on its gap, so an accepted lateness would be silently ignored at runtime.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
+		"FLOW_078"
+	);
+}
+
+#[test]
+fn a_session_window_with_no_or_zero_lateness_creates() {
+	// Refusing every declared lateness would reject the lateness: 0s that the FLOW_078 help tells users to write.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	for (name, apply) in [
+		("none_v", "time_window_probe{} WITH { window: session, gap: 10s }"),
+		("zero_v", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 0s }"),
+	] {
+		let statement = view(name, apply);
+		if let Err(err) = db.try_admin(&statement) {
+			panic!("a session with no positive lateness must create: {statement}: {:?}", err.diagnostic());
+		}
+	}
+}
+
+#[test]
+fn a_slot_operator_given_a_session_window_fails_the_create() {
+	// A session needs a time gap; a slot operator that took one would fail its flow at start instead.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "slot_window_probe{} WITH { window: session, gap: 10s }"), "FLOW_066");
+	assert_eq!(
+		refused_code(&db, "slot_window_probe{} WITH { window: session, gap: 0s }"),
+		"FLOW_066",
+		"the kinds check runs before the session check"
+	);
+}
+
+#[test]
+fn a_session_window_with_a_zero_gap_fails_the_create() {
+	// A zero gap gives every session an empty span, so the create must fail before any row is published.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "time_window_probe{} WITH { window: session, gap: 0s }"), "FLOW_079");
+}
+
+#[test]
 fn well_formed_time_and_slot_windows_create() {
 	// The window checks must not refuse a view that matches its operator exactly.
 	let db = windowed_memory();
@@ -472,6 +524,8 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 		("FLOW_071", "nostate_probe{} WITH { lateness: 2s }"),
 		("FLOW_072", "managed_probe{}"),
 		("FLOW_075", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+		("FLOW_078", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
+		("FLOW_079", "time_window_probe{} WITH { window: session, gap: 0s }"),
 	] {
 		assert_eq!(refused_code(&db, apply), code, "{apply}");
 		assert_eq!(flow_rows(&db, "v"), 0, "{code}: a refused create must register no flow");
