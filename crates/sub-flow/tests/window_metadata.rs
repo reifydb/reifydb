@@ -321,3 +321,77 @@ fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
 	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
 }
+
+#[test]
+fn a_row_counted_tumbling_window_stamps_its_earliest_event_time() {
+	// #time must come from the rows, never the window ordinal near the epoch that downstream time windows bucket on.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
+			FROM app::t
+				| window tumbling { n: math::count() } by { g } with { count: 2 }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 1, 7, "2026-01-01T00:02:05Z");
+	insert(&db, 4, 1, 7, "2026-01-01T00:02:30Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
+	stamped.sort();
+	assert_eq!(
+		stamped,
+		vec!["2026-01-01T00:01:10.000000000Z".to_string(), "2026-01-01T00:02:05.000000000Z".to_string()]
+	);
+}
+
+#[test]
+fn a_row_counted_sliding_window_stamps_its_earliest_event_time() {
+	// Each overlapping window must stamp its own earliest row, otherwise all three collapse onto the epoch.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
+			FROM app::t
+				| window sliding { n: math::count() } by { g } with { count: 2, slide: 1 }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 1, 7, "2026-01-01T00:01:30Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
+	stamped.sort();
+	assert_eq!(
+		stamped,
+		vec![
+			"2026-01-01T00:01:10.000000000Z".to_string(),
+			"2026-01-01T00:01:20.000000000Z".to_string(),
+			"2026-01-01T00:01:30.000000000Z".to_string(),
+		]
+	);
+}
+
+#[test]
+fn a_late_earlier_row_moves_a_row_counted_window_stamp_back() {
+	// A late row older than every row so far must pull #time back, otherwise the stamp postdates a row it counts.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
+			FROM app::t
+				| window tumbling { n: math::count() } by { g } with { count: 3 }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:20Z");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
+	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+}

@@ -43,6 +43,14 @@ pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
 pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTime, DateTime)>;
 
+pub(crate) type EarliestTimes = HashMap<(Hash128, WindowSpan<DateTime>), DateTime>;
+
+pub(crate) enum Stamp<'a> {
+	SpanStart,
+	Session(Duration, &'a SessionBounds),
+	Earliest(&'a EarliestTimes),
+}
+
 #[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
 pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
 	windows.iter().map(|&(p, w)| ((p, w), GroupId::window(p, w))).collect()
@@ -123,7 +131,7 @@ pub(crate) fn finish_tumbling_engine(
 	immutable: Option<Duration>,
 	anchor: ExpiryAnchor,
 	indexed_retractions: bool,
-	session: Option<(Duration, &SessionBounds)>,
+	stamp: Stamp<'_>,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
 		.tumbling_engine_slot()
@@ -155,6 +163,12 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_meta = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
+		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
+		let batch_first = match stamp {
+			Stamp::Earliest(earliest) => earliest.get(&(r.group, r.span)).map(|ts| ts.to_order()),
+			Stamp::SpanStart | Stamp::Session(..) => None,
+		};
+		let first = prior_first.into_iter().chain(batch_first).min();
 		match r.kind {
 			EmitKind::Remove => {
 				engine.reindex_window(
@@ -183,13 +197,33 @@ pub(crate) fn finish_tumbling_engine(
 				)?;
 				let meta = EngineMeta {
 					last_event_time: last_event_time.unwrap_or_default(),
+					first_event_time: first.unwrap_or_default(),
 				};
 				put(host, &EngineMetaKey(group), meta)?;
 			}
 		}
-		spans.push(match session {
-			None => (r.span, r.span),
-			Some((gap, bounds)) => {
+		spans.push(match stamp {
+			Stamp::SpanStart => (r.span, r.span),
+			Stamp::Earliest(_) => {
+				let pre = match r.kind {
+					EmitKind::Insert => first,
+					EmitKind::Update | EmitKind::Remove => prior_first,
+				};
+				let (Some(pre), Some(now)) = (pre, first) else {
+					panic!(
+						"row-counted window {window_start}: a published window has no earliest event time"
+					);
+				};
+				let span = |first: u64| {
+					let start = <DateTime as Coord>::from_order(first);
+					WindowSpan {
+						start,
+						end: start,
+					}
+				};
+				(span(pre), span(now))
+			}
+			Stamp::Session(gap, bounds) => {
 				let before =
 					get_classified::<_, SessionState>(host, &SessionKey(group))?.map(|state| {
 						(
