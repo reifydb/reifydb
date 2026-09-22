@@ -39,3 +39,6 @@ mod class;
 
 #[path = "sdk/plain_sliding.rs"]
 mod plain_sliding;
+
+#[path = "sdk/plain_session.rs"]
+mod plain_session;
