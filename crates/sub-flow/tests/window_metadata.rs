@@ -395,3 +395,47 @@ fn a_late_earlier_row_moves_a_row_counted_window_stamp_back() {
 	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
 }
+
+#[test]
+fn an_update_moving_time_back_inside_a_sliding_window_takes_back_the_old_time() {
+	// Taking the old row back under its new time misses the stored entry, so 01:20 and v 9 would linger.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
+			FROM app::t
+				| window sliding { n: math::count(), l: window::last(), x: math::last(v) }
+					by { g } with { duration: 60s, slide: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:15Z" } FILTER { id == 2 }"#);
+	db.await_row_count("FROM app::w | filter { x == 4 }", 2, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:15.000000000Z".to_string(); 2]);
+	assert_eq!(text(&column_values(&frames[0], "x")), vec!["4".to_string(); 2]);
+}
+
+#[test]
+fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
+	// Taking the old row back under its new time misses the stored entry, so 01:20 and v 9 would linger.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
+			FROM app::t
+				| window session { n: math::count(), l: window::last(), x: math::last(v) }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:15Z" } FILTER { id == 2 }"#);
+	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:15.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "x")), vec!["4".to_string()]);
+}

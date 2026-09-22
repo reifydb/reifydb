@@ -543,6 +543,7 @@ pub fn apply_sliding_engine(
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
 				let timestamps = operator.row_times(post, post.row_count())?;
+				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
@@ -591,7 +592,7 @@ pub fn apply_sliding_engine(
 							pre,
 							&pre_cols,
 							row_idx,
-							timestamps.get(row_idx).copied().unwrap_or_default(),
+							pre_timestamps[row_idx],
 						);
 						let post_contrib = operator.core.build_contribution(
 							post,
@@ -599,7 +600,9 @@ pub fn apply_sliding_engine(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
 						);
-						let coord = slot_coord(is_count, event_ts, row_number.0);
+						let pre_coord =
+							slot_coord(is_count, pre_timestamps[row_idx], row_number.0);
+						let post_coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in existing {
 							push_count_event(
 								&mut buckets,
@@ -610,9 +613,9 @@ pub fn apply_sliding_engine(
 								*hash,
 								gvals,
 								operator.sliding_window_span(wid),
-								coord,
+								pre_coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								timestamps[row_idx],
+								pre_timestamps[row_idx],
 							);
 							push_count_event(
 								&mut buckets,
@@ -623,7 +626,7 @@ pub fn apply_sliding_engine(
 								*hash,
 								gvals,
 								operator.sliding_window_span(wid),
-								coord,
+								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								timestamps[row_idx],
 							);
@@ -812,6 +815,7 @@ pub fn apply_session_engine(
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
 				let timestamps = operator.row_times(post, post.row_count())?;
+				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
@@ -865,7 +869,7 @@ pub fn apply_session_engine(
 							pre,
 							&pre_cols,
 							row_idx,
-							timestamps[row_idx],
+							pre_timestamps[row_idx],
 						);
 						let post_contrib = operator.core.build_contribution(
 							post,
@@ -873,7 +877,13 @@ pub fn apply_session_engine(
 							row_idx,
 							timestamps[row_idx],
 						);
-						let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
+						let pre_coord = slot_coord(
+							false,
+							pre_timestamps[row_idx],
+							pre.row_numbers()[row_idx].0,
+						);
+						let post_coord =
+							slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 						for session_id in existing {
 							push_count_event(
 								&mut buckets,
@@ -884,9 +894,9 @@ pub fn apply_session_engine(
 								*hash,
 								gvals,
 								ordinal_window_span(session_id),
-								coord,
+								pre_coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								event_ts,
+								pre_timestamps[row_idx],
 							);
 							push_count_event(
 								&mut buckets,
@@ -897,7 +907,7 @@ pub fn apply_session_engine(
 								*hash,
 								gvals,
 								ordinal_window_span(session_id),
-								coord,
+								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
 							);
