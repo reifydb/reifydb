@@ -13,6 +13,9 @@ mod distinct;
 #[path = "parity/window.rs"]
 mod window;
 
+#[path = "parity/apply.rs"]
+mod apply;
+
 #[path = "parity/aggregate.rs"]
 mod aggregate;
 
