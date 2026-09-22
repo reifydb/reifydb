@@ -24,9 +24,6 @@ use crate::operator::state::reclaim::ReclaimOutcome;
 #[cfg(test)]
 mod tests;
 
-const ROOT_REAP: &str =
-	"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger";
-
 pub trait Reaper {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()>;
 }
@@ -56,7 +53,10 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 	reifydb_assertions! {
-		assert!(!group.is_root(), "{ROOT_REAP}");
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
 	}
 	if group.is_root() {
 		return Ok(());
@@ -162,7 +162,10 @@ where
 	R: Reaper,
 {
 	reifydb_assertions! {
-		assert!(!group.is_root(), "{ROOT_REAP}");
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
 	}
 	if group.is_root() {
 		store.state_remove(&queue_key(group))?;
@@ -277,7 +280,10 @@ where
 	R: Reaper,
 {
 	reifydb_assertions! {
-		assert!(!group.is_root(), "{ROOT_REAP}");
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
 	}
 	if group.is_root() {
 		return Ok(0);
