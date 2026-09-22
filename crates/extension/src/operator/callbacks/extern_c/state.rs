@@ -8,8 +8,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_in},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, guest_may_address, keyspace_inner_range_in},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -30,7 +29,7 @@ use reifydb_sdk::{
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
-	context::get_host_mut,
+	context::{get_host_mut, guest_class},
 	marshal::{encoded_bytes, encoded_key, encoded_keys, identity_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
@@ -62,9 +61,10 @@ pub(super) extern "C" fn host_state_get(
 	// an `output` valid and aligned for one ExternCBuffer write that it then frees via memory.free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
-		let Some(key) = state_key(key_ptr, key_len) else {
+		let Some(key) = state_key(class, key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
@@ -96,9 +96,10 @@ pub(super) extern "C" fn host_state_set(
 	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_bytes).
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
-		let Some(key) = state_key(key_ptr, key_len) else {
+		let Some(key) = state_key(class, key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
@@ -125,9 +126,10 @@ pub(super) extern "C" fn host_state_remove(
 	// of `key_len` bytes (discharging state_key).
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
-		let Some(key) = state_key(key_ptr, key_len) else {
+		let Some(key) = state_key(class, key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
@@ -177,13 +179,14 @@ pub(super) extern "C" fn host_state_prefix(
 	// and an `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
 		if prefix_ptr.is_null() || prefix_len == 0 {
 			return EXTERN_C_ERROR_INTERNAL;
 		}
 
-		let Some(prefix) = state_key(prefix_ptr, prefix_len) else {
+		let Some(prefix) = state_key(class, prefix_ptr, prefix_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
@@ -240,6 +243,7 @@ pub(super) extern "C" fn host_state_get_many(
 	// `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
 		let key_refs = if keys_len == 0 {
@@ -258,7 +262,7 @@ pub(super) extern "C" fn host_state_get_many(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
 			};
-			let Some(framed) = GroupStateKey::from_guest_framed(EncodedKey::new(bytes)) else {
+			let Some(framed) = GroupStateKey::from_class_framed(class, EncodedKey::new(bytes)) else {
 				return EXTERN_C_ERROR_INTERNAL;
 			};
 			encoded_keys.push(framed);
@@ -288,10 +292,6 @@ pub(super) extern "C" fn host_state_get_many(
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
-}
-
-fn guest_may_address(_operator: OperatorId, keyspace: KeyspaceId) -> bool {
-	keyspace.is_custom()
 }
 
 const _: () = assert!(
@@ -355,7 +355,7 @@ pub(super) extern "C" fn host_state_range(
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let keyspace = KeyspaceId(keyspace);
-		if !guest_may_address(OperatorId(ctx_handle.operator_id), keyspace) {
+		if !guest_may_address(guest_class(ctx_handle), keyspace) {
 			return EXTERN_C_ERROR_INTERNAL;
 		}
 		let host = get_host_mut(ctx_handle);
@@ -744,7 +744,7 @@ mod join_row_expiry_guard_tests {
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::shape::RowShape};
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{CommitVersion, OperatorClass},
 		interface::{
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
@@ -1056,7 +1056,7 @@ mod join_row_expiry_guard_tests {
 			range: Rc::clone(&range),
 			row_shape_cache: HashMap::new(),
 		};
-		let mut host = ExternCHostContext::new(&mut recording);
+		let mut host = ExternCHostContext::new(&mut recording, OperatorClass::Unmanaged);
 		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());
 		let status = call(&mut ctx as *mut ExternCContextRaw);
 		let seen = range.borrow().clone();
@@ -1266,6 +1266,125 @@ mod join_row_expiry_guard_tests {
 		assert_eq!(disarmed, EXTERN_C_OK);
 		assert!(arm_reached, "a guest timer must still reach the host");
 		assert!(disarm_reached);
+	}
+
+	fn with_class_context(class: OperatorClass, call: impl FnOnce(*mut ExternCContextRaw) -> i32) -> (i32, bool) {
+		let reached = Rc::new(Cell::new(false));
+		let mut recording = RecordingHost {
+			reached: Rc::clone(&reached),
+			range: Rc::new(RefCell::new(None)),
+			row_shape_cache: HashMap::new(),
+		};
+		let mut host = ExternCHostContext::new(&mut recording, class);
+		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());
+		let status = call(&mut ctx as *mut ExternCContextRaw);
+		(status, reached.get())
+	}
+
+	const CLASSES: [OperatorClass; 4] =
+		[OperatorClass::Managed, OperatorClass::Unmanaged, OperatorClass::Nostate, OperatorClass::Windowed];
+
+	#[test]
+	fn each_class_writes_and_removes_only_the_keyspaces_it_owns() {
+		// A guest writing another class's keyspace has its rows freed by the wrong owner, or by no one.
+		let value = EncodedPodRow::new(&[0u8; 4]);
+		for class in CLASSES {
+			for keyspace in [
+				KeyspaceId::CUSTOM_MANAGED,
+				KeyspaceId::CUSTOM_UNMANAGED,
+				KeyspaceId::GUEST_ACCUMULATOR,
+				KeyspaceId::WINDOW_META,
+				KeyspaceId::JOIN_ROW_EXPIRY,
+			] {
+				let owns = match class {
+					OperatorClass::Managed => keyspace == KeyspaceId::CUSTOM_MANAGED,
+					OperatorClass::Unmanaged => keyspace == KeyspaceId::CUSTOM_UNMANAGED,
+					OperatorClass::Nostate => false,
+					OperatorClass::Windowed => {
+						matches!(
+							keyspace,
+							KeyspaceId::GUEST_ACCUMULATOR | KeyspaceId::WINDOW_META
+						)
+					}
+				};
+				let key = framed(keyspace);
+				let (set, set_reached) = with_class_context(class, |ctx| {
+					host_state_set(
+						1,
+						ctx,
+						key.as_ptr(),
+						key.len(),
+						value.bytes().as_ptr(),
+						value.bytes().len(),
+					)
+				});
+				let (removed, remove_reached) = with_class_context(class, |ctx| {
+					host_state_remove(1, ctx, key.as_ptr(), key.len())
+				});
+				let expected = if owns {
+					EXTERN_C_OK
+				} else {
+					EXTERN_C_ERROR_INTERNAL
+				};
+				assert_eq!((set, set_reached), (expected, owns), "{class:?} setting {keyspace:?}");
+				assert_eq!(
+					(removed, remove_reached),
+					(expected, owns),
+					"{class:?} removing {keyspace:?}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn a_windowed_guest_reads_its_window_and_identity_keyspaces_and_nothing_else() {
+		// The sweep reads the identity keyspace; a wall that also admitted a host keyspace leaks its rows.
+		let mut out = ExternCBuffer::empty();
+		let meta = framed(KeyspaceId::WINDOW_META);
+		let custom = framed(KeyspaceId::CUSTOM_UNMANAGED);
+		let get = |key: &[u8], out: &mut ExternCBuffer| {
+			with_class_context(OperatorClass::Windowed, |ctx| {
+				host_state_get(1, ctx, key.as_ptr(), key.len(), out)
+			})
+			.0
+		};
+		assert_eq!(get(&meta, &mut out), EXTERN_C_NOT_FOUND, "an owned key must reach the host");
+		assert_eq!(get(&custom, &mut out), EXTERN_C_ERROR_INTERNAL, "a custom key must be refused");
+
+		let range = |keyspace| {
+			with_class_context(OperatorClass::Windowed, |ctx| guest_range(ctx, keyspace, None, None)).0
+		};
+		assert_eq!(range(KeyspaceId::GUEST_ROW_MAPPING), EXTERN_C_OK);
+		assert_eq!(range(KeyspaceId::TUMBLING_EXPIRY), EXTERN_C_OK);
+		assert_eq!(range(KeyspaceId::TIMER_WHEEL), EXTERN_C_ERROR_INTERNAL);
+		assert_eq!(range(KeyspaceId::CUSTOM_MANAGED), EXTERN_C_ERROR_INTERNAL);
+	}
+
+	#[test]
+	fn one_foreign_key_refuses_the_whole_batch_read() {
+		// A batch checked only on its first key would serve every foreign key queued after it.
+		let owned = framed(KeyspaceId::CUSTOM_MANAGED);
+		let foreign = framed(KeyspaceId::CUSTOM_UNMANAGED);
+		let keys = [
+			ExternCKeyRef {
+				ptr: owned.as_ptr(),
+				len: owned.len(),
+			},
+			ExternCKeyRef {
+				ptr: foreign.as_ptr(),
+				len: foreign.len(),
+			},
+		];
+		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
+		let (status, _) = with_class_context(OperatorClass::Managed, |ctx| {
+			host_state_get_many(1, ctx, keys.as_ptr(), 1, &mut iterator)
+		});
+		assert_eq!(status, EXTERN_C_OK, "the owned key alone must be served");
+		host_state_iterator_free(iterator);
+		let (status, _) = with_class_context(OperatorClass::Managed, |ctx| {
+			host_state_get_many(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
+		});
+		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
 	}
 }
 

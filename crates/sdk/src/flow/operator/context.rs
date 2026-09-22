@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, ManagedKey, UnmanagedKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, ManagedKey, UnmanagedKey, guest_may_address},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -101,7 +101,7 @@ pub trait GuestState {
 		let mut seen = 0usize;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !keyspace.is_known() || (data_only && !keyspace.is_data()) {
+			if !guest_may_address(OperatorClass::Windowed, keyspace) || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {

@@ -4,19 +4,21 @@
 use core::ffi::c_void;
 use std::marker::PhantomData;
 
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{common::OperatorClass, interface::catalog::flow::OperatorId};
 use reifydb_flow::operator::host::HostContext;
 use reifydb_sdk::flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContextRaw};
 
 pub struct ExternCHostContext<'a> {
 	host: *mut (dyn HostContext + 'a),
+	class: OperatorClass,
 	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
 }
 
 impl<'a> ExternCHostContext<'a> {
-	pub fn new(host: &'a mut (dyn HostContext + 'a)) -> Self {
+	pub fn new(host: &'a mut (dyn HostContext + 'a), class: OperatorClass) -> Self {
 		Self {
 			host: host as *mut (dyn HostContext + 'a),
+			class,
 			_marker: PhantomData,
 		}
 	}
@@ -51,4 +53,13 @@ pub(crate) unsafe fn get_host_mut<'a>(ctx: &mut ExternCContextRaw) -> &'a mut dy
 	// SAFETY: discharges this function's own contract; `ctx.txn_ptr` is then a live, aligned
 	// ExternCHostContext whose inner fat pointer nothing else aliases for the returned lifetime.
 	unsafe { &mut *(*(ctx.txn_ptr as *mut ExternCHostContext<'a>)).host }
+}
+
+/// # Safety
+///
+/// Same contract as [`get_host_mut`]: `ctx.txn_ptr` must be the pointer stored by [`new_extern_c_context`] from an
+/// [`ExternCHostContext`] that is still alive.
+pub(crate) unsafe fn guest_class(ctx: &ExternCContextRaw) -> OperatorClass {
+	// SAFETY: discharges this function's own contract; `ctx.txn_ptr` is then a live, aligned ExternCHostContext.
+	unsafe { (*(ctx.txn_ptr as *const ExternCHostContext<'_>)).class }
 }

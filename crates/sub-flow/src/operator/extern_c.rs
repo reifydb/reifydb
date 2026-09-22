@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::ChangeVersion,
+	common::{ChangeVersion, OperatorClass},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -55,6 +55,7 @@ thread_local! {
 
 pub struct ExternCOperatorHandle {
 	capabilities: Box<[OperatorCapability]>,
+	class: OperatorClass,
 
 	vtable: ExternCOperatorVTable,
 
@@ -66,12 +67,18 @@ pub struct ExternCOperatorHandle {
 }
 
 impl ExternCOperatorHandle {
-	pub fn new(descriptor: ExternCOperatorDescriptor, instance: *mut c_void, operator_id: OperatorId) -> Self {
+	pub fn new(
+		descriptor: ExternCOperatorDescriptor,
+		class: OperatorClass,
+		instance: *mut c_void,
+		operator_id: OperatorId,
+	) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
 
 		Self {
 			capabilities,
+			class,
 			vtable,
 			instance,
 			operator_id,
@@ -153,7 +160,7 @@ impl HostOperator for ExternCOperatorHandle {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let mut host_ctx = ExternCHostContext::new(host);
+		let mut host_ctx = ExternCHostContext::new(host, self.class);
 		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
@@ -185,7 +192,7 @@ impl HostOperator for ExternCOperatorHandle {
 		let version = ChangeVersion::from(host.version());
 		let key = timer.key.as_ref();
 
-		let mut host_ctx = ExternCHostContext::new(host);
+		let mut host_ctx = ExternCHostContext::new(host, self.class);
 		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 

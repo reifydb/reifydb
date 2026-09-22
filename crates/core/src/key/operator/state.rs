@@ -19,6 +19,7 @@ use smallvec::{SmallVec, smallvec};
 
 use super::super::KeyTag;
 use crate::{
+	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
@@ -371,6 +372,34 @@ pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
 	})
 }
 
+const WINDOWED_KEYSPACES: [KeyspaceId; 10] = [
+	KeyspaceId::GUEST_ACCUMULATOR,
+	KeyspaceId::GUEST_BUFFER,
+	KeyspaceId::GUEST_RUNNING,
+	KeyspaceId::EMIT,
+	KeyspaceId::WINDOW_META,
+	KeyspaceId::SEAL_LEDGER,
+	KeyspaceId::ROLLING_EXPIRY,
+	KeyspaceId::TUMBLING_EXPIRY,
+	KeyspaceId::REAP_QUEUE,
+	KeyspaceId::GUEST_ROW_MAPPING,
+];
+
+pub fn guest_may_address(class: OperatorClass, keyspace: KeyspaceId) -> bool {
+	match class {
+		OperatorClass::Managed => keyspace == KeyspaceId::CUSTOM_MANAGED,
+		OperatorClass::Unmanaged => keyspace == KeyspaceId::CUSTOM_UNMANAGED,
+		OperatorClass::Nostate => false,
+		OperatorClass::Windowed => WINDOWED_KEYSPACES.contains(&keyspace),
+	}
+}
+
+pub fn is_class_framed_inner(class: OperatorClass, inner: &[u8]) -> bool {
+	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, suffix)| {
+		guest_may_address(class, keyspace) && suffix_width_of(keyspace) == Some(suffix.len())
+	})
+}
+
 pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
 	OperatorStateKey::decode_inner(inner)
 		.is_some_and(|(_, keyspace, _)| keyspace.is_identity() && keyspace.is_known())
@@ -510,8 +539,8 @@ impl GroupStateKey {
 		is_framed_inner(key.as_slice()).then_some(Self(key))
 	}
 
-	pub fn from_guest_framed(key: EncodedKey) -> Option<Self> {
-		is_guest_framed_inner(key.as_slice()).then_some(Self(key))
+	pub fn from_class_framed(class: OperatorClass, key: EncodedKey) -> Option<Self> {
+		is_class_framed_inner(class, key.as_slice()).then_some(Self(key))
 	}
 
 	pub fn from_identity_framed(key: EncodedKey) -> Option<Self> {
@@ -869,10 +898,10 @@ mod tests {
 		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
 		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		is_framed_inner, is_guest_framed_inner, keyspace_range, managed_key_in, node_prefix, node_range,
-		unmanaged_key_in,
+		guest_may_address, is_class_framed_inner, is_framed_inner, is_guest_framed_inner, keyspace_range,
+		managed_key_in, node_prefix, node_range, suffix_width_of, unmanaged_key_in,
 	};
-	use crate::{interface::catalog::flow::OperatorId, key::operator::keyspace::KEYSPACES};
+	use crate::{common::OperatorClass, interface::catalog::flow::OperatorId, key::operator::keyspace::KEYSPACES};
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
@@ -1009,7 +1038,8 @@ mod tests {
 		let empty: &[u8] = &[];
 		assert!(is_framed_inner(empty));
 		assert!(!is_guest_framed_inner(empty));
-		assert!(GroupStateKey::from_guest_framed(EncodedKey::new(Vec::new())).is_none());
+		assert!(GroupStateKey::from_class_framed(OperatorClass::Unmanaged, EncodedKey::new(Vec::new()))
+			.is_none());
 
 		assert!(is_guest_framed_inner(
 			unmanaged_key_in(GroupId::hashed(Hash128(3)), &[])
@@ -1576,6 +1606,61 @@ mod tests {
 		// A third guest-owned keyspace lets a guest write engine state past the host check.
 		let owned: Vec<&str> = CENSUS.iter().filter(|(_, id, ..)| id.is_custom()).map(|(n, ..)| *n).collect();
 		assert_eq!(owned, ["CUSTOM_UNMANAGED", "CUSTOM_MANAGED"]);
+	}
+
+	#[test]
+	fn each_class_addresses_exactly_the_keyspaces_it_owns() {
+		// a keyspace admitted to the wrong class lets a guest write rows another owner frees, or no one does
+		let owned = |class| {
+			(0..=u8::MAX).map(KeyspaceId).filter(|id| guest_may_address(class, *id)).collect::<Vec<_>>()
+		};
+		assert_eq!(owned(OperatorClass::Managed), [KeyspaceId::CUSTOM_MANAGED]);
+		assert_eq!(owned(OperatorClass::Unmanaged), [KeyspaceId::CUSTOM_UNMANAGED]);
+		assert_eq!(owned(OperatorClass::Nostate), Vec::<KeyspaceId>::new());
+		assert_eq!(
+			owned(OperatorClass::Windowed),
+			[
+				KeyspaceId::EMIT,
+				KeyspaceId::ROLLING_EXPIRY,
+				KeyspaceId::WINDOW_META,
+				KeyspaceId::SEAL_LEDGER,
+				KeyspaceId::REAP_QUEUE,
+				KeyspaceId::GUEST_ACCUMULATOR,
+				KeyspaceId::GUEST_BUFFER,
+				KeyspaceId::GUEST_RUNNING,
+				KeyspaceId::TUMBLING_EXPIRY,
+				KeyspaceId::GUEST_ROW_MAPPING,
+			]
+		);
+	}
+
+	#[test]
+	fn a_class_framed_key_must_name_an_owned_keyspace_at_its_exact_width() {
+		// a key framed for one class must never pass as another's, nor with a suffix its keyspace does not
+		// declare
+		let group = GroupId::hashed(Hash128(3));
+		let at_width = |keyspace| {
+			let width = suffix_width_of(keyspace).expect("every owned keyspace declares a width");
+			OperatorStateKey::inner_encoded(group, keyspace, vec![0u8; width])
+		};
+		let managed = at_width(KeyspaceId::CUSTOM_MANAGED);
+		assert!(is_class_framed_inner(OperatorClass::Managed, managed.as_slice()));
+		for class in [OperatorClass::Unmanaged, OperatorClass::Nostate, OperatorClass::Windowed] {
+			assert!(
+				!is_class_framed_inner(class, managed.as_slice()),
+				"{class:?} must not address a managed key"
+			);
+		}
+		for keyspace in
+			(0..=u8::MAX).map(KeyspaceId).filter(|id| guest_may_address(OperatorClass::Windowed, *id))
+		{
+			assert!(
+				is_class_framed_inner(OperatorClass::Windowed, at_width(keyspace).as_slice()),
+				"{keyspace:?}"
+			);
+		}
+		let narrow = OperatorStateKey::inner_encoded(group, KeyspaceId::GUEST_ACCUMULATOR, []);
+		assert!(!is_class_framed_inner(OperatorClass::Windowed, narrow.as_slice()));
 	}
 }
 

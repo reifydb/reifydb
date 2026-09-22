@@ -106,7 +106,7 @@ impl StandardOperatorProvider {
 		let with_bytes = encode_apply_with(with)?;
 
 		let created = loader_write.create_operator_by_name(operator, operator_id, &params_bytes, &with_bytes);
-		let (descriptor, instance) = match created {
+		let (descriptor, class, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
 				return Err(Error::from(ExternOperatorError::CreateFailed {
@@ -115,6 +115,6 @@ impl StandardOperatorProvider {
 			}
 		};
 
-		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id)))
+		Ok(Box::new(ExternCOperatorHandle::new(descriptor, class, instance, operator_id)))
 	}
 }

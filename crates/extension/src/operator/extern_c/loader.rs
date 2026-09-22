@@ -152,13 +152,14 @@ impl ExternCOperatorLoader {
 		params: &[u8],
 		with: &[u8],
 		operator_id: OperatorId,
-	) -> ExternCResult<Option<(ExternCOperatorDescriptor, *mut c_void)>> {
+	) -> ExternCResult<Option<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
 
 		let descriptor = self.get_descriptor(path)?;
 		self.validate_and_register(&descriptor, path)?;
+		let class = decode_class(descriptor.class)?;
 
 		let library = self.cache.library(path).map_err(|e| SdkError::Other(e.to_string()))?;
 		// SAFETY: the ABI declares this symbol as ExternCOperatorCreateFn and the cache keeps it loaded.
@@ -176,7 +177,7 @@ impl ExternCOperatorLoader {
 			return Err(SdkError::Other("Failed to create operator instance".to_string()));
 		}
 
-		Ok(Some((descriptor, instance)))
+		Ok(Some((descriptor, class, instance)))
 	}
 
 	pub fn create_operator_by_name(
@@ -185,7 +186,7 @@ impl ExternCOperatorLoader {
 		operator_id: OperatorId,
 		params: &[u8],
 		with: &[u8],
-	) -> ExternCResult<(ExternCOperatorDescriptor, *mut c_void)> {
+	) -> ExternCResult<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)> {
 		let path = self
 			.operator_paths
 			.get(operator)
