@@ -11,7 +11,7 @@ pub mod error;
 pub mod monoid;
 pub mod registry;
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::NullBuffer;
 use error::RoutineError;
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -21,6 +21,7 @@ use reifydb_core::value::column::{
 };
 use reifydb_value::{
 	fragment::Fragment,
+	util::bitmap,
 	value::{Value, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
@@ -75,26 +76,26 @@ pub trait Routine<C: Context>: Send + Sync {
 			return self.execute(ctx, args);
 		}
 
-		let has_option = args.iter().any(|c| matches!(c.data(), ColumnBuffer::Option { .. }));
+		let has_option = args.iter().any(|c| c.data().nulls().is_some());
 		if !has_option {
 			return self.execute(ctx, args);
 		}
 
-		let mut combined_bv: Option<BooleanBuffer> = None;
+		let mut combined: Option<NullBuffer> = None;
 		let mut unwrapped = Vec::with_capacity(args.len());
 		for col in args.iter() {
-			let (inner, bv) = col.data().unwrap_option();
-			if let Some(bv) = bv {
-				combined_bv = Some(match combined_bv {
-					Some(existing) => &existing & bv,
-					None => bv.clone(),
+			let (inner, nulls) = col.data().clone().split_nulls();
+			if let Some(nulls) = nulls {
+				combined = Some(match combined {
+					Some(existing) => bitmap::and_nulls(&existing, &nulls),
+					None => nulls,
 				});
 			}
-			unwrapped.push(ColumnWithName::new(col.name().clone(), inner.clone()));
+			unwrapped.push(ColumnWithName::new(col.name().clone(), inner));
 		}
 
-		if let Some(ref bv) = combined_bv
-			&& !bv.has_true()
+		if let Some(ref nulls) = combined
+			&& nulls.null_count() == nulls.len()
 		{
 			let row_count = args.row_count();
 			let input_types: Vec<ValueType> = unwrapped.iter().map(|c| c.data.get_type()).collect();
@@ -109,19 +110,17 @@ pub trait Routine<C: Context>: Send + Sync {
 		let unwrapped_args = Columns::new(unwrapped);
 		let result = self.execute(ctx, &unwrapped_args)?;
 
-		match combined_bv {
-			Some(bv) => {
+		match combined {
+			Some(nulls) => {
 				let wrapped_cols: Vec<ColumnWithName> = result
 					.names
 					.iter()
 					.zip(result.columns.iter())
 					.map(|(name, data)| {
+						let validity = bitmap::resize(nulls.inner(), data.len());
 						ColumnWithName::new(
 							name.clone(),
-							ColumnBuffer::Option {
-								inner: Box::new(data.clone()),
-								bitvec: bv.clone(),
-							},
+							data.clone().with_nulls(NullBuffer::new(validity)),
 						)
 					})
 					.collect();

@@ -71,19 +71,14 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let hour_col = &args[0];
-		let min_col = &args[1];
-		let sec_col = &args[2];
-		let nano_col = if args.len() == 4 {
+		let hour_data = &args[0];
+		let min_data = &args[1];
+		let sec_data = &args[2];
+		let nano_data = if args.len() == 4 {
 			Some(&args[3])
 		} else {
 			None
 		};
-
-		let (hour_data, _) = hour_col.unwrap_option();
-		let (min_data, _) = min_col.unwrap_option();
-		let (sec_data, _) = sec_col.unwrap_option();
-		let nano_data = nano_col.map(|c| c.unwrap_option());
 
 		if !is_integer_type(hour_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
@@ -142,7 +137,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 				actual: sec_data.get_type(),
 			});
 		}
-		if let Some((nd, _)) = &nano_data
+		if let Some(nd) = nano_data
 			&& !is_integer_type(nd)
 		{
 			return Err(RoutineError::FunctionInvalidArgumentType {
@@ -168,7 +163,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 			let hour = extract_i32(hour_data, i);
 			let min = extract_i32(min_data, i);
 			let sec = extract_i32(sec_data, i);
-			let nano = if let Some((nd, _)) = &nano_data {
+			let nano = if let Some(nd) = nano_data {
 				extract_i32(nd, i)
 			} else {
 				Some(0)

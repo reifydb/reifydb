@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use arrow_array::{BooleanArray, Decimal128Array, PrimitiveArray};
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, ScalarBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, ScalarBuffer};
 use reifydb_value::value::{
 	Value,
 	container::{
@@ -32,36 +32,27 @@ impl ColumnBuffer {
 		else_mask: &BooleanBuffer,
 		total_len: usize,
 	) -> ColumnBuffer {
-		if let (
-			ColumnBuffer::Option {
-				inner: a_inner,
-				bitvec: a_bv,
-			},
-			ColumnBuffer::Option {
-				inner: b_inner,
-				bitvec: b_bv,
-			},
-		) = (self, other)
-		{
-			let merged_inner = a_inner.scatter_merge(b_inner, then_mask, else_mask, total_len);
-			let merged_bv = merge_validity_bitvecs(a_bv, b_bv, then_mask, else_mask, total_len);
-			return match merged_inner {
-				ColumnBuffer::Option {
-					inner: nested_inner,
-					bitvec: nested_bv,
-				} => ColumnBuffer::Option {
-					inner: nested_inner,
-					bitvec: &merged_bv & &nested_bv,
-				},
-				inner => ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec: merged_bv,
-				},
-			};
-		}
-
-		if let Some(result) = scatter_merge_typed(self, other, then_mask, else_mask, total_len) {
-			return result;
+		match (self.nulls(), other.nulls()) {
+			(Some(a_nulls), Some(b_nulls)) => {
+				let (a_inner, _) = self.clone().split_nulls();
+				let (b_inner, _) = other.clone().split_nulls();
+				let merged_inner = a_inner.scatter_merge(&b_inner, then_mask, else_mask, total_len);
+				let merged = merge_validity_bitvecs(
+					a_nulls.inner(),
+					b_nulls.inner(),
+					then_mask,
+					else_mask,
+					total_len,
+				);
+				return merged_inner.with_nulls(NullBuffer::new(merged));
+			}
+			(None, None) => {
+				if let Some(result) = scatter_merge_typed(self, other, then_mask, else_mask, total_len)
+				{
+					return result;
+				}
+			}
+			_ => {}
 		}
 
 		scatter_merge_generic(self, other, then_mask, else_mask, total_len)
@@ -187,10 +178,7 @@ fn scatter_merge_typed(
 
 fn finalize(inner: ColumnBuffer, validity: Option<BooleanBuffer>) -> ColumnBuffer {
 	match validity {
-		Some(bv) => ColumnBuffer::Option {
-			inner: Box::new(inner),
-			bitvec: bv,
-		},
+		Some(bv) => inner.with_nulls(NullBuffer::new(bv)),
 		None => inner,
 	}
 }

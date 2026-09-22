@@ -61,11 +61,8 @@ impl<'a> Routine<FunctionContext<'a>> for Gcd {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let a_col = &args[0];
-		let b_col = &args[1];
-
-		let (a_data, a_bitvec) = a_col.unwrap_option();
-		let (b_data, b_bitvec) = b_col.unwrap_option();
+		let a_data = &args[0];
+		let b_data = &args[1];
 		let row_count = a_data.len();
 
 		let expected_types = vec![
@@ -112,23 +109,8 @@ impl<'a> Routine<FunctionContext<'a>> for Gcd {
 		}
 
 		let result_data = ColumnBuffer::int8_with_bitvec(result, res_bitvec);
-		let combined_bitvec = match (a_bitvec, b_bitvec) {
-			(Some(a), Some(b)) => Some(a & b),
-			(Some(a), None) => Some(a.clone()),
-			(None, Some(b)) => Some(b.clone()),
-			(None, None) => None,
-		};
 
-		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv,
-			}
-		} else {
-			result_data
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

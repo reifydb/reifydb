@@ -137,10 +137,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let dt_col = &args[0];
-		let fmt_col = &args[1];
-		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
-		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
+		let dt_data = &args[0];
+		let fmt_data = &args[1];
 		let row_count = dt_data.len();
 
 		let result_data = match (dt_data, fmt_data) {
@@ -206,15 +204,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 			}
 		};
 
-		let final_data = match (dt_bitvec, fmt_bitvec) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv.clone(),
-			},
-			_ => result_data,
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

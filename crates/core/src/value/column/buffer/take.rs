@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
-use reifydb_value::{
-	util::bitmap,
-	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
-};
+use arrow_buffer::{BooleanBuffer, NullBuffer};
+use reifydb_value::value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array};
 
 use crate::value::column::ColumnBuffer;
 
@@ -97,13 +94,6 @@ macro_rules! map_container {
 				inner: inner.clone(),
 				accuracy: *accuracy,
 			},
-			ColumnBuffer::Option {
-				..
-			} => {
-				unreachable!(
-					"map_container! must not be called on Option variant directly; handle it explicitly"
-				)
-			}
 		}
 	};
 }
@@ -111,21 +101,6 @@ macro_rules! map_container {
 impl ColumnBuffer {
 	pub fn take(&self, num: usize) -> ColumnBuffer {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				let new_bitvec = bitmap::take(bitvec, num);
-
-				if !new_bitvec.has_false() && !new_bitvec.is_empty() {
-					inner.take(num)
-				} else {
-					ColumnBuffer::Option {
-						inner: Box::new(inner.take(num)),
-						bitvec: new_bitvec,
-					}
-				}
-			}
 			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::take(a, num)),
 			ColumnBuffer::DictionaryId {
 				container,
@@ -141,18 +116,11 @@ impl ColumnBuffer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> ColumnBuffer {
+		if let Some(nulls) = self.nulls() {
+			assert!(start <= end, "ColumnBuffer::slice: start {start} > end {end}");
+			assert!(end <= nulls.len(), "ColumnBuffer::slice: end {end} > len {}", nulls.len());
+		}
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				assert!(start <= end, "ColumnBuffer::slice: start {start} > end {end}");
-				assert!(end <= bitvec.len(), "ColumnBuffer::slice: end {end} > len {}", bitvec.len());
-				ColumnBuffer::Option {
-					inner: Box::new(inner.slice(start, end)),
-					bitvec: bitmap::slice(bitvec, start, end),
-				}
-			}
 			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::slice(a, start, end)),
 			ColumnBuffer::DictionaryId {
 				container,
@@ -171,18 +139,16 @@ impl ColumnBuffer {
 	}
 
 	pub fn gather(&self, indices: &[usize]) -> ColumnBuffer {
-		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => ColumnBuffer::Option {
-				inner: Box::new(inner.gather(indices)),
-				bitvec: BooleanBuffer::collect_bool(indices.len(), |row| bitvec.value(indices[row])),
-			},
-			_ => {
-				let mut cloned = self.clone();
-				cloned.reorder(indices);
-				cloned
+		match self.clone().split_nulls() {
+			(inner, Some(nulls)) => {
+				let inner = inner.gather(indices);
+				let bits =
+					BooleanBuffer::collect_bool(indices.len(), |row| nulls.is_valid(indices[row]));
+				inner.replace_nulls(Some(NullBuffer::new(bits)))
+			}
+			(mut inner, None) => {
+				inner.reorder(indices);
+				inner
 			}
 		}
 	}

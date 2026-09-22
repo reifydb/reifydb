@@ -39,11 +39,8 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAge {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let col1 = &args[0];
-		let col2 = &args[1];
-
-		let (data1, bv1) = col1.unwrap_option();
-		let (data2, bv2) = col2.unwrap_option();
+		let data1 = &args[0];
+		let data2 = &args[1];
 
 		match (data1, data2) {
 			(ColumnBuffer::Time(container1), ColumnBuffer::Time(container2)) => {
@@ -61,18 +58,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAge {
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(duration_array(container));
-				if let Some(bv) = bv1 {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				} else if let Some(bv) = bv2 {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let result_data = ColumnBuffer::Duration(duration_array(container));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {

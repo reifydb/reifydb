@@ -81,10 +81,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let col1 = &args[0];
-		let col2 = &args[1];
-		let (data1, bitvec1) = col1.unwrap_option();
-		let (data2, bitvec2) = col2.unwrap_option();
+		let data1 = &args[0];
+		let data2 = &args[1];
 		let row_count = data1.len();
 
 		let result_data = match (data1, data2) {
@@ -120,15 +118,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 			}
 		};
 
-		let final_data = match (bitvec1, bitvec2) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv.clone(),
-			},
-			_ => result_data,
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

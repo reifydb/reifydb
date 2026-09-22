@@ -459,6 +459,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 				if !matches!(ge_result.data(), ColumnBuffer::Bool(_))
 					|| !matches!(le_result.data(), ColumnBuffer::Bool(_))
+					|| ge_result.data().nulls().is_some()
+					|| le_result.data().nulls().is_some()
 				{
 					return Err(TypeError::BinaryOperatorNotApplicable {
 						operator: BinaryOp::Between,
@@ -720,7 +722,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					ctx.columns.iter().find(|c| c.name().text() == tag_col_name.as_str())
 				{
 					match tag_col.data() {
-						ColumnBuffer::Uint1(container) => {
+						ColumnBuffer::Uint1(container) if tag_col.data().nulls().is_none() => {
 							let results: Vec<bool> = container
 								.iter()
 								.take(ctx.row_count)
@@ -955,7 +957,7 @@ fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Frag
 		})
 		.ok()
 		.and_then(|c| match c.data() {
-			ColumnBuffer::Bool(b) => Some(b.value(0)),
+			ColumnBuffer::Bool(b) if c.data().nulls().is_none() => Some(b.value(0)),
 			_ => None,
 		})
 		.unwrap_or(false)
@@ -964,16 +966,9 @@ fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Frag
 
 fn bool_column_has_true(col: &ColumnWithName) -> bool {
 	match col.data() {
-		ColumnBuffer::Bool(b) => b.values().has_true(),
-		ColumnBuffer::Option {
-			inner,
-			bitvec,
-		} => match inner.as_ref() {
-			ColumnBuffer::Bool(b) => {
-				let n = bitvec.len().min(b.len());
-				(0..n).any(|i| bitvec.value(i) && b.value(i))
-			}
-			_ => false,
+		ColumnBuffer::Bool(b) => match col.data().nulls() {
+			Some(nulls) => (nulls.inner() & b.values()).has_true(),
+			None => b.values().has_true(),
 		},
 		_ => false,
 	}

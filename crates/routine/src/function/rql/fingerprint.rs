@@ -41,8 +41,7 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		match data {
@@ -75,15 +74,8 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 				}
 
 				let inner_data = ColumnBuffer::utf8_with_bitvec(result_data, result_bitvec);
-				let final_data = match bitvec {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(inner_data),
-						bitvec: bv.clone(),
-					},
-					None => inner_data,
-				};
 
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), inner_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),

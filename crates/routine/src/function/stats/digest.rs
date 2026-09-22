@@ -226,19 +226,18 @@ impl Accumulator for DigestAccumulator {
 
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
-		let (data, _) = column.unwrap_option();
 		if let ColumnBuffer::Digest {
 			inner,
 			accuracy,
 			..
-		} = data && self.seen.is_none()
+		} = column && self.seen.is_none()
 		{
 			self.seen = Some((inner.clone(), *accuracy));
 		}
 		for &(group, ref rows) in groups.iter() {
 			let mut slot = self.digests.remove(group).flatten();
 			for &row in rows {
-				match data {
+				match column {
 					ColumnBuffer::Digest {
 						container,
 						..

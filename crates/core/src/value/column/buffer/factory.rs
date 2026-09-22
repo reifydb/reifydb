@@ -5,7 +5,7 @@ use arrow_array::{
 	BooleanArray, LargeStringArray, PrimitiveArray,
 	builder::{LargeBinaryBuilder, LargeStringBuilder},
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, ScalarBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -62,10 +62,7 @@ macro_rules! impl_native_factory {
 			}
 			let inner = ColumnBuffer::$variant(PrimitiveArray::new(ScalarBuffer::from(values), None));
 			if has_none {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec: BooleanBuffer::from(bitvec),
-				}
+				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 			} else {
 				inner
 			}
@@ -86,10 +83,7 @@ macro_rules! impl_native_factory {
 			if !bitvec.has_false() {
 				inner
 			} else {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec,
-				}
+				inner.with_nulls(NullBuffer::new(bitvec))
 			}
 		}
 	};
@@ -120,10 +114,7 @@ macro_rules! impl_number_factory {
 			}
 			let inner = ColumnBuffer::$variant($build(values));
 			if has_none {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec: BooleanBuffer::from(bitvec),
-				}
+				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 			} else {
 				inner
 			}
@@ -144,10 +135,7 @@ macro_rules! impl_number_factory {
 			if !bitvec.has_false() {
 				inner
 			} else {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec,
-				}
+				inner.with_nulls(NullBuffer::new(bitvec))
 			}
 		}
 	};
@@ -179,10 +167,7 @@ macro_rules! impl_temporal_factory {
 			}
 			let inner = ColumnBuffer::$variant($build(values));
 			if has_none {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec: BooleanBuffer::from(bitvec),
-				}
+				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 			} else {
 				inner
 			}
@@ -203,10 +188,7 @@ macro_rules! impl_temporal_factory {
 			if !bitvec.has_false() {
 				inner
 			} else {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec,
-				}
+				inner.with_nulls(NullBuffer::new(bitvec))
 			}
 		}
 	};
@@ -238,10 +220,7 @@ macro_rules! impl_uuid_factory {
 			}
 			let inner = ColumnBuffer::$variant($build(values));
 			if has_none {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec: BooleanBuffer::from(bitvec),
-				}
+				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 			} else {
 				inner
 			}
@@ -261,10 +240,7 @@ macro_rules! impl_uuid_factory {
 			if !bitvec.has_false() {
 				inner
 			} else {
-				ColumnBuffer::Option {
-					inner: Box::new(inner),
-					bitvec,
-				}
+				inner.with_nulls(NullBuffer::new(bitvec))
 			}
 		}
 	};
@@ -297,10 +273,7 @@ impl ColumnBuffer {
 
 		let inner = ColumnBuffer::Bool(BooleanArray::from(values));
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -318,10 +291,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -397,10 +367,7 @@ impl ColumnBuffer {
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -427,10 +394,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -490,10 +454,7 @@ impl ColumnBuffer {
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -517,10 +478,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -550,10 +508,7 @@ impl ColumnBuffer {
 
 		let inner = ColumnBuffer::IdentityId(identity_id_array(values));
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -574,10 +529,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -612,10 +564,7 @@ impl ColumnBuffer {
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -652,10 +601,7 @@ impl ColumnBuffer {
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -686,10 +632,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -704,10 +647,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -744,10 +684,7 @@ impl ColumnBuffer {
 			scale: Scale::new(0),
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -773,10 +710,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -818,10 +752,7 @@ impl ColumnBuffer {
 			declared_type: None,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -852,10 +783,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -874,10 +802,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -912,10 +837,7 @@ impl ColumnBuffer {
 			dictionary_id: None,
 		};
 		if has_none {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(bitvec),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
 		} else {
 			inner
 		}
@@ -944,10 +866,7 @@ impl ColumnBuffer {
 		if !bitvec.has_false() {
 			inner
 		} else {
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
+			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -1003,9 +922,6 @@ impl ColumnBuffer {
 				accuracy,
 			},
 		};
-		ColumnBuffer::Option {
-			inner: Box::new(inner),
-			bitvec,
-		}
+		inner.with_nulls(NullBuffer::new(bitvec))
 	}
 }

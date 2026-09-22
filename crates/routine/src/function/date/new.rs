@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -53,10 +52,6 @@ fn ensure_integer(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: us
 	Ok(())
 }
 
-fn defined(c: &[i32], bv: Option<&BooleanBuffer>, i: usize) -> bool {
-	i < c.len() && bv.is_none_or(|b| b.value(i))
-}
-
 impl<'a> Routine<FunctionContext<'a>> for DateNew {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
@@ -72,19 +67,16 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		for i in 0..3 {
-			let (data, _) = args[i].unwrap_option();
-			ensure_integer(ctx, data, i)?;
+			let (data, _) = args[i].clone().split_nulls();
+			ensure_integer(ctx, &data, i)?;
 		}
 
 		let year_cast = coerce_column(ctx, &args[0], ValueType::Int4, CoerceMode::Error)?;
 		let month_cast = coerce_column(ctx, &args[1], ValueType::Int4, CoerceMode::Error)?;
 		let day_cast = coerce_column(ctx, &args[2], ValueType::Int4, CoerceMode::Error)?;
 
-		let (year_inner, year_bv) = year_cast.unwrap_option();
-		let (month_inner, month_bv) = month_cast.unwrap_option();
-		let (day_inner, day_bv) = day_cast.unwrap_option();
 		let (ColumnBuffer::Int4(years), ColumnBuffer::Int4(months), ColumnBuffer::Int4(days)) =
-			(year_inner, month_inner, day_inner)
+			(&year_cast, &month_cast, &day_cast)
 		else {
 			unreachable!()
 		};
@@ -94,10 +86,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		let mut bits = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			if !defined(years.values(), year_bv, i)
-				|| !defined(months.values(), month_bv, i)
-				|| !defined(days.values(), day_bv, i)
-			{
+			if !year_cast.is_defined(i) || !month_cast.is_defined(i) || !day_cast.is_defined(i) {
 				values.push(Date::default());
 				bits.push(false);
 				continue;

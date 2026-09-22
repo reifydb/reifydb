@@ -35,8 +35,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeDayOfYear {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		let result_data = match data {
@@ -74,16 +73,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeDayOfYear {
 			}
 		};
 
-		let final_data = if let Some(bv) = bitvec {
-			ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv.clone(),
-			}
-		} else {
-			result_data
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

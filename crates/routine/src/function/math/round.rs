@@ -43,15 +43,14 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let value_column = &args[0];
+		let val_data = &args[0];
 		let precision_column = args.get(1);
 
-		let (val_data, val_bitvec) = value_column.unwrap_option();
 		let row_count = val_data.len();
 
 		let get_precision = |row_idx: usize| -> i32 {
 			if let Some(prec_col) = precision_column {
-				let (p_data, _) = prec_col.data().unwrap_option();
+				let p_data = prec_col.data();
 				match p_data {
 					ColumnBuffer::Int4(prec_container) => {
 						prec_container.values().get(row_idx).copied().unwrap_or(0)
@@ -162,16 +161,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 			}
 		};
 
-		let final_data = if let Some(bv) = val_bitvec {
-			ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv.clone(),
-			}
-		} else {
-			result_data
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

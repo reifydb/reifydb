@@ -36,11 +36,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let str_col = &args[0];
-		let substr_col = &args[1];
+		let str_data = &args[0];
+		let substr_data = &args[1];
 
-		let (str_data, str_bv) = str_col.unwrap_option();
-		let (substr_data, substr_bv) = substr_col.unwrap_option();
 		let row_count = str_data.len();
 
 		match (str_data, substr_data) {
@@ -75,21 +73,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 
 				let result_col_data = ColumnBuffer::int4_with_bitvec(result_data, result_bitvec);
 
-				let combined_bv = match (str_bv, substr_bv) {
-					(Some(b), Some(e)) => Some(b & e),
-					(Some(b), None) => Some(b.clone()),
-					(None, Some(e)) => Some(e.clone()),
-					(None, None) => None,
-				};
-
-				let final_data = match combined_bv {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(result_col_data),
-						bitvec: bv,
-					},
-					None => result_col_data,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			(
 				ColumnBuffer::Utf8 {

@@ -125,7 +125,7 @@ fn execute_float4<'a>(
 	let mut counts = vec![0u32; row_count];
 
 	for col in args.iter() {
-		let (data, _bitvec) = col.data().unwrap_option();
+		let data = col.data();
 		if let ColumnBuffer::Float4(container) = data {
 			for i in 0..row_count {
 				if let Some(value) = container.values().get(i) {
@@ -170,7 +170,7 @@ fn execute_float8<'a>(
 	let mut counts = vec![0u32; row_count];
 
 	for col in args.iter() {
-		let (data, _bitvec) = col.data().unwrap_option();
+		let data = col.data();
 		if let ColumnBuffer::Float8(container) = data {
 			for i in 0..row_count {
 				if let Some(value) = container.values().get(i) {
@@ -215,7 +215,7 @@ fn execute_decimal<'a>(
 	let mut counts = vec![0u64; row_count];
 
 	for (col_idx, col) in args.iter().enumerate() {
-		let (data, _bitvec) = col.data().unwrap_option();
+		let data = col.data();
 		match data {
 			ColumnBuffer::Int1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Int2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
@@ -350,7 +350,7 @@ impl Accumulator for AvgAccumulator {
 
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.unwrap_option();
+		let (data, _) = column.clone().split_nulls();
 		let input_type = data.get_type();
 
 		if self.input_type.is_none() {
@@ -363,7 +363,7 @@ impl Accumulator for AvgAccumulator {
 			};
 		}
 
-		match (&mut self.state, data) {
+		match (&mut self.state, &data) {
 			(AvgState::Int(sums), ColumnBuffer::Int1(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}

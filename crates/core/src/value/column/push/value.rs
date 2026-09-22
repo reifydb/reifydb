@@ -120,7 +120,7 @@ impl ColumnBuilder {
 					Value::List(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Type(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Digest(_) => {
-						ColumnBuffer::none_typed(value.get_type(), len).into_unwrap_option().0
+						ColumnBuffer::none_typed(value.get_type(), len).split_nulls().0
 					}
 					_ => unreachable!(),
 				}

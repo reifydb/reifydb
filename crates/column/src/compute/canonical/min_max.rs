@@ -14,7 +14,7 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		return Err(ColumnError::MinMaxEmpty.into());
 	}
 
-	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) };
+	let skip = |row: usize| -> bool { array.buffer.nulls().map(|n| n.is_null(row)).unwrap_or(false) };
 
 	macro_rules! reduce_int {
 		($slice:expr, $variant:ident) => {{
@@ -71,7 +71,7 @@ fn reduce_ordered(array: &Canonical) -> Result<(Value, Value)> {
 	let mut min: Option<Value> = None;
 	let mut max: Option<Value> = None;
 	for row in 0..array.len() {
-		if array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) {
+		if array.buffer.nulls().map(|n| n.is_null(row)).unwrap_or(false) {
 			continue;
 		}
 		let value = array.buffer.get_value(row);

@@ -8,11 +8,14 @@ use arrow_array::{
 	builder::{GenericByteBuilder, LargeBinaryBuilder, LargeStringBuilder},
 	types::ByteArrayType,
 };
-use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer};
+use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer};
 use serde::{Deserialize, Deserializer, Serializer, de::Error as DeError, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
-use crate::value::{Value, blob::Blob, value_type::ValueType};
+use crate::{
+	util::bitmap,
+	value::{Value, blob::Blob, value_type::ValueType},
+};
 
 pub fn get<T>(array: &GenericByteArray<T>, index: usize) -> Option<&T::Native>
 where
@@ -78,7 +81,7 @@ where
 	let start = start.min(len);
 	let end = end.min(len);
 	if start >= end {
-		return empty();
+		return attach_nulls(empty(), bitmap::slice_nulls(array.nulls(), start, end));
 	}
 	array.slice(start, end - start)
 }
@@ -100,7 +103,7 @@ where
 			builder.append_value(array.value(i));
 		}
 	}
-	builder.finish()
+	attach_nulls(builder.finish(), bitmap::filter_nulls(array.nulls(), mask))
 }
 
 pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> GenericByteArray<T>
@@ -115,7 +118,17 @@ where
 			None => builder.append_value(<&T::Native>::default()),
 		}
 	}
-	builder.finish()
+	attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices))
+}
+
+pub fn attach_nulls<T>(array: GenericByteArray<T>, nulls: Option<NullBuffer>) -> GenericByteArray<T>
+where
+	T: ByteArrayType<Offset = i64>,
+{
+	bitmap::assert_nulls_len(nulls.as_ref(), array.len());
+	let (offsets, values, _) = array.into_parts();
+	// SAFETY: offsets and values come from a valid array of this type, and the validity length matches its rows.
+	unsafe { GenericByteArray::new_unchecked(offsets, values, nulls) }
 }
 
 pub fn capacity<T>(array: &GenericByteArray<T>) -> usize

@@ -163,13 +163,13 @@ impl Accumulator for MaxAccumulator {
 
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.unwrap_option();
+		let (data, _) = column.clone().split_nulls();
 
 		if self.input_type.is_none() {
 			self.input_type = Some(data.get_type());
 		}
 
-		match data {
+		match &data {
 			ColumnBuffer::Int1(container) => {
 				max_arm!(self, column, groups, container.values(), Int1);
 				Ok(())

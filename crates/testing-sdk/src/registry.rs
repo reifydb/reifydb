@@ -4,7 +4,7 @@
 use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
 
 use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
-use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer, ScalarBuffer};
+use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
 		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
@@ -541,10 +541,7 @@ pub(crate) fn finalize_buffer(
 	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
 		Some(mut bytes) => {
 			bytes.truncate(written_count.div_ceil(8));
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count),
-			}
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count)))
 		}
 		None => inner,
 	};

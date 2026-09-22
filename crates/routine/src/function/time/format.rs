@@ -101,11 +101,8 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let time_col = &args[0];
-		let fmt_col = &args[1];
-
-		let (time_data, time_bv) = time_col.unwrap_option();
-		let (fmt_data, _) = fmt_col.unwrap_option();
+		let time_data = &args[0];
+		let fmt_data = &args[1];
 
 		match (time_data, fmt_data) {
 			(
@@ -148,13 +145,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 					}
 				}
 
-				let mut final_data = ColumnBuffer::utf8(result_data);
-				if let Some(bv) = time_bv {
-					final_data = ColumnBuffer::Option {
-						inner: Box::new(final_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let final_data = ColumnBuffer::utf8(result_data);
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {

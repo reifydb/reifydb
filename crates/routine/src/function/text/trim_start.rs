@@ -36,8 +36,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextTrimStart {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		match data {
@@ -61,14 +60,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextTrimStart {
 					container: LargeStringArray::from(result_data),
 					max_bytes: *max_bytes,
 				};
-				let final_data = match bitvec {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(result_col_data),
-						bitvec: bv.clone(),
-					},
-					None => result_col_data,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),

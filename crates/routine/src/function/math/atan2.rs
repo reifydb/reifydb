@@ -72,11 +72,8 @@ impl<'a> Routine<FunctionContext<'a>> for Atan2 {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let y_col = &args[0];
-		let x_col = &args[1];
-
-		let (y_data, y_bitvec) = y_col.unwrap_option();
-		let (x_data, x_bitvec) = x_col.unwrap_option();
+		let y_data = &args[0];
+		let x_data = &args[1];
 		let row_count = y_data.len();
 
 		if !y_data.get_type().is_number() {
@@ -115,23 +112,7 @@ impl<'a> Routine<FunctionContext<'a>> for Atan2 {
 
 		let result_data = ColumnBuffer::float8_with_bitvec(result, res_bitvec);
 
-		let combined_bitvec = match (y_bitvec, x_bitvec) {
-			(Some(y_bv), Some(x_bv)) => Some(y_bv & x_bv),
-			(Some(y_bv), None) => Some(y_bv.clone()),
-			(None, Some(x_bv)) => Some(x_bv.clone()),
-			(None, None) => None,
-		};
-
-		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv,
-			}
-		} else {
-			result_data
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }
 

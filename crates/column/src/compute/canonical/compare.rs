@@ -13,15 +13,18 @@ use crate::compute::CompareOp;
 
 pub fn compare(array: &Canonical, rhs: &Value, op: CompareOp) -> Result<Canonical> {
 	let len = array.len();
+	let (values, nulls) = array.buffer.clone().split_nulls();
 	let mut out = Vec::with_capacity(len);
 	for i in 0..len {
-		let lhs = array.buffer.get_value(i);
+		let lhs = values.get_value(i);
 		let ord = cmp_values(&lhs, rhs);
 		out.push(apply_cmp_order(op, ord));
 	}
-	let new_buffer = ColumnBuffer::bool(out);
-	let new_nones = array.nones.clone();
-	Ok(Canonical::new(ValueType::Boolean, array.nullable, new_nones, new_buffer))
+	let new_buffer = match nulls {
+		Some(nulls) => ColumnBuffer::bool(out).with_nulls(nulls),
+		None => ColumnBuffer::bool(out),
+	};
+	Ok(Canonical::new(ValueType::Boolean, array.nullable, new_buffer))
 }
 
 fn cmp_values(lhs: &Value, rhs: &Value) -> Ordering {

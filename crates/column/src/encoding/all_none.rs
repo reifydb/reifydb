@@ -116,7 +116,7 @@ impl Encoding for AllNoneEncoding {
 		if input.is_empty() {
 			return Ok(None);
 		}
-		match &input.nones {
+		match input.buffer.nulls() {
 			Some(nones) if nones.null_count() == input.len() => {
 				Ok(Some(Column::from_data(Arc::new(AllNoneData::new(input.ty.clone(), input.len())))))
 			}

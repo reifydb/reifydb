@@ -12,7 +12,7 @@ use arrow_array::{
 		UInt32Type, UInt64Type,
 	},
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer};
 use reifydb_value::{
 	Result,
 	value::{
@@ -175,7 +175,13 @@ impl ColumnBuilder {
 				accuracy,
 			},
 			ValueType::Option(inner) => ColumnBuilder::Option {
-				inner: Box::new(ColumnBuilder::with_capacity(*inner, capacity)),
+				inner: match ColumnBuilder::with_capacity(*inner, capacity) {
+					ColumnBuilder::Option {
+						inner,
+						..
+					} => inner,
+					builder => Box::new(builder),
+				},
 				bitvec: BooleanBufferBuilder::new(capacity),
 			},
 		}
@@ -281,6 +287,9 @@ impl ColumnBuilder {
 	}
 
 	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
+		if other.nulls().is_some() {
+			return self.extend_finished(other);
+		}
 		match (&mut *self, other) {
 			(ColumnBuilder::Bool(l), ColumnBuffer::Bool(r)) => l.append_buffer(r.values()),
 			(ColumnBuilder::Int1(l), ColumnBuffer::Int1(r)) => l.append_slice(r.values()),
@@ -386,15 +395,16 @@ impl ColumnBuilder {
 					accuracy: r_accuracy,
 				},
 			) if *l_inner == r_inner && *l_accuracy == r_accuracy => append_varlen(builder, &container)?,
-			(_, other) => {
-				let mut buffer =
-					mem::replace(self, ColumnBuilder::Bool(BooleanBufferBuilder::new(0))).finish();
-				let extended = buffer.extend(other);
-				*self = buffer.into_builder();
-				extended?;
-			}
+			(_, other) => self.extend_finished(other)?,
 		}
 		Ok(())
+	}
+
+	fn extend_finished(&mut self, other: ColumnBuffer) -> Result<()> {
+		let mut buffer = mem::replace(self, ColumnBuilder::Bool(BooleanBufferBuilder::new(0))).finish();
+		let extended = buffer.extend(other);
+		*self = buffer.into_builder();
+		extended
 	}
 
 	pub fn len(&self) -> usize {
@@ -606,16 +616,23 @@ impl ColumnBuilder {
 			ColumnBuilder::Option {
 				inner,
 				mut bitvec,
-			} => ColumnBuffer::Option {
-				inner: Box::new(inner.finish()),
-				bitvec: bitvec.finish(),
-			},
+			} => inner.finish().with_nulls(NullBuffer::new(bitvec.finish())),
 		}
 	}
 }
 
 impl ColumnBuffer {
 	pub fn into_builder(self) -> ColumnBuilder {
+		match self.split_nulls() {
+			(bare, Some(nulls)) => ColumnBuilder::Option {
+				inner: Box::new(bare.into_bare_builder()),
+				bitvec: boolean_builder(nulls.into_inner()),
+			},
+			(bare, None) => bare.into_bare_builder(),
+		}
+	}
+
+	fn into_bare_builder(self) -> ColumnBuilder {
 		match self {
 			ColumnBuffer::Bool(a) => ColumnBuilder::Bool(boolean_builder(a.into_parts().0)),
 			ColumnBuffer::Int1(a) => ColumnBuilder::Int1(primitive_builder(a)),
@@ -697,13 +714,6 @@ impl ColumnBuffer {
 				inner,
 				accuracy,
 			},
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => ColumnBuilder::Option {
-				inner: Box::new(inner.into_builder()),
-				bitvec: boolean_builder(bitvec),
-			},
 		}
 	}
 }
@@ -712,6 +722,7 @@ pub(crate) fn primitive_builder<A>(array: PrimitiveArray<A>) -> PrimitiveBuilder
 where
 	A: ArrowPrimitiveType,
 {
+	assert_bare(array.nulls());
 	let data_type = array.data_type().clone();
 	let builder = match array.into_builder() {
 		Ok(builder) => builder,
@@ -740,6 +751,7 @@ pub(crate) fn boolean_builder(bits: BooleanBuffer) -> BooleanBufferBuilder {
 }
 
 pub(crate) fn fixed_builder(array: FixedSizeBinaryArray) -> MutableBuffer {
+	assert_bare(array.nulls());
 	let bytes = array.len() * array.value_length() as usize;
 	let (_, values, _) = array.into_parts();
 	match values.into_mutable() {
@@ -756,6 +768,7 @@ pub(crate) fn varlen_builder<T>(array: GenericByteArray<T>) -> GenericByteBuilde
 where
 	T: ByteArrayType<Offset = i64>,
 {
+	assert_bare(array.nulls());
 	let array = if array.value_offsets()[0] == 0 {
 		match array.into_builder() {
 			Ok(builder) => return builder,
@@ -769,6 +782,14 @@ where
 	append_varlen(&mut builder, &array)
 		.expect("copying a shared or offset utf8 / blob array into a new builder failed");
 	builder
+}
+
+fn assert_bare(nulls: Option<&NullBuffer>) {
+	assert!(
+		nulls.is_none(),
+		"a column builder takes an array without validity, found validity of {} rows",
+		nulls.map_or(0, |nulls| nulls.len())
+	);
 }
 
 pub(crate) fn append_varlen<T>(builder: &mut GenericByteBuilder<T>, array: &GenericByteArray<T>) -> Result<()>

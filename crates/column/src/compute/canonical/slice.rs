@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBufferBuilder, NullBuffer};
 use reifydb_core::value::column::data::canonical::Canonical;
 use reifydb_value::Result;
 
@@ -9,22 +8,9 @@ pub fn slice(array: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);
 	assert!(end <= array.len());
 
-	let new_nones = array.nones.as_ref().map(|n| slice_nones(n, start, end));
 	let new_buffer = array.buffer.slice(start, end);
 
-	Ok(Canonical::new(array.ty.clone(), array.nullable, new_nones, new_buffer))
-}
-
-fn slice_nones(nones: &NullBuffer, start: usize, end: usize) -> NullBuffer {
-	let count = end - start;
-	let mut out = BooleanBufferBuilder::new(count);
-	out.append_n(count, true);
-	for i in 0..count {
-		if nones.is_null(start + i) {
-			out.set_bit(i, false);
-		}
-	}
-	NullBuffer::new(out.finish())
+	Ok(Canonical::new(array.ty.clone(), array.nullable, new_buffer))
 }
 
 #[cfg(test)]
@@ -81,7 +67,7 @@ mod tests {
 		let out = slice(&ca, 1, 4).unwrap();
 		assert_eq!(out.len(), 3);
 		assert!(out.nullable);
-		let nones = out.nones.as_ref().unwrap();
+		let nones = out.buffer.nulls().unwrap();
 		assert!(!nones.is_null(0));
 		assert!(nones.is_null(1));
 		assert!(!nones.is_null(2));

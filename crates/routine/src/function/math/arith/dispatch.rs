@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
@@ -100,13 +100,13 @@ pub fn dispatch_two<Op: ArithOp>(
 }
 
 pub fn dispatch_fallback<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	let (d_data, _) = args[2].unwrap_option();
-	ensure_numeric(ctx, d_data, 2)?;
+	let (d_data, _) = args[2].clone().split_nulls();
+	ensure_numeric(ctx, &d_data, 2)?;
 	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Fallback, CoerceMode::Error, Some(&args[2]), None)
 }
 
 pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	let (msg_data, _) = args[2].unwrap_option();
+	let (msg_data, _) = args[2].clone().split_nulls();
 	if msg_data.get_type() != ValueType::Utf8 {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
@@ -115,7 +115,7 @@ pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -
 			actual: msg_data.get_type(),
 		});
 	}
-	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Strict, CoerceMode::Error, None, Some(msg_data))
+	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Strict, CoerceMode::Error, None, Some(&msg_data))
 }
 
 fn execute_arith<Op: ArithOp>(
@@ -127,10 +127,10 @@ fn execute_arith<Op: ArithOp>(
 	fallback_col: Option<&ColumnBuffer>,
 	strict_msg: Option<&ColumnBuffer>,
 ) -> Result<Columns, RoutineError> {
-	let (a_data, _) = a_col.unwrap_option();
-	let (b_data, _) = b_col.unwrap_option();
-	ensure_numeric(ctx, a_data, 0)?;
-	ensure_numeric(ctx, b_data, 1)?;
+	let (a_data, _) = a_col.clone().split_nulls();
+	let (b_data, _) = b_col.clone().split_nulls();
+	ensure_numeric(ctx, &a_data, 0)?;
+	ensure_numeric(ctx, &b_data, 1)?;
 
 	let promoted = promote_pair(a_data.get_type(), b_data.get_type());
 	if promoted == ValueType::Any {
@@ -149,9 +149,9 @@ fn execute_arith<Op: ArithOp>(
 	let b_cast = coerce_column(ctx, b_col, promoted.clone(), coerce_mode)?;
 	let d_cast = fallback_col.map(|d| coerce_column(ctx, d, promoted.clone(), CoerceMode::Error)).transpose()?;
 
-	let (a_inner, a_bv) = a_cast.unwrap_option();
-	let (b_inner, b_bv) = b_cast.unwrap_option();
-	let d_parts = d_cast.as_ref().map(|d| d.unwrap_option());
+	let (a_inner, a_bv) = (&a_cast, a_cast.nulls().map(NullBuffer::inner));
+	let (b_inner, b_bv) = (&b_cast, b_cast.nulls().map(NullBuffer::inner));
+	let d_parts = d_cast.as_ref().map(|d| (d, d.nulls().map(NullBuffer::inner)));
 
 	macro_rules! run {
 		($container_variant:ident) => {{

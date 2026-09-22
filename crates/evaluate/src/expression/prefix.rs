@@ -363,8 +363,5 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Option {
-			..
-		} => unreachable!("nested Option after unwrap"),
 	})
 }

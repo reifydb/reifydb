@@ -76,19 +76,8 @@ impl FilterNode {
 	fn build_mask(result: &ColumnBuffer, row_count: usize) -> BooleanBuffer {
 		match result {
 			ColumnBuffer::Bool(container) => {
-				BooleanBuffer::collect_bool(row_count, |i| i < container.len() && container.value(i))
+				BooleanBuffer::collect_bool(row_count, |i| result.is_defined(i) && container.value(i))
 			}
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => match inner.as_ref() {
-				ColumnBuffer::Bool(container) => BooleanBuffer::collect_bool(row_count, |i| {
-					let defined = i < bitvec.len() && bitvec.value(i);
-					let valid = defined && i < container.len();
-					valid && container.value(i)
-				}),
-				_ => panic!("filter expression must evaluate to a boolean column"),
-			},
 			_ => panic!("filter expression must evaluate to a boolean column"),
 		}
 	}

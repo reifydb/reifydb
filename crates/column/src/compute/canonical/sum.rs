@@ -10,7 +10,7 @@ use reifydb_value::{
 use crate::error::ColumnError;
 
 pub fn sum(array: &Canonical) -> Result<Value> {
-	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_null(row)).unwrap_or(false) };
+	let skip = |row: usize| -> bool { array.buffer.nulls().map(|n| n.is_null(row)).unwrap_or(false) };
 
 	macro_rules! sum_int_slice {
 		($slice:expr, $acc_ty:ty, $variant:ident) => {{

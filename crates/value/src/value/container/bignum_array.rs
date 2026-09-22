@@ -9,7 +9,10 @@ use serde::{
 	ser::{SerializeSeq, SerializeStruct},
 };
 
-use crate::value::{Value, container::varlen_array, decimal::Decimal, int::Int, uint::Uint};
+use crate::{
+	util::bitmap,
+	value::{Value, container::varlen_array, decimal::Decimal, int::Int, uint::Uint},
+};
 
 trait Row: Default + Display + Serialize {
 	fn encode(&self, out: &mut Vec<u8>);
@@ -110,7 +113,7 @@ fn reorder<T: Row>(array: &LargeBinaryArray, indices: &[usize]) -> LargeBinaryAr
 			None => builder.append_value(&default_row),
 		}
 	}
-	builder.finish()
+	varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices))
 }
 
 struct Rows<'a, T> {

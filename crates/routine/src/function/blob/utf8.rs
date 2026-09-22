@@ -39,8 +39,7 @@ impl<'a> Routine<FunctionContext<'a>> for BlobUtf8 {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		match data {
@@ -64,14 +63,7 @@ impl<'a> Routine<FunctionContext<'a>> for BlobUtf8 {
 				}
 
 				let result_col_data = ColumnBuffer::blob_with_bitvec(result_data, result_bitvec);
-				let final_data = match bitvec {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(result_col_data),
-						bitvec: bv.clone(),
-					},
-					None => result_col_data,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),

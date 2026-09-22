@@ -74,11 +74,8 @@ impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let dur_col = &args[0];
-		let fmt_col = &args[1];
-
-		let (dur_data, dur_bv) = dur_col.unwrap_option();
-		let (fmt_data, _) = fmt_col.unwrap_option();
+		let dur_data = &args[0];
+		let fmt_data = &args[1];
 
 		match (dur_data, fmt_data) {
 			(
@@ -119,13 +116,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
 					}
 				}
 
-				let mut final_data = ColumnBuffer::utf8(result_data);
-				if let Some(bv) = dur_bv {
-					final_data = ColumnBuffer::Option {
-						inner: Box::new(final_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let final_data = ColumnBuffer::utf8(result_data);
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(ColumnBuffer::Duration(_), other) => Err(RoutineError::FunctionInvalidArgumentType {

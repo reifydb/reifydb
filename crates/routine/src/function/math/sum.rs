@@ -209,13 +209,13 @@ impl Accumulator for SumAccumulator {
 
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.unwrap_option();
+		let (data, _) = column.clone().split_nulls();
 
 		if self.input_type.is_none() {
 			self.input_type = Some(data.get_type());
 		}
 
-		match data {
+		match &data {
 			ColumnBuffer::Int1(container) => {
 				sum_arm!(self, column, groups, container.values(), i8, Int1);
 				Ok(())
@@ -374,13 +374,13 @@ impl Accumulator for SumAccumulator {
 
 	fn retract(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.unwrap_option();
+		let (data, _) = column.clone().split_nulls();
 
 		if self.input_type.is_none() {
 			self.input_type = Some(data.get_type());
 		}
 
-		match data {
+		match &data {
 			ColumnBuffer::Int1(container) => {
 				sub_arm!(self, column, groups, container.values(), i8, Int1);
 				Ok(())

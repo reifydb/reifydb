@@ -43,10 +43,6 @@ macro_rules! impl_as_slice {
 			fn as_slice(&self) -> &[$t] {
 				match self {
 					ColumnBuffer::$variant(array) => array.values(),
-					ColumnBuffer::Option {
-						inner,
-						..
-					} => inner.as_slice(),
 					other => {
 						panic!(
 							"called `as_slice::<{}>()` on ColumnBuffer::{:?}",
@@ -63,10 +59,6 @@ macro_rules! impl_as_slice {
 			fn as_slice(&self) -> &[$t] {
 				match self {
 					ColumnBuffer::$variant(array) => $typed(array),
-					ColumnBuffer::Option {
-						inner,
-						..
-					} => inner.as_slice(),
 					other => {
 						panic!(
 							"called `as_slice::<{}>()` on ColumnBuffer::{:?}",

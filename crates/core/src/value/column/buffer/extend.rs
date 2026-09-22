@@ -8,7 +8,7 @@ use arrow_array::{
 	builder::{GenericByteBuilder, PrimitiveBuilder},
 	types::ByteArrayType,
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, ScalarBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::{
 	Result,
 	value::{
@@ -27,7 +27,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	return_internal_error,
+	internal_err, return_internal_error,
 	value::column::{
 		ColumnBuffer,
 		buffer::with_container,
@@ -129,6 +129,12 @@ fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 	}
 }
 
+fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
+	let (mut retyped, _) = ColumnBuffer::none_typed(right.get_type(), len).split_nulls();
+	retyped.extend_bare(right)?;
+	Ok(retyped)
+}
+
 fn append_empty<T>(builder: &mut GenericByteBuilder<T>, count: usize)
 where
 	T: ByteArrayType<Offset = i64>,
@@ -141,6 +147,44 @@ where
 
 impl ColumnBuffer {
 	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
+		if self.nulls().is_none() && other.nulls().is_none() {
+			return self.extend_bare(other);
+		}
+		let (mut left, l_nulls) = mem::replace(self, ColumnBuffer::bool(vec![])).split_nulls();
+		let (right, r_nulls) = other.split_nulls();
+		let (l_len, r_len) = (left.len(), right.len());
+		let l_all_none = l_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
+		let r_all_none = r_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
+		let same_type = left.get_type() == right.get_type();
+		let merged = match (l_nulls.is_some(), r_nulls.is_some()) {
+			(true, true) if !same_type && r_all_none => {
+				push_defaults(&mut left, r_len);
+				Ok(())
+			}
+			(true, _) if !same_type && l_all_none => retyped(right, l_len).map(|column| left = column),
+			(true, true) if !same_type => internal_err!("column type mismatch in Option extend"),
+			(false, true) if !same_type && r_all_none => {
+				push_defaults(&mut left, r_len);
+				Ok(())
+			}
+			_ => left.extend_bare(right),
+		};
+		if let Err(error) = merged {
+			*self = left.replace_nulls(l_nulls);
+			return Err(error);
+		}
+		let mut bits = BooleanBufferBuilder::new(l_len + r_len);
+		for (nulls, len) in [(l_nulls, l_len), (r_nulls, r_len)] {
+			match nulls {
+				Some(nulls) => bits.append_buffer(nulls.inner()),
+				None => bits.append_n(len, true),
+			}
+		}
+		*self = left.replace_nulls(Some(NullBuffer::new(bits.finish())));
+		Ok(())
+	}
+
+	fn extend_bare(&mut self, other: ColumnBuffer) -> Result<()> {
 		match (&mut *self, other) {
 			(ColumnBuffer::Bool(l), ColumnBuffer::Bool(r)) => {
 				extend_bool(l, |b| b.append_buffer(r.values()))
@@ -284,83 +328,6 @@ impl ColumnBuffer {
 					accuracy: r_accuracy,
 				},
 			) if *l_inner == r_inner && *l_accuracy == r_accuracy => extend_varlen(l, |b| append_varlen(b, &r))?,
-
-			(
-				ColumnBuffer::Option {
-					inner: l_inner,
-					bitvec: l_bitvec,
-				},
-				ColumnBuffer::Option {
-					inner: r_inner,
-					bitvec: r_bitvec,
-				},
-			) => {
-				if l_inner.get_type() == r_inner.get_type() {
-					l_inner.extend(*r_inner)?;
-				} else if !r_bitvec.has_true() {
-					let r_len = r_inner.len();
-					push_defaults(l_inner.as_mut(), r_len);
-				} else if !l_bitvec.has_true() {
-					let l_len = l_inner.len();
-					let r_type = r_inner.get_type();
-					let (mut new_inner, _) =
-						ColumnBuffer::none_typed(r_type, l_len).into_unwrap_option();
-					new_inner.extend(*r_inner)?;
-					**l_inner = new_inner;
-				} else {
-					return_internal_error!("column type mismatch in Option extend");
-				}
-				extend_bits(l_bitvec, |b| b.append_buffer(&r_bitvec));
-			}
-
-			(
-				ColumnBuffer::Option {
-					inner,
-					bitvec,
-				},
-				other,
-			) => {
-				let other_len = other.len();
-				if inner.get_type() != other.get_type() && !bitvec.has_true() {
-					let l_len = inner.len();
-					let r_type = other.get_type();
-					let (mut new_inner, _) =
-						ColumnBuffer::none_typed(r_type, l_len).into_unwrap_option();
-					new_inner.extend(other)?;
-					**inner = new_inner;
-				} else {
-					inner.extend(other)?;
-				}
-				extend_bits(bitvec, |b| b.append_n(other_len, true));
-			}
-
-			(
-				_,
-				ColumnBuffer::Option {
-					inner: r_inner,
-					bitvec: r_bitvec,
-				},
-			) => {
-				let l_len = self.len();
-				let r_len = r_inner.len();
-				let mut l_bits = BooleanBufferBuilder::new(l_len + r_bitvec.len());
-				l_bits.append_n(l_len, true);
-				l_bits.append_buffer(&r_bitvec);
-				let l_bitvec = l_bits.finish();
-				let inner = mem::replace(self, ColumnBuffer::bool(vec![]));
-				let mut boxed_inner = Box::new(inner);
-
-				if boxed_inner.get_type() != r_inner.get_type() && !r_bitvec.has_true() {
-					push_defaults(boxed_inner.as_mut(), r_len);
-				} else {
-					boxed_inner.extend(*r_inner)?;
-				}
-
-				*self = ColumnBuffer::Option {
-					inner: boxed_inner,
-					bitvec: l_bitvec,
-				};
-			}
 
 			(_, _) => {
 				return_internal_error!("column type mismatch");

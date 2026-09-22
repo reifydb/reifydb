@@ -4,16 +4,19 @@
 use std::{mem::ManuallyDrop, ops::Deref, result::Result as StdResult, slice};
 
 use arrow_array::{Array, FixedSizeBinaryArray};
-use arrow_buffer::{BooleanBuffer, Buffer, MutableBuffer};
+use arrow_buffer::{BooleanBuffer, Buffer, MutableBuffer, NullBuffer};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::value::{
-	Value,
-	identity::IdentityId,
-	is::IsUuid,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use crate::{
+	util::bitmap,
+	value::{
+		Value,
+		identity::IdentityId,
+		is::IsUuid,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 pub const UUID_WIDTH: usize = 16;
@@ -116,7 +119,7 @@ pub fn filter(array: &FixedSizeBinaryArray, mask: &BooleanBuffer) -> FixedSizeBi
 			kept.extend_from_slice(&bytes[i * UUID_WIDTH..(i + 1) * UUID_WIDTH]);
 		}
 	}
-	from_buffer(kept)
+	attach_nulls(from_buffer(kept), bitmap::filter_nulls(array.nulls(), mask))
 }
 
 pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBinaryArray {
@@ -129,7 +132,13 @@ pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBina
 			reordered.extend_zeros(UUID_WIDTH);
 		}
 	}
-	from_buffer(reordered)
+	attach_nulls(from_buffer(reordered), bitmap::reorder_nulls(array.nulls(), indices))
+}
+
+pub fn attach_nulls(array: FixedSizeBinaryArray, nulls: Option<NullBuffer>) -> FixedSizeBinaryArray {
+	bitmap::assert_nulls_len(nulls.as_ref(), array.len());
+	let (width, values, _) = array.into_parts();
+	FixedSizeBinaryArray::new(width, values, nulls)
 }
 
 pub fn capacity(array: &FixedSizeBinaryArray) -> usize {

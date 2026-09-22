@@ -7,7 +7,10 @@ use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_buffer::{BooleanBuffer, MutableBuffer};
 use serde::{Deserialize, Deserializer, Serializer};
 
-use crate::value::{Value, dictionary::DictionaryEntryId, value_type::ValueType};
+use crate::{
+	util::bitmap,
+	value::{Value, container::uuid_array::attach_nulls, dictionary::DictionaryEntryId, value_type::ValueType},
+};
 
 pub const DICTIONARY_ENTRY_WIDTH: usize = 17;
 
@@ -109,7 +112,7 @@ pub fn filter(array: &FixedSizeBinaryArray, mask: &BooleanBuffer) -> FixedSizeBi
 			kept.extend_from_slice(row);
 		}
 	}
-	from_buffer(kept)
+	attach_nulls(from_buffer(kept), bitmap::filter_nulls(array.nulls(), mask))
 }
 
 pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBinaryArray {
@@ -121,7 +124,7 @@ pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBina
 			None => reordered.extend_zeros(DICTIONARY_ENTRY_WIDTH),
 		}
 	}
-	from_buffer(reordered)
+	attach_nulls(from_buffer(reordered), bitmap::reorder_nulls(array.nulls(), indices))
 }
 
 pub fn capacity(array: &FixedSizeBinaryArray) -> usize {

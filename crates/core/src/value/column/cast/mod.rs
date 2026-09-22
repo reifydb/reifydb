@@ -11,7 +11,7 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::NullBuffer;
 use reifydb_value::{
 	Result,
 	error::TypeError,
@@ -48,11 +48,9 @@ pub fn cast_column_data(
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
-	if let ColumnBuffer::Option {
-		inner,
-		bitvec,
-	} = data
-	{
+	if let Some(nulls) = data.nulls() {
+		let (inner, _) = data.clone().split_nulls();
+		let bitvec = nulls.inner();
 		let inner_target = match &target {
 			ValueType::Option(t) => t.as_ref().clone(),
 			other => other.clone(),
@@ -65,7 +63,7 @@ pub fn cast_column_data(
 		}
 
 		if defined_count < total_len {
-			let mut compacted = inner.as_ref().clone();
+			let mut compacted = inner;
 			compacted.filter(bitvec)?;
 
 			let mut cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
@@ -83,41 +81,26 @@ pub fn cast_column_data(
 			}
 			cast_compacted.reorder(&expand_indices);
 
-			return Ok(match cast_compacted {
-				already @ ColumnBuffer::Option {
-					..
-				} => already,
-				other => ColumnBuffer::Option {
-					inner: Box::new(other),
-					bitvec: bitvec.clone(),
-				},
+			return Ok(match cast_compacted.nulls() {
+				Some(_) => cast_compacted,
+				None => cast_compacted.with_nulls(nulls.clone()),
 			});
 		}
 
-		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
-		return Ok(match cast_inner {
-			already @ ColumnBuffer::Option {
-				..
-			} => already,
-			other => ColumnBuffer::Option {
-				inner: Box::new(other),
-				bitvec: bitvec.clone(),
-			},
+		let cast_inner = cast_column_data(ctx, &inner, inner_target, lazy_fragment)?;
+		return Ok(match cast_inner.nulls() {
+			Some(_) => cast_inner,
+			None => cast_inner.with_nulls(nulls.clone()),
 		});
 	}
 
 	if let ValueType::Option(inner_target) = &target {
 		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
-		return Ok(match cast_inner {
-			already @ ColumnBuffer::Option {
-				..
-			} => already,
-			other => {
-				let bitvec = BooleanBuffer::new_set(other.len());
-				ColumnBuffer::Option {
-					inner: Box::new(other),
-					bitvec,
-				}
+		return Ok(match cast_inner.nulls() {
+			Some(_) => cast_inner,
+			None => {
+				let len = cast_inner.len();
+				cast_inner.with_nulls(NullBuffer::new_valid(len))
 			}
 		});
 	}

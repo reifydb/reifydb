@@ -134,6 +134,8 @@ mod map_ends_in_a_comment;
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
 mod missing_column_lookup;
+#[path = "nested_option_param_none.rs"]
+mod nested_option_param_none;
 #[path = "nested_option_types.rs"]
 mod nested_option_types;
 #[path = "nested_read_policy_bypass.rs"]

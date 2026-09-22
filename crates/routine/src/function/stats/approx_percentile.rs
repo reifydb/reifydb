@@ -43,8 +43,9 @@ fn output_type(input: &ValueType) -> ValueType {
 }
 
 fn is_untyped_none(column: &ColumnBuffer) -> bool {
-	let (data, bitvec) = column.unwrap_option();
-	matches!(data.get_type(), ValueType::Any | ValueType::Boolean) && bitvec.is_some_and(|bits| !bits.has_true())
+	let (data, nulls) = column.clone().split_nulls();
+	matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
+		&& nulls.is_some_and(|nulls| !nulls.inner().has_true())
 }
 
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
@@ -97,11 +98,11 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let digest_column = &args[0];
 		let percentile_column = &args[1];
-		let (digest_data, _) = digest_column.unwrap_option();
-		let (percentile_data, _) = percentile_column.unwrap_option();
+		let (digest_data, _) = digest_column.clone().split_nulls();
+		let (percentile_data, _) = percentile_column.clone().split_nulls();
 
 		let row_count = digest_column.len();
-		let container = match digest_data {
+		let container = match &digest_data {
 			ColumnBuffer::Digest {
 				container,
 				..
@@ -153,7 +154,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 				result.push_none();
 				continue;
 			}
-			let p = percentile_at(ctx, percentile_data, row)?;
+			let p = percentile_at(ctx, &percentile_data, row)?;
 			let digest = digest_array::get(container, row)
 				.unwrap_or_else(|| panic!("defined digest row {row} holds no digest"));
 			let value = digest.percentile_value(p).map_err(|error| failed(ctx, error.to_string()))?;

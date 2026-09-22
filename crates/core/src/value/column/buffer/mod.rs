@@ -20,7 +20,7 @@ use arrow_array::{
 	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 	builder::LargeBinaryBuilder,
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_value::{
 	util::bitmap,
 	value::{
@@ -52,7 +52,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError};
 
 use crate::metrics::heap::HeapSize;
 
@@ -107,11 +107,6 @@ pub enum ColumnBuffer {
 	DictionaryId {
 		container: FixedSizeBinaryArray,
 		dictionary_id: Option<DictionaryId>,
-	},
-
-	Option {
-		inner: Box<ColumnBuffer>,
-		bitvec: BooleanBuffer,
 	},
 
 	Digest {
@@ -195,13 +190,6 @@ impl Clone for ColumnBuffer {
 				container: container.clone(),
 				dictionary_id: *dictionary_id,
 			},
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => ColumnBuffer::Option {
-				inner: inner.clone(),
-				bitvec: bitvec.clone(),
-			},
 			ColumnBuffer::Digest {
 				container,
 				inner,
@@ -217,6 +205,9 @@ impl Clone for ColumnBuffer {
 
 impl PartialEq for ColumnBuffer {
 	fn eq(&self, other: &Self) -> bool {
+		if self.nulls() != other.nulls() {
+			return false;
+		}
 		match (self, other) {
 			(ColumnBuffer::Bool(a), ColumnBuffer::Bool(b)) => a.values() == b.values(),
 			(ColumnBuffer::Float4(a), ColumnBuffer::Float4(b)) => a.values() == b.values(),
@@ -313,16 +304,6 @@ impl PartialEq for ColumnBuffer {
 				},
 			) => dictionary_array::iter(a).eq(dictionary_array::iter(b)) && ad == bd,
 			(
-				ColumnBuffer::Option {
-					inner: ai,
-					bitvec: ab,
-				},
-				ColumnBuffer::Option {
-					inner: bi,
-					bitvec: bb,
-				},
-			) => ai == bi && ab == bb,
-			(
 				ColumnBuffer::Digest {
 					container: a,
 					inner: ai,
@@ -341,6 +322,10 @@ impl PartialEq for ColumnBuffer {
 
 impl fmt::Debug for ColumnBuffer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if let Some(nulls) = self.nulls() {
+			let (inner, _) = self.clone().split_nulls();
+			return f.debug_struct("Option").field("inner", &inner).field("bitvec", nulls.inner()).finish();
+		}
 		match self {
 			ColumnBuffer::Bool(c) => f.debug_tuple("Bool").field(c).finish(),
 			ColumnBuffer::Float4(c) => f.debug_tuple("Float4").field(c).finish(),
@@ -401,10 +386,6 @@ impl fmt::Debug for ColumnBuffer {
 				.field("container", container)
 				.field("dictionary_id", dictionary_id)
 				.finish(),
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => f.debug_struct("Option").field("inner", inner).field("bitvec", bitvec).finish(),
 			ColumnBuffer::Digest {
 				container,
 				inner,
@@ -475,7 +456,7 @@ impl Serialize for ColumnBuffer {
 				dictionary_id: Option<DictionaryId>,
 			},
 			Option {
-				inner: &'a ColumnBuffer,
+				inner: Bare<'a>,
 				#[serde(serialize_with = "bitmap::serialize")]
 				bitvec: &'a BooleanBuffer,
 			},
@@ -492,96 +473,102 @@ impl Serialize for ColumnBuffer {
 			data: &'a LargeBinaryArray,
 			declared_type: &'a Option<ValueType>,
 		}
-		let helper = match self {
-			ColumnBuffer::Bool(c) => Helper::Bool(c),
-			ColumnBuffer::Float4(c) => Helper::Float4(c),
-			ColumnBuffer::Float8(c) => Helper::Float8(c),
-			ColumnBuffer::Int1(c) => Helper::Int1(c),
-			ColumnBuffer::Int2(c) => Helper::Int2(c),
-			ColumnBuffer::Int4(c) => Helper::Int4(c),
-			ColumnBuffer::Int8(c) => Helper::Int8(c),
-			ColumnBuffer::Int16(c) => Helper::Int16(c),
-			ColumnBuffer::Uint1(c) => Helper::Uint1(c),
-			ColumnBuffer::Uint2(c) => Helper::Uint2(c),
-			ColumnBuffer::Uint4(c) => Helper::Uint4(c),
-			ColumnBuffer::Uint8(c) => Helper::Uint8(c),
-			ColumnBuffer::Uint16(c) => Helper::Uint16(c),
-			ColumnBuffer::Utf8 {
-				container,
-				max_bytes,
-			} => Helper::Utf8 {
-				container,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Date(c) => Helper::Date(c),
-			ColumnBuffer::DateTime(c) => Helper::DateTime(c),
-			ColumnBuffer::Time(c) => Helper::Time(c),
-			ColumnBuffer::Duration(c) => Helper::Duration(c),
-			ColumnBuffer::IdentityId(c) => Helper::IdentityId(c),
-			ColumnBuffer::Uuid4(c) => Helper::Uuid4(c),
-			ColumnBuffer::Uuid7(c) => Helper::Uuid7(c),
-			ColumnBuffer::Blob {
-				container,
-				max_bytes,
-			} => Helper::Blob {
-				container,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => Helper::Int {
-				container,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => Helper::Uint {
-				container,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => Helper::Decimal {
-				container,
-				precision: *precision,
-				scale: *scale,
-			},
-			ColumnBuffer::Any {
-				container,
-				declared_type,
-			} => Helper::Any(AnyShape {
-				data: container,
-				declared_type,
-			}),
-			ColumnBuffer::DictionaryId {
-				container,
-				dictionary_id,
-			} => Helper::DictionaryId {
-				container,
-				dictionary_id: *dictionary_id,
-			},
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => Helper::Option {
-				inner: inner.as_ref(),
-				bitvec,
-			},
-			ColumnBuffer::Digest {
-				container,
-				inner,
-				accuracy,
-			} => Helper::Digest {
-				container,
-				inner,
-				accuracy: *accuracy,
-			},
-		};
-		helper.serialize(serializer)
+		struct Bare<'a>(&'a ColumnBuffer);
+		impl Serialize for Bare<'_> {
+			fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+				let helper = match self.0 {
+					ColumnBuffer::Bool(c) => Helper::Bool(c),
+					ColumnBuffer::Float4(c) => Helper::Float4(c),
+					ColumnBuffer::Float8(c) => Helper::Float8(c),
+					ColumnBuffer::Int1(c) => Helper::Int1(c),
+					ColumnBuffer::Int2(c) => Helper::Int2(c),
+					ColumnBuffer::Int4(c) => Helper::Int4(c),
+					ColumnBuffer::Int8(c) => Helper::Int8(c),
+					ColumnBuffer::Int16(c) => Helper::Int16(c),
+					ColumnBuffer::Uint1(c) => Helper::Uint1(c),
+					ColumnBuffer::Uint2(c) => Helper::Uint2(c),
+					ColumnBuffer::Uint4(c) => Helper::Uint4(c),
+					ColumnBuffer::Uint8(c) => Helper::Uint8(c),
+					ColumnBuffer::Uint16(c) => Helper::Uint16(c),
+					ColumnBuffer::Utf8 {
+						container,
+						max_bytes,
+					} => Helper::Utf8 {
+						container,
+						max_bytes: *max_bytes,
+					},
+					ColumnBuffer::Date(c) => Helper::Date(c),
+					ColumnBuffer::DateTime(c) => Helper::DateTime(c),
+					ColumnBuffer::Time(c) => Helper::Time(c),
+					ColumnBuffer::Duration(c) => Helper::Duration(c),
+					ColumnBuffer::IdentityId(c) => Helper::IdentityId(c),
+					ColumnBuffer::Uuid4(c) => Helper::Uuid4(c),
+					ColumnBuffer::Uuid7(c) => Helper::Uuid7(c),
+					ColumnBuffer::Blob {
+						container,
+						max_bytes,
+					} => Helper::Blob {
+						container,
+						max_bytes: *max_bytes,
+					},
+					ColumnBuffer::Int {
+						container,
+						max_bytes,
+					} => Helper::Int {
+						container,
+						max_bytes: *max_bytes,
+					},
+					ColumnBuffer::Uint {
+						container,
+						max_bytes,
+					} => Helper::Uint {
+						container,
+						max_bytes: *max_bytes,
+					},
+					ColumnBuffer::Decimal {
+						container,
+						precision,
+						scale,
+					} => Helper::Decimal {
+						container,
+						precision: *precision,
+						scale: *scale,
+					},
+					ColumnBuffer::Any {
+						container,
+						declared_type,
+					} => Helper::Any(AnyShape {
+						data: container,
+						declared_type,
+					}),
+					ColumnBuffer::DictionaryId {
+						container,
+						dictionary_id,
+					} => Helper::DictionaryId {
+						container,
+						dictionary_id: *dictionary_id,
+					},
+					ColumnBuffer::Digest {
+						container,
+						inner,
+						accuracy,
+					} => Helper::Digest {
+						container,
+						inner,
+						accuracy: *accuracy,
+					},
+				};
+				helper.serialize(serializer)
+			}
+		}
+		match self.nulls() {
+			Some(nulls) => Helper::Option {
+				inner: Bare(self),
+				bitvec: nulls.inner(),
+			}
+			.serialize(serializer),
+			None => Bare(self).serialize(serializer),
+		}
 	}
 }
 
@@ -736,10 +723,16 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 			Helper::Option {
 				inner,
 				bitvec,
-			} => ColumnBuffer::Option {
-				inner,
-				bitvec,
-			},
+			} => {
+				if bitvec.len() != inner.len() {
+					return Err(DeError::custom(format!(
+						"Option column bitvec of {} bits does not match its {} rows",
+						bitvec.len(),
+						inner.len()
+					)));
+				}
+				inner.with_nulls(NullBuffer::new(bitvec))
+			}
 			Helper::Digest {
 				container,
 				inner,
@@ -832,13 +825,6 @@ macro_rules! with_container {
 					"with_container! must not be called on DictionaryId variant directly; handle it explicitly"
 				)
 			}
-			ColumnBuffer::Option {
-				..
-			} => {
-				unreachable!(
-					"with_container! must not be called on Option variant directly; handle it explicitly"
-				)
-			}
 		}
 	};
 }
@@ -846,28 +832,138 @@ macro_rules! with_container {
 pub(crate) use with_container;
 
 impl ColumnBuffer {
-	pub fn unwrap_option(&self) -> (&ColumnBuffer, Option<&BooleanBuffer>) {
+	pub fn nulls(&self) -> Option<&NullBuffer> {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => (inner.as_ref(), Some(bitvec)),
-			other => (other, None),
+			ColumnBuffer::Bool(a) => a.nulls(),
+			ColumnBuffer::Uint16(a) => a.nulls(),
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => container.nulls(),
+			_ => with_container!(self, |a| a.nulls(), |t| t.nulls(), |u| u.nulls(), |v| v.nulls()),
 		}
 	}
 
-	pub fn into_unwrap_option(self) -> (ColumnBuffer, Option<BooleanBuffer>) {
+	pub fn split_nulls(self) -> (ColumnBuffer, Option<NullBuffer>) {
+		match self.nulls().cloned() {
+			Some(nulls) => (self.replace_nulls(None), Some(nulls)),
+			None => (self, None),
+		}
+	}
+
+	pub fn with_nulls(self, nulls: NullBuffer) -> ColumnBuffer {
+		let len = self.len();
+		assert_eq!(
+			nulls.len(),
+			len,
+			"validity of {} rows does not match a column of {len} rows",
+			nulls.len()
+		);
+		let nulls = match self.nulls() {
+			Some(existing) => bitmap::and_nulls(existing, &nulls),
+			None => nulls,
+		};
+		self.replace_nulls(Some(nulls))
+	}
+
+	pub(crate) fn replace_nulls(self, nulls: Option<NullBuffer>) -> ColumnBuffer {
 		match self {
-			ColumnBuffer::Option {
+			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Float4(a) => ColumnBuffer::Float4(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Float8(a) => ColumnBuffer::Float8(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int1(a) => ColumnBuffer::Int1(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int2(a) => ColumnBuffer::Int2(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int4(a) => ColumnBuffer::Int4(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int8(a) => ColumnBuffer::Int8(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int16(a) => ColumnBuffer::Int16(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint1(a) => ColumnBuffer::Uint1(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint2(a) => ColumnBuffer::Uint2(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint4(a) => ColumnBuffer::Uint4(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint8(a) => ColumnBuffer::Uint8(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint16(a) => ColumnBuffer::Uint16(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Utf8 {
+				container,
+				max_bytes,
+			} => ColumnBuffer::Utf8 {
+				container: varlen_array::attach_nulls(container, nulls),
+				max_bytes,
+			},
+			ColumnBuffer::Date(a) => ColumnBuffer::Date(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::DateTime(a) => ColumnBuffer::DateTime(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Time(a) => ColumnBuffer::Time(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Duration(a) => ColumnBuffer::Duration(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::IdentityId(a) => ColumnBuffer::IdentityId(uuid_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid4(a) => ColumnBuffer::Uuid4(uuid_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid7(a) => ColumnBuffer::Uuid7(uuid_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Blob {
+				container,
+				max_bytes,
+			} => ColumnBuffer::Blob {
+				container: varlen_array::attach_nulls(container, nulls),
+				max_bytes,
+			},
+			ColumnBuffer::Int {
+				container,
+				max_bytes,
+			} => ColumnBuffer::Int {
+				container: varlen_array::attach_nulls(container, nulls),
+				max_bytes,
+			},
+			ColumnBuffer::Uint {
+				container,
+				max_bytes,
+			} => ColumnBuffer::Uint {
+				container: varlen_array::attach_nulls(container, nulls),
+				max_bytes,
+			},
+			ColumnBuffer::Decimal {
+				container,
+				precision,
+				scale,
+			} => ColumnBuffer::Decimal {
+				container: varlen_array::attach_nulls(container, nulls),
+				precision,
+				scale,
+			},
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => ColumnBuffer::Any {
+				container: varlen_array::attach_nulls(container, nulls),
+				declared_type,
+			},
+			ColumnBuffer::DictionaryId {
+				container,
+				dictionary_id,
+			} => ColumnBuffer::DictionaryId {
+				container: uuid_array::attach_nulls(container, nulls),
+				dictionary_id,
+			},
+			ColumnBuffer::Digest {
+				container,
 				inner,
-				bitvec,
-			} => (*inner, Some(bitvec)),
-			other => (other, None),
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container: varlen_array::attach_nulls(container, nulls),
+				inner,
+				accuracy,
+			},
+		}
+	}
+
+	pub(crate) fn none_at(&self, index: usize) -> bool {
+		self.nulls().is_some_and(|nulls| !(index < nulls.len() && nulls.is_valid(index)))
+	}
+
+	pub(crate) fn base_type(&self) -> ValueType {
+		match self.get_type() {
+			ValueType::Option(base) if self.nulls().is_some() => *base,
+			other => other,
 		}
 	}
 
 	pub fn get_type(&self) -> ValueType {
-		match self {
+		let base = match self {
 			ColumnBuffer::Bool(_) => ValueType::Boolean,
 			ColumnBuffer::Float4(_) => ValueType::Float4,
 			ColumnBuffer::Float8(_) => ValueType::Float8,
@@ -910,10 +1006,6 @@ impl ColumnBuffer {
 				declared_type,
 				..
 			} => declared_type.clone().unwrap_or(ValueType::Any),
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => ValueType::Option(Box::new(inner.get_type())),
 			ColumnBuffer::Digest {
 				inner,
 				accuracy,
@@ -922,10 +1014,17 @@ impl ColumnBuffer {
 				inner: Box::new(inner.clone()),
 				accuracy: *accuracy,
 			},
+		};
+		match self.nulls() {
+			Some(_) => ValueType::Option(Box::new(base)),
+			None => base,
 		}
 	}
 
 	pub fn is_defined(&self, idx: usize) -> bool {
+		if self.none_at(idx) {
+			return false;
+		}
 		match self {
 			ColumnBuffer::Bool(c) => idx < c.len(),
 			ColumnBuffer::Float4(c) => idx < c.len(),
@@ -975,10 +1074,6 @@ impl ColumnBuffer {
 				container: c,
 				..
 			} => idx < c.len(),
-			ColumnBuffer::Option {
-				bitvec,
-				..
-			} => idx < bitvec.len() && bitvec.value(idx),
 			ColumnBuffer::Digest {
 				container,
 				..
@@ -1027,23 +1122,13 @@ impl ColumnBuffer {
 
 impl ColumnBuffer {
 	pub fn none_count(&self) -> usize {
-		match self {
-			ColumnBuffer::Option {
-				bitvec,
-				..
-			} => bitvec.len() - bitvec.count_set_bits(),
-			_ => 0,
-		}
+		self.nulls().map_or(0, |nulls| nulls.null_count())
 	}
 }
 
 impl ColumnBuffer {
 	pub fn len(&self) -> usize {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => inner.len(),
 			ColumnBuffer::Bool(a) => a.len(),
 			ColumnBuffer::Uint16(a) => a.len(),
 			ColumnBuffer::DictionaryId {
@@ -1060,10 +1145,6 @@ impl ColumnBuffer {
 
 	pub fn capacity(&self) -> usize {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => inner.capacity(),
 			ColumnBuffer::Bool(a) => bool_array::capacity(a),
 			ColumnBuffer::Uint16(a) => primitive::capacity(a),
 			ColumnBuffer::DictionaryId {
@@ -1081,11 +1162,8 @@ impl ColumnBuffer {
 	}
 
 	pub fn heap_size(&self) -> usize {
-		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => inner.heap_size() + bitvec.len().div_ceil(8),
+		let nulls = self.nulls().map_or(0, |nulls| nulls.len().div_ceil(8));
+		nulls + match self {
 			ColumnBuffer::Digest {
 				container,
 				..
@@ -1114,10 +1192,6 @@ impl ColumnBuffer {
 
 	pub(crate) fn freeze(&mut self) {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => inner.freeze(),
 			ColumnBuffer::Bool(_)
 			| ColumnBuffer::Uint16(_)
 			| ColumnBuffer::DictionaryId {
@@ -1128,17 +1202,10 @@ impl ColumnBuffer {
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
+		if self.none_at(index) {
+			return "none".to_string();
+		}
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				if index < bitvec.len() && bitvec.value(index) {
-					inner.as_string(index)
-				} else {
-					"none".to_string()
-				}
-			}
 			ColumnBuffer::Bool(a) => bool_array::as_string(a, index),
 			ColumnBuffer::Date(a) => temporal_array::as_string(dates(a), index),
 			ColumnBuffer::DateTime(a) => temporal_array::as_string(datetimes(a), index),
@@ -1214,10 +1281,8 @@ impl ColumnBuffer {
 			ValueType::Uint => Self::uint_with_capacity(capacity),
 			ValueType::Decimal => Self::decimal_with_capacity(capacity),
 			ValueType::DictionaryId => Self::dictionary_id_with_capacity(capacity),
-			ValueType::Option(inner) => ColumnBuffer::Option {
-				inner: Box::new(ColumnBuffer::with_capacity(*inner, capacity)),
-				bitvec: BooleanBufferBuilder::new(capacity).finish(),
-			},
+			ValueType::Option(inner) => ColumnBuffer::with_capacity(*inner, capacity)
+				.replace_nulls(Some(NullBuffer::new_valid(0))),
 			ValueType::Any | ValueType::Tuple(_) => Self::any_with_capacity(capacity),
 			declared @ (ValueType::List(_) | ValueType::Record(_)) => {
 				Self::any_with_capacity_typed(capacity, declared)
@@ -1301,18 +1366,6 @@ impl ColumnBuffer {
 					..
 				},
 			) => *dst = Some(*src),
-			(
-				ColumnBuffer::Option {
-					inner: src_inner,
-					..
-				},
-				ColumnBuffer::Option {
-					inner: dst_inner,
-					..
-				},
-			) => {
-				**dst_inner = src_inner.empty_like(capacity);
-			}
 			_ => {}
 		}
 		buffer

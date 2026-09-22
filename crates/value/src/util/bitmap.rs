@@ -3,7 +3,7 @@
 
 use std::{borrow::Cow, result::Result as StdResult};
 
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, Buffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, Buffer, NullBuffer};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 pub fn slice(bits: &BooleanBuffer, start: usize, end: usize) -> BooleanBuffer {
@@ -26,6 +26,50 @@ pub fn filter(bits: &BooleanBuffer, mask: &BooleanBuffer) -> BooleanBuffer {
 
 pub fn reorder(bits: &BooleanBuffer, indices: &[usize]) -> BooleanBuffer {
 	BooleanBuffer::collect_bool(indices.len(), |i| indices[i] < bits.len() && bits.value(indices[i]))
+}
+
+pub fn resize(bits: &BooleanBuffer, len: usize) -> BooleanBuffer {
+	if bits.len() >= len {
+		return bits.slice(0, len);
+	}
+	let mut resized = BooleanBufferBuilder::new(len);
+	resized.append_buffer(bits);
+	resized.append_n(len - bits.len(), false);
+	resized.finish()
+}
+
+pub fn assert_nulls_len(nulls: Option<&NullBuffer>, len: usize) {
+	if let Some(nulls) = nulls {
+		assert_eq!(
+			nulls.len(),
+			len,
+			"validity of {} rows does not match an array of {len} rows",
+			nulls.len()
+		);
+	}
+}
+
+pub fn and_nulls(left: &NullBuffer, right: &NullBuffer) -> NullBuffer {
+	assert_eq!(
+		left.len(),
+		right.len(),
+		"validity of {} and {} rows cannot be combined",
+		left.len(),
+		right.len()
+	);
+	NullBuffer::new(left.inner() & right.inner())
+}
+
+pub fn slice_nulls(nulls: Option<&NullBuffer>, start: usize, end: usize) -> Option<NullBuffer> {
+	nulls.map(|nulls| NullBuffer::new(slice(nulls.inner(), start, end)))
+}
+
+pub fn filter_nulls(nulls: Option<&NullBuffer>, mask: &BooleanBuffer) -> Option<NullBuffer> {
+	nulls.map(|nulls| NullBuffer::new(filter(nulls.inner(), mask)))
+}
+
+pub fn reorder_nulls(nulls: Option<&NullBuffer>, indices: &[usize]) -> Option<NullBuffer> {
+	nulls.map(|nulls| NullBuffer::new(reorder(nulls.inner(), indices)))
 }
 
 fn clear_tail(bytes: &mut [u8], len: usize) {

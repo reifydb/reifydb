@@ -74,11 +74,8 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let dur_col = &args[0];
-		let scalar_col = &args[1];
-
-		let (dur_data, dur_bv) = dur_col.unwrap_option();
-		let (scalar_data, scalar_bv) = scalar_col.unwrap_option();
+		let dur_data = &args[0];
+		let scalar_data = &args[1];
 
 		match dur_data {
 			ColumnBuffer::Duration(dur_container) => {
@@ -114,18 +111,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(duration_array(container));
-				if let Some(bv) = dur_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				} else if let Some(bv) = scalar_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let result_data = ColumnBuffer::Duration(duration_array(container));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

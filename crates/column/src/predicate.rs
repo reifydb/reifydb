@@ -133,7 +133,7 @@ fn bool_array_to_mask(array: &Column) -> Result<BooleanBuffer> {
 	let len = canon.len();
 	let mut mask = BooleanBufferBuilder::new(len);
 	mask.append_n(len, false);
-	let nones = canon.nones.as_ref();
+	let nones = canon.buffer.nulls();
 	for i in 0..len {
 		let is_true = matches!(canon.buffer.get_value(i), Value::Boolean(true));
 		if is_true && !nones.map(|n| n.is_null(i)).unwrap_or(false) {

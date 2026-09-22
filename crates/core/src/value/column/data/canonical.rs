@@ -5,7 +5,7 @@ use std::{any::Any, sync::Arc};
 
 use arrow_buffer::NullBuffer;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
 	value::{Value, value_type::ValueType},
 };
 
@@ -15,51 +15,28 @@ use crate::value::column::{buffer::ColumnBuffer, data::ColumnData, encoding::Enc
 pub struct Canonical {
 	pub ty: ValueType,
 	pub nullable: bool,
-	pub nones: Option<NullBuffer>,
 	pub buffer: ColumnBuffer,
 	stats: StatsSet,
 }
 
 impl Canonical {
-	pub fn new(ty: ValueType, nullable: bool, nones: Option<NullBuffer>, mut buffer: ColumnBuffer) -> Self {
-		reifydb_assertions! {
-			assert!(
-				!matches!(buffer, ColumnBuffer::Option { .. }),
-				"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"
-			);
-		}
+	pub fn new(ty: ValueType, nullable: bool, mut buffer: ColumnBuffer) -> Self {
 		buffer.freeze();
 		Self {
 			ty,
 			nullable,
-			nones,
 			buffer,
 			stats: StatsSet::new(),
 		}
 	}
 
-	pub fn from_buffer(b: ColumnBuffer) -> Self {
-		match b {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				let mut inner_c = Self::from_buffer(*inner);
-				inner_c.nullable = true;
-				inner_c.nones = Some(NullBuffer::new(bitvec));
-				inner_c
-			}
-			mut other => {
-				other.freeze();
-				let ty = other.get_type();
-				Self {
-					ty,
-					nullable: false,
-					nones: None,
-					buffer: other,
-					stats: StatsSet::new(),
-				}
-			}
+	pub fn from_buffer(mut buffer: ColumnBuffer) -> Self {
+		buffer.freeze();
+		Self {
+			ty: buffer.base_type(),
+			nullable: buffer.nulls().is_some(),
+			buffer,
+			stats: StatsSet::new(),
 		}
 	}
 
@@ -68,13 +45,7 @@ impl Canonical {
 	}
 
 	pub fn to_buffer(&self) -> ColumnBuffer {
-		match &self.nones {
-			None => self.buffer.clone(),
-			Some(nones) => ColumnBuffer::Option {
-				inner: Box::new(self.buffer.clone()),
-				bitvec: nones.inner().clone(),
-			},
-		}
+		self.buffer.clone()
 	}
 
 	pub fn to_column_buffer(&self) -> Result<ColumnBuffer> {
@@ -129,15 +100,11 @@ impl ColumnData for Canonical {
 	}
 
 	fn nones(&self) -> Option<&NullBuffer> {
-		self.nones.as_ref()
+		self.buffer.nulls()
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
-		if self.nones.as_ref().map(|n| n.is_null(idx)).unwrap_or(false) {
-			Value::none_of(self.ty.clone())
-		} else {
-			self.buffer.get_value(idx)
-		}
+		self.buffer.get_value(idx)
 	}
 
 	fn as_string(&self, idx: usize) -> String {

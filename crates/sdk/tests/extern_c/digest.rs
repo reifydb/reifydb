@@ -34,7 +34,7 @@ fn digest_type() -> ValueType {
 }
 
 fn digest_buffer() -> ColumnBuffer {
-	let (buffer, _) = ColumnBuffer::none_typed(digest_type(), 0).into_unwrap_option();
+	let (buffer, _) = ColumnBuffer::none_typed(digest_type(), 0).split_nulls();
 	let mut builder = buffer.into_builder();
 	builder.push_value(digest_value());
 	builder.finish()

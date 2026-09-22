@@ -37,7 +37,7 @@ impl<'a> InProcessRowView<'a> {
 		if !buffer.is_defined(self.index) {
 			return None;
 		}
-		Some(buffer.unwrap_option().0)
+		Some(buffer)
 	}
 
 	fn typed<T: FromColumnBuffer>(&self, name: &str) -> Option<T> {

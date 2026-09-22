@@ -3,7 +3,7 @@
 
 use std::fmt::Display;
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -63,14 +63,14 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		for i in 0..3 {
-			let (data, _) = args[i].unwrap_option();
-			ensure_numeric(ctx, data, i)?;
+			let (data, _) = args[i].clone().split_nulls();
+			ensure_numeric(ctx, &data, i)?;
 		}
 
-		let promoted = promote_all((0..3).map(|i| args[i].unwrap_option().0.get_type()));
+		let promoted = promote_all((0..3).map(|i| args[i].clone().split_nulls().0.get_type()));
 		if promoted == ValueType::Any {
 			if (0..3).all(|i| all_rows_none(&args[i])) {
-				let row_count = args[0].unwrap_option().0.len();
+				let row_count = args[0].len();
 				let result = ColumnBuffer::none_typed(ValueType::Any, row_count);
 				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
 			}
@@ -85,9 +85,9 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		let lo_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
 		let hi_cast = coerce_column(ctx, &args[2], promoted.clone(), CoerceMode::Error)?;
 
-		let (v_inner, v_bv) = v_cast.unwrap_option();
-		let (lo_inner, lo_bv) = lo_cast.unwrap_option();
-		let (hi_inner, hi_bv) = hi_cast.unwrap_option();
+		let (v_inner, v_bv) = (&v_cast, v_cast.nulls().map(NullBuffer::inner));
+		let (lo_inner, lo_bv) = (&lo_cast, lo_cast.nulls().map(NullBuffer::inner));
+		let (hi_inner, hi_bv) = (&hi_cast, hi_cast.nulls().map(NullBuffer::inner));
 
 		macro_rules! run {
 			($variant:ident) => {{

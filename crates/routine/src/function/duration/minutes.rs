@@ -71,8 +71,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationMinutes {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		if !is_integer_type(data) {
@@ -105,13 +104,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationMinutes {
 			}
 		}
 
-		let mut result_data = ColumnBuffer::Duration(duration_array(container));
-		if let Some(bv) = bitvec {
-			result_data = ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv.clone(),
-			};
-		}
+		let result_data = ColumnBuffer::Duration(duration_array(container));
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }

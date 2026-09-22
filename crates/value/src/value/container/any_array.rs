@@ -7,7 +7,10 @@ use arrow_array::{Array, LargeBinaryArray, builder::LargeBinaryBuilder};
 use postcard::{from_bytes, to_allocvec};
 use serde::{Deserialize, Deserializer, Serializer, ser::SerializeSeq};
 
-use crate::value::{Value, container::varlen_array, value_type::ValueType};
+use crate::{
+	util::bitmap,
+	value::{Value, container::varlen_array, value_type::ValueType},
+};
 
 fn encode(value: &Value) -> Vec<u8> {
 	to_allocvec(value).expect("postcard serialization of a Value is total")
@@ -64,7 +67,7 @@ pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> LargeBinaryArray 
 			None => builder.append_value(&default_row),
 		}
 	}
-	builder.finish()
+	varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices))
 }
 
 pub fn equals(left: &LargeBinaryArray, right: &LargeBinaryArray) -> bool {

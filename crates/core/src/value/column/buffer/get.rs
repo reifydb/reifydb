@@ -38,19 +38,12 @@ pub trait FromColumnBuffer: Sized {
 
 impl ColumnBuffer {
 	pub fn get_value(&self, index: usize) -> Value {
+		if self.none_at(index) {
+			return Value::None {
+				inner: self.base_type(),
+			};
+		}
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				if index < bitvec.len() && bitvec.value(index) {
-					inner.get_value(index)
-				} else {
-					Value::None {
-						inner: inner.get_type(),
-					}
-				}
-			}
 			ColumnBuffer::Date(a) => temporal_array::get_value(dates(a), index),
 			ColumnBuffer::DateTime(a) => temporal_array::get_value(datetimes(a), index),
 			ColumnBuffer::Time(a) => temporal_array::get_value(times(a), index),
@@ -97,23 +90,20 @@ impl ColumnBuffer {
 	}
 
 	pub fn get_as<T: FromColumnBuffer>(&self, index: usize) -> Option<T> {
+		if self.none_at(index) {
+			return None;
+		}
 		T::from_column_buffer(self, index)
 	}
 
 	pub fn extend_key(&self, index: usize, serializer: &mut KeySerializer) -> Result<()> {
+		if self.none_at(index) {
+			serializer.try_extend_value(&Value::None {
+				inner: self.base_type(),
+			})?;
+			return Ok(());
+		}
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				if index < bitvec.len() && bitvec.value(index) {
-					inner.extend_key(index, serializer)?;
-				} else {
-					serializer.try_extend_value(&Value::None {
-						inner: inner.get_type(),
-					})?;
-				}
-			}
 			ColumnBuffer::Utf8 {
 				container,
 				..
@@ -148,17 +138,7 @@ impl ColumnBuffer {
 			ColumnBuffer::Utf8 {
 				container,
 				..
-			} => varlen_array::get(container, index),
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				if index < bitvec.len() && bitvec.value(index) {
-					inner.get_str(index)
-				} else {
-					None
-				}
-			}
+			} if !self.none_at(index) => varlen_array::get(container, index),
 			_ => None,
 		}
 	}
@@ -168,17 +148,7 @@ impl ColumnBuffer {
 			ColumnBuffer::Blob {
 				container,
 				..
-			} => varlen_array::get(container, index),
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				if index < bitvec.len() && bitvec.value(index) {
-					inner.get_bytes(index)
-				} else {
-					None
-				}
-			}
+			} if !self.none_at(index) => varlen_array::get(container, index),
 			_ => None,
 		}
 	}

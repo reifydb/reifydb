@@ -4,7 +4,6 @@
 use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	Result,
-	util::bitmap,
 	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
 };
 
@@ -19,13 +18,6 @@ impl ColumnWithName {
 impl ColumnBuffer {
 	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.filter(mask)?;
-				*bitvec = bitmap::filter(bitvec, mask);
-			}
 			ColumnBuffer::Bool(a) => *a = bool_array::filter(a, mask),
 			ColumnBuffer::Uint16(a) => *a = primitive::filter(a, mask),
 			ColumnBuffer::DictionaryId {

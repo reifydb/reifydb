@@ -10,7 +10,7 @@ use arrow_array::{
 	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, IntervalMonthDayNanoArray, LargeBinaryArray,
 	LargeStringArray, Time64NanosecondArray, UInt64Array,
 };
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
 		decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell,
@@ -22,6 +22,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
+	util::bitmap::resize,
 	value::{
 		Value,
 		blob::Blob,
@@ -93,10 +94,8 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 		let data_row_count = data.len() as u32;
 		let type_code = column_data_to_type_code(data).byte();
 
-		let (inner_data, opt_bitvec) = data.unwrap_option();
-
-		let (bitvec_offset, bitvec_len) = if let Some(bv) = opt_bitvec {
-			marshal_bitvec_to_buf(&mut buf, bv)
+		let (bitvec_offset, bitvec_len) = if let Some(nulls) = data.nulls() {
+			marshal_bitvec_to_buf(&mut buf, nulls.inner())
 		} else if data_row_count > 0 {
 			let all_ones = BooleanBuffer::new_set(data_row_count as usize);
 			marshal_bitvec_to_buf(&mut buf, &all_ones)
@@ -105,7 +104,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 		};
 
 		let (data_offset, data_len, offsets_offset, offsets_len) =
-			marshal_column_data_bytes_to_buf(&mut buf, inner_data);
+			marshal_column_data_bytes_to_buf(&mut buf, data);
 
 		col_descriptors.push(ExternWasmColumn {
 			name_offset,
@@ -393,11 +392,6 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			accuracy,
 			..
 		} => panic!("a Digest({inner}, {accuracy}) column cannot be marshalled to a wasm guest"),
-
-		ColumnBuffer::Option {
-			inner,
-			..
-		} => marshal_column_data_bytes_to_buf(buf, inner),
 	}
 }
 
@@ -590,10 +584,8 @@ fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BooleanBuffer) -> ColumnBuffer {
 	let has_nulls = bitvec.iter().any(|b| !b);
 	if has_nulls {
-		ColumnBuffer::Option {
-			inner: Box::new(inner),
-			bitvec,
-		}
+		let len = inner.len();
+		inner.with_nulls(NullBuffer::new(resize(&bitvec, len)))
 	} else {
 		inner
 	}

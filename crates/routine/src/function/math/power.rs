@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
@@ -63,10 +63,10 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let (base_data, _) = args[0].unwrap_option();
-		let (exp_data, _) = args[1].unwrap_option();
-		ensure_numeric(ctx, base_data, 0)?;
-		ensure_numeric(ctx, exp_data, 1)?;
+		let (base_data, _) = args[0].clone().split_nulls();
+		let (exp_data, _) = args[1].clone().split_nulls();
+		ensure_numeric(ctx, &base_data, 0)?;
+		ensure_numeric(ctx, &exp_data, 1)?;
 
 		let promoted = promote_pair(base_data.get_type(), exp_data.get_type());
 		if promoted == ValueType::Any {
@@ -84,8 +84,8 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		let base_cast = coerce_column(ctx, &args[0], promoted.clone(), CoerceMode::Error)?;
 		let exp_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
 
-		let (base_inner, base_bv) = base_cast.unwrap_option();
-		let (exp_inner, exp_bv) = exp_cast.unwrap_option();
+		let (base_inner, base_bv) = (&base_cast, base_cast.nulls().map(NullBuffer::inner));
+		let (exp_inner, exp_bv) = (&exp_cast, exp_cast.nulls().map(NullBuffer::inner));
 
 		let overflow = || -> RoutineError {
 			TypeError::NumberOutOfRange {

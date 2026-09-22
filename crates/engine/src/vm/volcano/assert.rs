@@ -51,8 +51,11 @@ impl AssertNode {
 		match data {
 			ColumnBuffer::Bool(container) => {
 				for i in 0..row_count {
-					let valid = i < container.len();
-					let value = container.value(i);
+					let valid = data.is_defined(i);
+					let value = match data.nulls() {
+						Some(_) => valid && container.value(i),
+						None => container.value(i),
+					};
 					if !valid || !value {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
@@ -63,34 +66,6 @@ impl AssertNode {
 					}
 				}
 			}
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => match inner.as_ref() {
-				ColumnBuffer::Bool(container) => {
-					for i in 0..row_count {
-						let defined = i < bitvec.len() && bitvec.value(i);
-						let valid = defined && i < container.len();
-						let value = valid && container.value(i);
-						if !value {
-							return Err(EngineError::AssertionFailed {
-								fragment: frag.clone(),
-								message: self.message.clone().unwrap_or_default(),
-								expression: Some(label.text().to_string()),
-							}
-							.into());
-						}
-					}
-				}
-				_ => {
-					return Err(EngineError::AssertionFailed {
-						fragment: frag.clone(),
-						message: "assert expression must evaluate to a boolean".to_string(),
-						expression: Some(label.text().to_string()),
-					}
-					.into());
-				}
-			},
 			_ => {
 				return Err(EngineError::AssertionFailed {
 					fragment: frag.clone(),
@@ -168,8 +143,11 @@ impl AssertWithoutInputNode {
 		let label = display_label(assert_expr);
 		match data {
 			ColumnBuffer::Bool(container) => {
-				let valid = !container.is_empty();
-				let value = container.value(0);
+				let valid = data.is_defined(0);
+				let value = match data.nulls() {
+					Some(_) => valid && container.value(0),
+					None => container.value(0),
+				};
 				if !valid || !value {
 					return Err(EngineError::AssertionFailed {
 						fragment: frag.clone(),
@@ -179,32 +157,6 @@ impl AssertWithoutInputNode {
 					.into());
 				}
 			}
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => match inner.as_ref() {
-				ColumnBuffer::Bool(container) => {
-					let defined = !bitvec.is_empty() && bitvec.value(0);
-					let valid = defined && !container.is_empty();
-					let value = valid && container.value(0);
-					if !value {
-						return Err(EngineError::AssertionFailed {
-							fragment: frag.clone(),
-							message: self.message.clone().unwrap_or_default(),
-							expression: Some(label.text().to_string()),
-						}
-						.into());
-					}
-				}
-				_ => {
-					return Err(EngineError::AssertionFailed {
-						fragment: frag.clone(),
-						message: "assert expression must evaluate to a boolean".to_string(),
-						expression: Some(label.text().to_string()),
-					}
-					.into());
-				}
-			},
 			_ => {
 				return Err(EngineError::AssertionFailed {
 					fragment: frag.clone(),

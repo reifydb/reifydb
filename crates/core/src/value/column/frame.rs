@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::NullBuffer;
 use reifydb_value::{
 	fragment::Fragment,
+	util::bitmap,
 	value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -13,6 +15,15 @@ use crate::value::column::{ColumnBuffer, ColumnWithName, columns::Columns};
 
 impl From<ColumnBuffer> for FrameColumnData {
 	fn from(value: ColumnBuffer) -> Self {
+		let value = match value.split_nulls() {
+			(bare, Some(nulls)) => {
+				return FrameColumnData::Option {
+					inner: Box::new(FrameColumnData::from(bare)),
+					bitvec: nulls.into_inner(),
+				};
+			}
+			(bare, None) => bare,
+		};
 		match value {
 			ColumnBuffer::Bool(container) => FrameColumnData::Bool(container),
 			ColumnBuffer::Float4(container) => FrameColumnData::Float4(container),
@@ -67,13 +78,6 @@ impl From<ColumnBuffer> for FrameColumnData {
 			} => FrameColumnData::DictionaryId {
 				container,
 				dictionary_id,
-			},
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => FrameColumnData::Option {
-				inner: Box::new(FrameColumnData::from(*inner)),
-				bitvec,
 			},
 			ColumnBuffer::Digest {
 				container,
@@ -177,10 +181,11 @@ impl From<FrameColumnData> for ColumnBuffer {
 			FrameColumnData::Option {
 				inner,
 				bitvec,
-			} => ColumnBuffer::Option {
-				inner: Box::new(ColumnBuffer::from(*inner)),
-				bitvec,
-			},
+			} => {
+				let inner = ColumnBuffer::from(*inner);
+				let bits = bitmap::resize(&bitvec, inner.len());
+				inner.with_nulls(NullBuffer::new(bits))
+			}
 			FrameColumnData::Digest {
 				container,
 				inner,

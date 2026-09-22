@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
 use reifydb_routine::function::{default_in_process_functions, stats::approx_percentile::ApproxPercentile};
 use reifydb_routine_abi::{Function, Routine, context::FunctionContext, error::RoutineError, registry::Routines};
@@ -216,10 +216,8 @@ fn a_none_digest_or_a_none_p_gives_none_for_that_row_only() {
 fn a_none_p_that_is_out_of_range_underneath_is_not_checked() {
 	// The value under a none is a placeholder, so range checking it would reject valid input.
 	let digest = float_digest([1.0, 2.0]);
-	let ps = ColumnBuffer::Option {
-		inner: Box::new(column([Value::float8(7.0)], ValueType::Float8)),
-		bitvec: BooleanBuffer::from(vec![false]),
-	};
+	let ps = column([Value::float8(7.0)], ValueType::Float8)
+		.with_nulls(NullBuffer::new(BooleanBuffer::from(vec![false])));
 
 	let out = call(vec![digest_column(ValueType::Float8, &[Some(digest)]), ps]).unwrap();
 

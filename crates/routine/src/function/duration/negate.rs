@@ -39,8 +39,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationNegate {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
-		let (data, bitvec) = column.unwrap_option();
+		let data = &args[0];
 		let row_count = data.len();
 
 		match data {
@@ -55,13 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationNegate {
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(duration_array(container));
-				if let Some(bv) = bitvec {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let result_data = ColumnBuffer::Duration(duration_array(container));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

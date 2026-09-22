@@ -179,12 +179,11 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer> {
 		return Ok(BooleanBuffer::new_unset(0));
 	}
 	let col = &cols.columns[0];
-	let (inner_data, opt_bv) = col.unwrap_option();
-	match inner_data {
+	match col {
 		ColumnBuffer::Bool(container) => {
 			let bv = container.values().clone();
-			match opt_bv {
-				Some(defined_bv) => Ok(&bv & defined_bv),
+			match col.nulls() {
+				Some(nulls) => Ok(&bv & nulls.inner()),
 				None => Ok(bv),
 			}
 		}

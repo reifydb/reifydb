@@ -4,10 +4,13 @@
 use std::result::Result as StdResult;
 
 use arrow_array::{Array, ArrowPrimitiveType, PrimitiveArray};
-use arrow_buffer::{BooleanBuffer, ScalarBuffer};
+use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::value::{Value, is::IsNumber, to_value::ToValue};
+use crate::{
+	util::bitmap,
+	value::{Value, is::IsNumber, to_value::ToValue},
+};
 
 pub fn serialize<A, Ser>(array: &PrimitiveArray<A>, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
 where
@@ -90,7 +93,8 @@ where
 			kept.push(values[i]);
 		}
 	}
-	PrimitiveArray::new(ScalarBuffer::from(kept), None).with_data_type(array.data_type().clone())
+	PrimitiveArray::new(ScalarBuffer::from(kept), bitmap::filter_nulls(array.nulls(), mask))
+		.with_data_type(array.data_type().clone())
 }
 
 pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> PrimitiveArray<A>
@@ -100,7 +104,17 @@ where
 	let values = array.values();
 	let reordered: Vec<A::Native> =
 		indices.iter().map(|&idx| values.get(idx).copied().unwrap_or_default()).collect();
-	PrimitiveArray::new(ScalarBuffer::from(reordered), None).with_data_type(array.data_type().clone())
+	PrimitiveArray::new(ScalarBuffer::from(reordered), bitmap::reorder_nulls(array.nulls(), indices))
+		.with_data_type(array.data_type().clone())
+}
+
+pub fn attach_nulls<A>(array: PrimitiveArray<A>, nulls: Option<NullBuffer>) -> PrimitiveArray<A>
+where
+	A: ArrowPrimitiveType,
+{
+	bitmap::assert_nulls_len(nulls.as_ref(), array.len());
+	let (data_type, values, _) = array.into_parts();
+	PrimitiveArray::new(values, nulls).with_data_type(data_type)
 }
 
 pub fn capacity<A>(array: &PrimitiveArray<A>) -> usize

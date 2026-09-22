@@ -124,15 +124,14 @@ impl Arena {
 			};
 		}
 
-		let (inner_data, bitvec) = data.unwrap_option();
-		let type_code = column_data_to_type_code(inner_data);
+		let type_code = column_data_to_type_code(data);
 
-		let defined_bitvec = match bitvec {
-			Some(bv) => self.marshal_bitvec(bv, row_count),
+		let defined_bitvec = match data.nulls() {
+			Some(nulls) => self.marshal_bitvec(nulls.inner(), row_count),
 			None => ExternCBuffer::empty(),
 		};
 
-		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(inner_data);
+		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(data);
 
 		ExternCColumnData {
 			type_code,
@@ -147,10 +146,6 @@ impl Arena {
 impl Arena {
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
 		match data {
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => self.marshal_column_data_bytes(inner),
 			ColumnBuffer::Int {
 				..
 			}

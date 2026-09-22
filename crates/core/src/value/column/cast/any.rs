@@ -85,6 +85,9 @@ pub fn from_any(
 			None => {
 				result.push_none();
 			}
+			Some(casted_column) if casted_column.nulls().is_some() => {
+				result.push_value(casted_column.get_value(0));
+			}
 			Some(casted_column) => match &casted_column {
 				ColumnBuffer::Bool(c) => {
 					if !c.is_empty() {
@@ -276,10 +279,7 @@ pub fn from_any(
 				} => {
 					unreachable!("Casting from Any should not produce Any")
 				}
-				ColumnBuffer::Option {
-					..
-				}
-				| ColumnBuffer::Digest {
+				ColumnBuffer::Digest {
 					..
 				} => {
 					let value = casted_column.get_value(0);

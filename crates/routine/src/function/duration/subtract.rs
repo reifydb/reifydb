@@ -39,11 +39,8 @@ impl<'a> Routine<FunctionContext<'a>> for DurationSubtract {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let lhs_col = &args[0];
-		let rhs_col = &args[1];
-
-		let (lhs_data, lhs_bv) = lhs_col.unwrap_option();
-		let (rhs_data, rhs_bv) = rhs_col.unwrap_option();
+		let lhs_data = &args[0];
+		let rhs_data = &args[1];
 
 		match (lhs_data, rhs_data) {
 			(ColumnBuffer::Duration(lhs_container), ColumnBuffer::Duration(rhs_container)) => {
@@ -59,18 +56,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationSubtract {
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Duration(duration_array(container));
-				if let Some(bv) = lhs_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				} else if let Some(bv) = rhs_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let result_data = ColumnBuffer::Duration(duration_array(container));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			(ColumnBuffer::Duration(_), other) => Err(RoutineError::FunctionInvalidArgumentType {

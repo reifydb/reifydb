@@ -41,11 +41,8 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAdd {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let time_col = &args[0];
-		let dur_col = &args[1];
-
-		let (time_data, time_bv) = time_col.unwrap_option();
-		let (dur_data, dur_bv) = dur_col.unwrap_option();
+		let time_data = &args[0];
+		let dur_data = &args[1];
 
 		match (time_data, dur_data) {
 			(ColumnBuffer::Time(time_container), ColumnBuffer::Duration(dur_container)) => {
@@ -70,18 +67,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAdd {
 					}
 				}
 
-				let mut result_data = ColumnBuffer::Time(time_array(container));
-				if let Some(bv) = time_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				} else if let Some(bv) = dur_bv {
-					result_data = ColumnBuffer::Option {
-						inner: Box::new(result_data),
-						bitvec: bv.clone(),
-					};
-				}
+				let result_data = ColumnBuffer::Time(time_array(container));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {

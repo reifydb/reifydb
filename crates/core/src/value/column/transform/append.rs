@@ -157,15 +157,7 @@ impl Columns {
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
-			let is_all_none = if let ColumnBuffer::Option {
-				bitvec,
-				..
-			} = &*column
-			{
-				!bitvec.has_true()
-			} else {
-				false
-			};
+			let is_all_none = column.nulls().is_some_and(|nulls| nulls.null_count() == nulls.len());
 			if is_all_none {
 				let size = column.len();
 				let new_data = match field.constraint.get_type() {
@@ -275,7 +267,8 @@ impl Columns {
 							vec![Default::default(); size],
 							BooleanBuffer::new_unset(size),
 						);
-						if let ColumnBuffer::DictionaryId {
+						let bare = col_data.nulls().is_none();
+						if bare && let ColumnBuffer::DictionaryId {
 							dictionary_id,
 							..
 						} = &mut col_data && let Some(Constraint::Dictionary(dict_id, _)) =
@@ -304,7 +297,8 @@ impl Columns {
 				*column = new_data;
 			}
 
-			if let ColumnBuffer::DictionaryId {
+			let bare = column.nulls().is_none();
+			if bare && let ColumnBuffer::DictionaryId {
 				dictionary_id,
 				..
 			} = &mut *column && dictionary_id.is_none()

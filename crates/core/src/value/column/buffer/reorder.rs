@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{
-	util::bitmap,
-	value::container::{
-		any_array,
-		bignum_array::{reorder_decimals, reorder_ints, reorder_uints},
-		bool_array, dictionary_array, primitive, uuid_array, varlen_array,
-	},
+use reifydb_value::value::container::{
+	any_array,
+	bignum_array::{reorder_decimals, reorder_ints, reorder_uints},
+	bool_array, dictionary_array, primitive, uuid_array, varlen_array,
 };
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
@@ -15,13 +12,6 @@ use crate::value::column::{ColumnBuffer, buffer::with_container};
 impl ColumnBuffer {
 	pub fn reorder(&mut self, indices: &[usize]) {
 		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.reorder(indices);
-				*bitvec = bitmap::reorder(bitvec, indices);
-			}
 			ColumnBuffer::Bool(a) => *a = bool_array::reorder(a, indices),
 			ColumnBuffer::Uint16(a) => *a = primitive::reorder(a, indices),
 			ColumnBuffer::DictionaryId {

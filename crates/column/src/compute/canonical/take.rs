@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBufferBuilder, NullBuffer};
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_value::{Result, value::Value};
 
@@ -10,21 +9,9 @@ use crate::error::ColumnError;
 pub fn take(array: &Canonical, indices: &Canonical) -> Result<Canonical> {
 	let idx = extract_indices(indices)?;
 
-	let new_nones = array.nones.as_ref().map(|n| take_nones(n, &idx));
 	let new_buffer = array.buffer.gather(&idx);
 
-	Ok(Canonical::new(array.ty.clone(), array.nullable, new_nones, new_buffer))
-}
-
-fn take_nones(nones: &NullBuffer, idx: &[usize]) -> NullBuffer {
-	let mut out = BooleanBufferBuilder::new(idx.len());
-	out.append_n(idx.len(), true);
-	for (j, &i) in idx.iter().enumerate() {
-		if nones.is_null(i) {
-			out.set_bit(j, false);
-		}
-	}
-	NullBuffer::new(out.finish())
+	Ok(Canonical::new(array.ty.clone(), array.nullable, new_buffer))
 }
 
 fn extract_indices(indices: &Canonical) -> Result<Vec<usize>> {

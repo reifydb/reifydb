@@ -1,35 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::data::canonical::Canonical;
 use reifydb_value::Result;
 
 pub fn filter(array: &Canonical, mask: &BooleanBuffer) -> Result<Canonical> {
 	assert_eq!(array.len(), mask.len(), "filter: array len {} vs mask len {}", array.len(), mask.len());
-	let kept = mask.count_set_bits();
-
-	let new_nones = array.nones.as_ref().map(|n| filter_nones(n, mask, kept));
 
 	let mut new_buffer = array.buffer.clone();
 	new_buffer.filter(mask)?;
 
-	Ok(Canonical::new(array.ty.clone(), array.nullable, new_nones, new_buffer))
-}
-
-fn filter_nones(nones: &NullBuffer, mask: &BooleanBuffer, kept: usize) -> NullBuffer {
-	let mut out = BooleanBufferBuilder::new(kept);
-	out.append_n(kept, true);
-	let mut j = 0;
-	for i in 0..nones.len() {
-		if mask.value(i) {
-			if nones.is_null(i) {
-				out.set_bit(j, false);
-			}
-			j += 1;
-		}
-	}
-	NullBuffer::new(out.finish())
+	Ok(Canonical::new(array.ty.clone(), array.nullable, new_buffer))
 }
 
 #[cfg(test)]
@@ -90,7 +72,7 @@ mod tests {
 		let out = filter(&ca, &mask).unwrap();
 		assert_eq!(out.len(), 3);
 		assert!(out.nullable);
-		let nones = out.nones.as_ref().unwrap();
+		let nones = out.buffer.nulls().unwrap();
 		assert!(!nones.is_null(0));
 		assert!(nones.is_null(1));
 		assert!(nones.is_null(2));

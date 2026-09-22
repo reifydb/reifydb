@@ -3,8 +3,8 @@
 
 use std::result::Result as StdResult;
 
-use arrow_array::BooleanArray;
-use arrow_buffer::BooleanBuffer;
+use arrow_array::{Array, BooleanArray};
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -29,7 +29,7 @@ pub fn as_string(array: &BooleanArray, index: usize) -> String {
 }
 
 pub fn slice(array: &BooleanArray, start: usize, end: usize) -> BooleanArray {
-	BooleanArray::from(bitmap::slice(array.values(), start, end))
+	BooleanArray::new(bitmap::slice(array.values(), start, end), bitmap::slice_nulls(array.nulls(), start, end))
 }
 
 pub fn take(array: &BooleanArray, num: usize) -> BooleanArray {
@@ -37,11 +37,17 @@ pub fn take(array: &BooleanArray, num: usize) -> BooleanArray {
 }
 
 pub fn filter(array: &BooleanArray, mask: &BooleanBuffer) -> BooleanArray {
-	BooleanArray::from(bitmap::filter(array.values(), mask))
+	BooleanArray::new(bitmap::filter(array.values(), mask), bitmap::filter_nulls(array.nulls(), mask))
 }
 
 pub fn reorder(array: &BooleanArray, indices: &[usize]) -> BooleanArray {
-	BooleanArray::from(bitmap::reorder(array.values(), indices))
+	BooleanArray::new(bitmap::reorder(array.values(), indices), bitmap::reorder_nulls(array.nulls(), indices))
+}
+
+pub fn attach_nulls(array: BooleanArray, nulls: Option<NullBuffer>) -> BooleanArray {
+	bitmap::assert_nulls_len(nulls.as_ref(), array.len());
+	let (values, _) = array.into_parts();
+	BooleanArray::new(values, nulls)
 }
 
 pub fn capacity(array: &BooleanArray) -> usize {

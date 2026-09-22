@@ -9,7 +9,6 @@ use arrow_buffer::{BooleanBuffer, NullBuffer};
 use canonical::Canonical;
 use reifydb_value::{
 	Result,
-	util::bitmap,
 	value::{Value, value_type::ValueType},
 };
 
@@ -170,43 +169,21 @@ impl Column {
 
 fn canonical_filter(canon: &Canonical, mask: &BooleanBuffer) -> Result<Canonical> {
 	assert_eq!(canon.len(), mask.len(), "filter: length mismatch");
-	let new_nones = canon.nones.as_ref().map(|n| filter_nones(n, mask));
-
 	let mut new_buffer = canon.buffer.clone();
 	new_buffer.filter(mask)?;
-
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
+	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
 }
 
 fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
-	let new_nones = canon
-		.nones
-		.as_ref()
-		.map(|n| NullBuffer::new(BooleanBuffer::collect_bool(indices.len(), |row| n.is_valid(indices[row]))));
 	let new_buffer = canon.buffer.gather(indices);
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
+	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
 }
 
 fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);
 	assert!(end <= canon.len());
-	let new_nones = canon.nones.as_ref().map(|n| slice_nones(n, start, end));
 	let new_buffer = canon.buffer.slice(start, end);
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
-}
-
-fn filter_nones(nones: &NullBuffer, mask: &BooleanBuffer) -> NullBuffer {
-	assert_eq!(nones.len(), mask.len(), "filter: nones length mismatch");
-	if mask.count_set_bits() == nones.len() {
-		return nones.clone();
-	}
-	NullBuffer::new(bitmap::filter(nones.inner(), mask))
-}
-
-fn slice_nones(nones: &NullBuffer, start: usize, end: usize) -> NullBuffer {
-	assert!(start <= end, "slice: nones start {start} > end {end}");
-	assert!(end <= nones.len(), "slice: nones end {end} > len {}", nones.len());
-	NullBuffer::new(bitmap::slice(nones.inner(), start, end))
+	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
 }
 
 fn canon_indices(indices: &Column) -> Result<Vec<usize>> {

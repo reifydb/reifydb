@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 };
 
-use super::option::apply_option_bitvec;
 use crate::Result;
 
 pub(crate) fn try_short_circuit_and(
@@ -37,32 +36,14 @@ pub(crate) fn try_short_circuit_or(
 
 fn is_all_false_defined(buffer: &ColumnBuffer) -> bool {
 	match buffer {
-		ColumnBuffer::Bool(c) => !c.is_empty() && !c.values().has_true(),
-		ColumnBuffer::Option {
-			inner,
-			bitvec,
-		} => {
-			if !!bitvec.has_false() {
-				return false;
-			}
-			matches!(inner.as_ref(), ColumnBuffer::Bool(c) if !c.is_empty() && !c.values().has_true())
-		}
+		ColumnBuffer::Bool(c) => buffer.none_count() == 0 && !c.is_empty() && !c.values().has_true(),
 		_ => false,
 	}
 }
 
 fn is_all_true_defined(buffer: &ColumnBuffer) -> bool {
 	match buffer {
-		ColumnBuffer::Bool(c) => !c.is_empty() && !c.values().has_false(),
-		ColumnBuffer::Option {
-			inner,
-			bitvec,
-		} => {
-			if !!bitvec.has_false() {
-				return false;
-			}
-			matches!(inner.as_ref(), ColumnBuffer::Bool(c) if !c.is_empty() && !c.values().has_false())
-		}
+		ColumnBuffer::Bool(c) => buffer.none_count() == 0 && !c.is_empty() && !c.values().has_false(),
 		_ => false,
 	}
 }
@@ -81,21 +62,23 @@ pub fn execute_logical_op(
 	logical_op: LogicalOp,
 	bool_fn: fn(bool, bool) -> bool,
 ) -> Result<ColumnWithName> {
-	let (left_data, left_bv) = left.data().unwrap_option();
-	let (right_data, right_bv) = right.data().unwrap_option();
+	let (left_data, left_nulls) = left.data().clone().split_nulls();
+	let (right_data, right_nulls) = right.data().clone().split_nulls();
+	let left_bv = left_nulls.as_ref().map(NullBuffer::inner);
+	let right_bv = right_nulls.as_ref().map(NullBuffer::inner);
 	let len = left_data.len();
 
 	let synthetic = BooleanBuffer::new_unset(len);
 
-	let (l_v_bits, l_valid_bv) = match left_data {
+	let (l_v_bits, l_valid_bv) = match &left_data {
 		ColumnBuffer::Bool(c) => (c.values(), left_bv),
 		_ if is_all_none(left_bv) => (&synthetic, Some(&synthetic)),
-		_ => return type_error(&logical_op, fragment, left_data, right_data),
+		_ => return type_error(&logical_op, fragment, &left_data, &right_data),
 	};
-	let (r_v_bits, r_valid_bv) = match right_data {
+	let (r_v_bits, r_valid_bv) = match &right_data {
 		ColumnBuffer::Bool(c) => (c.values(), right_bv),
 		_ if is_all_none(right_bv) => (&synthetic, Some(&synthetic)),
-		_ => return type_error(&logical_op, fragment, left_data, right_data),
+		_ => return type_error(&logical_op, fragment, &left_data, &right_data),
 	};
 
 	let value_data: Vec<bool> =
@@ -105,7 +88,7 @@ pub fn execute_logical_op(
 	let result_bv = compute_kleene_validity(&logical_op, l_valid_bv, r_valid_bv, l_v_bits, r_v_bits, len);
 
 	let final_buffer = match result_bv {
-		Some(bv) => apply_option_bitvec(value_buffer, bv),
+		Some(bv) => value_buffer.with_nulls(NullBuffer::new(bv)),
 		None => value_buffer,
 	};
 

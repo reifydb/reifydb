@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::{Array, LargeStringArray};
-use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -37,13 +36,10 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let str_col = &args[0];
-		let len_col = &args[1];
-		let pad_col = &args[2];
+		let str_data = &args[0];
+		let len_data = &args[1];
+		let pad_data = &args[2];
 
-		let (str_data, str_bv) = str_col.unwrap_option();
-		let (len_data, len_bv) = len_col.unwrap_option();
-		let (pad_data, pad_bv) = pad_col.unwrap_option();
 		let row_count = str_data.len();
 
 		let pad_container = match pad_data {
@@ -140,22 +136,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 					max_bytes: MaxBytes::MAX,
 				};
 
-				let mut combined_bv: Option<BooleanBuffer> = None;
-				for bv in [str_bv, len_bv, pad_bv].into_iter().flatten() {
-					combined_bv = Some(match combined_bv {
-						Some(existing) => &existing & bv,
-						None => bv.clone(),
-					});
-				}
-
-				let final_data = match combined_bv {
-					Some(bv) => ColumnBuffer::Option {
-						inner: Box::new(result_col_data),
-						bitvec: bv,
-					},
-					None => result_col_data,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
