@@ -594,6 +594,273 @@ fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
 }
 
 #[test]
+fn an_update_changing_the_group_moves_a_row_to_the_new_groups_sliding_windows() {
+	// Looking the row up under its old group only would count it in g 1 twice over and never in g 2.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window sliding { n: math::count(), s: window::start() }
+					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 4, TIMEOUT);
+
+	let windows = |db: &TestDb| {
+		let frames = db.query("FROM app::w");
+		let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))
+			.into_iter()
+			.zip(text(&column_values(&frames[0], "s")))
+			.zip(text(&column_values(&frames[0], "n")))
+			.map(|((g, start), n)| (g, start, n))
+			.collect();
+		rows.sort();
+		rows
+	};
+	let window = |g: &str, s: &str| (g.to_string(), format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
+	assert_eq!(
+		windows(&db),
+		vec![window("1", "00:30"), window("1", "01:00"), window("2", "00:30"), window("2", "01:00")]
+	);
+
+	// The delete must find the row under its new group, or g 2 would keep it.
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	assert_eq!(windows(&db), vec![window("1", "00:30"), window("1", "01:00")]);
+}
+
+#[test]
+fn an_update_changing_the_group_appends_a_row_to_the_new_groups_row_counted_sliding_windows() {
+	// Placing the moved row by time would skip the new group's count, so row 4 would share its window.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
+			FROM app::t
+				| window sliding { x: math::sum(v) } by { g } with { count: 2, slide: 1 }
+		}"#);
+
+	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 1, 4, "2026-01-01T00:01:30Z");
+	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
+	insert(&db, 4, 2, 8, "2026-01-01T00:01:40Z");
+	db.await_exact_row_count("FROM app::w", 5, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String)> =
+		text(&column_values(&frames[0], "g")).into_iter().zip(text(&column_values(&frames[0], "x"))).collect();
+	rows.sort();
+	let row = |g: &str, x: &str| (g.to_string(), x.to_string());
+	assert_eq!(rows, vec![row("1", "2"), row("1", "4"), row("1", "6"), row("2", "8"), row("2", "9")]);
+}
+
+#[test]
+fn an_update_changing_the_group_appends_a_row_to_the_new_groups_row_counted_tumbling_window() {
+	// Keeping the row in its old group's window would publish 3 for g 1 and leave g 2 at 4.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
+			FROM app::t
+				| window tumbling { x: math::sum(v) } by { g } with { count: 2 }
+		}"#);
+
+	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 2, 4, "2026-01-01T00:01:30Z");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { x == 6 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String)> =
+		text(&column_values(&frames[0], "g")).into_iter().zip(text(&column_values(&frames[0], "x"))).collect();
+	rows.sort();
+	assert_eq!(rows, vec![("1".to_string(), "1".to_string()), ("2".to_string(), "6".to_string())]);
+}
+
+#[test]
+fn an_update_changing_the_group_moves_a_row_into_the_new_groups_session() {
+	// Only the new group's tracker can stretch g 2 back to 01:20; the old group's session must lose the row.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start() }
+					by { g } with { gap: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 2, 7, "2026-01-01T00:01:25Z");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { g == 2 and n == 2 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "s")))
+		.zip(text(&column_values(&frames[0], "n")))
+		.map(|((g, start), n)| (g, start, n))
+		.collect();
+	rows.sort();
+	assert_eq!(
+		rows,
+		vec![
+			("1".to_string(), "2026-01-01T00:01:10.000000000Z".to_string(), "1".to_string()),
+			("2".to_string(), "2026-01-01T00:01:20.000000000Z".to_string(), "2".to_string()),
+		]
+	);
+}
+
+#[test]
+fn an_update_changing_the_group_to_a_time_the_new_session_refuses_drops_the_row() {
+	// Keeping a refused row in its old session would count a g 2 row under g 1.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start() }
+					by { g } with { gap: 10s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 2, 7, "2026-01-01T00:01:40Z");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "g")), vec!["2".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:40.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "n")), vec!["1".to_string()]);
+}
+
+#[test]
+fn a_row_moved_to_another_group_and_back_leaves_no_stale_sliding_windows() {
+	// A stale old-group index would still name 00:30 and 01:00, so the delete would empty row 1's windows.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window sliding { n: math::count(), s: window::start() }
+					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { g == 2 }", 2, TIMEOUT);
+	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:02:40Z" } FILTER { id == 2 }"#);
+	db.await_row_count("FROM app::w | filter { g == 1 }", 4, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "s")))
+		.zip(text(&column_values(&frames[0], "n")))
+		.map(|((g, start), n)| (g, start, n))
+		.collect();
+	rows.sort();
+	let window = |s: &str| ("1".to_string(), format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
+	assert_eq!(rows, vec![window("00:30"), window("01:00")]);
+}
+
+#[test]
+fn a_row_moved_to_another_group_and_back_leaves_no_stale_row_counted_tumbling_window() {
+	// A stale old-group index would still name the first window, so the delete would take row 2 out of it.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
+			FROM app::t
+				| window tumbling { x: math::sum(v) } by { g } with { count: 2 }
+		}"#);
+
+	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { x == 3 }", 1, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { g == 2 }", 1, TIMEOUT);
+	db.command("UPDATE app::t { g: 1 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { g == 1 and x == 2 }", 1, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "g")), vec!["1".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "x")), vec!["1".to_string()]);
+}
+
+#[test]
+fn a_row_moved_to_another_group_and_back_leaves_no_stale_session() {
+	// A stale old-group index would still name the 01:10 session, so the delete would empty it.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start() }
+					by { g } with { gap: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
+	db.await_row_count("FROM app::w | filter { g == 2 }", 1, TIMEOUT);
+	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:03:00Z" } FILTER { id == 2 }"#);
+	db.await_row_count("FROM app::w | filter { g == 1 }", 2, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "g")), vec!["1".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "n")), vec!["1".to_string()]);
+}
+
+#[test]
+fn a_row_dropped_by_a_refused_group_change_and_moved_back_leaves_no_stale_session() {
+	// A stale old-group index would still name the 01:10 session, so the delete would empty row 3's session.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start() }
+					by { g } with { gap: 10s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 2, 7, "2026-01-01T00:01:40Z");
+	insert(&db, 3, 1, 9, "2026-01-01T00:01:15Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
+	db.await_row_count("FROM app::w | filter { n == 1 }", 2, TIMEOUT);
+	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
+	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 1 }");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "s")))
+		.zip(text(&column_values(&frames[0], "n")))
+		.map(|((g, start), n)| (g, start, n))
+		.collect();
+	rows.sort();
+	let session = |g: &str, s: &str| (g.to_string(), format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
+	assert_eq!(rows, vec![session("1", "01:10"), session("2", "01:40")]);
+}
+
+#[test]
 fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
 	// A late row can pull a new session back onto the closed one's start, so only the end must tell them apart.
 	let db = setup();

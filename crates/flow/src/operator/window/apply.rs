@@ -194,18 +194,21 @@ fn route_count_tumbling(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
+				let post_groups = operator.core.compute_groups(post)?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal = operator.get_and_increment_global_count(host, *hash)?;
+						let ordinal =
+							operator.get_and_increment_global_count(host, *post_hash)?;
 						let window_id = rows.window_id(ordinal);
 						operator.store_row_index(
 							host,
-							*hash,
+							*post_hash,
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
@@ -223,8 +226,8 @@ fn route_count_tumbling(
 							arrival,
 							window_max_ts,
 							window_min_ts,
-							*hash,
-							gvals,
+							*post_hash,
+							post_gvals,
 							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Add(contribution),
@@ -245,6 +248,18 @@ fn route_count_tumbling(
 						);
 						let coord =
 							slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
+						let targets = if post_hash != hash {
+							operator.drop_row_index(host, *hash, row_number)?;
+							let ordinal = operator
+								.get_and_increment_global_count(host, *post_hash)?;
+							let window_id = rows.window_id(ordinal);
+							operator.store_row_index(
+								host, *post_hash, row_number, window_id,
+							)?;
+							vec![window_id]
+						} else {
+							existing.clone()
+						};
 						for window_id in existing {
 							push_count_event(
 								buckets,
@@ -259,14 +274,16 @@ fn route_count_tumbling(
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								times[row_idx],
 							);
+						}
+						for window_id in targets {
 							push_count_event(
 								buckets,
 								group_values,
 								arrival,
 								window_max_ts,
 								window_min_ts,
-								*hash,
-								gvals,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
@@ -542,12 +559,14 @@ pub fn apply_sliding_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
+				let post_groups = operator.core.compute_groups(post)?;
 				let timestamps = operator.row_times(post, post.row_count())?;
 				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre.row_numbers()[row_idx];
 					let event_ts = if is_count {
 						DateTime::default()
@@ -557,7 +576,7 @@ pub fn apply_sliding_engine(
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
 						let window_ids = sliding_insert_anchors(
-							operator, host, *hash, event_ts, is_count,
+							operator, host, *post_hash, event_ts, is_count,
 						)?;
 						let contribution = operator.core.build_contribution(
 							post,
@@ -569,7 +588,7 @@ pub fn apply_sliding_engine(
 						for wid in &window_ids {
 							operator.store_row_index(
 								host,
-								*hash,
+								*post_hash,
 								post.row_numbers()[row_idx],
 								*wid,
 							)?;
@@ -579,8 +598,8 @@ pub fn apply_sliding_engine(
 								&mut arrival,
 								&mut window_max_ts,
 								&mut window_min_ts,
-								*hash,
-								gvals,
+								*post_hash,
+								post_gvals,
 								operator.sliding_window_span(*wid),
 								coord,
 								AccumulatorEvent::Add(contribution.clone()),
@@ -603,16 +622,16 @@ pub fn apply_sliding_engine(
 						let pre_coord =
 							slot_coord(is_count, pre_timestamps[row_idx], row_number.0);
 						let post_coord = slot_coord(is_count, event_ts, row_number.0);
-						let targets = if !is_count
-							&& pre_timestamps[row_idx] != timestamps[row_idx]
+						let targets = if post_hash != hash
+							|| (!is_count && pre_timestamps[row_idx] != timestamps[row_idx])
 						{
 							operator.drop_row_index(host, *hash, row_number)?;
 							let window_ids = sliding_insert_anchors(
-								operator, host, *hash, event_ts, false,
+								operator, host, *post_hash, event_ts, is_count,
 							)?;
 							for wid in &window_ids {
 								operator.store_row_index(
-									host, *hash, row_number, *wid,
+									host, *post_hash, row_number, *wid,
 								)?;
 							}
 							window_ids
@@ -641,8 +660,8 @@ pub fn apply_sliding_engine(
 								&mut arrival,
 								&mut window_max_ts,
 								&mut window_min_ts,
-								*hash,
-								gvals,
+								*post_hash,
+								post_gvals,
 								operator.sliding_window_span(wid),
 								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
@@ -832,12 +851,14 @@ pub fn apply_session_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
+				let post_groups = operator.core.compute_groups(post)?;
 				let timestamps = operator.row_times(post, post.row_count())?;
 				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let existing =
 						operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])?;
@@ -845,7 +866,7 @@ pub fn apply_session_engine(
 						if let Some(session_id) = session_assign(
 							operator,
 							host,
-							*hash,
+							*post_hash,
 							event_ts,
 							&kind,
 							&mut trackers,
@@ -853,7 +874,7 @@ pub fn apply_session_engine(
 						)? {
 							operator.store_row_index(
 								host,
-								*hash,
+								*post_hash,
 								post.row_numbers()[row_idx],
 								session_id,
 							)?;
@@ -874,8 +895,8 @@ pub fn apply_session_engine(
 								&mut arrival,
 								&mut window_max_ts,
 								&mut window_min_ts,
-								*hash,
-								gvals,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(session_id),
 								coord,
 								AccumulatorEvent::Add(contribution),
@@ -902,11 +923,14 @@ pub fn apply_session_engine(
 						);
 						let post_coord =
 							slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
-						let assigned = if pre_timestamps[row_idx] != timestamps[row_idx] {
+						let regrouped = post_hash != hash;
+						let assigned = if regrouped
+							|| pre_timestamps[row_idx] != timestamps[row_idx]
+						{
 							session_assign(
 								operator,
 								host,
-								*hash,
+								*post_hash,
 								event_ts,
 								&kind,
 								&mut trackers,
@@ -924,11 +948,19 @@ pub fn apply_session_engine(
 								)?;
 								operator.store_row_index(
 									host,
-									*hash,
+									*post_hash,
 									pre.row_numbers()[row_idx],
 									session_id,
 								)?;
 								vec![session_id]
+							}
+							None if regrouped => {
+								operator.drop_row_index(
+									host,
+									*hash,
+									pre.row_numbers()[row_idx],
+								)?;
+								Vec::new()
 							}
 							None => existing.clone(),
 						};
@@ -954,8 +986,8 @@ pub fn apply_session_engine(
 								&mut arrival,
 								&mut window_max_ts,
 								&mut window_min_ts,
-								*hash,
-								gvals,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(session_id),
 								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
