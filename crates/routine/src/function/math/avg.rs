@@ -20,7 +20,10 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		container::decimal_array::u128s,
+		container::{
+			bignum_array::{decimal_at, int_at, uint_at},
+			decimal_array::u128s,
+		},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -232,8 +235,8 @@ fn execute_decimal<'a>(
 				..
 			} => {
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						sums[i] = &sums[i] + &Decimal::from(value.clone());
+					if let Some(value) = int_at(container, i) {
+						sums[i] = &sums[i] + &Decimal::from(value);
 						counts[i] += 1;
 					}
 				}
@@ -243,8 +246,8 @@ fn execute_decimal<'a>(
 				..
 			} => {
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						sums[i] = &sums[i] + &Decimal::from(value.clone());
+					if let Some(value) = uint_at(container, i) {
+						sums[i] = &sums[i] + &Decimal::from(value);
 						counts[i] += 1;
 					}
 				}
@@ -254,8 +257,8 @@ fn execute_decimal<'a>(
 				..
 			} => {
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						sums[i] = &sums[i] + value;
+					if let Some(value) = decimal_at(container, i) {
+						sums[i] = &sums[i] + &value;
 						counts[i] += 1;
 					}
 				}
@@ -404,9 +407,9 @@ impl Accumulator for AvgAccumulator {
 					let mut count = 0u64;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = int_at(container, i)
 						{
-							delta = &delta + &Decimal::from(val.clone());
+							delta = &delta + &Decimal::from(val);
 							count += 1;
 						}
 					}
@@ -435,9 +438,9 @@ impl Accumulator for AvgAccumulator {
 					let mut count = 0u64;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = uint_at(container, i)
 						{
-							delta = &delta + &Decimal::from(val.clone());
+							delta = &delta + &Decimal::from(val);
 							count += 1;
 						}
 					}
@@ -466,9 +469,9 @@ impl Accumulator for AvgAccumulator {
 					let mut count = 0u64;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = decimal_at(container, i)
 						{
-							delta = &delta + val;
+							delta = &delta + &val;
 							count += 1;
 						}
 					}

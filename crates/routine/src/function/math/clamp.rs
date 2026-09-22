@@ -8,7 +8,14 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::decimal_array::u128s, is::IsNumber, value_type::ValueType};
+use reifydb_value::value::{
+	container::{
+		bignum_array::{decimals, ints, uints},
+		decimal_array::u128s,
+	},
+	is::IsNumber,
+	value_type::ValueType,
+};
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
@@ -91,7 +98,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				};
 				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
 			}};
-			($variant:ident { .. }) => {{
+			($variant:ident { .. }, $decode:ident) => {{
 				let (
 					ColumnBuffer::$variant {
 						container: v,
@@ -109,7 +116,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				else {
 					unreachable!()
 				};
-				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
+				clamp_rows(ctx, &$decode(v), v_bv, &$decode(lo), lo_bv, &$decode(hi), hi_bv)?
 			}};
 		}
 
@@ -169,15 +176,15 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				ColumnBuffer::float8_with_bitvec(values, bits)
 			}
 			ValueType::Int => {
-				let (values, bits) = run!(Int { .. });
+				let (values, bits) = run!(Int { .. }, ints);
 				ColumnBuffer::int_with_bitvec(values, bits)
 			}
 			ValueType::Uint => {
-				let (values, bits) = run!(Uint { .. });
+				let (values, bits) = run!(Uint { .. }, uints);
 				ColumnBuffer::uint_with_bitvec(values, bits)
 			}
 			ValueType::Decimal => {
-				let (values, bits) = run!(Decimal { .. });
+				let (values, bits) = run!(Decimal { .. }, decimals);
 				ColumnBuffer::decimal_with_bitvec(values, bits)
 			}
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),

@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	container::number::NumberContainer, decimal::Decimal, frame::data::FrameColumnData, value_type::ValueType,
+	container::bignum_array::decimal_array, decimal::Decimal, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<Decimal>) -> FrameColumnData {
-	FrameColumnData::Decimal(NumberContainer::new(v))
+	FrameColumnData::Decimal(decimal_array(v))
 }
 
 crate::nones_tests! {

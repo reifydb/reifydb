@@ -18,6 +18,7 @@ use arrow_array::{
 	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
 	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
 	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+	builder::LargeBinaryBuilder,
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
 use reifydb_value::{
@@ -26,13 +27,15 @@ use reifydb_value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer,
+			any_array,
+			bignum_array::{
+				decimal_as_string, decimals_equal, deserialize_decimals, deserialize_ints,
+				deserialize_uints, int_as_string, serialize_decimals, serialize_ints, serialize_uints,
+				uint_as_string,
+			},
 			bool_array,
 			decimal_array::{deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string},
-			dictionary_array,
-			digest::DigestContainer,
-			number::NumberContainer,
-			primitive,
+			dictionary_array, digest_array, primitive,
 			temporal_array::{
 				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
 				deserialize_durations, deserialize_times, durations, serialize_dates,
@@ -44,11 +47,8 @@ use reifydb_value::{
 			},
 			varlen_array,
 		},
-		decimal::Decimal,
 		dictionary::DictionaryId,
 		digest::Digest,
-		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -86,20 +86,23 @@ pub enum ColumnBuffer {
 		max_bytes: MaxBytes,
 	},
 	Int {
-		container: NumberContainer<Int>,
+		container: LargeBinaryArray,
 		max_bytes: MaxBytes,
 	},
 	Uint {
-		container: NumberContainer<Uint>,
+		container: LargeBinaryArray,
 		max_bytes: MaxBytes,
 	},
 	Decimal {
-		container: NumberContainer<Decimal>,
+		container: LargeBinaryArray,
 		precision: Precision,
 		scale: Scale,
 	},
 
-	Any(AnyContainer),
+	Any {
+		container: LargeBinaryArray,
+		declared_type: Option<ValueType>,
+	},
 
 	DictionaryId {
 		container: FixedSizeBinaryArray,
@@ -112,7 +115,7 @@ pub enum ColumnBuffer {
 	},
 
 	Digest {
-		container: DigestContainer,
+		container: LargeBinaryArray,
 		inner: ValueType,
 		accuracy: u32,
 	},
@@ -178,7 +181,13 @@ impl Clone for ColumnBuffer {
 				precision: *precision,
 				scale: *scale,
 			},
-			ColumnBuffer::Any(c) => ColumnBuffer::Any(c.clone()),
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => ColumnBuffer::Any {
+				container: container.clone(),
+				declared_type: declared_type.clone(),
+			},
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -260,7 +269,7 @@ impl PartialEq for ColumnBuffer {
 					container: b,
 					max_bytes: bm,
 				},
-			) => a == b && am == bm,
+			) => varlen_array::equals(a, b) && am == bm,
 			(
 				ColumnBuffer::Uint {
 					container: a,
@@ -270,7 +279,7 @@ impl PartialEq for ColumnBuffer {
 					container: b,
 					max_bytes: bm,
 				},
-			) => a == b && am == bm,
+			) => varlen_array::equals(a, b) && am == bm,
 			(
 				ColumnBuffer::Decimal {
 					container: a,
@@ -282,8 +291,17 @@ impl PartialEq for ColumnBuffer {
 					precision: bp,
 					scale: bs,
 				},
-			) => a == b && ap == bp && as_ == bs,
-			(ColumnBuffer::Any(a), ColumnBuffer::Any(b)) => a == b,
+			) => decimals_equal(a, b) && ap == bp && as_ == bs,
+			(
+				ColumnBuffer::Any {
+					container: a,
+					declared_type: ad,
+				},
+				ColumnBuffer::Any {
+					container: b,
+					declared_type: bd,
+				},
+			) => any_array::equals(a, b) && ad == bd,
 			(
 				ColumnBuffer::DictionaryId {
 					container: a,
@@ -315,7 +333,7 @@ impl PartialEq for ColumnBuffer {
 					inner: bi,
 					accuracy: ba,
 				},
-			) => a == b && ai == bi && aa == ba,
+			) => varlen_array::equals(a, b) && ai == bi && aa == ba,
 			_ => false,
 		}
 	}
@@ -369,7 +387,13 @@ impl fmt::Debug for ColumnBuffer {
 				.field("precision", precision)
 				.field("scale", scale)
 				.finish(),
-			ColumnBuffer::Any(c) => f.debug_tuple("Any").field(c).finish(),
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => f.debug_struct("Any")
+				.field("container", container)
+				.field("declared_type", declared_type)
+				.finish(),
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -429,19 +453,22 @@ impl Serialize for ColumnBuffer {
 				max_bytes: MaxBytes,
 			},
 			Int {
-				container: &'a NumberContainer<Int>,
+				#[serde(serialize_with = "serialize_ints")]
+				container: &'a LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Uint {
-				container: &'a NumberContainer<Uint>,
+				#[serde(serialize_with = "serialize_uints")]
+				container: &'a LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Decimal {
-				container: &'a NumberContainer<Decimal>,
+				#[serde(serialize_with = "serialize_decimals")]
+				container: &'a LargeBinaryArray,
 				precision: Precision,
 				scale: Scale,
 			},
-			Any(&'a AnyContainer),
+			Any(AnyShape<'a>),
 			DictionaryId {
 				#[serde(rename = "data", serialize_with = "dictionary_array::serialize")]
 				container: &'a FixedSizeBinaryArray,
@@ -453,10 +480,17 @@ impl Serialize for ColumnBuffer {
 				bitvec: &'a BooleanBuffer,
 			},
 			Digest {
-				container: &'a DigestContainer,
+				#[serde(serialize_with = "digest_array::serialize")]
+				container: &'a LargeBinaryArray,
 				inner: &'a ValueType,
 				accuracy: u32,
 			},
+		}
+		#[derive(Serialize)]
+		struct AnyShape<'a> {
+			#[serde(serialize_with = "any_array::serialize")]
+			data: &'a LargeBinaryArray,
+			declared_type: &'a Option<ValueType>,
 		}
 		let helper = match self {
 			ColumnBuffer::Bool(c) => Helper::Bool(c),
@@ -516,7 +550,13 @@ impl Serialize for ColumnBuffer {
 				precision: *precision,
 				scale: *scale,
 			},
-			ColumnBuffer::Any(c) => Helper::Any(c),
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => Helper::Any(AnyShape {
+				data: container,
+				declared_type,
+			}),
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -580,19 +620,22 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				max_bytes: MaxBytes,
 			},
 			Int {
-				container: NumberContainer<Int>,
+				#[serde(deserialize_with = "deserialize_ints")]
+				container: LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Uint {
-				container: NumberContainer<Uint>,
+				#[serde(deserialize_with = "deserialize_uints")]
+				container: LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
 			Decimal {
-				container: NumberContainer<Decimal>,
+				#[serde(deserialize_with = "deserialize_decimals")]
+				container: LargeBinaryArray,
 				precision: Precision,
 				scale: Scale,
 			},
-			Any(AnyContainer),
+			Any(AnyShape),
 			DictionaryId {
 				#[serde(rename = "data", deserialize_with = "dictionary_array::deserialize")]
 				container: FixedSizeBinaryArray,
@@ -604,10 +647,18 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				bitvec: BooleanBuffer,
 			},
 			Digest {
-				container: DigestContainer,
+				#[serde(deserialize_with = "digest_array::deserialize")]
+				container: LargeBinaryArray,
 				inner: ValueType,
 				accuracy: u32,
 			},
+		}
+		#[derive(Deserialize)]
+		struct AnyShape {
+			#[serde(deserialize_with = "any_array::deserialize")]
+			data: LargeBinaryArray,
+			#[serde(default)]
+			declared_type: Option<ValueType>,
 		}
 		let helper = Helper::deserialize(deserializer)?;
 		Ok(match helper {
@@ -668,7 +719,13 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				precision,
 				scale,
 			},
-			Helper::Any(c) => ColumnBuffer::Any(c),
+			Helper::Any(AnyShape {
+				data,
+				declared_type,
+			}) => ColumnBuffer::Any {
+				container: data,
+				declared_type,
+			},
 			Helper::DictionaryId {
 				container,
 				dictionary_id,
@@ -697,15 +754,9 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 }
 
 macro_rules! with_container {
-	($self:expr, |$c:ident| $body:expr) => {
-		with_container!($self, |$c| $body, |_array| unreachable!(
-			"with_container! must not be called on a native variant without a native body"
-		))
-	};
-	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr) => {
+	($self:expr, |$a:ident| $native:expr) => {
 		with_container!(
 			$self,
-			|$c| $body,
 			|$a| $native,
 			|_temporal| unreachable!(
 				"with_container! must not be called on a temporal variant without a temporal body"
@@ -716,7 +767,7 @@ macro_rules! with_container {
 			)
 		)
 	};
-	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr, |$t:ident| $temporal:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
+	($self:expr, |$a:ident| $native:expr, |$t:ident| $temporal:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
 		match $self {
 			ColumnBuffer::Float4($a) => $native,
 			ColumnBuffer::Float8($a) => $native,
@@ -744,6 +795,26 @@ macro_rules! with_container {
 				container: $v,
 				..
 			} => $varlen,
+			ColumnBuffer::Int {
+				container: $v,
+				..
+			} => $varlen,
+			ColumnBuffer::Uint {
+				container: $v,
+				..
+			} => $varlen,
+			ColumnBuffer::Decimal {
+				container: $v,
+				..
+			} => $varlen,
+			ColumnBuffer::Any {
+				container: $v,
+				..
+			} => $varlen,
+			ColumnBuffer::Digest {
+				container: $v,
+				..
+			} => $varlen,
 			ColumnBuffer::Bool(_) => {
 				unreachable!(
 					"with_container! must not be called on Bool variant directly; handle it explicitly"
@@ -754,19 +825,6 @@ macro_rules! with_container {
 					"with_container! must not be called on Uint16 variant directly; handle it explicitly"
 				)
 			}
-			ColumnBuffer::Int {
-				container: $c,
-				..
-			} => $body,
-			ColumnBuffer::Uint {
-				container: $c,
-				..
-			} => $body,
-			ColumnBuffer::Decimal {
-				container: $c,
-				..
-			} => $body,
-			ColumnBuffer::Any($c) => $body,
 			ColumnBuffer::DictionaryId {
 				..
 			} => {
@@ -774,10 +832,6 @@ macro_rules! with_container {
 					"with_container! must not be called on DictionaryId variant directly; handle it explicitly"
 				)
 			}
-			ColumnBuffer::Digest {
-				container: $c,
-				..
-			} => $body,
 			ColumnBuffer::Option {
 				..
 			} => {
@@ -852,7 +906,10 @@ impl ColumnBuffer {
 			ColumnBuffer::DictionaryId {
 				..
 			} => ValueType::DictionaryId,
-			ColumnBuffer::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
+			ColumnBuffer::Any {
+				declared_type,
+				..
+			} => declared_type.clone().unwrap_or(ValueType::Any),
 			ColumnBuffer::Option {
 				inner,
 				..
@@ -901,20 +958,23 @@ impl ColumnBuffer {
 			ColumnBuffer::Int {
 				container: c,
 				..
-			} => c.is_defined(idx),
+			} => idx < c.len(),
 			ColumnBuffer::Uint {
 				container: c,
 				..
-			} => c.is_defined(idx),
+			} => idx < c.len(),
 			ColumnBuffer::Decimal {
 				container: c,
 				..
-			} => c.is_defined(idx),
+			} => idx < c.len(),
 			ColumnBuffer::DictionaryId {
 				container: c,
 				..
 			} => idx < c.len(),
-			ColumnBuffer::Any(c) => c.is_defined(idx),
+			ColumnBuffer::Any {
+				container: c,
+				..
+			} => idx < c.len(),
 			ColumnBuffer::Option {
 				bitvec,
 				..
@@ -922,7 +982,7 @@ impl ColumnBuffer {
 			ColumnBuffer::Digest {
 				container,
 				..
-			} => container.is_defined(idx),
+			} => digest_array::is_defined(container, idx),
 		}
 	}
 
@@ -990,7 +1050,7 @@ impl ColumnBuffer {
 				container,
 				..
 			} => container.len(),
-			_ => with_container!(self, |c| c.len(), |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
+			_ => with_container!(self, |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
 		}
 	}
 
@@ -1012,7 +1072,6 @@ impl ColumnBuffer {
 			} => dictionary_array::capacity(container),
 			_ => with_container!(
 				self,
-				|c| c.capacity(),
 				|a| primitive::capacity(a),
 				|t| primitive::capacity(t),
 				|u| uuid_array::capacity(u),
@@ -1031,9 +1090,8 @@ impl ColumnBuffer {
 				container,
 				..
 			} => {
-				container.heap_size()
-					+ container
-						.iter()
+				varlen_array::heap_size(container)
+					+ digest_array::iter(container)
 						.flatten()
 						.map(|digest| size_of::<Digest>() + digest.heap_size())
 						.sum::<usize>()
@@ -1046,7 +1104,6 @@ impl ColumnBuffer {
 			} => dictionary_array::heap_size(container),
 			_ => with_container!(
 				self,
-				|c| c.heap_size(),
 				|a| primitive::heap_size(a),
 				|t| primitive::heap_size(t),
 				|u| uuid_array::heap_size(u),
@@ -1066,7 +1123,7 @@ impl ColumnBuffer {
 			| ColumnBuffer::DictionaryId {
 				..
 			} => {}
-			_ => with_container!(self, |c| c.freeze(), |_a| {}, |_t| {}, |_u| {}, |_v| {}),
+			_ => with_container!(self, |_a| {}, |_t| {}, |_u| {}, |_v| {}),
 		}
 	}
 
@@ -1103,7 +1160,27 @@ impl ColumnBuffer {
 				container,
 				..
 			} => dictionary_array::as_string(container, index),
-			_ => with_container!(self, |c| c.as_string(index), |a| primitive::as_string(a, index)),
+			ColumnBuffer::Int {
+				container,
+				..
+			} => int_as_string(container, index),
+			ColumnBuffer::Uint {
+				container,
+				..
+			} => uint_as_string(container, index),
+			ColumnBuffer::Decimal {
+				container,
+				..
+			} => decimal_as_string(container, index),
+			ColumnBuffer::Any {
+				container,
+				..
+			} => any_array::as_string(container, index),
+			ColumnBuffer::Digest {
+				container,
+				..
+			} => digest_array::as_string(container, index),
+			_ => with_container!(self, |a| primitive::as_string(a, index)),
 		}
 	}
 }
@@ -1149,7 +1226,7 @@ impl ColumnBuffer {
 				inner,
 				accuracy,
 			} => ColumnBuffer::Digest {
-				container: DigestContainer::with_capacity(capacity),
+				container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
 				inner: *inner,
 				accuracy,
 			},

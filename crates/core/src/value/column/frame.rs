@@ -54,7 +54,13 @@ impl From<ColumnBuffer> for FrameColumnData {
 				container,
 				..
 			} => FrameColumnData::Decimal(container),
-			ColumnBuffer::Any(container) => FrameColumnData::Any(container),
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => FrameColumnData::Any {
+				container,
+				declared_type,
+			},
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -154,7 +160,13 @@ impl From<FrameColumnData> for ColumnBuffer {
 				precision: Precision::MAX,
 				scale: Scale::new(0),
 			},
-			FrameColumnData::Any(container) => ColumnBuffer::Any(container),
+			FrameColumnData::Any {
+				container,
+				declared_type,
+			} => ColumnBuffer::Any {
+				container,
+				declared_type,
+			},
 			FrameColumnData::DictionaryId {
 				container,
 				dictionary_id,

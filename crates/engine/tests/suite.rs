@@ -64,6 +64,8 @@ mod digest_row_storage;
 mod distinct_row_identity;
 #[path = "distinct_typed_key.rs"]
 mod distinct_typed_key;
+#[path = "duration_mixed_unit_identity.rs"]
+mod duration_mixed_unit_identity;
 #[path = "duration_subtract_and_scale_overflow.rs"]
 mod duration_subtract_and_scale_overflow;
 #[path = "empty_batch_system_columns.rs"]

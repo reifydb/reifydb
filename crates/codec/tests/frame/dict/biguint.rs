@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::BigInt;
-use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData, uint::Uint};
+use reifydb_value::value::{container::bignum_array::uint_array, frame::data::FrameColumnData, uint::Uint};
 
 fn make(v: Vec<Uint>) -> FrameColumnData {
-	FrameColumnData::Uint(NumberContainer::new(v))
+	FrameColumnData::Uint(uint_array(v))
 }
 
 crate::dict_tests! {

@@ -11,6 +11,7 @@ use reifydb_value::{
 	value::{
 		blob::Blob,
 		container::{
+			bignum_array::{decimals, ints, uints},
 			decimal_array::u128s,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -46,15 +47,15 @@ pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 		ColumnBuffer::Int {
 			container,
 			..
-		} => from_number(container),
+		} => from_number(&ints(container)),
 		ColumnBuffer::Uint {
 			container,
 			..
-		} => from_number(container),
+		} => from_number(&uints(container)),
 		ColumnBuffer::Decimal {
 			container,
 			..
-		} => from_number(container),
+		} => from_number(&decimals(container)),
 		ColumnBuffer::Date(container) => from_temporal(dates(container)),
 		ColumnBuffer::DateTime(container) => from_temporal(datetimes(container)),
 		ColumnBuffer::Time(container) => from_temporal(times(container)),

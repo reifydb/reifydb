@@ -34,7 +34,6 @@ impl ColumnBuffer {
 			} => *container = dictionary_array::filter(container, mask),
 			_ => with_container!(
 				self,
-				|c| c.filter(mask),
 				|a| *a = primitive::filter(a, mask),
 				|t| *t = primitive::filter(t, mask),
 				|u| *u = uuid_array::filter(u, mask),

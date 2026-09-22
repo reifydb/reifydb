@@ -7,7 +7,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::u128_at,
+	container::{
+		bignum_array::{decimal_at, int_at, uint_at},
+		decimal_array::u128_at,
+	},
 	value_type::{ValueType, input_types::InputTypes},
 };
 
@@ -46,15 +49,15 @@ fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 		ColumnBuffer::Int {
 			container,
 			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
+		} => int_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
 		ColumnBuffer::Uint {
 			container,
 			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
+		} => uint_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
 		ColumnBuffer::Decimal {
 			container,
 			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
+		} => decimal_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
 		_ => None,
 	}
 }

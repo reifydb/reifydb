@@ -10,7 +10,7 @@ use reifydb_codec::json::{
 };
 use reifydb_value::value::{
 	Value,
-	container::digest::DigestContainer,
+	container::digest_array::digest_array,
 	datetime::DateTime,
 	digest::Digest,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -23,12 +23,10 @@ use serde_json::{Value as JsonValue, from_str, json, to_string};
 fn digest_frame() -> Frame {
 	let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
 	digest.add_value(&Value::float8(1.0)).unwrap();
-	let mut container = DigestContainer::with_capacity(1);
-	container.push(Box::new(digest));
 	Frame::new(vec![FrameColumn {
 		name: "d".to_string(),
 		data: FrameColumnData::Digest {
-			container,
+			container: digest_array([Some(digest)]),
 			inner: ValueType::Float8,
 			accuracy: 10_000,
 		},

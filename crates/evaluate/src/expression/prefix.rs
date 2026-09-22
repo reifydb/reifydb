@@ -9,7 +9,15 @@ use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
-	value::{container::decimal_array::u128s, decimal::Decimal, int::Int, uint::Uint},
+	value::{
+		container::{
+			bignum_array::{decimals, ints, uints},
+			decimal_array::u128s,
+		},
+		decimal::Decimal,
+		int::Int,
+		uint::Uint,
+	},
 };
 
 use crate::{Result, expression::option::unary_op_unwrap_option};
@@ -231,9 +239,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			container,
 			..
 		} => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
+			let values = ints(container);
+			let mut result = Vec::with_capacity(values.len());
+			for (idx, val) in values.iter().enumerate() {
+				if idx < values.len() {
 					result.push(match operator {
 						PrefixOperator::Minus(_) => Int(-val.0.clone()),
 						PrefixOperator::Plus(_) => val.clone(),
@@ -258,9 +267,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			..
 		} => match operator {
 			PrefixOperator::Minus(_) => {
-				let mut result = Vec::with_capacity(container.data().len());
-				for (idx, val) in container.data().iter().enumerate() {
-					if container.is_defined(idx) {
+				let values = uints(container);
+				let mut result = Vec::with_capacity(values.len());
+				for (idx, val) in values.iter().enumerate() {
+					if idx < values.len() {
 						let negated = -val.0.clone();
 						result.push(Int::from(negated));
 					} else {
@@ -271,9 +281,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 				Ok(column.with_new_data(new_data))
 			}
 			PrefixOperator::Plus(_) => {
-				let mut result = Vec::with_capacity(container.data().len());
-				for (idx, val) in container.data().iter().enumerate() {
-					if container.is_defined(idx) {
+				let values = uints(container);
+				let mut result = Vec::with_capacity(values.len());
+				for (idx, val) in values.iter().enumerate() {
+					if idx < values.len() {
 						result.push(val.clone());
 					} else {
 						result.push(Uint::zero());
@@ -293,9 +304,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			container,
 			..
 		} => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
+			let values = decimals(container);
+			let mut result = Vec::with_capacity(values.len());
+			for (idx, val) in values.iter().enumerate() {
+				if idx < values.len() {
 					result.push(match operator {
 						PrefixOperator::Minus(_) => val.clone().negate(),
 						PrefixOperator::Plus(_) => val.clone(),
@@ -327,7 +339,9 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Any(_) => match operator {
+		ColumnBuffer::Any {
+			..
+		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to Any type".to_string(),
 			}

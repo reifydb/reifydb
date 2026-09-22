@@ -2,11 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	Value, container::any::AnyContainer, frame::data::FrameColumnData, ordered_f64::OrderedF64,
+	Value, container::any_array::any_array, frame::data::FrameColumnData, ordered_f64::OrderedF64,
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any(AnyContainer::new(v))
+	FrameColumnData::Any {
+		container: any_array(v),
+		declared_type: None,
+	}
 }
 
 crate::plain_tests! {

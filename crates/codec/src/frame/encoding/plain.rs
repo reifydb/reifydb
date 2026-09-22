@@ -8,23 +8,21 @@ use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	encoding::LeBytes,
 	value::{
-		Value,
 		container::{
+			any_array,
+			bignum_array::{decimals, ints, uints},
 			decimal_array::u128s,
-			dictionary_array,
+			dictionary_array, digest_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
 		},
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		frame::data::FrameColumnData,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -201,23 +199,24 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
 		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
 		FrameColumnData::Int(c) => {
-			let slice: &[Int] = c;
+			let slice = &ints(c);
 			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Int)
 		}
 		FrameColumnData::Uint(c) => {
-			let slice: &[Uint] = c;
+			let slice = &uints(c);
 			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Uint)
 		}
 		FrameColumnData::Decimal(c) => {
-			let slice: &[Decimal] = c;
+			let slice = &decimals(c);
 			encode_varlen(slice.len(), |i| slice[i].to_string().into_bytes(), ValueType::Decimal)
 		}
-		FrameColumnData::Any(c) => {
+		FrameColumnData::Any {
+			container,
+			..
+		} => {
 			let mut data = Vec::new();
-			let none = Value::none();
-			for i in 0..c.len() {
-				let val = c.get(i).unwrap_or(&none);
-				encode_any_value(val, &mut data)?;
+			for val in any_array::values(container) {
+				encode_any_value(&val, &mut data)?;
 			}
 			return Ok(PlainEncoded {
 				data,
@@ -236,7 +235,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			..
 		} => encode_varlen(
 			container.len(),
-			|i| match container.get(i) {
+			|i| match digest_array::get(container, i) {
 				Some(digest) => digest.encode(),
 				None => Vec::new(),
 			},

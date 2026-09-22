@@ -24,6 +24,7 @@ use crate::{
 	value::value_type::ValueType,
 };
 
+pub mod encoding;
 pub mod parse;
 
 #[repr(transparent)]

@@ -15,21 +15,16 @@ use reifydb_value::{
 		Value,
 		blob::Blob,
 		container::{
-			any::AnyContainer,
-			bool_array,
-			number::NumberContainer,
-			primitive,
-			row::RowNumberContainer,
-			temporal_array, uuid_array,
+			any_array, bignum_array, bool_array, digest_array, primitive, temporal_array, uuid_array,
 			varlen_array::{self, blob_array, compact_parts, equals, get, slice},
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
-		row_number::RowNumber,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
@@ -50,203 +45,138 @@ fn points_into<T>(parent: &[T], child: &[T]) -> bool {
 	child_start >= start && child_end <= end
 }
 
-macro_rules! slice_backed_suite {
-	($name:ident, $container:ty, $elem:ty, $gen:expr, $extra:expr) => {
+macro_rules! encoded_row_suite {
+	($name:ident, $elem:ty, $gen:expr, $build:path, $decode:path, $equals:path, $ser:tt, $de:tt) => {
 		mod $name {
 			use super::*;
 
-			fn value(i: usize) -> $elem {
-				let make: fn(usize) -> $elem = $gen;
-				make(i)
-			}
+			#[derive(Serialize, Deserialize)]
+			struct Column(#[serde(serialize_with = $ser, deserialize_with = $de)] LargeBinaryArray);
 
 			fn values(n: usize) -> Vec<$elem> {
-				(0..n).map(value).collect()
+				let make: fn(usize) -> $elem = $gen;
+				(0..n).map(make).collect()
 			}
 
-			fn extra() -> $elem {
-				$extra
+			fn array(n: usize) -> LargeBinaryArray {
+				$build(values(n))
 			}
 
-			fn frozen(n: usize) -> $container {
-				let mut c = <$container>::from_vec(values(n));
-				c.freeze();
-				c
-			}
-
-			#[test]
-			fn freeze_keeps_the_data_pointer() {
-				// Freezing must wrap the existing allocation, never copy it.
-				let mut c = <$container>::from_vec(values(ROWS));
-				let before = c.data().as_ptr();
-				c.freeze();
-				assert_eq!(c.data().as_ptr(), before);
-				assert_eq!(c.data(), &values(ROWS)[..]);
-				assert_eq!(
-					c.data_mut().as_ptr(),
-					before,
-					"a unique frozen container must thaw in place, never copy"
-				);
+			fn row_byte(array: &LargeBinaryArray, row: usize) -> usize {
+				(0..row).map(|i| array.value(i).len()).sum()
 			}
 
 			#[test]
-			fn clone_after_freeze_shares_the_data_pointer() {
-				// A frozen clone must be zero copy, otherwise every batch clone is O(rows).
-				let mut c = frozen(ROWS);
-				let base = c.data().as_ptr();
-				let d = c.clone();
-				assert_eq!(d.data().as_ptr(), c.data().as_ptr());
-				assert_eq!(d.len(), ROWS);
-				assert_eq!(d.data(), &values(ROWS)[..]);
-				drop(d);
-				assert_eq!(
-					c.data_mut().as_ptr(),
-					base,
-					"dropping the clone must release the allocation"
-				);
-			}
-
-			#[test]
-			fn slice_after_freeze_points_into_the_parent() {
-				// A frozen slice must point exactly start elements into the parent allocation.
-				let c = frozen(ROWS);
-				let s = c.slice(100, 350);
+			fn slice_and_take_point_into_the_parent_bytes() {
+				// A slice must start exactly at its first row's byte and decode exactly its rows.
+				let c = array(ROWS);
+				let (parent, _) = compact_parts(&c);
+				let s = slice(&c, 100, 350);
 				assert_eq!(s.len(), 250);
-				assert_eq!(s.data().as_ptr(), c.data().as_ptr().wrapping_add(100));
-				assert!(points_into(c.data(), s.data()));
-				assert_eq!(s.data(), &values(ROWS)[100..350]);
+				let (data, _) = compact_parts(&s);
+				assert_eq!(data.as_ptr(), parent.as_ptr().wrapping_add(row_byte(&c, 100)));
+				assert!(points_into(parent, data));
+				assert_eq!(data.len(), row_byte(&c, 350) - row_byte(&c, 100));
+				assert_eq!($decode(&s), &values(ROWS)[100..350]);
 
-				let t = c.take(10);
-				assert_eq!(t.data().as_ptr(), c.data().as_ptr());
-				assert_eq!(t.data(), &values(ROWS)[..10]);
+				let t = varlen_array::take(&c, 10);
+				assert_eq!(compact_parts(&t).0.as_ptr(), parent.as_ptr());
+				assert_eq!($decode(&t), &values(ROWS)[..10]);
 
-				let clamped = c.slice(990, 5000);
-				assert_eq!(clamped.data(), &values(ROWS)[990..], "slice must clamp to the length");
-				assert!(c.slice(2000, 3000).is_empty());
+				let clamped = slice(&c, 990, 5000);
+				assert_eq!($decode(&clamped), &values(ROWS)[990..], "slice must clamp to the length");
+				assert!(slice(&c, 2000, 3000).is_empty());
 			}
 
 			#[test]
-			fn slice_of_a_slice_offsets_from_the_view() {
-				// A nested slice must add both offsets, never restart from the parent start.
-				let c = frozen(ROWS);
-				let s = c.slice(100, 600).slice(50, 60);
-				assert_eq!(s.data().as_ptr(), c.data().as_ptr().wrapping_add(150));
-				assert_eq!(s.data(), &values(ROWS)[150..160]);
-			}
-
-			#[test]
-			fn push_on_a_clone_never_shows_through_the_original() {
-				// A write through a clone must copy first, otherwise it corrupts the shared block.
-				let c = frozen(ROWS);
-				let mut d = c.clone();
-				d.push(extra());
-				assert_eq!(c.len(), ROWS);
-				assert_eq!(c.data(), &values(ROWS)[..]);
-				assert_eq!(d.len(), ROWS + 1);
-				assert_eq!(d.data()[ROWS], extra());
-				assert_eq!(&d.data()[..ROWS], &values(ROWS)[..]);
-				assert_ne!(d.data().as_ptr(), c.data().as_ptr());
-			}
-
-			#[test]
-			fn push_on_the_original_never_shows_through_a_clone() {
-				// A write through the original must never change what an earlier clone reads.
-				let mut c = frozen(ROWS);
-				let d = c.clone();
-				c.push(extra());
-				assert_eq!(d.len(), ROWS);
-				assert_eq!(d.data(), &values(ROWS)[..]);
-				assert_eq!(c.len(), ROWS + 1);
-				assert_eq!(c.data()[ROWS], extra());
-			}
-
-			#[test]
-			fn push_on_a_slice_never_overwrites_the_parent() {
-				// Pushing onto a head slice must never write the parent row right after the view.
-				let c = frozen(ROWS);
-				let mut s = c.slice(0, 10);
-				s.push(extra());
-				assert_eq!(s.len(), 11);
-				assert_eq!(s.data()[10], extra());
-				assert_eq!(&s.data()[..10], &values(ROWS)[..10]);
-				assert_eq!(c.data()[10], value(10));
-				assert_eq!(c.data(), &values(ROWS)[..]);
-
-				let mut mid = c.slice(500, 510);
-				mid.push(extra());
-				assert_eq!(c.data()[510], value(510), "a mid slice push must never reach the parent");
-				assert_eq!(&mid.data()[..10], &values(ROWS)[500..510]);
-			}
-
-			#[test]
-			fn unfrozen_clone_is_an_equal_independent_copy() {
-				// An owned container must still clone correctly, with writes isolated in both
-				// directions.
-				let mut c = <$container>::from_vec(values(ROWS));
-				let mut d = c.clone();
-				assert_eq!(d.data(), c.data());
-				assert_ne!(d.data().as_ptr(), c.data().as_ptr());
-				c.push(extra());
-				assert_eq!(d.len(), ROWS);
-				d.push(value(3));
-				assert_eq!(c.data()[ROWS], extra());
-				assert_eq!(d.data()[ROWS], value(3));
-				let s = c.slice(3, 8);
-				assert_eq!(s.data(), &values(ROWS)[3..8]);
-			}
-
-			#[test]
-			fn serialize_of_a_slice_equals_a_fresh_container() {
-				// A slice must serialize as exactly its rows, never the parent's rows.
-				let c = frozen(ROWS);
-				let s = c.slice(100, 350);
-				let fresh = <$container>::from_vec(values(ROWS)[100..350].to_vec());
-				assert_eq!(to_allocvec(&s).unwrap(), to_allocvec(&fresh).unwrap());
-				let json = serde_json::to_string(&s).unwrap();
-				assert_eq!(json, serde_json::to_string(&fresh).unwrap());
-				let decoded: $container = serde_json::from_str(&json).unwrap();
-				assert_eq!(decoded.data(), &values(ROWS)[100..350]);
-				assert!(decoded == fresh, "the decoded slice must equal the fresh container");
+			fn serialize_of_a_slice_equals_a_fresh_array() {
+				// A slice must serialize exactly its rows, never the parent's rows.
+				let c = array(ROWS);
+				let s = Column(slice(&c, 100, 350));
+				let fresh = Column($build(values(ROWS)[100..350].to_vec()));
+				let encoded = to_allocvec(&s).unwrap();
+				assert_eq!(encoded, to_allocvec(&fresh).unwrap());
+				let decoded: Column = from_bytes(&encoded).unwrap();
+				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
+				let json = json_to_string(&s).unwrap();
+				assert_eq!(json, json_to_string(&fresh).unwrap());
+				let decoded: Column = json_from_str(&json).unwrap();
+				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
 			}
 
 			#[test]
 			fn equality_ignores_how_the_rows_are_stored() {
-				// A frozen slice and an owned container with the same rows must compare equal.
-				let c = frozen(ROWS);
-				let fresh = <$container>::from_vec(values(ROWS)[20..40].to_vec());
-				assert!(c.slice(20, 40) == fresh);
-				assert!(c.slice(21, 41) != fresh);
+				// A slice must equal a fresh array of its rows, otherwise equality reads the parent.
+				let c = array(ROWS);
+				let fresh = $build(values(ROWS)[20..40].to_vec());
+				assert!($equals(&slice(&c, 20, 40), &fresh));
+				assert!(!$equals(&slice(&c, 21, 41), &fresh));
 			}
 		}
 	};
 }
 
-slice_backed_suite!(int1, NumberContainer<i8>, i8, |i| (i % 100) as i8, i8::MIN);
-slice_backed_suite!(int2, NumberContainer<i16>, i16, |i| i as i16 * 3, i16::MIN);
-slice_backed_suite!(int4, NumberContainer<i32>, i32, |i| i as i32 * 7, i32::MIN);
-slice_backed_suite!(int8, NumberContainer<i64>, i64, |i| i as i64 * 11, i64::MIN);
-slice_backed_suite!(int16, NumberContainer<i128>, i128, |i| i as i128 * 13, i128::MIN);
-slice_backed_suite!(uint1, NumberContainer<u8>, u8, |i| (i % 200) as u8, u8::MAX);
-slice_backed_suite!(uint2, NumberContainer<u16>, u16, |i| i as u16 * 3, u16::MAX);
-slice_backed_suite!(uint4, NumberContainer<u32>, u32, |i| i as u32 * 7, u32::MAX);
-slice_backed_suite!(uint8, NumberContainer<u64>, u64, |i| i as u64 * 11, u64::MAX);
-slice_backed_suite!(uint16, NumberContainer<u128>, u128, |i| i as u128 * 13, u128::MAX);
-slice_backed_suite!(float4, NumberContainer<f32>, f32, |i| i as f32 * 0.5, -1.0);
-slice_backed_suite!(float8, NumberContainer<f64>, f64, |i| i as f64 * 0.25, -1.0);
-slice_backed_suite!(int, NumberContainer<Int>, Int, |i| Int::from_i64(i as i64 * 1_000_003), Int::from_i64(-1));
-slice_backed_suite!(uint, NumberContainer<Uint>, Uint, |i| Uint::from_u64(i as u64 * 7), Uint::from_u64(u64::MAX));
-slice_backed_suite!(decimal, NumberContainer<Decimal>, Decimal, |i| Decimal::from_i64(i as i64), Decimal::from_i64(-1));
-slice_backed_suite!(row_number, RowNumberContainer, RowNumber, |i| RowNumber(i as u64 + 1), RowNumber(u64::MAX));
-slice_backed_suite!(
+fn digest_rows(array: &LargeBinaryArray) -> Vec<Option<Digest>> {
+	digest_array::iter(array).collect()
+}
+
+encoded_row_suite!(
+	int,
+	Int,
+	|i| Int::from_i64(i as i64 * 1_000_003),
+	bignum_array::int_array,
+	bignum_array::ints,
+	varlen_array::equals,
+	"bignum_array::serialize_ints",
+	"bignum_array::deserialize_ints"
+);
+encoded_row_suite!(
+	uint,
+	Uint,
+	|i| Uint::from_u64(i as u64 * 7),
+	bignum_array::uint_array,
+	bignum_array::uints,
+	varlen_array::equals,
+	"bignum_array::serialize_uints",
+	"bignum_array::deserialize_uints"
+);
+encoded_row_suite!(
+	decimal,
+	Decimal,
+	|i| Decimal::from_i64(i as i64),
+	bignum_array::decimal_array,
+	bignum_array::decimals,
+	bignum_array::decimals_equal,
+	"bignum_array::serialize_decimals",
+	"bignum_array::deserialize_decimals"
+);
+encoded_row_suite!(
 	any,
-	AnyContainer,
 	Value,
 	|i| if i % 3 == 0 {
 		Value::Utf8(format!("row-{i}"))
 	} else {
 		Value::Int8(i as i64)
 	},
-	Value::Utf8("extra".to_string())
+	any_array::any_array,
+	any_array::values,
+	any_array::equals,
+	"any_array::serialize",
+	"any_array::deserialize"
+);
+encoded_row_suite!(
+	digest,
+	Option<Digest>,
+	|i| (i % 4 != 0).then(|| {
+		let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
+		digest.add_value(&Value::float8(i as f64)).unwrap();
+		digest
+	}),
+	digest_array::digest_array,
+	digest_rows,
+	varlen_array::equals,
+	"digest_array::serialize",
+	"digest_array::deserialize"
 );
 
 macro_rules! array_suite {
@@ -391,24 +321,6 @@ array_suite!(
 	"uuid_array::serialize_identity_ids",
 	"uuid_array::deserialize_identity_ids"
 );
-
-#[test]
-fn a_small_slice_of_a_frozen_container_pins_the_parent_allocation() {
-	// A one row slice must keep pointing into the parent allocation after the parent handle is dropped; this pins
-	// the whole block.
-	let mut parent = NumberContainer::from_vec((0..100_000i64).collect());
-	parent.freeze();
-	let base = parent.data().as_ptr();
-	let mut s = parent.slice(50_000, 50_001);
-	drop(parent);
-	assert_eq!(s.data().as_ptr(), base.wrapping_add(50_000));
-	assert_eq!(s.data(), &[50_000]);
-	assert_eq!(
-		s.data_mut().as_ptr(),
-		base,
-		"with the parent dropped the slice must be the sole owner and drain in place"
-	);
-}
 
 fn bool_pattern(n: usize) -> Vec<bool> {
 	(0..n).map(|i| i % 3 == 0 || i % 7 == 0).collect()

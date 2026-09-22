@@ -27,8 +27,8 @@ use reifydb_value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer,
-			number::NumberContainer,
+			any_array::any_array,
+			bignum_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
@@ -722,7 +722,7 @@ fn finalize_buffer(
 			})
 			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Int {
-				container: NumberContainer::from_vec(v),
+				container: int_array(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -732,7 +732,7 @@ fn finalize_buffer(
 			})
 			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Uint {
-				container: NumberContainer::from_vec(v),
+				container: uint_array(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -742,7 +742,7 @@ fn finalize_buffer(
 			})
 			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Decimal {
-				container: NumberContainer::from_vec(v),
+				container: decimal_array(v),
 				precision: Precision::MAX,
 				scale: Scale::MIN,
 			}
@@ -752,7 +752,10 @@ fn finalize_buffer(
 				decode_any_cell(bytes).ok()
 			})
 			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
-			ColumnBuffer::Any(AnyContainer::from_vec(values))
+			ColumnBuffer::Any {
+				container: any_array(values),
+				declared_type: None,
+			}
 		}
 		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =

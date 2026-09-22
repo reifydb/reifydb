@@ -15,7 +15,10 @@ use reifydb_value::{
 	encoding::LeBytes,
 	reifydb_assertions,
 	value::{
-		container::{number::NumberContainer, varlen_array::blob_array},
+		container::{
+			bignum_array::{decimal_array, int_array, uint_array},
+			varlen_array::blob_array,
+		},
 		datetime::DateTime,
 		decimal::Decimal,
 		diff_type::DiffType,
@@ -375,7 +378,7 @@ fn decode_column_dispatch(
 					let big = BigInt::from_signed_bytes_le(&dict_entries[idx]);
 					values.push(Int(big));
 				}
-				Ok(FrameColumnData::Int(NumberContainer::new(values)))
+				Ok(FrameColumnData::Int(int_array(values)))
 			}
 			ValueType::Uint => {
 				let index_width = dict_index_width_from_flags(flags);
@@ -393,7 +396,7 @@ fn decode_column_dispatch(
 					let big = BigInt::from_signed_bytes_le(&dict_entries[idx]);
 					values.push(Uint(big));
 				}
-				Ok(FrameColumnData::Uint(NumberContainer::new(values)))
+				Ok(FrameColumnData::Uint(uint_array(values)))
 			}
 			ValueType::Decimal => {
 				let index_width = dict_index_width_from_flags(flags);
@@ -416,7 +419,7 @@ fn decode_column_dispatch(
 					})?;
 					values.push(Decimal::new(dec));
 				}
-				Ok(FrameColumnData::Decimal(NumberContainer::new(values)))
+				Ok(FrameColumnData::Decimal(decimal_array(values)))
 			}
 			_ => Err(DecodeError::InvalidData(format!("Dict encoding not supported for type {:?}", ty))),
 		},

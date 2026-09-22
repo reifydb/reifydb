@@ -7,7 +7,7 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::number::NumberContainer,
+	container::bignum_array::{decimal_array, decimal_at},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -80,7 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 			} => {
 				let mut data = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
+					if let Some(value) = decimal_at(container, i) {
 						let f = value.0.to_f64().unwrap_or(0.0);
 						data.push(Decimal::from(f.trunc()));
 					} else {
@@ -88,7 +88,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 					}
 				}
 				ColumnBuffer::Decimal {
-					container: NumberContainer::new(data),
+					container: decimal_array(data),
 					precision: *precision,
 					scale: *scale,
 				}

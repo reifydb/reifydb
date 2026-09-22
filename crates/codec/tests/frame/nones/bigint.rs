@@ -3,11 +3,11 @@
 
 use num_bigint::BigInt;
 use reifydb_value::value::{
-	container::number::NumberContainer, frame::data::FrameColumnData, int::Int, value_type::ValueType,
+	container::bignum_array::int_array, frame::data::FrameColumnData, int::Int, value_type::ValueType,
 };
 
 fn make(v: Vec<Int>) -> FrameColumnData {
-	FrameColumnData::Int(NumberContainer::new(v))
+	FrameColumnData::Int(int_array(v))
 }
 
 crate::nones_tests! {

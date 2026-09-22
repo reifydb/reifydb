@@ -17,7 +17,7 @@ use reifydb_codec::{
 };
 use reifydb_value::value::{
 	Value,
-	container::digest::DigestContainer,
+	container::digest_array::digest_array,
 	digest::Digest,
 	duration::Duration,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -69,17 +69,9 @@ fn duration_digest(millis: &[i64]) -> Digest {
 }
 
 fn digest_column(rows: Vec<Option<Digest>>, inner: ValueType) -> FrameColumnData {
-	let mut container = DigestContainer::with_capacity(rows.len());
-	let mut defined = Vec::with_capacity(rows.len());
-	for row in rows {
-		defined.push(row.is_some());
-		match row {
-			Some(digest) => container.push(Box::new(digest)),
-			None => container.push_default(),
-		}
-	}
+	let defined: Vec<bool> = rows.iter().map(Option::is_some).collect();
 	let data = FrameColumnData::Digest {
-		container,
+		container: digest_array(rows),
 		inner,
 		accuracy: ACCURACY,
 	};

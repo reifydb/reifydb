@@ -3,12 +3,16 @@
 
 use std::str;
 
-use arrow_array::LargeStringArray;
+use arrow_array::{LargeStringArray, builder::LargeBinaryBuilder};
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::value::{
 	blob::Blob,
-	container::{digest::DigestContainer, number::NumberContainer, varlen_array::blob_array},
+	container::{
+		bignum_array::{decimal_array, int_array, uint_array},
+		digest_array::{push_digest, push_none_slot},
+		varlen_array::blob_array,
+	},
 	decimal::Decimal,
 	digest::Digest,
 	frame::data::FrameColumnData,
@@ -57,7 +61,7 @@ pub(crate) fn decode_varlen_plain(
 				let big = BigInt::from_signed_bytes_le(&data[start..end]);
 				values.push(Int(big));
 			}
-			Ok(FrameColumnData::Int(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int(int_array(values)))
 		}
 		ValueType::Uint => {
 			let mut values = Vec::with_capacity(row_count);
@@ -68,7 +72,7 @@ pub(crate) fn decode_varlen_plain(
 				let big = BigInt::from_signed_bytes_le(&data[start..end]);
 				values.push(Uint(big));
 			}
-			Ok(FrameColumnData::Uint(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint(uint_array(values)))
 		}
 		ValueType::Decimal => decode_decimal(data, offsets, row_count),
 		_ => return None,
@@ -89,12 +93,12 @@ pub(crate) fn decode_rle_varlen_column(
 		ValueType::Int => {
 			let values: Vec<Int> =
 				entries.into_iter().map(|bytes| Int(BigInt::from_signed_bytes_le(&bytes))).collect();
-			Ok(FrameColumnData::Int(NumberContainer::new(values)))
+			Ok(FrameColumnData::Int(int_array(values)))
 		}
 		ValueType::Uint => {
 			let values: Vec<Uint> =
 				entries.into_iter().map(|bytes| Uint(BigInt::from_signed_bytes_le(&bytes))).collect();
-			Ok(FrameColumnData::Uint(NumberContainer::new(values)))
+			Ok(FrameColumnData::Uint(uint_array(values)))
 		}
 		ValueType::Decimal => {
 			let mut values = Vec::with_capacity(row_count);
@@ -107,7 +111,7 @@ pub(crate) fn decode_rle_varlen_column(
 					.map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {}", e)))?;
 				values.push(Decimal::new(dec));
 			}
-			Ok(FrameColumnData::Decimal(NumberContainer::new(values)))
+			Ok(FrameColumnData::Decimal(decimal_array(values)))
 		}
 		_ => Err(DecodeError::InvalidData(format!("varlen RLE not supported for type {:?}", ty))),
 	}
@@ -134,7 +138,7 @@ pub(crate) fn decode_digest_plain(
 		)));
 	}
 	let offset_arr = decode_u32_offsets(offsets, row_count);
-	let mut container = DigestContainer::with_capacity(row_count);
+	let mut builder = LargeBinaryBuilder::with_capacity(row_count, data.len());
 	for i in 0..row_count {
 		let start = offset_arr[i] as usize;
 		let end = offset_arr[i + 1] as usize;
@@ -145,7 +149,7 @@ pub(crate) fn decode_digest_plain(
 			)));
 		}
 		if start == end {
-			container.push_default();
+			push_none_slot(&mut builder);
 			continue;
 		}
 		let digest = Digest::decode(&data[start..end])
@@ -157,10 +161,10 @@ pub(crate) fn decode_digest_plain(
 				digest.accuracy()
 			)));
 		}
-		container.push(Box::new(digest));
+		push_digest(&mut builder, &digest);
 	}
 	Ok(FrameColumnData::Digest {
-		container,
+		container: builder.finish(),
 		inner,
 		accuracy,
 	})
@@ -178,7 +182,7 @@ fn decode_decimal(data: &[u8], offsets: &[u8], row_count: usize) -> Result<Frame
 			s.parse().map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {}", e)))?;
 		values.push(Decimal::new(dec));
 	}
-	Ok(FrameColumnData::Decimal(NumberContainer::new(values)))
+	Ok(FrameColumnData::Decimal(decimal_array(values)))
 }
 
 fn decode_u32_offsets(offsets: &[u8], row_count: usize) -> Vec<u32> {

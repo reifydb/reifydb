@@ -6,7 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, container::bignum_array::decimal_at, value_type::ValueType};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -87,7 +87,7 @@ macro_rules! process_decimal_column {
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
-			if let Some(value) = $container.get(i) {
+			if let Some(value) = decimal_at($container, i) {
 				let s = value.to_string();
 				let int_part = s.split('.').next().unwrap_or("0");
 				let bytes = int_part.parse::<i64>().unwrap_or(0);

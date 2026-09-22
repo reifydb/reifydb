@@ -57,7 +57,9 @@ pub(crate) fn column_data_to_type_code(data: &ColumnBuffer) -> ValueKind {
 		ColumnBuffer::Decimal {
 			..
 		} => ValueKind::Decimal,
-		ColumnBuffer::Any(_) => ValueKind::Any,
+		ColumnBuffer::Any {
+			..
+		} => ValueKind::Any,
 		ColumnBuffer::DictionaryId {
 			..
 		} => ValueKind::DictionaryId,

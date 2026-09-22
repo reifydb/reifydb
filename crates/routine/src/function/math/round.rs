@@ -7,7 +7,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::{decimal_array::u128_at, number::NumberContainer},
+	container::{
+		bignum_array::{decimal_array, decimal_at},
+		decimal_array::u128_at,
+	},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -130,7 +133,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
+					if let Some(value) = decimal_at(container, i) {
 						let prec = get_precision(i);
 						let f_val = value.0.to_f64().unwrap_or(0.0);
 						let multiplier = 10_f64.powi(prec);
@@ -143,7 +146,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 					}
 				}
 				ColumnBuffer::Decimal {
-					container: NumberContainer::new(result),
+					container: decimal_array(result),
 					precision: *precision,
 					scale: *scale,
 				}

@@ -4,7 +4,11 @@
 use std::collections::HashSet;
 
 use reifydb_value::value::{
-	container::{decimal_array::u128s, temporal_array::times},
+	container::{
+		bignum_array::{decimals, ints, uints},
+		decimal_array::u128s,
+		temporal_array::times,
+	},
 	frame::data::FrameColumnData,
 };
 
@@ -33,9 +37,9 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	match inner {
 		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
 
-		FrameColumnData::Int(c) => try_varlen_numeric_heuristic(c, inner),
-		FrameColumnData::Uint(c) => try_varlen_numeric_heuristic(c, inner),
-		FrameColumnData::Decimal(c) => try_varlen_numeric_heuristic(c, inner),
+		FrameColumnData::Int(c) => try_varlen_numeric_heuristic(&ints(c), inner),
+		FrameColumnData::Uint(c) => try_varlen_numeric_heuristic(&uints(c), inner),
+		FrameColumnData::Decimal(c) => try_varlen_numeric_heuristic(&decimals(c), inner),
 
 		FrameColumnData::Int1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
@@ -276,7 +280,7 @@ mod tests {
 	use num_bigint::BigInt;
 	use reifydb_value::value::{
 		container::{
-			number::NumberContainer,
+			bignum_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, time_array},
 		},
 		date::Date,
@@ -397,14 +401,12 @@ mod tests {
 	#[test]
 	fn try_varlen_numeric_heuristic_checks_runs_before_falling_back_to_dict() {
 		let runny: Vec<Int> = (0..20).flat_map(|i| vec![Int(BigInt::from(i)); 10]).collect();
-		let container = NumberContainer::new(runny);
-		let data = FrameColumnData::Int(container.clone());
-		assert_eq!(try_varlen_numeric_heuristic::<Int>(&container, &data), Encoding::Rle);
+		let data = FrameColumnData::Int(int_array(&runny));
+		assert_eq!(try_varlen_numeric_heuristic::<Int>(&runny, &data), Encoding::Rle);
 
 		let low_cardinality: Vec<Int> = (0..100).map(|i| Int(BigInt::from(i % 5))).collect();
-		let container = NumberContainer::new(low_cardinality);
-		let data = FrameColumnData::Int(container.clone());
-		assert_eq!(try_varlen_numeric_heuristic::<Int>(&container, &data), Encoding::Dict);
+		let data = FrameColumnData::Int(int_array(&low_cardinality));
+		assert_eq!(try_varlen_numeric_heuristic::<Int>(&low_cardinality, &data), Encoding::Dict);
 	}
 
 	#[test]
@@ -458,12 +460,12 @@ mod tests {
 	#[test]
 	fn choose_encoding_dispatches_arbitrary_precision_columns_through_the_varlen_path() {
 		let low_cardinality: Vec<Uint> = (0..100).map(|i| Uint(BigInt::from(i % 5))).collect();
-		let uints = FrameColumnData::Uint(NumberContainer::new(low_cardinality));
+		let uints = FrameColumnData::Uint(uint_array(low_cardinality));
 		assert_eq!(choose_encoding(&uints, CompressionLevel::Fast), Encoding::Dict);
 
 		let low_cardinality: Vec<Decimal> =
 			(0..100).map(|i| Decimal::new(format!("{}.00", i % 5).parse().unwrap())).collect();
-		let decimals = FrameColumnData::Decimal(NumberContainer::new(low_cardinality));
+		let decimals = FrameColumnData::Decimal(decimal_array(low_cardinality));
 		assert_eq!(choose_encoding(&decimals, CompressionLevel::Fast), Encoding::Dict);
 	}
 }

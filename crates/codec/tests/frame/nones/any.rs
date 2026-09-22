@@ -2,12 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	Value, blob::Blob, container::any::AnyContainer, date::Date, frame::data::FrameColumnData,
+	Value, blob::Blob, container::any_array::any_array, date::Date, frame::data::FrameColumnData,
 	ordered_f64::OrderedF64, uuid::Uuid4, value_type::ValueType,
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any(AnyContainer::new(v))
+	FrameColumnData::Any {
+		container: any_array(v),
+		declared_type: None,
+	}
 }
 
 crate::nones_tests! {
@@ -27,7 +30,10 @@ fn any_cell_holding_none_of_duration_round_trips() {
 	// so it bypasses the outer bitvec and rides the Any value codec.
 	crate::common::round_trip_column(
 		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ValueType::Duration), Value::Int4(5)])),
+		FrameColumnData::Any {
+			container: any_array(vec![Value::none_of(ValueType::Duration), Value::Int4(5)]),
+			declared_type: None,
+		},
 	);
 }
 
@@ -35,22 +41,35 @@ fn any_cell_holding_none_of_duration_round_trips() {
 fn any_cell_holding_none_of_nested_option_duration_round_trips() {
 	crate::common::round_trip_column(
 		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ValueType::Option(Box::new(
-			ValueType::Duration,
-		)))])),
+		FrameColumnData::Any {
+			container: any_array(vec![Value::none_of(ValueType::Option(Box::new(ValueType::Duration)))]),
+			declared_type: None,
+		},
 	);
 }
 
 #[test]
 fn any_cell_holding_none_of_triple_nested_option_round_trips() {
 	let inner_ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Duration))));
-	crate::common::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(inner_ty)])));
+	crate::common::round_trip_column(
+		"c",
+		FrameColumnData::Any {
+			container: any_array(vec![Value::none_of(inner_ty)]),
+			declared_type: None,
+		},
+	);
 }
 
 #[test]
 fn any_cell_holding_bare_none_round_trips() {
 	// Value::none() defaults its inner type to Any, so it encodes identically to none_of(Any).
-	crate::common::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Value::none()])));
+	crate::common::round_trip_column(
+		"c",
+		FrameColumnData::Any {
+			container: any_array(vec![Value::none()]),
+			declared_type: None,
+		},
+	);
 }
 
 #[test]
@@ -68,7 +87,10 @@ fn any_cell_holding_none_of_various_inner_types_round_trips() {
 	for ty in cases {
 		crate::common::round_trip_column(
 			"c",
-			FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ty.clone())])),
+			FrameColumnData::Any {
+				container: any_array(vec![Value::none_of(ty.clone())]),
+				declared_type: None,
+			},
 		);
 	}
 }
@@ -77,15 +99,18 @@ fn any_cell_holding_none_of_various_inner_types_round_trips() {
 fn any_cell_mixed_concrete_and_none_of_different_types_round_trips() {
 	crate::common::round_trip_column(
 		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![
-			Value::Int4(1),
-			Value::none_of(ValueType::Duration),
-			Value::Utf8("hello".to_string()),
-			Value::none_of(ValueType::Boolean),
-			Value::Blob(Blob::new(vec![1, 2, 3])),
-			Value::none(),
-			Value::Date(Date::from_days_since_epoch(0).unwrap()),
-			Value::Uuid4(Uuid4(uuid::Uuid::nil())),
-		])),
+		FrameColumnData::Any {
+			container: any_array(vec![
+				Value::Int4(1),
+				Value::none_of(ValueType::Duration),
+				Value::Utf8("hello".to_string()),
+				Value::none_of(ValueType::Boolean),
+				Value::Blob(Blob::new(vec![1, 2, 3])),
+				Value::none(),
+				Value::Date(Date::from_days_since_epoch(0).unwrap()),
+				Value::Uuid4(Uuid4(uuid::Uuid::nil())),
+			]),
+			declared_type: None,
+		},
 	);
 }

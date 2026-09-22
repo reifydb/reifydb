@@ -11,11 +11,11 @@ use reifydb_value::value::{
 	blob::Blob,
 	constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 	container::{
-		any::AnyContainer,
+		any_array::any_array,
+		bignum_array::{decimal_array, int_array, uint_array},
 		decimal_array::{int16_array, uint16_array, with_int16_type, with_uint16_type},
 		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH, dictionary_array},
-		digest::DigestContainer,
-		number::NumberContainer,
+		digest_array::digest_array,
 		temporal_array::{date_array, datetime_array, duration_array, time_array},
 		uuid_array::{self, UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
 		varlen_array::blob_array,
@@ -24,6 +24,7 @@ use reifydb_value::value::{
 	datetime::DateTime,
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
+	digest::Digest,
 	duration::Duration,
 	identity::IdentityId,
 	int::Int,
@@ -581,9 +582,8 @@ impl ColumnBuffer {
 	}
 
 	pub fn int(data: impl IntoIterator<Item = Int>) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnBuffer::Int {
-			container: NumberContainer::from_vec(data),
+			container: int_array(data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -608,7 +608,7 @@ impl ColumnBuffer {
 		}
 
 		let inner = ColumnBuffer::Int {
-			container: NumberContainer::from_vec(values),
+			container: int_array(values),
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
@@ -622,9 +622,8 @@ impl ColumnBuffer {
 	}
 
 	pub fn uint(data: impl IntoIterator<Item = Uint>) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnBuffer::Uint {
-			container: NumberContainer::from_vec(data),
+			container: uint_array(data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -649,7 +648,7 @@ impl ColumnBuffer {
 		}
 
 		let inner = ColumnBuffer::Uint {
-			container: NumberContainer::from_vec(values),
+			container: uint_array(values),
 			max_bytes: MaxBytes::MAX,
 		};
 		if has_none {
@@ -664,14 +663,14 @@ impl ColumnBuffer {
 
 	pub(crate) fn int_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::Int {
-			container: NumberContainer::with_capacity(capacity),
+			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
 
 	pub(crate) fn uint_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::Uint {
-			container: NumberContainer::with_capacity(capacity),
+			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -681,7 +680,7 @@ impl ColumnBuffer {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		let inner = ColumnBuffer::Int {
-			container: NumberContainer::from_vec(data),
+			container: int_array(&data),
 			max_bytes: MaxBytes::MAX,
 		};
 		if !bitvec.has_false() {
@@ -699,7 +698,7 @@ impl ColumnBuffer {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		let inner = ColumnBuffer::Uint {
-			container: NumberContainer::from_vec(data),
+			container: uint_array(&data),
 			max_bytes: MaxBytes::MAX,
 		};
 		if !bitvec.has_false() {
@@ -713,9 +712,8 @@ impl ColumnBuffer {
 	}
 
 	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnBuffer::Decimal {
-			container: NumberContainer::from_vec(data),
+			container: decimal_array(data),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		}
@@ -741,7 +739,7 @@ impl ColumnBuffer {
 		}
 
 		let inner = ColumnBuffer::Decimal {
-			container: NumberContainer::from_vec(values),
+			container: decimal_array(values),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		};
@@ -757,7 +755,7 @@ impl ColumnBuffer {
 
 	pub(crate) fn decimal_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::Decimal {
-			container: NumberContainer::with_capacity(capacity),
+			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		}
@@ -768,7 +766,7 @@ impl ColumnBuffer {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		let inner = ColumnBuffer::Decimal {
-			container: NumberContainer::from_vec(data),
+			container: decimal_array(&data),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		};
@@ -783,13 +781,17 @@ impl ColumnBuffer {
 	}
 
 	pub fn any(data: impl IntoIterator<Item = Value>) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnBuffer::Any(AnyContainer::from_vec(data))
+		ColumnBuffer::Any {
+			container: any_array(data),
+			declared_type: None,
+		}
 	}
 
 	pub fn any_typed(data: impl IntoIterator<Item = Value>, declared_type: ValueType) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnBuffer::Any(AnyContainer::from_vec(data).with_declared_type(declared_type))
+		ColumnBuffer::Any {
+			container: any_array(data),
+			declared_type: Some(declared_type),
+		}
 	}
 
 	pub fn any_optional(data: impl IntoIterator<Item = Option<Value>>) -> Self {
@@ -811,7 +813,10 @@ impl ColumnBuffer {
 			}
 		}
 
-		let inner = ColumnBuffer::Any(AnyContainer::from_vec(values));
+		let inner = ColumnBuffer::Any {
+			container: any_array(values),
+			declared_type: None,
+		};
 		if has_none {
 			ColumnBuffer::Option {
 				inner: Box::new(inner),
@@ -823,18 +828,27 @@ impl ColumnBuffer {
 	}
 
 	pub(crate) fn any_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::Any(AnyContainer::with_capacity(capacity))
+		ColumnBuffer::Any {
+			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
+			declared_type: None,
+		}
 	}
 
 	pub(crate) fn any_with_capacity_typed(capacity: usize, declared_type: ValueType) -> Self {
-		ColumnBuffer::Any(AnyContainer::with_capacity(capacity).with_declared_type(declared_type))
+		ColumnBuffer::Any {
+			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
+			declared_type: Some(declared_type),
+		}
 	}
 
 	pub fn any_with_bitvec(data: impl IntoIterator<Item = Value>, bitvec: impl Into<BooleanBuffer>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Any(AnyContainer::from_vec(data));
+		let inner = ColumnBuffer::Any {
+			container: any_array(&data),
+			declared_type: None,
+		};
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -853,7 +867,10 @@ impl ColumnBuffer {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Any(AnyContainer::from_vec(data).with_declared_type(declared_type));
+		let inner = ColumnBuffer::Any {
+			container: any_array(&data),
+			declared_type: Some(declared_type),
+		};
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -980,17 +997,11 @@ impl ColumnBuffer {
 			ValueType::Digest {
 				inner,
 				accuracy,
-			} => {
-				let mut container = DigestContainer::with_capacity(len);
-				for _ in 0..len {
-					container.push_default();
-				}
-				ColumnBuffer::Digest {
-					container,
-					inner: *inner,
-					accuracy,
-				}
-			}
+			} => ColumnBuffer::Digest {
+				container: digest_array((0..len).map(|_| None::<Digest>)),
+				inner: *inner,
+				accuracy,
+			},
 		};
 		ColumnBuffer::Option {
 			inner: Box::new(inner),

@@ -23,8 +23,8 @@ use reifydb_value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer,
-			number::NumberContainer,
+			any_array::any_array,
+			bignum_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
@@ -623,7 +623,7 @@ pub(crate) fn finalize_buffer(
 				Some(decode_int_cell(bytes))
 			})?;
 			ColumnBuffer::Int {
-				container: NumberContainer::from_vec(v),
+				container: int_array(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -632,7 +632,7 @@ pub(crate) fn finalize_buffer(
 				Some(decode_uint_cell(bytes))
 			})?;
 			ColumnBuffer::Uint {
-				container: NumberContainer::from_vec(v),
+				container: uint_array(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
@@ -641,7 +641,7 @@ pub(crate) fn finalize_buffer(
 				decode_decimal_cell(bytes).ok()
 			})?;
 			ColumnBuffer::Decimal {
-				container: NumberContainer::from_vec(v),
+				container: decimal_array(v),
 				precision: Precision::MAX,
 				scale: Scale::MIN,
 			}
@@ -651,7 +651,10 @@ pub(crate) fn finalize_buffer(
 				decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
 					decode_any_cell(bytes).ok()
 				})?;
-			ColumnBuffer::Any(AnyContainer::from_vec(values))
+			ColumnBuffer::Any {
+				container: any_array(values),
+				declared_type: None,
+			}
 		}
 		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =

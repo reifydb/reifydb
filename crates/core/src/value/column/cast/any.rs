@@ -9,6 +9,8 @@ use reifydb_value::{
 	value::{
 		blob::Blob,
 		container::{
+			any_array,
+			bignum_array::{decimal_at, int_at, uint_at},
 			decimal_array::u128_at,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
@@ -28,7 +30,10 @@ pub fn from_any(
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
 	let any_container = match data {
-		ColumnBuffer::Any(container) => container,
+		ColumnBuffer::Any {
+			container,
+			..
+		} => container,
 		_ => {
 			return Err(TypeError::UnsupportedCast {
 				from: data.get_type(),
@@ -46,15 +51,18 @@ pub fn from_any(
 	let mut temp_results = Vec::with_capacity(any_container.len());
 
 	for i in 0..any_container.len() {
-		if !any_container.is_defined(i) {
+		let Some(row) = any_array::get(any_container, i) else {
 			temp_results.push(None);
 			continue;
-		}
+		};
 
-		let value = any_container.data()[i].unwrap_any();
+		let value = row.unwrap_any();
 
 		let single_column = ColumnBuffer::from(value.clone());
-		if let ColumnBuffer::Any(_) = single_column {
+		if let ColumnBuffer::Any {
+			..
+		} = single_column
+		{
 			return Err(TypeError::UnsupportedCast {
 				from: data.get_type(),
 				to: target,
@@ -238,33 +246,24 @@ pub fn from_any(
 				ColumnBuffer::Int {
 					container: c,
 					..
-				} => {
-					if c.is_defined(0) {
-						result.push(c.get(0).unwrap().clone());
-					} else {
-						result.push_none();
-					}
-				}
+				} => match int_at(c, 0) {
+					Some(value) => result.push(value),
+					None => result.push_none(),
+				},
 				ColumnBuffer::Uint {
 					container: c,
 					..
-				} => {
-					if c.is_defined(0) {
-						result.push(c.get(0).unwrap().clone());
-					} else {
-						result.push_none();
-					}
-				}
+				} => match uint_at(c, 0) {
+					Some(value) => result.push(value),
+					None => result.push_none(),
+				},
 				ColumnBuffer::Decimal {
 					container: c,
 					..
-				} => {
-					if c.is_defined(0) {
-						result.push(c.get(0).unwrap().clone());
-					} else {
-						result.push_none();
-					}
-				}
+				} => match decimal_at(c, 0) {
+					Some(value) => result.push(value),
+					None => result.push_none(),
+				},
 				ColumnBuffer::DictionaryId {
 					container,
 					..
@@ -272,7 +271,9 @@ pub fn from_any(
 					Some(entry) => result.push(entry),
 					None => result.push_none(),
 				},
-				ColumnBuffer::Any(_) => {
+				ColumnBuffer::Any {
+					..
+				} => {
 					unreachable!("Casting from Any should not produce Any")
 				}
 				ColumnBuffer::Option {

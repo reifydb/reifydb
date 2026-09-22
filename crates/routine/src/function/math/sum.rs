@@ -21,7 +21,10 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::decimal_array::u128s,
+		container::{
+			bignum_array::{decimal_at, int_at, uint_at},
+			decimal_array::u128s,
+		},
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
@@ -271,7 +274,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = int_at(container, i)
 						{
 							delta = Int(delta.0 + &val.0);
 							has_value = true;
@@ -298,7 +301,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = uint_at(container, i)
 						{
 							delta = Uint(delta.0 + &val.0);
 							has_value = true;
@@ -325,7 +328,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = decimal_at(container, i)
 						{
 							delta = Decimal(delta.0 + &val.0);
 							has_value = true;
@@ -436,7 +439,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = int_at(container, i)
 						{
 							delta = Int(delta.0 + &val.0);
 							has_value = true;
@@ -457,7 +460,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = uint_at(container, i)
 						{
 							delta = Uint(delta.0 + &val.0);
 							has_value = true;
@@ -478,7 +481,7 @@ impl Accumulator for SumAccumulator {
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
-							&& let Some(val) = container.get(i)
+							&& let Some(val) = decimal_at(container, i)
 						{
 							delta = Decimal(delta.0 + &val.0);
 							has_value = true;

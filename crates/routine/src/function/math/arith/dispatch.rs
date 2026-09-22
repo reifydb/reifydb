@@ -7,7 +7,11 @@ use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::{decimal_array::u128s, varlen_array},
+		container::{
+			bignum_array::{decimals, ints, uints},
+			decimal_array::u128s,
+			varlen_array,
+		},
 		is::IsNumber,
 		number::safe::div::SafeDiv,
 		value_type::{ValueType, input_types::InputTypes},
@@ -172,7 +176,7 @@ fn execute_arith<Op: ArithOp>(
 				strict_msg,
 			)?
 		}};
-		($container_variant:ident { .. }) => {{
+		($container_variant:ident { .. }, $decode:ident) => {{
 			let (
 				ColumnBuffer::$container_variant {
 					container: l,
@@ -194,15 +198,15 @@ fn execute_arith<Op: ArithOp>(
 				else {
 					unreachable!()
 				};
-				(&c.values()[..], *bv)
+				($decode(c), *bv)
 			});
 			compute_rows::<_, Op>(
 				ctx,
 				&promoted,
-				(l.values(), a_bv),
-				(r.values(), b_bv),
+				(&$decode(l), a_bv),
+				(&$decode(r), b_bv),
 				&mode,
-				d,
+				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
 				strict_msg,
 			)?
 		}};
@@ -275,15 +279,15 @@ fn execute_arith<Op: ArithOp>(
 			ColumnBuffer::float8_with_bitvec(values, bits)
 		}
 		ValueType::Int => {
-			let (values, bits) = run!(Int { .. });
+			let (values, bits) = run!(Int { .. }, ints);
 			ColumnBuffer::int_with_bitvec(values, bits)
 		}
 		ValueType::Uint => {
-			let (values, bits) = run!(Uint { .. });
+			let (values, bits) = run!(Uint { .. }, uints);
 			ColumnBuffer::uint_with_bitvec(values, bits)
 		}
 		ValueType::Decimal => {
-			let (values, bits) = run!(Decimal { .. });
+			let (values, bits) = run!(Decimal { .. }, decimals);
 			ColumnBuffer::decimal_with_bitvec(values, bits)
 		}
 		other => {

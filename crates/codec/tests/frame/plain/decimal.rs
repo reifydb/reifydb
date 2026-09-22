@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::number::NumberContainer, decimal::Decimal, frame::data::FrameColumnData};
+use reifydb_value::value::{container::bignum_array::decimal_array, decimal::Decimal, frame::data::FrameColumnData};
 
 fn make(v: Vec<Decimal>) -> FrameColumnData {
-	FrameColumnData::Decimal(NumberContainer::new(v))
+	FrameColumnData::Decimal(decimal_array(v))
 }
 
 crate::plain_tests! {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{BooleanArray, LargeStringArray};
+use arrow_array::{BooleanArray, LargeStringArray, builder::LargeBinaryBuilder};
 use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	fragment::Fragment,
@@ -10,10 +10,10 @@ use reifydb_value::{
 		Value,
 		blob::Blob,
 		container::{
-			any::AnyContainer,
+			any_array::any_array,
+			bignum_array::{decimal_array, int_array, uint_array},
 			decimal_array::{int16_array, uint16_array},
-			digest::DigestContainer,
-			number::NumberContainer,
+			digest_array::{push_digest, push_none_slot},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 			varlen_array::blob_array,
@@ -418,7 +418,10 @@ fn convert_list_or_record_column(
 			}
 		}
 	}
-	let base_col = FrameColumnData::Any(AnyContainer::from_vec(values).with_declared_type(base.clone()));
+	let base_col = FrameColumnData::Any {
+		container: any_array(values),
+		declared_type: Some(base.clone()),
+	};
 	Ok(layers.into_iter().rev().fold(base_col, |inner, layer| FrameColumnData::Option {
 		inner: Box::new(inner),
 		bitvec: BooleanBuffer::from(layer),
@@ -503,21 +506,13 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		ValueType::Blob => {
 			FrameColumnData::Blob(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?))
 		}
-		ValueType::Int => FrameColumnData::Int(NumberContainer::new(cells(
-			name,
-			base,
-			rows,
-			Int::zero(),
-			parse_int_text,
-		)?)),
-		ValueType::Uint => FrameColumnData::Uint(NumberContainer::new(cells(
-			name,
-			base,
-			rows,
-			Uint::zero(),
-			parse_uint_text,
-		)?)),
-		ValueType::Decimal => FrameColumnData::Decimal(NumberContainer::new(cells(
+		ValueType::Int => {
+			FrameColumnData::Int(int_array(cells(name, base, rows, Int::zero(), parse_int_text)?))
+		}
+		ValueType::Uint => {
+			FrameColumnData::Uint(uint_array(cells(name, base, rows, Uint::zero(), parse_uint_text)?))
+		}
+		ValueType::Decimal => FrameColumnData::Decimal(decimal_array(cells(
 			name,
 			base,
 			rows,
@@ -528,19 +523,19 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 			inner,
 			accuracy,
 		} => {
-			let mut container = DigestContainer::with_capacity(rows.len());
+			let mut builder = LargeBinaryBuilder::with_capacity(rows.len(), 0);
 			for (row, cell) in rows.into_iter().enumerate() {
 				match cell {
-					None => container.push_default(),
+					None => push_none_slot(&mut builder),
 					Some(text) => {
 						let digest = parse_digest_text(inner, *accuracy, &text)
 							.ok_or_else(|| cell_error(name, row, base, &text))?;
-						container.push(Box::new(digest));
+						push_digest(&mut builder, &digest);
 					}
 				}
 			}
 			FrameColumnData::Digest {
-				container,
+				container: builder.finish(),
 				inner: inner.as_ref().clone(),
 				accuracy: *accuracy,
 			}

@@ -11,10 +11,18 @@ use arrow_array::{
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, ScalarBuffer};
 use reifydb_value::{
 	Result,
-	value::container::{
-		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
-		uuid_array::{self, UUID_WIDTH},
-		varlen_array,
+	value::{
+		Value,
+		container::{
+			any_array::push_any,
+			bignum_array::{push_decimal, push_int, push_uint},
+			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
+			uuid_array::{self, UUID_WIDTH},
+			varlen_array,
+		},
+		decimal::Decimal,
+		int::Int,
+		uint::Uint,
 	},
 };
 
@@ -79,13 +87,40 @@ fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 			container,
 			..
 		} => extend_dictionary(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
+		ColumnBuffer::Int {
+			container,
+			..
+		} => extend_varlen(container, |b| {
+			for _ in 0..count {
+				push_int(b, &Int::default());
+			}
+		}),
+		ColumnBuffer::Uint {
+			container,
+			..
+		} => extend_varlen(container, |b| {
+			for _ in 0..count {
+				push_uint(b, &Uint::default());
+			}
+		}),
+		ColumnBuffer::Decimal {
+			container,
+			..
+		} => extend_varlen(container, |b| {
+			for _ in 0..count {
+				push_decimal(b, &Decimal::default());
+			}
+		}),
+		ColumnBuffer::Any {
+			container,
+			..
+		} => extend_varlen(container, |b| {
+			for _ in 0..count {
+				push_any(b, &Value::none());
+			}
+		}),
 		_ => with_container!(
 			buffer,
-			|c| {
-				for _ in 0..count {
-					c.push_default();
-				}
-			},
 			|a| extend_native(a, |b| b.append_value_n(Default::default(), count)),
 			|t| extend_native(t, |b| b.append_value_n(Default::default(), count)),
 			|u| extend_fixed(u, |b| b.extend_zeros(count * UUID_WIDTH)),
@@ -196,7 +231,7 @@ impl ColumnBuffer {
 					container: r,
 					..
 				},
-			) => l.extend(&r)?,
+			) => extend_varlen(l, |b| append_varlen(b, &r))?,
 			(
 				ColumnBuffer::Uint {
 					container: l,
@@ -206,7 +241,7 @@ impl ColumnBuffer {
 					container: r,
 					..
 				},
-			) => l.extend(&r)?,
+			) => extend_varlen(l, |b| append_varlen(b, &r))?,
 			(
 				ColumnBuffer::Decimal {
 					container: l,
@@ -216,7 +251,7 @@ impl ColumnBuffer {
 					container: r,
 					..
 				},
-			) => l.extend(&r)?,
+			) => extend_varlen(l, |b| append_varlen(b, &r))?,
 			(
 				ColumnBuffer::DictionaryId {
 					container: l,
@@ -227,7 +262,16 @@ impl ColumnBuffer {
 					..
 				},
 			) => extend_dictionary(l, |b| b.extend_from_slice(r.value_data())),
-			(ColumnBuffer::Any(l), ColumnBuffer::Any(r)) => l.extend(&r)?,
+			(
+				ColumnBuffer::Any {
+					container: l,
+					..
+				},
+				ColumnBuffer::Any {
+					container: r,
+					..
+				},
+			) => extend_varlen(l, |b| append_varlen(b, &r))?,
 			(
 				ColumnBuffer::Digest {
 					container: l,
@@ -239,7 +283,7 @@ impl ColumnBuffer {
 					inner: r_inner,
 					accuracy: r_accuracy,
 				},
-			) if *l_inner == r_inner && *l_accuracy == r_accuracy => l.extend(&r)?,
+			) if *l_inner == r_inner && *l_accuracy == r_accuracy => extend_varlen(l, |b| append_varlen(b, &r))?,
 
 			(
 				ColumnBuffer::Option {

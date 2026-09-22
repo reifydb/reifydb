@@ -8,9 +8,11 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
+			any_array,
+			bignum_array::{decimal_at, decimal_get_value, int_at, int_get_value, uint_at, uint_get_value},
 			bool_array,
 			decimal_array::{u128_at, uint16_get_value},
-			dictionary_array, primitive,
+			dictionary_array, digest_array, primitive,
 			temporal_array::{self, dates, datetimes, durations, times},
 			uuid_array::{self, identity_ids, uuid4s, uuid7s},
 			varlen_array::{self, blob_get_value, utf8_get_value},
@@ -70,7 +72,27 @@ impl ColumnBuffer {
 				container,
 				..
 			} => dictionary_array::get_value(container, index),
-			_ => with_container!(self, |c| c.get_value(index), |a| primitive::get_value(a, index)),
+			ColumnBuffer::Int {
+				container,
+				..
+			} => int_get_value(container, index),
+			ColumnBuffer::Uint {
+				container,
+				..
+			} => uint_get_value(container, index),
+			ColumnBuffer::Decimal {
+				container,
+				..
+			} => decimal_get_value(container, index),
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => any_array::get_value(container, declared_type.as_ref(), index),
+			ColumnBuffer::Digest {
+				container,
+				..
+			} => digest_array::get_value(container, index),
+			_ => with_container!(self, |a| primitive::get_value(a, index)),
 		}
 	}
 
@@ -179,8 +201,8 @@ macro_rules! impl_from_column_data_numeric {
 					ColumnBuffer::Uint16(c) => u128_at(c, index).and_then(NumCast::from),
 					ColumnBuffer::Float4(c) => c.values().get(index).and_then(|v| NumCast::from(*v)),
 					ColumnBuffer::Float8(c) => c.values().get(index).and_then(|v| NumCast::from(*v)),
-					ColumnBuffer::Int { container, .. } => container.get(index).and_then(|v| NumCast::from(v.0.clone())),
-					ColumnBuffer::Uint { container, .. } => container.get(index).and_then(|v| NumCast::from(v.0.clone())),
+					ColumnBuffer::Int { container, .. } => int_at(container, index).and_then(|v| NumCast::from(v.0)),
+					ColumnBuffer::Uint { container, .. } => uint_at(container, index).and_then(|v| NumCast::from(v.0)),
 					_ => None,
 				}
 			}
@@ -283,7 +305,7 @@ impl FromColumnBuffer for Int {
 			ColumnBuffer::Int {
 				container,
 				..
-			} => container.get(index).cloned(),
+			} => int_at(container, index),
 			_ => None,
 		}
 	}
@@ -295,7 +317,7 @@ impl FromColumnBuffer for Uint {
 			ColumnBuffer::Uint {
 				container,
 				..
-			} => container.get(index).cloned(),
+			} => uint_at(container, index),
 			_ => None,
 		}
 	}
@@ -307,7 +329,7 @@ impl FromColumnBuffer for Decimal {
 			ColumnBuffer::Decimal {
 				container,
 				..
-			} => container.get(index).cloned(),
+			} => decimal_at(container, index),
 			_ => None,
 		}
 	}

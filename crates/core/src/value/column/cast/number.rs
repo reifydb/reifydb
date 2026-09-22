@@ -7,7 +7,10 @@ use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
-		container::{decimal_array::u128s, number::NumberContainer},
+		container::{
+			bignum_array::{decimals, ints, uints},
+			decimal_array::u128s,
+		},
 		decimal::{Decimal, parse::parse_decimal},
 		int::Int,
 		is::IsNumber,
@@ -605,6 +608,7 @@ fn number_to_number(
 		..
 	} = data
 	{
+		let container = &ints(container);
 		match target {
 			ValueType::Int1 => {
 				return convert_vec_clone::<Int, i8>(
@@ -741,6 +745,7 @@ fn number_to_number(
 		..
 	} = data
 	{
+		let container = &uints(container);
 		match target {
 			ValueType::Uint1 => {
 				return convert_vec_clone::<Uint, u8>(
@@ -877,6 +882,7 @@ fn number_to_number(
 		..
 	} = data
 	{
+		let container = &decimals(container);
 		match target {
 			ValueType::Int1 => {
 				return convert_vec_clone::<Decimal, i8>(
@@ -1050,7 +1056,7 @@ where
 }
 
 pub(crate) fn convert_vec_clone<From, To>(
-	container: &NumberContainer<From>,
+	container: &[From],
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
 	target_kind: ValueType,
@@ -1062,15 +1068,11 @@ where
 {
 	let mut out = ColumnBuilder::with_capacity(target_kind, container.len());
 	for idx in 0..container.len() {
-		if container.is_defined(idx) {
-			let val = container[idx].clone();
-			let fragment = lazy_fragment.fragment();
-			match ctx.convert::<From, To>(val, fragment)? {
-				Some(v) => push(&mut out, v),
-				None => out.push_none(),
-			}
-		} else {
-			out.push_none();
+		let val = container[idx].clone();
+		let fragment = lazy_fragment.fragment();
+		match ctx.convert::<From, To>(val, fragment)? {
+			Some(v) => push(&mut out, v),
+			None => out.push_none(),
 		}
 	}
 	Ok(out.finish())
@@ -1085,7 +1087,6 @@ pub mod tests {
 			Result,
 			fragment::Fragment,
 			value::{
-				container::number::NumberContainer,
 				number::safe::convert::SafeConvert,
 				value_type::{ValueType, get::GetType},
 			},
@@ -1098,9 +1099,8 @@ pub mod tests {
 			let data = [1i8, 2i8];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int2,
@@ -1118,9 +1118,8 @@ pub mod tests {
 			let data = [42i8];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int2,
@@ -1138,9 +1137,8 @@ pub mod tests {
 			let data = [1i8];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int2,
@@ -1159,9 +1157,8 @@ pub mod tests {
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int2,
@@ -1217,9 +1214,8 @@ pub mod tests {
 			let data = [1i16, 2i16];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int1,
@@ -1238,9 +1234,8 @@ pub mod tests {
 			let data = [42i16];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int1,
@@ -1258,9 +1253,8 @@ pub mod tests {
 			let data = [1i16];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int1,
@@ -1279,9 +1273,8 @@ pub mod tests {
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
-				&container,
+				&data,
 				&ctx,
 				|| Fragment::testing_empty(),
 				ValueType::Int1,

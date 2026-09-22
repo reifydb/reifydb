@@ -10,7 +10,14 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::decimal_array::u128s, decimal::Decimal, int::Int, is::IsNumber, uint::Uint,
+		container::{
+			bignum_array::{decimals, ints, uints},
+			decimal_array::u128s,
+		},
+		decimal::Decimal,
+		int::Int,
+		is::IsNumber,
+		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -98,7 +105,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
 				ColumnBuffer::$factory(values, bits)
 			}};
-			($variant:ident { .. }, $factory:ident, $op:expr) => {{
+			($variant:ident { .. }, $decode:ident, $factory:ident, $op:expr) => {{
 				let (
 					ColumnBuffer::$variant {
 						container: b,
@@ -112,7 +119,8 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				else {
 					unreachable!()
 				};
-				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
+				let (values, bits) =
+					pow_rows(&$decode(b), base_bv, &$decode(e), exp_bv, $op, &overflow)?;
 				ColumnBuffer::$factory(values, bits)
 			}};
 		}
@@ -155,21 +163,23 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
-			ValueType::Int => run!(Int { .. }, int_with_bitvec, |b: &Int, e: &Int| {
+			ValueType::Int => run!(Int { .. }, ints, int_with_bitvec, |b: &Int, e: &Int| {
 				if *e < Int::zero() {
 					Some(Int::zero())
 				} else {
 					e.0.to_u32().map(|exp| Int::from(b.0.pow(exp)))
 				}
 			}),
-			ValueType::Uint => run!(Uint { .. }, uint_with_bitvec, |b: &Uint, e: &Uint| {
+			ValueType::Uint => run!(Uint { .. }, uints, uint_with_bitvec, |b: &Uint, e: &Uint| {
 				e.0.to_u32().map(|exp| Uint::from(b.0.pow(exp)))
 			}),
-			ValueType::Decimal => run!(Decimal { .. }, decimal_with_bitvec, |b: &Decimal, e: &Decimal| {
-				let base = b.0.to_f64().unwrap_or(0.0);
-				let exp = e.0.to_f64().unwrap_or(0.0);
-				Some(Decimal::from(base.powf(exp)))
-			}),
+			ValueType::Decimal => {
+				run!(Decimal { .. }, decimals, decimal_with_bitvec, |b: &Decimal, e: &Decimal| {
+					let base = b.0.to_f64().unwrap_or(0.0);
+					let exp = e.0.to_f64().unwrap_or(0.0);
+					Some(Decimal::from(base.powf(exp)))
+				})
+			}
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
 

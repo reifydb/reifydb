@@ -7,7 +7,7 @@ use reifydb_value::{
 	util::hex::encode,
 	value::{
 		Value,
-		container::digest::DigestContainer,
+		container::digest_array::digest_array,
 		digest::Digest,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		value_type::ValueType,
@@ -31,15 +31,8 @@ fn hex_of(digest: &Digest) -> JsonValue {
 
 fn digest_frame(rows: Vec<Option<Digest>>) -> Frame {
 	let defined: Vec<bool> = rows.iter().map(Option::is_some).collect();
-	let mut container = DigestContainer::with_capacity(rows.len());
-	for row in rows {
-		match row {
-			Some(digest) => container.push(Box::new(digest)),
-			None => container.push_default(),
-		}
-	}
 	let data = FrameColumnData::Digest {
-		container,
+		container: digest_array(rows),
 		inner: ValueType::Float8,
 		accuracy: ACCURACY,
 	};

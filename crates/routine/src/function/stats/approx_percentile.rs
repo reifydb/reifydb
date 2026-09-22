@@ -8,6 +8,7 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::value::{
 	Value,
+	container::digest_array,
 	digest::DigestError,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -153,8 +154,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 				continue;
 			}
 			let p = percentile_at(ctx, percentile_data, row)?;
-			let digest = container
-				.get(row)
+			let digest = digest_array::get(container, row)
 				.unwrap_or_else(|| panic!("defined digest row {row} holds no digest"));
 			let value = digest.percentile_value(p).map_err(|error| failed(ctx, error.to_string()))?;
 			result.push_value(value);

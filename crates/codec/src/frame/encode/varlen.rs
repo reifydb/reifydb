@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{decimal::Decimal, frame::data::FrameColumnData, int::Int, uint::Uint};
+use reifydb_value::value::{
+	container::bignum_array::{decimals, ints, uints},
+	frame::data::FrameColumnData,
+};
 
 use super::EncodedColumn;
 use crate::{
@@ -44,7 +47,7 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			})
 		}
 		FrameColumnData::Int(c) => {
-			let slice: &[Int] = c;
+			let slice = &ints(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
 			let dict = try_dict_encode_bytes(&serialized, ValueKind::Int.byte(), 0.5)?;
 			Some(EncodedColumn {
@@ -59,7 +62,7 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			})
 		}
 		FrameColumnData::Uint(c) => {
-			let slice: &[Uint] = c;
+			let slice = &uints(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
 			let dict = try_dict_encode_bytes(&serialized, ValueKind::Uint.byte(), 0.5)?;
 			Some(EncodedColumn {
@@ -74,7 +77,7 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			})
 		}
 		FrameColumnData::Decimal(c) => {
-			let slice: &[Decimal] = c;
+			let slice = &decimals(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.to_string().into_bytes()).collect();
 			let dict = try_dict_encode_bytes(&serialized, ValueKind::Decimal.byte(), 0.5)?;
 			Some(EncodedColumn {
@@ -95,7 +98,7 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 pub(crate) fn try_rle_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Int(c) => {
-			let slice: &[Int] = c;
+			let slice = &ints(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
 			let encoded = try_rle_encode_varlen(&serialized)?;
 			Some(EncodedColumn {
@@ -110,7 +113,7 @@ pub(crate) fn try_rle_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
 			})
 		}
 		FrameColumnData::Uint(c) => {
-			let slice: &[Uint] = c;
+			let slice = &uints(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
 			let encoded = try_rle_encode_varlen(&serialized)?;
 			Some(EncodedColumn {
@@ -125,7 +128,7 @@ pub(crate) fn try_rle_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
 			})
 		}
 		FrameColumnData::Decimal(c) => {
-			let slice: &[Decimal] = c;
+			let slice = &decimals(c);
 			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.to_string().into_bytes()).collect();
 			let encoded = try_rle_encode_varlen(&serialized)?;
 			Some(EncodedColumn {

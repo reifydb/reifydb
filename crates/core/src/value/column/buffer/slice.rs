@@ -2,15 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	Value,
 	container::temporal_array::{dates, datetimes, durations, times},
 	date::Date,
 	datetime::DateTime,
-	decimal::Decimal,
 	duration::Duration,
-	int::Int,
 	time::Time,
-	uint::Uint,
 };
 
 use crate::value::column::ColumnBuffer;
@@ -82,29 +78,6 @@ macro_rules! impl_as_slice {
 			}
 		}
 	};
-	($t:ty, $variant:ident { container }) => {
-		impl AsSlice<$t> for ColumnBuffer {
-			fn as_slice(&self) -> &[$t] {
-				match self {
-					ColumnBuffer::$variant {
-						container,
-						..
-					} => container.data(),
-					ColumnBuffer::Option {
-						inner,
-						..
-					} => inner.as_slice(),
-					other => {
-						panic!(
-							"called `as_slice::<{}>()` on ColumnBuffer::{:?}",
-							stringify!($t),
-							other.get_type()
-						)
-					}
-				}
-			}
-		}
-	};
 }
 
 impl_as_slice!(f32, Float4 native);
@@ -123,36 +96,3 @@ impl_as_slice!(Date, Date typed dates);
 impl_as_slice!(DateTime, DateTime typed datetimes);
 impl_as_slice!(Time, Time typed times);
 impl_as_slice!(Duration, Duration typed durations);
-impl_as_slice!(
-	Int,
-	Int {
-		container
-	}
-);
-impl_as_slice!(
-	Uint,
-	Uint {
-		container
-	}
-);
-impl_as_slice!(
-	Decimal,
-	Decimal {
-		container
-	}
-);
-
-impl AsSlice<Value> for ColumnBuffer {
-	fn as_slice(&self) -> &[Value] {
-		match self {
-			ColumnBuffer::Any(container) => container.data(),
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => inner.as_slice(),
-			other => {
-				panic!("called `as_slice::<Value>()` on ColumnBuffer::{:?}", other.get_type())
-			}
-		}
-	}
-}

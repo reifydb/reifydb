@@ -9,6 +9,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		container::{
+			bignum_array::{decimals, ints, uints},
 			decimal_array::u128s,
 			temporal_array::{duration_array, durations},
 			varlen_array::get,

@@ -10,7 +10,7 @@ use reifydb_value::{
 use crate::value::column::ColumnBuffer;
 
 macro_rules! map_container {
-	($self:expr, |$c:ident| $body:expr, |$a:ident| $native:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
+	($self:expr, |$a:ident| $native:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
 		match $self {
 			ColumnBuffer::Float4($a) => ColumnBuffer::Float4($native),
 			ColumnBuffer::Float8($a) => ColumnBuffer::Float8($native),
@@ -59,35 +59,41 @@ macro_rules! map_container {
 				max_bytes: *max_bytes,
 			},
 			ColumnBuffer::Int {
-				container: $c,
+				container: $v,
 				max_bytes,
 			} => ColumnBuffer::Int {
-				container: $body,
+				container: $varlen,
 				max_bytes: *max_bytes,
 			},
 			ColumnBuffer::Uint {
-				container: $c,
+				container: $v,
 				max_bytes,
 			} => ColumnBuffer::Uint {
-				container: $body,
+				container: $varlen,
 				max_bytes: *max_bytes,
 			},
 			ColumnBuffer::Decimal {
-				container: $c,
+				container: $v,
 				precision,
 				scale,
 			} => ColumnBuffer::Decimal {
-				container: $body,
+				container: $varlen,
 				precision: *precision,
 				scale: *scale,
 			},
-			ColumnBuffer::Any($c) => ColumnBuffer::Any($body),
+			ColumnBuffer::Any {
+				container: $v,
+				declared_type,
+			} => ColumnBuffer::Any {
+				container: $varlen,
+				declared_type: declared_type.clone(),
+			},
 			ColumnBuffer::Digest {
-				container: $c,
+				container: $v,
 				inner,
 				accuracy,
 			} => ColumnBuffer::Digest {
-				container: $body,
+				container: $varlen,
 				inner: inner.clone(),
 				accuracy: *accuracy,
 			},
@@ -128,13 +134,9 @@ impl ColumnBuffer {
 				container: dictionary_array::take(container, num),
 				dictionary_id: *dictionary_id,
 			},
-			_ => map_container!(
-				self,
-				|c| c.take(num),
-				|a| primitive::take(a, num),
-				|u| uuid_array::take(u, num),
-				|v| varlen_array::take(v, num)
-			),
+			_ => map_container!(self, |a| primitive::take(a, num), |u| uuid_array::take(u, num), |v| {
+				varlen_array::take(v, num)
+			}),
 		}
 	}
 
@@ -161,7 +163,6 @@ impl ColumnBuffer {
 			},
 			_ => map_container!(
 				self,
-				|c| c.slice(start, end),
 				|a| primitive::slice(a, start, end),
 				|u| uuid_array::slice(u, start, end),
 				|v| varlen_array::slice(v, start, end)

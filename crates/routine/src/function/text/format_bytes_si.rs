@@ -6,7 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, container::bignum_array::decimal_at, value_type::ValueType};
 
 use crate::function::text::format_bytes::{
 	format_bytes_internal, process_decimal_column, process_float_column, process_int_column,

@@ -17,24 +17,27 @@ use reifydb_value::{
 	Result,
 	value::{
 		Value,
-		constraint::bytes::MaxBytes,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
+			any_array::push_any,
+			bignum_array::{push_decimal, push_int, push_uint},
 			decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, with_int16_type, with_uint16_type},
 			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
+			digest_array::push_none_slot,
 			uuid_array::{self, UUID_WIDTH},
 			varlen_array,
 		},
+		decimal::Decimal,
 		dictionary::DictionaryId,
+		int::Int,
+		uint::Uint,
 		value_type::ValueType,
 	},
 };
 
 use crate::{
 	internal_error,
-	value::column::{
-		buffer::{ColumnBuffer, with_container},
-		push::Push,
-	},
+	value::column::{buffer::ColumnBuffer, push::Push},
 };
 
 #[derive(Debug)]
@@ -71,11 +74,32 @@ pub enum ColumnBuilder {
 		builder: LargeBinaryBuilder,
 		max_bytes: MaxBytes,
 	},
+	Int {
+		builder: LargeBinaryBuilder,
+		max_bytes: MaxBytes,
+	},
+	Uint {
+		builder: LargeBinaryBuilder,
+		max_bytes: MaxBytes,
+	},
+	Decimal {
+		builder: LargeBinaryBuilder,
+		precision: Precision,
+		scale: Scale,
+	},
+	Any {
+		builder: LargeBinaryBuilder,
+		declared_type: Option<ValueType>,
+	},
+	Digest {
+		builder: LargeBinaryBuilder,
+		inner: ValueType,
+		accuracy: u32,
+	},
 	Option {
 		inner: Box<ColumnBuilder>,
 		bitvec: BooleanBufferBuilder,
 	},
-	Buffer(ColumnBuffer),
 }
 
 impl ColumnBuilder {
@@ -121,11 +145,39 @@ impl ColumnBuilder {
 				builder: LargeBinaryBuilder::with_capacity(capacity, capacity * 32),
 				max_bytes: MaxBytes::MAX,
 			},
+			ValueType::Int => ColumnBuilder::Int {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				max_bytes: MaxBytes::MAX,
+			},
+			ValueType::Uint => ColumnBuilder::Uint {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				max_bytes: MaxBytes::MAX,
+			},
+			ValueType::Decimal => ColumnBuilder::Decimal {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				precision: Precision::MAX,
+				scale: Scale::new(0),
+			},
+			ValueType::Any | ValueType::Tuple(_) => ColumnBuilder::Any {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				declared_type: None,
+			},
+			declared @ (ValueType::List(_) | ValueType::Record(_)) => ColumnBuilder::Any {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				declared_type: Some(declared),
+			},
+			ValueType::Digest {
+				inner,
+				accuracy,
+			} => ColumnBuilder::Digest {
+				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
+				inner: *inner,
+				accuracy,
+			},
 			ValueType::Option(inner) => ColumnBuilder::Option {
 				inner: Box::new(ColumnBuilder::with_capacity(*inner, capacity)),
 				bitvec: BooleanBufferBuilder::new(capacity),
 			},
-			other => ColumnBuilder::Buffer(ColumnBuffer::with_capacity(other, capacity)),
 		}
 	}
 
@@ -188,6 +240,26 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.append_value(b""),
+			ColumnBuilder::Int {
+				builder,
+				..
+			} => push_int(builder, &Int::default()),
+			ColumnBuilder::Uint {
+				builder,
+				..
+			} => push_uint(builder, &Uint::default()),
+			ColumnBuilder::Decimal {
+				builder,
+				..
+			} => push_decimal(builder, &Decimal::default()),
+			ColumnBuilder::Any {
+				builder,
+				..
+			} => push_any(builder, &Value::none()),
+			ColumnBuilder::Digest {
+				builder,
+				..
+			} => push_none_slot(builder),
 			ColumnBuilder::Option {
 				..
 			} => {
@@ -195,7 +267,6 @@ impl ColumnBuilder {
 					"with_container! must not be called on Option variant directly; handle it explicitly"
 				)
 			}
-			ColumnBuilder::Buffer(buffer) => with_container!(buffer, |c| c.push_default()),
 		}
 	}
 
@@ -263,6 +334,58 @@ impl ColumnBuilder {
 					..
 				},
 			) => append_varlen(builder, &container)?,
+			(
+				ColumnBuilder::Int {
+					builder,
+					..
+				},
+				ColumnBuffer::Int {
+					container,
+					..
+				},
+			) => append_varlen(builder, &container)?,
+			(
+				ColumnBuilder::Uint {
+					builder,
+					..
+				},
+				ColumnBuffer::Uint {
+					container,
+					..
+				},
+			) => append_varlen(builder, &container)?,
+			(
+				ColumnBuilder::Decimal {
+					builder,
+					..
+				},
+				ColumnBuffer::Decimal {
+					container,
+					..
+				},
+			) => append_varlen(builder, &container)?,
+			(
+				ColumnBuilder::Any {
+					builder,
+					..
+				},
+				ColumnBuffer::Any {
+					container,
+					..
+				},
+			) => append_varlen(builder, &container)?,
+			(
+				ColumnBuilder::Digest {
+					builder,
+					inner: l_inner,
+					accuracy: l_accuracy,
+				},
+				ColumnBuffer::Digest {
+					container,
+					inner: r_inner,
+					accuracy: r_accuracy,
+				},
+			) if *l_inner == r_inner && *l_accuracy == r_accuracy => append_varlen(builder, &container)?,
 			(_, other) => {
 				let mut buffer =
 					mem::replace(self, ColumnBuilder::Bool(BooleanBufferBuilder::new(0))).finish();
@@ -308,11 +431,30 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.len(),
+			ColumnBuilder::Int {
+				builder,
+				..
+			} => builder.len(),
+			ColumnBuilder::Uint {
+				builder,
+				..
+			} => builder.len(),
+			ColumnBuilder::Decimal {
+				builder,
+				..
+			} => builder.len(),
+			ColumnBuilder::Any {
+				builder,
+				..
+			} => builder.len(),
+			ColumnBuilder::Digest {
+				builder,
+				..
+			} => builder.len(),
 			ColumnBuilder::Option {
 				inner,
 				..
 			} => inner.len(),
-			ColumnBuilder::Buffer(buffer) => buffer.len(),
 		}
 	}
 
@@ -351,11 +493,31 @@ impl ColumnBuilder {
 			ColumnBuilder::Blob {
 				..
 			} => ValueType::Blob,
+			ColumnBuilder::Int {
+				..
+			} => ValueType::Int,
+			ColumnBuilder::Uint {
+				..
+			} => ValueType::Uint,
+			ColumnBuilder::Decimal {
+				..
+			} => ValueType::Decimal,
+			ColumnBuilder::Any {
+				declared_type,
+				..
+			} => declared_type.clone().unwrap_or(ValueType::Any),
+			ColumnBuilder::Digest {
+				inner,
+				accuracy,
+				..
+			} => ValueType::Digest {
+				inner: Box::new(inner.clone()),
+				accuracy: *accuracy,
+			},
 			ColumnBuilder::Option {
 				inner,
 				..
 			} => ValueType::Option(Box::new(inner.get_type())),
-			ColumnBuilder::Buffer(buffer) => buffer.get_type(),
 		}
 	}
 
@@ -402,6 +564,45 @@ impl ColumnBuilder {
 				container: builder.finish(),
 				max_bytes,
 			},
+			ColumnBuilder::Int {
+				mut builder,
+				max_bytes,
+			} => ColumnBuffer::Int {
+				container: builder.finish(),
+				max_bytes,
+			},
+			ColumnBuilder::Uint {
+				mut builder,
+				max_bytes,
+			} => ColumnBuffer::Uint {
+				container: builder.finish(),
+				max_bytes,
+			},
+			ColumnBuilder::Decimal {
+				mut builder,
+				precision,
+				scale,
+			} => ColumnBuffer::Decimal {
+				container: builder.finish(),
+				precision,
+				scale,
+			},
+			ColumnBuilder::Any {
+				mut builder,
+				declared_type,
+			} => ColumnBuffer::Any {
+				container: builder.finish(),
+				declared_type,
+			},
+			ColumnBuilder::Digest {
+				mut builder,
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container: builder.finish(),
+				inner,
+				accuracy,
+			},
 			ColumnBuilder::Option {
 				inner,
 				mut bitvec,
@@ -409,10 +610,6 @@ impl ColumnBuilder {
 				inner: Box::new(inner.finish()),
 				bitvec: bitvec.finish(),
 			},
-			ColumnBuilder::Buffer(mut buffer) => {
-				buffer.freeze();
-				buffer
-			}
 		}
 	}
 }
@@ -461,6 +658,45 @@ impl ColumnBuffer {
 				builder: varlen_builder(container),
 				max_bytes,
 			},
+			ColumnBuffer::Int {
+				container,
+				max_bytes,
+			} => ColumnBuilder::Int {
+				builder: varlen_builder(container),
+				max_bytes,
+			},
+			ColumnBuffer::Uint {
+				container,
+				max_bytes,
+			} => ColumnBuilder::Uint {
+				builder: varlen_builder(container),
+				max_bytes,
+			},
+			ColumnBuffer::Decimal {
+				container,
+				precision,
+				scale,
+			} => ColumnBuilder::Decimal {
+				builder: varlen_builder(container),
+				precision,
+				scale,
+			},
+			ColumnBuffer::Any {
+				container,
+				declared_type,
+			} => ColumnBuilder::Any {
+				builder: varlen_builder(container),
+				declared_type,
+			},
+			ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			} => ColumnBuilder::Digest {
+				builder: varlen_builder(container),
+				inner,
+				accuracy,
+			},
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -468,7 +704,6 @@ impl ColumnBuffer {
 				inner: Box::new(inner.into_builder()),
 				bitvec: boolean_builder(bitvec),
 			},
-			other => ColumnBuilder::Buffer(other),
 		}
 	}
 }

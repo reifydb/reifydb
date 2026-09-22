@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::any::AnyContainer, frame::data::FrameColumnData};
+use reifydb_value::value::{container::any_array::any_array, frame::data::FrameColumnData};
 
 use crate::{error::DecodeError, reader::Reader, value::decode_value_from};
 
@@ -11,5 +11,8 @@ pub(crate) fn decode_any_column(row_count: usize, data: &[u8]) -> Result<FrameCo
 	for _ in 0..row_count {
 		values.push(decode_value_from(&mut r)?);
 	}
-	Ok(FrameColumnData::Any(AnyContainer::new(values)))
+	Ok(FrameColumnData::Any {
+		container: any_array(values),
+		declared_type: None,
+	})
 }

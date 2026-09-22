@@ -15,7 +15,7 @@ use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	constraint::TypeConstraint,
-	container::any::AnyContainer,
+	container::any_array::{self, any_array},
 	date::Date,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	ordered_f64::OrderedF64,
@@ -60,14 +60,20 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 	let values = cross_codec_values();
 	let column = FrameColumn {
 		name: "c".to_string(),
-		data: FrameColumnData::Any(AnyContainer::new(values.clone())),
+		data: FrameColumnData::Any {
+			container: any_array(values.clone()),
+			declared_type: None,
+		},
 	};
 	let frame = Frame::new(vec![column]);
 	let bytes = encode_frames(&[frame], &EncodeOptions::fast()).unwrap();
 	let decoded = decode_frames(&bytes).unwrap();
 	match &decoded[0].columns[0].data {
-		FrameColumnData::Any(container) => {
-			for (expected, actual) in values.iter().zip(container.iter()) {
+		FrameColumnData::Any {
+			container,
+			..
+		} => {
+			for (expected, actual) in values.iter().zip(any_array::values(container).iter()) {
 				match (expected, actual) {
 					(
 						Value::None {

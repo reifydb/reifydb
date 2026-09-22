@@ -27,10 +27,10 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer,
+			any_array::{self, any_array},
+			bignum_array::{decimal_array, decimals, int_array, ints, uint_array, uints},
 			decimal_array::u128s,
 			dictionary_array,
-			number::NumberContainer,
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
 				times,
@@ -348,30 +348,32 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			container,
 			..
 		} => {
-			let values: &[Int] = container;
+			let values: Vec<Int> = ints(container);
 			marshal_cells_to_buf(buf, values.len(), |i, out| encode_int_cell(&values[i], out))
 		}
 		ColumnBuffer::Uint {
 			container,
 			..
 		} => {
-			let values: &[Uint] = container;
+			let values: Vec<Uint> = uints(container);
 			marshal_cells_to_buf(buf, values.len(), |i, out| encode_uint_cell(&values[i], out))
 		}
 		ColumnBuffer::Decimal {
 			container,
 			..
 		} => {
-			let values: &[Decimal] = container;
+			let values: Vec<Decimal> = decimals(container);
 			marshal_cells_to_buf(buf, values.len(), |i, out| encode_decimal_cell(&values[i], out))
 		}
-		ColumnBuffer::Any(container) => {
-			let mut offsets: Vec<u64> = Vec::with_capacity(container.len() + 1);
+		ColumnBuffer::Any {
+			container,
+			..
+		} => {
+			let values: Vec<Value> = any_array::values(container);
+			let mut offsets: Vec<u64> = Vec::with_capacity(values.len() + 1);
 			let mut data_bytes: Vec<u8> = Vec::new();
 			offsets.push(0);
-			for i in 0..container.len() {
-				let none = Value::none();
-				let value = container.get(i).unwrap_or(&none);
+			for value in &values {
 				encode_any_cell(value, &mut data_bytes).expect("unsupported value in any column cell");
 				offsets.push(data_bytes.len() as u64);
 			}
@@ -534,30 +536,33 @@ fn unmarshal_column_data(
 			}
 		}
 		ValueKind::Int => {
-			let container = unmarshal_cells(data, row_count, offsets_bytes, decode_int_cell);
+			let container = int_array(unmarshal_cells(data, row_count, offsets_bytes, decode_int_cell));
 			ColumnBuffer::Int {
 				container,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ValueKind::Uint => {
-			let container = unmarshal_cells(data, row_count, offsets_bytes, decode_uint_cell);
+			let container = uint_array(unmarshal_cells(data, row_count, offsets_bytes, decode_uint_cell));
 			ColumnBuffer::Uint {
 				container,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ValueKind::Decimal => {
-			let container = unmarshal_cells(data, row_count, offsets_bytes, |b| {
+			let container = decimal_array(unmarshal_cells(data, row_count, offsets_bytes, |b| {
 				decode_decimal_cell(b).unwrap_or_default()
-			});
+			}));
 			ColumnBuffer::Decimal {
 				container,
 				precision: Precision::MAX,
 				scale: Scale::MIN,
 			}
 		}
-		ValueKind::Any => ColumnBuffer::Any(unmarshal_any(data, row_count, offsets_bytes)),
+		ValueKind::Any => ColumnBuffer::Any {
+			container: unmarshal_any(data, row_count, offsets_bytes),
+			declared_type: None,
+		},
 		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> = unmarshal_numeric::<u128>(data, row_count)
 				.into_iter()
@@ -752,9 +757,9 @@ fn unmarshal_cells<T: Default + Clone + IsNumber>(
 	row_count: usize,
 	offsets_bytes: &[u8],
 	decode: impl Fn(&[u8]) -> T,
-) -> NumberContainer<T> {
+) -> Vec<T> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return NumberContainer::new(vec![T::default(); row_count]);
+		return vec![T::default(); row_count];
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut values = Vec::with_capacity(row_count);
@@ -763,12 +768,12 @@ fn unmarshal_cells<T: Default + Clone + IsNumber>(
 		let end = offsets[i + 1] as usize;
 		values.push(decode(&data[start..end]));
 	}
-	NumberContainer::new(values)
+	values
 }
 
-fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyContainer {
+fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeBinaryArray {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return AnyContainer::new(vec![Value::none(); row_count]);
+		return any_array(vec![Value::none(); row_count]);
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut values = Vec::with_capacity(row_count);
@@ -778,5 +783,5 @@ fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyCont
 		let value: Value = decode_any_cell(&data[start..end]).unwrap_or_else(|_| Value::none());
 		values.push(value);
 	}
-	AnyContainer::new(values)
+	any_array(values)
 }

@@ -7,7 +7,10 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::{decimal_array::u128_at, number::NumberContainer},
+	container::{
+		bignum_array::{decimal_array, decimal_at, int_array, int_at, uint_array, uint_at},
+		decimal_array::u128_at,
+	},
 	decimal::Decimal,
 	int::Int,
 	uint::Uint,
@@ -221,14 +224,14 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 			} => {
 				let mut data = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						data.push(Int::from(value.0.clone().abs()));
+					if let Some(value) = int_at(container, i) {
+						data.push(Int::from(value.0.abs()));
 					} else {
 						data.push(Int::default());
 					}
 				}
 				ColumnBuffer::Int {
-					container: NumberContainer::new(data),
+					container: int_array(data),
 					max_bytes: *max_bytes,
 				}
 			}
@@ -238,14 +241,14 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 			} => {
 				let mut data = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						data.push(value.clone());
+					if let Some(value) = uint_at(container, i) {
+						data.push(value);
 					} else {
 						data.push(Uint::default());
 					}
 				}
 				ColumnBuffer::Uint {
-					container: NumberContainer::new(data),
+					container: uint_array(data),
 					max_bytes: *max_bytes,
 				}
 			}
@@ -256,14 +259,14 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 			} => {
 				let mut data = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = container.get(i) {
-						data.push(Decimal::from(value.0.clone().abs()));
+					if let Some(value) = decimal_at(container, i) {
+						data.push(Decimal::from(value.0.abs()));
 					} else {
 						data.push(Decimal::default());
 					}
 				}
 				ColumnBuffer::Decimal {
-					container: NumberContainer::new(data),
+					container: decimal_array(data),
 					precision: *precision,
 					scale: *scale,
 				}

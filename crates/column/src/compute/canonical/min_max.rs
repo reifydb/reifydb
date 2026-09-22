@@ -57,7 +57,9 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Uint4(_) => reduce_int!(array.buffer.as_slice::<u32>(), Uint4),
 		ColumnBuffer::Uint8(_) => reduce_int!(array.buffer.as_slice::<u64>(), Uint8),
 		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
-		ColumnBuffer::Any(_) => Err(ColumnError::FixedArrayRequired {
+		ColumnBuffer::Any {
+			..
+		} => Err(ColumnError::FixedArrayRequired {
 			operation: "min_max",
 		}
 		.into()),

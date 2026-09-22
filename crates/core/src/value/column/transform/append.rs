@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape},
@@ -17,8 +17,10 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::Constraint,
 		container::{
+			bignum_array::{push_decimal, push_int, push_uint},
 			decimal_array::uint16_to_native,
 			dictionary_array::push_entry,
+			digest_array::push_digest,
 			temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 		},
 		date::Date,
@@ -450,31 +452,31 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Int {
-						container,
+					ColumnBuilder::Int {
+						builder,
 						..
-					}),
+					},
 					ValueType::Int,
 				) => {
-					container.push(shape.get_int(bytes, index));
+					push_int(builder, &shape.get_int(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Uint {
-						container,
+					ColumnBuilder::Uint {
+						builder,
 						..
-					}),
+					},
 					ValueType::Uint,
 				) => {
-					container.push(shape.get_uint(bytes, index));
+					push_uint(builder, &shape.get_uint(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Decimal {
-						container,
+					ColumnBuilder::Decimal {
+						builder,
 						..
-					}),
+					},
 					ValueType::Decimal,
 				) => {
-					container.push(shape.get_decimal(bytes, index));
+					push_decimal(builder, &shape.get_decimal(bytes, index));
 				}
 				(
 					ColumnBuilder::DictionaryId {
@@ -487,17 +489,17 @@ impl Columns {
 					_ => push_entry(buffer, DictionaryEntryId::default()),
 				},
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Digest {
-						container,
+					ColumnBuilder::Digest {
+						builder,
 						inner,
 						accuracy,
-					}),
+					},
 					ValueType::Digest {
 						inner: field_inner,
 						accuracy: field_accuracy,
 					},
 				) if *inner == *field_inner && *accuracy == field_accuracy => {
-					container.push(Box::new(shape.get_digest(bytes, index)));
+					push_digest(builder, &shape.get_digest(bytes, index));
 				}
 				(_, v) => {
 					return Err(CoreError::FrameError {
@@ -619,31 +621,31 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Int {
-						container,
+					ColumnBuilder::Int {
+						builder,
 						..
-					}),
+					},
 					ValueType::Int,
 				) => {
-					container.push(shape.get_int(bytes, index));
+					push_int(builder, &shape.get_int(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Uint {
-						container,
+					ColumnBuilder::Uint {
+						builder,
 						..
-					}),
+					},
 					ValueType::Uint,
 				) => {
-					container.push(shape.get_uint(bytes, index));
+					push_uint(builder, &shape.get_uint(bytes, index));
 				}
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Decimal {
-						container,
+					ColumnBuilder::Decimal {
+						builder,
 						..
-					}),
+					},
 					ValueType::Decimal,
 				) => {
-					container.push(shape.get_decimal(bytes, index));
+					push_decimal(builder, &shape.get_decimal(bytes, index));
 				}
 				(
 					ColumnBuilder::DictionaryId {
@@ -656,20 +658,20 @@ impl Columns {
 					_ => push_entry(buffer, DictionaryEntryId::default()),
 				},
 				(
-					ColumnBuilder::Buffer(ColumnBuffer::Digest {
-						container,
+					ColumnBuilder::Digest {
+						builder,
 						inner,
 						accuracy,
-					}),
+					},
 					ValueType::Digest {
 						inner: field_inner,
 						accuracy: field_accuracy,
 					},
 				) if *inner == *field_inner && *accuracy == field_accuracy => {
-					container.push(Box::new(shape.get_digest(bytes, index)));
+					push_digest(builder, &shape.get_digest(bytes, index));
 				}
 				(l, r) => {
-					let l = mem::replace(l, ColumnBuilder::Buffer(ColumnBuffer::bool(vec![])))
+					let l = mem::replace(l, ColumnBuilder::Bool(BooleanBufferBuilder::new(0)))
 						.finish();
 					unreachable!("{:#?} {:#?}", l, r)
 				}

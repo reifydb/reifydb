@@ -15,6 +15,8 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
+			any_array,
+			bignum_array::{decimals, ints, uints},
 			decimal_array::u128s,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
@@ -158,7 +160,9 @@ impl Arena {
 			| ColumnBuffer::Decimal {
 				..
 			}
-			| ColumnBuffer::Any(_)
+			| ColumnBuffer::Any {
+				..
+			}
 			| ColumnBuffer::DictionaryId {
 				..
 			} => self.marshal_column_data_serialize(data),
@@ -226,28 +230,32 @@ impl Arena {
 				container,
 				..
 			} => {
-				let values: &[Int] = container;
+				let values: Vec<Int> = ints(container);
 				self.marshal_encoded_cells(values.len(), |i, buf| encode_int_cell(&values[i], buf))
 			}
 			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
-				let values: &[Uint] = container;
+				let values: Vec<Uint> = uints(container);
 				self.marshal_encoded_cells(values.len(), |i, buf| encode_uint_cell(&values[i], buf))
 			}
 			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
-				let values: &[Decimal] = container;
+				let values: Vec<Decimal> = decimals(container);
 				self.marshal_encoded_cells(values.len(), |i, buf| encode_decimal_cell(&values[i], buf))
 			}
-			ColumnBuffer::Any(container) => self.marshal_encoded_cells(container.len(), |i, buf| {
-				let none = Value::none();
-				let value = container.get(i).unwrap_or(&none);
-				encode_any_cell(value, buf).expect("unsupported value in any column cell");
-			}),
+			ColumnBuffer::Any {
+				container,
+				..
+			} => {
+				let values: Vec<Value> = any_array::values(container);
+				self.marshal_encoded_cells(values.len(), |i, buf| {
+					encode_any_cell(&values[i], buf).expect("unsupported value in any column cell");
+				})
+			}
 
 			ColumnBuffer::DictionaryId {
 				container,

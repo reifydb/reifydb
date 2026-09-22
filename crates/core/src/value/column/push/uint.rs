@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::uint::Uint;
+use reifydb_value::value::{container::bignum_array::push_uint, uint::Uint};
 
-use crate::value::column::{ColumnBuffer, builder::ColumnBuilder, push::Push};
+use crate::value::column::{builder::ColumnBuilder, push::Push};
 
 impl Push<Uint> for ColumnBuilder {
 	fn push(&mut self, value: Uint) {
 		match self {
-			ColumnBuilder::Buffer(ColumnBuffer::Uint {
-				container,
+			ColumnBuilder::Uint {
+				builder,
 				..
-			}) => {
-				container.push(value);
+			} => {
+				push_uint(builder, &value);
 			}
 			ColumnBuilder::Option {
 				inner,

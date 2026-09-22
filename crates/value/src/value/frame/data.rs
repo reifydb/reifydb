@@ -17,16 +17,18 @@ use crate::{
 	value::{
 		Value,
 		container::{
-			any::AnyContainer,
+			any_array,
+			bignum_array::{
+				decimal_as_string, decimal_get_value, decimals_equal, deserialize_decimals,
+				deserialize_ints, deserialize_uints, int_as_string, int_get_value, serialize_decimals,
+				serialize_ints, serialize_uints, uint_as_string, uint_get_value,
+			},
 			bool_array,
 			decimal_array::{
 				deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string,
 				uint16_get_value,
 			},
-			dictionary_array,
-			digest::DigestContainer,
-			number::NumberContainer,
-			primitive,
+			dictionary_array, digest_array, primitive,
 			temporal_array::{
 				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
 				deserialize_durations, deserialize_times, durations, serialize_dates,
@@ -38,10 +40,7 @@ use crate::{
 			},
 			varlen_array::{self, blob_as_string, blob_get_value, utf8_as_string, utf8_get_value},
 		},
-		decimal::Decimal,
 		dictionary::DictionaryId,
-		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -106,10 +105,22 @@ pub enum FrameColumnData {
 		)]
 		LargeBinaryArray,
 	),
-	Int(NumberContainer<Int>),
-	Uint(NumberContainer<Uint>),
-	Decimal(NumberContainer<Decimal>),
-	Any(AnyContainer),
+	Int(#[serde(serialize_with = "serialize_ints", deserialize_with = "deserialize_ints")] LargeBinaryArray),
+	Uint(#[serde(serialize_with = "serialize_uints", deserialize_with = "deserialize_uints")] LargeBinaryArray),
+	Decimal(
+		#[serde(serialize_with = "serialize_decimals", deserialize_with = "deserialize_decimals")]
+		LargeBinaryArray,
+	),
+	Any {
+		#[serde(
+			rename = "data",
+			serialize_with = "any_array::serialize",
+			deserialize_with = "any_array::deserialize"
+		)]
+		container: LargeBinaryArray,
+		#[serde(default)]
+		declared_type: Option<ValueType>,
+	},
 	DictionaryId {
 		#[serde(
 			rename = "data",
@@ -127,7 +138,8 @@ pub enum FrameColumnData {
 	},
 
 	Digest {
-		container: DigestContainer,
+		#[serde(serialize_with = "digest_array::serialize", deserialize_with = "digest_array::deserialize")]
+		container: LargeBinaryArray,
 		inner: ValueType,
 		accuracy: u32,
 	},
@@ -160,10 +172,19 @@ impl PartialEq for FrameColumnData {
 			(FrameColumnData::Uuid4(a), FrameColumnData::Uuid4(b)) => uuid4s(a) == uuid4s(b),
 			(FrameColumnData::Uuid7(a), FrameColumnData::Uuid7(b)) => uuid7s(a) == uuid7s(b),
 			(FrameColumnData::Blob(a), FrameColumnData::Blob(b)) => varlen_array::equals(a, b),
-			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => a == b,
-			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => a == b,
-			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => a == b,
-			(FrameColumnData::Any(a), FrameColumnData::Any(b)) => a == b,
+			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => varlen_array::equals(a, b),
+			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => varlen_array::equals(a, b),
+			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => decimals_equal(a, b),
+			(
+				FrameColumnData::Any {
+					container: a_container,
+					declared_type: a_declared_type,
+				},
+				FrameColumnData::Any {
+					container: b_container,
+					declared_type: b_declared_type,
+				},
+			) => any_array::equals(a_container, b_container) && a_declared_type == b_declared_type,
 			(
 				FrameColumnData::DictionaryId {
 					container: a_container,
@@ -198,7 +219,10 @@ impl PartialEq for FrameColumnData {
 					inner: b_inner,
 					accuracy: b_accuracy,
 				},
-			) => a_container == b_container && a_inner == b_inner && a_accuracy == b_accuracy,
+			) => {
+				varlen_array::equals(a_container, b_container)
+					&& a_inner == b_inner && a_accuracy == b_accuracy
+			}
 			_ => false,
 		}
 	}
@@ -232,7 +256,10 @@ impl FrameColumnData {
 			FrameColumnData::Int(_) => ValueType::Int,
 			FrameColumnData::Uint(_) => ValueType::Uint,
 			FrameColumnData::Decimal(_) => ValueType::Decimal,
-			FrameColumnData::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
+			FrameColumnData::Any {
+				declared_type,
+				..
+			} => declared_type.clone().unwrap_or(ValueType::Any),
 			FrameColumnData::DictionaryId {
 				..
 			} => ValueType::DictionaryId,
@@ -275,10 +302,13 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => idx < container.len(),
 			FrameColumnData::Uuid7(container) => idx < container.len(),
 			FrameColumnData::Blob(container) => idx < container.len(),
-			FrameColumnData::Int(container) => container.is_defined(idx),
-			FrameColumnData::Uint(container) => container.is_defined(idx),
-			FrameColumnData::Decimal(container) => container.is_defined(idx),
-			FrameColumnData::Any(container) => container.is_defined(idx),
+			FrameColumnData::Int(container) => idx < container.len(),
+			FrameColumnData::Uint(container) => idx < container.len(),
+			FrameColumnData::Decimal(container) => idx < container.len(),
+			FrameColumnData::Any {
+				container,
+				..
+			} => idx < container.len(),
 			FrameColumnData::DictionaryId {
 				container,
 				..
@@ -290,7 +320,7 @@ impl FrameColumnData {
 			FrameColumnData::Digest {
 				container,
 				..
-			} => container.is_defined(idx),
+			} => digest_array::is_defined(container, idx),
 		}
 	}
 
@@ -364,7 +394,10 @@ impl FrameColumnData {
 			FrameColumnData::Int(container) => container.len(),
 			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
-			FrameColumnData::Any(container) => container.len(),
+			FrameColumnData::Any {
+				container,
+				..
+			} => container.len(),
 			FrameColumnData::DictionaryId {
 				container,
 				..
@@ -420,10 +453,13 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => uuid_array::as_string(uuid4s(container), index),
 			FrameColumnData::Uuid7(container) => uuid_array::as_string(uuid7s(container), index),
 			FrameColumnData::Blob(container) => blob_as_string(container, index),
-			FrameColumnData::Int(container) => container.as_string(index),
-			FrameColumnData::Uint(container) => container.as_string(index),
-			FrameColumnData::Decimal(container) => container.as_string(index),
-			FrameColumnData::Any(container) => container.as_string(index),
+			FrameColumnData::Int(container) => int_as_string(container, index),
+			FrameColumnData::Uint(container) => uint_as_string(container, index),
+			FrameColumnData::Decimal(container) => decimal_as_string(container, index),
+			FrameColumnData::Any {
+				container,
+				..
+			} => any_array::as_string(container, index),
 			FrameColumnData::DictionaryId {
 				container,
 				..
@@ -441,7 +477,7 @@ impl FrameColumnData {
 			FrameColumnData::Digest {
 				container,
 				..
-			} => container.as_string(index),
+			} => digest_array::as_string(container, index),
 		}
 	}
 }
@@ -473,10 +509,13 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => uuid_array::get_value(uuid4s(container), index),
 			FrameColumnData::Uuid7(container) => uuid_array::get_value(uuid7s(container), index),
 			FrameColumnData::Blob(container) => blob_get_value(container, index),
-			FrameColumnData::Int(container) => container.get_value(index),
-			FrameColumnData::Uint(container) => container.get_value(index),
-			FrameColumnData::Decimal(container) => container.get_value(index),
-			FrameColumnData::Any(container) => container.get_value(index),
+			FrameColumnData::Int(container) => int_get_value(container, index),
+			FrameColumnData::Uint(container) => uint_get_value(container, index),
+			FrameColumnData::Decimal(container) => decimal_get_value(container, index),
+			FrameColumnData::Any {
+				container,
+				declared_type,
+			} => any_array::get_value(container, declared_type.as_ref(), index),
 			FrameColumnData::DictionaryId {
 				container,
 				..
@@ -494,7 +533,7 @@ impl FrameColumnData {
 			FrameColumnData::Digest {
 				container,
 				..
-			} => container.get_value(index),
+			} => digest_array::get_value(container, index),
 		}
 	}
 }

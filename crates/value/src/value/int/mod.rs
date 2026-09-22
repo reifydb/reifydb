@@ -12,6 +12,7 @@ use std::{
 use num_bigint::BigInt as StdBigInt;
 use serde::{Deserialize, Serialize};
 
+pub mod encoding;
 pub mod parse;
 
 #[repr(transparent)]

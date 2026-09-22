@@ -33,6 +33,7 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 
 #[cfg(test)]
 pub mod tests {
+	use arrow_array::Array;
 	use reifydb_core::value::column::buffer::ColumnBuffer;
 	use reifydb_rql::expression::{
 		CastExpression, ConstantExpression,
@@ -40,7 +41,13 @@ pub mod tests {
 		Expression::{Cast, Constant, Prefix},
 		PrefixExpression, PrefixOperator, TypeExpression,
 	};
-	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			container::bignum_array::{decimal_at, decimals},
+			value_type::ValueType,
+		},
+	};
 
 	use crate::expression::{context::EvalContext, eval::evaluate};
 
@@ -297,8 +304,8 @@ pub mod tests {
 		} = result.data()
 		{
 			assert_eq!(container.len(), 1);
-			assert!(container.is_defined(0));
-			let value = &container[0];
+			assert!(decimal_at(container, 0).is_some());
+			let value = &decimals(container)[0];
 			assert_eq!(value.to_string(), "123.456789");
 		} else {
 			panic!("Expected Decimal column data");

@@ -6,8 +6,11 @@ use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	container::{
+		any_array::push_any,
+		bignum_array::{push_decimal, push_int, push_uint},
 		decimal_array::uint16_to_native,
 		dictionary_array::push_entry,
+		digest_array::push_digest,
 		temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 	},
 	date::Date,
@@ -56,12 +59,12 @@ macro_rules! push_or_promote {
 		}
 	};
 
-	(struct_direct $self:expr, $val:expr, $col_variant:ident) => {
+	(struct_direct $self:expr, $val:expr, $col_variant:ident, $push:ident) => {
 		match $self {
-			ColumnBuilder::Buffer(ColumnBuffer::$col_variant {
-				container,
+			ColumnBuilder::$col_variant {
+				builder,
 				..
-			}) => container.push($val),
+			} => $push(builder, &$val),
 			_ => unimplemented!(),
 		}
 	};
@@ -173,9 +176,9 @@ impl ColumnBuilder {
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => push_or_promote!(varlen self, v.as_bytes(), Blob),
-			Value::Int(v) => push_or_promote!(struct_direct self, v, Int),
-			Value::Uint(v) => push_or_promote!(struct_direct self, v, Uint),
-			Value::Decimal(v) => push_or_promote!(struct_direct self, v, Decimal),
+			Value::Int(v) => push_or_promote!(struct_direct self, v, Int, push_int),
+			Value::Uint(v) => push_or_promote!(struct_direct self, v, Uint, push_uint),
+			Value::Decimal(v) => push_or_promote!(struct_direct self, v, Decimal, push_decimal),
 			Value::None {
 				..
 			} => self.push_none(),
@@ -184,15 +187,18 @@ impl ColumnBuilder {
 			Value::Record(v) => self.push_value(Value::Any(Box::new(Value::Record(v)))),
 			Value::Tuple(v) => self.push_value(Value::Any(Box::new(Value::Tuple(v)))),
 			Value::Any(v) => match self {
-				ColumnBuilder::Buffer(ColumnBuffer::Any(container)) => container.push(*v),
+				ColumnBuilder::Any {
+					builder,
+					..
+				} => push_any(builder, &v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),
 			},
 			Value::Digest(digest) => match self {
-				ColumnBuilder::Buffer(ColumnBuffer::Digest {
-					container,
+				ColumnBuilder::Digest {
+					builder,
 					inner,
 					accuracy,
-				}) => {
+				} => {
 					if digest.inner() != inner || digest.accuracy() != *accuracy {
 						panic!(
 							"cannot push a Digest({}, {}) into a Digest({inner}, {accuracy}) column",
@@ -200,7 +206,7 @@ impl ColumnBuilder {
 							digest.accuracy()
 						);
 					}
-					container.push(digest);
+					push_digest(builder, &digest);
 				}
 				_ => unimplemented!(),
 			},

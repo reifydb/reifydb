@@ -8,7 +8,7 @@ use reifydb_codec::json::{
 };
 use reifydb_value::value::{
 	Value,
-	container::any::AnyContainer,
+	container::any_array::any_array,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	value_type::ValueType,
 };
@@ -65,9 +65,10 @@ fn a_list_of_records_round_trips_as_real_json_structure_not_an_escaped_string() 
 		]),
 	];
 	let declared = ValueType::list_of(record_region());
-	let column = FrameColumnData::Any(
-		AnyContainer::from_vec(vec![Value::List(regions.clone())]).with_declared_type(declared),
-	);
+	let column = FrameColumnData::Any {
+		container: any_array(vec![Value::List(regions.clone())]),
+		declared_type: Some(declared),
+	};
 	let frame = Frame::new(vec![FrameColumn {
 		name: "regions".to_string(),
 		data: column,
@@ -86,9 +87,10 @@ fn a_list_of_records_round_trips_as_real_json_structure_not_an_escaped_string() 
 #[test]
 fn a_none_list_column_still_renders_as_the_none_marker() {
 	let column = FrameColumnData::Option {
-		inner: Box::new(FrameColumnData::Any(
-			AnyContainer::from_vec(vec![Value::List(vec![Value::Int4(1)])]).with_declared_type(list_int4()),
-		)),
+		inner: Box::new(FrameColumnData::Any {
+			container: any_array(vec![Value::List(vec![Value::Int4(1)])]),
+			declared_type: Some(list_int4()),
+		}),
 		bitvec: BooleanBuffer::from(vec![false]),
 	};
 	let frame = Frame::new(vec![FrameColumn {

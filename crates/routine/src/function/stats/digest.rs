@@ -22,6 +22,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		container::digest_array,
 		digest::{Digest, DigestError, literal::parse_accuracy},
 		value_type::ValueType,
 	},
@@ -245,10 +246,10 @@ impl Accumulator for DigestAccumulator {
 						if !column.is_defined(row) {
 							continue;
 						}
-						let part = container.get(row).unwrap_or_else(|| {
+						let part = digest_array::get(container, row).unwrap_or_else(|| {
 							panic!("defined digest row {row} holds no digest")
 						});
-						self.merge(&mut slot, part)?;
+						self.merge(&mut slot, &part)?;
 					}
 					_ => {
 						let value = column.get_value(row);

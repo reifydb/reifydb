@@ -3,7 +3,11 @@
 
 use reifydb_value::{
 	util::bitmap,
-	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+	value::container::{
+		any_array,
+		bignum_array::{reorder_decimals, reorder_ints, reorder_uints},
+		bool_array, dictionary_array, primitive, uuid_array, varlen_array,
+	},
 };
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
@@ -24,9 +28,24 @@ impl ColumnBuffer {
 				container,
 				..
 			} => *container = dictionary_array::reorder(container, indices),
+			ColumnBuffer::Int {
+				container,
+				..
+			} => *container = reorder_ints(container, indices),
+			ColumnBuffer::Uint {
+				container,
+				..
+			} => *container = reorder_uints(container, indices),
+			ColumnBuffer::Decimal {
+				container,
+				..
+			} => *container = reorder_decimals(container, indices),
+			ColumnBuffer::Any {
+				container,
+				..
+			} => *container = any_array::reorder(container, indices),
 			_ => with_container!(
 				self,
-				|c| c.reorder(indices),
 				|a| *a = primitive::reorder(a, indices),
 				|t| *t = primitive::reorder(t, indices),
 				|u| *u = uuid_array::reorder(u, indices),
