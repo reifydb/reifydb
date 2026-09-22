@@ -30,7 +30,8 @@ use reifydb_rql::{
 use reifydb_runtime::context::clock::Instant;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
-	RqlExecutor, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
+	query::QueryTransaction,
 };
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::error::Diagnostic;
@@ -48,7 +49,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	subscription::{SubscriptionContext, SubscriptionServiceRef},
 	vm::{
-		Admin, Command, Query,
+		Admin, Command, Query, Test,
 		services::{EngineConfig, Services},
 		vm::Vm,
 	},
@@ -474,6 +475,152 @@ impl Executor {
 
 			result.clear();
 			let mut tx = Transaction::Admin(txn);
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
+			let start_execute = self.0.runtime_context.clock.instant();
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+			let execute_duration = Duration::from_std(start_execute.elapsed());
+			symbols = vm.symbols;
+
+			metrics.push(StatementMetrics {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql,
+				compile_duration,
+				execute_duration,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = run_result {
+				return error_result(e, build_metrics(metrics));
+			}
+
+			if compiled.is_output {
+				saw_output = true;
+				output_results.append(&mut result);
+			}
+		}
+		ExecutionResult {
+			frames: select_frames(saw_output, output_results, result),
+			error: None,
+			metrics: build_metrics(metrics),
+		}
+	}
+
+	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
+	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow()))) {
+			Ok(s) => s,
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
+		};
+		if let Err(e) = self.enforce_test_policy(&symbols, txn) {
+			return error_result(e, ExecutionMetrics::default());
+		}
+		let start_compile = self.0.runtime_context.clock.instant();
+		match self.compiler.compile_with_policy(
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			cmd.rql,
+			inject_from_policies,
+		) {
+			Err(err) => self.handle_test_compile_error(err, cmd.rql, cmd.params),
+			Ok(CompilationResult::Ready(compiled)) => {
+				self.execute_test_ready(txn, compiled, &cmd.params, symbols, start_compile)
+			}
+			Ok(CompilationResult::Incremental(state)) => {
+				self.execute_test_incremental(txn, state, &cmd.params, symbols)
+			}
+		}
+	}
+
+	#[inline]
+	fn enforce_test_policy(&self, symbols: &SymbolTable, txn: &mut TestTransaction<'_>) -> Result<()> {
+		let session_type = txn.session_type;
+		let session_default_deny = txn.session_default_deny;
+		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			session_type,
+			session_default_deny,
+		)
+	}
+
+	#[inline]
+	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
+	fn handle_test_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+		#[cfg(not(reifydb_single_threaded))]
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+			return ExecutionResult {
+				frames,
+				error: None,
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		error_result(err, ExecutionMetrics::default())
+	}
+
+	#[inline]
+	fn execute_test_ready(
+		&self,
+		txn: &mut TestTransaction<'_>,
+		compiled: Arc<Vec<Compiled>>,
+		params: &Params,
+		symbols: SymbolTable,
+		start_compile: Instant,
+	) -> ExecutionResult {
+		let compile_duration = Duration::from_std(start_compile.elapsed());
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			&compiled,
+			params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
+	}
+
+	fn execute_test_incremental(
+		&self,
+		txn: &mut TestTransaction<'_>,
+		mut state: IncrementalCompilation,
+		params: &Params,
+		symbols: SymbolTable,
+	) -> ExecutionResult {
+		let policy = constrain_policy(inject_from_policies);
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut saw_output = false;
+		let mut symbols = symbols;
+		let mut metrics = Vec::new();
+		loop {
+			let start_incr = self.0.runtime_context.clock.instant();
+			let next = match self.compiler.compile_next_with_policy(
+				&mut Transaction::Test(Box::new(txn.reborrow())),
+				&mut state,
+				&policy,
+			) {
+				Ok(n) => n,
+				Err(e) => return error_result(e, build_metrics(metrics)),
+			};
+			let compile_duration = Duration::from_std(start_incr.elapsed());
+
+			let Some(compiled) = next else {
+				break;
+			};
+
+			result.clear();
+			let mut tx = Transaction::Test(Box::new(txn.reborrow()));
 			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
 			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);

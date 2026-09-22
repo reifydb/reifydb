@@ -21,6 +21,12 @@ pub struct Query<'a> {
 	pub params: Params,
 }
 
+#[derive(Debug)]
+pub struct Test<'a> {
+	pub rql: &'a str,
+	pub params: Params,
+}
+
 pub(crate) mod callable;
 pub(crate) mod exec;
 pub mod executor;

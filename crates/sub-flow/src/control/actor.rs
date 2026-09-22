@@ -928,6 +928,7 @@ impl Actor for FlowActor {
 			} => {
 				state.flow_engine.forget_operator_samples();
 				self.on_stop(delete_checkpoint);
+				self.health.clear(self.flow_id);
 				(reply)();
 				Directive::Stop
 			}
