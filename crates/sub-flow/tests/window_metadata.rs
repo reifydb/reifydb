@@ -499,6 +499,101 @@ fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
 }
 
 #[test]
+fn an_update_moving_time_out_of_a_session_leaves_it_and_opens_a_new_one() {
+	// Without re-routing the moved row stays counted in the 01:10 session and no 03:00 session ever opens.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end() }
+					by { g } with { gap: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command(r#"UPDATE app::t { ts: "2026-01-01T00:03:00Z" } FILTER { id == 2 }"#);
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+
+	let sessions = |db: &TestDb| {
+		let frames = db.query("FROM app::w");
+		let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "s"))
+			.into_iter()
+			.zip(text(&column_values(&frames[0], "e")))
+			.zip(text(&column_values(&frames[0], "n")))
+			.map(|((start, end), n)| (start, end, n))
+			.collect();
+		rows.sort();
+		rows
+	};
+	let session = |s: &str, e: &str| {
+		(format!("2026-01-01T00:{s}.000000000Z"), format!("2026-01-01T00:{e}.000000000Z"), "1".to_string())
+	};
+	assert_eq!(sessions(&db), vec![session("01:10", "01:50"), session("03:00", "03:30")]);
+
+	// The delete must follow the row index to the new session, or the 03:00 session would keep the row.
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	assert_eq!(sessions(&db), vec![session("01:10", "01:50")]);
+}
+
+#[test]
+fn an_update_moving_time_forward_inside_the_gap_stretches_its_session() {
+	// Swapping the row in place never tells the tracker, so the session would still end at 01:50.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, e: datetime, x: int4 } AS {
+			FROM app::t
+				| window session { n: math::count(), e: window::end(), x: math::last(v) }
+					by { g } with { gap: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
+	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:45Z" } FILTER { id == 2 }"#);
+	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:02:15.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "n")), vec!["2".to_string()]);
+}
+
+#[test]
+fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
+	// The tracker only knows the 01:40 session, so a small fix to the closed 01:10 session must not drop the row.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, x: int4 } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), x: math::sum(v) }
+					by { g } with { gap: 10s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:40Z");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	db.command(r#"UPDATE app::t { v: 8, ts: "2026-01-01T00:01:15Z" } FILTER { id == 1 }"#);
+	db.await_row_count("FROM app::w | filter { x == 8 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "s"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "n")))
+		.zip(text(&column_values(&frames[0], "x")))
+		.map(|((start, n), x)| (start, n, x))
+		.collect();
+	rows.sort();
+	assert_eq!(
+		rows,
+		vec![
+			("2026-01-01T00:01:10.000000000Z".to_string(), "1".to_string(), "8".to_string()),
+			("2026-01-01T00:01:40.000000000Z".to_string(), "1".to_string(), "7".to_string()),
+		]
+	);
+}
+
+#[test]
 fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
 	// A late row can pull a new session back onto the closed one's start, so only the end must tell them apart.
 	let db = setup();

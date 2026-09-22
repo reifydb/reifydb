@@ -902,6 +902,36 @@ pub fn apply_session_engine(
 						);
 						let post_coord =
 							slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
+						let assigned = if pre_timestamps[row_idx] != timestamps[row_idx] {
+							session_assign(
+								operator,
+								host,
+								*hash,
+								event_ts,
+								&kind,
+								&mut trackers,
+								&mut bounds,
+							)?
+						} else {
+							None
+						};
+						let targets = match assigned {
+							Some(session_id) => {
+								operator.drop_row_index(
+									host,
+									*hash,
+									pre.row_numbers()[row_idx],
+								)?;
+								operator.store_row_index(
+									host,
+									*hash,
+									pre.row_numbers()[row_idx],
+									session_id,
+								)?;
+								vec![session_id]
+							}
+							None => existing.clone(),
+						};
 						for session_id in existing {
 							push_count_event(
 								&mut buckets,
@@ -916,6 +946,8 @@ pub fn apply_session_engine(
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								pre_timestamps[row_idx],
 							);
+						}
+						for session_id in targets {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
