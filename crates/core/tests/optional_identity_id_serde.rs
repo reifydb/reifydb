@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 fn column_with_a_none_row() -> ColumnBuffer {
 	let id = IdentityId(Uuid7(Uuid::from_u128(0x0000_0000_0001_7000_8000_0000_0000_0000)));
-	ColumnBuffer::identity_id_optional([Some(id), None])
+	ColumnBuffer::identity_id_with_bitvec([id, IdentityId::default()], vec![true, false])
 }
 
 #[test]

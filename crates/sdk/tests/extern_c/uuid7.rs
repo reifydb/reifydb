@@ -41,12 +41,10 @@ fn uuid7_thirty_two_rows_distinct() {
 #[test]
 fn uuid7_with_undefined() {
 	let bytes = [0x55; 16];
-	let input = ColumnBuffer::uuid7_optional([
-		Some(Uuid7(Uuid::from_bytes(bytes))),
-		None,
-		Some(Uuid7(Uuid::nil())),
-		None,
-	]);
+	let input = ColumnBuffer::uuid7_with_bitvec(
+		[Uuid7(Uuid::from_bytes(bytes)), Uuid7::default(), Uuid7(Uuid::nil()), Uuid7::default()],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("uuid7_with_undefined", &input, &output);
 }

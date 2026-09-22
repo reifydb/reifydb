@@ -39,7 +39,10 @@ fn uint16_thirty_two_rows() {
 
 #[test]
 fn uint16_with_undefined() {
-	let input = ColumnBuffer::uint16_optional([Some(0u128), None, Some(1u128 << 100), None, Some(u128::MAX)]);
+	let input = ColumnBuffer::uint16_with_bitvec(
+		[0u128, 0, 1u128 << 100, 0, u128::MAX],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("uint16_with_undefined", &input, &output);
 }

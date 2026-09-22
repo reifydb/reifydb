@@ -688,11 +688,15 @@ pub mod tests {
 
 		#[test]
 		fn test_boolean() {
-			let mut test_instance1 =
-				Columns::new(vec![ColumnWithName::bool_with_bitvec("id", [true], vec![false])]);
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::bool_with_bitvec([true], vec![false]),
+			)]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::bool_with_bitvec("id", [false], vec![true])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::bool_with_bitvec([false], vec![true]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -703,10 +707,9 @@ pub mod tests {
 		fn test_float4() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::float4("id", [1.0f32, 2.0])]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::float4_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				[3.0f32, 4.0],
-				vec![true, false],
+				ColumnBuffer::float4_with_bitvec([3.0f32, 4.0], vec![true, false]),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
@@ -724,10 +727,9 @@ pub mod tests {
 		fn test_float8() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::float8("id", [1.0f64, 2.0])]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::float8_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				[3.0f64, 4.0],
-				vec![true, false],
+				ColumnBuffer::float8_with_bitvec([3.0f64, 4.0], vec![true, false]),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
@@ -745,8 +747,10 @@ pub mod tests {
 		fn test_int1() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::int1("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::int1_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int1_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -760,8 +764,10 @@ pub mod tests {
 		fn test_int2() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::int2("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::int2_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int2_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -775,8 +781,10 @@ pub mod tests {
 		fn test_int4() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::int4("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::int4_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int4_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -790,8 +798,10 @@ pub mod tests {
 		fn test_int8() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::int8("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::int8_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int8_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -805,8 +815,10 @@ pub mod tests {
 		fn test_int16() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::int16("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::int16_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int16_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -818,16 +830,20 @@ pub mod tests {
 
 		#[test]
 		fn test_string() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::utf8_with_bitvec(
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				vec!["a".to_string(), "b".to_string()],
-				vec![true, true],
+				ColumnBuffer::utf8_with_bitvec(
+					vec!["a".to_string(), "b".to_string()],
+					vec![true, true],
+				),
 			)]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::utf8_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				vec!["c".to_string(), "d".to_string()],
-				vec![true, false],
+				ColumnBuffer::utf8_with_bitvec(
+					vec!["c".to_string(), "d".to_string()],
+					vec![true, false],
+				),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
@@ -845,8 +861,10 @@ pub mod tests {
 		fn test_uint1() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint1("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::uint1_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::uint1_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -860,8 +878,10 @@ pub mod tests {
 		fn test_uint2() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint2("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::uint2_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::uint2_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -875,8 +895,10 @@ pub mod tests {
 		fn test_uint4() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint4("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::uint4_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::uint4_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -890,8 +912,10 @@ pub mod tests {
 		fn test_uint8() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint8("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::uint8_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::uint8_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -905,8 +929,10 @@ pub mod tests {
 		fn test_uint16() {
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint16("id", [1, 2])]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::uint16_with_bitvec("id", [3, 4], vec![true, false])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::uint16_with_bitvec([3, 4], vec![true, false]),
+			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -925,10 +951,9 @@ pub mod tests {
 
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uuid4("id", [uuid1, uuid2])]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::uuid4_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				[uuid3, uuid4],
-				vec![true, false],
+				ColumnBuffer::uuid4_with_bitvec([uuid3, uuid4], vec![true, false]),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
@@ -951,10 +976,9 @@ pub mod tests {
 
 			let mut test_instance1 = Columns::new(vec![ColumnWithName::uuid7("id", [uuid1, uuid2])]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::uuid7_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
-				[uuid3, uuid4],
-				vec![true, false],
+				ColumnBuffer::uuid7_with_bitvec([uuid3, uuid4], vec![true, false]),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
@@ -970,8 +994,10 @@ pub mod tests {
 
 		#[test]
 		fn test_with_undefined_lr_promotes_correctly() {
-			let mut test_instance1 =
-				Columns::new(vec![ColumnWithName::int2_with_bitvec("id", [1, 2], vec![true, false])]);
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new(
+				"id",
+				ColumnBuffer::int2_with_bitvec([1, 2], vec![true, false]),
+			)]);
 
 			let test_instance2 =
 				Columns::new(vec![ColumnWithName::undefined_typed("id", ValueType::Boolean, 2)]);
@@ -989,10 +1015,9 @@ pub mod tests {
 			let mut test_instance1 =
 				Columns::new(vec![ColumnWithName::undefined_typed("score", ValueType::Boolean, 2)]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::int2_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"score",
-				[10, 20],
-				vec![true, false],
+				ColumnBuffer::int2_with_bitvec([10, 20], vec![true, false]),
 			)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();

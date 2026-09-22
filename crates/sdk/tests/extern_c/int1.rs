@@ -37,7 +37,7 @@ fn int1_thirty_two_rows() {
 
 #[test]
 fn int1_with_undefined() {
-	let input = ColumnBuffer::int1_optional([Some(i8::MIN), None, Some(0i8), None, Some(i8::MAX)]);
+	let input = ColumnBuffer::int1_with_bitvec([i8::MIN, 0, 0i8, 0, i8::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int1_with_undefined", &input, &output);
 }

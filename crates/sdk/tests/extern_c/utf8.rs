@@ -70,30 +70,35 @@ fn utf8_mixed_lengths() {
 #[test]
 fn utf8_undefined_first_row() {
 	// offsets[0] sentinel: must remain 0 even when row 0 is undefined.
-	let input = ColumnBuffer::utf8_optional([None, Some("hello".to_string()), Some("world".to_string())]);
+	let input = ColumnBuffer::utf8_with_bitvec(
+		[String::new(), "hello".to_string(), "world".to_string()],
+		vec![false, true, true],
+	);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_undefined_first", &input, &output);
 }
 
 #[test]
 fn utf8_alternating_defined_undefined() {
-	let input = ColumnBuffer::utf8_optional([
-		Some("a".to_string()),
-		None,
-		Some("bb".to_string()),
-		None,
-		Some("ccc".to_string()),
-		None,
-		Some("dddd".to_string()),
-	]);
+	let input = ColumnBuffer::utf8_with_bitvec(
+		[
+			"a".to_string(),
+			String::new(),
+			"bb".to_string(),
+			String::new(),
+			"ccc".to_string(),
+			String::new(),
+			"dddd".to_string(),
+		],
+		vec![true, false, true, false, true, false, true],
+	);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_alternating", &input, &output);
 }
 
 #[test]
 fn utf8_all_undefined() {
-	let nones: Vec<Option<String>> = vec![None, None, None, None];
-	let input = ColumnBuffer::utf8_optional(nones);
+	let input = ColumnBuffer::utf8_with_bitvec(vec![String::new(); 4], vec![false; 4]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_all_undefined", &input, &output);
 }

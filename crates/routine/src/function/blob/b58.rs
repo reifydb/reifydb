@@ -48,21 +48,14 @@ impl<'a> Routine<FunctionContext<'a>> for BlobB58 {
 				..
 			} => {
 				let mut result_data = Vec::with_capacity(container.len());
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let b58_str = container.value(i);
-						let blob = Blob::from_b58(Fragment::internal(b58_str))?;
-						result_data.push(blob);
-						result_bitvec.push(true);
-					} else {
-						result_data.push(Blob::empty());
-						result_bitvec.push(false);
-					}
+					let b58_str = container.value(i);
+					let blob = Blob::from_b58(Fragment::internal(b58_str))?;
+					result_data.push(blob);
 				}
 
-				let result_col_data = ColumnBuffer::blob_with_bitvec(result_data, result_bitvec);
+				let result_col_data = ColumnBuffer::blob(result_data);
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

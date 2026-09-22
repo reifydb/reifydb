@@ -51,7 +51,10 @@ fn float4_thirty_two_rows() {
 
 #[test]
 fn float4_with_undefined() {
-	let input = ColumnBuffer::float4_optional([Some(1.5f32), None, Some(f32::NAN), None, Some(-3.25f32)]);
+	let input = ColumnBuffer::float4_with_bitvec(
+		[1.5f32, 0.0, f32::NAN, 0.0, -3.25f32],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("f", input.clone());
 	assert_column_eq("float4_with_undefined", &input, &output);
 }

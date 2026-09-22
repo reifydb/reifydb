@@ -664,8 +664,10 @@ fn any_thirty_two_rows() {
 
 #[test]
 fn any_with_undefined() {
-	let input =
-		ColumnBuffer::any_optional([Some(Value::Int8(7i64)), None, Some(Value::Utf8("x".to_string())), None]);
+	let input = ColumnBuffer::any_with_bitvec(
+		[Value::Int8(7i64), Value::none(), Value::Utf8("x".to_string()), Value::none()],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_with_undefined", &input, &output);
 }

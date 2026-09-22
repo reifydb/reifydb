@@ -246,10 +246,11 @@ mod tests {
 		assert!(restored.columns[0].nullable, "nullability must survive the round trip");
 		assert_eq!(block_values(&block), block_values(&restored));
 		let chunk = &restored.columns[0].chunks[0];
-		assert!(chunk.is_defined(0));
-		assert!(!chunk.is_defined(1), "none at index 1 must be preserved");
-		assert!(chunk.is_defined(2));
-		assert!(!chunk.is_defined(3), "none at index 3 must be preserved");
+		let is_defined = |row: usize| chunk.nones().is_none_or(|nones| nones.is_valid(row));
+		assert!(is_defined(0));
+		assert!(!is_defined(1), "none at index 1 must be preserved");
+		assert!(is_defined(2));
+		assert!(!is_defined(3), "none at index 3 must be preserved");
 	}
 
 	#[test]

@@ -297,7 +297,10 @@ fn uint_length_edges_are_pinned() {
 #[test]
 fn option_int_with_none_row_is_pinned() {
 	// The none row must stay a zero placeholder with a cleared bit, otherwise optional Int columns drift.
-	let buffer = ColumnBuffer::int_optional([Some(Int(big("-12345678901234567890123"))), None]);
+	let buffer = ColumnBuffer::int_with_bitvec(
+		[Int(big("-12345678901234567890123")), Int::default()],
+		vec![true, false],
+	);
 	assert_pinned(
 		buffer,
 		&Pin {
@@ -312,7 +315,10 @@ fn option_int_with_none_row_is_pinned() {
 #[test]
 fn option_uint_with_none_row_is_pinned() {
 	// The none row must stay a zero placeholder with a cleared bit, otherwise optional Uint columns drift.
-	let buffer = ColumnBuffer::uint_optional([Some(Uint(big("98765432109876543210987"))), None]);
+	let buffer = ColumnBuffer::uint_with_bitvec(
+		[Uint(big("98765432109876543210987")), Uint::default()],
+		vec![true, false],
+	);
 	assert_pinned(
 		buffer,
 		&Pin {
@@ -327,7 +333,10 @@ fn option_uint_with_none_row_is_pinned() {
 #[test]
 fn option_decimal_with_none_row_keeps_scale() {
 	// The defined row must keep its trailing zero and the none row must stay a zero placeholder.
-	let buffer = ColumnBuffer::decimal_optional([Some("1.50".parse::<Decimal>().unwrap()), None]);
+	let buffer = ColumnBuffer::decimal_with_bitvec(
+		["1.50".parse::<Decimal>().unwrap(), Decimal::default()],
+		vec![true, false],
+	);
 	assert_pinned(
 		buffer,
 		&Pin {

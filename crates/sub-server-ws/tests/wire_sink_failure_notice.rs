@@ -10,8 +10,11 @@ use reifydb_sub_server::format::WireFormat;
 use reifydb_sub_server_ws::subscription::registry::{PushMessage, WsWireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{
+	container::digest_array::digest_array,
 	diff_type::DiffType,
+	digest::Digest,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 use tokio::sync::mpsc::unbounded_channel;
 
@@ -32,6 +35,14 @@ fn option_layers(depth: usize) -> FrameColumnData {
 		inner: Box::new(inner),
 		bitvec: BooleanBuffer::from(vec![true]),
 	})
+}
+
+fn unencodable_digest() -> FrameColumnData {
+	FrameColumnData::Digest {
+		container: digest_array([None::<Digest>]),
+		inner: ValueType::Utf8,
+		accuracy: 10_000,
+	}
 }
 
 #[test]
@@ -61,7 +72,7 @@ fn a_batch_that_fails_to_rbcf_encode_is_closed_on_the_subscriber() {
 #[test]
 fn a_change_that_fails_to_rbcf_encode_is_announced_to_the_subscriber() {
 	// The registry drops an undelivered subscription, so a client told nothing waits forever for its changes.
-	let columns = Columns::from(change(option_layers(4)).remove(0));
+	let columns = Columns::from(change(unencodable_digest()).remove(0));
 	assert!(
 		encode_frames(&[Frame::from(columns.clone()).with_op(DiffType::Insert)], &EncodeOptions::fast())
 			.is_err(),

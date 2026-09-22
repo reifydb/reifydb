@@ -29,10 +29,6 @@ fn dictionary_id_of(buffer: &ColumnBuffer) -> Option<DictionaryId> {
 			dictionary_id,
 			..
 		} => *dictionary_id,
-		ColumnBuffer::Option {
-			inner,
-			..
-		} => dictionary_id_of(inner),
 		other => panic!("expected a dictionary id column, got {:?}", other.get_type()),
 	}
 }

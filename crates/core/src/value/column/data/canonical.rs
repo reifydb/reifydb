@@ -83,10 +83,6 @@ impl ColumnData for Canonical {
 		self.ty.clone()
 	}
 
-	fn is_nullable(&self) -> bool {
-		self.nullable
-	}
-
 	fn len(&self) -> usize {
 		self.buffer.len()
 	}

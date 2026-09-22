@@ -29,7 +29,7 @@ fn uint1_thirty_two_rows() {
 
 #[test]
 fn uint1_with_undefined() {
-	let input = ColumnBuffer::uint1_optional([Some(0u8), None, Some(127u8), None, Some(u8::MAX)]);
+	let input = ColumnBuffer::uint1_with_bitvec([0u8, 0, 127u8, 0, u8::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("uint1_with_undefined", &input, &output);
 }

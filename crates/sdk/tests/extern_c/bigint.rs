@@ -50,8 +50,10 @@ fn bigint_thirty_two_rows() {
 
 #[test]
 fn bigint_with_undefined() {
-	let input =
-		ColumnBuffer::int_optional([Some(Int::from_i64(7)), None, Some(Int::zero()), None, Some(Int::one())]);
+	let input = ColumnBuffer::int_with_bitvec(
+		[Int::from_i64(7), Int::default(), Int::zero(), Int::default(), Int::one()],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("bigint_with_undefined", &input, &output);
 }

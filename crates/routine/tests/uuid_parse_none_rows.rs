@@ -33,7 +33,7 @@ fn parse_with_a_none_row(
 	name: &str,
 	text: &str,
 ) -> Result<Vec<String>, RoutineError> {
-	let input = ColumnBuffer::utf8_optional([Some(text.to_string()), None]);
+	let input = ColumnBuffer::utf8_with_bitvec([text.to_string(), String::new()], vec![true, false]);
 	let result = routine.call(&mut ctx(name), &Columns::new(vec![ColumnWithName::new("s", input)]))?;
 	let data = result.data_at(0);
 	Ok((0..data.len())

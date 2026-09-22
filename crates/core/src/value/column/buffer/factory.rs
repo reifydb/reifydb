@@ -37,35 +37,10 @@ use reifydb_value::value::{
 use crate::value::column::ColumnBuffer;
 
 macro_rules! impl_native_factory {
-	($name:ident, $name_opt:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $default:expr) => {
+	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty) => {
 		pub fn $name(data: impl IntoIterator<Item = $t>) -> Self {
 			let data = data.into_iter().collect::<Vec<_>>();
 			ColumnBuffer::$variant(PrimitiveArray::new(ScalarBuffer::from(data), None))
-		}
-
-		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
-			let mut values = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut has_none = false;
-			for opt in data {
-				match opt {
-					Some(value) => {
-						values.push(value);
-						bitvec.push(true);
-					}
-					None => {
-						values.push($default);
-						bitvec.push(false);
-						has_none = true;
-					}
-				}
-			}
-			let inner = ColumnBuffer::$variant(PrimitiveArray::new(ScalarBuffer::from(values), None));
-			if has_none {
-				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-			} else {
-				inner
-			}
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
@@ -90,34 +65,9 @@ macro_rules! impl_native_factory {
 }
 
 macro_rules! impl_number_factory {
-	($name:ident, $name_opt:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $default:expr, $build:ident, $with_type:ident) => {
+	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident, $with_type:ident) => {
 		pub fn $name(data: impl IntoIterator<Item = $t>) -> Self {
 			ColumnBuffer::$variant($build(data))
-		}
-
-		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
-			let mut values = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut has_none = false;
-			for opt in data {
-				match opt {
-					Some(value) => {
-						values.push(value);
-						bitvec.push(true);
-					}
-					None => {
-						values.push($default);
-						bitvec.push(false);
-						has_none = true;
-					}
-				}
-			}
-			let inner = ColumnBuffer::$variant($build(values));
-			if has_none {
-				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-			} else {
-				inner
-			}
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
@@ -142,35 +92,10 @@ macro_rules! impl_number_factory {
 }
 
 macro_rules! impl_temporal_factory {
-	($name:ident, $name_opt:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident) => {
+	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident) => {
 		pub fn $name(data: impl IntoIterator<Item = $t>) -> Self {
 			let data = data.into_iter().collect::<Vec<_>>();
 			ColumnBuffer::$variant($build(data))
-		}
-
-		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
-			let mut values = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut has_none = false;
-			for opt in data {
-				match opt {
-					Some(value) => {
-						values.push(value);
-						bitvec.push(true);
-					}
-					None => {
-						values.push(<$t>::default());
-						bitvec.push(false);
-						has_none = true;
-					}
-				}
-			}
-			let inner = ColumnBuffer::$variant($build(values));
-			if has_none {
-				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-			} else {
-				inner
-			}
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
@@ -195,35 +120,10 @@ macro_rules! impl_temporal_factory {
 }
 
 macro_rules! impl_uuid_factory {
-	($name:ident, $name_opt:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident) => {
+	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident) => {
 		pub fn $name(data: impl IntoIterator<Item = $t>) -> Self {
 			let data = data.into_iter().collect::<Vec<_>>();
 			ColumnBuffer::$variant($build(data))
-		}
-
-		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
-			let mut values = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut has_none = false;
-			for opt in data {
-				match opt {
-					Some(value) => {
-						values.push(value);
-						bitvec.push(true);
-					}
-					None => {
-						values.push(<$t>::default());
-						bitvec.push(false);
-						has_none = true;
-					}
-				}
-			}
-			let inner = ColumnBuffer::$variant($build(values));
-			if has_none {
-				inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-			} else {
-				inner
-			}
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
@@ -252,33 +152,6 @@ impl ColumnBuffer {
 		ColumnBuffer::Bool(BooleanArray::from(data))
 	}
 
-	pub fn bool_optional(data: impl IntoIterator<Item = Option<bool>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(false);
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Bool(BooleanArray::from(values));
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
-		}
-	}
-
 	pub(crate) fn bool_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::Bool(BooleanArray::from(BooleanBufferBuilder::new(capacity).finish()))
 	}
@@ -295,35 +168,49 @@ impl ColumnBuffer {
 		}
 	}
 
-	impl_native_factory!(float4, float4_optional, float4_with_capacity, float4_with_bitvec, Float4, f32, 0.0);
-	impl_native_factory!(float8, float8_optional, float8_with_capacity, float8_with_bitvec, Float8, f64, 0.0);
-	impl_native_factory!(int1, int1_optional, int1_with_capacity, int1_with_bitvec, Int1, i8, 0);
-	impl_native_factory!(int2, int2_optional, int2_with_capacity, int2_with_bitvec, Int2, i16, 0);
-	impl_native_factory!(int4, int4_optional, int4_with_capacity, int4_with_bitvec, Int4, i32, 0);
-	impl_native_factory!(int8, int8_optional, int8_with_capacity, int8_with_bitvec, Int8, i64, 0);
-	impl_number_factory!(
-		int16,
-		int16_optional,
-		int16_with_capacity,
-		int16_with_bitvec,
-		Int16,
-		i128,
-		0,
-		int16_array,
-		with_int16_type
-	);
-	impl_native_factory!(uint1, uint1_optional, uint1_with_capacity, uint1_with_bitvec, Uint1, u8, 0);
-	impl_native_factory!(uint2, uint2_optional, uint2_with_capacity, uint2_with_bitvec, Uint2, u16, 0);
-	impl_native_factory!(uint4, uint4_optional, uint4_with_capacity, uint4_with_bitvec, Uint4, u32, 0);
-	impl_native_factory!(uint8, uint8_optional, uint8_with_capacity, uint8_with_bitvec, Uint8, u64, 0);
+	impl_native_factory!(float4, float4_with_capacity, float4_with_bitvec, Float4, f32);
+	impl_native_factory!(float8, float8_with_capacity, float8_with_bitvec, Float8, f64);
+	impl_native_factory!(int1, int1_with_capacity, int1_with_bitvec, Int1, i8);
+	impl_native_factory!(int2, int2_with_capacity, int2_with_bitvec, Int2, i16);
+	impl_native_factory!(int4, int4_with_capacity, int4_with_bitvec, Int4, i32);
+
+	pub fn int4_optional(data: impl IntoIterator<Item = Option<i32>>) -> Self {
+		let mut values = Vec::new();
+		let mut bitvec = Vec::new();
+		let mut has_none = false;
+		for opt in data {
+			match opt {
+				Some(value) => {
+					values.push(value);
+					bitvec.push(true);
+				}
+				None => {
+					values.push(0);
+					bitvec.push(false);
+					has_none = true;
+				}
+			}
+		}
+		let inner = ColumnBuffer::Int4(PrimitiveArray::new(ScalarBuffer::from(values), None));
+		if has_none {
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
+		} else {
+			inner
+		}
+	}
+
+	impl_native_factory!(int8, int8_with_capacity, int8_with_bitvec, Int8, i64);
+	impl_number_factory!(int16, int16_with_capacity, int16_with_bitvec, Int16, i128, int16_array, with_int16_type);
+	impl_native_factory!(uint1, uint1_with_capacity, uint1_with_bitvec, Uint1, u8);
+	impl_native_factory!(uint2, uint2_with_capacity, uint2_with_bitvec, Uint2, u16);
+	impl_native_factory!(uint4, uint4_with_capacity, uint4_with_bitvec, Uint4, u32);
+	impl_native_factory!(uint8, uint8_with_capacity, uint8_with_bitvec, Uint8, u64);
 	impl_number_factory!(
 		uint16,
-		uint16_optional,
 		uint16_with_capacity,
 		uint16_with_bitvec,
 		Uint16,
 		u128,
-		0,
 		uint16_array,
 		with_uint16_type
 	);
@@ -340,36 +227,6 @@ impl ColumnBuffer {
 		ColumnBuffer::Utf8 {
 			container: LargeStringArray::new_repeated(value, count),
 			max_bytes: MaxBytes::MAX,
-		}
-	}
-
-	pub fn utf8_optional(data: impl IntoIterator<Item = Option<String>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(String::new());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Utf8 {
-			container: LargeStringArray::from(values),
-			max_bytes: MaxBytes::MAX,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
 		}
 	}
 
@@ -398,20 +255,18 @@ impl ColumnBuffer {
 		}
 	}
 
-	impl_temporal_factory!(date, date_optional, date_with_capacity, date_with_bitvec, Date, Date, date_array);
+	impl_temporal_factory!(date, date_with_capacity, date_with_bitvec, Date, Date, date_array);
 	impl_temporal_factory!(
 		datetime,
-		datetime_optional,
 		datetime_with_capacity,
 		datetime_with_bitvec,
 		DateTime,
 		DateTime,
 		datetime_array
 	);
-	impl_temporal_factory!(time, time_optional, time_with_capacity, time_with_bitvec, Time, Time, time_array);
+	impl_temporal_factory!(time, time_with_capacity, time_with_bitvec, Time, Time, time_array);
 	impl_temporal_factory!(
 		duration,
-		duration_optional,
 		duration_with_capacity,
 		duration_with_bitvec,
 		Duration,
@@ -419,44 +274,14 @@ impl ColumnBuffer {
 		duration_array
 	);
 
-	impl_uuid_factory!(uuid4, uuid4_optional, uuid4_with_capacity, uuid4_with_bitvec, Uuid4, Uuid4, uuid4_array);
-	impl_uuid_factory!(uuid7, uuid7_optional, uuid7_with_capacity, uuid7_with_bitvec, Uuid7, Uuid7, uuid7_array);
+	impl_uuid_factory!(uuid4, uuid4_with_capacity, uuid4_with_bitvec, Uuid4, Uuid4, uuid4_array);
+	impl_uuid_factory!(uuid7, uuid7_with_capacity, uuid7_with_bitvec, Uuid7, Uuid7, uuid7_array);
 
 	pub fn blob(data: impl IntoIterator<Item = Blob>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnBuffer::Blob {
 			container: blob_array(&data),
 			max_bytes: MaxBytes::MAX,
-		}
-	}
-
-	pub fn blob_optional(data: impl IntoIterator<Item = Option<Blob>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(Blob::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Blob {
-			container: blob_array(&values),
-			max_bytes: MaxBytes::MAX,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
 		}
 	}
 
@@ -487,33 +312,6 @@ impl ColumnBuffer {
 		ColumnBuffer::IdentityId(identity_id_array(data))
 	}
 
-	pub fn identity_id_optional(identity_ids: impl IntoIterator<Item = Option<IdentityId>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in identity_ids {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(IdentityId::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::IdentityId(identity_id_array(values));
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
-		}
-	}
-
 	pub(crate) fn identity_id_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::IdentityId(uuid_array::from_buffer(MutableBuffer::with_capacity(capacity * UUID_WIDTH)))
 	}
@@ -540,70 +338,10 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn int_optional(data: impl IntoIterator<Item = Option<Int>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(Int::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Int {
-			container: int_array(values),
-			max_bytes: MaxBytes::MAX,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
-		}
-	}
-
 	pub fn uint(data: impl IntoIterator<Item = Uint>) -> Self {
 		ColumnBuffer::Uint {
 			container: uint_array(data),
 			max_bytes: MaxBytes::MAX,
-		}
-	}
-
-	pub fn uint_optional(data: impl IntoIterator<Item = Option<Uint>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(Uint::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Uint {
-			container: uint_array(values),
-			max_bytes: MaxBytes::MAX,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
 		}
 	}
 
@@ -659,37 +397,6 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn decimal_optional(data: impl IntoIterator<Item = Option<Decimal>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(Decimal::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Decimal {
-			container: decimal_array(values),
-			precision: Precision::MAX,
-			scale: Scale::new(0),
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
-		}
-	}
-
 	pub(crate) fn decimal_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::Decimal {
 			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
@@ -725,36 +432,6 @@ impl ColumnBuffer {
 		ColumnBuffer::Any {
 			container: any_array(data),
 			declared_type: Some(declared_type),
-		}
-	}
-
-	pub fn any_optional(data: impl IntoIterator<Item = Option<Value>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(Value::none());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::Any {
-			container: any_array(values),
-			declared_type: None,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
 		}
 	}
 
@@ -810,36 +487,6 @@ impl ColumnBuffer {
 		ColumnBuffer::DictionaryId {
 			container: dictionary_array(data),
 			dictionary_id: None,
-		}
-	}
-
-	pub fn dictionary_id_optional(data: impl IntoIterator<Item = Option<DictionaryEntryId>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-		let mut has_none = false;
-
-		for opt in data {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(DictionaryEntryId::default());
-					bitvec.push(false);
-					has_none = true;
-				}
-			}
-		}
-
-		let inner = ColumnBuffer::DictionaryId {
-			container: dictionary_array(values),
-			dictionary_id: None,
-		};
-		if has_none {
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::from(bitvec)))
-		} else {
-			inner
 		}
 	}
 

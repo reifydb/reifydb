@@ -38,11 +38,7 @@ pub trait ColumnData: Send + Sync + 'static {
 	}
 	fn encoding(&self) -> EncodingId;
 
-	fn is_nullable(&self) -> bool;
 	fn nones(&self) -> Option<&NullBuffer>;
-	fn is_defined(&self, idx: usize) -> bool {
-		!self.nones().map(|n| n.is_null(idx)).unwrap_or(false)
-	}
 
 	fn stats(&self) -> &StatsSet;
 
@@ -98,10 +94,6 @@ impl Column {
 		self.0.ty()
 	}
 
-	pub fn is_nullable(&self) -> bool {
-		self.0.is_nullable()
-	}
-
 	pub fn len(&self) -> usize {
 		self.0.len()
 	}
@@ -120,10 +112,6 @@ impl Column {
 
 	pub fn nones(&self) -> Option<&NullBuffer> {
 		self.0.nones()
-	}
-
-	pub fn is_defined(&self, idx: usize) -> bool {
-		self.0.is_defined(idx)
 	}
 
 	pub fn get_value(&self, idx: usize) -> Value {

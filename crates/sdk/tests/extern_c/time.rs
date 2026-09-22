@@ -40,12 +40,15 @@ fn time_thirty_two_rows() {
 
 #[test]
 fn time_with_undefined() {
-	let input = ColumnBuffer::time_optional([
-		Some(Time::from_nanos_since_midnight(0).unwrap()),
-		None,
-		Some(Time::from_hms(12, 30, 0).unwrap()),
-		None,
-	]);
+	let input = ColumnBuffer::time_with_bitvec(
+		[
+			Time::from_nanos_since_midnight(0).unwrap(),
+			Time::default(),
+			Time::from_hms(12, 30, 0).unwrap(),
+			Time::default(),
+		],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_with_undefined", &input, &output);
 }

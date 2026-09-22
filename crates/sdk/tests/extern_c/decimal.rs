@@ -47,13 +47,10 @@ fn decimal_thirty_two_rows() {
 
 #[test]
 fn decimal_with_undefined() {
-	let input = ColumnBuffer::decimal_optional([
-		Some(Decimal::from_i64(42)),
-		None,
-		Some(Decimal::zero()),
-		None,
-		Some(Decimal::one()),
-	]);
+	let input = ColumnBuffer::decimal_with_bitvec(
+		[Decimal::from_i64(42), Decimal::default(), Decimal::zero(), Decimal::default(), Decimal::one()],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("decimal_with_undefined", &input, &output);
 }

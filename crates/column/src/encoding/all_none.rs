@@ -58,10 +58,6 @@ impl ColumnData for AllNoneData {
 		AllNoneEncoding::ID
 	}
 
-	fn is_nullable(&self) -> bool {
-		true
-	}
-
 	fn nones(&self) -> Option<&NullBuffer> {
 		Some(&self.nones)
 	}

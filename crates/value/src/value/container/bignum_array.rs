@@ -304,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn helper_built_arrays_carry_no_null_buffer() {
-		// A null buffer would make arrow kernels skip rows that the Option wrapper counts as defined.
+		// Arrays built from plain values must carry no validity, otherwise they turn nullable.
 		assert!(int_array([Int::from(1)]).nulls().is_none());
 		assert!(uint_array([Uint::from(1u8)]).nulls().is_none());
 		assert!(decimal_array([dec("1.5")]).nulls().is_none());

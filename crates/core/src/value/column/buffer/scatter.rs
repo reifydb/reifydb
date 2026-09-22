@@ -361,7 +361,7 @@ mod tests {
 		let else_mask = BooleanBuffer::from(vec![false, false, false]);
 
 		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
-		assert!(matches!(merged, ColumnBuffer::Option { .. }));
+		assert!(merged.nulls().is_some());
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::none_of(ValueType::Int4));
 		assert_eq!(merged.get_value(2), Value::Int4(30));

@@ -71,10 +71,6 @@ impl ColumnData for ConstantData {
 		ConstantEncoding::ID
 	}
 
-	fn is_nullable(&self) -> bool {
-		false
-	}
-
 	fn nones(&self) -> Option<&NullBuffer> {
 		None
 	}

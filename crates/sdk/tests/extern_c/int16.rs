@@ -40,7 +40,10 @@ fn int16_thirty_two_rows() {
 
 #[test]
 fn int16_with_undefined() {
-	let input = ColumnBuffer::int16_optional([Some(i128::MIN), None, Some(0i128), None, Some(i128::MAX)]);
+	let input = ColumnBuffer::int16_with_bitvec(
+		[i128::MIN, 0, 0i128, 0, i128::MAX],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int16_with_undefined", &input, &output);
 }

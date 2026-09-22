@@ -12,10 +12,6 @@ pub fn slice(bits: &BooleanBuffer, start: usize, end: usize) -> BooleanBuffer {
 	bits.slice(start, end - start)
 }
 
-pub fn take(bits: &BooleanBuffer, n: usize) -> BooleanBuffer {
-	slice(bits, 0, n)
-}
-
 pub fn filter(bits: &BooleanBuffer, mask: &BooleanBuffer) -> BooleanBuffer {
 	let mut kept = BooleanBufferBuilder::new(mask.count_set_bits());
 	for i in mask.set_indices().take_while(|&i| i < bits.len()) {
@@ -40,23 +36,12 @@ pub fn resize(bits: &BooleanBuffer, len: usize) -> BooleanBuffer {
 
 pub fn assert_nulls_len(nulls: Option<&NullBuffer>, len: usize) {
 	if let Some(nulls) = nulls {
-		assert_eq!(
-			nulls.len(),
-			len,
-			"validity of {} rows does not match an array of {len} rows",
-			nulls.len()
-		);
+		assert_eq!(nulls.len(), len, "validity of {} rows does not match an array of {len} rows", nulls.len());
 	}
 }
 
 pub fn and_nulls(left: &NullBuffer, right: &NullBuffer) -> NullBuffer {
-	assert_eq!(
-		left.len(),
-		right.len(),
-		"validity of {} and {} rows cannot be combined",
-		left.len(),
-		right.len()
-	);
+	assert_eq!(left.len(), right.len(), "validity of {} and {} rows cannot be combined", left.len(), right.len());
 	NullBuffer::new(left.inner() & right.inner())
 }
 
@@ -141,7 +126,7 @@ mod tests {
 	use serde::{Deserialize, Serialize};
 	use serde_json::{from_str, to_string};
 
-	use super::{filter, packed_bytes, reorder, slice, take};
+	use super::{filter, packed_bytes, reorder, slice};
 
 	#[derive(Serialize, Deserialize)]
 	struct Wrap(#[serde(with = "super")] BooleanBuffer);
@@ -179,14 +164,6 @@ mod tests {
 		let bits = BooleanBuffer::from(pattern(10));
 		assert_eq!(slice(&bits, 7, 3).len(), 0);
 		assert_eq!(slice(&bits, 30, 20).len(), 0);
-	}
-
-	#[test]
-	fn take_clamps_past_the_end() {
-		// take(n) past len must return the whole buffer, never panic.
-		let bits = BooleanBuffer::from(pattern(5));
-		assert_eq!(bits_of(&take(&bits, 3)), pattern(5)[..3].to_vec());
-		assert_eq!(take(&bits, 50).len(), 5);
 	}
 
 	#[test]

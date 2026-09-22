@@ -50,7 +50,10 @@ fn float8_thirty_two_rows() {
 
 #[test]
 fn float8_with_undefined() {
-	let input = ColumnBuffer::float8_optional([Some(1.5f64), None, Some(f64::NAN), None, Some(-3.25f64)]);
+	let input = ColumnBuffer::float8_with_bitvec(
+		[1.5f64, 0.0, f64::NAN, 0.0, -3.25f64],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("f", input.clone());
 	assert_column_eq("float8_with_undefined", &input, &output);
 }

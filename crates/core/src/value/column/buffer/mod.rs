@@ -853,12 +853,7 @@ impl ColumnBuffer {
 
 	pub fn with_nulls(self, nulls: NullBuffer) -> ColumnBuffer {
 		let len = self.len();
-		assert_eq!(
-			nulls.len(),
-			len,
-			"validity of {} rows does not match a column of {len} rows",
-			nulls.len()
-		);
+		assert_eq!(nulls.len(), len, "validity of {} rows does not match a column of {len} rows", nulls.len());
 		let nulls = match self.nulls() {
 			Some(existing) => bitmap::and_nulls(existing, &nulls),
 			None => nulls,

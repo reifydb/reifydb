@@ -9,8 +9,11 @@ use reifydb_sub_core::wire_sink::WireSink;
 use reifydb_sub_server_grpc::subscription::{GrpcWireSink, WireFormat};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{
+	container::digest_array::digest_array,
 	diff_type::DiffType,
+	digest::Digest,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	value_type::ValueType,
 };
 use tokio::sync::mpsc::unbounded_channel;
 
@@ -32,10 +35,18 @@ fn option_layers(depth: usize) -> FrameColumnData {
 	})
 }
 
+fn unencodable_digest() -> FrameColumnData {
+	FrameColumnData::Digest {
+		container: digest_array([None::<Digest>]),
+		inner: ValueType::Utf8,
+		accuracy: 10_000,
+	}
+}
+
 #[test]
 fn a_change_that_fails_to_rbcf_encode_reaches_the_subscriber_as_an_error_not_an_empty_change() {
 	// Empty rbcf bytes read as an empty change on the client, so an encode failure must travel as a status.
-	let columns = Columns::from(frame(option_layers(4)));
+	let columns = Columns::from(frame(unencodable_digest()));
 	assert!(
 		encode_frames(&[Frame::from(columns.clone()).with_op(DiffType::Insert)], &EncodeOptions::fast())
 			.is_err(),

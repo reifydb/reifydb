@@ -151,17 +151,20 @@ fn dictionary_id_thirty_two_rows_alternating_variants() {
 
 #[test]
 fn dictionary_id_with_undefined() {
-	let input = ColumnBuffer::dictionary_id_optional([
-		Some(DictionaryEntryId::U1(7)),
-		None,
-		Some(DictionaryEntryId::U2(1234)),
-		None,
-		Some(DictionaryEntryId::U4(u32::MAX)),
-		None,
-		Some(DictionaryEntryId::U8(u64::MAX)),
-		None,
-		Some(DictionaryEntryId::U16(u128::MAX)),
-	]);
+	let input = ColumnBuffer::dictionary_id_with_bitvec(
+		[
+			DictionaryEntryId::U1(7),
+			DictionaryEntryId::default(),
+			DictionaryEntryId::U2(1234),
+			DictionaryEntryId::default(),
+			DictionaryEntryId::U4(u32::MAX),
+			DictionaryEntryId::default(),
+			DictionaryEntryId::U8(u64::MAX),
+			DictionaryEntryId::default(),
+			DictionaryEntryId::U16(u128::MAX),
+		],
+		vec![true, false, true, false, true, false, true, false, true],
+	);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("dict_id_with_undefined", &input, &output);
 }

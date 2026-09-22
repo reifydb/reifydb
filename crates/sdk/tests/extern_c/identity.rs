@@ -54,13 +54,16 @@ fn identity_id_thirty_two_rows() {
 
 #[test]
 fn identity_id_with_undefined() {
-	let input = ColumnBuffer::identity_id_optional([
-		Some(IdentityId::root()),
-		None,
-		Some(IdentityId::system()),
-		None,
-		Some(IdentityId::anonymous()),
-	]);
+	let input = ColumnBuffer::identity_id_with_bitvec(
+		[
+			IdentityId::root(),
+			IdentityId::default(),
+			IdentityId::system(),
+			IdentityId::default(),
+			IdentityId::anonymous(),
+		],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_with_undefined", &input, &output);
 }

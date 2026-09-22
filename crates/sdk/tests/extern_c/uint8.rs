@@ -36,8 +36,10 @@ fn uint8_thirty_two_rows() {
 
 #[test]
 fn uint8_with_undefined() {
-	let input =
-		ColumnBuffer::uint8_optional([Some(0u64), None, Some(0x8000_0000_0000_0000u64), None, Some(u64::MAX)]);
+	let input = ColumnBuffer::uint8_with_bitvec(
+		[0u64, 0, 0x8000_0000_0000_0000u64, 0, u64::MAX],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("uint8_with_undefined", &input, &output);
 }

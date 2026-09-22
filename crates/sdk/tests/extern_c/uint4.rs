@@ -36,7 +36,10 @@ fn uint4_thirty_two_rows() {
 
 #[test]
 fn uint4_with_undefined() {
-	let input = ColumnBuffer::uint4_optional([Some(0u32), None, Some(0x8000_0000u32), None, Some(u32::MAX)]);
+	let input = ColumnBuffer::uint4_with_bitvec(
+		[0u32, 0, 0x8000_0000u32, 0, u32::MAX],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("uint4_with_undefined", &input, &output);
 }

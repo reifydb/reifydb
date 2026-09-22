@@ -45,12 +45,15 @@ fn date_thirty_two_rows() {
 
 #[test]
 fn date_with_undefined() {
-	let input = ColumnBuffer::date_optional([
-		Some(Date::from_days_since_epoch(0).unwrap()),
-		None,
-		Some(Date::from_ymd(2024, 2, 29).unwrap()),
-		None,
-	]);
+	let input = ColumnBuffer::date_with_bitvec(
+		[
+			Date::from_days_since_epoch(0).unwrap(),
+			Date::default(),
+			Date::from_ymd(2024, 2, 29).unwrap(),
+			Date::default(),
+		],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_with_undefined", &input, &output);
 }

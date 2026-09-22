@@ -41,19 +41,12 @@ impl<'a> Routine<FunctionContext<'a>> for DurationGetDays {
 		match data {
 			ColumnBuffer::Duration(container) => {
 				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
 
-				for i in 0..row_count {
-					if let Some(dur) = durations(container).get(i) {
-						result.push(dur.get_days());
-						res_bitvec.push(true);
-					} else {
-						result.push(0);
-						res_bitvec.push(false);
-					}
+				for dur in durations(container) {
+					result.push(dur.get_days());
 				}
 
-				let result_data = ColumnBuffer::int4_with_bitvec(result, res_bitvec);
+				let result_data = ColumnBuffer::int4(result);
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

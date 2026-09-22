@@ -7,7 +7,7 @@ use arrow_array::{
 	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_buffer::BooleanBuffer;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 use crate::{
 	util::{
@@ -46,6 +46,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(remote = "Self")]
 pub enum FrameColumnData {
 	Bool(#[serde(with = "bool_array")] BooleanArray),
 	Float4(#[serde(with = "primitive")] Float32Array),
@@ -143,6 +144,30 @@ pub enum FrameColumnData {
 		inner: ValueType,
 		accuracy: u32,
 	},
+}
+
+impl Serialize for FrameColumnData {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		FrameColumnData::serialize(self, serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for FrameColumnData {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		let data = FrameColumnData::deserialize(deserializer)?;
+		if let FrameColumnData::Option {
+			inner,
+			bitvec,
+		} = &data && bitvec.len() != inner.len()
+		{
+			return Err(D::Error::custom(format!(
+				"Option column bitvec of {} bits does not match its {} rows",
+				bitvec.len(),
+				inner.len()
+			)));
+		}
+		Ok(data)
+	}
 }
 
 impl PartialEq for FrameColumnData {

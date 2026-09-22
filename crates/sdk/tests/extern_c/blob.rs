@@ -72,14 +72,20 @@ fn blob_mixed_lengths() {
 
 #[test]
 fn blob_undefined_first_row() {
-	let input = ColumnBuffer::blob_optional([None, Some(blob(&[0x01, 0x02])), Some(blob(&[0x03]))]);
+	let input = ColumnBuffer::blob_with_bitvec(
+		[Blob::default(), blob(&[0x01, 0x02]), blob(&[0x03])],
+		vec![false, true, true],
+	);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_undefined_first", &input, &output);
 }
 
 #[test]
 fn blob_alternating_defined_undefined() {
-	let input = ColumnBuffer::blob_optional([Some(blob(&[0x01])), None, Some(blob(&[0x02, 0x03])), None]);
+	let input = ColumnBuffer::blob_with_bitvec(
+		[blob(&[0x01]), Blob::default(), blob(&[0x02, 0x03]), Blob::default()],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_alternating", &input, &output);
 }

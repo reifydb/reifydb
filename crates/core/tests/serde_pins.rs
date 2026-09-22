@@ -401,7 +401,7 @@ fn fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		),
 		("dictionary_id_u16", ColumnBuffer::dictionary_id([DictionaryEntryId::U16(u128::MAX)])),
 		("option_int4", ColumnBuffer::int4_optional([Some(1), None, Some(-3)])),
-		("option_utf8", ColumnBuffer::utf8_optional([Some("a".to_string()), None])),
+		("option_utf8", ColumnBuffer::utf8_with_bitvec(["a".to_string(), String::new()], vec![true, false])),
 		("none_typed_int8", ColumnBuffer::none_typed(ValueType::Int8, 2)),
 		("digest", digest_buffer()),
 		("sliced_int4", ColumnBuffer::int4([1, 2, 3, 4, 5]).slice(1, 4)),
@@ -430,7 +430,10 @@ fn columns_fixture() -> Columns {
 	Columns::with_system(
 		vec![
 			ColumnWithName::new("id", ColumnBuffer::int4([1, 2])),
-			ColumnWithName::new("name", ColumnBuffer::utf8_optional([Some("x".to_string()), None])),
+			ColumnWithName::new(
+				"name",
+				ColumnBuffer::utf8_with_bitvec(["x".to_string(), String::new()], vec![true, false]),
+			),
 		],
 		system,
 	)

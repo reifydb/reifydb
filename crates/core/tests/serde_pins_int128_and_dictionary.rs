@@ -270,7 +270,7 @@ fn sliced_dictionary_id_keeps_some_dictionary_id_is_pinned() {
 #[test]
 fn option_int16_with_none_row_is_pinned() {
 	// The none row must keep its default value and cleared bit, otherwise optional Int16 columns drift.
-	let buffer = ColumnBuffer::int16_optional([Some(i128::MIN), None, Some(i128::MAX)]);
+	let buffer = ColumnBuffer::int16_with_bitvec([i128::MIN, 0, i128::MAX], vec![true, false, true]);
 	assert_pinned(
 		buffer,
 		Pin {
@@ -285,7 +285,7 @@ fn option_int16_with_none_row_is_pinned() {
 #[test]
 fn option_uint16_with_none_row_is_pinned() {
 	// The none row must keep its default value and cleared bit, otherwise optional Uint16 columns drift.
-	let buffer = ColumnBuffer::uint16_optional([Some(1), None, Some(u128::MAX)]);
+	let buffer = ColumnBuffer::uint16_with_bitvec([1, 0, u128::MAX], vec![true, false, true]);
 	assert_pinned(
 		buffer,
 		Pin {
@@ -300,11 +300,10 @@ fn option_uint16_with_none_row_is_pinned() {
 #[test]
 fn option_dictionary_id_with_none_row_is_pinned() {
 	// The none row must stay a U1(0) placeholder with a cleared bit, otherwise optional DictionaryId columns drift.
-	let buffer = ColumnBuffer::dictionary_id_optional([
-		Some(DictionaryEntryId::U4(7)),
-		None,
-		Some(DictionaryEntryId::U8(9)),
-	]);
+	let buffer = ColumnBuffer::dictionary_id_with_bitvec(
+		[DictionaryEntryId::U4(7), DictionaryEntryId::default(), DictionaryEntryId::U8(9)],
+		vec![true, false, true],
+	);
 	assert_pinned(
 		buffer,
 		Pin {

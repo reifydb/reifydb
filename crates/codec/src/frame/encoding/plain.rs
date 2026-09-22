@@ -43,9 +43,7 @@ macro_rules! encode_fixed {
 		PlainEncoded {
 			data: buf,
 			offsets: vec![],
-			nones: vec![],
 			type_code: ValueKind::of_type(&$ty).byte(),
-			has_nones: false,
 		}
 	}};
 }
@@ -55,36 +53,15 @@ pub struct PlainEncoded {
 
 	pub offsets: Vec<u8>,
 
-	pub nones: Vec<u8>,
-
 	pub type_code: u8,
-
-	pub has_nones: bool,
 }
 
 pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> {
-	match col {
-		FrameColumnData::Option {
-			inner,
-			bitvec,
-		} => {
-			let mut result = encode_plain_inner(inner)?;
-			result.nones = encode_bitvec(bitvec);
-			result.has_nones = true;
-			Ok(result)
-		}
-		other => encode_plain_inner(other),
-	}
-}
-
-fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> {
 	let result = match col {
 		FrameColumnData::Bool(c) => PlainEncoded {
 			data: encode_bitvec(c.values()),
 			offsets: vec![],
-			nones: vec![],
 			type_code: ValueKind::Boolean.byte(),
-			has_nones: false,
 		},
 		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, f32),
 		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, f64),
@@ -107,9 +84,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Date.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::DateTime(c) => {
@@ -121,9 +96,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::DateTime.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::Time(c) => {
@@ -135,9 +108,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Time.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::Duration(c) => {
@@ -149,9 +120,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Duration.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::IdentityId(c) => {
@@ -163,9 +132,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::IdentityId.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::Uuid4(c) => {
@@ -177,9 +144,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Uuid4.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::Uuid7(c) => {
@@ -191,9 +156,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			PlainEncoded {
 				data: buf,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Uuid7.byte(),
-				has_nones: false,
 			}
 		}
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
@@ -221,9 +184,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			return Ok(PlainEncoded {
 				data,
 				offsets: vec![],
-				nones: vec![],
 				type_code: ValueKind::Any.byte(),
-				has_nones: false,
 			});
 		}
 		FrameColumnData::DictionaryId {
@@ -243,7 +204,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		),
 		FrameColumnData::Option {
 			..
-		} => unreachable!("Option handled in encode_plain"),
+		} => unreachable!("Option layers are stripped before plain encoding"),
 	};
 	Ok(result)
 }
@@ -262,9 +223,7 @@ fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: ValueTy
 	PlainEncoded {
 		data,
 		offsets,
-		nones: vec![],
 		type_code: ValueKind::of_type(&ty).byte(),
-		has_nones: false,
 	}
 }
 
@@ -314,9 +273,7 @@ fn encode_dictionary_ids(c: &FixedSizeBinaryArray) -> PlainEncoded {
 	PlainEncoded {
 		data: buf,
 		offsets: vec![],
-		nones: vec![],
 		type_code: ValueKind::DictionaryId.byte(),
-		has_nones: false,
 	}
 }
 

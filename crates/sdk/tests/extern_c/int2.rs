@@ -37,7 +37,8 @@ fn int2_thirty_two_rows() {
 
 #[test]
 fn int2_with_undefined() {
-	let input = ColumnBuffer::int2_optional([Some(i16::MIN), None, Some(0i16), None, Some(i16::MAX)]);
+	let input =
+		ColumnBuffer::int2_with_bitvec([i16::MIN, 0, 0i16, 0, i16::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int2_with_undefined", &input, &output);
 }

@@ -6,7 +6,6 @@ use std::{collections::HashMap, str};
 use arrow_array::{Array, LargeBinaryArray, LargeStringArray};
 use reifydb_value::value::blob::Blob;
 
-use super::plain::PlainEncoded;
 use crate::{error::DecodeError, frame::format::dict_index_width_to_flags, tag::ValueKind};
 
 pub struct DictEncoded {
@@ -205,18 +204,6 @@ pub fn try_dict_encode_bytes(serialized: &[Vec<u8>], type_code: u8, min_ratio: f
 		type_code,
 		flags_bits,
 	})
-}
-
-impl DictEncoded {
-	pub fn into_plain_encoded(self) -> PlainEncoded {
-		PlainEncoded {
-			data: self.data,
-			offsets: vec![],
-			nones: vec![],
-			type_code: self.type_code,
-			has_nones: false,
-		}
-	}
 }
 
 pub fn decode_dict_utf8(

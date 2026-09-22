@@ -219,7 +219,7 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 				type_code: plain.type_code,
 				encoding: Encoding::Plain,
 				flags: 0,
-				nones: plain.nones,
+				nones: vec![],
 				data: plain.data,
 				offsets: plain.offsets,
 				extra,

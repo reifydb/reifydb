@@ -3,7 +3,7 @@
 
 use std::fmt::{Debug, Write as _};
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
@@ -593,17 +593,11 @@ fn placeholder_int4() -> ColumnBuffer {
 }
 
 fn with_inner_dictionary_id(mut buffer: ColumnBuffer, id: DictionaryId) -> ColumnBuffer {
-	let ColumnBuffer::Option {
-		inner,
-		..
-	} = &mut buffer
-	else {
-		panic!("fixture must be an Option buffer");
-	};
+	assert!(buffer.nulls().is_some(), "fixture must be an Option buffer");
 	let ColumnBuffer::DictionaryId {
 		dictionary_id,
 		..
-	} = inner.as_mut()
+	} = &mut buffer
 	else {
 		panic!("fixture must wrap a DictionaryId buffer");
 	};
@@ -660,59 +654,77 @@ fn all_none_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 
 fn option_kind_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 	vec![
-		("option_bool", ColumnBuffer::bool_optional([Some(true), None, Some(true)])),
-		("option_float4", ColumnBuffer::float4_optional([Some(1.5), None, Some(f32::MIN)])),
-		("option_float8", ColumnBuffer::float8_optional([Some(-2.25), None, Some(f64::MAX)])),
-		("option_int1", ColumnBuffer::int1_optional([Some(i8::MIN), None, Some(i8::MAX)])),
-		("option_int2", ColumnBuffer::int2_optional([Some(i16::MIN), None, Some(i16::MAX)])),
-		("option_int8", ColumnBuffer::int8_optional([Some(i64::MIN), None, Some(i64::MAX)])),
-		("option_uint1", ColumnBuffer::uint1_optional([Some(1), None, Some(u8::MAX)])),
-		("option_uint2", ColumnBuffer::uint2_optional([Some(1), None, Some(u16::MAX)])),
-		("option_uint4", ColumnBuffer::uint4_optional([Some(1), None, Some(u32::MAX)])),
-		("option_uint8", ColumnBuffer::uint8_optional([Some(1), None, Some(u64::MAX)])),
+		("option_bool", ColumnBuffer::bool_with_bitvec([true, false, true], vec![true, false, true])),
+		("option_float4", ColumnBuffer::float4_with_bitvec([1.5, 0.0, f32::MIN], vec![true, false, true])),
+		("option_float8", ColumnBuffer::float8_with_bitvec([-2.25, 0.0, f64::MAX], vec![true, false, true])),
+		("option_int1", ColumnBuffer::int1_with_bitvec([i8::MIN, 0, i8::MAX], vec![true, false, true])),
+		("option_int2", ColumnBuffer::int2_with_bitvec([i16::MIN, 0, i16::MAX], vec![true, false, true])),
+		("option_int8", ColumnBuffer::int8_with_bitvec([i64::MIN, 0, i64::MAX], vec![true, false, true])),
+		("option_uint1", ColumnBuffer::uint1_with_bitvec([1, 0, u8::MAX], vec![true, false, true])),
+		("option_uint2", ColumnBuffer::uint2_with_bitvec([1, 0, u16::MAX], vec![true, false, true])),
+		("option_uint4", ColumnBuffer::uint4_with_bitvec([1, 0, u32::MAX], vec![true, false, true])),
+		("option_uint8", ColumnBuffer::uint8_with_bitvec([1, 0, u64::MAX], vec![true, false, true])),
 		(
 			"option_date",
-			ColumnBuffer::date_optional([
-				Some(Date::from_ymd(1900, 2, 28).unwrap()),
-				None,
-				Some(Date::from_ymd(2026, 9, 22).unwrap()),
-			]),
+			ColumnBuffer::date_with_bitvec(
+				[
+					Date::from_ymd(1900, 2, 28).unwrap(),
+					Date::default(),
+					Date::from_ymd(2026, 9, 22).unwrap(),
+				],
+				vec![true, false, true],
+			),
 		),
 		(
 			"option_datetime",
-			ColumnBuffer::datetime_optional([
-				Some(DateTime::from_nanos(1)),
-				None,
-				Some(DateTime::from_nanos(1_758_500_000_123_456_789)),
-			]),
+			ColumnBuffer::datetime_with_bitvec(
+				[
+					DateTime::from_nanos(1),
+					DateTime::default(),
+					DateTime::from_nanos(1_758_500_000_123_456_789),
+				],
+				vec![true, false, true],
+			),
 		),
 		(
 			"option_time",
-			ColumnBuffer::time_optional([
-				Some(Time::from_hms_nano(1, 2, 3, 4).unwrap()),
-				None,
-				Some(Time::from_hms_nano(23, 59, 59, 999_999_999).unwrap()),
-			]),
+			ColumnBuffer::time_with_bitvec(
+				[
+					Time::from_hms_nano(1, 2, 3, 4).unwrap(),
+					Time::default(),
+					Time::from_hms_nano(23, 59, 59, 999_999_999).unwrap(),
+				],
+				vec![true, false, true],
+			),
 		),
 		(
 			"option_duration",
-			ColumnBuffer::duration_optional([
-				Some(Duration::new(1, 2, 3).unwrap()),
-				None,
-				Some(Duration::new(-14, -30, -86_400_000_000_000).unwrap()),
-			]),
+			ColumnBuffer::duration_with_bitvec(
+				[
+					Duration::new(1, 2, 3).unwrap(),
+					Duration::default(),
+					Duration::new(-14, -30, -86_400_000_000_000).unwrap(),
+				],
+				vec![true, false, true],
+			),
 		),
 		(
 			"option_uuid4",
-			ColumnBuffer::uuid4_optional([
-				Some(Uuid4(Uuid::from_u128(0x0123_4567_89ab_4cde_8f01_2345_6789_abcd))),
-				None,
-			]),
+			ColumnBuffer::uuid4_with_bitvec(
+				[Uuid4(Uuid::from_u128(0x0123_4567_89ab_4cde_8f01_2345_6789_abcd)), Uuid4::default()],
+				vec![true, false],
+			),
 		),
-		("option_uuid7", ColumnBuffer::uuid7_optional([Some(Uuid7(uuid7_bits(5))), None])),
+		(
+			"option_uuid7",
+			ColumnBuffer::uuid7_with_bitvec([Uuid7(uuid7_bits(5)), Uuid7::default()], vec![true, false]),
+		),
 		(
 			"option_blob",
-			ColumnBuffer::blob_optional([Some(Blob::new(vec![0, 255, 7])), None, Some(Blob::new(vec![]))]),
+			ColumnBuffer::blob_with_bitvec(
+				[Blob::new(vec![0, 255, 7]), Blob::default(), Blob::new(vec![])],
+				vec![true, false, true],
+			),
 		),
 		(
 			"option_tuple",
@@ -735,11 +747,10 @@ fn dictionary_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 	vec![(
 		"option_dictionary_id_with_dictionary",
 		with_inner_dictionary_id(
-			ColumnBuffer::dictionary_id_optional([
-				Some(DictionaryEntryId::U4(7)),
-				None,
-				Some(DictionaryEntryId::U8(9)),
-			]),
+			ColumnBuffer::dictionary_id_with_bitvec(
+				[DictionaryEntryId::U4(7), DictionaryEntryId::default(), DictionaryEntryId::U8(9)],
+				vec![true, false, true],
+			),
 			DictionaryId(42),
 		),
 	)]
@@ -752,16 +763,19 @@ fn sliced_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		("sliced_option_int4_at_offset_3", long().slice(3, 7)),
 		(
 			"sliced_option_utf8_at_offset_3",
-			ColumnBuffer::utf8_optional(
-				[Some("a"), None, Some("ccc"), Some("dd"), None, Some("f")]
-					.map(|s| s.map(String::from)),
+			ColumnBuffer::utf8_with_bitvec(
+				["a", "", "ccc", "dd", "", "f"].map(String::from),
+				vec![true, false, true, true, false, true],
 			)
 			.slice(3, 6),
 		),
 		(
 			"sliced_option_bool_at_offset_3",
-			ColumnBuffer::bool_optional([Some(true), None, Some(false), None, Some(true), Some(true)])
-				.slice(3, 6),
+			ColumnBuffer::bool_with_bitvec(
+				[true, false, false, false, true, true],
+				vec![true, false, true, false, true, true],
+			)
+			.slice(3, 6),
 		),
 		(
 			"sliced_option_any_at_offset_3",
@@ -836,17 +850,11 @@ fn digest_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 	vec![
 		(
 			"option_digest_defined_bit_over_empty_slot",
-			ColumnBuffer::Option {
-				inner: Box::new(digest_column([Some(&first), None])),
-				bitvec: bits(&[true, true]),
-			},
+			digest_column([Some(&first), None]).with_nulls(NullBuffer::new(bits(&[true, true]))),
 		),
 		(
 			"option_digest_cleared_bit_over_real_digest",
-			ColumnBuffer::Option {
-				inner: Box::new(digest_column([Some(&first), Some(&second)])),
-				bitvec: bits(&[true, false]),
-			},
+			digest_column([Some(&first), Some(&second)]).with_nulls(NullBuffer::new(bits(&[true, false]))),
 		),
 	]
 }

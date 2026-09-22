@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -53,21 +52,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextEndsWith {
 				},
 			) => {
 				let mut result_data = Vec::with_capacity(row_count);
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < str_container.len() && i < suffix_container.len() {
-						let s = str_container.value(i);
-						let suffix = suffix_container.value(i);
-						result_data.push(s.ends_with(suffix));
-						result_bitvec.push(true);
-					} else {
-						result_data.push(false);
-						result_bitvec.push(false);
-					}
+					let s = str_container.value(i);
+					let suffix = suffix_container.value(i);
+					result_data.push(s.ends_with(suffix));
 				}
 
-				let result_col_data = ColumnBuffer::bool_with_bitvec(result_data, result_bitvec);
+				let result_col_data = ColumnBuffer::bool(result_data);
 
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}

@@ -7,7 +7,7 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 };
 
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
 	builder::ColumnBuilder,
@@ -33,12 +33,9 @@ fn strings(n: usize) -> Vec<String> {
 }
 
 fn option_parts(buffer: &ColumnBuffer) -> (&ColumnBuffer, &BooleanBuffer) {
-	match buffer {
-		ColumnBuffer::Option {
-			inner,
-			bitvec,
-		} => (inner, bitvec),
-		other => panic!("expected an option buffer, got {:?}", other.get_type()),
+	match buffer.nulls() {
+		Some(nulls) => (buffer, nulls.inner()),
+		None => panic!("expected an option buffer, got {:?}", buffer.get_type()),
 	}
 }
 
@@ -198,7 +195,7 @@ fn canonical_from_buffer_freezes_without_copying() {
 	let base = buffer.as_slice::<i64>().as_ptr();
 	let canonical = Canonical::from_buffer(buffer);
 	assert!(!canonical.nullable);
-	assert!(canonical.nones.is_none());
+	assert!(canonical.buffer.nulls().is_none());
 	assert_eq!(canonical.buffer.as_slice::<i64>().as_ptr(), base);
 	let out = canonical.to_buffer();
 	assert_eq!(out.as_slice::<i64>().as_ptr(), base);
@@ -207,20 +204,15 @@ fn canonical_from_buffer_freezes_without_copying() {
 
 #[test]
 fn canonical_from_option_buffer_lifts_the_defined_bits_to_nones() {
-	// The option bitvec marks defined rows, so the lifted none bitmap must report exactly the opposite rows as
-	// none.
+	// Canonical must share the buffer's validity without a copy and read none exactly on undefined rows.
 	let buffer = frozen_option_int8(ROWS);
 	let (inner, bits) = option_parts(&buffer);
 	let base = inner.as_slice::<i64>().as_ptr();
 	let bits_ptr = packed_bits_ptr(bits);
 	let canonical = Canonical::from_column_buffer(&buffer).unwrap();
 	assert!(canonical.nullable);
-	assert!(
-		!matches!(canonical.buffer, ColumnBuffer::Option { .. }),
-		"nullability must be lifted out of the buffer"
-	);
 	assert_eq!(canonical.buffer.as_slice::<i64>().as_ptr(), base);
-	let nones = canonical.nones.as_ref().expect("an option buffer must lift to a none bitmap");
+	let nones = canonical.buffer.nulls().expect("an option buffer must lift to a none bitmap");
 	assert_eq!(nones.len(), ROWS);
 	for (row, present) in defined(ROWS).into_iter().enumerate() {
 		assert_eq!(nones.is_null(row), !present, "row {row}");
@@ -318,10 +310,7 @@ fn pattern(len: usize, seed: u64) -> Vec<bool> {
 }
 
 fn option_int4(values: Vec<i32>, defined: Vec<bool>) -> ColumnBuffer {
-	ColumnBuffer::Option {
-		inner: Box::new(ColumnBuffer::int4(values)),
-		bitvec: BooleanBuffer::from(defined),
-	}
+	ColumnBuffer::int4(values).with_nulls(NullBuffer::new(BooleanBuffer::from(defined)))
 }
 
 #[track_caller]

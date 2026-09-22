@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::Array;
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 use reifydb_value::value::{
 	Value,
@@ -39,10 +39,6 @@ fn dictionary_parts(buffer: &ColumnBuffer) -> (Vec<DictionaryEntryId>, Option<Di
 			container,
 			dictionary_id,
 		} => (dictionary_array::iter(container).collect(), *dictionary_id),
-		ColumnBuffer::Option {
-			inner,
-			..
-		} => dictionary_parts(inner),
 		other => panic!("expected a dictionary id column, got {:?}", other.get_type()),
 	}
 }
@@ -53,10 +49,6 @@ fn assert_int16(buffer: &ColumnBuffer, expected: &[i128]) {
 			assert_eq!(array.data_type(), &INT16_DATA_TYPE);
 			assert_eq!(&array.values()[..], expected);
 		}
-		ColumnBuffer::Option {
-			inner,
-			..
-		} => assert_int16(inner, expected),
 		other => panic!("expected an int16 column, got {:?}", other.get_type()),
 	}
 }
@@ -67,10 +59,6 @@ fn assert_uint16(buffer: &ColumnBuffer, expected: &[u128]) {
 			assert_eq!(array.data_type(), &UINT16_DATA_TYPE);
 			assert_eq!(u128s(array), expected);
 		}
-		ColumnBuffer::Option {
-			inner,
-			..
-		} => assert_uint16(inner, expected),
 		other => panic!("expected a uint16 column, got {:?}", other.get_type()),
 	}
 }
@@ -143,12 +131,10 @@ fn dictionary_id_survives_the_builder_round_trip() {
 
 #[test]
 fn option_wrapped_dictionary_column_keeps_its_id() {
-	// The id lives on the inner buffer, so an Option column must forward every op to it.
+	// A nullable dictionary column must keep its id through every op, never drop it with the nones.
 	let id = Some(DictionaryId(7));
-	let buffer = ColumnBuffer::Option {
-		inner: Box::new(tagged(&ENTRIES, 7)),
-		bitvec: BooleanBuffer::from(vec![true, false, true, true]),
-	};
+	let buffer =
+		tagged(&ENTRIES, 7).with_nulls(NullBuffer::new(BooleanBuffer::from(vec![true, false, true, true])));
 
 	let mut filtered = buffer.clone();
 	filtered.filter(&BooleanBuffer::from(vec![false, true, true, true])).unwrap();
@@ -245,7 +231,7 @@ fn int16_keeps_its_values_and_data_type_through_every_op() {
 	assert_int16(&fresh.finish(), &[i128::MIN]);
 
 	assert_int16(&ColumnBuffer::none_typed(ValueType::Int16, 2), &[0, 0]);
-	assert_int16(&ColumnBuffer::int16_optional([Some(4), None]), &[4, 0]);
+	assert_int16(&ColumnBuffer::int16_with_bitvec([4, 0], vec![true, false]), &[4, 0]);
 	assert_eq!(buffer.as_slice::<i128>(), &INTS);
 	assert_eq!(buffer.get_as::<i128>(2), Some(i128::MAX));
 	assert_eq!(buffer.get_value(0), Value::Int16(i128::MIN));
@@ -296,7 +282,7 @@ fn uint16_keeps_values_above_i128_max_and_its_data_type() {
 	assert_uint16(&fresh.finish(), &[u128::MAX]);
 
 	assert_uint16(&ColumnBuffer::none_typed(ValueType::Uint16, 2), &[0, 0]);
-	assert_uint16(&ColumnBuffer::uint16_optional([Some(u128::MAX), None]), &[u128::MAX, 0]);
+	assert_uint16(&ColumnBuffer::uint16_with_bitvec([u128::MAX, 0], vec![true, false]), &[u128::MAX, 0]);
 	assert_eq!(buffer.get_value(3), Value::Uint16(u128::MAX));
 	assert_eq!(buffer.get_as::<u128>(3), Some(u128::MAX));
 	assert_eq!(buffer.get_as::<i128>(3), None);

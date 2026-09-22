@@ -45,12 +45,15 @@ fn datetime_thirty_two_rows() {
 
 #[test]
 fn datetime_with_undefined() {
-	let input = ColumnBuffer::datetime_optional([
-		Some(DateTime::from_nanos(0)),
-		None,
-		Some(DateTime::from_nanos(1_000_000_000)),
-		None,
-	]);
+	let input = ColumnBuffer::datetime_with_bitvec(
+		[
+			DateTime::from_nanos(0),
+			DateTime::default(),
+			DateTime::from_nanos(1_000_000_000),
+			DateTime::default(),
+		],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("dt", input.clone());
 	assert_column_eq("datetime_with_undefined", &input, &output);
 }

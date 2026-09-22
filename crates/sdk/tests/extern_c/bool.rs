@@ -50,7 +50,8 @@ fn bool_sixty_four_rows_alternating() {
 
 #[test]
 fn bool_with_undefined_alternating() {
-	let input = ColumnBuffer::bool_optional([Some(true), None, Some(false), None, Some(true)]);
+	let input =
+		ColumnBuffer::bool_with_bitvec([true, false, false, false, true], vec![true, false, true, false, true]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("bool_with_undefined", &input, &output);
 }

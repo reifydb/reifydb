@@ -528,7 +528,10 @@ mod tests {
 		let values = [1u128 << 64, u128::MAX, 0, (1u128 << 64) - 1];
 		let inputs = [
 			ColumnBuffer::uint16(values),
-			ColumnBuffer::uint16_optional(values.iter().copied().map(Some).chain([None])),
+			ColumnBuffer::uint16_with_bitvec(
+				values.iter().copied().chain([0]),
+				vec![true, true, true, true, false],
+			),
 		];
 		for padding in [0usize, 8, 16, 24] {
 			for input in inputs.clone() {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -45,20 +44,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextCount {
 				..
 			} => {
 				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let text = container.value(i);
-						result.push(text.chars().count() as i32);
-						res_bitvec.push(true);
-					} else {
-						result.push(0);
-						res_bitvec.push(false);
-					}
+					let text = container.value(i);
+					result.push(text.chars().count() as i32);
 				}
 
-				let result_data = ColumnBuffer::int4_with_bitvec(result, res_bitvec);
+				let result_data = ColumnBuffer::int4(result);
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

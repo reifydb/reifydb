@@ -46,13 +46,10 @@ fn biguint_thirty_two_rows() {
 
 #[test]
 fn biguint_with_undefined() {
-	let input = ColumnBuffer::uint_optional([
-		Some(Uint::from_u64(7)),
-		None,
-		Some(Uint::zero()),
-		None,
-		Some(Uint::one()),
-	]);
+	let input = ColumnBuffer::uint_with_bitvec(
+		[Uint::from_u64(7), Uint::default(), Uint::zero(), Uint::default(), Uint::one()],
+		vec![true, false, true, false, true],
+	);
 	let output = round_trip_column("u", input.clone());
 	assert_column_eq("biguint_with_undefined", &input, &output);
 }

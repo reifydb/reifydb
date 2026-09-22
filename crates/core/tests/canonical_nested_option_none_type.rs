@@ -16,7 +16,7 @@ use reifydb_value::value::{
 
 #[test]
 fn an_outer_none_row_of_a_nested_option_reads_the_same_none_from_canonical_as_from_the_buffer() {
-	// The canonical form must answer exactly like the buffer, so an outer none must keep its Option(Int4) type.
+	// Canonical must answer like the buffer: a none row of flattened nesting reads as none of Int4.
 	let nested = FrameColumnData::Option {
 		inner: Box::new(FrameColumnData::Option {
 			inner: Box::new(FrameColumnData::Int4(Int32Array::from(vec![7, 0, 9]))),
@@ -31,8 +31,8 @@ fn an_outer_none_row_of_a_nested_option_reads_the_same_none_from_canonical_as_fr
 	let bytes = encode_frames(&[frame], &EncodeOptions::default()).expect("a depth 2 frame encodes");
 	let decoded = decode_frames(&bytes).expect("a depth 2 frame decodes").remove(0).columns.remove(0).data;
 	let buffer = ColumnBuffer::from(decoded);
-	let outer_none = Value::none_of(ValueType::Option(Box::new(ValueType::Int4)));
-	assert_eq!(buffer.get_value(2), outer_none, "the buffer reads the outer none row");
+	let none_row = Value::none_of(ValueType::Int4);
+	assert_eq!(buffer.get_value(2), none_row, "the buffer reads the outer none row");
 	let canonical = Canonical::from_buffer(buffer);
-	assert_eq!(canonical.get_value(2), outer_none, "the canonical form must read the same none");
+	assert_eq!(canonical.get_value(2), none_row, "the canonical form must read the same none");
 }

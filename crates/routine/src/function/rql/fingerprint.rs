@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
@@ -50,30 +49,22 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 				..
 			} => {
 				let mut result_data = Vec::with_capacity(row_count);
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let query = container.value(i);
-						let bump = Bump::new();
-						let stmts = parse_str(&bump, query).map_err(|e| {
-							RoutineError::FunctionExecutionFailed {
-								function: ctx.fragment.clone(),
-								reason: format!("{e}"),
-							}
-						})?;
-						let fps: Vec<_> =
-							stmts.iter().map(|s| fingerprint_statement(s)).collect();
-						let req = fingerprint_request(&fps);
-						result_data.push(req.to_hex());
-						result_bitvec.push(true);
-					} else {
-						result_data.push(String::new());
-						result_bitvec.push(false);
-					}
+					let query = container.value(i);
+					let bump = Bump::new();
+					let stmts = parse_str(&bump, query).map_err(|e| {
+						RoutineError::FunctionExecutionFailed {
+							function: ctx.fragment.clone(),
+							reason: format!("{e}"),
+						}
+					})?;
+					let fps: Vec<_> = stmts.iter().map(|s| fingerprint_statement(s)).collect();
+					let req = fingerprint_request(&fps);
+					result_data.push(req.to_hex());
 				}
 
-				let inner_data = ColumnBuffer::utf8_with_bitvec(result_data, result_bitvec);
+				let inner_data = ColumnBuffer::utf8(result_data);
 
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), inner_data)]))
 			}

@@ -46,6 +46,6 @@ fn a_canonical_column_over_a_nested_option_keeps_the_inner_nones() {
 	assert_eq!(column.get_value(0), Value::Int4(7));
 	let nones: Vec<bool> = (0..3).map(|row| matches!(column.get_value(row), Value::None { .. })).collect();
 	assert_eq!(nones, vec![false, true, true], "rows that read as none, by value");
-	let defined: Vec<bool> = (0..3).map(|row| column.is_defined(row)).collect();
+	let defined: Vec<bool> = (0..3).map(|row| column.nones().is_none_or(|nones| nones.is_valid(row))).collect();
 	assert_eq!(defined, vec![true, false, false], "rows that read as defined");
 }

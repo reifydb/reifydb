@@ -63,12 +63,15 @@ fn duration_thirty_two_rows() {
 
 #[test]
 fn duration_with_undefined() {
-	let input = ColumnBuffer::duration_optional([
-		Some(Duration::new(1, 2, 3).unwrap()),
-		None,
-		Some(Duration::new(-1, -2, -3).unwrap()),
-		None,
-	]);
+	let input = ColumnBuffer::duration_with_bitvec(
+		[
+			Duration::new(1, 2, 3).unwrap(),
+			Duration::default(),
+			Duration::new(-1, -2, -3).unwrap(),
+			Duration::default(),
+		],
+		vec![true, false, true, false],
+	);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_with_undefined", &input, &output);
 }
