@@ -485,3 +485,33 @@ fn a_queued_group_holding_no_rows_still_leaves_the_queue_in_a_batched_drain() {
 
 	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "the rowless group must be dequeued too");
 }
+
+#[test]
+#[cfg(reifydb_assertions)]
+#[should_panic(expected = "group id 0 is the root group")]
+fn enqueueing_the_root_group_panics() {
+	// A queued root group would hand the reap queue and the expiry indexes to the next drain.
+	let mut store = MockStore::default();
+	enqueue(&mut store, GroupId::ROOT).unwrap();
+}
+
+#[test]
+#[cfg(reifydb_assertions)]
+#[should_panic(expected = "group id 0 is the root group")]
+fn reaping_the_root_group_panics() {
+	// Reaping the root group would delete the operator-wide expiry index every other group relies on.
+	let mut store = MockStore::default();
+	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
+	reap_group(&mut store, GroupId::ROOT, &mut StoreReaper, 256).unwrap();
+}
+
+#[test]
+#[cfg(reifydb_assertions)]
+#[should_panic(expected = "group id 0 is the root group")]
+fn draining_a_root_group_written_straight_into_the_queue_panics() {
+	// A guest can write the reap queue directly, so the drain must refuse root even when enqueue never ran.
+	let mut store = MockStore::default();
+	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
+	seed(&mut store, &queue_key(GroupId::ROOT));
+	drain(&mut store, &mut StoreReaper, 256).unwrap();
+}
