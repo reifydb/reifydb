@@ -107,12 +107,16 @@ where
 				opened: tracker.session_id,
 			};
 		}
-		if coord < tracker.start && tracker.start.span_since(coord) > self.gap {
+		if self.refuses(tracker, coord) {
 			self.refused += 1;
 			return SessionAssignment::Refused;
 		}
 		tracker.extend(coord);
 		SessionAssignment::Extended(tracker.session_id)
+	}
+
+	pub fn refuses(&self, tracker: &GuestSession<S>, coord: S) -> bool {
+		coord < tracker.start && tracker.start.span_since(coord) > self.gap
 	}
 
 	pub fn take_refused(&mut self) -> u64 {

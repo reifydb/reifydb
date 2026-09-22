@@ -191,6 +191,23 @@ fn an_update_that_moves_a_row_leaves_its_old_session_and_joins_by_its_new_time()
 }
 
 #[test]
+fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
+	// Retracting before the refused admit would lose the row and its new value from its old session.
+	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");
+	h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 200, 4.0)).build()).expect("apply");
+
+	let out = h
+		.apply(TestChangeBuilder::new()
+			.update(input_row(2, "BTC", 105, 2.0), input_row(2, "BTC", 150, 5.0))
+			.build())
+		.expect("apply");
+
+	assert_eq!(render(&out), vec![(DiffType::Update, 6.0, at(100), at(115))]);
+}
+
+#[test]
 fn a_remove_of_a_row_in_a_sealed_session_is_dropped() {
 	// a remove whose session is sealed must be dropped, never retracted from the live session
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
