@@ -198,7 +198,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x26;
+	pub const HIGHEST_DATA: u8 = 0x27;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -292,6 +292,8 @@ impl KeyspaceId {
 
 	pub const CUSTOM_MANAGED_DUE: Self = Self(0x26);
 
+	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x27);
+
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::NODE_COUNTER => "NODE_COUNTER",
@@ -340,6 +342,7 @@ impl KeyspaceId {
 			Self::CUSTOM_UNMANAGED => "CUSTOM_UNMANAGED",
 			Self::CUSTOM_MANAGED => "CUSTOM_MANAGED",
 			Self::CUSTOM_MANAGED_DUE => "CUSTOM_MANAGED_DUE",
+			Self::CUSTOM_MANAGED_LATEST => "CUSTOM_MANAGED_LATEST",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -923,7 +926,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 46] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 47] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -970,6 +973,7 @@ mod tests {
 		("CUSTOM_UNMANAGED", KeyspaceId::CUSTOM_UNMANAGED, Phase::Data, false),
 		("CUSTOM_MANAGED", KeyspaceId::CUSTOM_MANAGED, Phase::Data, false),
 		("CUSTOM_MANAGED_DUE", KeyspaceId::CUSTOM_MANAGED_DUE, Phase::Data, true),
+		("CUSTOM_MANAGED_LATEST", KeyspaceId::CUSTOM_MANAGED_LATEST, Phase::Data, true),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated

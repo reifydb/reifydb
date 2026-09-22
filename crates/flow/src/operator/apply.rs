@@ -21,7 +21,7 @@ use crate::{
 		host::HostContext,
 		max_input_time, stamp_output_time,
 		state::{
-			expiry::{expiry_drop, expiry_due, managed_due_group},
+			expiry::{expiry_drop, expiry_due, managed_due_group, managed_latest_key},
 			reaper::{StoreReaper, drain, drain_group, enqueue},
 			seal::rule::{SEAL_GATE_STEP, SealRule},
 		},
@@ -142,6 +142,7 @@ fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<()> {
 		enqueue(host, group)?;
 		retry |= drain_group(host, group, &mut StoreReaper, RECLAIM_BATCH)?.still_queued;
 		expiry_drop(host, &key)?;
+		expiry_drop(host, &managed_latest_key(group))?;
 	}
 	if retry {
 		host.arm_timer(fired.saturating_add(SEAL_GATE_STEP), TimerKind::Reclaim, &EncodedKey::new(Vec::new()))?;
@@ -412,6 +413,10 @@ mod reclaim_tests {
 		keys(txn, GroupId::ROOT, KeyspaceId::CUSTOM_MANAGED_DUE)
 	}
 
+	fn latest_entries(txn: &mut DeferredTransaction) -> usize {
+		keys(txn, GroupId::ROOT, KeyspaceId::CUSTOM_MANAGED_LATEST)
+	}
+
 	fn reclaim_timers(txn: &mut DeferredTransaction) -> Vec<u64> {
 		let mut dues: Vec<u64> = txn
 			.state_range(
@@ -482,6 +487,39 @@ mod reclaim_tests {
 
 		assert_eq!(reclaim_timers(&mut txn), vec![13_000]);
 		assert_eq!(due_entries(&mut txn), 2, "one due entry per group per bucket");
+	}
+
+	#[test]
+	fn a_rewrite_inside_the_retention_moves_the_groups_due_entry_to_the_last_write() {
+		// A due entry left from the first write frees state the rewrite still needs.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine);
+		let (mut operator, _) = managed(2);
+		let span = operator.retention();
+
+		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
+		write_at(&mut txn, 12_000, span, &managed_key(group(1))).unwrap();
+
+		assert_eq!(due_entries(&mut txn), 1, "the rewrite replaces the first due entry instead of adding one");
+		assert_eq!(latest_entries(&mut txn), 1);
+
+		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+
+		assert_eq!(
+			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
+			1,
+			"the first write's due must not free the rewritten group"
+		);
+
+		fire(&mut operator, &mut txn, TimerKind::Reclaim, 15_000);
+
+		assert_eq!(
+			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
+			0,
+			"the rewrite's due frees the group"
+		);
+		assert_eq!(due_entries(&mut txn), 0);
+		assert_eq!(latest_entries(&mut txn), 0, "a freed group leaves no latest entry behind");
 	}
 
 	#[test]

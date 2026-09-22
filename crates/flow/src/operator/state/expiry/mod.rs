@@ -8,12 +8,16 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 #[cfg(feature = "runtime")]
-use reifydb_core::{internal_err, key::operator::keyspace::expiry::CustomManagedDue};
+use reifydb_core::{
+	internal_err,
+	key::operator::keyspace::expiry::{CustomManagedDue, CustomManagedLatest},
+};
 use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{
-				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix,
+				CustomManagedDueKey, CustomManagedLatestKey, Expiry, ExpiryKey, TumblingExpiry,
+				TumblingExpirySuffix,
 			},
 			state::{
 				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
@@ -79,6 +83,16 @@ pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId> {
 	Ok(due.group.0)
 }
 
+#[cfg(feature = "runtime")]
+pub(crate) fn managed_latest_key(group: GroupId) -> GroupStateKey {
+	typed_key::<CustomManagedLatest>(
+		GroupId::ROOT,
+		&CustomManagedLatestKey {
+			group: Desc(group),
+		},
+	)
+}
+
 pub(crate) trait ExpirySuffix: SuffixBytes {
 	fn at_threshold(threshold: u64) -> Self;
 
@@ -131,6 +145,13 @@ pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: Grou
 
 pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 	store.state_remove(key)
+}
+
+pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<Option<E>> {
+	match store.state_get(key)? {
+		Some(payload) => Ok(Some(decode::<E>(&payload)?)),
+		None => Ok(None),
+	}
 }
 
 #[cfg(reifydb_assertions)]

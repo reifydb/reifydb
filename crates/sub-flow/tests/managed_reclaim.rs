@@ -9,6 +9,7 @@ use reifydb::{
 };
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
+	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupId, managed_key_in},
 	operator_with::ApplyWith,
@@ -94,6 +95,12 @@ impl OperatorMetadata for Untracked {
 
 impl UnmanagedOperator for Untracked {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Untracked)
@@ -295,4 +302,31 @@ fn a_zero_retention_frees_at_the_next_gate_step() {
 
 	advance_to(&db, "2026-01-01T00:00:01Z");
 	assert_eq!(await_managed_keys(&db, 1), 1, "0.5s plus 1ms rounds up to 1s; ROOT must never be freed");
+}
+
+#[test]
+fn a_group_rewritten_inside_its_retention_is_freed_from_its_last_write_not_its_first() {
+	// Freeing a rewritten group at its first write's due drops the state the rewrite just extended.
+	let db = memory();
+	managed_view(&db);
+
+	db.command(
+		r#"INSERT app::t [
+			{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" },
+			{ id: 2, g: 2, ts: "2026-01-01T00:00:00Z" }
+		]"#,
+	);
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "2026-01-01T00:00:02Z" }]"#);
+
+	assert_eq!(await_managed_keys(&db, 3), 3, "two groups plus ROOT before anything is due");
+
+	advance_to(&db, "2026-01-01T00:00:03Z");
+	assert_eq!(
+		await_managed_keys(&db, 2),
+		2,
+		"group 2 is due at 3s; group 1 was rewritten at 2s and stays with ROOT"
+	);
+
+	advance_to(&db, "2026-01-01T00:00:05Z");
+	assert_eq!(await_managed_keys(&db, 1), 1, "group 1 is due at 5s from its last write; ROOT must never be freed");
 }

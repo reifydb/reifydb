@@ -42,7 +42,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::state::{
-		expiry::{expiry_set, managed_due_key},
+		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
 		iter::StateIterator,
 		reaper::IdentityReclaim,
 		reclaim::ReclaimOutcome,
@@ -164,7 +164,12 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
 		let due = reclaim_due(self.now, retention);
+		let latest = managed_latest_key(group);
+		if let Some(previous) = expiry_get::<DateTime>(self, &latest)?.filter(|previous| *previous != due) {
+			expiry_drop(self, &managed_due_key(previous, group))?;
+		}
 		expiry_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
+		expiry_set(self, latest, due)?;
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {

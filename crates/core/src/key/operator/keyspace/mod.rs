@@ -20,7 +20,7 @@ use crate::{
 		operator::{
 			keyspace::{
 				distinct::{DistinctEntry, DistinctLayout},
-				expiry::{CustomManagedDue, Expiry, ReapQueue, TumblingExpiry},
+				expiry::{CustomManagedDue, CustomManagedLatest, Expiry, ReapQueue, TumblingExpiry},
 				join::{
 					JoinExpiryDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry,
 					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
@@ -199,6 +199,7 @@ catalogue!(
 	CustomUnmanaged,
 	CustomManaged,
 	CustomManagedDue,
+	CustomManagedLatest,
 );
 
 #[derive(Clone, Debug)]
@@ -247,6 +248,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::CUSTOM_UNMANAGED
 		| KeyspaceId::CUSTOM_MANAGED
 		| KeyspaceId::CUSTOM_MANAGED_DUE
+		| KeyspaceId::CUSTOM_MANAGED_LATEST
 		| KeyspaceId::RINGBUFFER_FORWARD
 		| KeyspaceId::RINGBUFFER_ENTRY
 		| KeyspaceId::RINGBUFFER_EXPIRY
@@ -445,7 +447,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 46, "the catalogue is forty six keyspaces");
+		assert_eq!(seen.len(), 47, "the catalogue is forty seven keyspaces");
 	}
 
 	#[test]
@@ -465,11 +467,11 @@ mod tests {
 	}
 
 	#[test]
-	fn exactly_twenty_five_of_the_forty_six_keyspaces_are_group_scoped() {
+	fn exactly_twenty_five_of_the_forty_seven_keyspaces_are_group_scoped() {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			46,
+			47,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
