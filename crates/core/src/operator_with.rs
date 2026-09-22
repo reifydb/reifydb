@@ -145,6 +145,15 @@ impl ApplyWith {
 		}
 	}
 
+	pub fn window_session_gap(&self) -> Option<Duration> {
+		match &self.window {
+			Some(WindowKind::Session {
+				gap,
+			}) => Some(*gap),
+			_ => None,
+		}
+	}
+
 	pub fn reject_window(&self) -> Result<()> {
 		match &self.window {
 			None => Ok(()),
@@ -710,6 +719,45 @@ mod tests {
 		assert!(by_slots.window_slide_duration().is_err());
 		assert_eq!(tumbling.window_slide_duration().unwrap(), None);
 		assert_eq!(tumbling.window_slide_slots().unwrap(), None);
+	}
+
+	#[test]
+	fn window_session_gap_reads_only_a_session_window() {
+		// A gap read from another kind would give a tumbling or sliding window a session's sealing with no
+		// error.
+		let session = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: secs(30),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+		let others = [
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(30)),
+			},
+			WindowKind::Sliding {
+				size: WindowSize::Duration(secs(30)),
+				slide: WindowSize::Duration(secs(10)),
+			},
+			WindowKind::Rolling {
+				size: WindowSize::Duration(secs(30)),
+				lag: None,
+				pane: None,
+			},
+		];
+
+		assert_eq!(session.window_session_gap(), Some(secs(30)));
+		assert_eq!(ApplyWith::default().window_session_gap(), None);
+		for kind in others {
+			let name = kind.name();
+			let with = ApplyWith {
+				window: Some(kind),
+				lateness: None,
+				immutable: None,
+			};
+			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
+		}
 	}
 
 	#[test]
