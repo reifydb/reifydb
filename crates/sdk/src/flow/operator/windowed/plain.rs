@@ -99,7 +99,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
-		WindowSpan::for_coord(coord, self.settings.size)
+		WindowSpan::for_coord(coord, self.settings.fixed_size())
 	}
 
 	fn bucket_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
@@ -245,12 +245,12 @@ where
 		if horizon > <A::Coord as Coord>::from_order(0) {
 			mode.engine.expire_meta(store, horizon.to_order())?;
 		}
-		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.size) {
+		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.fixed_size()) {
 			return Ok(Vec::new());
 		}
 		let pane = mode.pane;
 		Ok(mode.engine
-			.expire_dead(store, horizon.saturating_sub_span(settings.size), |group, buffer| {
+			.expire_dead(store, horizon.saturating_sub_span(settings.fixed_size()), |group, buffer| {
 				Self::combine_panes(aggregator, settings, pane, group, buffer)
 			})?
 			.into_iter()
@@ -268,7 +268,7 @@ where
 		let value = <A::Kinds as KindSet<A>>::merge_panes(buffer).finalize()?;
 		let (newest, _) = buffer.last_key_value()?;
 		let end = newest.add_span(pane);
-		let span = WindowSpan::new(end.saturating_sub_span(settings.size), end);
+		let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 		aggregator.build_output(group, span, &value)
 	}
 
@@ -311,7 +311,7 @@ where
 				let after = mode.engine.earliest_expiry(&mut store)?;
 				<A::Coord as SealDomain>::rearm_dead(
 					&mut store,
-					settings.size,
+					settings.fixed_size(),
 					seal_span,
 					before,
 					after,
@@ -335,7 +335,7 @@ where
 			mode.engine.apply_evicting(
 				&mut store,
 				buckets,
-				RollingEviction::Span(settings.size),
+				RollingEviction::Span(settings.fixed_size()),
 				|group| (group_of(&groups, group, ()), group.into_encoded_key()),
 				|| aggregator.new_accumulator(settings),
 				|group, buffer| Self::combine_panes(aggregator, settings, pane, group, buffer),
@@ -355,7 +355,13 @@ where
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let after = mode.engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_dead(&mut store, settings.size, seal_span, before, after)?;
+			<A::Coord as SealDomain>::rearm_dead(
+				&mut store,
+				settings.fixed_size(),
+				seal_span,
+				before,
+				after,
+			)?;
 		}
 
 		Ok((inserts, updates, removes))
@@ -550,7 +556,7 @@ where
 				panic!("{}: a sliding window reached create without a slide", A::NAME);
 			};
 			Some(SlidingMode {
-				engine: SlidingEngine::new(window_engine_config(params), settings.size, slide),
+				engine: SlidingEngine::new(window_engine_config(params), settings.fixed_size(), slide),
 			})
 		} else {
 			None
@@ -596,7 +602,7 @@ where
 				let after = mode.engine.earliest_expiry(&mut store)?;
 				<A::Coord as SealDomain>::rearm_dead(
 					&mut store,
-					settings.size,
+					settings.fixed_size(),
 					seal_span,
 					before,
 					after,
@@ -844,7 +850,7 @@ mod tests {
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
 
-		assert_eq!(driver.settings.size, RowSpan::of(10));
+		assert_eq!(driver.settings.size, Some(RowSpan::of(10)));
 		assert_eq!(driver.settings.lateness, RowSpan::of(4));
 		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
 		assert_eq!(

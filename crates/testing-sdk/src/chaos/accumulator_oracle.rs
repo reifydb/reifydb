@@ -122,7 +122,7 @@ fn apply_leg<A>(
 	let Some((group, coord, contribution)) = extract_one(aggregate, row) else {
 		return;
 	};
-	let span = WindowSpan::for_coord(coord, settings.size);
+	let span = WindowSpan::for_coord(coord, settings.fixed_size());
 	let key = (group, span.start);
 	if is_add {
 		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
@@ -334,7 +334,7 @@ where
 	let value = fold_panes::<A>(buffer).finalize()?;
 	let (newest, _) = buffer.last_key_value()?;
 	let end = newest.add_span(pane);
-	let span = WindowSpan::new(end.saturating_sub_span(settings.size), end);
+	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 	aggregate.build_output(group, span, &value)
 }
 
@@ -365,7 +365,13 @@ where
 	for batch in batches {
 		let snapshot = HashMap::new();
 		let buckets = bucket_rolling(aggregate, pane, batch);
-		let touched = apply_rolling_buckets::<A>(settings.size, &snapshot, buckets, &mut buffers, &mut high_water);
+		let touched = apply_rolling_buckets::<A>(
+			settings.fixed_size(),
+			&snapshot,
+			buckets,
+			&mut buffers,
+			&mut high_water,
+		);
 		for group in touched {
 			match buffers
 				.get(&group)
@@ -445,7 +451,7 @@ fn push_carry<A>(
 	A: WindowedOperator,
 {
 	if let Some((group, coord, contribution)) = extract_carry(aggregate, row) {
-		let span = WindowSpan::for_coord(coord, settings.size);
+		let span = WindowSpan::for_coord(coord, settings.fixed_size());
 		let leg = if is_add {
 			Leg::Add(contribution)
 		} else {
@@ -603,7 +609,13 @@ where
 	for batch in batches {
 		let snapshot = HashMap::new();
 		let buckets = bucket_rolling(aggregate, pane, batch);
-		let touched = apply_rolling_buckets::<A>(settings.size, &snapshot, buckets, &mut buffers, &mut high_water);
+		let touched = apply_rolling_buckets::<A>(
+			settings.fixed_size(),
+			&snapshot,
+			buckets,
+			&mut buffers,
+			&mut high_water,
+		);
 		for group in touched {
 			if let Some(buffer) = buffers.get(&group) {
 				let emit =

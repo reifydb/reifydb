@@ -7,11 +7,18 @@ use crate::operator::state::seal::coord::Coord;
 
 pub struct WindowSettings<C: Coord> {
 	pub kind: WindowKind,
-	pub size: C::Span,
+	pub size: Option<C::Span>,
 	pub pane: Option<C::Span>,
 	pub slide: Option<C::Span>,
+	pub gap: Option<C::Span>,
 	pub lateness: C::Span,
 	pub immutable: Option<C::Span>,
+}
+
+impl<C: Coord> WindowSettings<C> {
+	pub fn fixed_size(&self) -> C::Span {
+		self.size.expect("a tumbling, sliding or rolling window must carry a size")
+	}
 }
 
 #[cfg(test)]
@@ -29,9 +36,10 @@ mod tests {
 				lag: None,
 				pane,
 			},
-			size: hour,
+			size: Some(hour),
 			pane,
 			slide: None,
+			gap: None,
 			lateness: Duration::from_seconds(30).unwrap(),
 			immutable: None,
 		}

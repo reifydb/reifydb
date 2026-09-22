@@ -174,12 +174,14 @@ where
 		if horizon > <A::Coord as Coord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
-		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.size) {
+		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.fixed_size()) {
 			return Ok(Vec::new());
 		}
-		Ok(engine.expire_dead(store, horizon.saturating_sub_span(settings.size), |group, secondary| {
-			Self::row_key(group, secondary)
-		})?)
+		Ok(engine.expire_dead(
+			store,
+			horizon.saturating_sub_span(settings.fixed_size()),
+			|group, secondary| Self::row_key(group, secondary),
+		)?)
 	}
 
 	fn combine(
@@ -196,7 +198,7 @@ where
 			return BTreeMap::new();
 		};
 		let end = newest.add_span(pane);
-		let span = WindowSpan::new(end.saturating_sub_span(settings.size), end);
+		let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 		match aggregator.build_output(group, span, &value) {
 			Some(rows) => rows.into_iter().collect(),
 			None => BTreeMap::new(),
@@ -305,7 +307,7 @@ where
 		let before = self.engine.earliest_expiry(&mut store)?;
 		let removes = Self::expire_through(&mut self.engine, &self.settings, &mut store, horizon)?;
 		let after = self.engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.size, seal_span, before, after)?;
+		<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.fixed_size(), seal_span, before, after)?;
 		Self::emit_three_batches(ctx, &[], &[], &removes)
 	}
 
@@ -344,7 +346,7 @@ where
 				let after = self.engine.earliest_expiry(&mut store)?;
 				<A::Coord as SealDomain>::rearm_dead(
 					&mut store,
-					self.settings.size,
+					self.settings.fixed_size(),
 					seal_span,
 					before,
 					after,
@@ -367,7 +369,7 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
-				settings.size,
+				settings.fixed_size(),
 				|group| group.into_encoded_key(),
 				|group, secondary| Self::row_key(group, secondary),
 				|group, buffer| Self::combine(aggregator, settings, pane, group, buffer),
@@ -396,7 +398,13 @@ where
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let after = self.engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.size, seal_span, before, after)?;
+			<A::Coord as SealDomain>::rearm_dead(
+				&mut store,
+				self.settings.fixed_size(),
+				seal_span,
+				before,
+				after,
+			)?;
 		}
 		Self::emit_three_batches(ctx, &inserts, &updates, &removes)?;
 

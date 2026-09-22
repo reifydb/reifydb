@@ -182,9 +182,10 @@ impl SealDomain for OrdinalCoord {
 		};
 		Ok(WindowSettings {
 			kind: kind.clone(),
-			size: RowSpan::of(with.window_slots()?),
+			size: Some(RowSpan::of(with.window_slots()?)),
 			pane: None,
 			slide: with.window_slide_slots()?.map(RowSpan::of),
+			gap: None,
 			lateness: RowSpan::of(with.lateness_count()?.unwrap_or(0)),
 			immutable: with.immutable_count()?.map(RowSpan::of),
 		})
@@ -405,7 +406,7 @@ mod tests {
 		let declared = OrdinalCoord::window_settings_of(&declared).unwrap();
 		let omitted = OrdinalCoord::window_settings_of(&omitted).unwrap();
 
-		assert_eq!(declared.size, RowSpan::of(10));
+		assert_eq!(declared.size, Some(RowSpan::of(10)));
 		assert_eq!(declared.lateness, RowSpan::of(4));
 		assert_eq!(declared.immutable, Some(RowSpan::of(2)));
 		assert_eq!(declared.pane, None);
@@ -442,7 +443,7 @@ mod tests {
 
 		let settings = OrdinalCoord::window_settings_of(&sliding).unwrap();
 
-		assert_eq!(settings.size, RowSpan::of(10));
+		assert_eq!(settings.size, Some(RowSpan::of(10)));
 		assert_eq!(settings.slide, Some(RowSpan::of(4)));
 	}
 }

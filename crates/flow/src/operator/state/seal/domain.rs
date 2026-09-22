@@ -80,7 +80,10 @@ impl SealDomain for DateTime {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
-		let size = with.window_duration()?;
+		let (size, gap) = match with.window_session_gap() {
+			Some(gap) => (None, Some(gap)),
+			None => (Some(with.window_duration()?), None),
+		};
 		let sealing = WindowSealing::from_operator_with(with)?;
 		let pane = match kind {
 			WindowKind::Rolling {
@@ -94,6 +97,7 @@ impl SealDomain for DateTime {
 			size,
 			pane,
 			slide: with.window_slide_duration()?,
+			gap,
 			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
 			immutable: sealing.immutable,
 		})
@@ -243,7 +247,7 @@ mod tests {
 		let rolling = DateTime::window_settings_of(&rolling).unwrap();
 		let tumbling = DateTime::window_settings_of(&tumbling).unwrap();
 
-		assert_eq!(rolling.size, Duration::from_seconds(3600).unwrap());
+		assert_eq!(rolling.size, Some(Duration::from_seconds(3600).unwrap()));
 		assert_eq!(rolling.pane, Some(Duration::from_seconds(1).unwrap()));
 		assert_eq!(rolling.lateness, Duration::from_seconds(20).unwrap());
 		assert_eq!(rolling.immutable, Some(Duration::from_seconds(15).unwrap()));
@@ -281,7 +285,25 @@ mod tests {
 
 		let settings = DateTime::window_settings_of(&sliding).unwrap();
 
-		assert_eq!(settings.size, Duration::from_seconds(600).unwrap());
+		assert_eq!(settings.size, Some(Duration::from_seconds(600).unwrap()));
 		assert_eq!(settings.slide, Some(Duration::from_seconds(300).unwrap()));
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_gap_of_a_session_window() {
+		// A session read as a sized window would fail create or seal on a size it does not have.
+		let session = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: Duration::from_seconds(30).unwrap(),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let settings = DateTime::window_settings_of(&session).unwrap();
+
+		assert_eq!(settings.gap, Some(Duration::from_seconds(30).unwrap()));
+		assert_eq!(settings.size, None, "a session has no fixed size");
+		assert_eq!(settings.slide, None);
 	}
 }

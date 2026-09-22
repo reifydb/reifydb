@@ -87,7 +87,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
-		WindowSpan::for_coord(coord, self.settings.size)
+		WindowSpan::for_coord(coord, self.settings.fixed_size())
 	}
 
 	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
