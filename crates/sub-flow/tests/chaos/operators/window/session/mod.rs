@@ -61,7 +61,7 @@ fn drive_with(seed: u64, params: Params, immutable_ms: Option<u64>) -> Corpus {
 			gap: Duration::from_milliseconds(params.gap_ms as i64).expect("a drawn gap is representable"),
 		},
 		group_by: "g",
-		aggregations: params.fold.rql(),
+		aggregations: Box::leak(format!("{}; e: window::end()", params.fold.rql()).into_boxed_str()),
 		lateness: None,
 	};
 

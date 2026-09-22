@@ -439,3 +439,35 @@ fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
 	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:15.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "x")), vec!["4".to_string()]);
 }
+
+#[test]
+fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
+	// A late row can pull a new session back onto the closed one's start, so only the end must tell them apart.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+			FROM app::t
+				| window session { n: math::count(), s: window::start(), e: window::end() }
+					by { g } with { gap: 10s, lateness: 0s }
+		}"#);
+
+	insert(&db, 1, 1, 7, "2026-01-01T00:01:40Z");
+	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	insert(&db, 2, 1, 7, "2026-01-01T00:01:51Z");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	insert(&db, 3, 1, 7, "2026-01-01T00:01:41Z");
+	insert(&db, 4, 1, 7, "2026-01-01T00:01:40Z");
+	db.await_row_count("FROM app::w | filter { n == 3 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut spans: Vec<(String, String)> =
+		text(&column_values(&frames[0], "s")).into_iter().zip(text(&column_values(&frames[0], "e"))).collect();
+	spans.sort();
+	assert_eq!(
+		spans,
+		vec![
+			("2026-01-01T00:01:40.000000000Z".to_string(), "2026-01-01T00:01:50.000000000Z".to_string()),
+			("2026-01-01T00:01:40.000000000Z".to_string(), "2026-01-01T00:02:01.000000000Z".to_string()),
+		]
+	);
+}
