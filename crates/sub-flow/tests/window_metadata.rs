@@ -324,7 +324,7 @@ fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
 
 #[test]
 fn a_row_counted_tumbling_window_stamps_its_earliest_event_time() {
-	// #time must come from the rows, never the window ordinal near the epoch that downstream time windows bucket on.
+	// #time must come from the rows, never the window ordinal near the epoch that downstream windows bucket on.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
