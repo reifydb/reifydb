@@ -745,7 +745,8 @@ impl Resident {
 					None => return,
 				}
 			};
-			self.persist(&batch);
+			self.persist_applied(&batch)
+				.expect("operator state flush must persist; a dropped batch loses buffered rows");
 			let _staging = self.flush_guard();
 			self.settle(batch);
 		}
@@ -976,24 +977,6 @@ impl Resident {
 			global.flushing = false;
 		}
 		self.shared.idle.notify_all();
-	}
-
-	#[instrument(name = "store::operator::resident::persist", level = "debug", skip_all)]
-	fn persist(&self, batch: &Arc<FlushBatch>) {
-		#[cfg(test)]
-		{
-			let interlock = self.shared.persist_interlock.lock().take();
-			if let Some(interlock) = interlock {
-				interlock();
-			}
-		}
-		let sinks = self
-			.shared
-			.sinks
-			.get()
-			.expect("the operator resident state flushed before its sinks were attached");
-		sinks.persistent.flush_batch(batch);
-		invalidate_flushed(&sinks.range, batch);
 	}
 
 	#[instrument(name = "store::operator::resident::settle", level = "debug", skip_all)]

@@ -24,9 +24,10 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
+	error::OperatorError,
 	persistent::{
 		PersistentTier,
-		testing::{NoFaults, TestingPersistent},
+		testing::{ApplyOutcome, NoFaults, PersistentHooks, TestingPersistent},
 	},
 	range::{OperatorRangeTier, RangeSink, tiers::RangeKeyspaceMetrics},
 	resident::{Resident, invalidate_flushed},
@@ -1121,4 +1122,28 @@ fn a_flush_hands_the_range_tier_each_unbroken_run_of_removals_in_batch_order() {
 		],
 		"removals must reach the range tier as unbroken runs, in the order the batch staged them"
 	);
+}
+
+struct RefuseApply;
+
+impl PersistentHooks for RefuseApply {
+	fn on_apply(&self, _batch: &FlushBatch) -> ApplyOutcome {
+		ApplyOutcome::Err(OperatorError::Backend {
+			message: "apply refused".to_string(),
+		})
+	}
+}
+
+#[test]
+#[should_panic(expected = "a dropped batch loses buffered rows")]
+fn a_refused_flush_stops_the_store_instead_of_settling_rows_it_never_wrote() {
+	// A swallowed apply settles the slice anyway, so rows leave memory without ever reaching the device.
+	let buffer = Resident::new();
+	buffer.attach_sinks(
+		PersistentTier::Testing(TestingPersistent::new(Arc::new(RefuseApply))),
+		OperatorRangeTier::Absent,
+	);
+
+	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.flush_all();
 }
