@@ -140,10 +140,10 @@ impl FlowEngineInner {
 				});
 				let fired = match node {
 					Node::Operator(operator) => {
-						let mut host = TxnHostContext::with_seal_span(
+						let mut host = TxnHostContext::with_retention(
 							txn,
 							operator.id(),
-							operator.seal_span(),
+							operator.retention(),
 						);
 						operator.on_timer(&mut host, timer)?
 					}

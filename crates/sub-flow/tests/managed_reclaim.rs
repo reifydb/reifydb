@@ -142,6 +142,14 @@ fn managed_view(db: &TestDb) {
 	db.admin(MANAGED_VIEW);
 }
 
+fn managed_view_with(db: &TestDb, with: &str) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::v {{ g: int4 }} AS {{ FROM app::t APPLY tally{{}} WITH {{ {with} }} }}"
+	));
+}
+
 fn managed_keys(db: &TestDb) -> u64 {
 	db.query(MANAGED_KEYS)
 		.iter()
@@ -257,4 +265,34 @@ fn a_due_entry_armed_before_a_restart_still_frees_its_group_after_it() {
 	advance_to(&db, "2026-01-01T00:00:03Z");
 	assert_eq!(await_managed_keys(&db, 1), 1, "group 1 armed before the restart must be freed after it");
 	db.stop();
+}
+
+#[test]
+fn a_retention_above_the_lateness_frees_later_than_the_lateness_would() {
+	// Reclaim by the lateness would free the group at 2s, a second before the declared retention allows.
+	let db = memory();
+	managed_view_with(&db, "lateness: 1s, retention: 2s");
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
+	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 plus ROOT");
+
+	advance_to(&db, "2026-01-01T00:00:02Z");
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:00:02Z" }]"#);
+	assert_eq!(await_managed_keys(&db, 3), 3, "at 2s the lateness has passed but group 1 is inside its retention");
+
+	advance_to(&db, "2026-01-01T00:00:03Z");
+	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 is due at 3s; group 2 and ROOT must stay");
+}
+
+#[test]
+fn a_zero_retention_frees_at_the_next_gate_step() {
+	// Zero is a bound, not an absence: the group must go as soon as the watermark passes its write.
+	let db = memory();
+	managed_view_with(&db, "retention: 0s");
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00.500Z" }]"#);
+	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 plus ROOT");
+
+	advance_to(&db, "2026-01-01T00:00:01Z");
+	assert_eq!(await_managed_keys(&db, 1), 1, "0.5s plus 1ms rounds up to 1s; ROOT must never be freed");
 }

@@ -137,8 +137,9 @@ impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.reject_window()?;
-		if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
-			return Err(ValueError::from(CoreError::OperatorLatenessRequired).into());
+		with.check_retention()?;
+		if with.effective_retention()?.is_none() {
+			return Err(ValueError::from(CoreError::OperatorRetentionRequired).into());
 		}
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
@@ -186,6 +187,7 @@ impl<T: UnmanagedOperator> MountedOperator for UnmanagedMount<T> {
 	const UNMANAGED_BECAUSE: Option<&'static str> = Some(T::UNMANAGED_BECAUSE);
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.reject_retention()?;
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
 

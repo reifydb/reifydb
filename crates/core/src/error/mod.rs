@@ -124,8 +124,17 @@ pub enum CoreError {
 	#[error("a nostate operator takes no 'with'")]
 	OperatorWithNotAccepted,
 
-	#[error("a managed operator needs a positive 'lateness'")]
-	OperatorLatenessRequired,
+	#[error("a managed operator needs 'retention' or 'lateness'")]
+	OperatorRetentionRequired,
+
+	#[error("this operator takes no 'retention'")]
+	OperatorWithRetentionNotSupported,
+
+	#[error("retention {retention} must not be below lateness {lateness}")]
+	OperatorWithRetentionBelowLateness {
+		retention: Duration,
+		lateness: Duration,
+	},
 
 	#[error("timer kind '{kind}' is reserved for the engine")]
 	OperatorTimerKindReserved {

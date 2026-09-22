@@ -95,6 +95,10 @@ pub trait HostOperator: Send {
 		None
 	}
 
+	fn retention(&self) -> Option<Duration> {
+		None
+	}
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}

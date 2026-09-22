@@ -15,7 +15,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{BoxedHostOperator, apply::engine_seal_span, host::TxnHostContext},
+	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -40,7 +40,7 @@ pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static>
 	engine: TestEngine,
 	operator: BoxedHostOperator,
 	operator_id: OperatorId,
-	seal_span: Option<Duration>,
+	retention: Option<Duration>,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
@@ -104,7 +104,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut host = TxnHostContext::with_seal_span(&mut txn, operator, self.seal_span);
+			let mut host = TxnHostContext::with_retention(&mut txn, operator, self.retention);
 			self.operator.apply(&mut host, input)?
 		};
 		self.end_txn(txn);
@@ -227,7 +227,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			engine,
 			operator,
 			operator_id: self.operator_id,
-			seal_span: engine_seal_span(&self.with),
+			retention: engine_retention(&self.with),
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
@@ -367,7 +367,7 @@ mod tests {
 
 	#[test]
 	fn a_managed_operator_can_write_state_through_the_harness() {
-		// Without a seal span the first managed write aborts the harness.
+		// Without a retention the first managed write aborts the harness.
 		let with = ApplyWith {
 			lateness: Some(WithSpan::Duration(secs(120))),
 			..ApplyWith::default()

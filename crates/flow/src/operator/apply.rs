@@ -34,6 +34,7 @@ pub struct ApplyOperator {
 	operator: OperatorId,
 	inner: BoxedHostOperator,
 	seal_span: Option<Duration>,
+	retention: Option<Duration>,
 }
 
 impl ApplyOperator {
@@ -48,6 +49,7 @@ impl ApplyOperator {
 			operator,
 			inner,
 			seal_span: engine_seal_span(with),
+			retention: engine_retention(with),
 		}
 	}
 
@@ -67,6 +69,10 @@ impl HostOperator for ApplyOperator {
 
 	fn seal_span(&self) -> Option<Duration> {
 		self.seal_span
+	}
+
+	fn retention(&self) -> Option<Duration> {
+		self.retention
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
@@ -113,6 +119,16 @@ pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
 		},
 	};
 	span.filter(|span| !span.is_zero())
+}
+
+pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
+	match with.retention {
+		Some(retention) => Some(retention),
+		None => match with.lateness {
+			Some(WithSpan::Duration(d)) => Some(d),
+			_ => None,
+		},
+	}
 }
 
 const RECLAIM_BATCH: usize = 256;
@@ -172,6 +188,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(90)));
@@ -184,6 +201,7 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(30)));
@@ -206,6 +224,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Count(2)),
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
@@ -222,6 +241,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Duration(seconds(5))),
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(135)));
@@ -234,9 +254,53 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Duration(Duration::zero())),
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
+	}
+
+	#[test]
+	fn retention_feeds_the_reclaim_and_never_the_hold() {
+		// A retention that also held the output would delay every downstream seal by the state bound.
+		let with = ApplyWith {
+			window: None,
+			lateness: Some(WithSpan::Duration(seconds(30))),
+			immutable: None,
+			retention: Some(seconds(120)),
+		};
+		let operator = operator(with);
+
+		assert_eq!(operator.seal_span(), Some(seconds(30)));
+		assert_eq!(operator.retention(), Some(seconds(120)));
+	}
+
+	#[test]
+	fn retention_falls_back_to_the_lateness() {
+		// A managed view that declares lateness alone must keep the bound it had before retention existed.
+		let with = ApplyWith {
+			window: None,
+			lateness: Some(WithSpan::Duration(seconds(30))),
+			immutable: None,
+			retention: None,
+		};
+
+		assert_eq!(operator(with).retention(), Some(seconds(30)));
+	}
+
+	#[test]
+	fn a_zero_lateness_alone_gives_a_zero_retention_and_no_hold() {
+		// Zero must stay a real bound for the reclaim while the hold reads it as none.
+		let with = ApplyWith {
+			window: None,
+			lateness: Some(WithSpan::Duration(Duration::zero())),
+			immutable: None,
+			retention: None,
+		};
+		let operator = operator(with);
+
+		assert_eq!(operator.seal_span(), None);
+		assert_eq!(operator.retention(), Some(Duration::zero()));
 	}
 }
 
@@ -328,13 +392,13 @@ mod reclaim_tests {
 	fn write_at(
 		txn: &mut DeferredTransaction,
 		millis: u64,
-		seal_span: Option<Duration>,
+		retention: Option<Duration>,
 		key: &GroupStateKey,
 	) -> Result<()> {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(millis)),
 		});
-		TxnHostContext::with_seal_span(txn, OP, seal_span).state_set(key, EncodedPodRow::new(&[1]))
+		TxnHostContext::with_retention(txn, OP, retention).state_set(key, EncodedPodRow::new(&[1]))
 	}
 
 	fn keys(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId) -> usize {
@@ -379,7 +443,7 @@ mod reclaim_tests {
 		kind: TimerKind,
 		millis: u64,
 	) -> Option<Change> {
-		let mut host = TxnHostContext::with_seal_span(txn, OP, operator.seal_span());
+		let mut host = TxnHostContext::with_retention(txn, OP, operator.retention());
 		operator.on_timer(
 			&mut host,
 			Timer {
@@ -437,15 +501,15 @@ mod reclaim_tests {
 	}
 
 	#[test]
-	fn a_managed_write_without_a_seal_span_fails() {
-		// Without a span nothing would ever free the group, which is the leak this stage closes.
+	fn a_managed_write_without_a_retention_fails() {
+		// Without a retention nothing would ever free the group, which is the leak this stage closes.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 
 		let err = write_at(&mut txn, 10_000, None, &managed_key(group(1)))
-			.expect_err("a managed write needs a seal span");
+			.expect_err("a managed write needs a retention");
 
-		assert!(err.to_string().contains("no seal span"), "got: {err}");
+		assert!(err.to_string().contains("no retention"), "got: {err}");
 	}
 
 	#[test]
@@ -454,7 +518,7 @@ mod reclaim_tests {
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, guest_timers) = managed(2);
-		let span = operator.seal_span();
+		let span = operator.retention();
 
 		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 11_500, span, &managed_key(group(2))).unwrap();
@@ -476,7 +540,7 @@ mod reclaim_tests {
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.seal_span();
+		let span = operator.retention();
 		for n in 1..=257 {
 			write_at(&mut txn, 10_000, span, &managed_key(group(n))).unwrap();
 		}

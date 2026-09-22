@@ -24,6 +24,7 @@ fn sliding(size: u64, slide: u64, lateness: u64) -> ApplyWith {
 		}),
 		lateness: Some(WithSpan::Duration(millis(lateness))),
 		immutable: None,
+		retention: None,
 	}
 }
 

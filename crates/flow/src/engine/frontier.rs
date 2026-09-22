@@ -417,6 +417,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
+			retention: None,
 		};
 		let held = Harness::new()
 			.node(source(1))
@@ -427,6 +428,26 @@ mod tests {
 			.apply(2, with)
 			.registered_sink(3, FLOW)
 			.holds(vec![advance(1, 120_000)]);
+
+		assert_eq!(held, vec![hold(3, 30_000)]);
+	}
+
+	#[test]
+	fn an_apply_with_retention_alone_holds_nothing() {
+		// Retention bounds the state, not the output; a hold by it would delay every downstream seal for nothing.
+		let with = ApplyWith {
+			retention: Some(seconds(30)),
+			..ApplyWith::default()
+		};
+		let held = Harness::new()
+			.node(source(1))
+			.node(stage(2))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3)
+			.apply(2, with)
+			.registered_sink(3, FLOW)
+			.holds(vec![advance(1, 30_000)]);
 
 		assert_eq!(held, vec![hold(3, 30_000)]);
 	}

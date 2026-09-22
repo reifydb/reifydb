@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::{OperatorClass, TimeDomain, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	error::diagnostic::{
 		flow::{
-			flow_managed_operator_requires_event_time, flow_operator_lateness_required,
+			flow_managed_operator_requires_event_time, flow_operator_retention_required,
 			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
@@ -284,11 +284,12 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 				}
 			}
 			OperatorClass::Managed => {
-				if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
-					return Err(error!(flow_operator_lateness_required()));
+				with.check_retention()?;
+				if with.effective_retention()?.is_none() {
+					return Err(error!(flow_operator_retention_required()));
 				}
 			}
-			OperatorClass::Unmanaged | OperatorClass::Windowed => {}
+			OperatorClass::Unmanaged | OperatorClass::Windowed => with.reject_retention()?,
 		}
 		check_window_requirements(info.window, with)?;
 	}

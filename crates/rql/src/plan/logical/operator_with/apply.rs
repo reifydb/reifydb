@@ -23,7 +23,7 @@ use crate::{
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, or immutable";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, or immutable";
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -33,6 +33,7 @@ enum Immutable {
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith> {
 		let mut lateness: Option<Declared<WithSpan>> = None;
+		let mut retention: Option<Declared<Duration>> = None;
 		let mut immutable: Option<Immutable> = None;
 		let mut window_kind: Option<AstWindowKind> = None;
 		let mut parsed = ParsedConfig::default();
@@ -120,6 +121,13 @@ impl<'bump> Compiler<'bump> {
 					size_keys_seen.push(("pane", entry.key.fragment()));
 				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
+				Some("retention") => {
+					retention = Some(declared_duration(
+						literal(entry)?,
+						"'retention'",
+						DurationBound::AllowZero,
+					)?)
+				}
 				Some("immutable") => {
 					immutable_key = Some(entry.key.fragment());
 					immutable = declared_immutable(entry)?;
@@ -146,6 +154,7 @@ impl<'bump> Compiler<'bump> {
 		});
 
 		reject_immutable_not_smaller_than_lateness_in_its_unit(immutable.as_ref(), lateness.as_ref())?;
+		reject_retention_below_lateness(retention.as_ref(), lateness.as_ref())?;
 
 		if window_kind.is_none() {
 			if let Some((_, fragment)) = size_keys_seen.first() {
@@ -248,6 +257,7 @@ impl<'bump> Compiler<'bump> {
 			window: kind,
 			lateness: Declared::value_of(&lateness),
 			immutable: Declared::value_of(&immutable),
+			retention: Declared::value_of(&retention),
 		})
 	}
 }
@@ -293,6 +303,25 @@ fn declared_immutable(entry: &AstOperatorWithEntry<'_>) -> Result<Option<Immutab
 		Some(false) => None,
 		None => Some(Immutable::Span(declared_span(token, "'immutable'")?)),
 	})
+}
+
+fn reject_retention_below_lateness(
+	retention: Option<&Declared<Duration>>,
+	lateness: Option<&Declared<WithSpan>>,
+) -> Result<()> {
+	let (Some(retention), Some(lateness)) = (retention, lateness) else {
+		return Ok(());
+	};
+	match lateness.value {
+		WithSpan::Duration(lateness_value) if retention.value < lateness_value => {
+			Err(AstError::UnexpectedToken {
+				expected: "a retention of at least the lateness".to_string(),
+				fragment: retention.fragment.clone(),
+			}
+			.into())
+		}
+		_ => Ok(()),
+	}
 }
 
 fn reject_immutable_not_smaller_than_lateness_in_its_unit(
@@ -358,6 +387,7 @@ mod tests {
 				window: None,
 				lateness: seconds(30),
 				immutable: seconds(10),
+				retention: None,
 			}
 		);
 	}
@@ -372,19 +402,34 @@ mod tests {
 	}
 
 	#[test]
-	fn retention_is_an_unknown_key() {
-		// A retention nothing reads is a setting the author believes is in force.
-		for source in [
-			"apply op { } with { retention: 1h }",
-			"apply op { } with { retention: 0s }",
-			"apply op { } with { window: tumbling, duration: 1m, retention: 1h }",
-		] {
-			let err = apply_with(source).expect_err("must be rejected").to_string();
-			assert!(
-				err.contains("lateness, or immutable"),
-				"{source} must fail as an unknown key, got: {err}"
-			);
-		}
+	fn retention_parses_as_a_duration() {
+		// A retention read as a count would bound managed state by rows, which the reclaim cannot measure.
+		assert_eq!(
+			apply_with("apply op { } with { lateness: 30s, retention: 1h }").unwrap(),
+			ApplyWith {
+				window: None,
+				lateness: seconds(30),
+				immutable: None,
+				retention: Some(Duration::from_hours(1).unwrap()),
+			}
+		);
+		assert_eq!(
+			apply_with("apply op { } with { retention: 0s }").unwrap().retention,
+			Some(Duration::zero())
+		);
+	}
+
+	#[test]
+	fn a_count_retention_is_rejected() {
+		// A bare number has no unit the reclaim can add to a write time.
+		assert!(apply_with("apply op { } with { retention: 150 }").is_err());
+	}
+
+	#[test]
+	fn retention_below_lateness_is_rejected() {
+		// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
+		assert!(apply_with("apply op { } with { lateness: 30s, retention: 10s }").is_err());
+		assert!(apply_with("apply op { } with { lateness: 30s, retention: 30s }").is_ok());
 	}
 
 	#[test]

@@ -12,14 +12,15 @@ use crate::error::{
 	CoreError,
 	diagnostic::flow::{
 		flow_already_registered, flow_backfill_timeout, flow_dispatcher_unavailable, flow_error,
-		flow_operator_lateness_required, flow_operator_timer_kind_reserved, flow_operator_with_count_span,
+		flow_operator_retention_required, flow_operator_timer_kind_reserved, flow_operator_with_count_span,
 		flow_operator_with_duration_span, flow_operator_with_immutable_not_below_lateness,
-		flow_operator_with_not_accepted, flow_operator_with_pane_missing, flow_operator_with_session_lateness,
-		flow_operator_with_session_zero_gap, flow_operator_with_window_kind_unsupported,
-		flow_operator_with_window_missing, flow_operator_with_window_not_supported,
-		flow_operator_with_window_size_count, flow_operator_with_window_size_duration,
-		flow_operator_with_window_slide_count, flow_operator_with_window_slide_duration,
-		flow_version_corrupted,
+		flow_operator_with_not_accepted, flow_operator_with_pane_missing,
+		flow_operator_with_retention_below_lateness, flow_operator_with_retention_not_supported,
+		flow_operator_with_session_lateness, flow_operator_with_session_zero_gap,
+		flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
+		flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
+		flow_operator_with_window_size_duration, flow_operator_with_window_slide_count,
+		flow_operator_with_window_slide_duration, flow_version_corrupted,
 	},
 };
 
@@ -167,7 +168,14 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::OperatorWithNotAccepted => flow_operator_with_not_accepted(),
 
-			CoreError::OperatorLatenessRequired => flow_operator_lateness_required(),
+			CoreError::OperatorRetentionRequired => flow_operator_retention_required(),
+
+			CoreError::OperatorWithRetentionNotSupported => flow_operator_with_retention_not_supported(),
+
+			CoreError::OperatorWithRetentionBelowLateness {
+				retention,
+				lateness,
+			} => flow_operator_with_retention_below_lateness(retention, lateness),
 
 			CoreError::OperatorTimerKindReserved {
 				kind,

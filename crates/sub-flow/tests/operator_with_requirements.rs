@@ -162,19 +162,16 @@ fn a_managed_apply_without_lateness_fails_the_create() {
 }
 
 #[test]
-fn a_managed_apply_with_zero_lateness_fails_the_create() {
-	// Zero lateness is the absence of a bound, not a declared one, so it must fail exactly as a missing key does.
+fn a_managed_apply_with_zero_lateness_creates() {
+	// Zero lateness is a real bound now: no output hold, and the state is freed at the next gate step.
 	let db = memory();
 	event_time_source(&db);
 
-	let Err(err) = db.try_admin(
+	let created = db.try_admin(
 		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY managed_probe{} WITH { lateness: 0s } }",
-	) else {
-		panic!("a managed apply with zero lateness must be refused at create");
-	};
+	);
 
-	let diagnostic = err.diagnostic();
-	assert_eq!(diagnostic.code, "FLOW_072", "{diagnostic:?}");
+	assert!(created.is_ok(), "a managed apply with zero lateness must create: {created:?}");
 }
 
 #[test]
@@ -526,9 +523,54 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 		("FLOW_075", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
 		("FLOW_078", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
 		("FLOW_079", "time_window_probe{} WITH { window: session, gap: 0s }"),
+		("FLOW_080", "unmanaged_probe{} WITH { retention: 1h }"),
+		("AST_005", "managed_probe{} WITH { lateness: 2s, retention: 1s }"),
 	] {
 		assert_eq!(refused_code(&db, apply), code, "{apply}");
 		assert_eq!(flow_rows(&db, "v"), 0, "{code}: a refused create must register no flow");
 		assert_eq!(poisoned(&db), None, "{code}: a refused create must poison nothing");
 	}
+}
+
+#[test]
+fn a_retention_alone_creates_a_managed_apply() {
+	// Retention is the bound the managed reclaim reads, so it must satisfy the create without any lateness.
+	let db = memory();
+	event_time_source(&db);
+
+	for (name, apply) in [
+		("hour_v", "managed_probe{} WITH { retention: 1h }"),
+		("zero_v", "managed_probe{} WITH { retention: 0s }"),
+		("both_v", "managed_probe{} WITH { lateness: 2s, retention: 1h }"),
+	] {
+		let statement = view(name, apply);
+		if let Err(err) = db.try_admin(&statement) {
+			panic!("a managed apply with a retention must create: {statement}: {:?}", err.diagnostic());
+		}
+	}
+}
+
+#[test]
+fn a_retention_on_an_unmanaged_or_windowed_apply_fails_the_create() {
+	// Nothing but the managed reclaim reads retention, so accepting it elsewhere leaves a bound nobody honours.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "unmanaged_probe{} WITH { retention: 1h }"), "FLOW_080");
+	assert_eq!(
+		refused_code(
+			&db,
+			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }"
+		),
+		"FLOW_080"
+	);
+}
+
+#[test]
+fn a_retention_below_the_lateness_fails_the_create() {
+	// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
+	let db = memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "managed_probe{} WITH { lateness: 2s, retention: 1s }"), "AST_005");
 }

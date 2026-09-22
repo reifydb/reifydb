@@ -298,6 +298,7 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.reject_retention()?;
 		with.require_window("tumbling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;

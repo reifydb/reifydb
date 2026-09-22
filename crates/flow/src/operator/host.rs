@@ -135,21 +135,21 @@ pub struct TxnHostContext<'a, T: FlowTransaction> {
 	txn: &'a mut T,
 	operator: OperatorId,
 	now: DateTime,
-	seal_span: Option<Duration>,
+	retention: Option<Duration>,
 }
 
 impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
-		Self::with_seal_span(txn, operator, None)
+		Self::with_retention(txn, operator, None)
 	}
 
-	pub fn with_seal_span(txn: &'a mut T, operator: OperatorId, seal_span: Option<Duration>) -> Self {
+	pub fn with_retention(txn: &'a mut T, operator: OperatorId, retention: Option<Duration>) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,
 			operator,
 			now,
-			seal_span,
+			retention,
 		}
 	}
 
@@ -160,10 +160,10 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		let Some(group) = key.group().filter(|group| !group.is_root()) else {
 			return Ok(());
 		};
-		let Some(seal_span) = self.seal_span else {
-			return internal_err!("operator {} wrote managed state but has no seal span", self.operator);
+		let Some(retention) = self.retention else {
+			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
-		let due = reclaim_due(self.now, seal_span);
+		let due = reclaim_due(self.now, retention);
 		expiry_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
 		self.txn.arm_timer(
 			self.operator,
@@ -178,8 +178,8 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
 
-fn reclaim_due(written_at: DateTime, seal_span: Duration) -> DateTime {
-	let free = written_at.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
+fn reclaim_due(written_at: DateTime, retention: Duration) -> DateTime {
+	let free = written_at.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
 	DateTime::from_nanos(free.to_nanos().div_ceil(NANOS_PER_SECOND).saturating_mul(NANOS_PER_SECOND))
 }
 

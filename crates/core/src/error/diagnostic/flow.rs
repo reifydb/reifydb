@@ -782,6 +782,22 @@ pub fn flow_operator_with_session_zero_gap() -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_with_retention_not_supported() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_080",
+		"this operator takes no 'retention'".to_string(),
+		"Only a managed operator frees state by retention. Remove retention from the with block.",
+	)
+}
+
+pub fn flow_operator_with_retention_below_lateness(retention: Duration, lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_081",
+		format!("retention {} must not be below lateness {}", retention, lateness),
+		"A managed operator's state must outlive its output hold, so retention must be at least lateness.",
+	)
+}
+
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_070",
@@ -798,11 +814,11 @@ pub fn flow_operator_with_not_accepted() -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_lateness_required() -> Diagnostic {
+pub fn flow_operator_retention_required() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_072",
-		"a managed operator needs a positive 'lateness'".to_string(),
-		"Declare lateness in the with block.",
+		"a managed operator needs 'retention' or 'lateness'".to_string(),
+		"Declare retention in the with block; lateness alone also bounds the state.",
 	)
 }
 
@@ -810,7 +826,7 @@ pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> 
 	flow_diagnostic(
 		"FLOW_073",
 		format!("{flow} applies managed operator '{operator}' but its sources supply no event time"),
-		"a managed operator's state is freed once the watermark passes its last write plus lateness, which only \
+		"a managed operator's state is freed once the watermark passes its last write plus retention, which only \
 		 has meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
 		 source object this flow reads.",
 	)

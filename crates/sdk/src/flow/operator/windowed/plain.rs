@@ -988,6 +988,7 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.reject_retention()?;
 		let rolls = <A::Kinds as KindSet<A>>::ROLLING
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
 		let slides = with.window.as_ref().is_some_and(|kind| kind.name() == "sliding");
@@ -1253,6 +1254,7 @@ mod tests {
 			}),
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
+			retention: None,
 		}
 	}
 
@@ -1331,6 +1333,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
+			retention: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1354,6 +1357,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1386,6 +1390,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());

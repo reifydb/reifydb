@@ -43,6 +43,7 @@ pub struct ApplyWith {
 	pub window: Option<WindowKind>,
 	pub lateness: Option<WithSpan>,
 	pub immutable: Option<WithSpan>,
+	pub retention: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,6 +171,34 @@ impl ApplyWith {
 		}
 	}
 
+	pub fn effective_retention(&self) -> Result<Option<Duration>> {
+		match self.retention {
+			Some(retention) => Ok(Some(retention)),
+			None => self.lateness_duration(),
+		}
+	}
+
+	pub fn check_retention(&self) -> Result<()> {
+		let (Some(retention), Some(lateness)) = (self.retention, self.lateness_duration()?) else {
+			return Ok(());
+		};
+		if retention < lateness {
+			return Err(CoreError::OperatorWithRetentionBelowLateness {
+				retention,
+				lateness,
+			}
+			.into());
+		}
+		Ok(())
+	}
+
+	pub fn reject_retention(&self) -> Result<()> {
+		match self.retention {
+			None => Ok(()),
+			Some(_) => Err(CoreError::OperatorWithRetentionNotSupported.into()),
+		}
+	}
+
 	pub fn reject_window(&self) -> Result<()> {
 		match &self.window {
 			None => Ok(()),
@@ -272,6 +301,9 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 	if let Some(immutable) = with.immutable {
 		values.insert("immutable".to_string(), span_value(immutable));
 	}
+	if let Some(retention) = with.retention {
+		values.insert("retention".to_string(), Value::Duration(retention));
+	}
 	encode_params(&Params::Named(Arc::new(values)))
 		.map_err(|e| internal_error!("failed to encode apply with: {}", e))
 }
@@ -302,6 +334,7 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 			("pane", Value::Duration(d)) => pane = Some(*d),
 			("lateness", value) => with.lateness = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
+			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
@@ -451,6 +484,7 @@ mod tests {
 			window: None,
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
+			retention: None,
 		}
 	}
 
@@ -571,6 +605,7 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Count(150)),
 			immutable: None,
+			retention: None,
 		};
 		let err = WindowSealing::from_operator_with(&with).unwrap_err();
 		assert!(err.to_string().contains("lateness"), "{err}");
@@ -586,6 +621,7 @@ mod tests {
 				window: None,
 				lateness: Some(WithSpan::Count(150)),
 				immutable: Some(WithSpan::Count(0)),
+				retention: None,
 			},
 		] {
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
@@ -651,6 +687,7 @@ mod tests {
 				window: Some(kind),
 				lateness,
 				immutable: None,
+				retention: None,
 			};
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 		}
@@ -674,6 +711,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert!(count.window_duration().is_err());
 
@@ -683,6 +721,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert!(session.window_duration().is_err());
 	}
@@ -697,6 +736,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert!(duration.window_slots().is_err());
 	}
@@ -712,6 +752,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		let by_slots = ApplyWith {
 			window: Some(WindowKind::Sliding {
@@ -720,6 +761,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -727,6 +769,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 
 		assert_eq!(by_time.window_slide_duration().unwrap(), Some(secs(15)));
@@ -747,6 +790,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		let others = [
 			WindowKind::Tumbling {
@@ -771,6 +815,7 @@ mod tests {
 				window: Some(kind),
 				lateness: None,
 				immutable: None,
+				retention: None,
 			};
 			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
 		}
@@ -785,6 +830,7 @@ mod tests {
 			}),
 			lateness,
 			immutable: None,
+			retention: None,
 		};
 		let code = |with: ApplyWith| with.check_session_window().unwrap_err().0.code;
 
@@ -809,6 +855,7 @@ mod tests {
 			}),
 			lateness: Some(WithSpan::Duration(secs(1))),
 			immutable: None,
+			retention: None,
 		};
 		assert!(tumbling.check_session_window().is_ok());
 		assert!(ApplyWith::default().check_session_window().is_ok());
@@ -824,6 +871,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert!(windowed.reject_window().is_err());
 	}
@@ -840,6 +888,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert!(rolling.require_window("tumbling").is_err());
 		assert!(rolling.require_window("rolling").is_ok());
@@ -855,6 +904,7 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
+			retention: None,
 		};
 		assert_eq!(duration.lateness_duration().unwrap(), Some(secs(30)));
 		assert!(duration.lateness_count().is_err());
@@ -863,6 +913,7 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Count(5)),
 			immutable: None,
+			retention: None,
 		};
 		assert_eq!(count.lateness_count().unwrap(), Some(5));
 		assert!(count.lateness_duration().is_err());
@@ -879,6 +930,7 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
+			retention: None,
 		};
 		assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 	}
@@ -921,6 +973,7 @@ mod tests {
 			window: None,
 			lateness: None,
 			immutable: Some(WithSpan::Count(4)),
+			retention: None,
 		};
 		assert_eq!(count.immutable_count().unwrap(), Some(4));
 
@@ -928,7 +981,61 @@ mod tests {
 			window: None,
 			lateness: None,
 			immutable: Some(WithSpan::Duration(secs(4))),
+			retention: None,
 		};
 		assert!(duration.immutable_count().is_err());
+	}
+
+	#[test]
+	fn retention_round_trips_through_the_create_buffer() {
+		// A retention dropped on the way to the guest would run the view with a bound it did not declare.
+		let declared = ApplyWith {
+			retention: Some(secs(3600)),
+			..with(Some(20), None)
+		};
+		let bytes = encode_apply_with(&declared).unwrap();
+		assert_eq!(decode_apply_with(&bytes).unwrap(), declared);
+	}
+
+	#[test]
+	fn effective_retention_is_the_retention_or_else_the_lateness() {
+		// A view that declares lateness alone must keep the bound it had before retention existed.
+		assert_eq!(with(Some(20), None).effective_retention().unwrap(), Some(secs(20)));
+		assert_eq!(with(None, None).effective_retention().unwrap(), None);
+		let declared = ApplyWith {
+			retention: Some(secs(60)),
+			..with(Some(20), None)
+		};
+		assert_eq!(declared.effective_retention().unwrap(), Some(secs(60)));
+	}
+
+	#[test]
+	fn check_retention_refuses_below_the_lateness_and_accepts_equal() {
+		// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
+		let below = ApplyWith {
+			retention: Some(secs(19)),
+			..with(Some(20), None)
+		};
+		let err = below.check_retention().unwrap_err();
+		assert!(err.to_string().contains("must not be below lateness"), "{err}");
+
+		let equal = ApplyWith {
+			retention: Some(secs(20)),
+			..with(Some(20), None)
+		};
+		assert!(equal.check_retention().is_ok());
+		assert!(with(Some(20), None).check_retention().is_ok());
+	}
+
+	#[test]
+	fn reject_retention_refuses_only_a_declared_retention() {
+		// A retention silently dropped on a class that never reclaims by it is a bound the author believes holds.
+		assert!(with(Some(20), None).reject_retention().is_ok());
+		let declared = ApplyWith {
+			retention: Some(secs(60)),
+			..with(None, None)
+		};
+		let err = declared.reject_retention().unwrap_err();
+		assert!(err.to_string().contains("takes no 'retention'"), "{err}");
 	}
 }
