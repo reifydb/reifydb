@@ -372,6 +372,11 @@ pub enum RuntimeErrorKind {
 		actual: Vec<String>,
 		fragment: Fragment,
 	},
+	ColumnLengthMismatch {
+		left: usize,
+		right: usize,
+		fragment: Fragment,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]

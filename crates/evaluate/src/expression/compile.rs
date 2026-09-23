@@ -32,7 +32,7 @@ use crate::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		branch::BranchLayout,
 		call::call_builtin,
-		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
+		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns, length_mismatch},
 		constant::constant_value,
 		context::EvalContext,
 		logic::{execute_logical_op, try_short_circuit_and, try_short_circuit_or},
@@ -882,6 +882,10 @@ fn combine_bool_columns(
 	fragment: Fragment,
 	combine_fn: fn(bool, bool) -> bool,
 ) -> Result<ColumnWithName> {
+	if left.data().len() != right.data().len() {
+		return Err(length_mismatch(left.data().len(), right.data().len(), &fragment));
+	}
+
 	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
 		(ColumnBuffer::Bool(l), ColumnBuffer::Bool(r)) => {
 			let len = l.len();
@@ -889,18 +893,8 @@ fn combine_bool_columns(
 			let mut bitvec = Vec::with_capacity(len);
 
 			for i in 0..len {
-				let l_defined = i < l.len();
-				let r_defined = i < r.len();
-				let l_val = l.value(i);
-				let r_val = r.value(i);
-
-				if l_defined && r_defined {
-					data.push(combine_fn(l_val, r_val));
-					bitvec.push(true);
-				} else {
-					data.push(false);
-					bitvec.push(false);
-				}
+				data.push(combine_fn(l.value(i), r.value(i)));
+				bitvec.push(true);
 			}
 
 			Ok(ColumnWithName {

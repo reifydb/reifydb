@@ -1416,6 +1416,13 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_012",
 						Some("Every branch of a conditional must produce the same columns with the same types.".to_string()),
 					),
+					RuntimeErrorKind::ColumnLengthMismatch { left, right, .. } => (
+						"RUNTIME_014",
+						Some(format!(
+							"Both sides must cover the same rows; got {} and {}. A single row value is repeated to match, any other length is not.",
+							left, right
+						)),
+					),
 					RuntimeErrorKind::ExpectedSingleColumn { actual } => (
 						"RUNTIME_010",
 						Some(format!(
@@ -1453,6 +1460,7 @@ impl IntoDiagnostic for TypeError {
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
 					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					RuntimeErrorKind::ConditionalBranchMismatch { fragment, .. } => fragment.clone(),
+					RuntimeErrorKind::ColumnLengthMismatch { fragment, .. } => fragment.clone(),
 					_ => Fragment::None,
 				};
 

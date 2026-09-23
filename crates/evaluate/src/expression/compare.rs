@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::cmp::Ordering;
+use std::{borrow::Cow, cmp::Ordering};
 
 use arrow_array::{Array, BooleanArray, LargeBinaryArray, LargeStringArray};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder};
 use reifydb_value::{
-	error::Diagnostic,
+	error::{Diagnostic, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions, return_error,
 	value::{
@@ -327,12 +327,49 @@ fn compare_bool<Op: CompareOp>(l: &BooleanArray, r: &BooleanArray, fragment: Fra
 	}
 }
 
+pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> reifydb_value::error::Error {
+	TypeError::Runtime {
+		kind: RuntimeErrorKind::ColumnLengthMismatch {
+			left,
+			right,
+			fragment: fragment.clone(),
+		},
+		message: format!("cannot combine a column of {left} rows with a column of {right} rows"),
+	}
+	.into()
+}
+
+fn repeat_single_row(column: &ColumnWithName, len: usize) -> ColumnWithName {
+	let value = column.data.get_value(0);
+	let mut data = ColumnBuilder::with_capacity(column.data.get_type(), len);
+	for _ in 0..len {
+		data.push_value(value.clone());
+	}
+	ColumnWithName::new(column.name.clone(), data.finish())
+}
+
+fn fit_lengths<'a>(
+	left: &'a ColumnWithName,
+	right: &'a ColumnWithName,
+	fragment: &Fragment,
+) -> Result<(Cow<'a, ColumnWithName>, Cow<'a, ColumnWithName>)> {
+	match (left.data.len(), right.data.len()) {
+		(l, r) if l == r => Ok((Cow::Borrowed(left), Cow::Borrowed(right))),
+		(1, r) => Ok((Cow::Owned(repeat_single_row(left, r)), Cow::Borrowed(right))),
+		(l, 1) => Ok((Cow::Borrowed(left), Cow::Owned(repeat_single_row(right, l)))),
+		(l, r) => Err(length_mismatch(l, r, fragment)),
+	}
+}
+
 pub fn compare_columns<Op: CompareOp>(
 	left: &ColumnWithName,
 	right: &ColumnWithName,
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, ValueType, ValueType) -> Diagnostic,
 ) -> Result<ColumnWithName> {
+	let (left, right) = fit_lengths(left, right, &fragment)?;
+	let (left, right) = (left.as_ref(), right.as_ref());
+
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
 		dispatch_compare!(
 			&left.data(), &right.data();
