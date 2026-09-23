@@ -583,7 +583,7 @@ mod tests {
 	use std::str::FromStr;
 
 	use super::*;
-	use crate::value::decimal::Decimal;
+	use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 	#[test]
 	fn bare_names_are_the_widest_defaults() {
@@ -629,7 +629,7 @@ mod tests {
 			ValueType::from(&Value::Decimal(decimal)),
 			ValueType::decimal(Precision::MAX, Scale::new(2))
 		);
-		assert_eq!(ValueType::from(&Value::Int(crate::value::int::Int::from(1))), ValueType::INT);
-		assert_eq!(ValueType::from(&Value::Uint(crate::value::uint::Uint::from(1u8))), ValueType::UINT);
+		assert_eq!(ValueType::from(&Value::Int(Int::from(1))), ValueType::INT);
+		assert_eq!(ValueType::from(&Value::Uint(Uint::from(1u8))), ValueType::UINT);
 	}
 }

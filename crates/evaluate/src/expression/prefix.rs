@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::result::Result as StdResult;
+
 use arrow_arith::boolean::not;
 use reifydb_core::{
 	error::CoreError,
@@ -306,7 +308,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 							}
 						})
 					})
-					.collect::<std::result::Result<Vec<_>, _>>()?;
+					.collect::<StdResult<Vec<_>, _>>()?;
 				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
 			}
 			PrefixOperator::Plus(_) => Ok(column.clone()),

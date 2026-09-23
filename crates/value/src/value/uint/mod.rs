@@ -212,6 +212,9 @@ impl<'de> Deserialize<'de> for Uint {
 pub mod tests {
 	use std::{cmp::Ordering, collections::HashSet};
 
+	use postcard::{from_bytes, to_stdvec};
+	use serde_json::from_str;
+
 	use super::*;
 
 	#[test]
@@ -311,10 +314,10 @@ pub mod tests {
 	fn serde_round_trips_and_refuses_negative_text() {
 		// A negative uint read back from storage would break the non-negative invariant.
 		for value in [Uint::MAX, Uint::zero(), Uint::from(42u8)] {
-			let back: Uint = postcard::from_bytes(&postcard::to_stdvec(&value).unwrap()).unwrap();
+			let back: Uint = from_bytes(&to_stdvec(&value).unwrap()).unwrap();
 			assert_eq!(back, value);
 		}
-		assert!(serde_json::from_str::<Uint>("\"-1\"").is_err());
-		assert!(serde_json::from_str::<Uint>(&format!("\"{}\"", "9".repeat(77))).is_err());
+		assert!(from_str::<Uint>("\"-1\"").is_err());
+		assert!(from_str::<Uint>(&format!("\"{}\"", "9".repeat(77))).is_err());
 	}
 }

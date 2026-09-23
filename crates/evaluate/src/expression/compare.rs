@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{fmt::Display, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{
-	ArrayRef, BooleanArray, Datum, Scalar,
+	Array, ArrayRef, ArrowPrimitiveType, BooleanArray, Datum, PrimitiveArray, Scalar,
+	cast::AsArray,
 	types::{
-		Decimal128Type, Decimal256Type, Float64Type, Int16Type, Int32Type, Int64Type, UInt16Type, UInt32Type,
-		UInt64Type,
+		Decimal128Type, Decimal256Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, UInt16Type,
+		UInt32Type, UInt64Type,
 	},
 };
-use arrow_buffer::i256;
+use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, i256};
 use arrow_ord::cmp;
 use reifydb_core::{
 	error::CoreError,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, view::group_by::key_column},
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_value::{
 	error::{Diagnostic, Error, RuntimeErrorKind, TypeError},
@@ -36,6 +37,19 @@ use crate::Result;
 
 pub trait CompareOp {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray>;
+	fn float(left: f64, right: f64) -> bool;
+}
+
+fn float_eq(left: f64, right: f64) -> bool {
+	left == right || (left.is_nan() && right.is_nan())
+}
+
+fn float_lt(left: f64, right: f64) -> bool {
+	left < right || (right.is_nan() && !left.is_nan())
+}
+
+fn float_le(left: f64, right: f64) -> bool {
+	left <= right || right.is_nan()
 }
 
 pub struct Equal;
@@ -49,11 +63,19 @@ impl CompareOp for Equal {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::eq(left, right))
 	}
+
+	fn float(left: f64, right: f64) -> bool {
+		float_eq(left, right)
+	}
 }
 
 impl CompareOp for NotEqual {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::neq(left, right))
+	}
+
+	fn float(left: f64, right: f64) -> bool {
+		!float_eq(left, right)
 	}
 }
 
@@ -61,11 +83,19 @@ impl CompareOp for GreaterThan {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::gt(left, right))
 	}
+
+	fn float(left: f64, right: f64) -> bool {
+		float_lt(right, left)
+	}
 }
 
 impl CompareOp for GreaterThanEqual {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::gt_eq(left, right))
+	}
+
+	fn float(left: f64, right: f64) -> bool {
+		float_le(right, left)
 	}
 }
 
@@ -73,15 +103,23 @@ impl CompareOp for LessThan {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::lt(left, right))
 	}
+
+	fn float(left: f64, right: f64) -> bool {
+		float_lt(left, right)
+	}
 }
 
 impl CompareOp for LessThanEqual {
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::lt_eq(left, right))
 	}
+
+	fn float(left: f64, right: f64) -> bool {
+		float_le(left, right)
+	}
 }
 
-fn arrow_result<E: std::fmt::Display>(result: std::result::Result<BooleanArray, E>) -> Result<BooleanArray> {
+fn arrow_result<E: Display>(result: StdResult<BooleanArray, E>) -> Result<BooleanArray> {
 	Ok(result.map_err(|err| CoreError::FrameError {
 		message: err.to_string(),
 	})?)
@@ -405,6 +443,56 @@ fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> Ar
 	}
 }
 
+fn compare_floats<Op: CompareOp, T: ArrowPrimitiveType>(
+	left: &PrimitiveArray<T>,
+	right: &PrimitiveArray<T>,
+	len: usize,
+) -> BooleanArray
+where
+	T::Native: Into<f64>,
+{
+	let (l, r) = (left.values(), right.values());
+	let (values, nulls) = match (l.len(), r.len()) {
+		(1, n) if n != 1 => {
+			let fixed = l[0].into();
+			(pack_each(r, len, |v| Op::float(fixed, v.into())), right.nulls().cloned())
+		}
+		(n, 1) if n != 1 => {
+			let fixed = r[0].into();
+			(pack_each(l, len, |v| Op::float(v.into(), fixed)), left.nulls().cloned())
+		}
+		_ => (
+			pack_pairs(l, r, len, |a, b| Op::float(a.into(), b.into())),
+			NullBuffer::union(left.nulls(), right.nulls()),
+		),
+	};
+	BooleanArray::new(values, nulls)
+}
+
+fn pack_each<T: Copy>(values: &[T], len: usize, test: impl Fn(T) -> bool) -> BooleanBuffer {
+	let mut words = Vec::with_capacity(len.div_ceil(64));
+	for chunk in values.chunks(64) {
+		let mut word = 0u64;
+		for (bit, value) in chunk.iter().enumerate() {
+			word |= u64::from(test(*value)) << bit;
+		}
+		words.push(word);
+	}
+	BooleanBuffer::new(Buffer::from_vec(words), 0, len)
+}
+
+fn pack_pairs<T: Copy>(left: &[T], right: &[T], len: usize, test: impl Fn(T, T) -> bool) -> BooleanBuffer {
+	let mut words = Vec::with_capacity(len.div_ceil(64));
+	for (left_chunk, right_chunk) in left.chunks(64).zip(right.chunks(64)) {
+		let mut word = 0u64;
+		for (bit, (l, r)) in left_chunk.iter().zip(right_chunk).enumerate() {
+			word |= u64::from(test(*l, *r)) << bit;
+		}
+		words.push(word);
+	}
+	BooleanBuffer::new(Buffer::from_vec(words), 0, len)
+}
+
 pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
 	TypeError::Runtime {
 		kind: RuntimeErrorKind::ColumnLengthMismatch {
@@ -441,12 +529,24 @@ pub fn compare_columns<Op: CompareOp>(
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
 		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
 	}
-	let left_array = cast_to(&key_column(left.data()), &target);
-	let right_array = cast_to(&key_column(right.data()), &target);
-	let result = match (left_array.len(), right_array.len()) {
+	let left_array = cast_to(left.data(), &target);
+	let right_array = cast_to(right.data(), &target);
+	let result = match target {
+		ValueType::Float4 => {
+			compare_floats::<Op, Float32Type>(left_array.as_primitive(), right_array.as_primitive(), len)
+		}
+		ValueType::Float8 => {
+			compare_floats::<Op, Float64Type>(left_array.as_primitive(), right_array.as_primitive(), len)
+		}
+		_ => kernel_compare::<Op>(left_array, right_array)?,
+	};
+	Ok(ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::Bool(result)))
+}
+
+fn kernel_compare<Op: CompareOp>(left_array: ArrayRef, right_array: ArrayRef) -> Result<BooleanArray> {
+	Ok(match (left_array.len(), right_array.len()) {
 		(1, r) if r != 1 => Op::kernel(&Scalar::new(left_array), &right_array)?,
 		(l, 1) if l != 1 => Op::kernel(&left_array, &Scalar::new(right_array))?,
 		_ => Op::kernel(&left_array, &right_array)?,
-	};
-	Ok(ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::Bool(result)))
+	})
 }

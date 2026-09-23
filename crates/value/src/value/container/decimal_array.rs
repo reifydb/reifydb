@@ -619,14 +619,14 @@ mod family {
 	#[test]
 	fn serde_restores_values_width_and_data_type() {
 		// Deserializing into the arrow default type would misread every value by a power of ten.
-		let ints = IntColumn(int_array(Precision::MAX, [Int::MAX, Int::MIN, Int::zero()]));
-		let back: IntColumn = from_str(&to_string(&ints).unwrap()).unwrap();
-		assert_eq!(super::ints(&back.0), [Int::MAX, Int::MIN, Int::zero()]);
+		let ints_col = IntColumn(int_array(Precision::MAX, [Int::MAX, Int::MIN, Int::zero()]));
+		let back: IntColumn = from_str(&to_string(&ints_col).unwrap()).unwrap();
+		assert_eq!(ints(&back.0), [Int::MAX, Int::MIN, Int::zero()]);
 		assert_eq!(back.0.data_type(), &DataType::Decimal256(76, 0));
 
-		let uints = UintColumn(uint_array(Precision::new(38), [Uint::from_u128(10u128.pow(38) - 1)]));
-		let back: UintColumn = postcard::from_bytes(&postcard::to_allocvec(&uints).unwrap()).unwrap();
-		assert_eq!(super::uints(&back.0), [Uint::from_u128(10u128.pow(38) - 1)]);
+		let uints_col = UintColumn(uint_array(Precision::new(38), [Uint::from_u128(10u128.pow(38) - 1)]));
+		let back: UintColumn = from_bytes(&to_allocvec(&uints_col).unwrap()).unwrap();
+		assert_eq!(uints(&back.0), [Uint::from_u128(10u128.pow(38) - 1)]);
 		assert_eq!(back.0.data_type(), &DataType::Decimal128(38, 0));
 
 		let decs = DecimalColumn(decimal_array(Precision::new(40), Scale::new(5), [decimal("-12.5")]));

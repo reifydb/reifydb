@@ -5,7 +5,9 @@ use std::str::FromStr;
 
 use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_evaluate::expression::compare::{CompareOp, Equal, GreaterThan, LessThan, compare_columns};
+use reifydb_evaluate::expression::compare::{
+	CompareOp, Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns,
+};
 use reifydb_value::{
 	Result,
 	error::Diagnostic,
@@ -66,28 +68,28 @@ fn bools(column: ColumnBuffer) -> Vec<Option<bool>> {
 
 #[test]
 fn nan_equals_nan() {
-	// Without float normalization plus total order, NaN = NaN would be false.
+	// IEEE says NaN != NaN, so without the NaN rule a NaN value would never equal itself.
 	let result = compare::<Equal>(ColumnBuffer::float8([f64::NAN]), ColumnBuffer::float8([f64::NAN]));
 	assert_eq!(bools(result), vec![Some(true)]);
 }
 
 #[test]
 fn nan_above_every_number() {
-	// Total order must place NaN above every number, otherwise sort and filter disagree.
+	// IEEE leaves NaN unordered, so without the NaN rule sort and filter would disagree on it.
 	let result = compare::<GreaterThan>(ColumnBuffer::float8([f64::NAN]), ColumnBuffer::float8([1.0]));
 	assert_eq!(bools(result), vec![Some(true)]);
 }
 
 #[test]
 fn negative_zero_equals_zero() {
-	// Total order alone ranks -0.0 below 0.0; the key normalization must fold them.
+	// A bitwise or total-order compare splits -0.0 from 0.0; the compare must never do that.
 	let result = compare::<Equal>(ColumnBuffer::float8([-0.0]), ColumnBuffer::float8([0.0]));
 	assert_eq!(bools(result), vec![Some(true)]);
 }
 
 #[test]
 fn float4_nan_equals_float8_nan() {
-	// A float4 NaN must stay the canonical NaN after the cast to float8, otherwise mixed-width NaNs differ.
+	// The float4 to float8 cast must keep a NaN a NaN, otherwise mixed-width NaNs differ.
 	let result = compare::<Equal>(ColumnBuffer::float4([f32::NAN]), ColumnBuffer::float8([f64::NAN]));
 	assert_eq!(bools(result), vec![Some(true)]);
 }
@@ -189,4 +191,84 @@ fn length_mismatch() {
 	// Two multi-row columns of different length must fail, never silently truncate.
 	let result = try_compare::<Equal>(ColumnBuffer::int4([1, 2]), ColumnBuffer::int4([1, 2, 3]));
 	assert!(result.is_err(), "length mismatch must be an error, got {result:?}");
+}
+
+const NEGATIVE_NAN: f64 = f64::from_bits(0xfff8_0000_0000_0000);
+
+fn floats<Op: CompareOp>(left: &[f64], right: &[f64]) -> Vec<Option<bool>> {
+	bools(compare::<Op>(ColumnBuffer::float8(left.to_vec()), ColumnBuffer::float8(right.to_vec())))
+}
+
+#[test]
+fn every_operator_places_nan_above_every_number() {
+	// Each operator has its own float rule, so one wrong rule would split sort and filter on NaN.
+	let left = [f64::NAN, f64::NAN, 1.0, f64::INFINITY];
+	let right = [f64::NAN, 1.0, f64::NAN, f64::NAN];
+	assert_eq!(floats::<Equal>(&left, &right), vec![Some(true), Some(false), Some(false), Some(false)]);
+	assert_eq!(floats::<NotEqual>(&left, &right), vec![Some(false), Some(true), Some(true), Some(true)]);
+	assert_eq!(floats::<LessThan>(&left, &right), vec![Some(false), Some(false), Some(true), Some(true)]);
+	assert_eq!(floats::<LessThanEqual>(&left, &right), vec![Some(true), Some(false), Some(true), Some(true)]);
+	assert_eq!(floats::<GreaterThan>(&left, &right), vec![Some(false), Some(true), Some(false), Some(false)]);
+	assert_eq!(floats::<GreaterThanEqual>(&left, &right), vec![Some(true), Some(true), Some(false), Some(false)]);
+}
+
+#[test]
+fn a_nan_with_the_sign_bit_set_is_still_the_largest_value() {
+	// x86 produces 0.0 / 0.0 with the sign bit set; a bitwise total order would sort it below -Infinity.
+	let left = [NEGATIVE_NAN, NEGATIVE_NAN, NEGATIVE_NAN];
+	let right = [f64::NAN, f64::NEG_INFINITY, f64::MAX];
+	assert_eq!(floats::<Equal>(&left, &right), vec![Some(true), Some(false), Some(false)]);
+	assert_eq!(floats::<GreaterThan>(&left, &right), vec![Some(false), Some(true), Some(true)]);
+	assert_eq!(floats::<LessThan>(&left, &right), vec![Some(false), Some(false), Some(false)]);
+}
+
+#[test]
+fn negative_zero_is_neither_below_nor_above_zero() {
+	// A total order ranks -0.0 below 0.0, so a filter on `< 0` would keep a zero row.
+	let left = [-0.0, 0.0];
+	let right = [0.0, -0.0];
+	assert_eq!(floats::<LessThan>(&left, &right), vec![Some(false), Some(false)]);
+	assert_eq!(floats::<GreaterThan>(&left, &right), vec![Some(false), Some(false)]);
+	assert_eq!(floats::<LessThanEqual>(&left, &right), vec![Some(true), Some(true)]);
+	assert_eq!(floats::<NotEqual>(&left, &right), vec![Some(false), Some(false)]);
+}
+
+#[test]
+fn a_one_row_float_side_is_compared_against_every_row() {
+	// A one-row side is broadcast, so it must be read once per row on either side, never only at row 0.
+	let column = || ColumnBuffer::float8([1.0, f64::NAN, 3.0]);
+	let one = || ColumnBuffer::float8([f64::NAN]);
+	assert_eq!(bools(compare::<Equal>(column(), one())), vec![Some(false), Some(true), Some(false)]);
+	assert_eq!(bools(compare::<LessThan>(one(), column())), vec![Some(false), Some(false), Some(false)]);
+	assert_eq!(bools(compare::<LessThan>(column(), one())), vec![Some(true), Some(false), Some(true)]);
+}
+
+#[test]
+fn a_none_float_row_gives_none_on_either_side_and_with_a_one_row_side() {
+	// The float loop builds its own result, so it must carry the none mask the Arrow kernel used to.
+	let with_none = || ColumnBuffer::float8_with_bitvec([1.0, f64::NAN], vec![true, false]);
+	let result = compare::<Equal>(with_none(), ColumnBuffer::float8([1.0, f64::NAN]));
+	assert_eq!(bools(result), vec![Some(true), None]);
+	let result = compare::<Equal>(ColumnBuffer::float8([1.0, f64::NAN]), with_none());
+	assert_eq!(bools(result), vec![Some(true), None]);
+	let result = compare::<Equal>(with_none(), ColumnBuffer::float8([1.0]));
+	assert_eq!(bools(result), vec![Some(true), None]);
+	let result = compare::<Equal>(ColumnBuffer::float8([1.0]), with_none());
+	assert_eq!(bools(result), vec![Some(true), None]);
+}
+
+#[test]
+fn float4_columns_follow_the_same_rules_without_a_cast() {
+	// Two float4 columns skip the float8 cast, so the float4 path needs its own pin.
+	let left = ColumnBuffer::float4([-0.0, f32::NAN, 1.0]);
+	let right = ColumnBuffer::float4([0.0, f32::NAN, f32::NAN]);
+	assert_eq!(bools(compare::<Equal>(left.clone(), right.clone())), vec![Some(true), Some(true), Some(false)]);
+	assert_eq!(bools(compare::<LessThan>(left, right)), vec![Some(false), Some(false), Some(true)]);
+}
+
+#[test]
+fn an_int_against_a_float_uses_the_float_rules() {
+	// A mixed pair is cast to float8 first, so NaN must still rank above the int.
+	let result = compare::<LessThan>(ColumnBuffer::int4([1, 2]), ColumnBuffer::float8([f64::NAN, 1.5]));
+	assert_eq!(bools(result), vec![Some(true), Some(false)]);
 }

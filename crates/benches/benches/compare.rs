@@ -54,6 +54,7 @@ fn main() {
 
 	let ints = || ColumnBuffer::int4((0..rows).map(|i| i as i32));
 	let floats = || ColumnBuffer::float8((0..rows).map(|i| i as f64 * 0.5));
+	let floats4 = || ColumnBuffer::float4((0..rows).map(|i| i as f32 * 0.5));
 	let strings = || ColumnBuffer::utf8((0..rows).map(|i| format!("k{i:08}")));
 
 	let mut report = BenchReport::new("compare");
@@ -61,6 +62,7 @@ fn main() {
 	bench_case(&mut report, "int4-int8", rows, repeats, ints(), ColumnBuffer::int8((0..rows).map(|i| i as i64)));
 	bench_case(&mut report, "int4-literal", rows, repeats, ints(), ColumnBuffer::int4(vec![500]));
 	bench_case(&mut report, "float8-float8", rows, repeats, floats(), floats());
+	bench_case(&mut report, "float4-float4", rows, repeats, floats4(), floats4());
 	bench_case(&mut report, "utf8-utf8", rows, repeats, strings(), strings());
 	report.save();
 }

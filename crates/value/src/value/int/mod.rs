@@ -234,6 +234,9 @@ impl<'de> Deserialize<'de> for Int {
 pub mod tests {
 	use std::{cmp::Ordering, collections::HashSet};
 
+	use postcard::{from_bytes, to_stdvec};
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
@@ -316,13 +319,13 @@ pub mod tests {
 	fn serde_round_trips_the_full_range() {
 		// A lossy encoding would change the value of a 76 digit int on every save.
 		for value in [Int::MAX, Int::MIN, Int::zero(), Int::from(-42)] {
-			let back: Int = postcard::from_bytes(&postcard::to_stdvec(&value).unwrap()).unwrap();
+			let back: Int = from_bytes(&to_stdvec(&value).unwrap()).unwrap();
 			assert_eq!(back, value);
-			let back: Int = serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
+			let back: Int = from_str(&to_string(&value).unwrap()).unwrap();
 			assert_eq!(back, value);
 		}
-		assert!(serde_json::from_str::<Int>(&format!("\"{}\"", "9".repeat(77))).is_err());
-		assert!(serde_json::from_str::<Int>("\"1.5\"").is_err());
+		assert!(from_str::<Int>(&format!("\"{}\"", "9".repeat(77))).is_err());
+		assert!(from_str::<Int>("\"1.5\"").is_err());
 	}
 
 	#[test]
