@@ -227,7 +227,7 @@ pub fn from_any(
 				}
 				ColumnBuffer::IdentityId(c) => {
 					if !c.is_empty() {
-						result.push(*identity_ids(c)[0]);
+						result.push(identity_ids(c)[0]);
 					} else {
 						result.push_none();
 					}
