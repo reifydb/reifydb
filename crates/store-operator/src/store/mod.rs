@@ -33,6 +33,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
+use reifydb_value::Result;
 
 use crate::{
 	actor::{
@@ -338,8 +339,8 @@ impl OperatorStore {
 }
 
 impl CheckpointFloor for OperatorStore {
-	fn floor(&self) -> Option<CommitVersion> {
-		self.checkpoint_floor().ok().flatten()
+	fn floor(&self) -> Result<Option<CommitVersion>> {
+		Ok(self.checkpoint_floor()?)
 	}
 }
 

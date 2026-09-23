@@ -34,6 +34,11 @@ impl Frame {
 	}
 
 	#[inline]
+	pub fn has_row_numbers(&self) -> bool {
+		self.system.has_row_numbers()
+	}
+
+	#[inline]
 	pub fn created_at(&self) -> &[DateTime] {
 		self.system.created_at()
 	}
@@ -70,15 +75,10 @@ fn escape_control_chars(s: &str) -> String {
 }
 
 fn present_system_columns(frame: &Frame) -> Vec<(&'static str, Vec<String>)> {
-	let candidates = [
-		(
-			SystemColumn::RowNumbers.name(),
-			frame.row_numbers().iter().map(|v| v.to_string()).collect::<Vec<_>>(),
-		),
-		(SystemColumn::CreatedAt.name(), frame.created_at().iter().map(|v| v.to_string()).collect()),
-		(SystemColumn::UpdatedAt.name(), frame.updated_at().iter().map(|v| v.to_string()).collect()),
-	];
-	candidates.into_iter().filter(|(_, cells)| !cells.is_empty()).collect()
+	if !frame.has_row_numbers() {
+		return Vec::new();
+	}
+	vec![(SystemColumn::RowNumbers.name(), frame.row_numbers().iter().map(|v| v.to_string()).collect())]
 }
 
 fn centered(width: usize, content: &str) -> String {
@@ -104,7 +104,14 @@ impl Frame {
 
 	pub fn with_row_numbers(columns: Vec<FrameColumn>, row_numbers: Vec<RowNumber>) -> Self {
 		Self {
-			system: SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+			system: SystemColumns::new(
+				row_numbers,
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+			),
 			columns,
 			op: None,
 		}

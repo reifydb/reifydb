@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet, hash_map::Entry},
+	sync::Arc,
+};
 
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
@@ -21,7 +24,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
+			series::{Series, SeriesKey, SeriesPartitionMetadata, TimestampPrecision},
 			storage::StorageId,
 			sumtype::SumType,
 		},
@@ -86,7 +89,8 @@ pub(crate) fn insert_series(
 		target,
 		returning,
 	} = plan;
-	let (namespace, series, mut metadata) = resolve_insert_series_target(services, txn, &target)?;
+	let (namespace, series) = resolve_insert_series_target(services, txn, &target)?;
+	let mut metadata: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
 	let context = build_insert_series_query_context(
 		services,
 		&SeriesTarget {
@@ -196,7 +200,7 @@ fn insert_series_row(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	metadata: &mut SeriesMetadata,
+	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
 	shape: &RowShape,
 	context: &QueryContext,
 	columns: &Columns,
@@ -208,6 +212,21 @@ fn insert_series_row(
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
 	let values = coerce_series_row(series, columns, context, row_idx)?;
+	let partition_values = series_partition_values(series, &values)?;
+	let partition = if partition_values.is_empty() {
+		Partition::default()
+	} else {
+		Partition::of(&partition_values)
+	};
+	let metadata = match metadata_by_partition.entry(partition) {
+		Entry::Occupied(entry) => entry.into_mut(),
+		Entry::Vacant(entry) => {
+			let loaded =
+				services.catalog.find_series_metadata(txn, series.id, partition)?.unwrap_or_default();
+			entry.insert(loaded)
+		}
+	};
+
 	let key_input = series
 		.columns
 		.iter()
@@ -223,7 +242,7 @@ fn insert_series_row(
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
-	let key: TaggedKey = if series.partition_by.is_empty() {
+	let key: TaggedKey = if partition_values.is_empty() {
 		SeriesRowKey {
 			storage: StorageId::series(series.id),
 			variant_tag,
@@ -232,15 +251,7 @@ fn insert_series_row(
 		}
 		.into()
 	} else {
-		let mut part_values = Vec::with_capacity(series.partition_by.len());
-		for name in &series.partition_by {
-			let idx = series.columns.iter().position(|c| c.name == *name).ok_or_else(|| {
-				internal_error!("partition column {} missing from series {}", name, series.name)
-			})?;
-			part_values.push(values[idx].clone());
-		}
-		let partition = Partition::of(&part_values);
-		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
+		resolve_partition(txn, ObjectId::Series(series.id), partition, &partition_values, verified)?;
 		PartitionedSeriesRowKey::new(StorageId::series(series.id), partition, variant_tag, key_value, sequence)
 			.into()
 	};
@@ -304,13 +315,15 @@ fn finalize_series_insert(
 	namespace: &Namespace,
 	series: &Series,
 	shape: &RowShape,
-	metadata: SeriesMetadata,
+	metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata>,
 	inserted_count: u64,
 	returning: &Option<Vec<Expression>>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
 ) -> Result<Columns> {
-	if inserted_count > 0 {
-		services.catalog.update_series_metadata_txn(txn, series.id, metadata)?;
+	let now = services.runtime_context.clock.now();
+	for (partition, mut metadata) in metadata_by_partition {
+		metadata.last_write_at = now;
+		services.catalog.update_series_metadata_txn(txn, series.id, partition, metadata)?;
 	}
 
 	if let Some(returning_exprs) = returning {
@@ -336,7 +349,7 @@ fn resolve_insert_series_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedSeries,
-) -> Result<(Namespace, Series, SeriesMetadata)> {
+) -> Result<(Namespace, Series)> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -346,11 +359,19 @@ fn resolve_insert_series_target(
 		let fragment = Fragment::internal(target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
-	let Some(metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
-		let fragment = Fragment::internal(target.name());
-		return_error!(series_not_found(fragment, namespace_name, series_name));
-	};
-	Ok((namespace, series, metadata))
+	Ok((namespace, series))
+}
+
+#[inline]
+fn series_partition_values(series: &Series, values: &[Value]) -> Result<Vec<Value>> {
+	let mut partition_values = Vec::with_capacity(series.partition_by.len());
+	for name in &series.partition_by {
+		let idx = series.columns.iter().position(|c| c.name == *name).ok_or_else(|| {
+			internal_error!("partition column {} missing from series {}", name, series.name)
+		})?;
+		partition_values.push(values[idx].clone());
+	}
+	Ok(partition_values)
 }
 
 #[inline]
@@ -377,7 +398,7 @@ fn build_insert_series_query_context(
 }
 
 #[inline]
-fn generate_series_key(services: &Arc<Services>, key: &SeriesKey, metadata: &SeriesMetadata) -> u64 {
+fn generate_series_key(services: &Arc<Services>, key: &SeriesKey, metadata: &SeriesPartitionMetadata) -> u64 {
 	match key {
 		SeriesKey::DateTime {
 			precision,
@@ -458,6 +479,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 			vec![EncodedSeriesRow::view(snapshot.row).created_at()],
 			vec![EncodedSeriesRow::view(snapshot.row).updated_at()],
 			EncodedSeriesRow::view(snapshot.row).time().into_iter().collect(),
+			Vec::new(),
 		),
 	);
 	txn.track_flow_change(Change {
@@ -469,7 +491,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 }
 
 #[inline]
-fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u64) {
+fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key_value: u64) {
 	if metadata.row_count == 0 {
 		metadata.oldest_key = key_value;
 		metadata.newest_key = key_value;
@@ -481,6 +503,8 @@ fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u
 			metadata.newest_key = key_value;
 		}
 	}
+	metadata.dirty_from_key = metadata.dirty_from_key.min(key_value);
+	metadata.dirty_to_key = metadata.dirty_to_key.max(key_value.saturating_add(1));
 	metadata.row_count += 1;
 }
 

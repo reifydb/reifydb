@@ -231,7 +231,7 @@ pub mod primary_key_tests {
 			KeyTag::VariantHandler => {}
 			KeyTag::Series => {}
 			KeyTag::NamespaceSeries => {}
-			KeyTag::SeriesMetadata => {}
+			KeyTag::SeriesPartitionMetadata => {}
 			KeyTag::Identity => {}
 			KeyTag::Role => {}
 			KeyTag::GrantedRole => {}
@@ -563,8 +563,8 @@ pub mod primary_key_tests {
 	}
 
 	#[test]
-	fn test_include_series_metadata() {
-		assert!(!should_exclude_from_cdc(KeyTag::SeriesMetadata));
+	fn test_include_series_partition_metadata() {
+		assert!(!should_exclude_from_cdc(KeyTag::SeriesPartitionMetadata));
 	}
 
 	#[test]

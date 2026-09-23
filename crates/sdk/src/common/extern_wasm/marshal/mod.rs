@@ -211,7 +211,14 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let now = DateTime::default();
 		Columns::with_system(
 			columns,
-			SystemColumns::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n]),
+			SystemColumns::new(
+				row_numbers,
+				Vec::new(),
+				vec![now; n],
+				vec![now; n],
+				vec![now; n],
+				Vec::new(),
+			),
 		)
 	}
 }

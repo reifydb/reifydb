@@ -27,6 +27,7 @@ impl VirtualScanNode {
 
 		let headers = ColumnHeaders {
 			columns: def.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: false,
 		};
 
 		Ok(Self {

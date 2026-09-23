@@ -14,8 +14,7 @@ use reifydb_uptime::migration_path;
 
 const CREATE_WITH_TWO_REGIONS: &str = "CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, \
 	 $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled); \
-	 CALL uptime::add_monitor_region($id, $region_a); \
-	 CALL uptime::add_monitor_region($id, $region_b)";
+	 CALL uptime::add_monitor_regions($id, $region_ids)";
 
 fn build() -> Database {
 	server::memory().with_flow(|f| f).with_migrations(migration_path()).build().expect("build memory db")
@@ -102,8 +101,7 @@ fn create_params(id: Uuid7, region_a: Uuid7, region_b: Uuid7) -> Params {
 		("expected_ip", Value::none()),
 		("failure_threshold", Value::Int2(3)),
 		("enabled", Value::Boolean(true)),
-		("region_a", region_a.into_value()),
-		("region_b", region_b.into_value()),
+		("region_ids", Value::List(vec![region_a.into_value(), region_b.into_value()])),
 	])
 }
 
@@ -175,7 +173,7 @@ fn a_denied_later_call_rolls_back_the_earlier_calls() {
 	let id = new_id(&db);
 	let rql = "CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, \
 		 $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled); \
-		 CALL uptime::add_monitor_region($id, $region_a); \
+		 CALL uptime::add_monitor_regions($id, $region_ids); \
 		 CALL uptime::find_monitor($id)";
 
 	let result = command_as(&db, alice, rql, create_params(id, region(&db, "US East"), region(&db, "EU West")));

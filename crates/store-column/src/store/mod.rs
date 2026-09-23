@@ -13,16 +13,16 @@ use reifydb_value::Result;
 use tracing::warn;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::column::persistent::sqlite::SqliteColumnStore;
+use crate::persistent::sqlite::SqliteColumnStore;
 
 #[derive(Clone, Default)]
-pub struct ColumnBlockStore {
+pub struct ColumnStore {
 	blocks: Arc<DashMap<ColumnSnapshotId, Arc<ColumnBlock>>>,
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	persistent: Option<Arc<SqliteColumnStore>>,
 }
 
-impl ColumnBlockStore {
+impl ColumnStore {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -80,15 +80,25 @@ impl ColumnBlockStore {
 	pub fn warm(&self) -> Result<()> {
 		if let Some(tier) = &self.persistent {
 			for (id, bytes) in tier.load_all()? {
-				let block = deserialize_block(&bytes)?;
-				self.blocks.insert(id, Arc::new(block));
+				match deserialize_block(&bytes) {
+					Ok(block) => {
+						self.blocks.insert(id, Arc::new(block));
+					}
+					Err(e) => {
+						warn!(snapshot_id = id.0, error = %e, "skipping undecodable column block during warm")
+					}
+				}
 			}
 		}
 		Ok(())
 	}
 
-	pub fn remove(&self, id: ColumnSnapshotId) -> Option<Arc<ColumnBlock>> {
-		self.blocks.remove(&id).map(|(_, v)| v)
+	pub fn remove(&self, id: ColumnSnapshotId) -> Result<Option<Arc<ColumnBlock>>> {
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(tier) = &self.persistent {
+			tier.delete(id)?;
+		}
+		Ok(self.blocks.remove(&id).map(|(_, v)| v))
 	}
 
 	pub fn len(&self) -> usize {

@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_codec::row::{catalog::EncodedCatalogRowBuilder, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
-		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource},
+		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource, ColumnStats},
 		id::{ColumnSnapshotId, NamespaceId},
 	},
 	key::column::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::value::{Value, partition::Partition};
 
 use crate::{
 	CatalogStore, Result,
-	store::{column_snapshot::shape::column_snapshot, sequence::system::SystemSequence},
+	store::{
+		column_snapshot::shape::{column_snapshot, serialize_partition_values, serialize_stats},
+		sequence::system::SystemSequence,
+	},
 };
 
 #[derive(Debug, Clone)]
@@ -21,6 +25,8 @@ pub struct ColumnSnapshotToCreate {
 	pub namespace: NamespaceId,
 	pub source: ColumnSnapshotSource,
 	pub row_count: u64,
+	pub partition_values: Vec<Value>,
+	pub stats: Vec<ColumnStats>,
 }
 
 impl CatalogStore {
@@ -37,6 +43,8 @@ impl CatalogStore {
 			namespace: to_create.namespace,
 			source: to_create.source,
 			row_count: to_create.row_count,
+			partition_values: to_create.partition_values,
+			stats: to_create.stats,
 		})
 	}
 
@@ -58,6 +66,8 @@ impl CatalogStore {
 				column_snapshot::set_source_id(&mut row, u64::from(*table_id));
 				column_snapshot::set_bucket_start(&mut row, 0u64);
 				column_snapshot::set_bucket_width(&mut row, 0u64);
+				column_snapshot::set_partition_hi_none(&mut row);
+				column_snapshot::set_partition_lo_none(&mut row);
 				column_snapshot::set_sequence_counter(&mut row, 0u64);
 				column_snapshot::set_read_version(&mut row, commit_version.0);
 			}
@@ -65,18 +75,25 @@ impl CatalogStore {
 				series_id,
 				bucket_start,
 				bucket_width,
+				partition,
 				sequence_counter,
 				sealed_at_commit_version,
 			} => {
 				column_snapshot::set_source_id(&mut row, u64::from(*series_id));
 				column_snapshot::set_bucket_start(&mut row, *bucket_start);
 				column_snapshot::set_bucket_width(&mut row, *bucket_width);
+				set_partition(&mut row, *partition);
 				column_snapshot::set_sequence_counter(&mut row, *sequence_counter);
 				column_snapshot::set_read_version(&mut row, sealed_at_commit_version.0);
 			}
 		}
 
 		column_snapshot::set_row_count(&mut row, to_create.row_count);
+		column_snapshot::set_partition_values(
+			&mut row,
+			&serialize_partition_values(&to_create.partition_values),
+		);
+		column_snapshot::set_stats(&mut row, &serialize_stats(&to_create.stats));
 
 		txn.set(&ColumnSnapshotKey::new(id), row.freeze())?;
 		Ok(())
@@ -98,15 +115,32 @@ impl CatalogStore {
 			}
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
+				partition,
 				..
 			} => {
-				txn.set(&SeriesColumnSnapshotKey::new(*series_id, id), row.into_bytes())?;
+				txn.set(
+					&SeriesColumnSnapshotKey::new(*series_id, partition.unwrap_or_default(), id),
+					row.into_bytes(),
+				)?;
 			}
 		}
 
 		let _ = ColumnSnapshotKind::Table;
 
 		Ok(())
+	}
+}
+
+fn set_partition(row: &mut EncodedCatalogRowBuilder, partition: Option<Partition>) {
+	match partition {
+		Some(partition) => {
+			column_snapshot::set_partition_hi(row, (partition.0 >> 64) as u64);
+			column_snapshot::set_partition_lo(row, partition.0 as u64);
+		}
+		None => {
+			column_snapshot::set_partition_hi_none(row);
+			column_snapshot::set_partition_lo_none(row);
+		}
 	}
 }
 
@@ -136,6 +170,8 @@ pub mod tests {
 					commit_version: CommitVersion(7),
 				},
 				row_count: 42,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
@@ -158,10 +194,13 @@ pub mod tests {
 					series_id: SeriesId(202),
 					bucket_start: 1000,
 					bucket_width: 100,
+					partition: None,
 					sequence_counter: 5,
 					sealed_at_commit_version: CommitVersion(11),
 				},
 				row_count: 50,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();

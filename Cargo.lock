@@ -2956,6 +2956,7 @@ version = "0.9.3"
 dependencies = [
  "crossbeam-skiplist",
  "once_cell",
+ "postcard",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -3121,6 +3122,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-client",
  "reifydb-codec",
+ "reifydb-column",
  "reifydb-core",
  "reifydb-evaluate",
  "reifydb-extension",
@@ -3131,6 +3133,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-store-cdc",
+ "reifydb-store-column",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3486,6 +3489,21 @@ dependencies = [
  "test_each_file",
  "tracing",
  "zstd",
+]
+
+[[package]]
+name = "reifydb-store-column"
+version = "0.9.3"
+dependencies = [
+ "dashmap",
+ "reifydb-build",
+ "reifydb-column",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-sqlite",
+ "reifydb-value",
+ "rusqlite",
+ "tracing",
 ]
 
 [[package]]
@@ -3854,11 +3872,11 @@ dependencies = [
  "reifydb-evaluate",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store-column",
  "reifydb-sub-api",
  "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
- "rusqlite",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -4117,6 +4135,17 @@ dependencies = [
  "thiserror 2.0.18",
  "uuid",
  "xxhash-rust",
+]
+
+[[package]]
+name = "reifydb-wal"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-runtime",
+ "reifydb-store-log",
+ "reifydb-value",
 ]
 
 [[package]]

@@ -12,7 +12,7 @@ name = "playground"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["alloc-jemalloc"] }
+reifydb = { workspace = true, features = ["alloc-jemalloc", "column"] }
 
 [build-dependencies]
 reifydb-build = { workspace = true }

@@ -46,6 +46,7 @@ fn columns_numbered(named: Vec<(&str, ColumnBuffer)>, numbers: &[u64]) -> Column
 			vec![at; numbers.len()],
 			vec![at; numbers.len()],
 			vec![at; numbers.len()],
+			Vec::new(),
 		),
 	)
 }

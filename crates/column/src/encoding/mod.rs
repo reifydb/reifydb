@@ -1,29 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub mod all_none;
 pub mod canonical;
 pub mod compressed;
+pub mod constant;
 
 use std::{
 	collections::HashMap,
 	sync::{Arc, OnceLock},
 };
 
+use all_none::AllNoneEncoding;
 use canonical::CanonicalEncoding;
 use compressed::{
-	AllNoneEncoding, BitPackEncoding, ConstantEncoding, DeltaEncoding, DeltaRleEncoding, DictEncoding, ForEncoding,
-	RleEncoding, SparseEncoding,
+	BitPackEncoding, DeltaEncoding, DeltaRleEncoding, DictEncoding, ForEncoding, RleEncoding, SparseEncoding,
 };
+use constant::ConstantEncoding;
 use reifydb_core::value::column::{
 	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
 	stats::StatsSet,
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::{
 	compress::CompressConfig,
 	compute::{Compute, DefaultCompute},
+	persist::PersistedArray,
 };
 
 pub trait Encoding: Send + Sync + 'static {
@@ -32,6 +36,10 @@ pub trait Encoding: Send + Sync + 'static {
 	fn try_compress(&self, input: &Canonical, cfg: &CompressConfig) -> Result<Option<Column>>;
 
 	fn canonicalize(&self, array: &Column) -> Result<Canonical>;
+
+	fn persist(&self, array: &Column) -> Result<PersistedArray>;
+
+	fn load(&self, persisted: PersistedArray, ty: &ValueType) -> Result<Column>;
 
 	fn compute(&self) -> &dyn Compute {
 		&DefaultCompute

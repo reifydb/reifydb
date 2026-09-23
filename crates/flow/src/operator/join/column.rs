@@ -104,6 +104,7 @@ impl JoinedColumnsBuilder {
 				Self::duplicate_timestamp(left.created_at(), left_idx, right_count),
 				Self::duplicate_timestamp(left.updated_at(), left_idx, right_count),
 				Self::max_time_broadcast_left(left.time(), left_idx, right.time(), right_count),
+				Vec::new(),
 			),
 		)
 	}
@@ -151,6 +152,7 @@ impl JoinedColumnsBuilder {
 				left.created_at().as_ref().to_vec(),
 				left.updated_at().as_ref().to_vec(),
 				Self::max_time_broadcast_right(left.time(), right.time(), right_idx, left_count),
+				Vec::new(),
 			),
 		)
 	}
@@ -172,6 +174,7 @@ impl JoinedColumnsBuilder {
 				pick(columns.created_at()),
 				pick(columns.updated_at()),
 				pick(columns.time()),
+				Vec::new(),
 			),
 		)
 	}
@@ -226,6 +229,7 @@ impl JoinedColumnsBuilder {
 				Self::expand_timestamps_cartesian(left.created_at(), left_indices, right_count),
 				Self::expand_timestamps_cartesian(left.updated_at(), left_indices, right_count),
 				Self::max_time_cartesian(left.time(), left_indices, right.time(), right_count),
+				Vec::new(),
 			),
 		)
 	}
@@ -263,6 +267,7 @@ impl JoinedColumnsBuilder {
 				Self::extract_single_timestamp(left.created_at(), left_idx),
 				Self::extract_single_timestamp(left.updated_at(), left_idx),
 				Self::extract_single_timestamp(left.time(), left_idx),
+				Vec::new(),
 			),
 		)
 	}
@@ -309,6 +314,7 @@ impl JoinedColumnsBuilder {
 				Self::extract_timestamps_at_indices(left.created_at(), left_indices),
 				Self::extract_timestamps_at_indices(left.updated_at(), left_indices),
 				Self::extract_timestamps_at_indices(left.time(), left_indices),
+				Vec::new(),
 			),
 		)
 	}

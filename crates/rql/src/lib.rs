@@ -164,6 +164,65 @@ fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
 }
 
+pub(crate) fn convert_procedure_param_type(ast: &AstType) -> Result<TypeConstraint> {
+	match ast {
+		AstType::Unconstrained(name) if is_list(name) => Err(AstError::ListItemMissing {
+			fragment: name.to_owned(),
+		}
+		.into()),
+		AstType::Constrained {
+			name,
+			params,
+		} if is_list(name) => Ok(TypeConstraint::unconstrained(convert_list_type(name, params)?)),
+		_ => convert_data_type_with_constraints(ast),
+	}
+}
+
+fn is_list(name: &BumpFragment<'_>) -> bool {
+	name.text().eq_ignore_ascii_case("list")
+}
+
+fn convert_list_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType> {
+	let item = match params {
+		[] => {
+			return Err(AstError::ListItemMissing {
+				fragment: name.to_owned(),
+			}
+			.into());
+		}
+		[item] => item,
+		[_, extra, ..] => {
+			return Err(AstError::ListTooManyParameters {
+				fragment: extra.fragment().to_owned(),
+			}
+			.into());
+		}
+	};
+
+	let AstTypeParameter::Type(item_type) = item else {
+		return Err(AstError::ListItemNotAType {
+			fragment: item.fragment().to_owned(),
+		}
+		.into());
+	};
+	let item_constraint = convert_procedure_param_type(item_type)?;
+	if item_constraint.constraint().is_some() {
+		return Err(AstError::ListItemConstrained {
+			fragment: item_type.name_fragment().to_owned(),
+		}
+		.into());
+	}
+
+	let item = item_constraint.get_type();
+	if !item.is_scalar() {
+		return Err(AstError::ListItemNotScalar {
+			fragment: item_type.name_fragment().to_owned(),
+		}
+		.into());
+	}
+	Ok(ValueType::List(Box::new(item)))
+}
+
 fn is_digest(name: &BumpFragment<'_>) -> bool {
 	name.text().eq_ignore_ascii_case("digest")
 }

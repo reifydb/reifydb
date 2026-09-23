@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{
-	Result, convert_data_type_with_constraints, nodes,
+	Result, convert_procedure_param_type, nodes,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -39,7 +39,7 @@ impl<'bump> Compiler<'bump> {
 
 		let mut params = Vec::with_capacity(create.params.len());
 		for param in &create.params {
-			let constraint = convert_data_type_with_constraints(&param.param_type)?;
+			let constraint = convert_procedure_param_type(&param.param_type)?;
 			params.push(ProcedureParam {
 				name: param.name.text().to_string(),
 				param_type: constraint,

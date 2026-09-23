@@ -12,12 +12,13 @@ use reifydb_codec::log::{
 	record::Record,
 };
 use reifydb_runtime::io::fs::{
-	Create, Filesystem, Len, Open, OpenMut, Pread, Rename, SyncData, SyncDir, Truncate, Unlink,
+	Create, Filesystem, FsError, Len, Open, OpenMut, Pread, Rename, SyncData, SyncDir, Truncate, Unlink,
 };
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	error::{LogError, Result},
+	partition::index_base_of,
 	segment::{Scan, discard, read_exact, scan_from, staging, write_all},
 };
 
@@ -47,8 +48,10 @@ impl<F: Filesystem> Index<F> {
 	where
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
-		if fs.open(path).is_ok() {
-			return Err(LogError::AlreadyExists(path.to_path_buf()));
+		match fs.open(path) {
+			Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+			Err(FsError::NotFound(_)) => {}
+			Err(error) => return Err(error.into()),
 		}
 		let header = Header::new(base_version, base_index);
 		let staging = staging(path);
@@ -213,12 +216,17 @@ fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
 			len,
 		});
 	}
-	let header = Header::decode(&raw);
-	if header.magic != MAGIC {
+	let found = u32::from_le_bytes(raw[0..4].try_into().unwrap());
+	if found != MAGIC {
 		return Err(LogError::IndexMagic {
 			path: path.to_path_buf(),
-			found: header.magic,
+			found,
 		});
+	}
+	let header = Header::decode(&raw).ok_or_else(|| LogError::IndexCorrupt(path.to_path_buf()))?;
+	let named = path.file_name().and_then(|name| name.to_str()).and_then(index_base_of);
+	if named.is_some_and(|named| named != header.base_version) {
+		return Err(LogError::IndexCorrupt(path.to_path_buf()));
 	}
 	Ok(header)
 }

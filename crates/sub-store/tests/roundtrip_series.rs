@@ -27,6 +27,7 @@ fn series_materialization_populates_block_store() {
 		// Width 5 over keys 0..=11 gives [0,5), [5,10), [10,15); newest_key 11 closes the first two.
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		..StorageConfig::default()
 	};
 
 	let mut db = TestDb::from(
@@ -90,7 +91,10 @@ fn series_materialization_populates_block_store() {
 		assert!(block.len() > 0);
 
 		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
-		assert_eq!(schema_names, vec!["k", "value", "#rownum", "#created_at", "#updated_at"]);
+		assert_eq!(
+			schema_names,
+			vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
+		);
 
 		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");

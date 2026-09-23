@@ -1,0 +1,24 @@
+[package]
+name = "reifydb-wal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Typed write-ahead log over the segmented log store"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+testing = []
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-codec = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store-log = { workspace = true }
+reifydb-value = { workspace = true }

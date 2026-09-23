@@ -55,6 +55,7 @@ impl QueueScan {
 
 		let headers = ColumnHeaders {
 			columns: queue.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: true,
 		};
 
 		Ok(Self {

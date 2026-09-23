@@ -209,6 +209,7 @@ mod tests {
 				vec![DateTime::from_nanos(900), DateTime::from_nanos(901)],
 				vec![DateTime::from_nanos(950), DateTime::from_nanos(951)],
 				time_nanos.map(DateTime::from_nanos).to_vec(),
+				Vec::new(),
 			),
 		)
 	}

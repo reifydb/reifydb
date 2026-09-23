@@ -1,7 +1,7 @@
 error[E0283]: type annotations needed
-  --> tests/class_compile_fail/two_emit_impls_are_ambiguous.rs:93:23
+  --> tests/class_compile_fail/two_emit_impls_are_ambiguous.rs:98:23
    |
-93 |     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
+98 |     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
    |                          ^^^^ cannot infer type
    |
    = note: multiple `impl`s satisfying `Both: WindowDriver<_>` found in the `reifydb_sdk` crate:
@@ -12,6 +12,6 @@ error[E0283]: type annotations needed
    = note: associated types cannot be accessed directly on a `trait`, they can only be accessed through a specific `impl`
 help: use the fully qualified path to an implementation
    |
-93 -     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
-93 +     let _driver: Option<<<Type as WindowDriver>::Driver as WindowDriver<_>>::Driver> = None;
+98 -     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
+98 +     let _driver: Option<<<Type as WindowDriver>::Driver as WindowDriver<_>>::Driver> = None;
    |

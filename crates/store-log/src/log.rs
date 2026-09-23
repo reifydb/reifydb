@@ -9,7 +9,7 @@ use reifydb_codec::log::{
 	record::Record,
 };
 use reifydb_runtime::io::fs::{
-	Create, Filesystem, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
 };
 use reifydb_value::{byte_size::ByteSize, clock::ClockNow, value::duration::Duration};
 
@@ -17,8 +17,8 @@ use crate::{
 	cursor::Cursor,
 	error::{LogError, Result},
 	partition::{Config, Partition, sync},
-	reader::{record, register, unregister, version_of},
-	segment::{Scan, discard, staging, write_all},
+	reader::{readers, record, register, unregister, version_of},
+	segment::{Scan, discard, parent, staging, write_all},
 	writer::Writer,
 };
 
@@ -49,19 +49,12 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	pub fn create(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
-		Self::created(fs, clock, dir, config, partitions, true)
-	}
-
 	pub fn create_detached(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
-		Self::created(fs, clock, dir, config, partitions, false)
-	}
-
-	fn created(fs: F, clock: C, dir: &Path, config: Config, partitions: u32, threaded: bool) -> Result<Self> {
 		if partitions == 0 {
 			return Err(LogError::MetaCorrupt(dir.join(META_NAME)));
 		}
 		fs.mkdir(dir)?;
+		fs.sync_dir(parent(dir))?;
 		let meta = Meta {
 			version: FORMAT_VERSION,
 			partitions,
@@ -80,7 +73,7 @@ where
 					LogVersion::ZERO,
 					LogIndex::ZERO,
 				)?;
-				Ok(writer(fs.clone(), partition, threaded))
+				Ok(Writer::detached(fs.clone(), partition))
 			})
 			.collect::<Result<Vec<_>>>()?;
 		Ok(Self {
@@ -91,15 +84,7 @@ where
 		})
 	}
 
-	pub fn open(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
-		Self::opened(fs, clock, dir, true)
-	}
-
 	pub fn open_detached(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
-		Self::opened(fs, clock, dir, false)
-	}
-
-	fn opened(fs: F, clock: C, dir: &Path, threaded: bool) -> Result<(Self, Vec<Scan>)> {
 		let meta = load(&fs, &dir.join(META_NAME))?;
 		let config = Config {
 			segment_bytes: meta.segment_bytes,
@@ -111,7 +96,7 @@ where
 		for at in 0..meta.partitions {
 			let (partition, scan) =
 				Partition::open(fs.clone(), clock.clone(), &dir.join(partition_name(at)), config)?;
-			writers.push(writer(fs.clone(), partition, threaded));
+			writers.push(Writer::detached(fs.clone(), partition));
 			scans.push(scan);
 		}
 		let log = Self {
@@ -127,10 +112,6 @@ where
 		self.writer(partition)?.commit(record)
 	}
 
-	pub fn append_durable(&self, partition: u32, record: &Record) -> Result<Position> {
-		self.writer(partition)?.commit_durable(record)
-	}
-
 	pub fn truncate_from(&self, partition: u32, index: LogIndex) -> Result<()> {
 		self.writer(partition)?.truncate_from(index)
 	}
@@ -139,12 +120,20 @@ where
 		self.with(partition, |found| found.compact_to(index))?
 	}
 
-	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<()> {
-		self.writer(partition)?.rebase(index, term)
+	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>> {
+		self.with(partition, |found| {
+			found.commit(index)?;
+			found.compact_to(index)?;
+			found.drop_below(index)
+		})?
 	}
 
-	pub fn wait(&self, partition: u32, version: LogVersion) -> Result<()> {
-		self.writer(partition)?.wait(version)
+	pub fn flush(&self, partition: u32) -> Result<()> {
+		self.writer(partition)?.flush()
+	}
+
+	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<()> {
+		self.writer(partition)?.rebase(index, term)
 	}
 
 	pub fn durable(&self, partition: u32) -> Result<Option<LogVersion>> {
@@ -182,11 +171,21 @@ where
 	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>> {
 		let dir = self.dir_of(partition)?;
 		let after = version_of(&self.fs, &dir, id)?;
-		Cursor::open(&self.fs, &dir, after)
+		Cursor::open(&self.fs, &dir, (after != LogVersion::ZERO).then_some(after))
+	}
+
+	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>> {
+		let dir = self.dir_of(partition)?;
+		let after = LogVersion::new(version.as_u64().saturating_sub(1));
+		Cursor::open(&self.fs, &dir, Some(after))
+	}
+
+	pub fn readers(&self, partition: u32) -> Result<Vec<(String, LogVersion)>> {
+		readers(&self.fs, &self.dir_of(partition)?)
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {
-		self.writers.iter().filter_map(Writer::written).max()
+		self.writers.iter().filter_map(Writer::durable).max()
 	}
 
 	pub fn meta(&self) -> Meta {
@@ -210,8 +209,16 @@ where
 		Ok(self.writer(partition)?.with(|partition| partition.bases().to_vec()))
 	}
 
+	pub fn commit_index(&self, partition: u32) -> Result<LogIndex> {
+		Ok(self.writer(partition)?.with(|partition| partition.commit_index()))
+	}
+
 	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize> {
 		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
+	}
+
+	pub fn bytes(&self, partition: u32) -> Result<ByteSize> {
+		self.with(partition, |found| found.bytes())?
 	}
 
 	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R> {
@@ -227,31 +234,6 @@ where
 	}
 }
 
-fn writer<F, C>(fs: F, partition: Partition<F, C>, threaded: bool) -> Writer<F, C>
-where
-	F: Filesystem
-		+ Create
-		+ Mkdir
-		+ Open
-		+ OpenMut
-		+ ReadDir
-		+ Rename
-		+ SyncDir
-		+ Unlink
-		+ Clone
-		+ Send
-		+ Sync
-		+ 'static,
-	C: ClockNow + Send + 'static,
-	Partition<F, C>: Send,
-{
-	if threaded {
-		Writer::new(fs, partition)
-	} else {
-		Writer::detached(fs, partition)
-	}
-}
-
 pub fn partition_name(at: u32) -> String {
 	format!("p{at}")
 }
@@ -260,8 +242,10 @@ fn publish<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(fs: &F, pa
 where
 	F::FileMut: SyncData,
 {
-	if fs.open(path).is_ok() {
-		return Err(LogError::AlreadyExists(path.to_path_buf()));
+	match fs.open(path) {
+		Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+		Err(FsError::NotFound(_)) => {}
+		Err(error) => return Err(error.into()),
 	}
 	let staging = staging(path);
 	discard(fs, &staging)?;
@@ -353,7 +337,7 @@ mod tests {
 
 	fn fixture() -> (MemoryFs, Log<MemoryFs, Clock>) {
 		let fs = MemoryFs::new();
-		let log = Log::create(fs.clone(), clock(), Path::new(DIR), config(), 2).unwrap();
+		let log = Log::create_detached(fs.clone(), clock(), Path::new(DIR), config(), 2).unwrap();
 		(fs, log)
 	}
 
@@ -385,7 +369,7 @@ mod tests {
 		log.sync().unwrap();
 		drop(log);
 
-		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+		let (reopened, _) = Log::open_detached(fs, clock(), Path::new(DIR)).unwrap();
 
 		assert_eq!(reopened.meta().segment_bytes, ByteSize::from_bytes(512));
 		assert_eq!(reopened.meta().index_interval, ByteSize::from_bytes(64));
@@ -403,10 +387,10 @@ mod tests {
 		log.sync().unwrap();
 		drop(log);
 
-		let (once, _) = Log::open(fs.clone(), clock(), Path::new(DIR)).unwrap();
+		let (once, _) = Log::open_detached(fs.clone(), clock(), Path::new(DIR)).unwrap();
 		let after_once = (versions(&once, 0), versions(&once, 1), once.head());
 		drop(once);
-		let (twice, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+		let (twice, _) = Log::open_detached(fs, clock(), Path::new(DIR)).unwrap();
 
 		assert_eq!((versions(&twice, 0), versions(&twice, 1), twice.head()), after_once);
 	}
@@ -424,10 +408,33 @@ mod tests {
 		log.sync().unwrap();
 		drop(log);
 
-		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+		let (reopened, _) = Log::open_detached(fs, clock(), Path::new(DIR)).unwrap();
 
 		assert_eq!(versions(&reopened, 0), vec![2, 3, 4, 5, 6, 7, 8]);
 		assert_eq!(versions(&reopened, 1), vec![1]);
+	}
+
+	#[test]
+	fn a_synced_log_reports_its_appends_durable() {
+		// flush is what raises durable; sync alone only fsyncs files.
+		let fs = MemoryFs::new();
+		let log = Log::create_detached(fs, clock(), Path::new(DIR), config(), 2).unwrap();
+		log.append(0, &record(1, 1)).unwrap();
+
+		log.flush(0).unwrap();
+
+		assert_eq!(log.durable(0).unwrap(), Some(LogVersion::new(1)));
+	}
+
+	#[test]
+	fn the_head_never_runs_ahead_of_what_is_durable() {
+		// head seeds the version allocator, so it must never claim a version that was only written, never
+		// fsynced.
+		let fs = MemoryFs::new();
+		let log = Log::create_detached(fs, clock(), Path::new(DIR), config(), 2).unwrap();
+		log.append(0, &record(10, 1)).unwrap();
+
+		assert!(log.head() <= log.durable(0).unwrap());
 	}
 
 	#[test]
@@ -441,7 +448,7 @@ mod tests {
 		log.sync().unwrap();
 		drop(log);
 
-		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+		let (reopened, _) = Log::open_detached(fs, clock(), Path::new(DIR)).unwrap();
 
 		assert_eq!(reopened.head(), Some(LogVersion::new(40)));
 	}
@@ -457,7 +464,7 @@ mod tests {
 		log.sync().unwrap();
 		drop(log);
 
-		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+		let (reopened, _) = Log::open_detached(fs, clock(), Path::new(DIR)).unwrap();
 
 		assert_eq!(versions(&reopened, 0), vec![10]);
 		assert_eq!(versions(&reopened, 1), vec![30]);
@@ -471,7 +478,7 @@ mod tests {
 		file.pwrite(0, &0u32.to_le_bytes()).unwrap();
 		file.sync_data().unwrap();
 
-		let opened = Log::open(fs, clock(), Path::new(DIR)).err();
+		let opened = Log::open_detached(fs, clock(), Path::new(DIR)).err();
 
 		assert!(matches!(opened, Some(LogError::MetaMagic { .. })), "got {opened:?}");
 	}
@@ -487,7 +494,7 @@ mod tests {
 		file.pwrite(0, &buf).unwrap();
 		file.sync_data().unwrap();
 
-		let opened = Log::open(fs, clock(), Path::new(DIR)).err();
+		let opened = Log::open_detached(fs, clock(), Path::new(DIR)).err();
 
 		assert!(matches!(opened, Some(LogError::MetaCorrupt(_))), "got {opened:?}");
 	}

@@ -101,6 +101,7 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
 	let mut time: Vec<DateTime> = Vec::new();
+	let mut commit_versions: Vec<u64> = Vec::new();
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		let data = fetch(i)?;
 		match SystemColumn::from_name(name) {
@@ -108,6 +109,7 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::Time) => time = extract_datetimes(&data),
+			Some(SystemColumn::CommitVersion) => commit_versions = extract_commit_versions(&data),
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
@@ -120,6 +122,7 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 			created_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::CreatedAt))),
 			updated_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::UpdatedAt))),
 			time,
+			commit_versions,
 		),
 	))
 }
@@ -144,6 +147,12 @@ fn extract_row_numbers(data: &ColumnBuffer) -> Vec<RowNumber> {
 		out.push(RowNumber(v));
 	}
 	out
+}
+
+fn extract_commit_versions(data: &ColumnBuffer) -> Vec<u64> {
+	(0..data.len())
+		.map(|i| data.get_as::<u64>(i).expect("#commit_version column must be Uint8 with no nones"))
+		.collect()
 }
 
 fn extract_datetimes(data: &ColumnBuffer) -> Vec<DateTime> {

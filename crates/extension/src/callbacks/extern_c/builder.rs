@@ -552,7 +552,14 @@ fn assemble_columns(
 	let timestamps: Vec<DateTime> = vec![now; row_count];
 	Ok(Columns::with_system(
 		cols,
-		SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps),
+		SystemColumns::new(
+			row_numbers,
+			Vec::new(),
+			timestamps.clone(),
+			timestamps.clone(),
+			timestamps,
+			Vec::new(),
+		),
 	))
 }
 

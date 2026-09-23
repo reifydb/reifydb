@@ -579,7 +579,8 @@ mod series_bound_tests {
 		// anything but the lowest byte would drop the first rows of the tag the caller asked for.
 		let universe = series_universe();
 		for tag in [0u8, 1, 7, 255] {
-			let range = SeriesRowKeyRange::scan_range(storage(), Some(tag), None, None, None).encode();
+			let range =
+				SeriesRowKeyRange::scan_range(storage(), true, Some(tag), None, None, None).encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -609,8 +610,8 @@ mod series_bound_tests {
 		// ascending would select the complement window.
 		let universe = series_universe();
 		for key_end in [1u64, 5, 100, u64::MAX] {
-			let range =
-				SeriesRowKeyRange::scan_range(storage(), Some(7), None, Some(key_end), None).encode();
+			let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), None, Some(key_end), None)
+				.encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -627,8 +628,8 @@ mod series_bound_tests {
 		// the descending order. Translating it exclusively would drop the caller's own boundary row.
 		let universe = series_universe();
 		for (key_start, key_end) in [(Some(1u64), None), (Some(5), Some(100)), (Some(0), Some(u64::MAX))] {
-			let range =
-				SeriesRowKeyRange::scan_range(storage(), Some(7), key_start, key_end, None).encode();
+			let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), key_start, key_end, None)
+				.encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -644,7 +645,7 @@ mod series_bound_tests {
 		// With no tag but a key bound the encoder still writes the absent tag flag, so the bound is not a
 		// storage wide one. Treating it as storage wide would mix every tagged row into an untagged scan.
 		let universe = series_universe();
-		let range = SeriesRowKeyRange::scan_range(storage(), None, Some(1), Some(100), None).encode();
+		let range = SeriesRowKeyRange::scan_range(storage(), false, None, Some(1), Some(100), None).encode();
 		let selected = assert_agrees(SqliteSchema::Series, &universe, &range, "series untagged bounded scan");
 		assert!(selected > 0);
 		for i in selected_by_columns(SqliteSchema::Series, &universe, &range) {
@@ -667,7 +668,7 @@ mod series_bound_tests {
 			key: 5,
 			sequence: 1,
 		});
-		let range = SeriesRowKeyRange::scan_range(storage(), Some(7), None, None, Some(&cursor)).encode();
+		let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), None, None, Some(&cursor)).encode();
 		let selected = assert_agrees(SqliteSchema::Series, &universe, &range, "series resumed scan");
 		assert!(selected > 0);
 		let position = universe
@@ -685,7 +686,7 @@ mod series_bound_tests {
 		// The empty sentinel is a pair of excluded empty keys, which start below every row of every table.
 		// Reading it as an open lower bound would turn an empty scan into a full one.
 		let universe = series_universe();
-		let range = SeriesRowKeyRange::scan_range(storage(), None, None, Some(0), None).encode();
+		let range = SeriesRowKeyRange::scan_range(storage(), false, None, None, Some(0), None).encode();
 		assert_eq!(selected_by_bytes(&universe, &range), Vec::<usize>::new());
 		assert_eq!(selected_by_columns(SqliteSchema::Series, &universe, &range), Vec::<usize>::new());
 	}
@@ -897,6 +898,7 @@ mod series_bound_tests {
 				PartitionedSeriesRowKeyRange::scan_range(
 					storage(),
 					part("us"),
+					true,
 					Some(7),
 					None,
 					None,
@@ -909,6 +911,7 @@ mod series_bound_tests {
 				PartitionedSeriesRowKeyRange::scan_range(
 					storage(),
 					part("us"),
+					true,
 					Some(7),
 					None,
 					Some(5),
@@ -921,6 +924,7 @@ mod series_bound_tests {
 				PartitionedSeriesRowKeyRange::scan_range(
 					storage(),
 					part("us"),
+					true,
 					Some(7),
 					Some(0),
 					Some(u64::MAX),
@@ -933,6 +937,7 @@ mod series_bound_tests {
 				PartitionedSeriesRowKeyRange::scan_range(
 					storage(),
 					part("us"),
+					false,
 					None,
 					Some(0),
 					Some(u64::MAX),

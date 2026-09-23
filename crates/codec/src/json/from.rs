@@ -93,7 +93,7 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Result<Frame, DecodeError> {
 		.transpose()?;
 
 	Ok(Frame {
-		system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
+		system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
 		columns,
 		op,
 	})

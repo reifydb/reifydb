@@ -87,7 +87,11 @@ pub(crate) fn run_query_plan(
 				data: ColumnBuffer::none_typed(ValueType::Boolean, 0),
 			})
 			.collect();
-		return Ok(Some(Columns::new(empty_columns)));
+		let mut columns = Columns::new(empty_columns);
+		if headers.row_numbers {
+			columns.system.mark_row_numbers();
+		}
+		return Ok(Some(columns));
 	}
 
 	Ok(all_columns)

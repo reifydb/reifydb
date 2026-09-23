@@ -15,9 +15,13 @@ pub fn run_iteration(name: &str, index: u64, body: fn(u64)) {
 	let seed = iteration_seed(name, index);
 	let outcome = panic::catch_unwind(AssertUnwindSafe(|| body(seed)));
 	if let Err(payload) = outcome {
-		report_failure(name, index, seed);
+		report_failure(name, index, seed, replays(body, seed));
 		panic::resume_unwind(payload);
 	}
+}
+
+fn replays(body: fn(u64), seed: u64) -> bool {
+	panic::catch_unwind(AssertUnwindSafe(|| body(seed))).is_err()
 }
 
 fn iteration_seed(name: &str, index: u64) -> u64 {
@@ -35,10 +39,13 @@ fn resolve_seed(pinned: Option<u64>, base: u64, index: u64) -> u64 {
 	pinned.unwrap_or_else(|| derive_seed(base, index))
 }
 
-fn report_failure(name: &str, index: u64, seed: u64) {
-	eprintln!(
-		"\nchaos \"{name}\" iteration {index} FAILED\n  seed:      {seed}\n  reproduce: make test-chaos SEED={seed} FILTER={name}_{index}"
-	);
+fn report_failure(name: &str, index: u64, seed: u64, replays: bool) {
+	let advice = if replays {
+		format!("  reproduce: SEED={seed} cargo nextest run -E 'test(={name}_{index})'")
+	} else {
+		"  replay:    not seed reproducible, the body varies under a fixed seed".to_string()
+	};
+	eprintln!("\nchaos \"{name}\" iteration {index} FAILED\n  seed:      {seed}\n{advice}");
 }
 
 pub fn derive_seed(base: u64, salt: u64) -> u64 {

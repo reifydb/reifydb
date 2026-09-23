@@ -283,6 +283,12 @@ impl<'a> TestTransaction<'a> {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScanLayout {
+	Row,
+	Column,
+}
+
 pub enum Transaction<'a> {
 	Command(&'a mut CommandTransaction),
 	Admin(&'a mut AdminTransaction),
@@ -471,6 +477,15 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity,
 			Self::Query(txn) => txn.identity,
 			Self::Test(t) => t.inner.identity,
+		}
+	}
+
+	pub fn layout(&self) -> ScanLayout {
+		match self {
+			Self::Command(_) => ScanLayout::Row,
+			Self::Admin(_) => ScanLayout::Row,
+			Self::Query(txn) => txn.layout,
+			Self::Test(_) => ScanLayout::Row,
 		}
 	}
 

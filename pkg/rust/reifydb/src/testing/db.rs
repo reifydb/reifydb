@@ -72,6 +72,10 @@ impl TestDb {
 		self.db.query_as_root(rql, ()).unwrap()
 	}
 
+	pub fn query_column(&self, rql: &str) -> Vec<Frame> {
+		self.db.query_column_as_root(rql, ()).unwrap()
+	}
+
 	pub fn try_admin(&self, rql: &str) -> Result<Vec<Frame>> {
 		self.db.admin_as_root(rql, ())
 	}
@@ -82,6 +86,10 @@ impl TestDb {
 
 	pub fn try_query(&self, rql: &str) -> Result<Vec<Frame>> {
 		self.db.query_as_root(rql, ())
+	}
+
+	pub fn try_query_column(&self, rql: &str) -> Result<Vec<Frame>> {
+		self.db.query_column_as_root(rql, ())
 	}
 
 	pub fn row_count(&self, rql: &str) -> usize {

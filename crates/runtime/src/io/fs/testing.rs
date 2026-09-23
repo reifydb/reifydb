@@ -49,6 +49,12 @@ pub enum SyncOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenOutcome {
+	Honest,
+	Err(FsError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetaOutcome {
 	Durable,
 	NotDurable,
@@ -72,6 +78,10 @@ pub trait TestingHooks: Send + Sync {
 
 	fn on_sync(&self, _file: FileId) -> SyncOutcome {
 		SyncOutcome::Honest
+	}
+
+	fn on_open(&self, _path: &Path) -> OpenOutcome {
+		OpenOutcome::Honest
 	}
 
 	fn on_rename(&self, _from: &Path, _to: &Path) -> MetaOutcome {
@@ -121,6 +131,19 @@ impl Inner {
 
 	fn next_id(&self) -> FileId {
 		FileId(self.next_file_id.fetch_add(1, Ordering::SeqCst))
+	}
+
+	fn settle(&self, dir: &Path) {
+		self.undone.lock().retain(|undo| match undo {
+			Undo::Rename {
+				to,
+				..
+			} => to.parent() != Some(dir),
+			Undo::Unlink {
+				path,
+				..
+			} => path.parent() != Some(dir),
+		});
 	}
 
 	fn crash(&self) {
@@ -273,6 +296,9 @@ impl Create for TestingFs {
 impl Open for TestingFs {
 	fn open(&self, path: &Path) -> Result<TestingFile> {
 		self.0.syscall();
+		if let OpenOutcome::Err(error) = self.0.hooks.on_open(path) {
+			return Err(error);
+		}
 		let inner = self.0.inner.open(path)?;
 		Ok(TestingFile {
 			id: self.0.next_id(),
@@ -340,7 +366,9 @@ impl Unlink for TestingFs {
 impl SyncDir for TestingFs {
 	fn sync_dir(&self, path: &Path) -> Result<()> {
 		self.0.syscall();
-		self.0.inner.sync_dir(path)
+		self.0.inner.sync_dir(path)?;
+		self.0.settle(path);
+		Ok(())
 	}
 }
 

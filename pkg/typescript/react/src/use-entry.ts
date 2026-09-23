@@ -2,10 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 import {useCallback, useSyncExternalStore} from 'react';
 import type {ShapeNode} from '@reifydb/core';
-import type {Entry, Store} from '@reifydb/store';
+import type {Entry, ReadSpec, SpecData, Store} from '@reifydb/store';
 
-// Widened to Entry<unknown>: relating Entry<InferShape<S>> to itself for a generic S makes TypeScript recurse through InferShape.
-export function useEntry<S extends ShapeNode>(store: Store, rql: string, params: any, shape: S): Entry<unknown> {
+export function useEntry<S extends ShapeNode | readonly ShapeNode[], P extends object | null>(
+    store: Store,
+    spec: ReadSpec<S, P>,
+    params: P
+): Entry<SpecData<ReadSpec<S, P>>> {
     const subscribe = useCallback((listener: () => void) => store.subscribeState(listener), [store]);
-    return useSyncExternalStore<Entry<unknown>>(subscribe, () => store.getEntry(rql, params, shape));
+    return useSyncExternalStore(subscribe, () => store.getEntry(spec, params));
 }

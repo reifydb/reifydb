@@ -163,6 +163,7 @@ mod substrate_stamping_tests {
 				vec![at_millis(0); n],
 				vec![at_millis(0); n],
 				times.to_vec(),
+				Vec::new(),
 			),
 		)
 	}
@@ -178,6 +179,7 @@ mod substrate_stamping_tests {
 				Vec::new(),
 				vec![at_millis(0); n],
 				vec![at_millis(0); n],
+				Vec::new(),
 				Vec::new(),
 			),
 		)

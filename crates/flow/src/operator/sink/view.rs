@@ -473,6 +473,7 @@ mod tests {
 				vec![DateTime::from_nanos(ts_nanos)],
 				vec![DateTime::from_nanos(ts_nanos)],
 				vec![DateTime::from_nanos(ts_nanos)],
+				Vec::new(),
 			),
 		)
 	}

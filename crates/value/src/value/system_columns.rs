@@ -13,10 +13,12 @@ use crate::{
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SystemColumns {
 	row_numbers: Vec<RowNumber>,
+	has_row_numbers: bool,
 	partitions: Vec<Partition>,
 	created_at: Vec<DateTime>,
 	updated_at: Vec<DateTime>,
 	time: Vec<DateTime>,
+	commit_versions: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,6 +28,7 @@ pub struct RowStamps {
 	pub created_at: Option<DateTime>,
 	pub updated_at: Option<DateTime>,
 	pub time: Option<DateTime>,
+	pub commit_version: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +38,7 @@ pub enum SystemColumn {
 	CreatedAt,
 	UpdatedAt,
 	Time,
+	CommitVersion,
 }
 
 impl SystemColumn {
@@ -45,6 +49,7 @@ impl SystemColumn {
 			SystemColumn::CreatedAt => "#created_at",
 			SystemColumn::UpdatedAt => "#updated_at",
 			SystemColumn::Time => "#time",
+			SystemColumn::CommitVersion => "#commit_version",
 		}
 	}
 }
@@ -115,40 +120,39 @@ impl SystemColumns {
 		created_at: Vec<DateTime>,
 		updated_at: Vec<DateTime>,
 		time: Vec<DateTime>,
+		commit_versions: Vec<u64>,
 	) -> Self {
 		Self {
+			has_row_numbers: !row_numbers.is_empty(),
 			row_numbers,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		}
+	}
+
+	pub fn mark_row_numbers(&mut self) {
+		self.has_row_numbers = true;
 	}
 
 	pub fn from_row_numbers(row_numbers: Vec<RowNumber>) -> Self {
 		let n = row_numbers.len();
 		let now = DateTime::default();
-		Self::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n])
-	}
-
-	pub fn set_row_numbers(&mut self, row_numbers: Vec<RowNumber>) {
-		self.row_numbers = row_numbers;
+		Self::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n], Vec::new())
 	}
 
 	pub fn set_partitions(&mut self, partitions: Vec<Partition>) {
 		self.partitions = partitions;
 	}
 
-	pub fn set_created_at(&mut self, created_at: Vec<DateTime>) {
-		self.created_at = created_at;
-	}
-
-	pub fn set_updated_at(&mut self, updated_at: Vec<DateTime>) {
-		self.updated_at = updated_at;
-	}
-
 	pub fn set_time(&mut self, time: Vec<DateTime>) {
 		self.time = time;
+	}
+
+	pub fn set_commit_versions(&mut self, commit_versions: Vec<u64>) {
+		self.commit_versions = commit_versions;
 	}
 }
 
@@ -156,6 +160,11 @@ impl SystemColumns {
 	#[inline]
 	pub fn row_numbers(&self) -> &[RowNumber] {
 		self.row_numbers.as_slice()
+	}
+
+	#[inline]
+	pub fn has_row_numbers(&self) -> bool {
+		self.has_row_numbers
 	}
 
 	#[inline]
@@ -178,17 +187,31 @@ impl SystemColumns {
 		self.time.as_slice()
 	}
 
+	#[inline]
+	pub fn commit_versions(&self) -> &[u64] {
+		self.commit_versions.as_slice()
+	}
+
 	pub fn row_count(&self) -> Option<usize> {
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
-		[row_numbers.len(), partitions.len(), created_at.len(), updated_at.len(), time.len()]
-			.into_iter()
-			.find(|&len| len > 0)
+		[
+			row_numbers.len(),
+			partitions.len(),
+			created_at.len(),
+			updated_at.len(),
+			time.len(),
+			commit_versions.len(),
+		]
+		.into_iter()
+		.find(|&len| len > 0)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -198,16 +221,19 @@ impl SystemColumns {
 	pub fn heap_size(&self) -> usize {
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		row_numbers.len() * size_of::<RowNumber>()
 			+ partitions.len() * size_of::<Partition>()
 			+ created_at.len() * size_of::<DateTime>()
 			+ updated_at.len() * size_of::<DateTime>()
 			+ time.len() * size_of::<DateTime>()
+			+ commit_versions.len() * size_of::<u64>()
 	}
 }
 
@@ -215,17 +241,21 @@ impl SystemColumns {
 	pub fn permute(&self, indices: &[usize]) -> Self {
 		let Self {
 			row_numbers,
+			has_row_numbers,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		Self {
 			row_numbers: gather(row_numbers, indices),
+			has_row_numbers: *has_row_numbers,
 			partitions: gather(partitions, indices),
 			created_at: gather(created_at, indices),
 			updated_at: gather(updated_at, indices),
 			time: gather(time, indices),
+			commit_versions: gather(commit_versions, indices),
 		}
 	}
 
@@ -236,47 +266,56 @@ impl SystemColumns {
 	pub fn filter(&mut self, mask: &BitVec) {
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		*row_numbers = retain(row_numbers, mask);
 		*partitions = retain(partitions, mask);
 		*created_at = retain(created_at, mask);
 		*updated_at = retain(updated_at, mask);
 		*time = retain(time, mask);
+		*commit_versions = retain(commit_versions, mask);
 	}
 
 	pub fn take(&mut self, n: usize) {
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		*row_numbers = head(row_numbers, n);
 		*partitions = head(partitions, n);
 		*created_at = head(created_at, n);
 		*updated_at = head(updated_at, n);
 		*time = head(time, n);
+		*commit_versions = head(commit_versions, n);
 	}
 
 	pub fn extend(&mut self, source: &Self) -> Result<(), SystemColumnsError> {
 		self.check_extendable(source)?;
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		concat(row_numbers, &source.row_numbers);
 		concat(partitions, &source.partitions);
 		concat(created_at, &source.created_at);
 		concat(updated_at, &source.updated_at);
 		concat(time, &source.time);
+		concat(commit_versions, &source.commit_versions);
 		Ok(())
 	}
 
@@ -284,16 +323,20 @@ impl SystemColumns {
 		let gathered = source.permute(indices);
 		let Self {
 			row_numbers,
+			has_row_numbers,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		concat(row_numbers, &gathered.row_numbers);
+		*has_row_numbers |= gathered.has_row_numbers;
 		concat(partitions, &gathered.partitions);
 		concat(created_at, &gathered.created_at);
 		concat(updated_at, &gathered.updated_at);
 		concat(time, &gathered.time);
+		concat(commit_versions, &gathered.commit_versions);
 	}
 
 	pub fn push(&mut self, stamps: RowStamps) {
@@ -303,9 +346,11 @@ impl SystemColumns {
 			created_at,
 			updated_at,
 			time,
+			commit_version,
 		} = stamps;
 		if let Some(row_number) = row_number {
 			self.row_numbers.push(row_number);
+			self.has_row_numbers = true;
 		}
 		if let Some(partition) = partition {
 			self.partitions.push(partition);
@@ -319,37 +364,46 @@ impl SystemColumns {
 		if let Some(time) = time {
 			self.time.push(time);
 		}
+		if let Some(commit_version) = commit_version {
+			self.commit_versions.push(commit_version);
+		}
 	}
 
 	pub fn clear(&mut self) {
 		let Self {
 			row_numbers,
+			has_row_numbers: _,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		row_numbers.clear();
 		partitions.clear();
 		created_at.clear();
 		updated_at.clear();
 		time.clear();
+		commit_versions.clear();
 	}
 
 	fn check_extendable(&self, source: &Self) -> Result<(), SystemColumnsError> {
 		let Self {
-			row_numbers,
+			row_numbers: _,
+			has_row_numbers,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
 		let pairs = [
-			(SystemColumn::RowNumbers, !row_numbers.is_empty(), !source.row_numbers.is_empty()),
+			(SystemColumn::RowNumbers, *has_row_numbers, source.has_row_numbers),
 			(SystemColumn::Partitions, !partitions.is_empty(), !source.partitions.is_empty()),
 			(SystemColumn::CreatedAt, !created_at.is_empty(), !source.created_at.is_empty()),
 			(SystemColumn::UpdatedAt, !updated_at.is_empty(), !source.updated_at.is_empty()),
 			(SystemColumn::Time, !time.is_empty(), !source.time.is_empty()),
+			(SystemColumn::CommitVersion, !commit_versions.is_empty(), !source.commit_versions.is_empty()),
 		];
 		for (column, target_present, source_present) in pairs {
 			if target_present != source_present {
@@ -366,17 +420,27 @@ impl SystemColumns {
 	pub fn validate(&self, row_count: usize) -> Result<(), SystemColumnsError> {
 		let Self {
 			row_numbers,
+			has_row_numbers,
 			partitions,
 			created_at,
 			updated_at,
 			time,
+			commit_versions,
 		} = self;
+		if *has_row_numbers && row_numbers.len() != row_count {
+			return Err(SystemColumnsError::LengthMismatch {
+				column: SystemColumn::RowNumbers,
+				len: row_numbers.len(),
+				row_count,
+			});
+		}
 		let lengths = [
 			(SystemColumn::RowNumbers, row_numbers.len()),
 			(SystemColumn::Partitions, partitions.len()),
 			(SystemColumn::CreatedAt, created_at.len()),
 			(SystemColumn::UpdatedAt, updated_at.len()),
 			(SystemColumn::Time, time.len()),
+			(SystemColumn::CommitVersion, commit_versions.len()),
 		];
 		for (column, len) in lengths {
 			if len != 0 && len != row_count {
@@ -417,6 +481,7 @@ mod tests {
 			(0..4).map(|i| dt(1000 + i)).collect(),
 			(0..4).map(|i| dt(2000 + i)).collect(),
 			(0..4).map(|i| dt(3000 + i)).collect(),
+			Vec::new(),
 		)
 	}
 
@@ -578,6 +643,7 @@ mod tests {
 			created_at: Some(dt(10)),
 			updated_at: Some(dt(20)),
 			time: Some(dt(30)),
+			commit_version: None,
 		});
 
 		assert_eq!(acc.row_count(), Some(1));
@@ -601,6 +667,7 @@ mod tests {
 				created_at: Some(dt(10)),
 				updated_at: Some(dt(20)),
 				time: None,
+				commit_version: None,
 			});
 		}
 
@@ -620,6 +687,7 @@ mod tests {
 			created_at: Some(dt(10)),
 			updated_at: Some(dt(20)),
 			time: None,
+			commit_version: None,
 		});
 
 		let mut timed = SystemColumns::empty();
@@ -629,6 +697,7 @@ mod tests {
 			created_at: Some(dt(10)),
 			updated_at: Some(dt(20)),
 			time: Some(dt(30)),
+			commit_version: None,
 		});
 
 		assert_eq!(

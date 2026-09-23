@@ -78,6 +78,7 @@ fn frame_with_metadata() {
 				DateTime::from_nanos(8_000_000_000),
 				DateTime::from_nanos(9_000_000_000),
 			],
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![FrameColumn {
@@ -119,6 +120,34 @@ fn empty_columns() {
 		},
 	]);
 	round_trip(frame);
+}
+
+#[test]
+fn empty_frame_keeps_the_row_numbers_flag() {
+	// A client must see #rownum on an empty answer too, so the flag cannot be derived from a non-empty list.
+	let mut system =
+		SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+	system.take(0);
+	let frame = Frame {
+		system,
+		op: None,
+		columns: vec![FrameColumn {
+			name: "x".to_string(),
+			data: FrameColumnData::Int4(NumberContainer::new(vec![])),
+		}],
+	};
+
+	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let decoded = decode_frames(&encoded).expect("decode failed");
+
+	assert_eq!(decoded.len(), 1);
+	assert!(decoded[0].has_row_numbers(), "a 0-row frame with row numbers must decode with the flag set");
+	assert!(decoded[0].row_numbers().is_empty());
+	let without = decode_frames(
+		&encode_frames(&[Frame::new(frame.columns.clone())], &EncodeOptions::default()).expect("encode failed"),
+	)
+	.expect("decode failed");
+	assert!(!without[0].has_row_numbers(), "a frame without row numbers must not gain the flag");
 }
 
 #[test]
@@ -182,7 +211,14 @@ fn metadata_combinations() {
 	// Each metadata array is independently present, so the flag byte has to be read per array
 	// rather than as all-or-nothing.
 	let frame1 = Frame {
-		system: SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+		system: SystemColumns::new(
+			vec![RowNumber::new(1)],
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+		),
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
@@ -198,6 +234,7 @@ fn metadata_combinations() {
 			vec![DateTime::from_nanos(100)],
 			vec![DateTime::from_nanos(200)],
 			vec![DateTime::from_nanos(300)],
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![FrameColumn {

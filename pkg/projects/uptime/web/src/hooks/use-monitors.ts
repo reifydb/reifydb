@@ -2,23 +2,20 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useCallback } from 'react'
-import { DurationValue, Option, Utf8Value, Uuid7Value, useCommand } from '@reifydb/react'
+import { DurationValue, ListValue, Option, Utf8Value, Uuid7Value, rql, useCommand } from '@reifydb/react'
 import { useMonitorRegions } from '@/store/realtime'
 import { recorded } from '@/lib/errors'
 import type { MonitorInput } from '@/lib/types'
 
-const MONITOR_PARAMS =
-  '$name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled'
+type MonitorParams = ReturnType<typeof monitorParams>
 
-const CREATE_MONITOR = `CALL uptime::create_monitor($id, ${MONITOR_PARAMS})`
+const CREATE_MONITOR = rql.write([])<MonitorParams & { region_ids: ListValue }>`CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled); CALL uptime::add_monitor_regions($id, $region_ids); CALL uptime::check_monitor_regions($id)`
 
-const UPDATE_MONITOR = `CALL uptime::update_monitor($id, ${MONITOR_PARAMS})`
+const UPDATE_MONITOR = rql.write([])<
+  MonitorParams & { removed_region_ids: ListValue; added_region_ids: ListValue }
+>`CALL uptime::update_monitor($id, $name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled); CALL uptime::remove_monitor_regions($id, $removed_region_ids); CALL uptime::add_monitor_regions($id, $added_region_ids); CALL uptime::check_monitor_regions($id)`
 
-const DELETE_MONITOR = 'CALL uptime::delete_monitor($id)'
-
-const CHECK_MONITOR_REGIONS = 'CALL uptime::check_monitor_regions($id)'
-
-const NO_FRAMES = [] as const
+const DELETE_MONITOR = rql.write([])<{ id: Uuid7Value }>`CALL uptime::delete_monitor($id)`
 
 function optionalUtf8(value: string | undefined) {
   return value === undefined ? Option.none('Utf8') : Option.some(new Utf8Value(value))
@@ -41,23 +38,15 @@ function monitorParams(id: Uuid7Value, input: MonitorInput) {
   }
 }
 
-function regionCalls(procedure: 'add_monitor_region' | 'remove_monitor_region', key: string, regionIds: string[]) {
-  return {
-    statements: regionIds.map((_, i) => `CALL uptime::${procedure}($id, $${key}_${i})`),
-    params: Object.fromEntries(regionIds.map((regionId, i) => [`${key}_${i}`, new Uuid7Value(regionId)])),
-  }
-}
-
 export function useCreateMonitor() {
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(CREATE_MONITOR)
   const create = useCallback(
     async (input: MonitorInput): Promise<string> => {
       const id = Uuid7Value.generate()
-      const added = regionCalls('add_monitor_region', 'add', input.regions)
       await recorded(
-        run([CREATE_MONITOR, ...added.statements, CHECK_MONITOR_REGIONS].join('; '), {
+        run({
           ...monitorParams(id, input),
-          ...added.params,
+          region_ids: new ListValue(input.regions.map((regionId) => new Uuid7Value(regionId)), 'Uuid7'),
         }),
       )
       return id.toString()
@@ -69,25 +58,17 @@ export function useCreateMonitor() {
 
 export function useUpdateMonitor(id: string) {
   const { data: current } = useMonitorRegions(id)
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(UPDATE_MONITOR)
   const update = useCallback(
     async (input: MonitorInput): Promise<void> => {
       const before = current.map((mr) => mr.region_id)
-      const removed = regionCalls(
-        'remove_monitor_region',
-        'remove',
-        before.filter((regionId) => !input.regions.includes(regionId)),
-      )
-      const added = regionCalls(
-        'add_monitor_region',
-        'add',
-        input.regions.filter((regionId) => !before.includes(regionId)),
-      )
+      const removed = before.filter((regionId) => !input.regions.includes(regionId))
+      const added = input.regions.filter((regionId) => !before.includes(regionId))
       await recorded(
-        run([UPDATE_MONITOR, ...removed.statements, ...added.statements, CHECK_MONITOR_REGIONS].join('; '), {
+        run({
           ...monitorParams(new Uuid7Value(id), input),
-          ...removed.params,
-          ...added.params,
+          removed_region_ids: new ListValue(removed.map((regionId) => new Uuid7Value(regionId)), 'Uuid7'),
+          added_region_ids: new ListValue(added.map((regionId) => new Uuid7Value(regionId)), 'Uuid7'),
         }),
       )
     },
@@ -97,10 +78,10 @@ export function useUpdateMonitor(id: string) {
 }
 
 export function useDeleteMonitor() {
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(DELETE_MONITOR)
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      await recorded(run(DELETE_MONITOR, { id: new Uuid7Value(id) }))
+      await recorded(run({ id: new Uuid7Value(id) }))
     },
     [run],
   )

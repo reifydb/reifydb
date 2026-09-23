@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_sqlite::batch::values_placeholders;
-use rusqlite::{Connection, Row, Transaction, params_from_iter, types::Value};
+use rusqlite::{Connection, Error as SqliteError, Row, Transaction, params_from_iter, types::Value};
 use tracing::instrument;
 
 pub fn table_of(name: &str) -> String {
@@ -295,7 +295,11 @@ pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Groupe
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state get could not be prepared");
-	stmt.query_row(params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)).ok()
+	match stmt.query_row(params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)) {
+		Ok(bytes) => Some(bytes),
+		Err(SqliteError::QueryReturnedNoRows) => None,
+		Err(err) => panic!("operator state read failed: {err}"),
+	}
 }
 
 pub const READ_CHUNK: usize = 100;
@@ -726,6 +730,19 @@ mod tests {
 		assert_eq!(group, vec![0xFF; GroupId::WIDTH], "Desc<GroupId> of the minimum must store as all ones");
 		assert_eq!(row, vec![0x00; 8], "Asc<RowNumber> of zero must store unchanged");
 		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(1))[0].0, root);
+	}
+
+	#[test]
+	#[should_panic(expected = "operator state read failed")]
+	fn a_state_row_that_cannot_be_read_stops_instead_of_reading_as_a_missing_key() {
+		// a failed read and an absent key are not the same answer: None tells the operator it has no
+		// state for this key, so it rebuilds from nothing while the real row is still sitting there.
+		let conn = db();
+		let key = left(7, 1);
+		set_one::<JoinLeft>(&conn, OperatorId(1), &key, b"payload");
+		conn.execute(r#"UPDATE "operator_join_left" SET "bytes" = 12345"#, []).unwrap();
+
+		get::<JoinLeft>(&conn, OperatorId(1), &key);
 	}
 
 	#[test]

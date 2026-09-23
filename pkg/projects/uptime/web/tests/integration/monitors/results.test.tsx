@@ -10,7 +10,7 @@ import { DashboardPage } from '@/pages/dashboard'
 import { MonitorDetailPage } from '@/pages/monitors/detail.tsx'
 import { results } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
 import {
   caughtUp,
   createMonitor,
@@ -34,6 +34,7 @@ describe('per-monitor results over the batched store', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
   let owner: string
   let usEast: string
   let alpha: string
@@ -41,11 +42,11 @@ describe('per-monitor results over the batched store', () => {
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
     owner = await identityOf(db, 'tester')
     usEast = await regionNamed(db, 'US East')
-    alpha = await createMonitor(client, 'alpha', [usEast])
-    beta = await createMonitor(client, 'beta', [usEast])
+    alpha = await createMonitor(db, identity, 'alpha', [usEast])
+    beta = await createMonitor(db, identity, 'beta', [usEast])
   })
 
   it('shows a result reported for this monitor live, and never one reported for another monitor', async () => {
@@ -116,7 +117,7 @@ describe('per-monitor results over the batched store', () => {
     // A failed results subscription read as empty would show a checking monitor with no latency and no history.
     await reportResult(db, { monitorId: alpha, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 100 })
     await reportResult(db, { monitorId: beta, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 300 })
-    store.fail(results.rql, { monitor_id: alpha }, results.shape, new Error('results subscription refused'))
+    store = refusingStore(client, results, { monitor_id: alpha }, new Error('results subscription refused'))
 
     renderWithProviders(<DashboardPage />, store)
     await caughtUp(client)

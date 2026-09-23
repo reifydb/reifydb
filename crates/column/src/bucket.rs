@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision};
+use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesPartitionMetadata, TimestampPrecision};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,7 +42,13 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesMetadata, now: DateTime, grace: Duration) -> bool {
+pub fn is_closed(
+	bucket: &Bucket,
+	series: &Series,
+	metadata: &SeriesPartitionMetadata,
+	now: DateTime,
+	grace: Duration,
+) -> bool {
 	match &series.key {
 		SeriesKey::DateTime {
 			precision,
@@ -53,7 +59,10 @@ pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesMetadata, no
 		}
 		SeriesKey::Integer {
 			..
-		} => metadata.newest_key >= bucket.end,
+		} => {
+			metadata.newest_key >= bucket.end
+				|| now.saturating_duration_since(metadata.last_write_at).to_std() > grace.to_std()
+		}
 	}
 }
 
@@ -111,7 +120,7 @@ mod tests {
 			end: 100,
 			width: 100,
 		};
-		let mut meta = SeriesMetadata::new();
+		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = 99;
 		assert!(!is_closed(&b, &s, &meta, DateTime::from_nanos(0), Duration::zero()));
 		meta.newest_key = 100;
@@ -130,10 +139,100 @@ mod tests {
 			end: 1000,
 			width: 1000,
 		};
-		let meta = SeriesMetadata::new();
+		let meta = SeriesPartitionMetadata::new();
 		let bucket_end = DateTime::from_nanos(1_000_000_000);
 		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_milliseconds(100).unwrap()));
 		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);
 		assert!(is_closed(&b, &s, &meta, past_grace, Duration::from_milliseconds(100).unwrap()));
+	}
+
+	#[test]
+	fn integer_bucket_seals_after_grace_with_no_write() {
+		// An integer key carries no wall clock meaning, so a partition that goes silent
+		// mid-bucket has no key-based path to sealing. Without the last_write_at backstop
+		// its rows are stranded out of the column store forever.
+		let s = series_with(SeriesKey::Integer {
+			column: "k".into(),
+		});
+		let b = Bucket {
+			start: 0,
+			end: 100,
+			width: 100,
+		};
+		let mut meta = SeriesPartitionMetadata::new();
+		meta.newest_key = 50;
+		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
+		let grace = Duration::from_milliseconds(100).unwrap();
+		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		assert!(is_closed(&b, &s, &meta, past_grace, grace));
+	}
+
+	#[test]
+	fn integer_bucket_stays_open_before_grace_elapses() {
+		// The backstop must not fire early, or a partition that is merely between writes
+		// gets its live bucket sealed and every later row lands outside the materialized block.
+		let s = series_with(SeriesKey::Integer {
+			column: "k".into(),
+		});
+		let b = Bucket {
+			start: 0,
+			end: 100,
+			width: 100,
+		};
+		let mut meta = SeriesPartitionMetadata::new();
+		meta.newest_key = 50;
+		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
+		let grace = Duration::from_milliseconds(100).unwrap();
+		let within_grace = DateTime::from_nanos(1_000_000_000 + 50_000_000);
+		assert!(!is_closed(&b, &s, &meta, within_grace, grace));
+	}
+
+	#[test]
+	fn a_silent_integer_partition_seals_every_open_bucket() {
+		// The backstop reads the partition clock, not the bucket, so it seals all open
+		// buckets at once rather than only the oldest. Pinned deliberately: a partition
+		// that stopped receiving rows should flush everything it holds.
+		let s = series_with(SeriesKey::Integer {
+			column: "k".into(),
+		});
+		let mut meta = SeriesPartitionMetadata::new();
+		meta.newest_key = 50;
+		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
+		let grace = Duration::from_milliseconds(100).unwrap();
+		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		for start in [0u64, 100, 200] {
+			let b = Bucket {
+				start,
+				end: start + 100,
+				width: 100,
+			};
+			assert!(
+				meta.newest_key < b.end,
+				"precondition: bucket {start} must be open under the key rule, or this asserts nothing"
+			);
+			assert!(is_closed(&b, &s, &meta, past_grace, grace), "bucket {start} must seal");
+		}
+	}
+
+	#[test]
+	fn the_datetime_arm_ignores_metadata_entirely() {
+		// Metadata here would seal an integer bucket twice over: the key is past the end and
+		// the partition has been silent far longer than grace. The datetime arm must still
+		// answer from the bucket end alone, or a busy series seals buckets that are still live.
+		let s = series_with(SeriesKey::DateTime {
+			column: "ts".into(),
+			precision: TimestampPrecision::Millisecond,
+		});
+		let b = Bucket {
+			start: 0,
+			end: 1000,
+			width: 1000,
+		};
+		let mut meta = SeriesPartitionMetadata::new();
+		meta.newest_key = u64::MAX;
+		meta.last_write_at = DateTime::from_nanos(0);
+		let grace = Duration::from_milliseconds(100).unwrap();
+		let bucket_end = DateTime::from_nanos(1_000_000_000);
+		assert!(!is_closed(&b, &s, &meta, bucket_end, grace));
 	}
 }

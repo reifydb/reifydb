@@ -91,6 +91,7 @@ use reifydb_value::{
 		Value,
 		dictionary::DictionaryId,
 		identity::IdentityId,
+		partition::Partition,
 		sumtype::{SumTypeId, VariantRef},
 	},
 };
@@ -278,7 +279,7 @@ pub struct CatalogCacheInner {
 
 	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
 	pub(crate) column_snapshots: SkipMap<ColumnSnapshotId, MultiVersionColumnSnapshot>,
-	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, ColumnSnapshotId)>>,
+	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, Option<Partition>, ColumnSnapshotId)>>,
 	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
 
 	pub(crate) write_lock: Mutex<()>,

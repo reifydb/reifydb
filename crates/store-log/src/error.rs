@@ -32,6 +32,7 @@ pub enum LogError {
 		path: PathBuf,
 		found: u32,
 	},
+	IndexCorrupt(PathBuf),
 	VoteShort {
 		path: PathBuf,
 		len: u64,
@@ -43,6 +44,10 @@ pub enum LogError {
 		path: PathBuf,
 		end: Position,
 		len: u64,
+	},
+	SegmentCorrupt {
+		path: PathBuf,
+		position: Position,
 	},
 	SegmentOutOfOrder {
 		path: PathBuf,
@@ -91,10 +96,6 @@ pub enum LogError {
 		dir: PathBuf,
 		last: Term,
 		found: Term,
-	},
-	Truncated {
-		dir: PathBuf,
-		version: LogVersion,
 	},
 	TruncateCommitted {
 		dir: PathBuf,
@@ -156,6 +157,7 @@ impl LogError {
 				path,
 				..
 			} => path,
+			LogError::IndexCorrupt(path) => path,
 			LogError::VoteShort {
 				path,
 				..
@@ -164,6 +166,10 @@ impl LogError {
 				path,
 			} => path,
 			LogError::SegmentIncomplete {
+				path,
+				..
+			} => path,
+			LogError::SegmentCorrupt {
 				path,
 				..
 			} => path,
@@ -205,10 +211,6 @@ impl LogError {
 				..
 			} => dir,
 			LogError::TermRegression {
-				dir,
-				..
-			} => dir,
-			LogError::Truncated {
 				dir,
 				..
 			} => dir,
@@ -258,6 +260,9 @@ impl Display for LogError {
 				path,
 				found,
 			} => write!(f, "log index {} has magic 0x{:08x}, not an index", path.display(), found),
+			LogError::IndexCorrupt(path) => {
+				write!(f, "log index {} does not verify against its checksum", path.display())
+			}
 			LogError::VoteShort {
 				path,
 				len,
@@ -277,6 +282,15 @@ impl Display for LogError {
 				path.display(),
 				found,
 				previous
+			),
+			LogError::SegmentCorrupt {
+				path,
+				position,
+			} => write!(
+				f,
+				"log segment {} is corrupt at {}, but valid records follow it",
+				path.display(),
+				position
 			),
 			LogError::VoteCorrupt {
 				path,
@@ -364,15 +378,6 @@ impl Display for LogError {
 				dir.display(),
 				last.as_u64(),
 				found.as_u64()
-			),
-			LogError::Truncated {
-				dir,
-				version,
-			} => write!(
-				f,
-				"log {} no longer holds version {}, so it can never become durable",
-				dir.display(),
-				version.as_u64()
 			),
 			LogError::TruncateCommitted {
 				dir,

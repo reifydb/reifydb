@@ -35,7 +35,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await httpClient.admin(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
 
@@ -59,7 +59,7 @@ describe('Statement', () => {
             const frames = await httpClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};'
+                'OUTPUT MAP {result: 3};'
             );
 
             expect(frames).toHaveLength(3);
@@ -77,7 +77,7 @@ describe('Statement', () => {
             const frames = await httpClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};"
+                "OUTPUT MAP {result: 'ReifyDB'};"
             );
 
             expect(frames).toHaveLength(3);
@@ -115,7 +115,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await httpClient.command(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
 
@@ -139,7 +139,7 @@ describe('Statement', () => {
             const frames = await httpClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};'
+                'OUTPUT MAP {result: 3};'
             );
 
             expect(frames).toHaveLength(3);
@@ -157,7 +157,7 @@ describe('Statement', () => {
             const frames = await httpClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};"
+                "OUTPUT MAP {result: 'ReifyDB'};"
             );
 
             expect(frames).toHaveLength(3);
@@ -196,7 +196,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await httpClient.query(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
 
@@ -220,7 +220,7 @@ describe('Statement', () => {
             const frames = await httpClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};'
+                'OUTPUT MAP {result: 3};'
             );
 
             expect(frames).toHaveLength(3);
@@ -238,7 +238,7 @@ describe('Statement', () => {
             const frames = await httpClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};"
+                "OUTPUT MAP {result: 'ReifyDB'};"
             );
 
             expect(frames).toHaveLength(3);

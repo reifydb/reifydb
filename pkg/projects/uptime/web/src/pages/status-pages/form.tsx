@@ -32,7 +32,7 @@ function StatusPageForm({
   submitError: string | null
   onSubmit: (input: StatusPageInput) => void
 }) {
-  const monitors = useLiveMonitors()
+  const { data: monitors } = useLiveMonitors()
   const [title, setTitle] = useState(page?.title ?? '')
   const [slug, setSlug] = useState(page?.slug ?? '')
   const [slugTouched, setSlugTouched] = useState(page != null)
@@ -155,7 +155,13 @@ function StatusPageForm({
 
 export function StatusPageNewPage() {
   const navigate = useNavigate()
+  const { data: monitors, error: monitorsError } = useLiveMonitors()
   const { create, isPending, error } = useCreateStatusPage()
+
+  if (monitorsError != null) {
+    return <p className="text-sm text-status-error">Failed to load monitors: {errorMessage(monitorsError)}</p>
+  }
+  if (monitors == null) return <Loading />
 
   return (
     <div className="space-y-6">
@@ -175,9 +181,13 @@ export function StatusPageEditPage() {
   const { pageId } = useParams({ strict: false }) as { pageId: string }
   const navigate = useNavigate()
   const { data: page, isLoading, error } = useStatusPage(pageId)
+  const { data: monitors, error: monitorsError } = useLiveMonitors()
   const { update, isPending, error: updateError } = useUpdateStatusPage(pageId)
 
-  if (isLoading) return <Loading />
+  if (monitorsError != null) {
+    return <p className="text-sm text-status-error">Failed to load monitors: {errorMessage(monitorsError)}</p>
+  }
+  if (isLoading || monitors == null) return <Loading />
   if (error != null || page == null) {
     return <p className="text-sm text-status-error">Status page not found</p>
   }

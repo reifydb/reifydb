@@ -9,11 +9,7 @@ use reifydb_value::{
 };
 
 use crate::value::column::{
-	buffer::ColumnBuffer,
-	data::{Column, ColumnData},
-	encoding::EncodingId,
-	nones::NoneBitmap,
-	stats::StatsSet,
+	buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId, nones::NoneBitmap, stats::StatsSet,
 };
 
 #[derive(Clone, Debug)]
@@ -107,7 +103,7 @@ impl Canonical {
 	}
 }
 
-fn encoding_for_type(ty: &ValueType) -> EncodingId {
+pub fn encoding_for_type(ty: &ValueType) -> EncodingId {
 	match ty {
 		ValueType::Boolean => EncodingId::CANONICAL_BOOL,
 		ValueType::Utf8
@@ -119,9 +115,6 @@ fn encoding_for_type(ty: &ValueType) -> EncodingId {
 		_ => EncodingId::CANONICAL_FIXED,
 	}
 }
-
-static UNIT_METADATA: () = ();
-static EMPTY_CHILDREN: Vec<Column> = Vec::new();
 
 impl ColumnData for Canonical {
 	fn ty(&self) -> ValueType {
@@ -166,14 +159,6 @@ impl ColumnData for Canonical {
 
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
-	}
-
-	fn children(&self) -> &[Column] {
-		&EMPTY_CHILDREN
-	}
-
-	fn metadata(&self) -> &dyn Any {
-		&UNIT_METADATA
 	}
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>> {

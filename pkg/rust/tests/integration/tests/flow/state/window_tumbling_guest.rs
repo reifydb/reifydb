@@ -17,12 +17,12 @@ use reifydb::{
 			column::operator::OperatorColumn,
 			context::{GuestContext, Windowed},
 			view::RowView,
-			windowed::operator::{Emit, NoRolling, WindowSettings, WindowedOperator},
+			windowed::operator::{Emit, NoRolling, WindowedOperator},
 		},
 		row,
 	},
 	testing::db::TestDb,
-	window::{accumulator::invertible::moments::Moments, span::WindowSpan},
+	window::{accumulator::invertible::moments::Moments, settings::WindowSettings, span::WindowSpan},
 };
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{

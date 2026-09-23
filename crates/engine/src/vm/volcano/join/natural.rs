@@ -136,7 +136,9 @@ impl QueryNode for NaturalJoinNode {
 			&mut hash_buf,
 		)?;
 
-		let columns = Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers);
+		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
+		let columns =
+			Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers, left_rownum);
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))
@@ -232,12 +234,17 @@ impl NaturalJoinNode {
 		qualified_names: &[String],
 		result_rows: Vec<Vec<Value>>,
 		result_row_numbers: Vec<RowNumber>,
+		has_row_numbers: bool,
 	) -> Columns {
 		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		if result_row_numbers.is_empty() {
+		let mut columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
 			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
+		};
+		if has_row_numbers {
+			columns.system.mark_row_numbers();
 		}
+		columns
 	}
 }

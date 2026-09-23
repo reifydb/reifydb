@@ -8,6 +8,8 @@ use std::{
 
 use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::flow::FlowId};
 use reifydb_value::error::Error;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use rusqlite::Error as RusqliteError;
 
 pub type Result<T> = std::result::Result<T, OperatorError>;
 
@@ -19,6 +21,7 @@ pub enum OperatorError {
 	CheckpointOutOfRange {
 		flow: FlowId,
 	},
+	Closed,
 }
 
 impl Display for OperatorError {
@@ -30,11 +33,21 @@ impl Display for OperatorError {
 			OperatorError::CheckpointOutOfRange {
 				flow,
 			} => write!(f, "flow {} moved its checkpoint backwards", flow.0),
+			OperatorError::Closed => write!(f, "operator state backend is closed"),
 		}
 	}
 }
 
 impl StdError for OperatorError {}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl From<RusqliteError> for OperatorError {
+	fn from(err: RusqliteError) -> Self {
+		OperatorError::Backend {
+			message: err.to_string(),
+		}
+	}
+}
 
 impl From<OperatorError> for Error {
 	fn from(err: OperatorError) -> Self {

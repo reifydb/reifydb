@@ -80,6 +80,7 @@ fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 			(0..n).map(|i| DateTime::from_nanos((i as u64) * 1_000_000)).collect(),
 			(0..n).map(|i| DateTime::from_nanos((i as u64) * 2_000_000)).collect(),
 			(0..n).map(|i| DateTime::from_nanos((i as u64) * 3_000_000)).collect(),
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![FrameColumn {
@@ -127,6 +128,7 @@ fn two_frames_only_row_numbers() {
 			vec![],
 			vec![],
 			vec![],
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![FrameColumn {
@@ -135,7 +137,7 @@ fn two_frames_only_row_numbers() {
 		}],
 	};
 	let frame2 = Frame {
-		system: SystemColumns::new(vec![RowNumber::new(3)], Vec::new(), vec![], vec![], vec![]),
+		system: SystemColumns::new(vec![RowNumber::new(3)], Vec::new(), vec![], vec![], vec![], Vec::new()),
 		op: None,
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
@@ -154,6 +156,7 @@ fn two_frames_only_created_at() {
 			vec![DateTime::from_nanos(100), DateTime::from_nanos(200)],
 			vec![],
 			vec![],
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![FrameColumn {
@@ -162,7 +165,14 @@ fn two_frames_only_created_at() {
 		}],
 	};
 	let frame2 = Frame {
-		system: SystemColumns::new(vec![], Vec::new(), vec![DateTime::from_nanos(300)], vec![], vec![]),
+		system: SystemColumns::new(
+			vec![],
+			Vec::new(),
+			vec![DateTime::from_nanos(300)],
+			vec![],
+			vec![],
+			Vec::new(),
+		),
 		op: None,
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
@@ -183,6 +193,7 @@ fn frame_with_only_metadata_take_one_then_aggregate() {
 			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
 			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
 			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+			Vec::new(),
 		),
 		op: None,
 		columns: vec![

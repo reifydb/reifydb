@@ -460,6 +460,9 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
 		};
+		if !batch.subscription_ids.contains(&subscription_id) {
+			return false;
+		}
 		{
 			let now = self.clock.now().to_millis();
 			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());

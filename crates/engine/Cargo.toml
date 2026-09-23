@@ -24,6 +24,7 @@ reifydb-auth = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-column = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true }
@@ -33,6 +34,7 @@ reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store-cdc = { workspace = true }
+reifydb-store-column = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }

@@ -83,6 +83,7 @@ impl RingBufferScan {
 
 		let headers = ColumnHeaders {
 			columns: ringbuffer.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: true,
 		};
 
 		Ok(Self {
@@ -294,7 +295,9 @@ impl QueryNode for RingBufferScan {
 
 		self.finished = true;
 		if self.partitions.is_empty() || self.partitions.iter().all(|p| p.metadata.is_empty()) {
-			return Ok(Some(Columns::new(self.empty_columns())));
+			let mut columns = Columns::new(self.empty_columns());
+			columns.system.mark_row_numbers();
+			return Ok(Some(columns));
 		}
 		Ok(None)
 	}

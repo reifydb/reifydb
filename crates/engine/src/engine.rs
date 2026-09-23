@@ -62,7 +62,9 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{
+		ScanLayout, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+	},
 };
 use reifydb_value::{
 	error,
@@ -268,6 +270,29 @@ impl StandardEngine {
 				return ExecutionResult::from_error(e);
 			}
 		};
+		let mut outcome = self.executor.query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
+	}
+
+	#[instrument(name = "engine::query_column_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn query_column_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		let mut txn = match self.begin_query(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult::from_error(e);
+			}
+		};
+		txn.layout = ScanLayout::Column;
 		let mut outcome = self.executor.query(
 			&mut txn,
 			Query {

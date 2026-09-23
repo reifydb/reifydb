@@ -196,87 +196,105 @@ impl Series {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SeriesMetadata {
+pub struct SeriesPartitionMetadata {
 	pub row_count: u64,
 	pub oldest_key: u64,
 	pub newest_key: u64,
 	pub sequence_counter: u64,
+	pub last_write_at: DateTime,
+	pub dirty_from_key: u64,
+	pub dirty_to_key: u64,
 }
 
-impl SeriesMetadata {
+impl SeriesPartitionMetadata {
 	pub fn new() -> Self {
 		Self {
 			row_count: 0,
 			oldest_key: 0,
 			newest_key: 0,
 			sequence_counter: 0,
+			last_write_at: DateTime::default(),
+			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
 		}
 	}
 }
 
-impl Default for SeriesMetadata {
+impl Default for SeriesPartitionMetadata {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-const SERIES_METADATA_WIDTH: usize = 32;
+const SERIES_PARTITION_METADATA_WIDTH: usize = 56;
 
-pub fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedPodRow {
-	let mut bytes = Vec::with_capacity(SERIES_METADATA_WIDTH);
+pub fn encode_series_partition_metadata(metadata: &SeriesPartitionMetadata) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(SERIES_PARTITION_METADATA_WIDTH);
 	bytes.extend_from_slice(&metadata.row_count.to_be_bytes());
 	bytes.extend_from_slice(&metadata.oldest_key.to_be_bytes());
 	bytes.extend_from_slice(&metadata.newest_key.to_be_bytes());
 	bytes.extend_from_slice(&metadata.sequence_counter.to_be_bytes());
+	bytes.extend_from_slice(&metadata.last_write_at.to_bits().to_be_bytes());
+	bytes.extend_from_slice(&metadata.dirty_from_key.to_be_bytes());
+	bytes.extend_from_slice(&metadata.dirty_to_key.to_be_bytes());
 	EncodedPodRow::new(&bytes)
 }
 
-pub fn decode_series_metadata(row: &EncodedPodRow) -> Result<SeriesMetadata> {
+pub fn decode_series_partition_metadata(row: &EncodedPodRow) -> Result<SeriesPartitionMetadata> {
 	let bytes = row.body();
-	if bytes.len() != SERIES_METADATA_WIDTH {
+	if bytes.len() != SERIES_PARTITION_METADATA_WIDTH {
 		return_internal_error!(
-			"Series metadata is {} bytes wide, expected {}. This indicates a corrupt metadata row.",
+			"Series partition metadata is {} bytes wide, expected {}. This indicates a corrupt metadata row.",
 			bytes.len(),
-			SERIES_METADATA_WIDTH
+			SERIES_PARTITION_METADATA_WIDTH
 		)
 	}
-	Ok(SeriesMetadata {
+	Ok(SeriesPartitionMetadata {
 		row_count: u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
 		oldest_key: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
 		newest_key: u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
 		sequence_counter: u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+		last_write_at: DateTime::from_bits(u64::from_be_bytes(bytes[32..40].try_into().unwrap())),
+		dirty_from_key: u64::from_be_bytes(bytes[40..48].try_into().unwrap()),
+		dirty_to_key: u64::from_be_bytes(bytes[48..56].try_into().unwrap()),
 	})
 }
 
 #[cfg(test)]
-mod series_metadata_tests {
+mod series_partition_metadata_tests {
 	use super::*;
 
 	#[test]
 	fn every_field_survives_a_round_trip_at_the_declared_width() {
-		let metadata = SeriesMetadata {
+		let metadata = SeriesPartitionMetadata {
 			row_count: 42,
 			oldest_key: 100,
 			newest_key: 900,
 			sequence_counter: 7,
+			last_write_at: DateTime::from_bits(1_700_000_000_000_000_000),
+			dirty_from_key: 512,
+			dirty_to_key: 1024,
 		};
 
-		let row = encode_series_metadata(&metadata);
+		let row = encode_series_partition_metadata(&metadata);
 
-		assert_eq!(row.len(), SERIES_METADATA_WIDTH);
-		assert_eq!(decode_series_metadata(&row).unwrap(), metadata);
+		assert_eq!(row.len(), SERIES_PARTITION_METADATA_WIDTH);
+		assert_eq!(decode_series_partition_metadata(&row).unwrap(), metadata);
 	}
 
 	#[test]
 	fn the_key_bounds_do_not_swap_because_they_select_which_buckets_materialise() {
-		let metadata = SeriesMetadata {
+		let metadata = SeriesPartitionMetadata {
 			row_count: 1,
 			oldest_key: 1,
 			newest_key: u64::MAX,
 			sequence_counter: 0,
+			last_write_at: DateTime::default(),
+			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
 		};
 
-		let decoded = decode_series_metadata(&encode_series_metadata(&metadata)).unwrap();
+		let decoded = decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
 
 		assert_eq!(decoded.oldest_key, 1);
 		assert_eq!(decoded.newest_key, u64::MAX);
@@ -284,8 +302,28 @@ mod series_metadata_tests {
 
 	#[test]
 	fn a_row_of_the_wrong_width_is_rejected_rather_than_rewinding_the_sequence_counter() {
-		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 31])).is_err());
-		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 33])).is_err());
-		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 40])).is_err());
+		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 32])).is_err());
+		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 55])).is_err());
+		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 57])).is_err());
+	}
+
+	#[test]
+	fn the_last_write_stamp_does_not_collide_with_the_sequence_counter() {
+		// the two sit next to each other in the row; a width or offset slip would let a
+		// sequence bump read back as a write stamp and strand a bucket forever
+		let metadata = SeriesPartitionMetadata {
+			row_count: 0,
+			oldest_key: 0,
+			newest_key: 0,
+			sequence_counter: u64::MAX,
+			last_write_at: DateTime::from_bits(1),
+			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
+		};
+
+		let decoded = decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
+
+		assert_eq!(decoded.sequence_counter, u64::MAX);
+		assert_eq!(decoded.last_write_at, DateTime::from_bits(1));
 	}
 }

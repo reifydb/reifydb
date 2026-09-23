@@ -195,7 +195,7 @@ impl FlowSupervisor {
 			};
 			self.reject_transactional_flow(&flow);
 			state.analyzer.add(flow.clone());
-			let seed = operators.checkpoint_get(flow_id).ok().flatten().unwrap_or(migration_base);
+			let seed = resolve_seed(&operators, flow_id, migration_base);
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 		}
@@ -679,6 +679,14 @@ fn wake_targets(sets: &BTreeMap<ObjectId, BTreeSet<FlowId>>, changed: &BTreeSet<
 	changed.iter().filter_map(|object| sets.get(object)).flatten().copied().collect()
 }
 
+fn resolve_seed(operators: &OperatorStore, flow_id: FlowId, migration_base: CommitVersion) -> CommitVersion {
+	match operators.checkpoint_get(flow_id) {
+		Ok(Some(version)) => version,
+		Ok(None) => migration_base,
+		Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
+	}
+}
+
 fn remove_checkpoint(operators: &OperatorStore, flow_id: FlowId) {
 	if let Err(e) = operators.checkpoint_remove(flow_id) {
 		warn!(flow_id = flow_id.0, error = %e, "flow checkpoint removal failed");
@@ -763,13 +771,14 @@ mod tests {
 			traits::{Actor, Directive},
 		},
 		context::clock::Clock,
+		shutdown::Shutdown,
 		sync::waiter::WaiterHandle,
 	};
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
-	use super::{reap_orphan_checkpoints, retire_flow, wake_sets, wake_targets};
+	use super::{reap_orphan_checkpoints, resolve_seed, retire_flow, wake_sets, wake_targets};
 	use crate::progress::tracker::FlowPositionTracker;
 
 	struct StopRecorder {
@@ -798,6 +807,38 @@ mod tests {
 		fn config(&self) -> ActorConfig {
 			ActorConfig::new()
 		}
+	}
+
+	#[test]
+	fn a_flow_with_a_checkpoint_resumes_from_it_and_one_without_starts_at_the_migration_base() {
+		// the seed is where the flow re-reads cdc from, so confusing "no checkpoint" with a stored one
+		// either replays slices already folded in or skips slices never folded in.
+		let store = OperatorStore::testing_memory();
+		store.checkpoint_set(FlowId(1), CommitVersion(77)).unwrap();
+
+		assert_eq!(
+			resolve_seed(&store, FlowId(1), CommitVersion(5)),
+			CommitVersion(77),
+			"a stored checkpoint must win over the migration base; taking the base replays every slice \
+			 between 5 and 77 and double-counts every aggregate over it"
+		);
+		assert_eq!(
+			resolve_seed(&store, FlowId(2), CommitVersion(5)),
+			CommitVersion(5),
+			"a flow that never checkpointed has to start at the migration base, which is the version \
+			 its view was built at"
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "checkpoint unreadable at bootstrap")]
+	fn a_checkpoint_that_cannot_be_read_at_bootstrap_stops_instead_of_seeding_from_the_migration_base() {
+		// an unreadable checkpoint is not the same as an absent one; falling back to the base seeds the
+		// flow at the wrong version and it derives wrong rows from then on with nothing to signal it.
+		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
+		store.shutdown();
+
+		resolve_seed(&store, FlowId(1), CommitVersion(5));
 	}
 
 	#[test]

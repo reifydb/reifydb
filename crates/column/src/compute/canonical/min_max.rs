@@ -54,11 +54,32 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Uint4(_) => reduce_int!(array.buffer.as_slice::<u32>(), Uint4),
 		ColumnBuffer::Uint8(_) => reduce_int!(array.buffer.as_slice::<u64>(), Uint8),
 		ColumnBuffer::Uint16(_) => reduce_int!(array.buffer.as_slice::<u128>(), Uint16),
-		ColumnBuffer::Float4(_) | ColumnBuffer::Float8(_) => Err(ColumnError::MinMaxFloatUnsupported.into()),
-		_ => Err(ColumnError::FixedArrayRequired {
+		ColumnBuffer::Any(_) => Err(ColumnError::FixedArrayRequired {
 			operation: "min_max",
 		}
 		.into()),
+		_ => reduce_ordered(array),
+	}
+}
+
+fn reduce_ordered(array: &Canonical) -> Result<(Value, Value)> {
+	let mut min: Option<Value> = None;
+	let mut max: Option<Value> = None;
+	for row in 0..array.len() {
+		if array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) {
+			continue;
+		}
+		let value = array.buffer.get_value(row);
+		if min.as_ref().is_none_or(|current| value < *current) {
+			min = Some(value.clone());
+		}
+		if max.as_ref().is_none_or(|current| value > *current) {
+			max = Some(value);
+		}
+	}
+	match (min, max) {
+		(Some(min), Some(max)) => Ok((min, max)),
+		_ => Err(ColumnError::MinMaxAllNone.into()),
 	}
 }
 

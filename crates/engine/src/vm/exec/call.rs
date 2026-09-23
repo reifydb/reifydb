@@ -96,11 +96,21 @@ impl<'a> Vm<'a> {
 	}
 
 	fn coerce_value(&self, value: Value, target: &ValueType, fragment: Fragment) -> Result<Value> {
-		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
-		data.push_value(value);
-		let ctx = self.eval_ctx();
-		let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
-		Ok(cast.get_value(0))
+		match (value, target) {
+			(Value::Any(inner), ValueType::List(_)) => self.coerce_value(*inner, target, fragment),
+			(Value::List(items), ValueType::List(item)) => Ok(Value::List(
+				items.into_iter()
+					.map(|value| self.coerce_value(value, item, fragment.clone()))
+					.collect::<Result<Vec<_>>>()?,
+			)),
+			(value, target) => {
+				let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
+				data.push_value(value);
+				let ctx = self.eval_ctx();
+				let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
+				Ok(cast.get_value(0))
+			}
+		}
 	}
 }
 

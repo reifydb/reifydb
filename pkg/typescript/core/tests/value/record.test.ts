@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {Int4Value, RecordValue, Utf8Value} from '../../src';
+import {Int4Value, ListValue, NoneValue, RecordValue, Utf8Value} from '../../src';
 
 function region(): RecordValue {
     return new RecordValue({id: new Utf8Value('us'), label: new Utf8Value('US')});
@@ -71,6 +71,21 @@ describe('RecordValue', () => {
                 type: {Record: [{name: 'id', type: 'Utf8'}, {name: 'label', type: 'Utf8'}]},
                 value: {id: 'us', label: 'US'},
             });
+        });
+    });
+
+    describe('none fields', () => {
+        it('types a none field as its option, not None, so the server can decode it', () => {
+            // The server has no None type id; a record param carrying one is refused outright.
+            const record = new RecordValue({id: new Int4Value(1), note: new NoneValue('Utf8')});
+            expect(record.type).toEqual({Record: [{name: 'id', type: 'Int4'}, {name: 'note', type: {Option: 'Utf8'}}]});
+            expect(record.encode().type).toEqual(record.type);
+        });
+
+        it('carries the option type into a list of records built without an element type', () => {
+            // A list param takes its element type from the first record, so a None there refuses the whole list.
+            const list = new ListValue([new RecordValue({note: new NoneValue('Utf8')})]);
+            expect(list.encode().type).toEqual({List: {Record: [{name: 'note', type: {Option: 'Utf8'}}]}});
         });
     });
 });

@@ -35,6 +35,7 @@ impl DictionaryScanNode {
 	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self> {
 		let headers = ColumnHeaders {
 			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
+			row_numbers: false,
 		};
 
 		Ok(Self {

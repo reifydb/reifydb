@@ -3,6 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::KeyCodec;
+use reifydb_value::value::partition::Partition;
 
 use super::KeyTag;
 use crate::{
@@ -188,23 +189,36 @@ impl ColumnSnapshotKey {
 #[key(tag = SeriesColumnSnapshot)]
 pub struct SeriesColumnSnapshotKey {
 	pub series: SeriesId,
+	pub partition: Partition,
 	pub snapshot: ColumnSnapshotId,
 }
 
 impl SeriesColumnSnapshotKey {
-	pub fn new(series: SeriesId, snapshot: ColumnSnapshotId) -> Self {
+	pub fn new(series: SeriesId, partition: Partition, snapshot: ColumnSnapshotId) -> Self {
 		Self {
 			series,
+			partition,
 			snapshot,
 		}
 	}
 
-	pub fn encoded(series: impl Into<SeriesId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(series.into(), snapshot.into()).encode()
+	pub fn encoded(
+		series: impl Into<SeriesId>,
+		partition: Partition,
+		snapshot: impl Into<ColumnSnapshotId>,
+	) -> EncodedKey {
+		Self::new(series.into(), partition, snapshot.into()).encode()
 	}
 
 	pub fn full_scan(series: SeriesId) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, series.0 as u128)])
+	}
+
+	pub fn partition_scan(series: SeriesId, partition: Partition) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
+			[Field::UDesc(Width::U64, series.0 as u128), Field::UDesc(Width::U128, partition.0)],
+		)
 	}
 }
 
@@ -236,7 +250,23 @@ impl TableColumnSnapshotKey {
 pub mod column_snapshot_key_tests {
 	use std::ops::Bound;
 
+	use reifydb_codec::key::encoded::EncodedKey;
+
 	use super::*;
+
+	fn contains(range: &TaggedKeyBoundRange, key: &EncodedKey) -> bool {
+		let start = match &range.start {
+			Bound::Included(b) => *key >= b.encode(),
+			Bound::Excluded(b) => *key > b.encode(),
+			Bound::Unbounded => true,
+		};
+		let end = match &range.end {
+			Bound::Included(b) => *key <= b.encode(),
+			Bound::Excluded(b) => *key < b.encode(),
+			Bound::Unbounded => true,
+		};
+		start && end
+	}
 
 	#[test]
 	fn a_snapshot_key_reports_its_own_kind_from_its_first_byte() {
@@ -244,7 +274,7 @@ pub mod column_snapshot_key_tests {
 		// metrics parser and the entry classifier both routed them to an owner they never belonged to
 		assert_eq!(KeyTag::of(&ColumnSnapshotKey::encoded(ColumnSnapshotId(1))), Some(KeyTag::ColumnSnapshot));
 		assert_eq!(
-			KeyTag::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), ColumnSnapshotId(2))),
+			KeyTag::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), Partition(3), ColumnSnapshotId(2))),
 			Some(KeyTag::SeriesColumnSnapshot)
 		);
 		assert_eq!(
@@ -274,12 +304,40 @@ pub mod column_snapshot_key_tests {
 	fn test_series_column_snapshot_key_encode_decode() {
 		let key = SeriesColumnSnapshotKey {
 			series: SeriesId(42),
+			partition: Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210),
 			snapshot: ColumnSnapshotId(99),
 		};
 		let encoded = key.encode();
 		let decoded = SeriesColumnSnapshotKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.series, key.series);
+		assert_eq!(decoded.partition, key.partition);
 		assert_eq!(decoded.snapshot, key.snapshot);
+	}
+
+	#[test]
+	fn test_series_column_snapshot_partition_scan_excludes_other_partitions() {
+		// the scoped listing reads this range directly, so a prefix that still covers a
+		// neighbouring partition would hand the scan another partition's blocks
+		let range = SeriesColumnSnapshotKey::partition_scan(SeriesId(42), Partition(7));
+		let inside = SeriesColumnSnapshotKey::encoded(SeriesId(42), Partition(7), ColumnSnapshotId(1));
+		let other_partition = SeriesColumnSnapshotKey::encoded(SeriesId(42), Partition(8), ColumnSnapshotId(1));
+		let other_series = SeriesColumnSnapshotKey::encoded(SeriesId(43), Partition(7), ColumnSnapshotId(1));
+
+		assert!(contains(&range, &inside), "the scanned partition must be inside its own range");
+		assert!(!contains(&range, &other_partition), "a different partition must fall outside");
+		assert!(!contains(&range, &other_series), "a different series must fall outside");
+	}
+
+	#[test]
+	fn test_series_column_snapshot_full_scan_spans_every_partition() {
+		// a query with no partition filter still needs every block of the series
+		let range = SeriesColumnSnapshotKey::full_scan(SeriesId(42));
+		for partition in [Partition(0), Partition(7), Partition(u128::MAX)] {
+			let key = SeriesColumnSnapshotKey::encoded(SeriesId(42), partition, ColumnSnapshotId(1));
+			assert!(contains(&range, &key), "partition {:?} must be inside the full scan", partition);
+		}
+		let other_series = SeriesColumnSnapshotKey::encoded(SeriesId(43), Partition(7), ColumnSnapshotId(1));
+		assert!(!contains(&range, &other_series), "a different series must fall outside");
 	}
 
 	#[test]

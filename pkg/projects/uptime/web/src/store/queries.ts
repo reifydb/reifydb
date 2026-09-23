@@ -1,22 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { Shape, type InferShape, type ShapeNode, type SubscriptionConfig } from '@reifydb/react'
+import { Shape, rql, type InferShape } from '@reifydb/react'
 
-interface LiveQuery<S extends ShapeNode> {
-  rql: string
-  shape: S
-  config: SubscriptionConfig
-}
-
-const RESULTS_HYDRATION_CAP = 200
-
-function live<S extends ShapeNode>(rql: string, shape: S, maxRows: number): LiveQuery<S> {
-  return { rql, shape, config: { hydration: { enabled: true, maxRows } } }
-}
-
-export const monitors = live(
-  'from uptime::monitors',
+export const monitors = rql(
   Shape.object({
     id: Shape.uuid7(),
     name: Shape.utf8(),
@@ -35,13 +22,11 @@ export const monitors = live(
     last_checked_at: Shape.option(Shape.datetime()),
     consecutive_failures: Shape.int4(),
   }),
-  1000,
-)
+)`from uptime::monitors`.options({ config: { hydration: { enabled: true, maxRows: 1000 } } })
 
 export type MonitorRow = InferShape<typeof monitors.shape>
 
-export const monitorRegions = live(
-  'from uptime::monitor_regions',
+export const monitorRegions = rql(
   Shape.object({
     monitor_id: Shape.uuid7(),
     region_id: Shape.uuid7(),
@@ -49,24 +34,20 @@ export const monitorRegions = live(
     last_checked_at: Shape.option(Shape.datetime()),
     consecutive_failures: Shape.int4(),
   }),
-  5000,
-)
+)`from uptime::monitor_regions`.options({ config: { hydration: { enabled: true, maxRows: 5000 } } })
 
 export type MonitorRegionRow = InferShape<typeof monitorRegions.shape>
 
-export const regions = live(
-  'from uptime::regions',
+export const regions = rql(
   Shape.object({
     id: Shape.uuid7(),
     label: Shape.utf8(),
   }),
-  1000,
-)
+)`from uptime::regions`.options({ config: { hydration: { enabled: true, maxRows: 1000 } } })
 
 export type RegionRow = InferShape<typeof regions.shape>
 
-export const results = live(
-  `from uptime::results filter { monitor_id == $monitor_id } map { region_id, probe, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
+export const results = rql(
   Shape.object({
     region_id: Shape.uuid7(),
     probe: Shape.option(Shape.identityid()),
@@ -76,8 +57,9 @@ export const results = live(
     status_code: Shape.option(Shape.int2()),
     error: Shape.option(Shape.utf8()),
   }),
-  RESULTS_HYDRATION_CAP,
-)
+)<{ monitor_id: string }>`from uptime::results filter { monitor_id == $monitor_id } map { region_id, probe, checked_at, success, response_time, status_code, error } take 200`.options({
+  config: { hydration: { enabled: true, maxRows: 200 } },
+})
 
 export type ResultRow = InferShape<typeof results.shape>
 
@@ -89,6 +71,10 @@ const dailyShape = Shape.object({
 
 export type DailyRow = InferShape<typeof dailyShape>
 
-export const dailyTotals = live('from uptime::daily_totals', dailyShape, 20000)
+export const dailyTotals = rql(dailyShape)`from uptime::daily_totals`.options({
+  config: { hydration: { enabled: true, maxRows: 20000 } },
+})
 
-export const dailyUps = live('from uptime::daily_ups', dailyShape, 20000)
+export const dailyUps = rql(dailyShape)`from uptime::daily_ups`.options({
+  config: { hydration: { enabled: true, maxRows: 20000 } },
+})

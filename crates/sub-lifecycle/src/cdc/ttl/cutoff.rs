@@ -62,11 +62,16 @@ mod tests {
 	};
 	use reifydb_core::{
 		common::ChangeVersion,
+		error::diagnostic::internal::internal,
 		interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
+		key::cdc::ToConsumerKey,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
-	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
+	use reifydb_value::{
+		error::Error,
+		value::{Value, datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 
@@ -126,11 +131,37 @@ mod tests {
 		);
 	}
 
+	#[test]
+	fn a_consumer_checkpoint_row_that_cannot_be_decoded_stops_the_watermark_instead_of_being_skipped() {
+		// a row that will not decode may be the lowest pin in the store, so skipping it raises the
+		// watermark over a consumer that has not read that far and cdc reaps what it still needs.
+		let host = TestCdcHost::new();
+		let mut cmd = host.begin_command().unwrap();
+		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("ddl"), CommitVersion(40), ConsumerClass::Pinning)
+			.unwrap();
+		cmd.set(&CdcConsumerId::new("torn").to_consumer_key(), make_bytes("bad")).unwrap();
+		cmd.commit().unwrap();
+
+		assert!(
+			consumer_watermark(&host, None).is_err(),
+			"an undecodable checkpoint row must stop the scan; skipping it answers 40 as if the torn row \
+			 pinned nothing, and every version below it becomes reapable"
+		);
+	}
+
 	struct FixedFloor(Option<CommitVersion>);
 
 	impl CheckpointFloor for FixedFloor {
-		fn floor(&self) -> Option<CommitVersion> {
-			self.0
+		fn floor(&self) -> Result<Option<CommitVersion>> {
+			Ok(self.0)
+		}
+	}
+
+	struct FailingFloor;
+
+	impl CheckpointFloor for FailingFloor {
+		fn floor(&self) -> Result<Option<CommitVersion>> {
+			Err(Error(Box::new(internal("operator state backend is closed"))))
 		}
 	}
 
@@ -166,6 +197,53 @@ mod tests {
 			Some(CommitVersion(40)),
 			"a store with no checkpoint rows contributes no pin at all, matching a database whose flows \
 			 have never committed"
+		);
+	}
+
+	#[test]
+	fn a_floor_that_cannot_be_read_pins_retention_at_version_zero_instead_of_contributing_no_pin() {
+		// the floor is the only pin a flow has, so an unreadable one must over-retain; treating the
+		// error as "no floor" lets the aggressive ttl reap every version the flow still has to replay.
+		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+		let storage = CdcStore::new(CdcStoreConfig::memory(actor_system.spawner().clone(), Clock::Real));
+		let host = TestCdcHost::new();
+		let clock = host.clock.clone();
+
+		host.catalog()
+			.cache()
+			.set_config(
+				ConfigKey::CdcTtlDuration,
+				CommitVersion(1),
+				Value::Duration(Duration::from_milliseconds(1).unwrap()),
+			)
+			.unwrap();
+
+		for v in 1..=10u64 {
+			let cdc = Cdc::new(
+				ChangeVersion::from(CommitVersion(v)),
+				DateTime::from_nanos(1000),
+				vec![CdcChange::Insert {
+					key: make_key(&format!("k{v}")).encode(),
+					post: make_bytes("v"),
+				}],
+			);
+			storage.write(&cdc).unwrap();
+			assert!(storage.flush_pending());
+		}
+
+		assert_eq!(
+			consumer_watermark(&host, Some(&FailingFloor)).unwrap(),
+			Some(CommitVersion(0)),
+			"an unreadable floor has to pin at version zero; answering None here is indistinguishable \
+			 from a database whose flows have never committed"
+		);
+
+		// With no checkpoint rows and no pin the ttl alone evicts everything (Unbounded). The zero pin
+		// caps the cutoff at version 1, which drops nothing because versions start at 1.
+		assert_eq!(
+			find_eviction_target(&storage, &host, &clock, Some(&FailingFloor)).unwrap(),
+			Some(Cutoff::Version(CommitVersion(1))),
+			"a floor read failure must leave every version in place, not hand the ttl an unbounded cutoff"
 		);
 	}
 

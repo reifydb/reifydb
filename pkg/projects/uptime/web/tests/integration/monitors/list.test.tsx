@@ -3,135 +3,122 @@
 
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Option, type Store } from '@reifydb/react'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { rql, type Store } from '@reifydb/react'
+import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
-import { monitorRegions, monitors, regions, type MonitorRow } from '@/store/queries'
-import { baseMonitor } from '../../support/fixtures'
-import { renderWithProviders, seededStore } from '../../support/store'
+import { loadBackend } from '../../support/backend'
+import { commandRoot } from '../../support/db'
+import { bridgeStore, renderWithProviders } from '../../support/store'
+import { addRegion, caughtUp, createMonitor, regionNamed } from '../../support/monitors'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
-let store: Store
+const SET_REGION_STATUS = rql.write([])<{
+  monitor_id: string
+  region_id: string
+  status: string
+}>`update uptime::monitor_regions { status: $status } filter { monitor_id == $monitor_id and region_id == $region_id }`
 
-beforeEach(() => {
-  store = seededStore()
+const DISABLE_AS_DOWN = rql.write([])<{
+  id: string
+}>`update uptime::monitors { enabled: false, status: "down" } filter { id == $id }`
+
+const MARK_DEGRADED = rql.write([])<{ id: string }>`update uptime::monitors { status: "degraded" } filter { id == $id }`
+
+let create: TestFactory
+
+beforeAll(() => {
+  create = loadBackend()
 })
 
-function renderPage() {
-  return renderWithProviders(<DashboardPage />, store)
-}
-
 describe('monitors list', () => {
+  let db: TestDb
+  let store: Store
+  let client: BridgeClient
+  let identity: string
+
+  beforeEach(async () => {
+    db = create()
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
+  })
+
+  async function renderPage() {
+    renderWithProviders(<DashboardPage />, store)
+    await caughtUp(client)
+  }
+
+  function setRegionStatus(monitorId: string, regionId: string, status: string) {
+    return commandRoot(db, SET_REGION_STATUS, { monitor_id: monitorId, region_id: regionId, status })
+  }
+
   it('shows a loading indicator before monitors are ready', () => {
-    renderPage()
+    renderWithProviders(<DashboardPage />, store)
     expect(screen.getByText('Loading')).toBeInTheDocument()
   })
 
-  it('shows an empty state with a create-monitor CTA when there are no monitors', () => {
-    store.seed(monitors.rql, null, monitors.shape, [])
-    renderPage()
+  it('shows an empty state with a create-monitor CTA when there are no monitors', async () => {
+    await renderPage()
 
-    expect(screen.getByRole('heading', { name: 'No monitors yet' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No monitors yet' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /create monitor/i })).toHaveAttribute(
       'href',
       '/monitors/new',
     )
   })
 
-  it('renders a monitor row with its name, type, target and last-checked time', () => {
-    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
-    store.seed(monitors.rql, null, monitors.shape, [monitor])
-    renderPage()
+  it('renders a monitor row with its name, type, target and last-checked time', async () => {
+    await createMonitor(db, identity, 'alpha-api')
+    await renderPage()
 
-    const row = screen.getByRole('row', { name: /alpha-api/i })
+    const row = await screen.findByRole('row', { name: /alpha-api/i })
     expect(within(row).getByText('HTTP')).toBeInTheDocument()
-    expect(within(row).getByText(monitor.target)).toBeInTheDocument()
+    expect(within(row).getByText('https://alpha-api.example.com/health')).toBeInTheDocument()
     expect(within(row).getByText('never')).toBeInTheDocument()
   })
 
-  it('links the monitor name to its detail page', () => {
-    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-42', name: 'alpha-api' }
-    store.seed(monitors.rql, null, monitors.shape, [monitor])
-    renderPage()
+  it('links the monitor name to its detail page', async () => {
+    const id = await createMonitor(db, identity, 'alpha-api')
+    await renderPage()
 
-    expect(screen.getByRole('link', { name: 'alpha-api' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'alpha-api' })).toHaveAttribute(
       'href',
-      '/monitors/mon-42',
+      `/monitors/${id}`,
     )
   })
 
-  it('shows Paused instead of a status badge for a disabled monitor', () => {
-    const monitor: MonitorRow = {
-      ...baseMonitor,
-      id: 'mon-1',
-      name: 'beta-db',
-      enabled: false,
-      status: 'down',
-    }
-    store.seed(monitors.rql, null, monitors.shape, [monitor])
-    renderPage()
+  it('shows Paused instead of a status badge for a disabled monitor', async () => {
+    const id = await createMonitor(db, identity, 'beta-db')
+    await commandRoot(db, DISABLE_AS_DOWN, { id })
+    await renderPage()
 
-    const row = screen.getByRole('row', { name: /beta-db/i })
+    const row = await screen.findByRole('row', { name: /beta-db/i })
     expect(within(row).getByText('Paused')).toBeInTheDocument()
     expect(within(row).queryByText('Down')).not.toBeInTheDocument()
   })
 
-  it('shows the up-region fraction based on actual region statuses', () => {
-    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api', status: 'degraded' }
-    store.seed(monitors.rql, null, monitors.shape, [monitor])
-    store.seed(regions.rql, null, regions.shape, [
-      { id: 'r-us', label: 'US East' },
-      { id: 'r-eu', label: 'EU West' },
-      { id: 'r-ap', label: 'AP South' },
-    ])
-    store.seed(monitorRegions.rql, null, monitorRegions.shape, [
-      {
-        monitorId: 'mon-1',
-        regionId: 'r-us',
-        status: 'up',
-        lastCheckedAt: Option.none('DateTime'),
-        consecutiveFailures: 0,
-      },
-      {
-        monitorId: 'mon-1',
-        regionId: 'r-eu',
-        status: 'up',
-        lastCheckedAt: Option.none('DateTime'),
-        consecutiveFailures: 0,
-      },
-      {
-        monitorId: 'mon-1',
-        regionId: 'r-ap',
-        status: 'down',
-        lastCheckedAt: Option.none('DateTime'),
-        consecutiveFailures: 2,
-      },
-    ])
-    renderPage()
+  it('shows the up-region fraction based on actual region statuses', async () => {
+    const usEast = await regionNamed(db, 'US East')
+    const euWest = await regionNamed(db, 'EU West')
+    const apSouth = await addRegion(db, 'AP South')
+    const id = await createMonitor(db, identity, 'alpha-api', [usEast, euWest, apSouth])
+    await commandRoot(db, MARK_DEGRADED, { id })
+    await setRegionStatus(id, usEast, 'up')
+    await setRegionStatus(id, euWest, 'up')
+    await setRegionStatus(id, apSouth, 'down')
+    await renderPage()
 
-    const row = screen.getByRole('row', { name: /alpha-api/i })
+    const row = await screen.findByRole('row', { name: /alpha-api/i })
     expect(within(row).getByText('2/3')).toBeInTheDocument()
   })
 
   it('only offers the region-expand toggle for monitors with regions, and it reveals region rows', async () => {
-    const withRegions: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
-    const withoutRegions: MonitorRow = { ...baseMonitor, id: 'mon-2', name: 'beta-db' }
-    store.seed(monitors.rql, null, monitors.shape, [withRegions, withoutRegions])
-    store.seed(regions.rql, null, regions.shape, [{ id: 'r-us', label: 'US East' }])
-    store.seed(monitorRegions.rql, null, monitorRegions.shape, [
-      {
-        monitorId: 'mon-1',
-        regionId: 'r-us',
-        status: 'up',
-        lastCheckedAt: Option.none('DateTime'),
-        consecutiveFailures: 0,
-      },
-    ])
-    renderPage()
+    await createMonitor(db, identity, 'alpha-api', [await regionNamed(db, 'US East')])
+    await createMonitor(db, identity, 'beta-db')
+    await renderPage()
 
-    const rowWithoutRegions = screen.getByRole('row', { name: /beta-db/i })
+    const rowWithoutRegions = await screen.findByRole('row', { name: /beta-db/i })
     expect(
       within(rowWithoutRegions).queryByRole('button', { name: /regions/i }),
     ).not.toBeInTheDocument()

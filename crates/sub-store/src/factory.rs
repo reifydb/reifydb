@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 #[cfg(feature = "column")]
-use reifydb_column::compress::{CompressConfig, Compressor};
+use reifydb_column::compress::Compressor;
 #[cfg(feature = "column")]
 use reifydb_core::event::{EventBus, transaction::PostCommitEvent};
 use reifydb_core::util::ioc::IocContainer;
@@ -15,18 +15,17 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
+#[cfg(feature = "column")]
+use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
-use crate::column::{
-	actor::{
-		series::SeriesMaterializationActor,
-		table::{TableChanges, TableMaterializationActor},
-	},
-	block_store::ColumnBlockStore,
+use crate::column::actor::{
+	series::SeriesMaterializationActor,
+	table::{TableChanges, TableMaterializationActor},
 };
 use crate::subsystem::{StorageConfig, StorageSubsystem};
 
@@ -69,14 +68,19 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let block_store = {
 			let tier = self.column_sqlite.clone().map(|cfg| Arc::new(SqliteColumnStore::new(cfg)));
-			let store = ColumnBlockStore::with_persistent(tier);
+			let store = ColumnStore::with_persistent(tier);
 			store.warm()?;
 			store
 		};
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let block_store = ColumnBlockStore::new();
+		let block_store = ColumnStore::new();
 
-		ioc.register_service::<Arc<ColumnBlockStore>>(Arc::new(block_store.clone()));
+		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
+
+		let compressor = || match self.config.compress.clone() {
+			Some(cfg) => Compressor::new(cfg),
+			None => Compressor::disabled(),
+		};
 
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());
@@ -84,7 +88,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let table_actor = TableMaterializationActor::new(
 			engine.clone(),
 			block_store.clone(),
-			Compressor::new(CompressConfig::default()),
+			compressor(),
 			self.config.table_tick_interval,
 			table_changes,
 		);
@@ -94,7 +98,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let series_actor = SeriesMaterializationActor::new(
 			engine,
 			block_store.clone(),
-			Compressor::new(CompressConfig::default()),
+			compressor(),
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
 			self.config.series_grace,

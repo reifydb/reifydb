@@ -68,6 +68,7 @@ impl DistinctPlan {
 				cols.created_at().to_vec(),
 				cols.updated_at().to_vec(),
 				cols.time().to_vec(),
+				Vec::new(),
 			),
 		)
 	}
@@ -83,6 +84,7 @@ impl DistinctPlan {
 				source.created_at().to_vec(),
 				source.updated_at().to_vec(),
 				source.time().to_vec(),
+				Vec::new(),
 			),
 		)
 	}

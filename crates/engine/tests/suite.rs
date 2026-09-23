@@ -62,6 +62,8 @@ mod distinct_typed_key;
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
 mod empty_result_column_types;
+#[path = "empty_result_rownum.rs"]
+mod empty_result_rownum;
 #[path = "enum_column_optional.rs"]
 mod enum_column_optional;
 #[path = "enum_variant_in_expression.rs"]
@@ -110,6 +112,8 @@ mod join_using_condition_fragment;
 mod join_using_unknown_key_column;
 #[path = "list_param_insert.rs"]
 mod list_param_insert;
+#[path = "map_ends_in_a_comment.rs"]
+mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
@@ -120,6 +124,8 @@ mod nested_option_types;
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]
 mod none_operand_expression_types;
+#[path = "output_rule.rs"]
+mod output_rule;
 #[path = "percentile_aggregate.rs"]
 mod percentile_aggregate;
 #[path = "percentile_aggregate_errors.rs"]
@@ -130,6 +136,8 @@ mod plan_cache;
 mod positional_insert;
 #[path = "procedure_body_pipe.rs"]
 mod procedure_body_pipe;
+#[path = "procedure_list_param.rs"]
+mod procedure_list_param;
 #[path = "procedure_named_like_a_builtin.rs"]
 mod procedure_named_like_a_builtin;
 #[path = "procedure_param_coercion.rs"]

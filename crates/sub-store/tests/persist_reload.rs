@@ -11,8 +11,8 @@ use reifydb::{
 };
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sqlite::SqliteConfig;
+use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, store::ColumnStore};
 use reifydb_sub_store::{
-	column::{block_store::ColumnBlockStore, persistent::sqlite::SqliteColumnStore},
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
@@ -60,7 +60,7 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 	let persisted = tier.load_all().expect("load_all");
 	assert!(!persisted.is_empty(), "column.db must contain a persisted block after materialization");
 
-	let reloaded = ColumnBlockStore::with_persistent(Some(tier));
+	let reloaded = ColumnStore::with_persistent(Some(tier));
 	reloaded.warm().expect("warm from column.db");
 
 	let block = reloaded

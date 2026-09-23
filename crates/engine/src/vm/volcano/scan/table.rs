@@ -80,6 +80,7 @@ impl TableScanNode {
 
 		let headers = ColumnHeaders {
 			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: true,
 		};
 
 		let resume = if table.def().partition_by.is_empty() {
@@ -137,6 +138,7 @@ impl TableScanNode {
 					batch.rows.push(multi.bytes);
 					batch.row_numbers.push(multi.key.row());
 					batch.partitions.push(multi.key.partition());
+					batch.commit_versions.push(multi.version.0);
 					last = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
@@ -163,6 +165,7 @@ impl TableScanNode {
 				Some(Ok(multi)) => {
 					batch.rows.push(multi.bytes);
 					batch.row_numbers.push(multi.key.row());
+					batch.commit_versions.push(multi.version.0);
 					last = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
@@ -226,6 +229,7 @@ struct ScannedBatch {
 	rows: Vec<EncodedBytes>,
 	row_numbers: Vec<RowNumber>,
 	partitions: Vec<Partition>,
+	commit_versions: Vec<u64>,
 	exhausted: bool,
 }
 
@@ -314,7 +318,9 @@ impl QueryNode for TableScanNode {
 		if scanned.rows.is_empty() {
 			self.exhausted = true;
 			if !resumed {
-				return Ok(Some(Columns::new(self.empty_columns())));
+				let mut columns = Columns::new(self.empty_columns());
+				columns.system.mark_row_numbers();
+				return Ok(Some(columns));
 			}
 			return Ok(None);
 		}
@@ -327,6 +333,7 @@ impl QueryNode for TableScanNode {
 		if !scanned.partitions.is_empty() {
 			columns.system.set_partitions(scanned.partitions);
 		}
+		columns.system.set_commit_versions(scanned.commit_versions);
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

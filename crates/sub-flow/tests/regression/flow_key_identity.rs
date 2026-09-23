@@ -46,6 +46,7 @@ fn columns(named: Vec<(&str, ColumnBuffer)>) -> Columns {
 			vec![at; row_count],
 			vec![at; row_count],
 			vec![at; row_count],
+			Vec::new(),
 		),
 	)
 }

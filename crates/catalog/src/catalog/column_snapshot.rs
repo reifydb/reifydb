@@ -10,6 +10,7 @@ use reifydb_transaction::{
 	change::{OperationType, TransactionalColumnSnapshotChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_value::value::partition::Partition;
 use tracing::{instrument, warn};
 
 use crate::{
@@ -97,15 +98,22 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
+		partition: Option<Partition>,
 		bucket_start: u64,
 	) -> Result<Option<ColumnSnapshot>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self
 				.cache
-				.find_column_snapshot_for_series_bucket_at(series_id, bucket_start, cmd.version())
+				.find_column_snapshot_for_series_bucket_at(
+					series_id,
+					partition,
+					bucket_start,
+					cmd.version(),
+				)
 				.or(CatalogStore::find_column_snapshot_for_series_bucket(
 					&mut Transaction::Command(&mut *cmd),
 					series_id,
+					partition,
 					bucket_start,
 				)?)),
 			Transaction::Admin(admin) => {
@@ -114,23 +122,27 @@ impl Catalog {
 						&& let ColumnSnapshotSource::SeriesBucket {
 							series_id: sid,
 							bucket_start: bs,
+							partition: p,
 							..
 						} = snap.source && sid == series_id && bs == bucket_start
+						&& p == partition
 					{
 						return Ok(Some(snap.clone()));
 					} else if let Some(snap) = &change.pre
 						&& let ColumnSnapshotSource::SeriesBucket {
 							series_id: sid,
 							bucket_start: bs,
+							partition: p,
 							..
 						} = snap.source && sid == series_id && bs == bucket_start
-						&& change.op == OperationType::Delete
+						&& p == partition && change.op == OperationType::Delete
 					{
 						return Ok(None);
 					}
 				}
 				if let Some(snap) = self.cache.find_column_snapshot_for_series_bucket_at(
 					series_id,
+					partition,
 					bucket_start,
 					admin.version(),
 				) {
@@ -139,20 +151,28 @@ impl Catalog {
 				CatalogStore::find_column_snapshot_for_series_bucket(
 					&mut Transaction::Admin(&mut *admin),
 					series_id,
+					partition,
 					bucket_start,
 				)
 			}
 			Transaction::Query(qry) => Ok(self
 				.cache
-				.find_column_snapshot_for_series_bucket_at(series_id, bucket_start, qry.version())
+				.find_column_snapshot_for_series_bucket_at(
+					series_id,
+					partition,
+					bucket_start,
+					qry.version(),
+				)
 				.or(CatalogStore::find_column_snapshot_for_series_bucket(
 					&mut Transaction::Query(&mut *qry),
 					series_id,
+					partition,
 					bucket_start,
 				)?)),
 			Transaction::Test(mut t) => CatalogStore::find_column_snapshot_for_series_bucket(
 				&mut Transaction::Test(Box::new(t.reborrow())),
 				series_id,
+				partition,
 				bucket_start,
 			),
 		}
@@ -197,6 +217,29 @@ impl Catalog {
 			}
 		}
 		CatalogStore::list_column_snapshots_for_series(txn, series_id)
+	}
+
+	#[instrument(name = "catalog::column_snapshot::list_for_series_partition", level = "trace", skip(self, txn))]
+	pub fn list_column_snapshots_for_series_partition(
+		&self,
+		txn: &mut Transaction<'_>,
+		series_id: SeriesId,
+		partition: Partition,
+	) -> Result<Vec<ColumnSnapshot>> {
+		let version_opt = match txn.reborrow() {
+			Transaction::Command(cmd) => Some(cmd.version()),
+			Transaction::Admin(admin) => Some(admin.version()),
+			Transaction::Query(qry) => Some(qry.version()),
+			Transaction::Test(_) => None,
+		};
+		if let Some(version) = version_opt {
+			let cached =
+				self.cache.list_column_snapshots_for_series_partition_at(series_id, partition, version);
+			if !cached.is_empty() {
+				return Ok(cached);
+			}
+		}
+		CatalogStore::list_column_snapshots_for_series_partition(txn, series_id, partition)
 	}
 
 	#[instrument(name = "catalog::column_snapshot::list_for_table", level = "trace", skip(self, txn))]

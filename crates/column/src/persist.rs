@@ -4,23 +4,55 @@
 use std::sync::Arc;
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
-	data::{Column, canonical::Canonical},
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::encoding_for_type, encoding::EncodingId};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{Value, value_type::ValueType},
 };
-use reifydb_value::{Result, error::Error, value::value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+	encoding,
 	error::ColumnError,
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 
-const FORMAT_VERSION: u16 = 1;
+const FORMAT_VERSION: u16 = 2;
+
+#[derive(Serialize, Deserialize)]
+pub enum PersistedArray {
+	Canonical {
+		buffer: ColumnBuffer,
+	},
+	Constant {
+		value: Value,
+		len: u64,
+	},
+	AllNone {
+		len: u64,
+	},
+}
+
+impl PersistedArray {
+	pub fn encoding_id(&self, ty: &ValueType) -> EncodingId {
+		match self {
+			PersistedArray::Canonical {
+				..
+			} => encoding_for_type(ty),
+			PersistedArray::Constant {
+				..
+			} => EncodingId::CONSTANT,
+			PersistedArray::AllNone {
+				..
+			} => EncodingId::ALL_NONE,
+		}
+	}
+}
 
 #[derive(Serialize, Deserialize)]
 struct PersistedColumn {
-	chunks: Vec<ColumnBuffer>,
+	chunks: Vec<PersistedArray>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -31,12 +63,14 @@ struct PersistedBlock {
 }
 
 pub fn serialize_block(block: &ColumnBlock) -> Result<Vec<u8>> {
+	let registry = encoding::global();
 	let mut columns = Vec::with_capacity(block.columns.len());
 	for column in &block.columns {
 		let mut chunks = Vec::with_capacity(column.chunks.len());
 		for chunk in &column.chunks {
-			let canonical = chunk.to_canonical()?;
-			chunks.push(canonical.to_buffer());
+			let id = chunk.encoding();
+			let encoding = registry.get(id).ok_or_else(|| unregistered_on_serialize(id))?;
+			chunks.push(encoding.persist(chunk)?);
 		}
 		columns.push(PersistedColumn {
 			chunks,
@@ -79,18 +113,45 @@ pub fn deserialize_block(bytes: &[u8]) -> Result<ColumnBlock> {
 		}));
 	}
 
+	let registry = encoding::global();
 	let schema = Arc::new(persisted.schema);
 	let mut columns = Vec::with_capacity(persisted.columns.len());
 	for (index, persisted_column) in persisted.columns.into_iter().enumerate() {
 		let (_, ty, nullable) = &schema[index];
 		let mut chunks = Vec::with_capacity(persisted_column.chunks.len());
-		for buffer in persisted_column.chunks {
-			chunks.push(Column::from_canonical(Canonical::from_buffer(buffer)));
+		for persisted_chunk in persisted_column.chunks {
+			let id = persisted_chunk.encoding_id(ty);
+			let encoding = registry.get(id).ok_or_else(|| unregistered_on_deserialize(id))?;
+			chunks.push(encoding.load(persisted_chunk, ty)?);
 		}
 		columns.push(ColumnChunks::new(ty.clone(), *nullable, chunks));
 	}
 
 	Ok(ColumnBlock::new(schema, columns))
+}
+
+pub fn unexpected_data(id: EncodingId) -> Error {
+	Error::from(ColumnError::PersistSerialize {
+		reason: format!("encoding {} was asked to persist a column it does not own", id.0),
+	})
+}
+
+pub fn unexpected_payload(id: EncodingId) -> Error {
+	Error::from(ColumnError::PersistDeserialize {
+		reason: format!("encoding {} was asked to load a payload it does not own", id.0),
+	})
+}
+
+fn unregistered_on_serialize(id: EncodingId) -> Error {
+	Error::from(ColumnError::PersistSerialize {
+		reason: format!("encoding {} is not registered", id.0),
+	})
+}
+
+fn unregistered_on_deserialize(id: EncodingId) -> Error {
+	Error::from(ColumnError::PersistDeserialize {
+		reason: format!("encoding {} is not registered", id.0),
+	})
 }
 
 #[cfg(test)]

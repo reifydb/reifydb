@@ -55,7 +55,10 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		}
 	}
 
-	Columns::with_system(columns_vec, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
+	Columns::with_system(
+		columns_vec,
+		SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
+	)
 }
 
 pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
@@ -75,6 +78,7 @@ pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
 			post.created_at().to_vec(),
 			post.updated_at().to_vec(),
 			post.time().to_vec(),
+			Vec::new(),
 		),
 	)
 }
@@ -131,6 +135,7 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 				input.created_at().to_vec(),
 				input.updated_at().to_vec(),
 				input.time().to_vec(),
+				Vec::new(),
 			),
 		))
 	} else {
@@ -186,6 +191,7 @@ pub(crate) fn evaluate_returning(
 				input.created_at().to_vec(),
 				input.updated_at().to_vec(),
 				input.time().to_vec(),
+				Vec::new(),
 			),
 		))
 	} else {

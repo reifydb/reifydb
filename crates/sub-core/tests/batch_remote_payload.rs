@@ -104,3 +104,40 @@ fn a_remote_batch_change_that_fails_to_decode_stops_the_proxy() {
 
 	assert!(!pushed, "an undecodable remote change was accepted as a delivery");
 }
+
+#[test]
+fn a_remote_change_for_a_released_batch_member_is_refused() {
+	// The pending entry is recreated on push, so without a membership check a released member keeps delivering and
+	// its proxy never stops.
+	let clock = Clock::Mock(MockClock::from_millis(1000));
+	let rng = Rng::seeded(42);
+	let registry = SubscriptionRegistry::new(clock.clone());
+	let connection_id = Uuid7::generate(&clock, &rng);
+	let kept = SubscriptionId(1);
+	let released = SubscriptionId(2);
+	registry.subscribe(kept, connection_id, OpenSink, (), None, Duration::zero(), Duration::zero());
+	registry.subscribe(released, connection_id, OpenSink, (), None, Duration::zero(), Duration::zero());
+	let batch_id = registry.register_batch(
+		connection_id,
+		vec![(kept, Duration::zero()), (released, Duration::zero())],
+		OpenSink,
+		(),
+		&clock,
+		&rng,
+	);
+	let frames = vec![Frame::from(Columns::single_row([("v", Value::Int8(99))])).with_op(DiffType::Insert)];
+	let bytes = encode_frames(&frames, &EncodeOptions::fast()).unwrap();
+	assert!(
+		registry.push_batch_payload(batch_id, released, RawChangePayload::Rbcf(bytes.clone())),
+		"a change must reach the member while it is still in the batch for this test to mean anything"
+	);
+	assert!(registry.unsubscribe(released), "the member must be registered before it can be released");
+
+	let pushed = registry.push_batch_payload(batch_id, released, RawChangePayload::Rbcf(bytes.clone()));
+
+	assert!(!pushed, "a remote change for a released member was accepted, so its proxy keeps running");
+	assert!(
+		registry.push_batch_payload(batch_id, kept, RawChangePayload::Rbcf(bytes)),
+		"releasing one member must not stop the members that are still subscribed"
+	);
+}

@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `Nostate: CustomClass` is not satisfied
- --> tests/class_compile_fail/nostate_context_has_no_state.rs:4:14
+ --> tests/class_compile_fail/nostate_context_has_no_state.rs:7:14
   |
-4 |     let _ = ctx.state();
+7 |     let _ = ctx.state();
   |                 ^^^^^ the trait `CustomClass` is not implemented for `Nostate`
   |
   = help: the following other types implement trait `CustomClass`:

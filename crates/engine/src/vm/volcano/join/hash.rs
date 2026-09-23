@@ -224,13 +224,18 @@ impl HashJoinNode {
 		resolved_names: &[String],
 		result_rows: Vec<Vec<Value>>,
 		result_row_numbers: Vec<RowNumber>,
+		has_row_numbers: bool,
 	) -> Columns {
 		let names_refs: Vec<&str> = resolved_names.iter().map(|s| s.as_str()).collect();
-		if result_row_numbers.is_empty() {
+		let mut columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
 			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
+		};
+		if has_row_numbers {
+			columns.system.mark_row_numbers();
 		}
+		columns
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::build")]
@@ -356,9 +361,8 @@ impl QueryNode for HashJoinNode {
 					resolve_column_names(&empty_left, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
 			}
-			let names_refs: Vec<&str> = state.resolved_names.iter().map(|s| s.as_str()).collect();
-			let empty: Vec<Vec<Value>> = Vec::new();
-			let columns = Columns::from_rows(&names_refs, &empty);
+			let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
+			let columns = Self::materialize(&state.resolved_names, Vec::new(), Vec::new(), left_rownum);
 			self.headers = Some(ColumnHeaders::from_columns(&columns));
 			self.state = Some(state);
 			return Ok(Some(columns));
@@ -481,6 +485,7 @@ impl QueryNode for HashJoinNode {
 		}
 
 		self.state = Some(state);
+		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 
 		if result_rows.is_empty() {
 			if self.headers.is_some() {
@@ -497,8 +502,12 @@ impl QueryNode for HashJoinNode {
 					);
 					state.resolved_names = resolved.qualified_names;
 				}
-				let names_refs: Vec<&str> = state.resolved_names.iter().map(|s| s.as_str()).collect();
-				let columns = Columns::from_rows(&names_refs, &result_rows);
+				let columns = Self::materialize(
+					&state.resolved_names,
+					result_rows,
+					result_row_numbers,
+					left_rownum,
+				);
 				self.headers = Some(ColumnHeaders::from_columns(&columns));
 				return Ok(Some(columns));
 			}
@@ -506,7 +515,7 @@ impl QueryNode for HashJoinNode {
 		}
 
 		let state = self.state.as_ref().unwrap();
-		let columns = Self::materialize(&state.resolved_names, result_rows, result_row_numbers);
+		let columns = Self::materialize(&state.resolved_names, result_rows, result_row_numbers, left_rownum);
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))

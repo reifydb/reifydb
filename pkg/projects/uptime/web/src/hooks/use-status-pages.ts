@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useCallback, useMemo } from 'react'
-import { useCommand, useSubscription, Utf8Value, Uuid7Value } from '@reifydb/react'
+import { ListValue, rql, useCommand, useSubscription, Utf8Value, Uuid7Value } from '@reifydb/react'
 import {
   statusPageMonitors,
   statusPages,
@@ -18,16 +18,13 @@ interface Live<T> {
   error: Error | undefined
 }
 
-const CREATE_STATUS_PAGE = 'CALL uptime::create_status_page($id, $slug, $title)'
+type StatusPageParams = ReturnType<typeof statusPageParams>
 
-const UPDATE_STATUS_PAGE =
-  'CALL uptime::update_status_page($id, $slug, $title); CALL uptime::clear_status_page_monitors($id)'
+const CREATE_STATUS_PAGE = rql.write([])<StatusPageParams>`CALL uptime::create_status_page($id, $slug, $title); CALL uptime::add_status_page_monitors($id, $monitor_ids); CALL uptime::check_status_page_monitors($id)`
 
-const DELETE_STATUS_PAGE = 'CALL uptime::delete_status_page($id)'
+const UPDATE_STATUS_PAGE = rql.write([])<StatusPageParams>`CALL uptime::update_status_page($id, $slug, $title); CALL uptime::clear_status_page_monitors($id); CALL uptime::add_status_page_monitors($id, $monitor_ids); CALL uptime::check_status_page_monitors($id)`
 
-const CHECK_STATUS_PAGE_MONITORS = 'CALL uptime::check_status_page_monitors($id)'
-
-const NO_FRAMES = [] as const
+const DELETE_STATUS_PAGE = rql.write([])<{ id: Uuid7Value }>`CALL uptime::delete_status_page($id)`
 
 function monitorIdsByPage(rows: readonly StatusPageMonitorRow[]): Map<string, string[]> {
   const byPage = new Map<string, string[]>()
@@ -49,26 +46,18 @@ function toStatusPage(row: StatusPageRow, monitorIds: Map<string, string[]>): St
   }
 }
 
-function withMembers(head: string, id: string, input: StatusPageInput): [string, Record<string, unknown>] {
-  const params: Record<string, unknown> = {
+function statusPageParams(id: string, input: StatusPageInput) {
+  return {
     id: new Uuid7Value(id),
     slug: new Utf8Value(input.slug),
     title: new Utf8Value(input.title),
+    monitor_ids: new ListValue(input.monitor_ids.map((monitorId) => new Uuid7Value(monitorId)), 'Uuid7'),
   }
-  const calls = [head]
-  input.monitor_ids.forEach((monitorId, position) => {
-    params[`monitor_${position}`] = new Uuid7Value(monitorId)
-    calls.push(`CALL uptime::add_status_page_monitor($id, $monitor_${position}, ${position})`)
-  })
-  calls.push(CHECK_STATUS_PAGE_MONITORS)
-  return [calls.join('; '), params]
 }
 
 export function useStatusPages(): Live<StatusPage[]> {
-  const pages = useSubscription(statusPages.rql, null, statusPages.shape, { config: statusPages.config })
-  const members = useSubscription(statusPageMonitors.rql, null, statusPageMonitors.shape, {
-    config: statusPageMonitors.config,
-  })
+  const pages = useSubscription(statusPages, null)
+  const members = useSubscription(statusPageMonitors, null)
   return useMemo(() => {
     const error = pages.error ?? members.error
     if (error != null || pages.status !== 'ready' || members.status !== 'ready') {
@@ -91,10 +80,10 @@ export function useStatusPage(id: string): Live<StatusPage> {
 }
 
 export function useCreateStatusPage() {
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(CREATE_STATUS_PAGE)
   const create = useCallback(
     async (input: StatusPageInput): Promise<void> => {
-      await recorded(run(...withMembers(CREATE_STATUS_PAGE, Uuid7Value.generate().toString(), input)))
+      await recorded(run(statusPageParams(Uuid7Value.generate().toString(), input)))
     },
     [run],
   )
@@ -102,10 +91,10 @@ export function useCreateStatusPage() {
 }
 
 export function useUpdateStatusPage(id: string) {
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(UPDATE_STATUS_PAGE)
   const update = useCallback(
     async (input: StatusPageInput): Promise<void> => {
-      await recorded(run(...withMembers(UPDATE_STATUS_PAGE, id, input)))
+      await recorded(run(statusPageParams(id, input)))
     },
     [run, id],
   )
@@ -113,10 +102,10 @@ export function useUpdateStatusPage(id: string) {
 }
 
 export function useDeleteStatusPage() {
-  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const { run, isPending, error } = useCommand(DELETE_STATUS_PAGE)
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      await recorded(run(DELETE_STATUS_PAGE, { id: new Uuid7Value(id) }))
+      await recorded(run({ id: new Uuid7Value(id) }))
     },
     [run],
   )

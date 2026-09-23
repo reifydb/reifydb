@@ -1272,7 +1272,7 @@ mod tests {
 			cols.push(ColumnWithName::new(Fragment::internal("base"), ColumnBuffer::utf8(bases)));
 		}
 		cols.push(ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(ns)));
-		Columns::with_system(cols, SystemColumns::new(rns, Vec::new(), ts.clone(), ts.clone(), ts))
+		Columns::with_system(cols, SystemColumns::new(rns, Vec::new(), ts.clone(), ts.clone(), ts, Vec::new()))
 	}
 
 	fn insert(

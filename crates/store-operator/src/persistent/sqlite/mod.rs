@@ -25,7 +25,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::sqlite::{OpenMessages, open, pool::ReadPool};
 use rusqlite::Connection;
-use tracing::instrument;
+use tracing::{error, instrument};
 
 use crate::persistent::sqlite::{schema::ensure_schema, state::state_exists};
 
@@ -113,8 +113,10 @@ impl SqlitePersistent {
 impl Shutdown for SqlitePersistent {
 	fn shutdown(&self) {
 		self.inner.readers.shutdown();
-		if let Some(conn) = self.inner.conn.lock().take() {
-			let _ = conn.close();
+		if let Some(conn) = self.inner.conn.lock().take()
+			&& let Err((_, err)) = conn.close()
+		{
+			error!(error = %err, "operator state connection could not be closed");
 		}
 	}
 }

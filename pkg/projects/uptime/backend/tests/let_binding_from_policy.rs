@@ -65,7 +65,7 @@ fn a_let_bound_read_does_not_leak_another_owners_rows() {
 		alice,
 		"CALL uptime::create_monitor($m, $name, $kind, $target, $interval, $timeout, none, none, none, none, 1, true); \
 		 CALL uptime::create_status_page($p, $slug, $title); \
-		 CALL uptime::add_status_page_monitor($p, $m, 0)",
+		 CALL uptime::add_status_page_monitors($p, $monitor_ids)",
 		params(&[
 			("m", monitor.into_value()),
 			("name", Value::Utf8("m".to_string())),
@@ -76,6 +76,7 @@ fn a_let_bound_read_does_not_leak_another_owners_rows() {
 			("p", page.into_value()),
 			("slug", Value::Utf8("status".to_string())),
 			("title", Value::Utf8("Status".to_string())),
+			("monitor_ids", Value::List(vec![monitor.into_value()])),
 		]),
 	);
 

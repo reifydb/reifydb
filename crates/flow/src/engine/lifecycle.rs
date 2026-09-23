@@ -7,7 +7,6 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::reifydb_assertions;
-use tracing::warn;
 
 use crate::engine::FlowEngineInner;
 
@@ -72,10 +71,8 @@ impl FlowEngineInner {
 			if ephemeral {
 				continue;
 			}
-			if let Some(store) = self.substrate.operators.as_ref()
-				&& let Err(e) = store.drop_operator(operator_id)
-			{
-				warn!(error = %e, "flow lifecycle: operator state drop failed");
+			if let Some(store) = self.substrate.operators.as_ref() {
+				store.drop_operator(operator_id).expect("recording an operator state drop cannot fail");
 			}
 		}
 

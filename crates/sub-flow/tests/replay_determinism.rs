@@ -479,7 +479,14 @@ mod join {
 		let time = at_millis(spec.ms);
 		Columns::with_system(
 			columns,
-			SystemColumns::new(vec![RowNumber(spec.rn)], Vec::new(), vec![time], vec![time], vec![time]),
+			SystemColumns::new(
+				vec![RowNumber(spec.rn)],
+				Vec::new(),
+				vec![time],
+				vec![time],
+				vec![time],
+				Vec::new(),
+			),
 		)
 	}
 

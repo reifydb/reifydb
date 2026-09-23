@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::LazyLock};
 
-use postcard::to_stdvec;
+use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
@@ -44,6 +44,13 @@ pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, r
 	match partition {
 		None => RowKey::new(table_id, row_number).into(),
 		Some(partition) => PartitionedRowKey::new(table_id, partition, row_number).into(),
+	}
+}
+
+pub fn decode_partition_values(row: &[u8]) -> Vec<Value> {
+	match REGISTRY_SHAPE.get_value(row, 0) {
+		Value::Blob(blob) => from_bytes(blob.as_bytes()).expect("partition registry values must decode"),
+		other => panic!("partition registry row holds {other:?} where a blob is required"),
 	}
 }
 

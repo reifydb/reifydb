@@ -57,7 +57,14 @@ fn flow_aggregate_by_a_digest_column_is_an_error_like_the_batch_group_by() {
 			ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::int4(vec![1, 2])),
 			ColumnWithName::new(Fragment::internal("d"), digests),
 		],
-		SystemColumns::new(vec![RowNumber(1), RowNumber(2)], Vec::new(), vec![at; 2], vec![at; 2], vec![at; 2]),
+		SystemColumns::new(
+			vec![RowNumber(1), RowNumber(2)],
+			Vec::new(),
+			vec![at; 2],
+			vec![at; 2],
+			vec![at; 2],
+			Vec::new(),
+		),
 	);
 	let mut diff = Diff::insert(input);
 	diff.set_origin(Some(ChangeOrigin::Flow(SOURCE_OPERATOR)));

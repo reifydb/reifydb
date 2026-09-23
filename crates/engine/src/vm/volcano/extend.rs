@@ -131,6 +131,7 @@ impl QueryNode for ExtendNode {
 
 				self.headers = Some(ColumnHeaders {
 					columns: all_headers,
+					row_numbers: result.system.has_row_numbers(),
 				});
 			}
 
@@ -148,6 +149,7 @@ impl QueryNode for ExtendNode {
 			all_headers.extend(new_names);
 			self.headers = Some(ColumnHeaders {
 				columns: all_headers,
+				row_numbers: input_headers.row_numbers,
 			});
 		}
 		Ok(None)
@@ -297,6 +299,7 @@ impl QueryNode for ExtendWithoutInputNode {
 
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
+			row_numbers: false,
 		});
 
 		Ok(Some(Columns::new(new_columns)))

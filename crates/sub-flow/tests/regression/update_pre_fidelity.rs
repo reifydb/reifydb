@@ -377,7 +377,14 @@ mod join {
 		let at = DateTime::from_millis(1_000_000 + number);
 		Columns::with_system(
 			columns,
-			SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at]),
+			SystemColumns::new(
+				vec![RowNumber(number)],
+				Vec::new(),
+				vec![at],
+				vec![at],
+				vec![at],
+				Vec::new(),
+			),
 		)
 	}
 
@@ -643,7 +650,7 @@ mod source {
 		let at = DateTime::from_millis(1_000_000);
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("sym"), symbols)],
-			SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at]),
+			SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
 		)
 	}
 

@@ -89,7 +89,7 @@ function RegionRows({
 }
 
 export function DashboardPage() {
-  const monitors = useLiveMonitors()
+  const { data: monitors } = useLiveMonitors()
   const dailyById = useLiveDaily()
   const regionsByMonitor = useAllMonitorRegions()
   const regionLabels = useRegionLabels()

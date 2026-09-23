@@ -84,11 +84,12 @@ impl QueryNode for MapNode {
 			.map(|e| compile_expression(&compile_ctx, e))
 			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
+		self.input.initialize(rx, ctx)?;
 		let column_names = self.expressions.iter().map(display_label).collect();
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
+			row_numbers: self.input.headers().is_some_and(|h| h.row_numbers),
 		});
-		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 

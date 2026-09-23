@@ -35,6 +35,7 @@ impl IndexScanNode {
 
 		let headers = ColumnHeaders {
 			columns: table.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: false,
 		};
 
 		Ok(Self {

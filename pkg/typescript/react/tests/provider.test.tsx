@@ -3,12 +3,12 @@
 import {describe, expect, it, vi} from 'vitest';
 import {act, render, renderHook} from '@testing-library/react';
 import {Shape} from '@reifydb/core';
-import {StoreProvider, useStore, useSubscription} from '../src';
+import {StoreProvider, rql, useStore, useSubscription} from '../src';
 import {flush} from './fake-client';
 import {setup} from './support';
 
 const shape = Shape.object({id: Shape.int4()});
-const rql = 'from test::items';
+const items = rql(shape)`from test::items`;
 
 describe('StoreProvider', () => {
     it('a hook outside the provider throws an error that names the provider', () => {
@@ -25,7 +25,7 @@ describe('StoreProvider', () => {
         const first = setup();
         const second = setup();
         function Consumer() {
-            const entry = useSubscription(rql, null, shape);
+            const entry = useSubscription(items, null);
             return <span>{entry.status}</span>;
         }
         const {container, rerender} = render(<StoreProvider store={first.store}><Consumer/></StoreProvider>);

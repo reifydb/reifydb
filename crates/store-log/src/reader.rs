@@ -7,21 +7,29 @@ use reifydb_codec::log::{
 	LogVersion,
 	reader::{HINT_BYTES, Hint},
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Len, Mkdir, Open, ReadDir, Rename, Unlink};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, FsError, Len, Mkdir, Open, ReadDir, Rename, SyncData, SyncDir, Unlink,
+};
 
 use crate::{
 	error::{LogError, Result},
-	segment::{STAGING_SUFFIX, discard, read_exact, staging, write_all},
+	segment::{STAGING_SUFFIX, discard, parent, read_exact, staging, write_all},
 };
 
 pub const DIR_NAME: &str = "readers";
 pub const MAX_ID: usize = 64;
 
-pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + Unlink>(fs: &F, dir: &Path, id: &str) -> Result<()> {
+pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlink>(
+	fs: &F,
+	dir: &Path,
+	id: &str,
+) -> Result<()> {
 	let path = path_of(dir, id)?;
 	make_dir(fs, &dir.join(DIR_NAME))?;
-	if fs.open(&path).is_ok() {
-		return Err(LogError::AlreadyExists(path));
+	match fs.open(&path) {
+		Ok(_) => return Err(LogError::AlreadyExists(path)),
+		Err(FsError::NotFound(_)) => {}
+		Err(error) => return Err(error.into()),
 	}
 	publish(fs, &path, LogVersion::ZERO)
 }
@@ -30,21 +38,23 @@ pub fn unregister<F: Filesystem + Unlink>(fs: &F, dir: &Path, id: &str) -> Resul
 	discard(fs, &path_of(dir, id)?)
 }
 
-pub fn record<F: Filesystem + Create + Open + Rename + Unlink>(
+pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	fs: &F,
 	dir: &Path,
 	id: &str,
 	version: LogVersion,
 ) -> Result<()> {
 	let path = path_of(dir, id)?;
-	if fs.open(&path).is_err() {
-		return Err(LogError::NotFound(path));
+	match fs.open(&path) {
+		Ok(_) => {}
+		Err(FsError::NotFound(_)) => return Err(LogError::NotFound(path)),
+		Err(error) => return Err(error.into()),
 	}
 	publish(fs, &path, version)
 }
 
 pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<LogVersion> {
-	Ok(read(fs, &path_of(dir, id)?)?.unwrap_or(LogVersion::ZERO))
+	hint_or_start(fs, &path_of(dir, id)?)
 }
 
 pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>> {
@@ -58,13 +68,34 @@ pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Optio
 		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
 			continue;
 		}
-		let pinned = read(fs, &path)?.unwrap_or(LogVersion::ZERO);
+		let pinned = hint_or_start(fs, &path)?;
 		lowest = Some(lowest.map_or(pinned, |low| low.min(pinned)));
 	}
 	Ok(lowest)
 }
 
-pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + Unlink>(
+pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<(String, LogVersion)>> {
+	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
+		Ok(entries) => entries,
+		Err(FsError::NotFound(_)) => return Ok(Vec::new()),
+		Err(error) => return Err(error.into()),
+	};
+	let mut out = Vec::new();
+	for path in entries {
+		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
+			continue;
+		}
+		let Some(id) = path.file_name().and_then(|name| name.to_str()) else {
+			continue;
+		};
+		let hint = hint_or_start(fs, &path)?;
+		out.push((id.to_string(), hint));
+	}
+	out.sort_by(|a, b| a.0.cmp(&b.0));
+	Ok(out)
+}
+
+pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + SyncDir + Unlink>(
 	fs: &F,
 	dir: &Path,
 	ceiling: LogVersion,
@@ -105,6 +136,10 @@ fn valid(id: &str) -> bool {
 	id.chars().all(|at| at.is_ascii_alphanumeric() || at == '-' || at == '_' || at == '.')
 }
 
+fn hint_or_start<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
+	Ok(read(fs, path)?.unwrap_or(LogVersion::ZERO))
+}
+
 fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>> {
 	let file = fs.open(path)?;
 	if file.len()? < HINT_BYTES as u64 {
@@ -117,18 +152,21 @@ fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>>
 	Ok(Hint::decode(&raw).map(|hint| hint.version))
 }
 
-fn publish<F: Filesystem + Create + Rename + Unlink>(fs: &F, path: &Path, version: LogVersion) -> Result<()> {
+fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(fs: &F, path: &Path, version: LogVersion) -> Result<()> {
 	let staged = staging(path);
 	discard(fs, &staged)?;
 	let file = fs.create(&staged, HINT_BYTES as u64)?;
 	write_all(&file, &staged, 0, &Hint::new(version).encode())?;
-	Ok(fs.rename(&staged, path)?)
+	file.sync_data()?;
+	fs.rename(&staged, path)?;
+	Ok(fs.sync_dir(parent(path))?)
 }
 
-fn make_dir<F: Filesystem + Mkdir>(fs: &F, path: &Path) -> Result<()> {
+fn make_dir<F: Filesystem + Mkdir + SyncDir>(fs: &F, path: &Path) -> Result<()> {
 	match fs.mkdir(path) {
+		Ok(()) => Ok(fs.sync_dir(parent(path))?),
 		Err(FsError::AlreadyExists(_)) => Ok(()),
-		other => Ok(other?),
+		Err(error) => Err(error.into()),
 	}
 }
 

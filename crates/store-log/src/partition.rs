@@ -12,7 +12,9 @@ use reifydb_codec::log::{
 	record::Record,
 	vote::State,
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink,
+};
 use reifydb_value::{
 	byte_size::ByteSize,
 	clock::ClockNow,
@@ -26,7 +28,7 @@ use crate::{
 	error::{LogError, Result},
 	index::{Index, find_at, header, read},
 	reader::{clamp, floor, record, register, unregister, version_of},
-	segment::{STAGING_SUFFIX, Scan, Segment, scan, sync_path},
+	segment::{STAGING_SUFFIX, Scan, Segment, parent, scan, sync_path},
 	vote::Vote,
 };
 
@@ -79,6 +81,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		base_index: LogIndex,
 	) -> Result<Self> {
 		fs.mkdir(dir)?;
+		fs.sync_dir(parent(dir))?;
 		let opened_at = clock.now();
 		let vote = Vote::create(&fs, dir)?;
 		let (segment, index) = new_pair(&fs, dir, config, base, base_index)?;
@@ -237,15 +240,34 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		let Some(deadline) = self.clock.now().checked_sub(ttl) else {
 			return Ok(Vec::new());
 		};
-		let pinned = floor(&self.fs, &self.dir)?;
 		let snapshot = self.vote.state().snapshot_index;
+		self.drop_bases(snapshot, Some(deadline))
+	}
+
+	pub fn drop_below(&mut self, index: LogIndex) -> Result<Vec<LogVersion>> {
+		self.drop_bases(index, None)
+	}
+
+	pub fn bytes(&self) -> Result<ByteSize> {
+		let mut total = ByteSize::from_bytes(self.segment.head().as_u64());
+		for base in &self.bases[..self.bases.len() - 1] {
+			let len = self.fs.open(&self.dir.join(log_name(*base)))?.len()?;
+			total = total.saturating_add(ByteSize::from_bytes(len));
+		}
+		Ok(total)
+	}
+
+	fn drop_bases(&mut self, ceiling: LogIndex, deadline: Option<DateTime>) -> Result<Vec<LogVersion>> {
+		let pinned = floor(&self.fs, &self.dir)?;
 		let mut dropped = Vec::new();
 		while self.bases.len() > 1 {
 			let base = self.bases[0];
-			if self.base_indexes[1] > after(snapshot) {
+			if self.base_indexes[1] > after(ceiling) {
 				break;
 			}
-			if !expired(&self.fs, &self.dir, base, deadline)? {
+			if let Some(deadline) = deadline
+				&& !expired(&self.fs, &self.dir, base, deadline)?
+			{
 				break;
 			}
 			if pinned.is_some_and(|low| self.bases[1] > low) {
@@ -276,7 +298,8 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	}
 
 	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>> {
-		Cursor::open(&self.fs, &self.dir, version_of(&self.fs, &self.dir, id)?)
+		let after = version_of(&self.fs, &self.dir, id)?;
+		Cursor::open(&self.fs, &self.dir, (after != LogVersion::ZERO).then_some(after))
 	}
 
 	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>> {
@@ -485,13 +508,27 @@ fn base_indexes_of<F: Filesystem + Open>(
 		out[at] = match header(fs, &dir.join(index_name(bases[at]))) {
 			Ok(found) => found.base_index,
 			Err(error) if !rebuildable(&error) => return Err(error),
-			Err(_) => match scan(fs, &dir.join(log_name(bases[at])))?.records.first() {
-				Some(record) => record.index,
-				None => out[at + 1],
-			},
+			Err(_) => rescanned_base_index(fs, dir, bases[at], out[at + 1])?,
 		};
 	}
+	if !out.windows(2).all(|pair| pair[0] < pair[1]) {
+		for at in (0..bases.len() - 1).rev() {
+			out[at] = rescanned_base_index(fs, dir, bases[at], out[at + 1])?;
+		}
+	}
 	Ok(out)
+}
+
+fn rescanned_base_index<F: Filesystem + Open>(
+	fs: &F,
+	dir: &Path,
+	base: LogVersion,
+	fallback: LogIndex,
+) -> Result<LogIndex> {
+	Ok(match scan(fs, &dir.join(log_name(base)))?.records.first() {
+		Some(record) => record.index,
+		None => fallback,
+	})
 }
 
 #[cfg(test)]
@@ -516,7 +553,7 @@ pub fn base_of(name: &str) -> Option<LogVersion> {
 	base_from(name, LOG_SUFFIX)
 }
 
-fn index_base_of(name: &str) -> Option<LogVersion> {
+pub(crate) fn index_base_of(name: &str) -> Option<LogVersion> {
 	base_from(name, INDEX_SUFFIX)
 }
 
@@ -569,8 +606,14 @@ fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline:
 	}
 }
 
-fn rebuildable(error: &LogError) -> bool {
-	matches!(error, LogError::NotFound(_) | LogError::IndexShort { .. } | LogError::IndexMagic { .. })
+pub(crate) fn rebuildable(error: &LogError) -> bool {
+	matches!(
+		error,
+		LogError::NotFound(_)
+			| LogError::IndexShort { .. }
+			| LogError::IndexMagic { .. }
+			| LogError::IndexCorrupt(_)
+	)
 }
 
 fn remove<F: Unlink>(fs: &F, path: &Path) -> Result<()> {

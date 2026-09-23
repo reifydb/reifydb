@@ -57,9 +57,6 @@ pub trait ColumnData: Send + Sync + 'static {
 	fn as_any(&self) -> &dyn Any;
 	fn as_any_mut(&mut self) -> &mut dyn Any;
 
-	fn children(&self) -> &[Column];
-	fn metadata(&self) -> &dyn Any;
-
 	fn to_canonical(&self) -> Result<Arc<Canonical>>;
 
 	fn filter(&self, mask: &RowMask) -> Result<Column> {
@@ -141,14 +138,6 @@ impl Column {
 
 	pub fn as_string(&self, idx: usize) -> String {
 		self.0.as_string(idx)
-	}
-
-	pub fn children(&self) -> &[Column] {
-		self.0.children()
-	}
-
-	pub fn metadata(&self) -> &dyn Any {
-		self.0.metadata()
 	}
 
 	pub fn to_canonical(&self) -> Result<Arc<Canonical>> {

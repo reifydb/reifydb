@@ -73,6 +73,7 @@ impl InlineDataNode {
 	fn create_columns_layout_from_source(source: &ResolvedObject) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: false,
 		}
 	}
 

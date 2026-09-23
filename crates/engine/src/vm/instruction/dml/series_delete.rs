@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow};
 use reifydb_core::{
@@ -12,7 +12,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			series::{Series, SeriesMetadata},
+			series::Series,
 			storage::StorageId,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
@@ -30,7 +30,9 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber, system_columns::SystemColumns},
+	value::{
+		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::SystemColumns,
+	},
 };
 use tracing::instrument;
 
@@ -42,7 +44,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{apply_series_metadata_after_delete, remove_series_row},
+	transaction::operation::series::{SeriesDeleteTally, apply_series_metadata_after_delete, remove_series_row},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -66,7 +68,7 @@ pub(crate) fn delete_series(
 		target,
 		returning,
 	} = plan;
-	let (namespace, series, mut metadata) = resolve_delete_series_target(services, txn, &target)?;
+	let (namespace, series) = resolve_delete_series_target(services, txn, &target)?;
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,
@@ -79,12 +81,16 @@ pub(crate) fn delete_series(
 		symbols,
 	};
 	let input_plan = input.expect("DELETE on a series requires a filter pipeline");
-	let (deleted_count, returned_rows) =
+	let (deleted_by_partition, returned_rows) =
 		run_series_delete_with_input(&exec, txn, *input_plan, &target_data, &params, has_tag, has_returning)?;
 
-	if deleted_count > 0 {
-		apply_series_metadata_after_delete(&mut metadata, deleted_count);
-		services.catalog.update_series_metadata_txn(txn, series.id, metadata)?;
+	let deleted_count: u64 = deleted_by_partition.values().map(|tally| tally.count).sum();
+	for (partition, tally) in deleted_by_partition {
+		let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id, partition)? else {
+			continue;
+		};
+		apply_series_metadata_after_delete(&mut metadata, &tally);
+		services.catalog.update_series_metadata_txn(txn, series.id, partition, metadata)?;
 	}
 
 	if let Some(returning_exprs) = &returning {
@@ -102,7 +108,7 @@ fn resolve_delete_series_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedSeries,
-) -> Result<(Namespace, Series, SeriesMetadata)> {
+) -> Result<(Namespace, Series)> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -112,12 +118,10 @@ fn resolve_delete_series_target(
 		let fragment = Fragment::internal(target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
-	let Some(metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
-		let fragment = Fragment::internal(target.name());
-		return_error!(series_not_found(fragment, namespace_name, series_name));
-	};
-	Ok((namespace, series, metadata))
+	Ok((namespace, series))
 }
+
+type SeriesDeleteOutcome = (HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>);
 
 fn run_series_delete_with_input(
 	exec: &WriteExecCtx<'_>,
@@ -127,7 +131,7 @@ fn run_series_delete_with_input(
 	params: &Params,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<SeriesDeleteOutcome> {
 	let context = build_series_delete_query_context(exec, target, params, txn.identity());
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
@@ -176,9 +180,9 @@ fn drive_series_delete_input(
 	target: &SeriesTarget<'_>,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<SeriesDeleteOutcome> {
 	let series = target.series;
-	let mut deleted_count = 0u64;
+	let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut mutable_context = context.clone();
 
@@ -217,10 +221,15 @@ fn drive_series_delete_input(
 			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
+			let partition = if partitioned {
+				columns.partitions()[row_idx]
+			} else {
+				Partition::default()
+			};
 			let key: TaggedKey = if partitioned {
 				PartitionedSeriesRowKey::new(
 					StorageId::series(series.id),
-					columns.partitions()[row_idx],
+					partition,
 					variant_tag,
 					key_value,
 					sequence,
@@ -257,11 +266,11 @@ fn drive_series_delete_input(
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
 			}
-			deleted_count += 1;
+			deleted_by_partition.entry(partition).or_default().record(key_value);
 		}
 	}
 
-	Ok((deleted_count, returned_rows))
+	Ok((deleted_by_partition, returned_rows))
 }
 
 #[inline]
@@ -314,6 +323,7 @@ fn build_series_delete_pre_columns_from_input(
 			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
 			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
 			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
+			Vec::new(),
 		),
 	)
 }

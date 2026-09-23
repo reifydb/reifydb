@@ -35,7 +35,7 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	transaction::operation::{
 		ringbuffer::apply_ringbuffer_partition_metadata_after_delete,
-		series::apply_series_metadata_after_delete,
+		series::{SeriesDeleteTally, apply_series_metadata_after_delete},
 	},
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
@@ -608,14 +608,6 @@ impl Evictor {
 			state.forget(storage);
 			return Ok((0, true));
 		};
-		let Some(mut metadata) =
-			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
-		else {
-			txn.rollback()?;
-			state.forget(storage);
-			return Ok((0, true));
-		};
-
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
 			PartitionedSeriesRowKeyRange::full_scan(storage)
@@ -639,11 +631,33 @@ impl Evictor {
 		}
 
 		let deleted = expired.len() as u64;
+		let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 		for key in &expired {
+			let (partition, key_value) = match key {
+				TaggedKey::PartitionedSeriesRow(key) => (key.partition, key.key),
+				TaggedKey::SeriesRow(key) => (Partition::default(), key.key),
+				_ => (Partition::default(), 0),
+			};
+			deleted_by_partition.entry(partition).or_default().record(key_value);
 			txn.remove_silent(key)?;
 		}
-		apply_series_metadata_after_delete(&mut metadata, deleted);
-		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), series.id, metadata)?;
+		for (partition, tally) in deleted_by_partition {
+			let Some(mut metadata) = catalog.find_series_metadata(
+				&mut Transaction::Command(&mut txn),
+				series.id,
+				partition,
+			)?
+			else {
+				continue;
+			};
+			apply_series_metadata_after_delete(&mut metadata, &tally);
+			catalog.update_series_metadata_txn(
+				&mut Transaction::Command(&mut txn),
+				series.id,
+				partition,
+				metadata,
+			)?;
+		}
 		txn.commit()?;
 		Ok((deleted, drained))
 	}
@@ -733,7 +747,7 @@ mod tests {
 				ringbuffer::{
 					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
 				},
-				series::SeriesMetadata,
+				series::SeriesPartitionMetadata,
 				view::View,
 			},
 			store::MultiVersionRow,
@@ -783,7 +797,7 @@ mod tests {
 		partitions
 	}
 
-	fn series_metadata(engine: &StandardEngine, name: &str) -> SeriesMetadata {
+	fn series_metadata(engine: &StandardEngine, name: &str) -> SeriesPartitionMetadata {
 		let catalog = engine.catalog();
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let namespace =
@@ -792,8 +806,10 @@ mod tests {
 			.find_series_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
 			.unwrap()
 			.unwrap();
-		let metadata =
-			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id).unwrap().unwrap();
+		let metadata = catalog
+			.find_series_metadata(&mut Transaction::Command(&mut txn), series.id, Partition::default())
+			.unwrap()
+			.unwrap();
 		txn.rollback().unwrap();
 		metadata
 	}

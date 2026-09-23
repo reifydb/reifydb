@@ -53,7 +53,6 @@ pub enum KeyTag {
 	VariantHandler = 0x2D,
 	Series = 0x2E,
 	NamespaceSeries = 0x2F,
-	SeriesMetadata = 0x30,
 	Identity = 0x31,
 	Role = 0x32,
 	GrantedRole = 0x33,
@@ -96,6 +95,7 @@ pub enum KeyTag {
 	QueueKeyActive = 0x59,
 	SortedViewRow = 0x5A,
 	PartitionedSortedViewRow = 0x5B,
+	SeriesPartitionMetadata = 0x5C,
 }
 
 impl KeyTag {
@@ -163,7 +163,6 @@ impl TryFrom<u8> for KeyTag {
 			0x2D => Ok(Self::VariantHandler),
 			0x2E => Ok(Self::Series),
 			0x2F => Ok(Self::NamespaceSeries),
-			0x30 => Ok(Self::SeriesMetadata),
 			0x31 => Ok(Self::Identity),
 			0x32 => Ok(Self::Role),
 			0x33 => Ok(Self::GrantedRole),
@@ -206,6 +205,7 @@ impl TryFrom<u8> for KeyTag {
 			0x59 => Ok(Self::QueueKeyActive),
 			0x5A => Ok(Self::SortedViewRow),
 			0x5B => Ok(Self::PartitionedSortedViewRow),
+			0x5C => Ok(Self::SeriesPartitionMetadata),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

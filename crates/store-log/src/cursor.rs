@@ -9,7 +9,7 @@ use reifydb_runtime::io::fs::{Filesystem, Len, Open, ReadDir};
 use crate::{
 	error::{LogError, Result},
 	index::{position_of, read},
-	partition::{bases_in, index_name, log_name},
+	partition::{bases_in, index_name, log_name, rebuildable},
 	segment::{Stop, scan_upto},
 };
 
@@ -25,21 +25,28 @@ pub struct Cursor<'a, F: Filesystem> {
 }
 
 impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
-	pub fn open(fs: &'a F, dir: &Path, after: LogVersion) -> Result<Self> {
+	pub fn open(fs: &'a F, dir: &Path, after: Option<LogVersion>) -> Result<Self> {
 		let bases = bases_in(fs, dir)?;
 		let Some(oldest) = bases.first().copied() else {
 			return Err(LogError::NotFound(dir.to_path_buf()));
 		};
-		if after != LogVersion::ZERO && after < oldest {
+		if let Some(after) = after
+			&& after.as_u64() + 1 < oldest.as_u64()
+		{
 			return Err(LogError::Purged {
 				dir: dir.to_path_buf(),
 				requested: after,
 				oldest,
 			});
 		}
+		let after = after.unwrap_or(LogVersion::ZERO);
 		let at = bases.partition_point(|base| *base <= after).saturating_sub(1);
 		let path = dir.join(log_name(bases[at]));
-		let (_, entries) = read(fs, &dir.join(index_name(bases[at])))?;
+		let entries = match read(fs, &dir.join(index_name(bases[at]))) {
+			Ok((_, entries)) => entries,
+			Err(error) if rebuildable(&error) => Vec::new(),
+			Err(error) => return Err(error),
+		};
 		let (position, last) = seek(fs, &path, position_of(&entries, after), after)?;
 		Ok(Self {
 			fs,
@@ -133,7 +140,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 
 #[cfg(test)]
 pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<Record>> {
-	let mut cursor = Cursor::open(fs, dir, LogVersion::ZERO)?;
+	let mut cursor = Cursor::open(fs, dir, None)?;
 	let mut out = Vec::new();
 	loop {
 		let batch = cursor.next_batch(1024)?;
@@ -256,7 +263,7 @@ mod tests {
 		let len = fs.open(&path).unwrap().len().unwrap();
 		fs.open_mut(&path).unwrap().pwrite(len, &[0u8; 64]).unwrap();
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
 		assert!(matches!(error, LogError::SegmentIncomplete { end, len: found, .. }
@@ -276,7 +283,7 @@ mod tests {
 		let stale = record(BASE.as_u64(), &[0u8; 40]);
 		fs.open_mut(&second).unwrap().pwrite(0, &stale.encode()).unwrap();
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
 		assert!(matches!(error, LogError::SegmentOutOfOrder { found, .. } if found == BASE));
@@ -286,7 +293,7 @@ mod tests {
 	fn a_cursor_from_zero_reads_every_record_in_order() {
 		let (fs, _partition) = fixture(6);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![500, 501, 502, 503, 504, 505]);
 	}
@@ -296,7 +303,7 @@ mod tests {
 		// the cap is what keeps a reader off a 256 MiB segment in one allocation, so a batch
 		// that quietly overruns it defeats the whole point of reading in batches.
 		let (fs, _partition) = fixture(6);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		let first = cursor.next_batch(2).unwrap();
 		let second = cursor.next_batch(2).unwrap();
@@ -314,7 +321,7 @@ mod tests {
 		// is a duplicate-delivery bug.
 		let (fs, _partition) = fixture(6);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::new(502)).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502))).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![503, 504, 505]);
 	}
@@ -322,7 +329,7 @@ mod tests {
 	#[test]
 	fn a_caught_up_cursor_returns_nothing_and_stays_where_it_is() {
 		let (fs, _partition) = fixture(3);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 		cursor.next_batch(10).unwrap();
 
 		let again = cursor.next_batch(10).unwrap();
@@ -336,7 +343,7 @@ mod tests {
 		// a reader that has drained the log must not need reopening to see the next write,
 		// or every idle reader stalls until something else restarts it.
 		let (fs, mut partition) = fixture(3);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![500, 501, 502]);
 
 		partition.append(&record(503, b"later")).unwrap();
@@ -355,7 +362,7 @@ mod tests {
 		sync(&fs, partition.dir(), partition.base()).unwrap();
 		assert_eq!(partition.bases().len(), 2);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(20).unwrap()), vec![500, 501, 502, 503, 504, 505, 600]);
 	}
@@ -368,7 +375,7 @@ mod tests {
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
 		sync(&fs, partition.dir(), partition.base()).unwrap();
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(6).unwrap()), vec![500, 501, 502, 503, 504, 505]);
 		assert_eq!(versions(&cursor.next_batch(6).unwrap()), vec![600]);
@@ -388,7 +395,7 @@ mod tests {
 		partition.purge(Duration::from_seconds_const(0)).unwrap();
 		assert_eq!(partition.bases(), [LogVersion::new(600)]);
 
-		let error = Cursor::open(&fs, Path::new(DIR), LogVersion::new(502)).err().unwrap();
+		let error = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502))).err().unwrap();
 
 		assert!(
 			matches!(

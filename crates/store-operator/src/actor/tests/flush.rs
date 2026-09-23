@@ -256,7 +256,7 @@ fn a_checkpoint_upsert_and_a_checkpoint_delete_both_reach_the_table() {
 	assert!(flush_pending(&actor_ref), "the checkpoint batch must reach the flusher");
 
 	assert_eq!(
-		storage.checkpoint_get(FLOW),
+		storage.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(42)),
 		"the flushed checkpoint must be the latest recorded version; a plain INSERT would collide with \
 		 the previous row and a stale version replays slices that were already applied"
@@ -265,7 +265,7 @@ fn a_checkpoint_upsert_and_a_checkpoint_delete_both_reach_the_table() {
 	buffer.record_checkpoint_set(FLOW, CommitVersion(99));
 	assert!(flush_pending(&actor_ref), "a later checkpoint must overwrite the flushed one");
 	assert_eq!(
-		storage.checkpoint_get(FLOW),
+		storage.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(99)),
 		"the upsert must move the version forward rather than keep the first write"
 	);
@@ -273,7 +273,7 @@ fn a_checkpoint_upsert_and_a_checkpoint_delete_both_reach_the_table() {
 	buffer.record_checkpoint_delete(FLOW);
 	assert!(flush_pending(&actor_ref), "the checkpoint tombstone must reach the flusher");
 	assert!(
-		storage.checkpoint_get(FLOW).is_none(),
+		storage.checkpoint_get(FLOW).unwrap().is_none(),
 		"a deleted checkpoint must leave the table, otherwise a dropped flow resumes from the version \
 		 of a flow that no longer exists"
 	);

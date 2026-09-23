@@ -130,6 +130,7 @@ mod tests {
 	fn header(names: &[&str]) -> Option<ColumnHeaders> {
 		Some(ColumnHeaders {
 			columns: names.iter().map(|n| Fragment::internal(*n)).collect(),
+			row_numbers: false,
 		})
 	}
 

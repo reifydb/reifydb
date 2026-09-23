@@ -45,28 +45,51 @@ impl SeriesKey {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = SeriesMetadata)]
-pub struct SeriesMetadataKey {
+#[key(tag = SeriesPartitionMetadata)]
+pub struct SeriesPartitionMetadataKey {
 	pub storage: StorageId,
+	pub partition: Partition,
 }
 
-impl SeriesMetadataKey {
-	pub fn new(storage: impl Into<StorageId>) -> Self {
+impl SeriesPartitionMetadataKey {
+	pub fn new(storage: impl Into<StorageId>, partition: Partition) -> Self {
 		Self {
 			storage: storage.into(),
+			partition,
 		}
 	}
 
-	pub fn encoded(storage: impl Into<StorageId>) -> EncodedKey {
-		Self::new(storage).encode()
+	pub fn encoded(storage: impl Into<StorageId>, partition: Partition) -> EncodedKey {
+		Self::new(storage, partition).encode()
+	}
+
+	pub fn full_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 }
 
 #[cfg(test)]
 mod series_metadata_key_tests {
-	use reifydb_codec::key::serializer::KeySerializer;
+	use std::collections::Bound;
 
-	use super::{KeyTag, SeriesKey, SeriesMetadataKey};
+	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+
+	use super::{KeyTag, Partition, SeriesKey, SeriesPartitionMetadataKey};
+	use crate::key::bound::TaggedKeyBoundRange;
+
+	fn in_range(range: &TaggedKeyBoundRange, key: &EncodedKey) -> bool {
+		let start = match &range.start {
+			Bound::Included(b) => *key >= b.encode(),
+			Bound::Excluded(b) => *key > b.encode(),
+			Bound::Unbounded => true,
+		};
+		let end = match &range.end {
+			Bound::Included(b) => *key <= b.encode(),
+			Bound::Excluded(b) => *key < b.encode(),
+			Bound::Unbounded => true,
+		};
+		start && end
+	}
 	use crate::interface::catalog::{
 		id::{SeriesId, ViewId},
 		storage::StorageId,
@@ -75,25 +98,55 @@ mod series_metadata_key_tests {
 	#[test]
 	fn test_metadata_key_roundtrip_series() {
 		// The tag byte is what keeps a series' metadata out of a view's; a bare id would collide.
-		let key = SeriesMetadataKey {
+		let key = SeriesPartitionMetadataKey {
 			storage: StorageId::Series(SeriesId(7)),
+			partition: Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210),
 		};
-		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+		assert_eq!(SeriesPartitionMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 
 	#[test]
 	fn test_metadata_key_roundtrip_view() {
 		// A series-backed view must keep its metadata under its own id, never a backing object's.
-		let key = SeriesMetadataKey {
+		let key = SeriesPartitionMetadataKey {
 			storage: StorageId::View(ViewId(7)),
+			partition: Partition::default(),
 		};
-		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+		assert_eq!(SeriesPartitionMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 
 	#[test]
 	fn test_metadata_key_separates_a_series_from_a_view_with_the_same_id() {
 		// Both narrow from the same numeric id, so identical bytes would silently share one row.
-		assert_ne!(SeriesMetadataKey::encoded(SeriesId(7)), SeriesMetadataKey::encoded(ViewId(7)));
+		assert_ne!(
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition::default()),
+			SeriesPartitionMetadataKey::encoded(ViewId(7), Partition::default())
+		);
+	}
+
+	#[test]
+	fn test_metadata_full_scan_covers_every_partition_of_one_series() {
+		// dropping a series must remove all of its partitions' metadata; a prefix that
+		// missed one would leave a row keeping the series' sequence counter alive
+		let range = SeriesPartitionMetadataKey::full_scan(SeriesId(7));
+		for partition in [Partition::default(), Partition(1), Partition(u128::MAX)] {
+			let key = SeriesPartitionMetadataKey::encoded(SeriesId(7), partition);
+			assert!(in_range(&range, &key), "partition {:?} must be inside the scan", partition);
+		}
+		assert!(
+			!in_range(&range, &SeriesPartitionMetadataKey::encoded(SeriesId(8), Partition::default())),
+			"another series must fall outside"
+		);
+	}
+
+	#[test]
+	fn test_metadata_key_separates_two_partitions_of_one_series() {
+		// each partition carries its own sequence counter and key bounds; a shared row
+		// would let one partition's insert rewind another's counter
+		assert_ne!(
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition(1)),
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition(2))
+		);
 	}
 
 	#[test]
@@ -144,11 +197,17 @@ impl SeriesRowKeyRange {
 
 	pub fn scan_range(
 		storage: StorageId,
+		tagged: bool,
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
 		last: Option<&TaggedKey>,
 	) -> TaggedKeyBoundRange {
+		assert!(
+			!(tagged && variant_tag.is_none() && (key_start.is_some() || key_end.is_some())),
+			"a key range over a tagged series needs a variant tag: the key sits after the tag in the row \
+			 key, so no single range spans every tag and the range would silently match nothing"
+		);
 		if matches!(key_end, Some(0)) {
 			return TaggedKeyBoundRange::empty(SeriesRowKey::TAG);
 		}
@@ -505,7 +564,7 @@ mod row_key_range_tests {
 	fn test_scan_range_brackets_the_rows_it_selects() {
 		// The range must contain a key inside the window and exclude one outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
-		let range = SeriesRowKeyRange::scan_range(storage, None, Some(100), Some(200), None).encode();
+		let range = SeriesRowKeyRange::scan_range(storage, false, None, Some(100), Some(200), None).encode();
 		let inside = SeriesRowKey {
 			storage,
 			variant_tag: None,
@@ -587,8 +646,15 @@ mod row_key_range_tests {
 		// A range bounded on one side only must still pin its tag class: the untagged flag encodes 0xFF and
 		// the tagged flag 0xFE, so omitting the flag from the start bound lets every tagged row of the series
 		// sort into the window regardless of its key.
-		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), None, Some(100), None, None)
-			.encode();
+		let range = SeriesRowKeyRange::scan_range(
+			StorageId::Series(SeriesId(7)),
+			false,
+			None,
+			Some(100),
+			None,
+			None,
+		)
+		.encode();
 
 		let untagged = SeriesRowKey {
 			storage: StorageId::Series(SeriesId(7)),
@@ -706,11 +772,17 @@ impl PartitionedSeriesRowKeyRange {
 	pub fn scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
+		tagged: bool,
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
 		last: Option<&TaggedKey>,
 	) -> TaggedKeyBoundRange {
+		assert!(
+			!(tagged && variant_tag.is_none() && (key_start.is_some() || key_end.is_some())),
+			"a key range over a tagged series needs a variant tag: the key sits after the tag in the row \
+			 key, so no single range spans every tag and the range would silently match nothing"
+		);
 		if matches!(key_end, Some(0)) {
 			return TaggedKeyBoundRange::empty(PartitionedSeriesRowKey::TAG);
 		}
@@ -1023,9 +1095,16 @@ mod partitioned_row_key_tests {
 		// The range must contain a key inside the window and exclude ones outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
-		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, partition, None, Some(100), Some(200), None)
-				.encode();
+		let range = PartitionedSeriesRowKeyRange::scan_range(
+			storage,
+			partition,
+			false,
+			None,
+			Some(100),
+			Some(200),
+			None,
+		)
+		.encode();
 		let inside = PartitionedSeriesRowKey::encoded(storage, partition, None, 150, 1);
 		let below = PartitionedSeriesRowKey::encoded(storage, partition, None, 99, 1);
 		let above = PartitionedSeriesRowKey::encoded(storage, partition, None, 201, 1);
@@ -1039,9 +1118,16 @@ mod partitioned_row_key_tests {
 	fn test_scan_range_never_crosses_into_another_partition() {
 		// Bounding only the key span would let a neighbouring partition's rows be evicted with this one.
 		let storage = StorageId::Series(SeriesId(1));
-		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), None, Some(100), Some(200), None)
-				.encode();
+		let range = PartitionedSeriesRowKeyRange::scan_range(
+			storage,
+			part("us"),
+			false,
+			None,
+			Some(100),
+			Some(200),
+			None,
+		)
+		.encode();
 		let other = PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 150, 1);
 
 		assert!(!range.contains(&other), "an in-bounds key of another partition must stay outside");
@@ -1129,6 +1215,7 @@ mod partitioned_row_key_tests {
 		let range = PartitionedSeriesRowKeyRange::scan_range(
 			StorageId::Series(SeriesId(7)),
 			part("us"),
+			false,
 			None,
 			Some(100),
 			None,

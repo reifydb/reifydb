@@ -17,7 +17,7 @@ export class RecordValue implements Value {
     }
 
     get type(): RecordType {
-        return {Record: Object.entries(this.fields).map(([name, value]) => ({name, type: value.type}))};
+        return {Record: Object.entries(this.fields).map(([name, value]) => ({name, type: value.encode().type}))};
     }
 
     equals(other: Value): boolean {
@@ -41,7 +41,7 @@ export class RecordValue implements Value {
     }
 
     encode(): TypeValuePair {
-        const fields = Object.entries(this.fields).map(([name, value]) => ({name, type: value.type}));
+        const fields = this.type.Record;
         const value: {[key: string]: WireCellValue} = {};
         for (const [name, field] of Object.entries(this.fields)) {
             value[name] = field.encode().value;

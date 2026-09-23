@@ -31,7 +31,7 @@ use crate::{
 	},
 };
 
-pub(crate) const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at", "time"];
+pub(crate) const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at", "time", "commit_version"];
 
 fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('#') {

@@ -69,6 +69,13 @@ impl Compressor {
 		}
 	}
 
+	pub fn disabled() -> Self {
+		Self {
+			candidates: Vec::new(),
+			cfg: CompressConfig::default(),
+		}
+	}
+
 	pub fn compress(&self, input: &Canonical) -> Result<Column> {
 		for candidate in &self.candidates {
 			if let Some(compressed) = candidate.try_compress(input, &self.cfg)? {
