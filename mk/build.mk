@@ -5,7 +5,7 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-workspace build-pkg-typescript build-wasm check-value-no-features
+.PHONY: build build-workspace build-pkg-typescript build-wasm check check-value-no-features
 
 # Main build target - builds everything
 build: build-workspace build-wasm build-pkg-typescript
@@ -23,6 +23,14 @@ build-workspace:
 	fi
 	@echo "🔍 Checking all-features compile..."
 	@MAKEFLAGS= cargo check --workspace --all-features
+
+check:
+	@echo "🔍 Checking all features compile..."
+	@MAKEFLAGS= cargo check --workspace --all-features --all-targets
+	cd $(TEST_SUITE_DIR) && $(MAKE) check
+	cd $(TEST_CRATE_DIR) && $(MAKE) check
+	cd $(TEST_CHAOS_DIR) && $(MAKE) check
+	cd $(TEST_QUERY_DIR) && $(MAKE) check
 
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."

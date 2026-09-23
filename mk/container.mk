@@ -13,6 +13,6 @@ build-testcontainer:
 	docker build -f bin/testcontainer/Dockerfile -t reifydb/testcontainer .
 
 # Push the test container to registry
-push-testcontainer: check
+push-testcontainer: check-workspace
 	@echo "📤 Pushing test container to registry..."
 	docker push reifydb/testcontainer

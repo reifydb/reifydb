@@ -139,8 +139,9 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "check-code-quality" "Validate code quality standards"
 	@printf "  %-25s %s\n" "check-value-no-features" "Build reifydb-value tests with no features"
-	@printf "  %-25s %s\n" "check" "Check for uncommitted changes"
-	@printf "  %-25s %s\n" "push" "Push changes to git (after check)"
+	@printf "  %-25s %s\n" "check" "Cargo check all features, all targets, plus siblings"
+	@printf "  %-25s %s\n" "check-workspace" "Check for uncommitted changes"
+	@printf "  %-25s %s\n" "push" "Push changes to git (after check-workspace)"
 	@echo ""
 	@echo "  💡 Quick Start"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -154,7 +155,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: pull-siblings format-check check-code-quality check build build-testcontainer test-full-local test-chaos-ci test-crate-loom all-siblings push-testcontainer push
+all: pull-siblings format-check check-code-quality check-workspace build build-testcontainer test-full-local test-chaos-ci test-crate-loom all-siblings push-testcontainer push
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
@@ -183,8 +184,8 @@ check-code-quality:
 	@$(MAKE) --no-print-directory check-value-no-features
 	@MAKEFLAGS= cargo clippy --release --workspace -- -D warnings
 
-.PHONY: check
-check:
+.PHONY: check-workspace
+check-workspace:
 	@echo "🔍 Checking repository status..."
 	@if ! git diff-index --quiet HEAD --; then \
 		echo "❌ Error: You have uncommitted changes. Please commit or stash them before pushing."; \
@@ -211,7 +212,7 @@ check:
 # Clean target is defined in mk/clean.mk
 
 .PHONY: push
-push: check
+push: check-workspace
 	@echo "📤 Pushing changes to git..."
 	git push
 
