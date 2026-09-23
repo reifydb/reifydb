@@ -294,7 +294,7 @@ impl HttpClient {
 
 	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
 		let budget = request.wait_for.as_deref().and_then(|raw| parse_duration(Fragment::internal(raw)).ok());
-		let timeout = budget.unwrap_or(Duration::zero()) + Duration::from_seconds(30).unwrap();
+		let timeout = budget.unwrap_or(Duration::zero()).try_add(Duration::from_seconds(30).unwrap())?;
 
 		let url = format!("{}/v1/queue/claim?format=rbcf", self.base_url);
 		let (bytes, _) = self.send_request_bytes_with_timeout(&url, &request, timeout).await?;

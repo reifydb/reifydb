@@ -34,7 +34,7 @@ pub async fn backoff_after_accept_error(e: &io::Error, backoff: &mut Duration, n
 		warn!("{name}: accept error: {e}; retrying in {backoff:?}");
 	}
 	sleep(backoff.to_std()).await;
-	*backoff = (*backoff * 2).min(BACKOFF_MAX);
+	*backoff = backoff.try_mul(2).map_or(BACKOFF_MAX, |doubled| doubled.min(BACKOFF_MAX));
 }
 
 pub async fn accept_admitted(
