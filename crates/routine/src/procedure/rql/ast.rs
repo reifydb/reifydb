@@ -201,12 +201,12 @@ impl AstWalker {
 			}
 			Ast::Join(node) => {
 				if let AstJoin::LeftJoin {
-					with,
+					subquery,
 					using_clause,
 					..
 				} = &**node
 				{
-					for node in &with.statement.nodes {
+					for node in &subquery.statement.nodes {
 						ref_children.push(node);
 					}
 					for pair in &using_clause.pairs {

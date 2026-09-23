@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::ChangeVersion,
+	common::{ChangeVersion, OperatorClass},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -26,7 +26,7 @@ use reifydb_extension::{
 	},
 };
 use reifydb_flow::{
-	operator::{HostOperator, host::HostContext, scale_from_millis},
+	operator::{HostOperator, host::HostContext},
 	timer::Timer,
 };
 use reifydb_sdk::{
@@ -46,12 +46,7 @@ use reifydb_sdk::{
 		},
 	},
 };
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	count::Count,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 thread_local! {
@@ -60,6 +55,7 @@ thread_local! {
 
 pub struct ExternCOperatorHandle {
 	capabilities: Box<[OperatorCapability]>,
+	class: OperatorClass,
 
 	vtable: ExternCOperatorVTable,
 
@@ -71,12 +67,18 @@ pub struct ExternCOperatorHandle {
 }
 
 impl ExternCOperatorHandle {
-	pub fn new(descriptor: ExternCOperatorDescriptor, instance: *mut c_void, operator_id: OperatorId) -> Self {
+	pub fn new(
+		descriptor: ExternCOperatorDescriptor,
+		class: OperatorClass,
+		instance: *mut c_void,
+		operator_id: OperatorId,
+	) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
 
 		Self {
 			capabilities,
+			class,
 			vtable,
 			instance,
 			operator_id,
@@ -143,12 +145,6 @@ impl HostOperator for ExternCOperatorHandle {
 		&self.capabilities
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; the call passes no host pointers.
-		scale_from_millis(Some(unsafe { (self.vtable.seal_span_ms)(self.instance) }))
-	}
-
 	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
@@ -164,7 +160,7 @@ impl HostOperator for ExternCOperatorHandle {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let mut host_ctx = ExternCHostContext::new(host);
+		let mut host_ctx = ExternCHostContext::new(host, self.class);
 		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
@@ -202,7 +198,7 @@ impl HostOperator for ExternCOperatorHandle {
 		let version = ChangeVersion::from(host.version());
 		let key = timer.key.as_ref();
 
-		let mut host_ctx = ExternCHostContext::new(host);
+		let mut host_ctx = ExternCHostContext::new(host, self.class);
 		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 

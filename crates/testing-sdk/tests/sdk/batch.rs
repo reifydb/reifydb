@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
+};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -17,7 +20,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{Value, blob::Blob, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -47,7 +50,7 @@ impl OperatorMetadata for EmitOpInsert {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpInsert {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -125,7 +128,7 @@ impl OperatorMetadata for EmitOpEmpty {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpEmpty {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -150,7 +153,7 @@ impl OperatorMetadata for EmitOpUpdate {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpUpdate {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -209,7 +212,7 @@ impl OperatorMetadata for EmitOpRemove {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpRemove {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -258,7 +261,7 @@ impl OperatorMetadata for EmitOpBig {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpBig {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -310,7 +313,7 @@ impl OperatorMetadata for EmitOpOptU64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpOptU64 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -378,7 +381,7 @@ impl OperatorMetadata for EmitOpOptStr {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpOptStr {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -446,7 +449,7 @@ impl OperatorMetadata for EmitOpOptBlob {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for EmitOpOptBlob {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {

@@ -10,6 +10,7 @@ use std::{
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
+	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
 		change::Change,
@@ -56,7 +57,7 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let entry = CustomOperatorEntry {
-			factory: Arc::new(|operator, _config| {
+			factory: Arc::new(|operator, _params, _with| {
 				Ok(Box::new(PanicsOnApply {
 					operator,
 				}) as BoxedHostOperator)
@@ -67,6 +68,14 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 			capabilities: to_bitmask(OperatorCapability::STANDARD),
 			input: Vec::new(),
 			output: Vec::new(),
+			class: OperatorClass::Unmanaged,
+			window: WindowRequirements {
+				takes_window: false,
+				kinds: &[],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			},
+			unmanaged_because: None,
 		};
 		let config = FlowConfig {
 			operators_dir: None,

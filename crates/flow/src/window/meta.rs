@@ -76,6 +76,7 @@ impl HeapSize for SessionState {
 #[derive(Clone, Default)]
 pub struct EngineMeta {
 	pub last_event_time: u64,
+	pub first_event_time: u64,
 }
 
 impl HeapSize for EngineMeta {

@@ -5,23 +5,49 @@
 //! buffer capacity so eviction is reached on most seeds, and many event times land in the same
 //! bucket so within-bucket accumulation and partial removal are reached too.
 
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling::RollingDriver,
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
 };
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
 	accumulator_oracle::rolling_accumulator_oracle,
+	context::ChaosContext,
 	runner::ChaosOutcome,
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
+use reifydb_value::factory::time::millis;
 
 use super::common::{self, RollingSum};
 
 fn group_key() -> Vec<String> {
 	vec!["group".to_string()]
 }
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
+			lag: None,
+			pane: Some(millis(common::ROLLING_BUCKET)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+fn reaping_with() -> ApplyWith {
+	ApplyWith {
+		lateness: None,
+		..window_with()
+	}
+}
+
+const IDLE_GROUPS: [&str; 12] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
 fn value_sampler(none_values: bool) -> ColumnSampler {
 	if none_values {
@@ -32,7 +58,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<RollingDriver<RollingSum>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<RollingSum>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -43,8 +69,30 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_column("ts", samplers::u64_range(0..100))
 		.with_column("value", value_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			rolling_accumulator_oracle(&common::rolling_sum(), ctx, batches, &group_key())
+			rolling_accumulator_oracle(&RollingSum, &window_with(), ctx, batches, &group_key())
+		})
+		.seed(seed)
+		.build()
+		.expect("build rolling harness")
+		.run()
+}
+
+fn run_reaping(seed: u64) -> ChaosOutcome {
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<RollingSum>>>::builder()
+		.with_input_shape(common::rolling_shape())
+		.with_output_shape(common::rolling_out_shape())
+		.with_key_strategy(KeyStrategy::Sequential)
+		.with_output_key(["group"])
+		.with_time_column("ts")
+		.with_column("group", samplers::utf8_choices(&IDLE_GROUPS))
+		.with_column("ts", samplers::u64_range(0..100))
+		.with_column("value", value_sampler(false))
+		.with_scenario(common::baseline(20, SupportedOps::insert_only()))
+		.with(reaping_with())
+		.with_oracle(move |ctx, batches| {
+			rolling_accumulator_oracle(&RollingSum, &reaping_with(), ctx, batches, &group_key())
 		})
 		.seed(seed)
 		.build()
@@ -89,4 +137,28 @@ fn rolling_sum_empty_stream_is_empty() {
 	outcome.assert_matches();
 	assert!(outcome.operator_table.is_empty());
 	assert!(outcome.oracle_table.is_empty());
+}
+
+#[test]
+fn rolling_sum_reaps_idle_groups_at_the_drain() {
+	// Without the drain reap the oracle keeps groups the operator removed; the no-drain replay must be larger on
+	// some seed.
+	let mut reaped = false;
+	for &seed in &common::SEEDS {
+		let outcome = run_reaping(seed);
+		outcome.assert_matches();
+		let undrained = ChaosContext {
+			drain_at_ms: 0,
+			..outcome.context.clone()
+		};
+		let kept = rolling_accumulator_oracle(
+			&RollingSum,
+			&reaping_with(),
+			&undrained,
+			&outcome.batches,
+			&group_key(),
+		);
+		reaped |= kept.len() > outcome.oracle_table.len();
+	}
+	assert!(reaped, "no seed left a group idle past the drain cutoff");
 }

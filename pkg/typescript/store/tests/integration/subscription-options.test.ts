@@ -5,7 +5,7 @@ import {Shape} from '@reifydb/core';
 import type {WsClient} from '@reifydb/client';
 import {Store} from '../../src';
 import {connect, namespace, waitFor} from './setup';
-import {createTable, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
+import {createTable, readSpec, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
 
 const ns = namespace('sub_opt');
 const optional = Shape.object({id: Shape.int4(), value: Shape.option(Shape.int4())});
@@ -34,7 +34,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
     it('a present optional value arrives as Some carrying the value', async () => {
         const name = await optionalTable('some');
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, optional);
+        const release = store.subscribe(readSpec(optional, rql), null);
         await waitForReady(store, rql, optional);
         await client.command(`insert ${name} [{ id: 1, value: 42 }]`, null, []);
         await waitForRows(store, rql, optional, 1);
@@ -47,7 +47,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
     it('an absent optional value arrives as None, not as a zero or an empty string', async () => {
         const name = await optionalTable('none');
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, optional);
+        const release = store.subscribe(readSpec(optional, rql), null);
         await waitForReady(store, rql, optional);
         await client.command(`insert ${name} [{ id: 1, value: none }]`, null, []);
         await waitForRows(store, rql, optional, 1);
@@ -60,7 +60,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
     it('Some and None in the same batch stay distinguishable row by row', async () => {
         const name = await optionalTable('mixed');
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, optional);
+        const release = store.subscribe(readSpec(optional, rql), null);
         await waitForReady(store, rql, optional);
         await client.command(
             `insert ${name} [{ id: 1, value: 1 }, { id: 2, value: none }, { id: 3, value: 3 }]`,
@@ -78,7 +78,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
     it('an UPDATE that clears the column flips Some to None on the diff path', async () => {
         const name = await optionalTable('clear');
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, optional);
+        const release = store.subscribe(readSpec(optional, rql), null);
         await waitForReady(store, rql, optional);
         await client.command(`insert ${name} [{ id: 1, value: 7 }]`, null, []);
         await waitForRows(store, rql, optional, 1);
@@ -92,7 +92,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
     it('an UPDATE that sets the column flips None to Some on the diff path', async () => {
         const name = await optionalTable('set');
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, optional);
+        const release = store.subscribe(readSpec(optional, rql), null);
         await waitForReady(store, rql, optional);
         await client.command(`insert ${name} [{ id: 1, value: none }]`, null, []);
         await waitForRows(store, rql, optional, 1);
@@ -109,7 +109,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription option shapes (%s)', fo
         await createTable(client, name, 'id: int4, value: Option(utf8)');
         const shape = Shape.object({id: Shape.int4(), value: Shape.option(Shape.utf8())});
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(readSpec(shape, rql), null);
         await waitForReady(store, rql, shape);
         await client.command(`insert ${name} [{ id: 1, value: '' }, { id: 2, value: none }]`, null, []);
         await waitForRows(store, rql, shape, 2);

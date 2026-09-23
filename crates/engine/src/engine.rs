@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	collections::HashMap,
 	ops::Deref,
 	sync::{
 		Arc,
@@ -9,6 +10,7 @@ use std::{
 	},
 };
 
+use postcard::from_bytes;
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -33,16 +35,18 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{
 			column::{Column, ColumnIndex},
+			flow::OperatorId,
 			id::{ColumnId, NamespaceId},
 			subscription::{SubscribeOptions, SubscribeOutcome},
 			vtable::{VTable, VTableId},
 		},
 	},
-	internal,
+	internal, internal_error,
 	lifecycle::watermark::CheckpointFloor,
 	metrics::sample::MetricKind,
 	util::ioc::IocContainer,
 };
+use reifydb_rql::flow::operator::OperatorDef;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
@@ -58,7 +62,9 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{ScanLayout, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{
+		ScanLayout, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+	},
 };
 use reifydb_value::{
 	error,
@@ -580,6 +586,22 @@ impl StandardEngine {
 	#[inline]
 	pub fn operator_store(&self) -> &OperatorLibrary {
 		&self.operator_library
+	}
+
+	pub fn apply_operator_names(&self, txn: &mut Transaction<'_>) -> Result<HashMap<OperatorId, String>> {
+		let mut names = HashMap::new();
+		for operator in self.catalog.list_operators_all(txn)? {
+			let definition: OperatorDef = from_bytes(operator.data.as_ref())
+				.map_err(|e| internal_error!("Failed to deserialize operator type: {}", e))?;
+			if let OperatorDef::Apply {
+				operator: name,
+				..
+			} = definition
+			{
+				names.insert(operator.id, name);
+			}
+		}
+		Ok(names)
 	}
 
 	pub fn operator_state(&self) -> OperatorStore {

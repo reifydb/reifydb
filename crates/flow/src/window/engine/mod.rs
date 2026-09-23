@@ -3,8 +3,9 @@
 
 pub mod config;
 pub mod rolling;
-pub mod rolling_incremental;
 pub mod rolling_top_k;
+pub mod session;
+pub mod sliding;
 pub mod tumbling;
 pub mod tumbling_carry;
 
@@ -12,7 +13,10 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{encode_u64_asc, encoded::EncodedKey},
-	row::operator::state::{OperatorState, StateCodec, decode, encode},
+	row::{
+		operator::state::{OperatorState, StateCodec, decode, encode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	key::{
@@ -169,11 +173,35 @@ pub(crate) struct MetaSweep {
 	surviving: Option<u64>,
 }
 
+pub(crate) enum MetaFate {
+	Stale,
+	Survives(u64),
+	Ignored,
+}
+
 impl MetaSweep {
-	#[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
 	pub(crate) fn sweep<M>(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize>
 	where
 		M: MetaHighWater + Clone + OperatorState + HeapSize,
+	{
+		self.sweep_with(store, threshold, |_, _, bytes| {
+			Ok(match decode::<M>(bytes)?.high_water_order() {
+				Some(hw) if hw < threshold => MetaFate::Stale,
+				Some(hw) => MetaFate::Survives(hw),
+				None => MetaFate::Ignored,
+			})
+		})
+	}
+
+	#[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
+	pub(crate) fn sweep_with<V>(
+		&mut self,
+		store: &mut dyn StateStore,
+		threshold: u64,
+		mut visit: V,
+	) -> Result<usize>
+	where
+		V: FnMut(&mut dyn StateStore, MetaKey, &EncodedPodRow) -> Result<MetaFate>,
 	{
 		if self.cursor.is_none() && self.low_water.is_some_and(|lw| lw >= threshold) {
 			return Ok(0);
@@ -192,12 +220,10 @@ impl MetaSweep {
 		let mut surviving = self.surviving;
 		let mut furthest: Option<WindowMetaSuffix> = None;
 		for (suffix, bytes) in page {
-			if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
-				if hw < threshold {
-					stale.push(MetaKey(suffix));
-				} else {
-					surviving = Some(surviving.map_or(hw, |m| m.min(hw)));
-				}
+			match visit(store, MetaKey(suffix), &bytes)? {
+				MetaFate::Stale => stale.push(MetaKey(suffix)),
+				MetaFate::Survives(low) => surviving = Some(surviving.map_or(low, |m| m.min(low))),
+				MetaFate::Ignored => {}
 			}
 			furthest = Some(suffix);
 		}

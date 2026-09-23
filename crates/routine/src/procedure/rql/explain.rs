@@ -404,13 +404,13 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		}
 		PhysicalPlan::Apply(ApplyNode {
 			operator,
-			expressions,
+			params,
 			..
 		}) => {
-			let summary = if expressions.is_empty() {
+			let summary = if params.is_empty() {
 				"no args".to_string()
 			} else {
-				format!("{} args", expressions.len())
+				format!("{} args", params.len())
 			};
 			("Apply", format!("operator={} {}", operator.text(), summary))
 		}
@@ -456,7 +456,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			("TableVirtualScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
 		}
 		PhysicalPlan::Generator(node) => ("Generator", node.name.text().to_string()),
-		PhysicalPlan::Window(node) => ("Window", format!("kind={:?}", node.kind)),
+		PhysicalPlan::Window(node) => ("Window", format!("kind={:?}", node.with.kind)),
 		PhysicalPlan::Declare(node) => ("Declare", format!("{} = {}", node.name.text(), node.value)),
 		PhysicalPlan::Assign(node) => ("Assign", format!("{} = {}", node.name.text(), node.value)),
 		PhysicalPlan::Variable(node) => ("Variable", node.variable_expr.fragment.text().to_string()),

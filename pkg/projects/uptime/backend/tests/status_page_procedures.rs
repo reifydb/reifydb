@@ -21,7 +21,7 @@ const CREATE: &str = "CALL uptime::create_status_page($id, $slug, $title)";
 
 const UPDATE: &str = "CALL uptime::update_status_page($id, $slug, $title)";
 
-const ADD_MEMBER: &str = "CALL uptime::add_status_page_monitor($status_page_id, $monitor_id, $position)";
+const ADD_MEMBER: &str = "CALL uptime::add_status_page_monitors($status_page_id, $monitor_ids)";
 
 const CLEAR: &str = "CALL uptime::clear_status_page_monitors($status_page_id)";
 
@@ -163,11 +163,10 @@ fn page_params(id: Uuid7, slug: &str, title: &str) -> Params {
 	params(&[("id", id.into_value()), ("slug", text(slug)), ("title", text(title))])
 }
 
-fn member_params(page: Uuid7, monitor_id: Uuid7, position: i16) -> Params {
+fn member_params(page: Uuid7, monitor_ids: &[Uuid7]) -> Params {
 	params(&[
 		("status_page_id", page.into_value()),
-		("monitor_id", monitor_id.into_value()),
-		("position", Value::Int2(position)),
+		("monitor_ids", Value::List(monitor_ids.iter().map(|m| m.into_value()).collect())),
 	])
 }
 
@@ -185,8 +184,8 @@ fn create(db: &Database, caller: IdentityId, slug: &str) -> Uuid7 {
 	id
 }
 
-fn add(db: &Database, caller: IdentityId, page: Uuid7, monitor_id: Uuid7, position: i16) {
-	command_as(db, caller, ADD_MEMBER, member_params(page, monitor_id, position)).expect("add_status_page_monitor");
+fn add(db: &Database, caller: IdentityId, page: Uuid7, monitor_ids: &[Uuid7]) {
+	command_as(db, caller, ADD_MEMBER, member_params(page, monitor_ids)).expect("add_status_page_monitors");
 }
 
 fn page_row(db: &Database, id: Uuid7) -> Vec<Frame> {
@@ -383,8 +382,7 @@ fn owner_adds_its_monitors_as_members_it_owns() {
 	let first = monitor(&db, alice);
 	let second = monitor(&db, alice);
 
-	add(&db, alice, page, second, 0);
-	add(&db, alice, page, first, 1);
+	add(&db, alice, page, &[second, first]);
 
 	assert_eq!(
 		members(&db, page),
@@ -410,12 +408,12 @@ fn owner_cannot_put_a_monitor_it_does_not_own_on_its_page() {
 	let bobs_monitor = monitor(&db, bob);
 
 	expect_error(
-		command_as(&db, alice, ADD_MEMBER, member_params(page, bobs_monitor, 0)),
+		command_as(&db, alice, ADD_MEMBER, member_params(page, &[bobs_monitor])),
 		"ASSERT",
 		"unknown monitor id",
 	);
 	expect_error(
-		command_as(&db, alice, ADD_MEMBER, member_params(page, new_id(&db), 0)),
+		command_as(&db, alice, ADD_MEMBER, member_params(page, &[new_id(&db)])),
 		"ASSERT",
 		"unknown monitor id",
 	);
@@ -433,7 +431,7 @@ fn another_owner_cannot_add_members_to_a_page() {
 	let bobs_monitor = monitor(&db, bob);
 
 	expect_error(
-		command_as(&db, bob, ADD_MEMBER, member_params(page, bobs_monitor, 0)),
+		command_as(&db, bob, ADD_MEMBER, member_params(page, &[bobs_monitor])),
 		"ASSERT",
 		"status page not found",
 	);
@@ -449,7 +447,7 @@ fn guest_adds_its_monitor_to_its_page() {
 	let page = create(&db, guest, "guest-page");
 	let m = monitor(&db, guest);
 
-	add(&db, guest, page, m, 0);
+	add(&db, guest, page, &[m]);
 
 	assert_eq!(members(&db, page), vec![(Value::Int2(0), m.into_value())]);
 }
@@ -462,21 +460,21 @@ fn add_member_rejects_a_duplicate_and_the_101st_monitor() {
 	let page = create(&db, alice, "status");
 	let monitors: Vec<Uuid7> = (0..101).map(|_| monitor(&db, alice)).collect();
 
-	add(&db, alice, page, monitors[0], 0);
+	add(&db, alice, page, &[monitors[0]]);
 	expect_error(
-		command_as(&db, alice, ADD_MEMBER, member_params(page, monitors[0], 1)),
+		command_as(&db, alice, ADD_MEMBER, member_params(page, &[monitors[0]])),
 		"ASSERT",
 		"already on this status page",
 	);
 	assert_eq!(members(&db, page).len(), 1, "a duplicate must not insert a second row");
 
-	for (position, m) in monitors.iter().enumerate().take(100).skip(1) {
-		add(&db, alice, page, *m, position as i16);
+	for m in monitors.iter().take(100).skip(1) {
+		add(&db, alice, page, &[*m]);
 	}
 	assert_eq!(members(&db, page).len(), 100, "exactly 100 members must be allowed");
 
 	expect_error(
-		command_as(&db, alice, ADD_MEMBER, member_params(page, monitors[100], 100)),
+		command_as(&db, alice, ADD_MEMBER, member_params(page, &[monitors[100]])),
 		"ASSERT",
 		"at most 100 monitors",
 	);
@@ -491,8 +489,8 @@ fn owner_clears_only_the_members_of_one_page() {
 	let page = create(&db, alice, "status");
 	let other = create(&db, alice, "other");
 	let m = monitor(&db, alice);
-	add(&db, alice, page, m, 0);
-	add(&db, alice, other, m, 0);
+	add(&db, alice, page, &[m]);
+	add(&db, alice, other, &[m]);
 
 	command_as(&db, alice, CLEAR, page_id_params(page)).expect("owner clear");
 
@@ -509,7 +507,7 @@ fn another_owner_cannot_clear_a_page() {
 	let bob = new_user(&db, "bob");
 	let page = create(&db, alice, "status");
 	let m = monitor(&db, alice);
-	add(&db, alice, page, m, 0);
+	add(&db, alice, page, &[m]);
 
 	expect_error(command_as(&db, bob, CLEAR, page_id_params(page)), "ASSERT", "status page not found");
 	expect_error(
@@ -532,7 +530,7 @@ fn guest_clears_its_own_page() {
 	let db = build();
 	let guest = new_guest(&db, "guest:one");
 	let page = create(&db, guest, "guest-page");
-	add(&db, guest, page, monitor(&db, guest), 0);
+	add(&db, guest, page, &[monitor(&db, guest)]);
 
 	command_as(&db, guest, CLEAR, page_id_params(page)).expect("guest clear");
 
@@ -547,8 +545,8 @@ fn owner_deletes_one_page_with_its_members_only() {
 	let page = create(&db, alice, "status");
 	let other = create(&db, alice, "other");
 	let m = monitor(&db, alice);
-	add(&db, alice, page, m, 0);
-	add(&db, alice, other, m, 0);
+	add(&db, alice, page, &[m]);
+	add(&db, alice, other, &[m]);
 
 	command_as(&db, alice, DELETE, id_params(page)).expect("owner delete");
 
@@ -567,7 +565,7 @@ fn another_owner_cannot_delete_a_page() {
 	let alice = new_user(&db, "alice");
 	let bob = new_user(&db, "bob");
 	let page = create(&db, alice, "status");
-	add(&db, alice, page, monitor(&db, alice), 0);
+	add(&db, alice, page, &[monitor(&db, alice)]);
 
 	expect_error(command_as(&db, bob, DELETE, id_params(page)), "ASSERT", "status page not found");
 	expect_error(
@@ -586,7 +584,7 @@ fn guest_deletes_its_own_page() {
 	let db = build();
 	let guest = new_guest(&db, "guest:one");
 	let page = create(&db, guest, "guest-page");
-	add(&db, guest, page, monitor(&db, guest), 0);
+	add(&db, guest, page, &[monitor(&db, guest)]);
 
 	command_as(&db, guest, DELETE, id_params(page)).expect("guest delete");
 
@@ -602,7 +600,7 @@ fn another_owners_pages_and_members_are_invisible() {
 	let bob = new_user(&db, "bob");
 	let guest = new_guest(&db, "guest:one");
 	let page = create(&db, alice, "status");
-	add(&db, alice, page, monitor(&db, alice), 0);
+	add(&db, alice, page, &[monitor(&db, alice)]);
 
 	for (who, id) in [("bob", bob), ("guest", guest)] {
 		let pages =
@@ -706,20 +704,16 @@ fn a_page_edit_in_one_command_replaces_members_or_changes_nothing() {
 	let old = monitor(&db, alice);
 	let first = monitor(&db, alice);
 	let second = monitor(&db, alice);
-	add(&db, alice, page, old, 0);
+	add(&db, alice, page, &[old]);
 	let save = "CALL uptime::update_status_page($id, $slug, $title); \
 		 CALL uptime::clear_status_page_monitors($id); \
-		 CALL uptime::add_status_page_monitor($id, $m0, $p0); \
-		 CALL uptime::add_status_page_monitor($id, $m1, $p1)";
+		 CALL uptime::add_status_page_monitors($id, $monitor_ids)";
 	let save_params = |m1: Uuid7| {
 		params(&[
 			("id", page.into_value()),
 			("slug", text("renamed")),
 			("title", text("Renamed")),
-			("m0", second.into_value()),
-			("p0", Value::Int2(0)),
-			("m1", m1.into_value()),
-			("p1", Value::Int2(1)),
+			("monitor_ids", Value::List(vec![second.into_value(), m1.into_value()])),
 		])
 	};
 
@@ -749,7 +743,7 @@ fn service_is_denied_every_status_page_procedure() {
 	let service = lookup_identity(&db, "probe_svc");
 	let page = create(&db, alice, "status");
 	let m = monitor(&db, alice);
-	add(&db, alice, page, m, 0);
+	add(&db, alice, page, &[m]);
 
 	expect_error(
 		command_as(&db, service, CREATE, page_params(new_id(&db), "svc", "Svc")),
@@ -757,7 +751,7 @@ fn service_is_denied_every_status_page_procedure() {
 		"denied call",
 	);
 	expect_error(command_as(&db, service, UPDATE, page_params(page, "svc", "Svc")), "POLICY_001", "denied call");
-	expect_error(command_as(&db, service, ADD_MEMBER, member_params(page, m, 1)), "POLICY_001", "denied call");
+	expect_error(command_as(&db, service, ADD_MEMBER, member_params(page, &[m])), "POLICY_001", "denied call");
 	expect_error(command_as(&db, service, CLEAR, page_id_params(page)), "POLICY_001", "denied call");
 	expect_error(command_as(&db, service, DELETE, id_params(page)), "POLICY_001", "denied call");
 
@@ -819,7 +813,7 @@ fn direct_update_cannot_move_members_between_owners() {
 	let alice = new_user(&db, "alice");
 	let bob = new_user(&db, "bob");
 	let page = create(&db, alice, "status");
-	add(&db, alice, page, monitor(&db, alice), 0);
+	add(&db, alice, page, &[monitor(&db, alice)]);
 	let reassign = "update uptime::status_page_monitors { owner: $owner } filter { status_page_id == $id }";
 
 	for (caller, new_owner) in [(bob, bob), (alice, bob)] {
@@ -859,7 +853,7 @@ fn member_check_fails_until_the_page_has_a_member_of_its_own() {
 		"a status page must contain at least one monitor",
 	);
 
-	add(&db, alice, page, monitor(&db, alice), 0);
+	add(&db, alice, page, &[monitor(&db, alice)]);
 	command_as(&db, alice, CHECK_MEMBERS, page_id_params(page)).expect("one member must pass the check");
 }
 
@@ -872,7 +866,7 @@ fn another_owner_or_a_service_cannot_run_the_member_check() {
 	admin(&db, "CREATE SERVICE probe_svc");
 	let service = lookup_identity(&db, "probe_svc");
 	let page = create(&db, alice, "status");
-	add(&db, alice, page, monitor(&db, alice), 0);
+	add(&db, alice, page, &[monitor(&db, alice)]);
 
 	expect_error(command_as(&db, bob, CHECK_MEMBERS, page_id_params(page)), "ASSERT", "status page not found");
 	expect_error(command_as(&db, service, CHECK_MEMBERS, page_id_params(page)), "POLICY_001", "denied call");
@@ -884,7 +878,7 @@ fn guest_passes_the_member_check_on_its_own_page() {
 	let db = build();
 	let guest = new_guest(&db, "guest:one");
 	let page = create(&db, guest, "guest-page");
-	add(&db, guest, page, monitor(&db, guest), 0);
+	add(&db, guest, page, &[monitor(&db, guest)]);
 
 	command_as(&db, guest, CHECK_MEMBERS, page_id_params(page)).expect("guest check");
 }
@@ -906,7 +900,7 @@ fn a_page_command_ending_in_the_member_check_rolls_back_without_members() {
 
 	let page = create(&db, alice, "status");
 	let m = monitor(&db, alice);
-	add(&db, alice, page, m, 0);
+	add(&db, alice, page, &[m]);
 	expect_error(
 		command_as(
 			&db,

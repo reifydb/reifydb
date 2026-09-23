@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use crate::{
 	error::Result,
@@ -45,15 +45,9 @@ pub(crate) struct OperatorCensus {
 }
 
 impl OperatorCensus {
-	pub(crate) fn seeded(persistent: &PersistentTier) -> Self {
+	pub(crate) fn seeded(persistent: &PersistentTier) -> Result<Self> {
 		let census = Self::default();
-		let entries = match persistent.census() {
-			Ok(entries) => entries,
-			Err(error) => {
-				warn!(error = %error, "operator census failed; seeding an empty census");
-				return census;
-			}
-		};
+		let entries = persistent.census()?;
 		let mut buckets = census.buckets.lock();
 		for entry in entries {
 			if entry.keys == 0 {
@@ -66,7 +60,7 @@ impl OperatorCensus {
 			bucket.value_bytes = bucket.value_bytes.saturating_add(entry.value_bytes.as_bytes());
 		}
 		drop(buckets);
-		census
+		Ok(census)
 	}
 
 	#[instrument(name = "store::operator::census::record", level = "debug", skip_all, fields(write_count = writes.len()))]

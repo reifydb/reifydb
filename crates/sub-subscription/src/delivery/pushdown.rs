@@ -211,6 +211,7 @@ mod tests {
 			flow::{FlowEdgeId, FlowId},
 			id::TableId,
 		},
+		operator_with::DistinctWith,
 	};
 	use reifydb_rql::{
 		expression::parse_expression,
@@ -290,6 +291,7 @@ mod tests {
 			source(),
 			OperatorDef::Distinct {
 				expressions: vec![parse_one("id")],
+				with: DistinctWith {},
 			},
 			OperatorDef::Take {
 				limit: 5,
@@ -420,6 +422,7 @@ mod tests {
 			source(),
 			OperatorDef::Distinct {
 				expressions: vec![parse_one("id")],
+				with: DistinctWith {},
 			},
 			OperatorDef::Take {
 				limit: 5,

@@ -25,7 +25,7 @@ use crate::store::{
 	migration::shape::{migration::SHAPE as MIGRATION_SHAPE, migration_event::SHAPE as MIGRATION_EVENT_SHAPE},
 	namespace::shape::namespace::SHAPE as NAMESPACE_SHAPE,
 	operator::shape::{operator::SHAPE as OPERATOR_SHAPE, operator_by_flow::SHAPE as OPERATOR_BY_FLOW_SHAPE},
-	operator_settings::shape::operator_settings::SHAPE as OPERATOR_SETTINGS_SHAPE,
+	operator_retention::shape::operator_retention::SHAPE as OPERATOR_RETENTION_SHAPE,
 	policy::shape::{policy::SHAPE as POLICY_SHAPE, policy_op::SHAPE as POLICY_OP_SHAPE},
 	primary_key::shape::primary_key::SHAPE as PRIMARY_KEY_SHAPE,
 	procedure::shape::{
@@ -191,10 +191,10 @@ fn pinned() -> Vec<Pin> {
 			&["id", "name", "parent_id", "grpc", "local_name", "token"],
 		),
 		(
-			"operator_settings::operator_settings",
-			&*OPERATOR_SETTINGS_SHAPE,
-			0xbb49667b475c8594,
-			&["is_join", "duration", "left_duration", "right_duration"],
+			"operator_retention::operator_retention",
+			&*OPERATOR_RETENTION_SHAPE,
+			0x0292a82467ba43c4,
+			&["duration"],
 		),
 		("operator::operator", &*OPERATOR_SHAPE, 0x7a8cd42d0f4b6e96, &["id", "flow", "type", "data"]),
 		("operator::operator_by_flow", &*OPERATOR_BY_FLOW_SHAPE, 0x9486e81a3cbbeed4, &["flow", "id"]),

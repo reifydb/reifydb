@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::datetime::DateTime;
 
-impl Config {
+impl ExtensionParams {
 	pub fn datetime(&self, key: &str) -> Option<DateTime> {
 		self.opt_coerce(key)
 	}

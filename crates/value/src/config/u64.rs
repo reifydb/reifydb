@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 
-impl Config {
+impl ExtensionParams {
 	pub fn u64(&self, key: &str) -> Option<u64> {
 		self.opt_coerce(key)
 	}
@@ -91,7 +91,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "test_op: required config 'window_duration' is missing or not an unsigned integer")]
+	#[should_panic(expected = "test_op: required param 'window_duration' is missing or not an unsigned integer")]
 	fn require_panics_when_missing() {
 		let cfg = config(vec![]);
 		cfg.require_u64("window_duration");

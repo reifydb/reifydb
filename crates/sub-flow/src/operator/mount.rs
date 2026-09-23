@@ -21,9 +21,11 @@ use reifydb_runtime::fatal::{
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,
-	flow::operator::{GuestOperator, timer::Timer as SdkTimer, view::in_process::InProcessChangeView},
+	flow::operator::{
+		MountedOperator, OperatorMetadata, timer::Timer as SdkTimer, view::in_process::InProcessChangeView,
+	},
 };
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::Result;
 
 use crate::operator::context::in_process::InProcessContext;
 
@@ -45,7 +47,7 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 	}
 }
 
-pub fn mount<C: GuestOperator + 'static>(
+pub fn mount<C: MountedOperator + OperatorMetadata + 'static>(
 	logic: C,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
@@ -63,7 +65,7 @@ struct GuestAdapter<C> {
 	capabilities: &'static [OperatorCapability],
 }
 
-impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
+impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -109,10 +111,6 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, due)))
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		self.logic.seal_span().filter(|span| !span.is_zero())
-	}
-
 	fn sample(&self) -> Option<OperatorSample> {
 		self.logic.sample()
 	}
@@ -123,29 +121,18 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{
-			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
-		},
-		state::timer::StateStore,
+		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, unmanaged_key_in},
+		state::timer::{StateStore, TimerKind},
 	};
 	use reifydb_flow::{
-		operator::{
-			HostOperator,
-			host::{HostContext, TxnHostContext},
-		},
+		operator::host::{HostContext, TxnHostContext},
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};
-	use reifydb_sdk::{
-		error::Result as SdkResult,
-		flow::operator::{GuestOperator, context::GuestContext, view::ChangeView},
-	};
+	use reifydb_sdk::flow::operator::context::GuestEmitContext;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-	use reifydb_value::{
-		config::Config,
-		value::{datetime::DateTime, duration::Duration},
-	};
+	use reifydb_value::value::datetime::DateTime;
 
-	use super::{OperatorId, mount};
+	use super::{InProcessContext, OperatorId};
 
 	const NODE: OperatorId = OperatorId(1);
 
@@ -172,7 +159,7 @@ mod tests {
 
 	fn stored_key(id: &str) -> GroupStateKey {
 		// the guest owns only this keyspace, and its id column is what the round trip must hand back intact
-		custom_not_cached_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace")
+		unmanaged_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace").into()
 	}
 
 	#[test]
@@ -205,35 +192,25 @@ mod tests {
 		assert_eq!(visited, vec![written], "state_get_many_visit must visit the key that was written");
 	}
 
-	struct SealProbe(Option<i64>);
-
-	impl GuestOperator for SealProbe {
-		fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
-			Ok(Self(None))
-		}
-
-		fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
-			Ok(())
-		}
-
-		fn seal_span(&self) -> Option<Duration> {
-			self.0.map(Duration::from_milliseconds_const)
-		}
-	}
-
 	#[test]
-	fn a_mounted_guest_forwards_its_seal_span() {
-		// A mount that swallows the seal span claims a frontier covering buckets still immutable.
-		let mounted = mount(SealProbe(Some(65_000)), NODE, &[]);
+	fn an_in_process_guest_cannot_arm_or_disarm_the_reclaim_timer() {
+		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: Some(DateTime::from_millis(0)),
+		});
+		let mut host = TxnHostContext::new(&mut txn, NODE);
+		let mut ctx = InProcessContext::new(&mut host, NODE);
+		let due = DateTime::from_millis(5_000);
 
-		assert_eq!(HostOperator::seal_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));
-	}
+		let armed = ctx.arm_timer(due, TimerKind::Reclaim, &key("r")).expect_err("arming Reclaim must fail");
+		let disarmed =
+			ctx.disarm_timer(due, TimerKind::Reclaim, &key("r")).expect_err("disarming Reclaim must fail");
 
-	#[test]
-	fn a_mounted_guest_reports_no_seal_span_for_a_zero_span() {
-		// A zero span seals instantly, claiming a frontier over buckets that are still immutable.
-		let mounted = mount(SealProbe(Some(0)), NODE, &[]);
-
-		assert_eq!(HostOperator::seal_span(&*mounted), None);
+		assert!(armed.to_string().contains("FLOW_074"), "expected FLOW_074, got: {armed}");
+		assert!(disarmed.to_string().contains("FLOW_074"), "expected FLOW_074, got: {disarmed}");
+		ctx.arm_timer(due, TimerKind::Seal, &key("s")).expect("a guest Seal timer must still arm");
+		ctx.disarm_timer(due, TimerKind::Seal, &key("s")).expect("and still disarm");
 	}
 }

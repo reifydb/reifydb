@@ -156,6 +156,8 @@ mod nested_option_types;
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]
 mod none_operand_expression_types;
+#[path = "output_rule.rs"]
+mod output_rule;
 #[path = "percentile_aggregate.rs"]
 mod percentile_aggregate;
 #[path = "percentile_aggregate_errors.rs"]
@@ -172,6 +174,8 @@ mod prefix_minus_temporal_and_uuid;
 mod prefix_plus_unsigned;
 #[path = "procedure_body_pipe.rs"]
 mod procedure_body_pipe;
+#[path = "procedure_list_param.rs"]
+mod procedure_list_param;
 #[path = "procedure_named_like_a_builtin.rs"]
 mod procedure_named_like_a_builtin;
 #[path = "procedure_param_coercion.rs"]

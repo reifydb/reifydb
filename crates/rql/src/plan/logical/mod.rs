@@ -7,6 +7,7 @@ pub mod create;
 pub mod drop;
 pub mod function;
 pub mod mutate;
+pub mod operator_with;
 pub mod partition_predicate;
 pub mod query;
 pub mod resolver;
@@ -37,7 +38,8 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	row::{JoinPick, JoinRetention, Ttl},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith},
+	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -774,12 +776,14 @@ pub struct UpdateSeriesNode<'bump> {
 pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub with: AggregateWith,
 	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub with: DistinctWith,
 	pub rql: String,
 }
 
@@ -811,35 +815,29 @@ pub struct GateNode {
 
 #[derive(Debug)]
 pub struct JoinInnerNode<'bump> {
-	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub subquery: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct JoinLeftNode<'bump> {
-	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub subquery: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct JoinNaturalNode<'bump> {
-	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub subquery: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub fragment: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 	pub rql: String,
 }
 
@@ -875,7 +873,8 @@ pub struct PatchNode {
 #[derive(Debug)]
 pub struct ApplyNode<'bump> {
 	pub operator: BumpFragment<'bump>,
-	pub arguments: Vec<Expression>,
+	pub params: Vec<Expression>,
+	pub with: ApplyWith,
 	pub rql: String,
 }
 

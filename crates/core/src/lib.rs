@@ -20,6 +20,7 @@ pub mod interface;
 pub mod key;
 pub mod lifecycle;
 pub mod metrics;
+pub mod operator_with;
 pub mod partition;
 pub mod profiler;
 pub mod retry;

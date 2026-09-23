@@ -17,7 +17,7 @@ pub mod identity;
 pub mod metric;
 pub mod namespace;
 pub mod operator;
-pub mod operator_settings;
+pub mod operator_retention;
 pub mod output_frontier;
 pub mod partition;
 pub mod procedure;
@@ -261,7 +261,7 @@ pub mod tests {
 		let key = OperatorStateKey {
 			operator: OperatorId(0xCAFEBABE),
 			group: GroupId::ROOT,
-			keyspace: KeyspaceId::CUSTOM_NOT_CACHED,
+			keyspace: KeyspaceId::CUSTOM_UNMANAGED,
 			suffix: vec![1, 2, 3],
 		};
 

@@ -44,6 +44,17 @@ pub struct ReapQueueKey {
 	pub group: Desc<GroupId>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct CustomManagedDueKey {
+	pub threshold: Desc<u64>,
+	pub group: Desc<GroupId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct CustomManagedLatestKey {
+	pub group: Desc<GroupId>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Expiry;
 
@@ -106,6 +117,46 @@ impl Keyspace for ReapQueue {
 
 	type GroupedKey = ReapQueueKey;
 	type Suffix = ReapQueueKey;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		suffix
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CustomManagedDue;
+
+impl Keyspace for CustomManagedDue {
+	const ID: KeyspaceId = KeyspaceId::CUSTOM_MANAGED_DUE;
+	const NAME: &'static str = "CUSTOM_MANAGED_DUE";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = CustomManagedDueKey;
+	type Suffix = CustomManagedDueKey;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		suffix
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CustomManagedLatest;
+
+impl Keyspace for CustomManagedLatest {
+	const ID: KeyspaceId = KeyspaceId::CUSTOM_MANAGED_LATEST;
+	const NAME: &'static str = "CUSTOM_MANAGED_LATEST";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = CustomManagedLatestKey;
+	type Suffix = CustomManagedLatestKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

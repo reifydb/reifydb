@@ -176,7 +176,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	Ok(())
 }
 
-type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetrics>);
+type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, bool, SymbolTable, Vec<StatementMetrics>);
 
 struct ExecutionFailure {
 	error: Error,
@@ -242,6 +242,7 @@ fn execute_compiled_units(
 	);
 	let mut result = vec![];
 	let mut output_results: Vec<Frame> = Vec::new();
+	let mut saw_output = false;
 	let mut metrics = Vec::new();
 
 	for compiled in compiled_list.iter() {
@@ -269,16 +270,20 @@ fn execute_compiled_units(
 		}
 
 		if compiled.is_output {
+			saw_output = true;
 			output_results.append(&mut result);
 		}
 	}
 
-	Ok((output_results, result, symbols, metrics))
+	Ok((output_results, result, saw_output, symbols, metrics))
 }
 
-fn merge_results(mut output_results: Vec<Frame>, mut remaining: Vec<Frame>) -> Vec<Frame> {
-	output_results.append(&mut remaining);
-	output_results
+fn select_frames(saw_output: bool, output: Vec<Frame>, last: Vec<Frame>) -> Vec<Frame> {
+	if saw_output {
+		output
+	} else {
+		last
+	}
 }
 
 #[inline]
@@ -340,9 +345,9 @@ impl Executor {
 		};
 		let compile_duration = Duration::from_std(start_compile.elapsed());
 
-		match self.run_units_collecting_last(tx, &compiled_list, &params, symbols, compile_duration) {
-			Ok((frames, metrics)) => ExecutionResult {
-				frames,
+		match execute_compiled_units(&self.0, tx, &compiled_list, &params, symbols, compile_duration) {
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
 				error: None,
 				metrics: build_metrics(metrics),
 			},
@@ -362,48 +367,6 @@ impl Executor {
 			};
 		}
 		error_result(err, ExecutionMetrics::default())
-	}
-
-	#[inline]
-	fn run_units_collecting_last(
-		&self,
-		tx: &mut Transaction<'_>,
-		compiled_list: &[Compiled],
-		params: &Params,
-		mut symbols: SymbolTable,
-		compile_duration: Duration,
-	) -> StdResult<(Vec<Frame>, Vec<StatementMetrics>), ExecutionFailure> {
-		let compile_duration_per_unit = Duration::from_micros_infallible(
-			compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64,
-		);
-		let mut result = vec![];
-		let mut metrics = Vec::new();
-		for compiled in compiled_list.iter() {
-			result.clear();
-			let outcome = run_compiled_unit(&self.0, tx, compiled, params, symbols, &mut result);
-			symbols = outcome.symbols;
-
-			metrics.push(StatementMetrics {
-				fingerprint: compiled.fingerprint,
-				normalized_rql: compiled.normalized_rql.clone(),
-				compile_duration: compile_duration_per_unit,
-				execute_duration: outcome.execute_duration,
-				rows_affected: if outcome.run_result.is_ok() {
-					extract_rows_affected(&result)
-				} else {
-					0
-				},
-			});
-
-			if let Err(error) = outcome.run_result {
-				return Err(ExecutionFailure {
-					error,
-					partial_metrics: metrics,
-				});
-			}
-		}
-
-		Ok((result, metrics))
 	}
 
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
@@ -468,8 +431,8 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, remaining, _, metrics)) => ExecutionResult {
-				frames: merge_results(output, remaining),
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
 				error: None,
 				metrics: build_metrics(metrics),
 			},
@@ -491,6 +454,7 @@ impl Executor {
 		let policy = constrain_policy(inject_from_policies);
 		let mut result = vec![];
 		let mut output_results: Vec<Frame> = Vec::new();
+		let mut saw_output = false;
 		let mut symbols = symbols;
 		let mut metrics = Vec::new();
 		loop {
@@ -534,11 +498,12 @@ impl Executor {
 			}
 
 			if compiled.is_output {
+				saw_output = true;
 				output_results.append(&mut result);
 			}
 		}
 		ExecutionResult {
-			frames: merge_results(output_results, result),
+			frames: select_frames(saw_output, output_results, result),
 			error: None,
 			metrics: build_metrics(metrics),
 		}
@@ -612,8 +577,8 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, remaining, _, metrics)) => ExecutionResult {
-				frames: merge_results(output, remaining),
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
 				error: None,
 				metrics: build_metrics(metrics),
 			},
@@ -635,6 +600,7 @@ impl Executor {
 		let policy = constrain_policy(inject_from_policies);
 		let mut result = vec![];
 		let mut output_results: Vec<Frame> = Vec::new();
+		let mut saw_output = false;
 		let mut symbols = symbols;
 		let mut metrics = Vec::new();
 		loop {
@@ -678,11 +644,12 @@ impl Executor {
 			}
 
 			if compiled.is_output {
+				saw_output = true;
 				output_results.append(&mut result);
 			}
 		}
 		ExecutionResult {
-			frames: merge_results(output_results, result),
+			frames: select_frames(saw_output, output_results, result),
 			error: None,
 			metrics: build_metrics(metrics),
 		}
@@ -830,8 +797,8 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, remaining, _, metrics)) => ExecutionResult {
-				frames: merge_results(output, remaining),
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
 				error: None,
 				metrics: build_metrics(metrics),
 			},
@@ -902,8 +869,8 @@ impl Executor {
 		);
 
 		match exec_result {
-			Ok((output, remaining, _, metrics)) => ExecutionResult {
-				frames: merge_results(output, remaining),
+			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
+				frames: select_frames(saw_output, output, last),
 				error: None,
 				metrics: build_metrics(metrics),
 			},

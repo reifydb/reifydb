@@ -7,8 +7,8 @@
 When implementing tests from this specification:
 1. These tests verify how the client handles multiple statements, empty statements, and statement separators
 2. Test both `command` and `query` operations as they should behave identically for statement parsing
-3. Pay attention to the frame structure - each statement produces its own frame
-4. Empty statements should not produce frames
+3. Only statements marked `OUTPUT` produce a frame, in statement order; with no `OUTPUT` marker, only the last statement's frame comes back
+4. Empty statements never produce frames
 
 ## Test Specification
 ```yaml
@@ -58,7 +58,7 @@ expected:
 ### mixed_empty_and_non_empty
 ```yaml
 operation: command
-statement: ";MAP 1 as one ;;;MAP 2 as two"
+statement: ";OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}"
 params: null
 expected:
   status: success
@@ -82,7 +82,7 @@ expected:
 ### single_statement_with_semicolon
 ```yaml
 operation: command
-statement: "MAP 1 as result;"
+statement: "MAP {result: 1};"
 params: null
 expected:
   status: success
@@ -98,7 +98,7 @@ expected:
 ### multiple_statements_same_structure
 ```yaml
 operation: command
-statement: "MAP 1 as result;MAP 2 as result;MAP 3 as result;"
+statement: "OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};OUTPUT MAP {result: 3};"
 params: null
 expected:
   status: success
@@ -129,7 +129,7 @@ expected:
 ### multiple_statements_different_structure
 ```yaml
 operation: command
-statement: "MAP 1 as result;MAP { 2 as a, 3 as b };MAP 'ReifyDB' as result;"
+statement: "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };OUTPUT MAP {result: 'ReifyDB'};"
 params: null
 expected:
   status: success
@@ -160,7 +160,7 @@ expected:
 ### statement_without_trailing_semicolon
 ```yaml
 operation: command
-statement: "MAP 1 as x"
+statement: "MAP {x: 1}"
 params: null
 expected:
   status: success
@@ -176,7 +176,7 @@ expected:
 ### multiple_statements_no_trailing_semicolon
 ```yaml
 operation: command
-statement: "MAP 1 as x;MAP 2 as y"
+statement: "OUTPUT MAP {x: 1};OUTPUT MAP {y: 2}"
 params: null
 expected:
   status: success
@@ -200,7 +200,7 @@ expected:
 ### statement_with_whitespace
 ```yaml
 operation: command
-statement: "  MAP 1 as result  ;  MAP 2 as result  "
+statement: "  OUTPUT MAP {result: 1}  ;  OUTPUT MAP {result: 2}  "
 params: null
 expected:
   status: success
@@ -264,7 +264,7 @@ expected:
 ### query_mixed_empty_and_non_empty
 ```yaml
 operation: query
-statement: ";MAP 1 as one ;;;MAP 2 as two"
+statement: ";OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}"
 params: null
 expected:
   status: success
@@ -288,7 +288,7 @@ expected:
 ### query_single_statement_with_semicolon
 ```yaml
 operation: query
-statement: "MAP 1 as result;"
+statement: "MAP {result: 1};"
 params: null
 expected:
   status: success
@@ -304,7 +304,7 @@ expected:
 ### query_multiple_statements_same_structure
 ```yaml
 operation: query
-statement: "MAP 1 as result;MAP 2 as result;MAP 3 as result;"
+statement: "OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};OUTPUT MAP {result: 3};"
 params: null
 expected:
   status: success
@@ -335,7 +335,7 @@ expected:
 ### query_multiple_statements_different_structure
 ```yaml
 operation: query
-statement: "MAP 1 as result;MAP { 2 as a, 3 as b };MAP 'ReifyDB' as result;"
+statement: "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };OUTPUT MAP {result: 'ReifyDB'};"
 params: null
 expected:
   status: success
@@ -366,9 +366,9 @@ expected:
 ## Implementation Notes
 
 ### TypeScript
-- Each statement produces a separate frame in the frames array
-- Empty statements should not produce frames (frames.length should match non-empty statements)
-- Use appropriate Schema definitions for each frame structure
+- The frames array holds one frame per `OUTPUT` statement, in order, or just the last statement's frame when none is marked
+- Empty statements never produce frames
+- Use a `Shape` definition for each frame structure
 
 ### Rust
 - For snapshot tests, consider how to represent multiple frames

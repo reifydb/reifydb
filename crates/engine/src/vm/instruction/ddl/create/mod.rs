@@ -6,12 +6,23 @@ use reifydb_catalog::{
 	vtable::system::operator_libary::OperatorLibrary,
 };
 use reifydb_core::{
-	error::diagnostic::{flow::flow_view_calls_script_routine, query},
+	common::{OperatorClass, TimeDomain, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
+	error::diagnostic::{
+		flow::{
+			flow_managed_operator_requires_event_time, flow_operator_retention_required,
+			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
+			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
+			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
+			flow_operator_with_window_size_duration, flow_view_calls_script_routine,
+		},
+		query,
+	},
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
 		view::{View, ViewSortKey},
 	},
+	operator_with::ApplyWith,
 	sort::SortKey,
 };
 use reifydb_evaluate::{
@@ -23,7 +34,9 @@ use reifydb_rql::{
 	expression::Expression,
 	flow::{
 		compiler::compile_flow,
-		time_domain::{check_join_retention_requirements, check_window_time_requirements},
+		flow::FlowDag,
+		operator::OperatorDef,
+		time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
 	},
 	query::{QueryPlan, extract_resolved_source},
 };
@@ -110,7 +123,7 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 			(node.assignments.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
 		}
 		QueryPlan::Apply(node) => {
-			(node.expressions.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
+			(node.params.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
 		}
 		QueryPlan::Assert(node) => {
 			(node.conditions.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
@@ -219,6 +232,105 @@ fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorL
 	inputs.into_iter().try_for_each(|input| ensure_apply_operators_registered(input, operators))
 }
 
+fn check_managed_time_requirements(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+	operators: &OperatorLibrary,
+) -> Result<()> {
+	let flow_name = format!("flow {}", flow.id.0);
+	for operator_id in flow.topological_order() {
+		let Some(node) = flow.get_operator(operator_id) else {
+			continue;
+		};
+		let OperatorDef::Apply {
+			operator,
+			..
+		} = &node.ty
+		else {
+			continue;
+		};
+		if operators.get(operator).map(|info| info.class) != Some(OperatorClass::Managed) {
+			continue;
+		}
+		if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
+			return Err(error!(flow_managed_operator_requires_event_time(&flow_name, operator)));
+		}
+		return Ok(());
+	}
+	Ok(())
+}
+
+fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary) -> Result<()> {
+	for operator_id in flow.topological_order() {
+		let Some(node) = flow.get_operator(operator_id) else {
+			continue;
+		};
+		let OperatorDef::Apply {
+			operator,
+			with,
+			..
+		} = &node.ty
+		else {
+			continue;
+		};
+		let Some(info) = operators.get(operator) else {
+			continue;
+		};
+		match info.class {
+			OperatorClass::Nostate => {
+				if with != &ApplyWith::default() {
+					return Err(error!(flow_operator_with_not_accepted()));
+				}
+			}
+			OperatorClass::Managed => {
+				with.check_retention()?;
+				if with.effective_retention()?.is_none() {
+					return Err(error!(flow_operator_retention_required()));
+				}
+			}
+			OperatorClass::Unmanaged | OperatorClass::Windowed => with.reject_retention()?,
+		}
+		check_window_requirements(info.window, with)?;
+	}
+	Ok(())
+}
+
+fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith) -> Result<()> {
+	let kind = match (&with.window, requirements.takes_window) {
+		(Some(kind), true) => kind,
+		(Some(kind), false) => return Err(error!(flow_operator_with_window_not_supported(kind.name()))),
+		(None, true) => return Err(error!(flow_operator_with_window_missing())),
+		(None, false) => return Ok(()),
+	};
+	if !requirements.kinds.contains(&kind.name()) {
+		return Err(error!(flow_operator_with_window_kind_unsupported(
+			kind.name(),
+			&requirements.kinds.join(", ")
+		)));
+	}
+	match (requirements.domain, kind.size()) {
+		(WindowSizeDomain::Time, Some(WindowSize::Count(count))) => {
+			return Err(error!(flow_operator_with_window_size_count(*count)));
+		}
+		(WindowSizeDomain::Slots, Some(WindowSize::Duration(size))) => {
+			return Err(error!(flow_operator_with_window_size_duration(*size)));
+		}
+		_ => {}
+	}
+	if requirements.needs_pane
+		&& matches!(
+			kind,
+			WindowKind::Rolling {
+				pane: None,
+				..
+			}
+		) {
+		return Err(error!(flow_operator_with_pane_missing()));
+	}
+	with.check_session_window()
+}
+
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
@@ -243,5 +355,7 @@ pub(crate) fn create_deferred_view_flow(
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)
+	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
+	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
+	check_operator_with_requirements(&dag, operators)
 }

@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::WindowAccumulator;
+use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +68,18 @@ where
 	}
 }
 
+impl<V: Clone + Debug> MergeAccumulator for LastValue<V>
+where
+	V: PartialEq,
+	LastValue<V>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
+		if let Some(value) = &other.value {
+			self.value = Some(value.clone());
+		}
+	}
+}
+
 impl<V: HeapSize> HeapSize for LastValue<V> {
 	fn heap_size(&self) -> usize {
 		self.value.heap_size()
@@ -98,5 +110,33 @@ mod tests {
 		lv.add(&20);
 		lv.remove(&10);
 		assert_eq!(lv.finalize(), Some(20), "removing a superseded value must not clear the current one");
+	}
+
+	#[test]
+	fn merge_takes_the_other_value_when_it_has_one() {
+		// Panes merge oldest first, so the later pane's value must replace the earlier one.
+		let mut earlier: LastValue<i64> = LastValue::default();
+		earlier.add(&1);
+		let mut later: LastValue<i64> = LastValue::default();
+		later.add(&2);
+		earlier.merge(&later);
+		assert_eq!(earlier.finalize(), Some(2));
+
+		let mut empty: LastValue<i64> = LastValue::default();
+		empty.merge(&later);
+		assert_eq!(empty.finalize(), Some(2));
+	}
+
+	#[test]
+	fn merge_of_an_empty_other_keeps_the_current_value() {
+		// An empty later pane must not erase the value an earlier pane already holds.
+		let mut current: LastValue<i64> = LastValue::default();
+		current.add(&7);
+		current.merge(&LastValue::default());
+		assert_eq!(current.finalize(), Some(7));
+
+		let mut both_empty: LastValue<i64> = LastValue::default();
+		both_empty.merge(&LastValue::default());
+		assert!(both_empty.is_empty());
 	}
 }

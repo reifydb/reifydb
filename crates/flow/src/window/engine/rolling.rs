@@ -14,6 +14,7 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
+	internal_err,
 	key::operator::{
 		keyspace::expiry::Expiry,
 		state::{GroupId, GroupStateKey},
@@ -33,13 +34,13 @@ use crate::{
 		state_access::{get, get_classified, put, remove},
 	},
 	window::{
-		accumulator::WindowAccumulator,
+		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep,
 			RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
-		span::Slot,
+		span::{Slot, SlotSpan},
 	},
 };
 
@@ -57,8 +58,32 @@ pub struct RollingResult<G, Output> {
 
 pub enum RollingEviction<S: Slot> {
 	Capacity(usize),
+	Span(SlotSpan<S>),
 	Before(S),
 	Nothing,
+}
+
+#[derive(Clone, Copy)]
+enum IndexedPane {
+	Oldest,
+	Newest,
+}
+
+impl IndexedPane {
+	fn of<S: Slot>(eviction: &RollingEviction<S>) -> Option<Self> {
+		match eviction {
+			RollingEviction::Before(_) | RollingEviction::Nothing => Some(Self::Oldest),
+			RollingEviction::Span(_) => Some(Self::Newest),
+			RollingEviction::Capacity(_) => None,
+		}
+	}
+
+	fn key<S: Slot, A>(self, buffer: &RollingBuffer<S, A>) -> Option<u64> {
+		match self {
+			Self::Oldest => coord_min_key(buffer),
+			Self::Newest => coord_max_key(buffer),
+		}
+	}
 }
 
 pub enum RollingExpiry<G, Output> {
@@ -85,6 +110,10 @@ pub struct RollingIndexEntry<G> {
 
 fn coord_min_key<S: Slot, A>(buffer: &RollingBuffer<S, A>) -> Option<u64> {
 	buffer.keys().next().map(|c| c.order_key().to_order())
+}
+
+pub(crate) fn coord_max_key<S: Slot, A>(buffer: &RollingBuffer<S, A>) -> Option<u64> {
+	buffer.keys().next_back().map(|c| c.order_key().to_order())
 }
 
 type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
@@ -123,7 +152,7 @@ where
 	prior_output: Option<Accumulator::Output>,
 }
 
-fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
+fn merge_into<A: MergeAccumulator>(running: &mut A, other: &A) {
 	if running.is_empty() {
 		*running = other.clone();
 	} else {
@@ -143,7 +172,11 @@ fn is_merged_coord<C: Coord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
-fn running_below<S: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
+pub fn merge_panes<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>) -> A {
+	running_below::<S, A>(buffer, Some(<S::Coord as Coord>::MAX))
+}
+
+fn running_below<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
 	let mut running = A::default();
 	let Some(frontier) = frontier else {
 		return running;
@@ -229,7 +262,7 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let indexed = matches!(eviction, RollingEviction::Before(_) | RollingEviction::Nothing);
+		let indexed = IndexedPane::of(&eviction);
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 		let group_slots = self.apply_events_into_buffers(
@@ -295,7 +328,7 @@ where
 		eviction: &RollingEviction<S>,
 		new_accumulator: &NA,
 		combine: &CB,
-		indexed: bool,
+		indexed: Option<IndexedPane>,
 	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, Output>>>
 	where
 		K: Fn(&G) -> (GroupId, EncodedKey),
@@ -325,11 +358,7 @@ where
 					} else {
 						combine(&group, &buffer)
 					};
-					let prior_index_key = if indexed {
-						coord_min_key(&buffer)
-					} else {
-						None
-					};
+					let prior_index_key = indexed.and_then(|pane| pane.key(&buffer));
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
@@ -374,6 +403,22 @@ where
 						group_slot.buffer.pop_first();
 					}
 				}
+				RollingEviction::Span(size) => {
+					let cutoff = group_slot
+						.buffer
+						.last_key_value()
+						.and_then(|(newest, _)| newest.order_key().checked_sub_span(*size))
+						.map(S::from_order_key);
+					if let Some(cutoff) = cutoff {
+						while let Some((&oldest, _)) = group_slot.buffer.first_key_value() {
+							if oldest <= cutoff {
+								group_slot.buffer.pop_first();
+							} else {
+								break;
+							}
+						}
+					}
+				}
 				RollingEviction::Before(cutoff) => {
 					while let Some((&oldest, _)) = group_slot.buffer.iter().next() {
 						if oldest <= *cutoff {
@@ -397,7 +442,7 @@ where
 		store: &mut dyn StateStore,
 		group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Output>>,
 		combine: &CB,
-		indexed: bool,
+		indexed: Option<IndexedPane>,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
 		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
@@ -408,8 +453,8 @@ where
 			if !group_slot.buffer_changed {
 				continue;
 			}
-			if indexed {
-				let new_index_key = coord_min_key(&group_slot.buffer);
+			if let Some(pane) = indexed {
+				let new_index_key = pane.key(&group_slot.buffer);
 				if new_index_key != group_slot.prior_index_key {
 					if let Some(old) = group_slot.prior_index_key {
 						expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
@@ -487,6 +532,184 @@ where
 		Ok(results)
 	}
 
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
+	}
+
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+		self.expiry.earliest(store)
+	}
+
+	pub fn expire_before<CB, Output>(
+		&mut self,
+		store: &mut dyn StateStore,
+		cutoff: S,
+		combine: CB,
+	) -> Result<Vec<RollingExpiry<G, Output>>>
+	where
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+	{
+		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
+		for (index_key, entry) in due {
+			let slot_key = EncodedKey::new(&entry.slot_key);
+			let group_id = entry.group_id;
+			expiry_drop(store, &index_key)?;
+			let mut buffer: RollingBuffer<S, Accumulator> =
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
+					.unwrap_or_default();
+			if buffer.is_empty() {
+				continue;
+			}
+			let before = buffer.len();
+			buffer.retain(|&slot, _| slot > cutoff);
+			if buffer.len() == before {
+				if let Some(new) = coord_min_key(&buffer) {
+					self.expiry.set(
+						store,
+						rolling_expiry_key(new, group_hash(&entry.group)?),
+						RollingIndexEntry {
+							group: entry.group.clone(),
+							slot_key: entry.slot_key.clone(),
+							group_id: entry.group_id,
+						},
+					)?;
+				}
+				continue;
+			}
+			match combine(&entry.group, &buffer) {
+				Some(value) if !buffer.is_empty() => {
+					if let Some(new) = coord_min_key(&buffer) {
+						self.expiry.set(
+							store,
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)?;
+					}
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					pairs.push((group_id, slot_key));
+					pending.push((entry.group, Some(value)));
+				}
+				_ => {
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					pairs.push((group_id, slot_key));
+					pending.push((entry.group, None));
+				}
+			}
+		}
+
+		self.expiry.settle(store)?;
+
+		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value), (group_id, _key)), (row_number, _)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				match value {
+					Some(value) => out.push(RollingExpiry::Update {
+						row_number,
+						group,
+						group_id,
+						value,
+					}),
+					None => {
+						store.remove_row_number_for_group(group_id)?;
+						out.push(RollingExpiry::Remove {
+							row_number,
+							group,
+							group_id,
+						});
+					}
+				}
+			}
+		}
+		note_when_expiry_capped(out.len(), self.expire_batch);
+		Ok(out)
+	}
+
+	pub fn expire_dead<CB, Output>(
+		&mut self,
+		store: &mut dyn StateStore,
+		cutoff: S,
+		combine: CB,
+	) -> Result<Vec<RollingResult<G, Output>>>
+	where
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+	{
+		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+		note_when_expiry_capped(due.len(), self.expire_batch);
+
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Output)> = Vec::new();
+		for (index_key, entry) in due {
+			let slot_key = EncodedKey::new(&entry.slot_key);
+			let buffer_key = BufferKey::new(self.family, entry.group_id, slot_key.clone());
+			let buffer: RollingBuffer<S, Accumulator> =
+				match get_classified::<_, RollingBuffer<S, Accumulator>>(store, &buffer_key)? {
+					Some(buffer) if !buffer.is_empty() => buffer,
+					_ => return internal_err!("a rolling expiry row names a group with no buffer"),
+				};
+			if buffer.last_key_value().is_some_and(|(newest, _)| *newest > cutoff) {
+				return internal_err!("a rolling expiry row lags its group's newest pane");
+			}
+			let value = combine(&entry.group, &buffer);
+			expiry_drop(store, &index_key)?;
+			remove(store, &buffer_key)?;
+			if let Some(value) = value {
+				pairs.push((entry.group_id, slot_key));
+				pending.push((entry.group, value));
+			}
+		}
+
+		self.expiry.settle(store)?;
+
+		let mut out: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value), (group_id, _key)), (row_number, _)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				store.remove_row_number_for_group(group_id)?;
+				out.push(RollingResult {
+					row_number,
+					group,
+					value,
+					prior: None,
+					kind: EmitKind::Remove,
+				});
+			}
+		}
+		Ok(out)
+	}
+
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
+		persist_batch_meta(store, meta_loaded)
+	}
+}
+
+impl<G, S, Accumulator> RollingEngine<G, S, Accumulator>
+where
+	G: Clone + Eq + Ord + Hash + Debug,
+	S: Slot + Hash + HeapSize,
+	Accumulator: UnmergeAccumulator,
+	G: StateCodec,
+	GroupMeta<S>: OperatorState,
+	RollingIndexEntry<G>: OperatorState,
+	RollingBuffer<S, Accumulator>: OperatorState,
+{
 	fn load_running(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -526,7 +749,7 @@ where
 		let evict_cutoff = match eviction {
 			RollingEviction::Before(cutoff) => Some(cutoff),
 			RollingEviction::Nothing => None,
-			RollingEviction::Capacity(_) => {
+			RollingEviction::Capacity(_) | RollingEviction::Span(_) => {
 				unimplemented!("apply_running supports only Before eviction")
 			}
 		};
@@ -886,115 +1109,6 @@ where
 		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
 	}
-
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
-	}
-
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.expiry.earliest(store)
-	}
-
-	pub fn expire_before<CB, Output>(
-		&mut self,
-		store: &mut dyn StateStore,
-		cutoff: S,
-		combine: CB,
-	) -> Result<Vec<RollingExpiry<G, Output>>>
-	where
-		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
-	{
-		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
-			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
-
-		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
-		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
-		for (index_key, entry) in due {
-			let slot_key = EncodedKey::new(&entry.slot_key);
-			let group_id = entry.group_id;
-			expiry_drop(store, &index_key)?;
-			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
-					.unwrap_or_default();
-			if buffer.is_empty() {
-				continue;
-			}
-			let before = buffer.len();
-			buffer.retain(|&slot, _| slot > cutoff);
-			if buffer.len() == before {
-				if let Some(new) = coord_min_key(&buffer) {
-					self.expiry.set(
-						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
-					)?;
-				}
-				continue;
-			}
-			match combine(&entry.group, &buffer) {
-				Some(value) if !buffer.is_empty() => {
-					if let Some(new) = coord_min_key(&buffer) {
-						self.expiry.set(
-							store,
-							rolling_expiry_key(new, group_hash(&entry.group)?),
-							RollingIndexEntry {
-								group: entry.group.clone(),
-								slot_key: entry.slot_key.clone(),
-								group_id: entry.group_id,
-							},
-						)?;
-					}
-					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
-					pairs.push((group_id, slot_key));
-					pending.push((entry.group, Some(value)));
-				}
-				_ => {
-					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
-					pairs.push((group_id, slot_key));
-					pending.push((entry.group, None));
-				}
-			}
-		}
-
-		self.expiry.settle(store)?;
-
-		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
-		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_groups(
-				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-			)?;
-			for (((group, value), (group_id, _key)), (row_number, _)) in
-				pending.into_iter().zip(pairs).zip(rows)
-			{
-				match value {
-					Some(value) => out.push(RollingExpiry::Update {
-						row_number,
-						group,
-						group_id,
-						value,
-					}),
-					None => {
-						store.remove_row_number_for_group(group_id)?;
-						out.push(RollingExpiry::Remove {
-							row_number,
-							group,
-							group_id,
-						});
-					}
-				}
-			}
-		}
-		note_when_expiry_capped(out.len(), self.expire_batch);
-		Ok(out)
-	}
-
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
-		persist_batch_meta(store, meta_loaded)
-	}
 }
 
 #[cfg(test)]
@@ -1011,13 +1125,13 @@ mod tests {
 	use crate::{
 		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
-			accumulator::mock::SumAccumulator,
+			accumulator::{WindowAccumulator, invertible::last_value::LastValue, mock::SumAccumulator},
 			engine::{
 				AccumulatorEvent, EmitKind,
 				config::WindowEngineConfig,
 				rolling::{
 					RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
-					RollingResult,
+					RollingResult, merge_panes,
 				},
 			},
 		},
@@ -1905,5 +2019,258 @@ mod tests {
 			vec![(1u32, EmitKind::Insert, 7i64)],
 			"the retained coord 115 crosses the frontier at high water 130 and surfaces"
 		);
+	}
+
+	fn sum_pane(contributions: &[i64]) -> SumAccumulator {
+		let mut pane = SumAccumulator::default();
+		for contribution in contributions {
+			pane.add(contribution);
+		}
+		pane
+	}
+
+	#[test]
+	fn merge_panes_over_one_pane_equals_that_pane() {
+		// A merge that alters a lone pane would change every rolling window with a single bucket.
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[3, 4]));
+
+		let merged = merge_panes(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[3, 4]).finalize());
+		assert_eq!(merged.finalize(), Some(7));
+	}
+
+	#[test]
+	fn merge_panes_over_three_panes_equals_one_accumulator_fed_the_same_contributions() {
+		// The engine merge must equal the flat fold the guest used to do, or rolling values shift.
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[1]));
+		buffer.insert(at_millis(20), sum_pane(&[2, 3]));
+		buffer.insert(at_millis(30), sum_pane(&[4]));
+
+		let merged = merge_panes(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[1, 2, 3, 4]).finalize());
+	}
+
+	#[test]
+	fn merge_panes_merges_panes_oldest_first() {
+		// A last-value window keeps the newest pane's value only if panes merge oldest first.
+		let mut buffer: RollingBuffer<DateTime, LastValue<i64>> = BTreeMap::new();
+		for (millis, value) in [(30, 3), (10, 1), (20, 2)] {
+			let mut pane: LastValue<i64> = LastValue::default();
+			pane.add(&value);
+			buffer.insert(at_millis(millis), pane);
+		}
+
+		assert_eq!(merge_panes(&buffer).finalize(), Some(3));
+	}
+
+	#[test]
+	fn merge_panes_over_an_empty_buffer_is_the_default_accumulator() {
+		// An empty window must fold to nothing, not to a stale or garbage value.
+		let buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+
+		let merged = merge_panes(&buffer);
+		assert!(merged.is_empty());
+		assert_eq!(merged.finalize(), SumAccumulator::default().finalize());
+	}
+
+	#[test]
+	fn span_keys_the_expiry_row_on_the_newest_pane() {
+		// A dead group is found by its newest pane, so the row must key there, never on the oldest.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+
+		assert_eq!(engine.earliest_expiry(&mut store).unwrap(), Some(order(20)));
+		assert_eq!(store.index_entry_count(), 1);
+	}
+
+	#[test]
+	fn a_retraction_that_empties_the_newest_pane_moves_the_expiry_row_back() {
+		// Without dropping the old row, the group keeps a stale row at the emptied pane.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+
+		let mut retract: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		retract.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Remove(2)]);
+		engine.apply_evicting(
+			&mut store,
+			retract,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+
+		assert_eq!(engine.earliest_expiry(&mut store).unwrap(), Some(order(10)));
+		assert_eq!(store.index_entry_count(), 1, "the row at the emptied pane must be gone");
+	}
+
+	#[test]
+	fn expire_dead_removes_a_group_at_the_cutoff_with_its_last_value() {
+		// The group must leave with its last value and free its row number, otherwise a revived group reuses
+		// it.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		let applied = engine
+			.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Span(millis(100)),
+				row_key,
+				SumAccumulator::default,
+				sum_combine,
+			)
+			.unwrap();
+
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_dead(&mut store, at_millis(20), sum_combine).unwrap();
+
+		assert_eq!(out.len(), 1);
+		assert_eq!(out[0].row_number, applied[0].row_number);
+		assert_eq!(out[0].group, 1);
+		assert_eq!(out[0].value, 3);
+		assert_eq!(out[0].prior, None);
+		assert_eq!(out[0].kind, EmitKind::Remove);
+		assert!(!store.contains_row_mapping(row_key(&1).0));
+		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.buffer_entry_count(), 0);
+	}
+
+	#[test]
+	fn expire_dead_keeps_a_group_whose_newest_pane_is_past_the_cutoff() {
+		// A group with a live pane past the cutoff must never be freed.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_dead(&mut store, at_millis(19), sum_combine).unwrap();
+
+		assert!(out.is_empty());
+		assert!(store.contains_row_mapping(row_key(&1).0));
+		assert_eq!(store.index_entry_count(), 1);
+		assert_eq!(store.buffer_entry_count(), 1);
+	}
+
+	#[test]
+	fn expire_dead_frees_a_group_with_no_output_without_emitting() {
+		// A group with no value never had a row, so freeing it must not create one.
+		let no_output = |_: &u32, _: &RollingBuffer<DateTime, SumAccumulator>| None::<i64>;
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			no_output,
+		)
+		.unwrap();
+		assert!(!store.contains_row_mapping(row_key(&1).0));
+
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_dead(&mut store, at_millis(10), no_output).unwrap();
+
+		assert!(out.is_empty());
+		assert!(!store.contains_row_mapping(row_key(&1).0));
+		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.buffer_entry_count(), 0);
+	}
+
+	#[test]
+	fn a_due_row_with_no_buffer_is_an_error() {
+		// A due row with no buffer is broken state and must fail loud, never be skipped.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		store.drop_group_data_entries();
+
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let Err(err) = engine.expire_dead(&mut store, at_millis(10), sum_combine) else {
+			panic!("a due row must be an error")
+		};
+
+		assert!(err.to_string().contains("a rolling expiry row names a group with no buffer"), "{err}");
+	}
+
+	#[test]
+	fn a_due_row_behind_its_newest_pane_is_an_error() {
+		// A row behind its newest pane means the index went stale; it must fail loud, never re-index.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut first: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		first.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		engine.apply_evicting(
+			&mut store,
+			first,
+			RollingEviction::Span(millis(100)),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		let mut later: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		later.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply(&mut store, later, 10, row_key, sum_combine).unwrap();
+
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let Err(err) = engine.expire_dead(&mut store, at_millis(10), sum_combine) else {
+			panic!("a due row must be an error")
+		};
+
+		assert!(err.to_string().contains("a rolling expiry row lags its group's newest pane"), "{err}");
 	}
 }

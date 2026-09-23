@@ -5,13 +5,15 @@
 //! `#[cfg(test)]` suite does not already cover.
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
-use reifydb_flow::window::accumulator::{
-	WindowAccumulator,
-	invertible::{
-		keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments, multiset::Multiset,
-		ordf64::OrdF64,
+use reifydb_flow::{
+	operator::state::sealing::{endpoint::SealingEndpoint, min::SealingMin},
+	window::accumulator::{
+		WindowAccumulator,
+		invertible::{
+			keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments, multiset::Multiset,
+			ordf64::OrdF64,
+		},
 	},
-	sealing::{endpoint::SealingEndpoint, min::SealingMin},
 };
 use reifydb_value::{
 	factory::time::{at_millis, millis},

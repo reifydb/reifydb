@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::flow::{FlowId, OperatorId},
+	operator_with::AggregateWith,
 };
 use reifydb_rql::{
 	expression::parse_expression,
@@ -115,6 +116,7 @@ fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_err
 			by: parse_expression("g").expect("the group key must parse"),
 			map: parse_expression("p: stats::approx_percentile(latency, 1.5, 0.01)")
 				.expect("the aggregation must parse"),
+			with: AggregateWith {},
 		},
 	));
 	builder.add_edge(FlowEdge::new(1, SOURCE, AGGREGATE)).expect("both edge ends must exist");

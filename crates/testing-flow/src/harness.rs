@@ -10,15 +10,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{
-		catalog::{flow::OperatorId, object::ObjectId},
+		catalog::object::ObjectId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	key::{any::TaggedKey, tag::KeyTag},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
-	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
+	operator::{HostOperator, host::TxnHostContext, sink::DurableSink},
 	timer::{Timer, wheel::TimerWheel},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -31,8 +30,6 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::flow::operator::GuestOperator;
-use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
@@ -42,8 +39,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	config::Config,
-	value::{Value, datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 
 pub struct Harness<O> {
@@ -145,25 +141,6 @@ impl<O: DurableSink> Harness<O> {
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
 		Ok(emitted)
-	}
-}
-
-impl Harness<ApplyOperator> {
-	pub fn guest<C: GuestOperator + 'static>(
-		logic: C,
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-	) -> Self {
-		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities)))
-	}
-
-	pub fn guest_from_config<C: GuestOperator + 'static>(
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-		config: Vec<(&str, Value)>,
-	) -> Result<Self> {
-		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities))
 	}
 }
 

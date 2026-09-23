@@ -27,10 +27,6 @@ pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) ->
 	host.state_range_iter(range)
 }
 
-pub fn state_clear(host: &mut dyn HostContext) -> Result<()> {
-	host.state_clear()
-}
-
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
 }
@@ -40,10 +36,7 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::{
-		interface::catalog::flow::OperatorId,
-		key::operator::state::{OperatorStateKey, node_prefix},
-	};
+	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::node_prefix};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 
@@ -179,44 +172,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_clear() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-
-		for i in 0..3 {
-			let key = test_key(&format!("clear_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
-		}
-
-		let count = {
-			let range = OperatorStateKey::node_range(operator_id).encode();
-			let mut stream = txn.range(range, RangeScope::All, 1024);
-			let mut count = 0;
-			while let Some(result) = stream.next() {
-				let _ = result.unwrap();
-				count += 1;
-			}
-			count
-		};
-		assert_eq!(count, 3);
-
-		state_clear(&mut host(&mut txn, operator_id)).unwrap();
-
-		let count = {
-			let range = OperatorStateKey::node_range(operator_id).encode();
-			let mut stream = txn.range(range, RangeScope::All, 1024);
-			let mut count = 0;
-			while let Some(result) = stream.next() {
-				let _ = result.unwrap();
-				count += 1;
-			}
-			count
-		};
-		assert_eq!(count, 0);
-	}
-
-	#[test]
 	fn test_empty_key() {
 		let key = empty_key();
 		assert_eq!(key.len(), 0);
@@ -241,10 +196,6 @@ pub mod tests {
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
-
-		state_clear(&mut host(&mut txn, node1)).unwrap();
-		assert!(state_get(&mut host(&mut txn, node1), &key).unwrap().is_none());
-		assert!(state_get(&mut host(&mut txn, node2), &key).unwrap().is_some());
 	}
 
 	#[test]
@@ -316,26 +267,6 @@ pub mod tests {
 			let row = EncodedPodRow::from(range_result[offset].1.clone());
 			assert_eq!(row.body()[0], expected);
 		}
-	}
-
-	#[test]
-	fn test_simple_state_clear() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(3);
-
-		for i in 0..5 {
-			let key = test_key(&format!("clear_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
-		}
-
-		let count = scan_all(&mut txn, operator_id).len();
-		assert_eq!(count, 5);
-
-		state_clear(&mut host(&mut txn, operator_id)).unwrap();
-
-		let count = scan_all(&mut txn, operator_id).len();
-		assert_eq!(count, 0);
 	}
 
 	#[test]

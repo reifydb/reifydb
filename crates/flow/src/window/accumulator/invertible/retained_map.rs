@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::WindowAccumulator;
+use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +90,19 @@ where
 
 	fn is_empty(&self) -> bool {
 		self.map.is_empty()
+	}
+}
+
+impl<K, V> MergeAccumulator for RetainedAccumulator<K, V>
+where
+	K: Ord + Clone + Debug,
+	V: Clone + Debug + PartialEq,
+	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
+		for (key, value) in other.map.entries() {
+			self.map.insert(key.clone(), value.clone());
+		}
 	}
 }
 
@@ -213,6 +226,20 @@ mod tests {
 		accumulator.remove(&(1, 10));
 		let map = accumulator.finalize().expect("key 1 survives");
 		assert_eq!(map.get(&1), Some(&99), "removing a superseded value must not delete the key");
+	}
+
+	#[test]
+	fn a_merge_unions_the_panes_and_the_later_pane_wins_a_shared_key() {
+		// Panes merge oldest first, so a key both hold must keep the later pane's value, never the older one.
+		let mut older: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		older.add(&(1, 10));
+		older.add(&(2, 20));
+		let mut later: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		later.add(&(2, 99));
+		later.add(&(3, 30));
+		older.merge(&later);
+		let map = older.finalize().expect("merged panes hold entries");
+		assert_eq!(map, BTreeMap::from([(1, 10), (2, 99), (3, 30)]));
 	}
 
 	#[test]

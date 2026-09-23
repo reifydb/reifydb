@@ -52,6 +52,15 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
+	reifydb_assertions! {
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
+	}
+	if group.is_root() {
+		return Ok(());
+	}
 	store.state_set(&queue_key(group), EncodedPodRow::new(&[]))
 }
 
@@ -152,6 +161,16 @@ fn reap_scanned<R>(store: &mut dyn IdentityReclaim, group: GroupId, scan: GroupS
 where
 	R: Reaper,
 {
+	reifydb_assertions! {
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
+	}
+	if group.is_root() {
+		store.state_remove(&queue_key(group))?;
+		return Ok(0);
+	}
 	store.remove_root_siblings(&scan.data)?;
 	for (key, _) in &scan.data {
 		reaper.reap(store, key)?;
@@ -260,6 +279,15 @@ pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R,
 where
 	R: Reaper,
 {
+	reifydb_assertions! {
+		assert!(
+			!group.is_root(),
+			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+		);
+	}
+	if group.is_root() {
+		return Ok(0);
+	}
 	let doomed = store.group_sweep(group, true, Some(budget))?;
 	store.remove_root_siblings(&doomed)?;
 	for (key, _) in &doomed {

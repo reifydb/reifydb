@@ -4,18 +4,18 @@
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::{operator::state::GroupStateKey, tag::KeyTag},
+	key::tag::KeyTag,
+	operator_with::ApplyWith,
 	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{BoxedHostOperator, host::TxnHostContext},
+	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -24,33 +24,31 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
-	GuestOperator, OperatorMetadata,
-	context::{GuestContext, GuestState},
-	extern_c::binding::operator::ExternCOperatorAdapter,
+	MountedOperator, OperatorMetadata, extern_c::binding::operator::ExternCOperatorAdapter,
 };
-use reifydb_sub_flow::operator::{context::in_process::InProcessContext, mount::mount};
+use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
-	config::Config,
-	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
+	config::ExtensionParams,
+	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, row_number::RowNumber},
 };
 
-pub struct GuestOperatorHarness<C: GuestOperator + OperatorMetadata + 'static> {
+pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
 	engine: TestEngine,
 	operator: BoxedHostOperator,
 	operator_id: OperatorId,
+	retention: Option<Duration>,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
-	current: Option<DeferredTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 	pub fn builder() -> GuestOperatorHarnessBuilder<C> {
 		GuestOperatorHarnessBuilder::new()
 	}
@@ -106,29 +104,12 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut host = TxnHostContext::new(&mut txn, operator);
+			let mut host = TxnHostContext::with_retention(&mut txn, operator, self.retention);
 			self.operator.apply(&mut host, input)?
 		};
 		self.end_txn(txn);
 		self.history.push(output.clone());
 		Ok(output)
-	}
-
-	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
-		let operator = self.operator_id;
-		if let Some(txn) = self.current.as_mut() {
-			let mut host = TxnHostContext::new(txn, operator);
-			let mut ctx = InProcessContext::new(&mut host, operator);
-			return ctx.state().get::<V>(key).expect("state get");
-		}
-		let mut txn = self.begin_txn();
-		let value = {
-			let mut host = TxnHostContext::new(&mut txn, operator);
-			let mut ctx = InProcessContext::new(&mut host, operator);
-			ctx.state().get::<V>(key).expect("state get")
-		};
-		self.end_txn(txn);
-		value
 	}
 
 	pub fn insert(&mut self, row: Row) -> &mut Self {
@@ -166,7 +147,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 	}
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> Index<usize> for GuestOperatorHarness<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> Index<usize> for GuestOperatorHarness<C> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -175,39 +156,46 @@ impl<C: GuestOperator + OperatorMetadata + 'static> Index<usize> for GuestOperat
 }
 
 pub struct GuestOperatorHarnessBuilder<C> {
-	config: HashMap<String, Value>,
+	params: HashMap<String, Value>,
+	with: ApplyWith,
 	operator_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> Default for GuestOperatorHarnessBuilder<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> Default for GuestOperatorHarnessBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
-			config: HashMap::new(),
+			params: HashMap::new(),
+			with: ApplyWith::default(),
 			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			_phantom: PhantomData,
 		}
 	}
 
-	pub fn with_config<I, K>(mut self, config: I) -> Self
+	pub fn with_params<I, K>(mut self, params: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
 		K: Into<String>,
 	{
-		self.config = config.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self.params = params.into_iter().map(|(k, v)| (k.into(), v)).collect();
 		self
 	}
 
-	pub fn add_config(mut self, key: impl Into<String>, value: Value) -> Self {
-		self.config.insert(key.into(), value);
+	pub fn add_param(mut self, key: impl Into<String>, value: Value) -> Self {
+		self.params.insert(key.into(), value);
+		self
+	}
+
+	pub fn with(mut self, with: ApplyWith) -> Self {
+		self.with = with;
 		self
 	}
 
@@ -225,7 +213,8 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 		let engine = TestEngine::new();
 		let core = C::create(
 			self.operator_id,
-			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
+			&ExtensionParams::new(<C as OperatorMetadata>::NAME, self.params.clone()),
+			&self.with,
 		)?;
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
 		let operator = mount(core, self.operator_id, capabilities);
@@ -238,10 +227,10 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 			engine,
 			operator,
 			operator_id: self.operator_id,
+			retention: engine_retention(&self.with),
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
-			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,
 		})
@@ -281,35 +270,37 @@ fn render_change(change: &Change) -> Vec<DiffRender> {
 		.collect()
 }
 
-fn run_extern_c<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_extern_c<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
-		.with_config(config.iter().cloned())
+		.with_params(params.iter().cloned())
+		.with(with)
 		.build()
 		.expect("extern-C harness build");
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("extern-C apply")).collect()
 }
 
-fn run_guest<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_guest<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	let mut harness = GuestOperatorHarness::<C>::builder()
-		.with_config(config.iter().cloned())
+		.with_params(params.iter().cloned())
+		.with(with)
 		.build()
 		.expect("host harness build");
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("host apply")).collect()
 }
 
-pub fn assert_backend_parity<C>(config: Vec<(&str, Value)>, scenarios: &[(&str, Vec<Change>)])
+pub fn assert_backend_parity<C>(params: Vec<(&str, Value)>, with: ApplyWith, scenarios: &[(&str, Vec<Change>)])
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
-		let extern_c = run_extern_c::<C>(&config, inputs);
-		let host = run_guest::<C>(&config, inputs);
+		let extern_c = run_extern_c::<C>(&params, with.clone(), inputs);
+		let host = run_guest::<C>(&params, with.clone(), inputs);
 
 		assert_eq!(
 			extern_c.len(),
@@ -326,5 +317,68 @@ where
 				"scenario '{name}' apply #{i}: extern-C vs host emitted-output mismatch"
 			);
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{
+		interface::flow::OperatorCapability,
+		key::operator::state::{GroupId, managed_key_in},
+		operator_with::WithSpan,
+	};
+	use reifydb_sdk::{
+		error::Result as SdkResult,
+		flow::operator::{
+			ManagedMount, ManagedOperator,
+			column::operator::OperatorColumn,
+			context::{ClassState, GuestContext, Managed},
+			view::ChangeView,
+		},
+	};
+	use reifydb_testing_sdk::builders::TestRowBuilder;
+	use reifydb_value::factory::time::secs;
+
+	use super::*;
+
+	struct ManagedWriter;
+
+	impl OperatorMetadata for ManagedWriter {
+		const NAME: &'static str = "managed_writer";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "Writes one managed key per apply";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl ManagedOperator for ManagedWriter {
+		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+			Ok(ManagedWriter)
+		}
+
+		fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> SdkResult<()> {
+			let group = GroupId::of(&EncodedKey::new("group".as_bytes()));
+			ctx.state().set(&managed_key_in(group, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn a_managed_operator_can_write_state_through_the_harness() {
+		// Without a retention the first managed write aborts the harness.
+		let with = ApplyWith {
+			lateness: Some(WithSpan::Duration(secs(120))),
+			..ApplyWith::default()
+		};
+		let mut harness = GuestOperatorHarness::<ManagedMount<ManagedWriter>>::builder()
+			.with(with)
+			.build()
+			.expect("harness build");
+
+		harness.insert(TestRowBuilder::new(1u64).with_values(vec![Value::Int8(1)]).build());
+
+		assert_eq!(harness.history_len(), 1, "the managed write must complete and be recorded");
 	}
 }

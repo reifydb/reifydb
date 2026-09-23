@@ -1,20 +1,22 @@
 CREATE MIGRATION 'uptime_add_monitor_region' {
-    create procedure uptime::add_monitor_region { monitor_id: uuid7, region_id: uuid7 } as {
-        let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
-            map { id, owner };
-        assert { is::some($monitor.id) } "monitor not found";
-        let $region = from uptime::regions filter { id == $region_id } map { id, label };
-        assert { is::some($region.id) } "unknown region";
-        let $existing = from uptime::monitor_regions
-            filter { monitor_id == $monitor_id and region_id == $region_id } map { monitor_id, region_id };
-        assert { is::none($existing.region_id) } "region is already on this monitor";
-        let $count = from uptime::monitor_regions filter { monitor_id == $monitor_id }
-            aggregate { n: math::count(region_id) } by { monitor_id };
-        assert { is::none($count.n) or $count.n < 20 } "a monitor can use at most 20 regions";
-        insert uptime::monitor_regions [{ monitor_id: $monitor_id, owner: $identity.id,
-            region_id: $region_id, status: "unknown", last_checked_at: none, consecutive_failures: 0 }]
+    create procedure uptime::add_monitor_regions { monitor_id: uuid7, region_ids: list(uuid7) } as {
+        for $region_id in $region_ids {
+            let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
+                map { id, owner };
+            assert { is::some($monitor.id) } "monitor not found";
+            let $region = from uptime::regions filter { id == $region_id } map { id, label };
+            assert { is::some($region.id) } "unknown region";
+            let $existing = from uptime::monitor_regions
+                filter { monitor_id == $monitor_id and region_id == $region_id } map { monitor_id, region_id };
+            assert { is::none($existing.region_id) } "region is already on this monitor";
+            let $count = from uptime::monitor_regions filter { monitor_id == $monitor_id }
+                aggregate { n: math::count(region_id) } by { monitor_id };
+            assert { is::none($count.n) or $count.n < 20 } "a monitor can use at most 20 regions";
+            insert uptime::monitor_regions [{ monitor_id: $monitor_id, owner: $identity.id,
+                region_id: $region_id, status: "unknown", last_checked_at: none, consecutive_failures: 0 }]
+        }
     };
-    create procedure policy uptime_call_add_monitor_region on uptime::add_monitor_region {
+    create procedure policy uptime_call_add_monitor_regions on uptime::add_monitor_regions {
         call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
     }
 };

@@ -485,7 +485,7 @@ extern "C" fn test_arm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -521,7 +521,7 @@ extern "C" fn test_disarm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 

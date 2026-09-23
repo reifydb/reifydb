@@ -12,24 +12,26 @@ use std::{
 
 use reifydb::{
 	RuntimeConfig, WithSubsystem,
-	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	core::{
+		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+		operator_with::ApplyWith,
+	},
 	embedded,
 	runtime::context::clock::{Clock, MockClock},
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
-			GuestOperator, OperatorMetadata, column::operator::OperatorColumn, context::GuestContext,
+			NostateOperator, OperatorMetadata,
+			column::operator::OperatorColumn,
+			context::{GuestContext, Nostate},
 			view::ChangeView,
 		},
 	},
 	sub::subsystem::HealthStatus,
 	testing::db::TestDb,
-	value::value::duration::Duration as ValueDuration,
+	value::{config::ExtensionParams, value::duration::Duration as ValueDuration},
 };
-use reifydb_value::{
-	config::Config,
-	value::{constraint::TypeConstraint, value_type::ValueType},
-};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 const TICK: Duration = Duration::from_millis(20);
 
@@ -103,12 +105,12 @@ impl OperatorMetadata for Wedged {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for Wedged {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+impl NostateOperator for Wedged {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Wedged)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
 		GATE.pass();
 		Ok(())
 	}
@@ -121,7 +123,7 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 	let db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().clock(Clock::Mock(clock.clone())))
-			.with_flow(|f| f.register_operator::<Wedged>())
+			.with_flow(|f| f.register_nostate_operator::<Wedged>())
 			.build()
 			.unwrap(),
 	);

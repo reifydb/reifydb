@@ -140,6 +140,27 @@ chaos_test!(window_sliding_sum_chaos, |seed| {
 	);
 });
 
+chaos_test!(window_sliding_moving_time_chaos, |seed| {
+	// Max keys slots on event time, so an update re-routed under the wrong time panics or keeps a stale max.
+	operators::window::sliding::drive_moving(
+		seed,
+		operators::window::sliding::Params {
+			size_secs: 60,
+			slide_secs: 15,
+			lateness_secs: 0,
+			groups: 4,
+			steps: 40,
+			max_batch: 5,
+			coord_span_ms: 600_000,
+			remove_pct: 30,
+			update_pct: 20,
+			seal_pct: 20,
+		},
+		Fold::Max,
+		50,
+	);
+});
+
 chaos_test!(window_rolling_sum_chaos, |seed| {
 	operators::window::rolling::drive(
 		seed,
@@ -1964,6 +1985,11 @@ chaos_test!(window_session_max_chaos, |seed| {
 	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Max));
 });
 
+chaos_test!(window_session_moving_time_chaos, |seed| {
+	// The boundary band reaches rotation, stretch and refusal, so a moved time meets every tracker answer.
+	operators::window::session::drive_moving(seed, operators::window::session::params(2_000, 6_000, Fold::Max), 50);
+});
+
 chaos_test!(window_session_random_chaos, |seed| {
 	operators::window::session::drive_random(seed);
 });
@@ -2169,6 +2195,7 @@ fn a_rolling_retraction_older_than_immutable_rebuilds_the_percentile_and_the_min
 		kind: WindowKind::Rolling {
 			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
 			lag: None,
+			pane: None,
 		},
 		group_by: "g",
 		aggregations: percentile::MEDIAN_NEXT_TO_MIN,

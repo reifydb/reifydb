@@ -105,13 +105,15 @@ mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		common::TimeDomain,
+		common::{TimeDomain, WindowKind, WindowSize},
 		interface::{
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Change,
 			flow::OperatorCapability,
 		},
+		operator_with::{ApplyWith, WithSpan},
 	};
+	use reifydb_routine_abi::registry::Routines;
 	use reifydb_rql::flow::{
 		flow::FlowBuilder,
 		operator::{FlowEdge, FlowNode, OperatorDef},
@@ -129,9 +131,14 @@ mod tests {
 
 	use super::*;
 	use crate::{
+		context::FlowContext,
 		operator::{
-			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
+			HostOperator,
+			apply::ApplyOperator,
+			host::HostContext,
+			metrics::OperatorSampleRegistry,
 			provider::EmptyOperatorProvider,
+			window::operator::{WindowConfig, WindowOperator},
 		},
 		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
@@ -287,6 +294,42 @@ mod tests {
 			self
 		}
 
+		fn apply(mut self, id: u64, with: ApplyWith) -> Self {
+			self.inner.operators.insert(
+				(FLOW, OperatorId(id)),
+				Box::new(ApplyOperator::new(
+					None,
+					OperatorId(id),
+					Box::new(Sealing {
+						operator: OperatorId(id),
+						horizon: None,
+					}),
+					&with,
+				)),
+			);
+			self
+		}
+
+		fn tumbling_window(mut self, id: u64, size: Duration, lateness: Duration) -> Self {
+			let window = WindowOperator::new(WindowConfig {
+				parent_schema: None,
+				operator: OperatorId(id),
+				kind: WindowKind::Tumbling {
+					size: WindowSize::Duration(size),
+				},
+				group_by: Vec::new(),
+				aggregations: Vec::new(),
+				runtime_context: RuntimeContext::testing(0, 1),
+				routines: Routines::empty(),
+				lateness: Some(lateness),
+				immutable: None,
+				ctx: Arc::new(FlowContext::default()),
+			})
+			.expect("the window operator must build");
+			self.inner.operators.insert((FLOW, OperatorId(id)), Box::new(window));
+			self
+		}
+
 		fn edge(mut self, from: u64, to: u64) -> Self {
 			self.edges += 1;
 			self.builder.add_edge(FlowEdge::new(self.edges, OperatorId(from), OperatorId(to))).unwrap();
@@ -346,6 +389,68 @@ mod tests {
 			.holds(vec![advance(1, 30_000)]);
 
 		assert_eq!(held, vec![hold(3, 25_000)]);
+	}
+
+	#[test]
+	fn a_window_holds_its_output_back_by_its_size_plus_lateness() {
+		// A window that published its input watermark would let a consumer read a bucket still open to late
+		// rows.
+		let held = Harness::new()
+			.node(source(1))
+			.node(stage(2))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3)
+			.tumbling_window(2, seconds(60), seconds(30))
+			.registered_sink(3, FLOW)
+			.holds(vec![advance(1, 120_000)]);
+
+		assert_eq!(held, vec![hold(3, 30_000)]);
+	}
+
+	#[test]
+	fn an_apply_with_a_window_holds_its_output_although_the_guest_declares_none() {
+		// The engine computes the seal span from the window in `with`, independent of what the guest reports.
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(seconds(60)),
+			}),
+			lateness: Some(WithSpan::Duration(seconds(30))),
+			immutable: None,
+			retention: None,
+		};
+		let held = Harness::new()
+			.node(source(1))
+			.node(stage(2))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3)
+			.apply(2, with)
+			.registered_sink(3, FLOW)
+			.holds(vec![advance(1, 120_000)]);
+
+		assert_eq!(held, vec![hold(3, 30_000)]);
+	}
+
+	#[test]
+	fn an_apply_with_retention_alone_holds_nothing() {
+		// Retention bounds the state, not the output; a hold by it would delay every downstream seal for
+		// nothing.
+		let with = ApplyWith {
+			retention: Some(seconds(30)),
+			..ApplyWith::default()
+		};
+		let held = Harness::new()
+			.node(source(1))
+			.node(stage(2))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3)
+			.apply(2, with)
+			.registered_sink(3, FLOW)
+			.holds(vec![advance(1, 30_000)]);
+
+		assert_eq!(held, vec![hold(3, 30_000)]);
 	}
 
 	#[test]

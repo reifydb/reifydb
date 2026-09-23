@@ -40,7 +40,7 @@ fn conc_op_key(row: u64) -> TaggedKey {
 	TaggedKey::from(OperatorStateKey::new(
 		OP_NODE,
 		GroupId::ROOT,
-		KeyspaceId::CUSTOM_NOT_CACHED,
+		KeyspaceId::CUSTOM_UNMANAGED,
 		row.to_be_bytes().to_vec(),
 	))
 }

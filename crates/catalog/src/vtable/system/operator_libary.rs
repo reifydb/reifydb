@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use reifydb_core::event::{EventListener, operator::OperatorLoadedEvent};
+use reifydb_core::{
+	common::{OperatorClass, WindowRequirements},
+	event::{EventListener, operator::OperatorLoadedEvent},
+};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::value::constraint::TypeConstraint;
 
@@ -22,6 +25,9 @@ pub struct OperatorLibraryInfo {
 	pub capabilities: u32,
 	pub input_columns: Vec<OperatorLibraryColumnInfo>,
 	pub output_columns: Vec<OperatorLibraryColumnInfo>,
+	pub class: OperatorClass,
+	pub window: WindowRequirements,
+	pub unmanaged_because: Option<String>,
 }
 
 #[derive(Clone)]
@@ -92,6 +98,9 @@ impl EventListener<OperatorLoadedEvent> for OperatorLibraryEventListener {
 					description: c.description.clone(),
 				})
 				.collect(),
+			class: *event.class(),
+			window: *event.window(),
+			unmanaged_because: event.unmanaged_because().clone(),
 		});
 	}
 }

@@ -4,19 +4,19 @@ import {StrictMode} from 'react';
 import {describe, expect, it} from 'vitest';
 import {act, render, screen} from '@testing-library/react';
 import {Shape} from '@reifydb/core';
-import {useSubscription} from '../src';
+import {rql, useSubscription} from '../src';
 import {flush} from './fake-client';
 import {setupBatching, withStore} from './support';
 
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
-const monitors = 'from test::monitors';
-const results = 'from test::results';
-const regions = 'from test::regions';
+const monitors = rql(shape)`from test::monitors`;
+const results = rql(shape)`from test::results`;
+const regions = rql(shape)`from test::regions`;
 
 function Page() {
-    const a = useSubscription(monitors, null, shape)
-    const b = useSubscription(results, null, shape)
-    const c = useSubscription(regions, null, shape)
+    const a = useSubscription(monitors, null)
+    const b = useSubscription(results, null)
+    const c = useSubscription(regions, null)
     return <div data-testid="status">{`${a.status}/${b.status}/${c.status}`}</div>
 }
 
@@ -32,7 +32,7 @@ describe('useSubscription against a batching store', () => {
 
         expect(client.subscribes).toHaveLength(0);
         expect(client.batches).toHaveLength(1);
-        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors, results, regions]);
+        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors.rql, results.rql, regions.rql]);
     });
 
     it('turns the whole page ready off one ack', async () => {
@@ -74,8 +74,8 @@ describe('useSubscription against a batching store', () => {
             client.batches[0].subscriptions[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
         });
 
-        expect(store.getEntry(monitors, null, shape).data).toEqual([]);
-        expect(store.getEntry(results, null, shape).data).toEqual([{id: 7, name: 'r'}]);
+        expect(store.getEntry(monitors, null).data).toEqual([]);
+        expect(store.getEntry(results, null).data).toEqual([{id: 7, name: 'r'}]);
     });
 
     it('marks the whole page in error when the batch is refused', async () => {

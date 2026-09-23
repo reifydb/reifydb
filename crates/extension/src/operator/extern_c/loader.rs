@@ -10,14 +10,18 @@ use std::{
 
 use libloading::Symbol;
 use reifydb_codec::constraint::{EncodedTypeConstraint, decode_type_constraint};
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{
+	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+	interface::catalog::flow::OperatorId,
+};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
+	common::extern_c::wire::buffer::ExternCBuffer,
 	error::{Result as ExternCResult, SdkError},
 	flow::{
 		extern_c::wire::schema::ExternCOperatorColumns,
 		operator::extern_c::wire::{
-			descriptor::ExternCOperatorDescriptor,
+			descriptor::{ExternCOperatorDescriptor, ExternCWindowRequirements},
 			types::{ExternCOperatorCreateFn, OPERATOR_ABI_TAG, OPERATOR_MAGIC},
 		},
 	},
@@ -90,6 +94,9 @@ impl ExternCOperatorLoader {
 				input_columns: (*descriptor_ptr).input_columns,
 				output_columns: (*descriptor_ptr).output_columns,
 				capabilities: (*descriptor_ptr).capabilities,
+				class: (*descriptor_ptr).class,
+				unmanaged_because: (*descriptor_ptr).unmanaged_because,
+				window: (*descriptor_ptr).window,
 				vtable: (*descriptor_ptr).vtable,
 			})
 		}
@@ -116,6 +123,8 @@ impl ExternCOperatorLoader {
 
 		let descriptor = self.get_descriptor(path)?;
 		let (operator, abi) = self.validate_and_register(&descriptor, path)?;
+		let class = decode_class(descriptor.class)?;
+		let window = decode_window(&descriptor.window)?;
 
 		// SAFETY: the descriptor's buffers and column arrays are module-static data.
 		let info = unsafe {
@@ -128,6 +137,9 @@ impl ExternCOperatorLoader {
 				input_columns: extract_column_defs(&descriptor.input_columns),
 				output_columns: extract_column_defs(&descriptor.output_columns),
 				capabilities: descriptor.capabilities,
+				class,
+				window,
+				unmanaged_because: decode_unmanaged_because(&descriptor.unmanaged_because),
 			}
 		};
 
@@ -137,15 +149,17 @@ impl ExternCOperatorLoader {
 	pub fn load_operator(
 		&mut self,
 		path: &Path,
-		config: &[u8],
+		params: &[u8],
+		with: &[u8],
 		operator_id: OperatorId,
-	) -> ExternCResult<Option<(ExternCOperatorDescriptor, *mut c_void)>> {
+	) -> ExternCResult<Option<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
 
 		let descriptor = self.get_descriptor(path)?;
 		self.validate_and_register(&descriptor, path)?;
+		let class = decode_class(descriptor.class)?;
 
 		let library = self.cache.library(path).map_err(|e| SdkError::Other(e.to_string()))?;
 		// SAFETY: the ABI declares this symbol as ExternCOperatorCreateFn and the cache keeps it loaded.
@@ -158,56 +172,33 @@ impl ExternCOperatorLoader {
 			*create_symbol
 		};
 
-		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0);
+		let instance = create_fn(params.as_ptr(), params.len(), with.as_ptr(), with.len(), operator_id.0);
 		if instance.is_null() {
 			return Err(SdkError::Other("Failed to create operator instance".to_string()));
 		}
 
-		Ok(Some((descriptor, instance)))
+		Ok(Some((descriptor, class, instance)))
 	}
 
 	pub fn create_operator_by_name(
 		&mut self,
 		operator: &str,
 		operator_id: OperatorId,
-		config: &[u8],
-	) -> ExternCResult<(ExternCOperatorDescriptor, *mut c_void)> {
+		params: &[u8],
+		with: &[u8],
+	) -> ExternCResult<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)> {
 		let path = self
 			.operator_paths
 			.get(operator)
 			.ok_or_else(|| SdkError::Other(format!("Operator not found: {}", operator)))?
 			.clone();
 
-		self.load_operator(&path, config, operator_id)?
+		self.load_operator(&path, params, with, operator_id)?
 			.ok_or_else(|| SdkError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 
 	pub fn has_operator(&self, operator: &str) -> bool {
 		self.operator_paths.contains_key(operator)
-	}
-
-	pub fn list_loaded_operators(&self) -> Vec<LoadedOperatorInfo> {
-		let mut operators = Vec::new();
-
-		for path in self.operator_paths.values() {
-			if let Ok(descriptor) = self.get_descriptor(path) {
-				// SAFETY: the descriptor's buffers and arrays are module-static data.
-				unsafe {
-					operators.push(LoadedOperatorInfo {
-						operator: buffer_to_string(&descriptor.operator),
-						library_path: path.clone(),
-						abi: descriptor.abi_tag,
-						version: buffer_to_string(&descriptor.version),
-						description: buffer_to_string(&descriptor.description),
-						input_columns: extract_column_defs(&descriptor.input_columns),
-						output_columns: extract_column_defs(&descriptor.output_columns),
-						capabilities: descriptor.capabilities,
-					});
-				}
-			}
-		}
-
-		operators
 	}
 }
 
@@ -221,6 +212,36 @@ pub struct LoadedOperatorInfo {
 	pub input_columns: Vec<ColumnInfo>,
 	pub output_columns: Vec<ColumnInfo>,
 	pub capabilities: u32,
+	pub class: OperatorClass,
+	pub window: WindowRequirements,
+	pub unmanaged_because: Option<String>,
+}
+
+pub fn decode_class(class: u8) -> ExternCResult<OperatorClass> {
+	OperatorClass::from_u8(class)
+		.ok_or_else(|| SdkError::Other(format!("extern-C operator declares an unknown class {}", class)))
+}
+
+pub fn decode_window(window: &ExternCWindowRequirements) -> ExternCResult<WindowRequirements> {
+	let kinds = WindowRequirements::kinds_from_bitmask(window.kinds).ok_or_else(|| {
+		SdkError::Other(format!("extern-C operator declares unknown window kinds {:#x}", window.kinds))
+	})?;
+	let domain = WindowSizeDomain::from_u8(window.domain).ok_or_else(|| {
+		SdkError::Other(format!("extern-C operator declares an unknown window size domain {}", window.domain))
+	})?;
+	Ok(WindowRequirements {
+		takes_window: window.takes_window != 0,
+		kinds,
+		domain,
+		needs_pane: window.needs_pane != 0,
+	})
+}
+
+/// # Safety
+/// `reason.ptr` must be null, or valid for reads of `reason.len` bytes for the duration of the call.
+pub unsafe fn decode_unmanaged_because(reason: &ExternCBuffer) -> Option<String> {
+	// SAFETY: a non-null pointer is valid for `reason.len` bytes by this function's contract.
+	(!reason.ptr.is_null()).then(|| unsafe { buffer_to_string(reason) })
 }
 
 #[derive(Debug, Clone)]
@@ -265,5 +286,68 @@ unsafe fn extract_column_defs(column_defs: &ExternCOperatorColumns) -> Vec<Colum
 impl Default for ExternCOperatorLoader {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use core::ptr;
+
+	use reifydb_core::common::{OperatorClass, WindowSizeDomain};
+	use reifydb_sdk::{
+		common::extern_c::wire::buffer::ExternCBuffer,
+		flow::operator::extern_c::wire::descriptor::ExternCWindowRequirements,
+	};
+
+	use super::{decode_class, decode_unmanaged_because, decode_window};
+
+	fn window(kinds: u32, domain: u8) -> ExternCWindowRequirements {
+		ExternCWindowRequirements {
+			takes_window: 1,
+			kinds,
+			domain,
+			needs_pane: 1,
+		}
+	}
+
+	#[test]
+	fn an_unknown_class_byte_fails_the_load() {
+		// Reading an unknown byte as some class runs the guest under checks it never agreed to.
+		assert_eq!(decode_class(2).unwrap(), OperatorClass::Unmanaged);
+		assert!(decode_class(0).is_err());
+		assert!(decode_class(5).is_err());
+	}
+
+	#[test]
+	fn a_window_decodes_every_field_and_refuses_unknown_kinds_or_domain() {
+		// An unknown bit read as a known kind lets CREATE accept a window the guest cannot run.
+		let decoded = decode_window(&window(0b1011, 2)).unwrap();
+		assert!(decoded.takes_window);
+		assert_eq!(decoded.kinds, &["tumbling", "sliding", "rolling"]);
+		assert_eq!(decoded.domain, WindowSizeDomain::Slots);
+		assert!(decoded.needs_pane);
+		assert!(decode_window(&window(0b1_0000, 1)).is_err());
+		assert!(decode_window(&window(0b1, 0)).is_err());
+	}
+
+	#[test]
+	fn only_a_non_null_reason_decodes_to_a_reason() {
+		// A null read as an empty reason names an owner for an operator that is not unmanaged.
+		let reason = "frees its own rows";
+		let present = ExternCBuffer {
+			ptr: reason.as_ptr(),
+			len: reason.len(),
+			cap: reason.len(),
+		};
+		let absent = ExternCBuffer {
+			ptr: ptr::null(),
+			len: 0,
+			cap: 0,
+		};
+		// SAFETY: `present` points at a live `&'static str` of `len` bytes and `absent` is null.
+		unsafe {
+			assert_eq!(decode_unmanaged_because(&present).as_deref(), Some(reason));
+			assert_eq!(decode_unmanaged_because(&absent), None);
+		}
 	}
 }

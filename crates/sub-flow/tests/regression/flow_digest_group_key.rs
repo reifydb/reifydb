@@ -140,6 +140,7 @@ fn window_kinds() -> Vec<(&'static str, WindowKind)> {
 			WindowKind::Rolling {
 				size: WindowSize::Duration(minute),
 				lag: None,
+				pane: None,
 			},
 		),
 		(
@@ -147,6 +148,7 @@ fn window_kinds() -> Vec<(&'static str, WindowKind)> {
 			WindowKind::Rolling {
 				size: WindowSize::Count(10),
 				lag: None,
+				pane: None,
 			},
 		),
 		(

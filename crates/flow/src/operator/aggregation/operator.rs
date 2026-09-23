@@ -27,7 +27,7 @@ use reifydb_value::{
 use super::{
 	accumulator::WindowSlotKey,
 	core::Aggregation,
-	engine::{finish_tumbling_engine, intern_partition_groups, route_into_buckets},
+	engine::{Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
 };
 use crate::{
 	context::FlowContext,
@@ -185,6 +185,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		None,
 		ExpiryAnchor::Unindexed,
 		false,
+		Stamp::SpanStart,
 	)?;
 	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))
 }

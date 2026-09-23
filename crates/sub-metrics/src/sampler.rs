@@ -651,12 +651,12 @@ mod tests {
 
 	#[test]
 	fn the_real_custom_keyspace_keeps_its_plain_name() {
-		// CUSTOM_NOT_CACHED is a declared constant, not a gap: relabelling it as CUSTOM_0x40 hides which
+		// CUSTOM_UNMANAGED is a declared constant, not a gap: relabelling it as CUSTOM_0x40 hides which
 		// admission side the keyspace sits on.
 		let mut metrics = range_sample();
-		metrics.bucket = KeyspaceId::CUSTOM_NOT_CACHED;
+		metrics.bucket = KeyspaceId::CUSTOM_UNMANAGED;
 		let row = operator_range_keyspace_row(&metrics);
-		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
+		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_UNMANAGED".to_string())]);
 	}
 
 	#[test]

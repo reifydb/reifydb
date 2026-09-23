@@ -99,6 +99,31 @@ pub enum AstError {
 	NestedOption {
 		fragment: Fragment,
 	},
+
+	#[error("list needs an item type")]
+	ListItemMissing {
+		fragment: Fragment,
+	},
+
+	#[error("list takes one item type only")]
+	ListTooManyParameters {
+		fragment: Fragment,
+	},
+
+	#[error("list item must be a type")]
+	ListItemNotAType {
+		fragment: Fragment,
+	},
+
+	#[error("list item must be a scalar type")]
+	ListItemNotScalar {
+		fragment: Fragment,
+	},
+
+	#[error("list item cannot carry a constraint")]
+	ListItemConstrained {
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for AstError {
@@ -379,6 +404,76 @@ impl IntoDiagnostic for AstError {
 				fragment,
 				label: Some("already optional".to_string()),
 				help: Some("Write a single Option, e.g. Option(int4); none is the only missing value".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::ListItemMissing {
+				fragment,
+			} => Diagnostic {
+				code: "AST_021".to_string(),
+				rql: None,
+				message: "list needs an item type".to_string(),
+				fragment,
+				label: Some("item type missing".to_string()),
+				help: Some("Write list(<item type>), e.g. list(uuid7)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::ListTooManyParameters {
+				fragment,
+			} => Diagnostic {
+				code: "AST_022".to_string(),
+				rql: None,
+				message: "list takes one item type only".to_string(),
+				fragment,
+				label: Some("unexpected parameter".to_string()),
+				help: Some("Remove the extra parameter, e.g. list(uuid7)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::ListItemNotAType {
+				fragment,
+			} => Diagnostic {
+				code: "AST_023".to_string(),
+				rql: None,
+				message: "list item must be a type".to_string(),
+				fragment,
+				label: Some("not a type".to_string()),
+				help: Some("Write the item type, e.g. list(uuid7)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::ListItemNotScalar {
+				fragment,
+			} => Diagnostic {
+				code: "AST_024".to_string(),
+				rql: None,
+				message: "list item must be a scalar type".to_string(),
+				fragment,
+				label: Some("not a scalar".to_string()),
+				help: Some("Use a scalar item type, e.g. list(uuid7)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::ListItemConstrained {
+				fragment,
+			} => Diagnostic {
+				code: "AST_025".to_string(),
+				rql: None,
+				message: "list item cannot carry a constraint".to_string(),
+				fragment,
+				label: Some("constraint not kept".to_string()),
+				help: Some("Drop the item's parameters, e.g. list(utf8)".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

@@ -76,6 +76,7 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 		kind: WindowKind::Rolling {
 			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
 			lag: None,
+			pane: None,
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
@@ -153,6 +154,7 @@ pub fn drive_count_folded(seed: u64, params: CountParams, fold: Fold) -> Corpus 
 		kind: WindowKind::Rolling {
 			size: WindowSize::Count(params.size_count),
 			lag: None,
+			pane: None,
 		},
 		group_by: "g",
 		aggregations: fold.rql(),

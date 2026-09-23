@@ -35,7 +35,7 @@ use tracing::{instrument, warn};
 use crate::types::LayeredPre;
 use crate::{
 	error::{OperatorError, Result},
-	persistent::{Fetch, Measure, Page as PersistentPage, Persistent},
+	persistent::{Enumerate, Fetch, Measure, Page as PersistentPage, Persistent},
 	range::RangeSink,
 	store::{
 		OperatorStore, StandardOperatorStore,
@@ -376,7 +376,7 @@ impl StandardOperatorStore {
 		if let Some((key, _)) = buffered.last() {
 			buffer_lower = Bound::Excluded(key.as_encoded().clone());
 		}
-		let mut source = self.page_source(operator, &range, snapshot.dropped);
+		let mut source = self.page_source(operator, &range, snapshot.dropped)?;
 		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
@@ -518,7 +518,7 @@ impl StandardOperatorStore {
 
 		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
 		buffer.peek();
-		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator));
+		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?;
 		let mut source: Box<dyn PageSource + '_> = match self.range.tiers() {
 			Some(tiers) => Box::new(GroupsPager::new(
 				tiers,
@@ -603,8 +603,8 @@ impl StandardOperatorStore {
 		})
 	}
 
-	fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
-		self.persistent.occupied_keyspaces(operator)
+	fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+		self.persistent.keyspaces(operator)
 	}
 
 	fn page_source<'a>(
@@ -612,19 +612,19 @@ impl StandardOperatorStore {
 		operator: OperatorId,
 		range: &EncodedKeyRange,
 		dropped: bool,
-	) -> Box<dyn PageSource + 'a> {
+	) -> Result<Box<dyn PageSource + 'a>> {
 		if dropped {
-			return Box::new(ExhaustedPager);
+			return Ok(Box::new(ExhaustedPager));
 		}
 		let persistent = &self.persistent;
 		let Some(tiers) = self.range.tiers() else {
-			return Box::new(PersistentPager::new(operator, persistent, range));
+			return Ok(Box::new(PersistentPager::new(operator, persistent, range)));
 		};
 		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
 			let Some(group) = group_inner_range_split(range) else {
-				return Box::new(PersistentPager::new(operator, persistent, range));
+				return Ok(Box::new(PersistentPager::new(operator, persistent, range)));
 			};
-			return Box::new(GroupKeyspacePager::new(
+			return Ok(Box::new(GroupKeyspacePager::new(
 				tiers,
 				operator,
 				group,
@@ -632,11 +632,11 @@ impl StandardOperatorStore {
 				keyspaces_of(
 					group,
 					range,
-					self.occupancy.mask(operator, || self.occupied_keyspaces(operator)),
+					self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?,
 				),
-			));
+			)));
 		};
-		dispatch(
+		Ok(dispatch(
 			keyspace,
 			PlanScan {
 				tiers,
@@ -648,7 +648,7 @@ impl StandardOperatorStore {
 			},
 		)
 		.flatten()
-		.unwrap_or_else(|| Box::new(PersistentPager::new(operator, persistent, range)))
+		.unwrap_or_else(|| Box::new(PersistentPager::new(operator, persistent, range))))
 	}
 
 	#[instrument(name = "store::operator::state_page", level = "trace", skip(self, range), fields(operator = operator.0))]

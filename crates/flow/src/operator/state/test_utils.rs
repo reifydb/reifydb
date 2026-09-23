@@ -3,7 +3,7 @@
 
 pub mod test {
 	use reifydb_codec::row::pod::EncodedPodRow;
-	use reifydb_core::key::operator::state::{GroupStateKey, custom_not_cached_key};
+	use reifydb_core::key::operator::state::{GroupStateKey, unmanaged_key};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::value::identity::IdentityId;
@@ -13,8 +13,9 @@ pub mod test {
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
-		custom_not_cached_key(format!("test_{}", suffix).as_bytes())
+		unmanaged_key(format!("test_{}", suffix).as_bytes())
 			.expect("a fixture name must fit the keyspace's id width")
+			.into()
 	}
 
 	pub fn assert_row_eq(actual: &EncodedPodRow, expected: &EncodedPodRow) {

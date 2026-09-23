@@ -29,12 +29,12 @@ vi.mock('@tanstack/react-router', async () => ({
 }))
 
 function MonitorsProbe() {
-  const entry = useSubscription(monitors.rql, null, monitors.shape, { config: monitors.config })
+  const entry = useSubscription(monitors, null)
   return <p>monitors {entry.status}</p>
 }
 
 function RegionsProbe() {
-  const entry = useSubscription(regions.rql, null, regions.shape, { config: regions.config })
+  const entry = useSubscription(regions, null)
   return (
     <>
       <p>regions {entry.status}</p>

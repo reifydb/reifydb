@@ -37,14 +37,14 @@ pub fn make_row(body: &str) -> EncodedPodRow {
 pub fn key(s: &str) -> GroupStateKey {
 	let width = KEYSPACES
 		.iter()
-		.find(|spec| spec.id == KeyspaceId::CUSTOM_NOT_CACHED)
+		.find(|spec| spec.id == KeyspaceId::CUSTOM_UNMANAGED)
 		.expect("the fixture keyspace must appear in the catalogue")
 		.suffix_width();
 	let mut suffix = vec![0u8; width];
 	for (slot, byte) in suffix.iter_mut().zip(s.as_bytes()) {
 		*slot = *byte;
 	}
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, suffix)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_UNMANAGED, suffix)
 }
 
 pub fn engine() -> TestEngine {

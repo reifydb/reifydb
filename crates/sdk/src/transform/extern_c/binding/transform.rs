@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::config::Config;
+use reifydb_value::config::ExtensionParams;
 
 use crate::{
 	error::Result, flow::operator::change::BorrowedColumns,
@@ -17,7 +17,7 @@ pub trait ExternCTransformMetadata {
 }
 
 pub trait ExternCTransform: 'static {
-	fn new(config: &Config) -> Result<Self>
+	fn new(params: &ExtensionParams) -> Result<Self>
 	where
 		Self: Sized;
 

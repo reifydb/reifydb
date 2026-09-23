@@ -5,6 +5,7 @@
 // apply, reporting is_new=false on reuse. Without that a windowed operator re-emits each window as
 // a fresh Insert under a new row number.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_test_harness::operator::change::{row_ints, trigger};
 
 use super::Harness;
@@ -12,7 +13,7 @@ use crate::common::RowNumberProbe;
 
 #[test]
 fn row_number_registry_persists_across_applies() {
-	let mut harness = Harness::<RowNumberProbe>::builder().build().expect("harness build");
+	let mut harness = Harness::<NostateMount<RowNumberProbe>>::builder().build().expect("harness build");
 
 	harness.apply(trigger()).expect("apply 1");
 	harness.apply(trigger()).expect("apply 2");

@@ -1786,7 +1786,7 @@ mod cache_tests {
 		let opkey = OperatorStateKey::new(
 			OperatorId(7),
 			GroupId::ROOT,
-			KeyspaceId::CUSTOM_NOT_CACHED,
+			KeyspaceId::CUSTOM_UNMANAGED,
 			vec![1, 2, 3],
 		);
 		let encoded = opkey.encode();

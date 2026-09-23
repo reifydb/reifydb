@@ -6,7 +6,7 @@ import {Shape} from '@reifydb/core';
 import type {WsClient} from '@reifydb/client';
 import {Store} from '@reifydb/store';
 import {StoreProvider, useSubscription} from '../../src';
-import {connect, namespace, poll} from './setup';
+import {connect, namespace, poll, readSpec, writeSpec} from './setup';
 
 const ns = namespace('react_it');
 const table = `${ns}::items`;
@@ -19,7 +19,7 @@ async function subscriptionCount(client: WsClient): Promise<number> {
 }
 
 function Items() {
-    const entry = useSubscription(`from ${table}`, null, items);
+    const entry = useSubscription(readSpec(items, `from ${table}`), null);
     return <ul data-testid={entry.status}>{entry.data.map(row => <li key={row.id}>{row.name}</li>)}</ul>;
 }
 
@@ -45,10 +45,10 @@ describe('react against a live server', () => {
         await screen.findByTestId('ready');
         expect(await subscriptionCount(client)).toBe(before + 1);
 
-        await store.command(`insert ${table} [{ id: 1, name: 'a' }]`, null, []);
+        await store.command(writeSpec([], `insert ${table} [{ id: 1, name: 'a' }]`), null);
         await screen.findByText('a');
 
-        await store.command(`update ${table} { name: 'b' } filter id == 1`, null, []);
+        await store.command(writeSpec([], `update ${table} { name: 'b' } filter id == 1`), null);
         await screen.findByText('b');
         await waitFor(() => expect(screen.queryByText('a')).toBeNull());
 

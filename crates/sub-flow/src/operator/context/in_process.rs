@@ -4,14 +4,15 @@
 use std::{marker::PhantomData, mem};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
-		keyspace_inner_range_in,
+		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_framed_inner,
+		is_guest_framed_inner, keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
 };
@@ -20,15 +21,21 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{
+			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
+		},
 		state::{decode_payload, encode_payload},
 	},
 };
-use reifydb_value::value::{
-	Value,
-	datetime::DateTime,
-	dictionary::{DictionaryEntryId, DictionaryId},
-	row_number::RowNumber,
+use reifydb_value::{
+	error::Error as ValueError,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		row_number::RowNumber,
+	},
 };
 
 fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
@@ -41,8 +48,28 @@ fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
 	)))
 }
 
+fn framed(key: &GroupStateKey) -> SdkResult<()> {
+	if is_framed_inner(key.as_slice()) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!(
+		"an operator state key must name a known keyspace, got {} bytes",
+		key.as_slice().len()
+	)))
+}
+
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
+}
+
+fn reject_reserved_kind(kind: TimerKind) -> SdkResult<()> {
+	if kind == TimerKind::Reclaim {
+		return Err(ValueError::from(CoreError::OperatorTimerKindReserved {
+			kind: "Reclaim",
+		})
+		.into());
+	}
+	Ok(())
 }
 
 fn decode<T: OperatorState>(row: &EncodedPodRow) -> SdkResult<T> {
@@ -170,57 +197,22 @@ impl GuestState for InProcessState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
-	fn clear(&mut self) -> SdkResult<()> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_clear() }.map_err(to_sdk_err)
-	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
-			.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
-	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_get_many(keys) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
-	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> SdkResult<Vec<GroupStateKey>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
-			.map_err(to_sdk_err)?;
-		Ok(rows.into_iter().map(|(k, _)| k).collect())
-	}
-	fn range<T: OperatorState>(
-		&self,
-		group: GroupId,
-		keyspace: KeyspaceId,
-		start: GuestBound<'_>,
-		end: GuestBound<'_>,
-	) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)
 	}
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> SdkResult<()> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
 	}
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
@@ -320,7 +312,7 @@ impl GuestDictionary for InProcessDictionary<'_> {
 	}
 }
 
-impl GuestContext for InProcessContext<'_> {
+impl GuestEmitContext for InProcessContext<'_> {
 	type InsertEmit<'a>
 		= InProcessInsertEmit<'a>
 	where
@@ -340,12 +332,6 @@ impl GuestContext for InProcessContext<'_> {
 	fn written_at(&self) -> DateTime {
 		self.now
 	}
-	fn state(&mut self) -> impl GuestState + '_ {
-		InProcessState {
-			host: self.host,
-			_marker: PhantomData,
-		}
-	}
 	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
 		InProcessDictionary {
 			host: self.host,
@@ -353,11 +339,13 @@ impl GuestContext for InProcessContext<'_> {
 		}
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).arm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).disarm_timer(due, kind, key) }.map_err(to_sdk_err)
@@ -391,16 +379,6 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number(group, key) }.map_err(to_sdk_err)
 	}
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
-	}
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> SdkResult<ReclaimOutcome> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
-	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessInsertEmit {
@@ -425,5 +403,72 @@ impl GuestContext for InProcessContext<'_> {
 			diffs: &mut self.diffs,
 			now,
 		})
+	}
+}
+
+impl<C> GuestContext<C> for InProcessContext<'_> {
+	fn state(&mut self) -> impl ClassState<C> + '_
+	where
+		C: CustomClass,
+	{
+		InProcessState {
+			host: self.host,
+			_marker: PhantomData,
+		}
+	}
+	fn window_state(&mut self) -> impl GuestState + '_
+	where
+		C: WindowClass,
+	{
+		InProcessState {
+			host: self.host,
+			_marker: PhantomData,
+		}
+	}
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
+	}
+	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> SdkResult<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_flow::operator::host::TxnHostContext;
+	use reifydb_sdk::flow::operator::context::Windowed;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
+
+	use super::*;
+
+	#[test]
+	fn the_byte_accessors_refuse_a_key_that_frames_no_known_keyspace() {
+		// Without this a guest writes under a key naming no known keyspace and no later range scan can reach
+		// that row again.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut host = TxnHostContext::new(&mut txn, OperatorId(1));
+		let mut ctx = InProcessContext::new(&mut host, OperatorId(1));
+		let mut state = GuestContext::<Windowed>::window_state(&mut ctx);
+
+		let unframed = GroupStateKey::bound_unchecked(EncodedKey::new(vec![0xFF, 0xFF, 0xFF]));
+
+		let err = state.set_bytes(&unframed, EncodedPodRow::new(&[1])).unwrap_err();
+		assert!(
+			err.to_string().contains("must name a known keyspace"),
+			"set_bytes must refuse an unframed key, got {err}"
+		);
+		assert!(state.get_bytes(&unframed).is_err(), "get_bytes must refuse an unframed key too");
+		assert!(state.remove_bytes(&unframed).is_err(), "remove_bytes must refuse an unframed key too");
 	}
 }

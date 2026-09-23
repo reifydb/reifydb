@@ -145,7 +145,7 @@ mod tests {
 
 	const OP_A: OperatorId = OperatorId(1);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
-	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_UNMANAGED;
 
 	fn group_a() -> GroupId {
 		GroupId::hashed(Hash128(10))

@@ -11,7 +11,7 @@ use std::{collections, fmt, iter::once, marker};
 use bumpalo::Bump;
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	common::{JoinType, TimeSource, WindowKind},
+	common::{JoinType, TimeSource},
 	error::diagnostic::catalog::{
 		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
 		ringbuffer_not_found, series_not_found, table_not_found,
@@ -29,14 +29,15 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinPick, JoinRetention, Ttl},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	row::Ttl,
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	return_error,
-	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -467,12 +468,14 @@ pub struct AggregateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub with: AggregateWith,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub columns: Vec<ResolvedColumn>,
+	pub with: DistinctWith,
 }
 
 #[derive(Debug)]
@@ -507,9 +510,7 @@ pub struct JoinInnerNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug)]
@@ -518,9 +519,7 @@ pub struct JoinLeftNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug)]
@@ -530,9 +529,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub join_type: JoinType,
 	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug)]
@@ -569,17 +566,16 @@ pub struct PatchNode<'bump> {
 pub struct ApplyNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub operator: Fragment,
-	pub expressions: Vec<Expression>,
+	pub params: Vec<Expression>,
+	pub with: ApplyWith,
 }
 
 #[derive(Debug)]
 pub struct WindowNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
-	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub lateness: Option<Duration>,
-	pub immutable: Option<Duration>,
+	pub with: WindowWith,
 	pub fragment: Fragment,
 }
 
@@ -642,6 +638,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Aggregate(AggregateNode {
 						by: aggregate.by,
 						map: aggregate.map,
+						with: aggregate.with,
 						input: self.bump_box(input),
 					}));
 				}
@@ -1955,7 +1952,7 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.with)?.unwrap();
+					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
@@ -1973,15 +1970,13 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
-						retention: join.retention,
-						snapshot: join.snapshot,
-						pick: join.pick,
+						with: join.with,
 					}));
 				}
 
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.with)?.unwrap();
+					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
@@ -1999,15 +1994,13 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
-						retention: join.retention,
-						snapshot: join.snapshot,
-						pick: join.pick,
+						with: join.with,
 					}));
 				}
 
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.with)?.unwrap();
+					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
@@ -2026,9 +2019,7 @@ impl<'bump> Compiler<'bump> {
 						join_type: join.join_type,
 						fragment: self.interner.intern_fragment(&join.fragment),
 						alias,
-						retention: join.retention,
-						snapshot: join.snapshot,
-						pick: join.pick,
+						with: join.with,
 					}));
 				}
 
@@ -2105,6 +2096,7 @@ impl<'bump> Compiler<'bump> {
 
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
+						with: distinct.with,
 						input: self.bump_box(input),
 					}));
 				}
@@ -2186,7 +2178,7 @@ impl<'bump> Compiler<'bump> {
 
 					if let Some(ref boxed_input) = input {
 						let mut vars = Vec::new();
-						for expr in &apply.arguments {
+						for expr in &apply.params {
 							vars.extend(extract_variable_names(expr));
 						}
 						if let Some(pushed) = try_remote_push_down_with_vars(
@@ -2201,7 +2193,8 @@ impl<'bump> Compiler<'bump> {
 
 					stack.push(PhysicalPlan::Apply(ApplyNode {
 						operator: self.interner.intern_fragment(&apply.operator),
-						expressions: apply.arguments,
+						params: apply.params,
+						with: apply.with,
 						input,
 					}));
 				}
@@ -2339,11 +2332,9 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Window(window) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Window(WindowNode {
-						kind: window.kind,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
-						lateness: window.lateness,
-						immutable: window.immutable,
+						with: window.with,
 						fragment: window.fragment,
 						input,
 					}));

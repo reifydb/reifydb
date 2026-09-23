@@ -47,13 +47,6 @@ impl RowSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorSettings {
-	pub retention: Option<OperatorRetention>,
-
-	pub join: Option<JoinRetention>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorRetention {
 	pub duration: Duration,
 }

@@ -31,7 +31,7 @@ use crate::{
 		test::Test,
 		view::View,
 	},
-	row::{OperatorSettings, RowSettings},
+	row::{OperatorRetention, RowSettings},
 };
 
 pub trait CatalogTrackConfigChangeOperations {
@@ -222,8 +222,12 @@ pub trait CatalogTrackRowSettingsChangeOperations {
 	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
 }
 
-pub trait CatalogTrackOperatorSettingsChangeOperations {
-	fn track_operator_settings_created(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()>;
+pub trait CatalogTrackOperatorRetentionChangeOperations {
+	fn track_operator_retention_created(
+		&mut self,
+		operator: OperatorId,
+		retention: OperatorRetention,
+	) -> Result<()>;
 }
 
 pub trait CatalogTrackChangeOperations:
@@ -258,6 +262,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowSettingsChangeOperations
-	+ CatalogTrackOperatorSettingsChangeOperations
+	+ CatalogTrackOperatorRetentionChangeOperations
 {
 }

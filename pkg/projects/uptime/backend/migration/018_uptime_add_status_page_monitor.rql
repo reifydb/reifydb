@@ -1,22 +1,26 @@
 CREATE MIGRATION 'uptime_add_status_page_monitor' {
-    create procedure uptime::add_status_page_monitor { status_page_id: uuid7, monitor_id: uuid7, position: int2 } as {
-        let $page = from uptime::status_pages filter { id == $status_page_id and owner == $identity.id }
-            map { id, owner };
-        assert { is::some($page.id) } "status page not found";
-        let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
-            map { id, owner };
-        assert { is::some($monitor.id) } "unknown monitor id";
-        let $existing = from uptime::status_page_monitors
-            filter { status_page_id == $status_page_id and monitor_id == $monitor_id }
-            map { status_page_id, monitor_id };
-        assert { is::none($existing.monitor_id) } "monitor is already on this status page";
-        let $count = from uptime::status_page_monitors filter { status_page_id == $status_page_id }
-            aggregate { n: math::count(monitor_id) } by { status_page_id };
-        assert { is::none($count.n) or $count.n < 100 } "a status page can contain at most 100 monitors";
-        insert uptime::status_page_monitors [{ status_page_id: $status_page_id, owner: $identity.id,
-            monitor_id: $monitor_id, position: $position }]
+    create procedure uptime::add_status_page_monitors { status_page_id: uuid7, monitor_ids: list(uuid7) } as {
+        let $position = 0;
+        for $monitor_id in $monitor_ids {
+            let $page = from uptime::status_pages filter { id == $status_page_id and owner == $identity.id }
+                map { id, owner };
+            assert { is::some($page.id) } "status page not found";
+            let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
+                map { id, owner };
+            assert { is::some($monitor.id) } "unknown monitor id";
+            let $existing = from uptime::status_page_monitors
+                filter { status_page_id == $status_page_id and monitor_id == $monitor_id }
+                map { status_page_id, monitor_id };
+            assert { is::none($existing.monitor_id) } "monitor is already on this status page";
+            let $count = from uptime::status_page_monitors filter { status_page_id == $status_page_id }
+                aggregate { n: math::count(monitor_id) } by { status_page_id };
+            assert { is::none($count.n) or $count.n < 100 } "a status page can contain at most 100 monitors";
+            insert uptime::status_page_monitors [{ status_page_id: $status_page_id, owner: $identity.id,
+                monitor_id: $monitor_id, position: $position }];
+            $position = $position + 1
+        }
     };
-    create procedure policy uptime_call_add_status_page_monitor on uptime::add_status_page_monitor {
+    create procedure policy uptime_call_add_status_page_monitors on uptime::add_status_page_monitors {
         call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
     }
 };

@@ -25,7 +25,10 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{
+			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
+		},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{
@@ -204,28 +207,6 @@ impl GuestState for State<'_> {
 	fn contains(&self, key: &GroupStateKey) -> Result<bool> {
 		State::contains(self, key)
 	}
-	fn clear(&mut self) -> Result<()> {
-		State::clear(self)
-	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
-		State::scan_prefix(self, prefix)
-	}
-	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>> {
-		State::get_many(self, keys)
-	}
-	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
-		State::keys_with_prefix(self, prefix)
-	}
-	fn range<T: OperatorState>(
-		&self,
-		group: GroupId,
-		keyspace: KeyspaceId,
-		start: GuestBound<'_>,
-		end: GuestBound<'_>,
-	) -> Result<Vec<(GroupStateKey, T)>> {
-		State::range(self, group, keyspace, start, end)
-	}
-
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		State::get_bytes(self, key)
 	}
@@ -271,7 +252,7 @@ impl GuestDictionary for Dictionary<'_> {
 	}
 }
 
-impl GuestContext for ExternCContext {
+impl GuestEmitContext for ExternCContext {
 	type InsertEmit<'a> = ExternCInsertEmit<'a>;
 	type UpdateEmit<'a> = ExternCUpdateEmit<'a>;
 	type RemoveEmit<'a> = ExternCRemoveEmit<'a>;
@@ -283,9 +264,6 @@ impl GuestContext for ExternCContext {
 		// SAFETY: ExternCContext::new asserts self.ctx is non-null, and the host keeps the
 		// ExternCContextRaw alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
-	}
-	fn state(&mut self) -> impl GuestState + '_ {
-		ExternCContext::state(self)
 	}
 	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
 		ExternCContext::dictionary(self)
@@ -311,12 +289,6 @@ impl GuestContext for ExternCContext {
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)
-	}
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		ExternCContext::reclaim_group_identity(self, group, limit)
-	}
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
-		ExternCContext::reclaim_group_identity_keys(self, group, keys)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let mut builder = self.builder();
@@ -349,5 +321,32 @@ impl GuestContext for ExternCContext {
 			sink,
 			names,
 		})
+	}
+}
+
+impl<C> GuestContext<C> for ExternCContext {
+	fn state(&mut self) -> impl ClassState<C> + '_
+	where
+		C: CustomClass,
+	{
+		ExternCContext::state(self)
+	}
+	fn window_state(&mut self) -> impl GuestState + '_
+	where
+		C: WindowClass,
+	{
+		ExternCContext::state(self)
+	}
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		ExternCContext::reclaim_group_identity(self, group, limit)
+	}
+	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		ExternCContext::reclaim_group_identity_keys(self, group, keys)
 	}
 }

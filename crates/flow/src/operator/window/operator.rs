@@ -33,7 +33,7 @@ use crate::{
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
 		host::HostContext,
-		state::seal::ledger::FiredAt,
+		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
 	timer::Timer,
 	window::{
@@ -236,6 +236,11 @@ impl HostOperator for WindowOperator {
 				timer.due,
 			)))
 		}
+	}
+
+	fn seal_span(&self) -> Option<Duration> {
+		SealRule::for_window(&self.kind, self.lateness().unwrap_or_else(Duration::zero))
+			.map(|rule| rule.admissible().duration())
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

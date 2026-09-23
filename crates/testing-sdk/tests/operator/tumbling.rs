@@ -5,9 +5,11 @@
 //! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
 //! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
 
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling::TumblingDriver,
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
 };
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -16,11 +18,23 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
+use reifydb_value::factory::time::millis;
 
 use super::common::{self, MinTumbling, OhlcvSealingTumbling, VolumeTumbling};
 
 fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
+}
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(common::WINDOW)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
 }
 
 fn size_sampler(none_values: bool) -> ColumnSampler {
@@ -32,7 +46,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<VolumeTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -42,8 +56,15 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 		.with_column("slot", samplers::u64_range(0..300))
 		.with_column("size", size_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&VolumeTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(
+				&VolumeTumbling,
+				&common::settings(&window_with()),
+				ctx,
+				batches,
+				&window_key(),
+			)
 		})
 		.seed(seed)
 		.build()
@@ -52,7 +73,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 }
 
 fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<MinTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -63,8 +84,9 @@ fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		// Tight value set so duplicate minima exercise multiset removal.
 		.with_column("size", size_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&MinTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(&MinTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
 		})
 		.seed(seed)
 		.build()
@@ -78,7 +100,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<OhlcvSealingTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<OhlcvSealingTumbling>>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -89,8 +111,9 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&OhlcvSealingTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(&OhlcvSealingTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
 		})
 		.seed(seed)
 		.build()

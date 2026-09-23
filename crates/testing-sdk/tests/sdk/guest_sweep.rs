@@ -7,6 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	operator_with::ApplyWith,
 	state::timer::StateStore,
 };
 use reifydb_sdk::{
@@ -21,7 +22,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	util::{cowvec::CowVec, hash::Hash128},
 };
 
@@ -37,7 +38,7 @@ impl OperatorMetadata for SweepOp {
 }
 
 impl ExternCOperator for SweepOp {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -51,10 +52,10 @@ fn group() -> GroupId {
 }
 
 const SEEDED: [(KeyspaceId, u8); 5] = [
-	(KeyspaceId::JOIN_LEFT, 1),
-	(KeyspaceId::JOIN_LEFT, 2),
+	(KeyspaceId::GUEST_ACCUMULATOR, 1),
+	(KeyspaceId::GUEST_ACCUMULATOR, 2),
 	(KeyspaceId::WINDOW_META, 1),
-	(KeyspaceId::ACCUMULATOR, 1),
+	(KeyspaceId::EMIT, 1),
 	(KeyspaceId::GUEST_ROW_MAPPING, 1),
 ];
 
@@ -131,4 +132,21 @@ fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 		let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 		assert_eq!(swept, expected_in_scan_order(|_| true)[..budget], "and it must take them in order");
 	}
+}
+
+#[test]
+fn a_guest_group_sweep_never_reads_a_keyspace_a_windowed_guest_does_not_own() {
+	// The host refuses a foreign keyspace, so a sweep that asked for one would fail every reap over the C ABI.
+	let mut harness = ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
+	let mut state = seeded_state();
+	for keyspace in [KeyspaceId::JOIN_LEFT, KeyspaceId::ACCUMULATOR, KeyspaceId::CUSTOM_MANAGED] {
+		state.insert(inner(keyspace, 1), EncodedBytes(CowVec::new(vec![7u8])));
+	}
+	harness.restore_state(state);
+	let mut ctx = harness.create_operator_context();
+
+	let swept = GuestAsHost(&mut ctx).group_sweep(group(), false, None).expect("sweep");
+	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
+
+	assert_eq!(swept, expected_in_scan_order(|_| true));
 }

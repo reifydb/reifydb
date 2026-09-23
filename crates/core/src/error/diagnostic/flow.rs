@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{error::Diagnostic, fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	error::Diagnostic,
+	fragment::Fragment,
+	value::{duration::Duration, value_type::ValueType},
+};
 
 pub fn flow_error(message: String) -> Diagnostic {
 	Diagnostic {
@@ -679,5 +683,159 @@ pub fn flow_step_panicked(reason: String) -> Diagnostic {
 		"An operator in this view panicked instead of returning an error. The flow retries a few times and is \
 		 then poisoned, which the flow subsystem reports as degraded health. Fix the operator so it returns an \
 		 error.",
+	)
+}
+
+pub fn flow_operator_with_count_span(key: &str, count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_063",
+		format!("operator setting '{}' is a count ({}), but this operator seals by time", key, count),
+		"Declare the setting as a duration, for example 30s, or use an operator that seals by row count.",
+	)
+}
+
+pub fn flow_operator_with_immutable_not_below_lateness(immutable: Duration, lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_064",
+		format!("immutable {} must be strictly less than lateness {}", immutable, lateness),
+		"A window becomes immutable before it seals, so immutable must be shorter than lateness.",
+	)
+}
+
+pub fn flow_operator_with_window_missing() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_065",
+		"this operator needs 'window' in its with block".to_string(),
+		"Add a window to the apply, for example with { window: tumbling, duration: 1m }.",
+	)
+}
+
+pub fn flow_operator_with_pane_missing() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_075",
+		"this operator needs 'pane' in its rolling window's with block".to_string(),
+		"Add a pane to the apply, for example with { window: rolling, duration: 1h, pane: 1s }.",
+	)
+}
+
+pub fn flow_operator_with_window_kind_unsupported(kind: &str, supported: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_066",
+		format!("window '{}' is not supported by this operator, use '{}'", kind, supported),
+		"Change the window kind in the apply's with block.",
+	)
+}
+
+pub fn flow_operator_with_window_not_supported(kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_067",
+		format!("this operator takes no window, but window '{}' was given", kind),
+		"Remove window and its size keys from the apply's with block.",
+	)
+}
+
+pub fn flow_operator_with_window_size_count(count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_068",
+		format!("the window size is a count ({}), but this operator windows by time", count),
+		"Declare the size as a duration, for example duration: 1m.",
+	)
+}
+
+pub fn flow_operator_with_window_size_duration(size: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_069",
+		format!("the window size is a duration ({}), but this operator counts slots", size),
+		"Declare the size as a slot count, for example slots: 1.",
+	)
+}
+
+pub fn flow_operator_with_window_slide_count(count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_076",
+		format!("the window slide is a count ({}), but this operator windows by time", count),
+		"Declare the slide as a duration, for example slide: 30s.",
+	)
+}
+
+pub fn flow_operator_with_window_slide_duration(slide: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_077",
+		format!("the window slide is a duration ({}), but this operator counts slots", slide),
+		"Declare the slide as a slot count, for example slide: 1.",
+	)
+}
+
+pub fn flow_operator_with_session_lateness(lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_078",
+		format!("a session window seals on its gap and takes no lateness (lateness: {})", lateness),
+		"Remove lateness, or set lateness: 0s.",
+	)
+}
+
+pub fn flow_operator_with_session_zero_gap() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_079",
+		"a session window needs a gap above zero".to_string(),
+		"Set gap to a positive duration.",
+	)
+}
+
+pub fn flow_operator_with_retention_not_supported() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_080",
+		"this operator takes no 'retention'".to_string(),
+		"Only a managed operator frees state by retention. Remove retention from the with block.",
+	)
+}
+
+pub fn flow_operator_with_retention_below_lateness(retention: Duration, lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_081",
+		format!("retention {} must not be below lateness {}", retention, lateness),
+		"A managed operator's state must outlive its output hold, so retention must be at least lateness.",
+	)
+}
+
+pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_070",
+		format!("operator setting '{}' is a duration ({}), but this operator seals by count", key, duration),
+		"Declare the setting as a count, for example lateness: 150.",
+	)
+}
+
+pub fn flow_operator_with_not_accepted() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_071",
+		"a nostate operator takes no 'with'".to_string(),
+		"Remove the with block from this apply.",
+	)
+}
+
+pub fn flow_operator_retention_required() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_072",
+		"a managed operator needs 'retention' or 'lateness'".to_string(),
+		"Declare retention in the with block; lateness alone also bounds the state.",
+	)
+}
+
+pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_073",
+		format!("{flow} applies managed operator '{operator}' but its sources supply no event time"),
+		"a managed operator's state is freed once the watermark passes its last write plus retention, which only \
+		 has meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
+		 source object this flow reads.",
+	)
+}
+
+pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_074",
+		format!("timer kind '{kind}' is reserved for the engine"),
+		"Arm a Seal, Grace, RowTtl or Maintenance timer instead.",
 	)
 }

@@ -19,6 +19,7 @@ mod join_left_latest;
 mod join_left_snapshot;
 mod join_left_snapshot_latest;
 mod window_tumbling;
+mod window_tumbling_carry_guest;
 mod window_tumbling_guest;
 
 pub fn state_keys(db: &TestDb, rql: &str) -> u64 {

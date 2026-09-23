@@ -103,7 +103,7 @@ mod tests {
 		interface::catalog::id::{SeriesId, ViewId},
 		key::operator::{
 			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
-			state::{GroupId, KeyspaceId, custom_not_cached_key},
+			state::{GroupId, KeyspaceId, unmanaged_key},
 		},
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
@@ -190,7 +190,7 @@ mod tests {
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width"),
+			key: unmanaged_key(b"k").expect("a fixture name must fit the keyspace's id width").into(),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
 		assert!(
@@ -331,7 +331,7 @@ mod tests {
 		let operator = OperatorId(1);
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width"),
+			key: unmanaged_key(b"k").expect("a fixture name must fit the keyspace's id width").into(),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
 		let durable_bytes = store.bytes(operator).unwrap();

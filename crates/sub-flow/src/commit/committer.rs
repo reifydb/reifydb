@@ -487,7 +487,7 @@ mod commit_integration {
 			any::TaggedKey,
 			catalog::IndexEntryKey,
 			cdc::CdcConsumerKey,
-			operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
+			operator::state::{GroupStateKey, OperatorStateKey, unmanaged_key},
 		},
 		value::index::encoded::EncodedIndexKey,
 	};
@@ -652,7 +652,7 @@ mod commit_integration {
 	}
 
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {
-		custom_not_cached_key(suffix).expect("a fixture name must fit the keyspace's id width")
+		unmanaged_key(suffix).expect("a fixture name must fit the keyspace's id width").into()
 	}
 
 	fn state_slice(entries: &[(OperatorId, &GroupStateKey, u8)]) -> FlowSlice {

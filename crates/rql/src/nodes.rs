@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::{
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, TimeSource, WindowKind},
+	common::{JoinType, TimeSource},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
@@ -29,14 +29,15 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	row::{JoinPick, JoinRetention, Ttl},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, identity::IdentityKind,
-		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
+		constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind, partition::Partition,
+		sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -450,12 +451,14 @@ pub struct AggregateNode {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub with: AggregateWith,
 }
 
 #[derive(Debug, Clone)]
 pub struct DistinctNode {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
+	pub with: DistinctWith,
 }
 
 #[derive(Debug, Clone)]
@@ -552,9 +555,7 @@ pub struct JoinInnerNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug, Clone)]
@@ -563,9 +564,7 @@ pub struct JoinLeftNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug, Clone)]
@@ -575,9 +574,7 @@ pub struct JoinNaturalNode {
 	pub join_type: JoinType,
 	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 #[derive(Debug, Clone)]
@@ -615,7 +612,8 @@ pub struct PatchNode {
 pub struct ApplyNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment, // FIXME becomes OperatorIdentifier
-	pub expressions: Vec<Expression>,
+	pub params: Vec<Expression>,
+	pub with: ApplyWith,
 }
 
 #[derive(Debug, Clone)]
@@ -733,11 +731,9 @@ pub struct TakeNode {
 #[derive(Debug, Clone)]
 pub struct WindowNode {
 	pub input: Option<Box<QueryPlan>>,
-	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub lateness: Option<Duration>,
-	pub immutable: Option<Duration>,
+	pub with: WindowWith,
 	pub fragment: Fragment,
 }
 

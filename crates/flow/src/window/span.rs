@@ -3,14 +3,12 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::state::StateCodec;
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::state::StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
 
 use crate::operator::state::seal::coord::{Coord, IsZero};
-
-pub type SlotCoord<S> = <S as Slot>::Coord;
 
 pub trait WindowAnchor: Slot<Coord = Self> + Coord {}
 
@@ -65,6 +63,25 @@ where
 		}
 	}
 
+	pub fn covering(coord: C, size: C::Span, slide: C::Span) -> Vec<Self> {
+		assert!(!size.is_zero(), "WindowSpan::covering: size must be > 0");
+		assert!(!slide.is_zero(), "WindowSpan::covering: slide must be > 0");
+		assert!(slide < size, "WindowSpan::covering: slide must be below size");
+		let mut spans = Vec::new();
+		let mut start = coord.saturating_sub_span(size).floor_to(slide);
+		while start <= coord {
+			let end = start.add_span(size);
+			if coord < end {
+				spans.push(Self {
+					start,
+					end,
+				});
+			}
+			start = start.add_span(slide);
+		}
+		spans
+	}
+
 	#[inline]
 	pub fn new(start: C, end: C) -> Self {
 		assert!(start < end, "WindowSpan::new: start ({start:?}) must be < end ({end:?})");
@@ -94,6 +111,10 @@ where
 	}
 }
 
+pub fn window_row_key<C: Coord>(group: EncodedKey, start: C) -> EncodedKey {
+	start.extend_key(EncodedKey::builder().raw(group.as_slice())).build()
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_value::{
@@ -102,7 +123,10 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::state::seal::rule::{is_sealed, seal_horizon};
+	use crate::{
+		operator::state::seal::rule::{is_sealed, seal_horizon},
+		window::coord::{OrdinalCoord, RowSpan},
+	};
 
 	#[test]
 	fn for_coord_aligns_datetime_to_span() {
@@ -168,7 +192,6 @@ mod tests {
 			DateTime::from_epoch_millis(6_000_000).expect("representable"),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
-		assert_eq!(<DateTime as Coord>::span_millis(one_minute), Some(60_000));
 	}
 
 	#[test]
@@ -192,5 +215,69 @@ mod tests {
 
 		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
 		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");
+	}
+
+	#[test]
+	fn window_row_key_puts_the_group_before_the_coordinate() {
+		// A coordinate ahead of the group would interleave every group's windows in one key range.
+		let start = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
+		let group = EncodedKey::builder().u32(3u32).u32(9u32).build();
+
+		let expected = EncodedKey::builder().u32(3u32).u32(9u32).datetime(&start).build();
+		assert_eq!(window_row_key(group.clone(), start), expected);
+
+		assert!(window_row_key(group.clone(), start).as_slice().starts_with(group.as_slice()));
+	}
+
+	#[test]
+	fn covering_returns_every_window_that_holds_the_coord() {
+		// stepping by the size instead of the slide would skip the overlapping windows
+		let spans = WindowSpan::covering(at_millis(5_000), millis(1_000), millis(250));
+
+		assert_eq!(
+			spans,
+			vec![
+				WindowSpan::new(at_millis(4_250), at_millis(5_250)),
+				WindowSpan::new(at_millis(4_500), at_millis(5_500)),
+				WindowSpan::new(at_millis(4_750), at_millis(5_750)),
+				WindowSpan::new(at_millis(5_000), at_millis(6_000)),
+			]
+		);
+	}
+
+	#[test]
+	fn covering_excludes_the_window_that_ends_at_the_coord() {
+		// a closed end would put the coord in the window that ended at it
+		let spans = WindowSpan::covering(at_millis(5_000), millis(1_000), millis(250));
+
+		assert!(!spans.contains(&WindowSpan::new(at_millis(4_000), at_millis(5_000))));
+	}
+
+	#[test]
+	fn covering_on_an_ordinal_coord_counts_slots() {
+		// flooring the coord by the size would start the windows off the slide grid
+		let spans =
+			WindowSpan::covering(OrdinalCoord::from_arrival_counter(23), RowSpan::of(10), RowSpan::of(4));
+
+		assert_eq!(
+			spans,
+			vec![
+				WindowSpan::new(
+					OrdinalCoord::from_arrival_counter(16),
+					OrdinalCoord::from_arrival_counter(26)
+				),
+				WindowSpan::new(
+					OrdinalCoord::from_arrival_counter(20),
+					OrdinalCoord::from_arrival_counter(30)
+				),
+			]
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "slide must be below size")]
+	fn covering_refuses_a_slide_that_is_not_below_the_size() {
+		// a slide past the size leaves gaps where rows vanish with no error
+		let _ = WindowSpan::covering(at_millis(5_000), millis(1_000), millis(1_500));
 	}
 }

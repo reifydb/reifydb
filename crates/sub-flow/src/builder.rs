@@ -5,18 +5,29 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
-use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
+use reifydb_core::{
+	common::{OperatorClass, WindowRequirements},
+	event::operator::OperatorColumn,
+	interface::catalog::flow::OperatorId,
+	operator_with::ApplyWith,
+};
 use reifydb_flow::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sdk::flow::operator::GuestOperator;
+use reifydb_sdk::flow::operator::{
+	ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, UnmanagedMount,
+	UnmanagedOperator,
+	context::{ClassValue, Windowed},
+	windowed::operator::WindowDriver,
+};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
-use reifydb_value::{Result, config::Config};
+use reifydb_value::{Result, config::ExtensionParams};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::operator::mount::mount;
 
-pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedHostOperator> + Send + Sync>;
+pub(crate) type OperatorFactory =
+	Arc<dyn Fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {
@@ -27,6 +38,9 @@ pub struct CustomOperatorEntry {
 	pub capabilities: u32,
 	pub input: Vec<OperatorColumn>,
 	pub output: Vec<OperatorColumn>,
+	pub class: OperatorClass,
+	pub window: WindowRequirements,
+	pub unmanaged_because: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -86,23 +100,59 @@ impl FlowConfigurator {
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub fn register_operator<O>(mut self) -> Self
+	pub fn register_managed_operator<T>(self) -> Self
 	where
-		O: GuestOperator + OperatorMetadata + 'static,
+		T: ManagedOperator + 'static,
+	{
+		self.register_mounted::<ManagedMount<T>>()
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	pub fn register_unmanaged_operator<T>(self) -> Self
+	where
+		T: UnmanagedOperator + 'static,
+	{
+		self.register_mounted::<UnmanagedMount<T>>()
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	pub fn register_nostate_operator<T>(self) -> Self
+	where
+		T: NostateOperator + 'static,
+	{
+		self.register_mounted::<NostateMount<T>>()
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	pub fn register_windowed_operator<T, M>(self) -> Self
+	where
+		T: WindowDriver<M> + 'static,
+		<T as WindowDriver<M>>::Driver: MountedOperator<Class = Windowed> + OperatorMetadata + 'static,
+	{
+		self.register_mounted::<<T as WindowDriver<M>>::Driver>()
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	fn register_mounted<M>(mut self) -> Self
+	where
+		M: MountedOperator + OperatorMetadata + 'static,
 	{
 		self.custom_operators.insert(
-			O::NAME.to_string(),
+			M::NAME.to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|operator, config| {
-					let logic = O::create(operator, config)?;
-					Ok(mount(logic, operator, O::CAPABILITIES))
+				factory: Arc::new(|operator, params, with| {
+					let logic = M::create(operator, params, with)?;
+					Ok(mount(logic, operator, M::CAPABILITIES))
 				}),
 				abi: None,
-				version: <O as OperatorMetadata>::VERSION.to_string(),
-				description: <O as OperatorMetadata>::DESCRIPTION.to_string(),
-				capabilities: to_bitmask(<O as OperatorMetadata>::CAPABILITIES),
-				input: describe_columns(<O as OperatorMetadata>::INPUT_COLUMNS),
-				output: describe_columns(<O as OperatorMetadata>::OUTPUT_COLUMNS),
+				version: <M as OperatorMetadata>::VERSION.to_string(),
+				description: <M as OperatorMetadata>::DESCRIPTION.to_string(),
+				capabilities: to_bitmask(<M as OperatorMetadata>::CAPABILITIES),
+				input: describe_columns(<M as OperatorMetadata>::INPUT_COLUMNS),
+				output: describe_columns(<M as OperatorMetadata>::OUTPUT_COLUMNS),
+				class: <M::Class as ClassValue>::CLASS,
+				window: <M as MountedOperator>::WINDOW,
+				unmanaged_because: <M as MountedOperator>::UNMANAGED_BECAUSE.map(str::to_string),
 			},
 		);
 		self

@@ -9,7 +9,7 @@ interface Item {
     name: string;
 }
 
-const empty: Entry<Item> = {status: 'loading', rows: new Map(), data: [], error: undefined};
+const empty: Entry<Item[]> = {status: 'loading', rows: new Map(), data: [], error: undefined};
 
 describe('row merge', () => {
     it('insert adds rows keyed by rownum in insertion order', () => {

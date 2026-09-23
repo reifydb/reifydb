@@ -82,7 +82,7 @@ pub fn walk_expressions_mut(
 			}
 		}
 		PhysicalPlan::Apply(n) => {
-			for e in &mut n.expressions {
+			for e in &mut n.params {
 				internal(e);
 			}
 			if let Some(input) = n.input.as_mut() {

@@ -4,7 +4,7 @@
 use reifydb_value::{
 	error::{Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{duration::Duration, value_type::ValueType},
 };
 
 pub mod diagnostic;
@@ -57,6 +57,89 @@ pub enum CoreError {
 
 	#[error("Flow dispatcher is unavailable")]
 	FlowDispatcherUnavailable,
+
+	#[error("operator setting '{key}' is a count ({count}), but this operator seals by time")]
+	OperatorWithCountSpan {
+		key: &'static str,
+		count: u64,
+	},
+
+	#[error("immutable {immutable} must be strictly less than lateness {lateness}")]
+	OperatorWithImmutableNotBelowLateness {
+		immutable: Duration,
+		lateness: Duration,
+	},
+
+	#[error("this operator needs 'window' in its with block")]
+	OperatorWithWindowMissing,
+
+	#[error("this operator needs 'pane' in its rolling window's with block")]
+	OperatorWithPaneMissing,
+
+	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
+	OperatorWithWindowKindUnsupported {
+		kind: &'static str,
+		supported: String,
+	},
+
+	#[error("this operator takes no window, but window '{kind}' was given")]
+	OperatorWithWindowNotSupported {
+		kind: &'static str,
+	},
+
+	#[error("the window size is a count ({count}), but this operator windows by time")]
+	OperatorWithWindowSizeCount {
+		count: u64,
+	},
+
+	#[error("the window size is a duration ({size}), but this operator counts slots")]
+	OperatorWithWindowSizeDuration {
+		size: Duration,
+	},
+
+	#[error("the window slide is a count ({count}), but this operator windows by time")]
+	OperatorWithWindowSlideCount {
+		count: u64,
+	},
+
+	#[error("the window slide is a duration ({slide}), but this operator counts slots")]
+	OperatorWithWindowSlideDuration {
+		slide: Duration,
+	},
+
+	#[error("a session window seals on its gap and takes no lateness (lateness: {lateness})")]
+	OperatorWithSessionLateness {
+		lateness: Duration,
+	},
+
+	#[error("a session window needs a gap above zero")]
+	OperatorWithSessionZeroGap,
+
+	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
+	OperatorWithDurationSpan {
+		key: &'static str,
+		duration: Duration,
+	},
+
+	#[error("a nostate operator takes no 'with'")]
+	OperatorWithNotAccepted,
+
+	#[error("a managed operator needs 'retention' or 'lateness'")]
+	OperatorRetentionRequired,
+
+	#[error("this operator takes no 'retention'")]
+	OperatorWithRetentionNotSupported,
+
+	#[error("retention {retention} must not be below lateness {lateness}")]
+	OperatorWithRetentionBelowLateness {
+		retention: Duration,
+		lateness: Duration,
+	},
+
+	#[error("timer kind '{kind}' is reserved for the engine")]
+	OperatorTimerKindReserved {
+		kind: &'static str,
+	},
 
 	#[error("Primary key violation in table '{table_name}'")]
 	PrimaryKeyViolation {

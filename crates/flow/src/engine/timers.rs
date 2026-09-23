@@ -140,7 +140,11 @@ impl FlowEngineInner {
 				});
 				let fired = match node {
 					Node::Operator(operator) => {
-						let mut host = TxnHostContext::new(txn, operator.id());
+						let mut host = TxnHostContext::with_retention(
+							txn,
+							operator.id(),
+							operator.retention(),
+						);
 						operator.on_timer(&mut host, timer)?
 					}
 					Node::DurableSink(sink) => txn.run_durable_sink_timer(&mut **sink, timer)?,

@@ -7,10 +7,18 @@ use reifydb_codec::{
 	key::encoded::EncodedKeyRange,
 	row::operator::state::{OperatorState, decode},
 };
+#[cfg(feature = "runtime")]
+use reifydb_core::{
+	internal_err,
+	key::operator::keyspace::expiry::{CustomManagedDue, CustomManagedLatest},
+};
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
+			keyspace::expiry::{
+				CustomManagedDueKey, CustomManagedLatestKey, Expiry, ExpiryKey, TumblingExpiry,
+				TumblingExpirySuffix,
+			},
 			state::{
 				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
 			},
@@ -23,6 +31,8 @@ use reifydb_core::{
 		typed::{SuffixBytes, typed_key},
 	},
 };
+#[cfg(feature = "runtime")]
+use reifydb_value::value::datetime::DateTime;
 use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
 use tracing::instrument;
 
@@ -47,6 +57,38 @@ pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: 
 			threshold: Desc(threshold),
 			owner: Desc(owner),
 			window_start: Desc(window_start),
+		},
+	)
+}
+
+#[cfg(feature = "runtime")]
+pub(crate) fn managed_due_key(due: DateTime, group: GroupId) -> GroupStateKey {
+	typed_key::<CustomManagedDue>(
+		GroupId::ROOT,
+		&CustomManagedDueKey {
+			threshold: Desc(due.to_order()),
+			group: Desc(group),
+		},
+	)
+}
+
+#[cfg(feature = "runtime")]
+pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId> {
+	let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_bytes()) else {
+		return internal_err!("a managed due key must decode");
+	};
+	let Some(due) = CustomManagedDueKey::from_suffix_bytes(suffix) else {
+		return internal_err!("a managed due key must carry its group");
+	};
+	Ok(due.group.0)
+}
+
+#[cfg(feature = "runtime")]
+pub(crate) fn managed_latest_key(group: GroupId) -> GroupStateKey {
+	typed_key::<CustomManagedLatest>(
+		GroupId::ROOT,
+		&CustomManagedLatestKey {
+			group: Desc(group),
 		},
 	)
 }
@@ -84,12 +126,32 @@ impl ExpirySuffix for TumblingExpirySuffix {
 	}
 }
 
+impl ExpirySuffix for CustomManagedDueKey {
+	fn at_threshold(threshold: u64) -> Self {
+		Self {
+			threshold: Desc(threshold),
+			group: BoundedKey::low(),
+		}
+	}
+
+	fn threshold(&self) -> u64 {
+		self.threshold.0
+	}
+}
+
 pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
 	store.state_set(&key, entry.encode_state()?)
 }
 
 pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 	store.state_remove(key)
+}
+
+pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<Option<E>> {
+	match store.state_get(key)? {
+		Some(payload) => Ok(Some(decode::<E>(&payload)?)),
+		None => Ok(None),
+	}
 }
 
 #[cfg(reifydb_assertions)]

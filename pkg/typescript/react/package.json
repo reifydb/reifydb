@@ -6,8 +6,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "typecheck": "tsc --noEmit -p tsconfig.types.json",
     "dev": "tsc --watch",
-    "test": "pnpm test:unit",
+    "test": "pnpm typecheck && pnpm test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:unit:watch": "vitest --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.config.ts",

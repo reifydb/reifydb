@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
@@ -18,7 +18,8 @@ use crate::{
 pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment,
-	pub arguments: Vec<Expression>,
+	pub params: Vec<Expression>,
+	pub with: ApplyWith,
 }
 
 impl From<ApplyNode> for ApplyCompiler {
@@ -26,7 +27,8 @@ impl From<ApplyNode> for ApplyCompiler {
 		Self {
 			input: node.input,
 			operator: node.operator,
-			arguments: node.expressions,
+			params: node.params,
+			with: node.with,
 		}
 	}
 }
@@ -43,7 +45,8 @@ impl CompileOperator for ApplyCompiler {
 			txn,
 			Apply {
 				operator: self.operator.text().to_string(),
-				expressions: self.arguments,
+				params: self.params,
+				with: self.with,
 			},
 		)?;
 

@@ -801,7 +801,7 @@ mod tests {
 
 	const OP: OperatorId = OperatorId(1);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
-	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_UNMANAGED;
 
 	fn group() -> GroupId {
 		GroupId::hashed(Hash128(10))
@@ -973,7 +973,7 @@ mod tests {
 		let range = across(top, bottom);
 
 		for keyspace in [top, middle, bottom] {
-			assert!(keyspace.caches_ranges());
+			assert_ne!(keyspace, UNCACHED);
 			assert!(claim(
 				&tier,
 				&range,

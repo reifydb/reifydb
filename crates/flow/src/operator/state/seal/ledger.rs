@@ -2,8 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
-#[cfg(feature = "runtime")]
-use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
@@ -12,8 +10,6 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-#[cfg(feature = "runtime")]
-use crate::transaction::{FlowTransaction, state::StateExtension};
 use crate::{
 	operator::state::seal::{coord::Coord, rule::SealedThrough},
 	timer::Timer,
@@ -87,15 +83,6 @@ impl SealLedger {
 		let state: SealLedgerState = decode(&bytes)?;
 		Ok(Some(state.sealed_through))
 	}
-}
-
-#[cfg(feature = "runtime")]
-pub fn read_sealed_through<T: FlowTransaction>(txn: &mut T, operator: OperatorId) -> Result<Option<SealedThrough>> {
-	let Some(row) = txn.state_get(operator, &seal_ledger_key())? else {
-		return Ok(None);
-	};
-	let state: SealLedgerState = decode(&row)?;
-	Ok(Some(SealedThrough::from_order(state.sealed_through)))
 }
 
 #[cfg(test)]

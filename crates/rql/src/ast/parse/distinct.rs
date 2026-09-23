@@ -4,7 +4,6 @@
 use crate::{
 	Result,
 	ast::{ast::AstDistinct, identifier::MaybeQualifiedColumnIdentifier, parse::Parser},
-	error::OperationKind,
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
@@ -14,12 +13,12 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, _has_braces) = self.parse_identifiers()?;
-		self.reject_with_clause(OperationKind::Distinct)?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstDistinct {
 			token,
 			columns,
-			retention: None,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -66,7 +65,7 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{ast::parse::Ast, token::tokenize};
+	use crate::{ast::parse::Ast, plan::logical::Compiler, token::tokenize};
 
 	#[test]
 	fn test_distinct_empty_braces() {
@@ -165,7 +164,7 @@ pub mod tests {
 		let Ast::Distinct(distinct) = result.first_unchecked() else {
 			panic!("Expected Distinct operator");
 		};
-		assert!(distinct.retention.is_none());
+		assert!(distinct.with.is_none());
 	}
 
 	#[test]
@@ -174,8 +173,16 @@ pub mod tests {
 		let source = "DISTINCT { x } WITH { lateness: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error: DISTINCT takes no WITH clause");
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error: DISTINCT takes no WITH clause"
+		);
 	}
 
 	#[test]
@@ -184,8 +191,16 @@ pub mod tests {
 		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error: DISTINCT takes no WITH clause");
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error: DISTINCT takes no WITH clause"
+		);
 	}
 
 	#[test]
@@ -194,7 +209,15 @@ pub mod tests {
 		let source = "DISTINCT { x } WITH { unknown: 'foo' }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error for unknown WITH key");
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error for unknown WITH key"
+		);
 	}
 }

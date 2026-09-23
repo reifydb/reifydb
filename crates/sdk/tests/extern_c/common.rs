@@ -11,6 +11,7 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 		flow::OperatorCapability,
 	},
+	operator_with::ApplyWith,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::{
@@ -25,7 +26,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber, system_columns::SystemColumns},
 };
@@ -44,7 +45,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl ExternCOperator for PassthroughOperator {
-	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 

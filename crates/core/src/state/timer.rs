@@ -25,6 +25,7 @@ pub enum TimerKind {
 	Grace = 1,
 	RowTtl = 2,
 	Maintenance = 3,
+	Reclaim = 4,
 }
 
 impl TimerKind {
@@ -38,6 +39,7 @@ impl TimerKind {
 			1 => Some(Self::Grace),
 			2 => Some(Self::RowTtl),
 			3 => Some(Self::Maintenance),
+			4 => Some(Self::Reclaim),
 			_ => None,
 		}
 	}

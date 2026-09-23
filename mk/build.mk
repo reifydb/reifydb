@@ -31,11 +31,11 @@ check-value-no-features:
 # Build pkg/typescript packages
 build-pkg-typescript:
 	@echo "🏗️ Building pkg/typescript packages..."
-	@if [ -d "pkg/typescript" ]; then \
+	@set -e; if [ -d "pkg/typescript" ]; then \
 		echo "  Installing dependencies..."; \
-		cd pkg/typescript && pnpm install 2>/dev/null || npm install 2>/dev/null || true; \
+		cd pkg/typescript && pnpm install 2>/dev/null || npm install 2>/dev/null; \
 		echo "  Building TypeScript packages..."; \
-		cd pkg/typescript && pnpm build 2>/dev/null || npm run build 2>/dev/null || true; \
+		cd pkg/typescript && pnpm build 2>/dev/null || npm run build 2>/dev/null; \
 	fi
 
 # Build with vendored dependencies

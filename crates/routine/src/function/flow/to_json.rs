@@ -73,7 +73,7 @@ pub enum JsonOperatorDef {
 	},
 	Apply {
 		operator: String,
-		expressions: Vec<JsonExpression>,
+		params: Vec<JsonExpression>,
 	},
 	SinkView {
 		view: u64,
@@ -143,9 +143,8 @@ impl From<&OperatorDef> for JsonOperatorDef {
 				left,
 				right,
 				alias,
-				snapshot: _,
 				natural: _,
-				pick: _,
+				with: _,
 			} => JsonOperatorDef::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),
@@ -155,6 +154,7 @@ impl From<&OperatorDef> for JsonOperatorDef {
 			OperatorDef::Aggregate {
 				by,
 				map,
+				with: _,
 			} => JsonOperatorDef::Aggregate {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
@@ -174,15 +174,17 @@ impl From<&OperatorDef> for JsonOperatorDef {
 			},
 			OperatorDef::Distinct {
 				expressions,
+				with: _,
 			} => JsonOperatorDef::Distinct {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			OperatorDef::Apply {
 				operator,
-				expressions,
+				params,
+				with: _,
 			} => JsonOperatorDef::Apply {
 				operator: operator.clone(),
-				expressions: expressions.iter().map(|e| e.into()).collect(),
+				params: params.iter().map(|e| e.into()).collect(),
 			},
 			OperatorDef::SinkTableView {
 				view,
@@ -204,12 +206,11 @@ impl From<&OperatorDef> for JsonOperatorDef {
 				subscription: subscription.0.to_string(),
 			},
 			OperatorDef::Window {
-				kind,
 				group_by,
 				aggregations,
-				..
+				with,
 			} => JsonOperatorDef::Window {
-				kind: kind.clone(),
+				kind: with.kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),
 				aggregations: aggregations.iter().map(|e| e.into()).collect(),
 			},

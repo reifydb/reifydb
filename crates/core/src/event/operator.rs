@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use reifydb_value::value::constraint::TypeConstraint;
 
-use crate::define_event;
+use crate::{
+	common::{OperatorClass, WindowRequirements},
+	define_event,
+};
 
 #[derive(Debug, Clone)]
 pub struct OperatorColumn {
@@ -35,5 +38,11 @@ define_event! {
 		pub output: Vec<OperatorColumn>,
 
 		pub capabilities: u32,
+
+		pub class: OperatorClass,
+
+		pub window: WindowRequirements,
+
+		pub unmanaged_because: Option<String>,
 	}
 }

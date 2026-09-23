@@ -153,7 +153,12 @@ impl StandardOperatorStore {
 			resident.attach_flusher(Waker::Spawned(flush.clone()));
 		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if !persistent.is_absent() && persistent.census().is_ok_and(|census| !census.is_empty()) {
+		if !persistent.is_absent()
+			&& !persistent
+				.census()
+				.expect("operator census must load; a failed one skips the key filter")
+				.is_empty()
+		{
 			let actor = FilterActor::spawn(&spawner);
 			let _ = actor.send(FilterMessage::Register {
 				filter: resident.filter(),
@@ -168,7 +173,9 @@ impl StandardOperatorStore {
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
 			occupancy: KeyspaceOccupancy::new(),
-			census: OperatorCensus::seeded(&persistent),
+			census: OperatorCensus::seeded(&persistent).expect(
+				"operator census must load; an empty seed under-reports every operator's state",
+			),
 			persistent,
 			range,
 			flush,

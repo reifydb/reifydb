@@ -4,7 +4,7 @@
 use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
 use reifydb_codec::value::decode_params;
-use reifydb_value::{config::Config, params::Params};
+use reifydb_value::{config::ExtensionParams, params::Params};
 
 use crate::{
 	common::extern_c::wire::buffer::ExternCBuffer,
@@ -39,33 +39,33 @@ pub fn create_procedure_descriptor<T: ExternCProcedureWithMetadata>() -> ExternC
 }
 
 /// # Safety
-/// - config_ptr must be valid for config_len bytes or null
+/// - params_ptr must be valid for params_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_procedure_instance<T: ExternCProcedureWithMetadata>(
-	config_ptr: *const u8,
-	config_len: usize,
+	params_ptr: *const u8,
+	params_len: usize,
 ) -> *mut c_void {
-	let config = if config_ptr.is_null() || config_len == 0 {
+	let params = if params_ptr.is_null() || params_len == 0 {
 		HashMap::new()
 	} else {
-		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees config_ptr is
-		// valid for config_len initialised bytes for the duration of this call.
-		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
+		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees params_ptr is
+		// valid for params_len initialised bytes for the duration of this call.
+		let params_bytes = unsafe { slice::from_raw_parts(params_ptr, params_len) };
 
-		match decode_params(config_bytes) {
+		match decode_params(params_bytes) {
 			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
 			Ok(Params::None) => HashMap::new(),
 			Ok(Params::Positional(_)) => {
-				panic!("Failed to deserialize procedure config: expected named params");
+				panic!("Failed to deserialize procedure params: expected named params");
 			}
 			Err(e) => {
-				panic!("Failed to deserialize procedure config: {}", e);
+				panic!("Failed to deserialize procedure params: {}", e);
 			}
 		}
 	};
 
-	let config = Config::new(T::NAME, config.into_iter().collect());
-	let procedure = match T::new(&config) {
+	let params = ExtensionParams::new(T::NAME, params.into_iter().collect());
+	let procedure = match T::new(&params) {
 		Ok(p) => p,
 		Err(e) => {
 			eprintln!("Failed to create procedure: {}", e);

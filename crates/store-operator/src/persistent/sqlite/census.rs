@@ -25,19 +25,6 @@ impl SqlitePersistent {
 		ByteSize::from_bytes(state)
 	}
 
-	#[instrument(name = "store::operator::persistent::sqlite::total_bytes", level = "trace", skip(self), ret)]
-	pub fn total_bytes(&self) -> ByteSize {
-		let guard = self.read_conn();
-		let Some(conn) = guard.as_ref() else {
-			return ByteSize::ZERO;
-		};
-		let state: u64 = route::census(conn)
-			.iter()
-			.map(|entry| entry.key_bytes.as_bytes() + entry.value_bytes.as_bytes())
-			.sum();
-		ByteSize::from_bytes(state)
-	}
-
 	#[instrument(name = "store::operator::persistent::sqlite::occupied_keyspaces", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
 		let guard = self.read_conn();

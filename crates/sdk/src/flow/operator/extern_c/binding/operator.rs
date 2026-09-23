@@ -4,19 +4,20 @@
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
+	operator_with::ApplyWith,
 };
-use reifydb_value::{config::Config, value::duration::Duration};
+use reifydb_value::config::ExtensionParams;
 
 use crate::{
 	error::Result,
 	flow::operator::{
-		GuestOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		MountedOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		extern_c::binding::context::ExternCContext, timer::Timer,
 	},
 };
 
 pub trait ExternCOperator: 'static {
-	fn new(operator_id: OperatorId, config: &Config) -> Result<Self>
+	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>
 	where
 		Self: Sized;
 
@@ -24,10 +25,6 @@ pub trait ExternCOperator: 'static {
 
 	fn on_timer(&mut self, _ctx: &mut ExternCContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		None
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -48,10 +45,10 @@ impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 	const CAPABILITIES: &'static [OperatorCapability] = C::CAPABILITIES;
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
-	fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
+impl<C: MountedOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
+	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		Ok(Self {
-			core: C::create(operator_id, config)?,
+			core: C::create(operator_id, params, with)?,
 		})
 	}
 
@@ -61,10 +58,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCO
 
 	fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 		self.core.on_timer(ctx, timer)
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		self.core.seal_span()
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

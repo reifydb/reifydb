@@ -326,14 +326,14 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_row_settings(*object, version, settings);
 		}
 
-		for change in &ctx.changes.operator_settings {
+		for change in &ctx.changes.operator_retention {
 			let (operator, _) = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
-			let settings = change.post.as_ref().map(|(_, settings)| settings.clone());
-			self.catalog.set_operator_settings(*operator, version, settings);
+			let retention = change.post.as_ref().map(|(_, retention)| retention.clone());
+			self.catalog.set_operator_retention(*operator, version, retention);
 		}
 
 		for change in &ctx.changes.primary_key {

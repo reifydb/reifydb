@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::dictionary::DictionaryEntryId;
 
-impl Config {
+impl ExtensionParams {
 	pub fn dictionary_id(&self, key: &str) -> Option<DictionaryEntryId> {
 		self.get(key).and_then(DictionaryEntryId::from_value)
 	}

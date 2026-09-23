@@ -143,6 +143,7 @@ pub struct ReplayModel {
 	pending: Vec<ChaosEvent>,
 	claim: Option<OracleClaim>,
 	drain_floor_ms: u64,
+	ledger_ms: u64,
 }
 
 impl Default for ReplayModel {
@@ -158,6 +159,7 @@ impl ReplayModel {
 			pending: Vec::new(),
 			claim: None,
 			drain_floor_ms: 0,
+			ledger_ms: 0,
 		}
 	}
 
@@ -223,7 +225,9 @@ impl Model<GuestRow> for ReplayModel {
 		});
 	}
 
-	fn advance_ledger(&mut self, _at_ms: u64) {}
+	fn advance_ledger(&mut self, at_ms: u64) {
+		self.ledger_ms = self.ledger_ms.max(at_ms);
+	}
 
 	fn live(&self) -> Option<ViewClaim> {
 		None
@@ -236,8 +240,12 @@ impl Model<GuestRow> for ReplayModel {
 	fn after_drain(&self) -> Option<ViewClaim> {
 		let claim = self.claim.as_ref()?;
 		let log = self.log();
+		let context = ChaosContext {
+			drain_at_ms: self.ledger_ms,
+			..claim.context.clone()
+		};
 		Some(ViewClaim::new(
-			(claim.oracle)(&claim.context, &log),
+			(claim.oracle)(&context, &log),
 			claim.key_columns.clone(),
 			claim.tolerances.clone(),
 		))

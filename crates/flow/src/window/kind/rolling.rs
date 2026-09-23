@@ -4,10 +4,7 @@
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
-	operator::state::seal::{
-		coord::Coord,
-		rule::{EvictionRule, SealRule},
-	},
+	operator::state::seal::{coord::Coord, rule::SealRule},
 	window::coord::RowSpan,
 };
 
@@ -30,10 +27,6 @@ impl RollingOverTime {
 
 	pub fn seal_rule(&self, lateness: Duration) -> SealRule {
 		SealRule::rolling(self.span(), lateness)
-	}
-
-	pub fn eviction_rule(&self) -> EvictionRule {
-		EvictionRule::rolling(self.span())
 	}
 
 	pub fn eviction_cutoff(&self, ledger: DateTime) -> Option<DateTime> {

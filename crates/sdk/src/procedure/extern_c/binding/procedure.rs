@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{config::Config, params::Params};
+use reifydb_value::{config::ExtensionParams, params::Params};
 
 use crate::{error::Result, procedure::extern_c::binding::context::ExternCProcedureContext};
 
@@ -14,7 +14,7 @@ pub trait ExternCProcedureMetadata {
 }
 
 pub trait ExternCProcedure: 'static {
-	fn new(config: &Config) -> Result<Self>
+	fn new(params: &ExtensionParams) -> Result<Self>
 	where
 		Self: Sized;
 

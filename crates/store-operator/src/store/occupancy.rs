@@ -14,7 +14,7 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
-use crate::types::OperatorWrite;
+use crate::{error::Result, types::OperatorWrite};
 
 const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;
 
@@ -74,18 +74,18 @@ impl KeyspaceOccupancy {
 		}
 	}
 
-	pub fn mask(&self, operator: OperatorId, seed: impl FnOnce() -> Vec<KeyspaceId>) -> u64 {
+	pub fn mask(&self, operator: OperatorId, seed: impl FnOnce() -> Result<Vec<KeyspaceId>>) -> Result<u64> {
 		if let Some(entry) = self.masks.lock().get(&operator)
 			&& entry.seeded
 		{
-			return entry.mask;
+			return Ok(entry.mask);
 		}
-		let seeded = seed().into_iter().filter_map(bit).fold(0, |mask, bit| mask | bit);
+		let seeded = seed()?.into_iter().filter_map(bit).fold(0, |mask, bit| mask | bit);
 		let mut masks = self.masks.lock();
 		let entry = masks.entry(operator).or_default();
 		entry.mask |= seeded;
 		entry.seeded = true;
-		entry.mask
+		Ok(entry.mask)
 	}
 
 	pub fn occupied(&self, operator: OperatorId) -> Vec<KeyspaceId> {

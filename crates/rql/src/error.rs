@@ -71,14 +71,9 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("{kind} takes no WITH clause")]
-	OperatorNoWithClause {
-		kind: OperationKind,
-		fragment: Fragment,
-	},
-
-	#[error("Sliding windows must specify a slide parameter")]
-	WindowMissingSlideParameter {
+	#[error("WITH key `{key}` is given more than once")]
+	OperatorWithDuplicateKey {
+		key: String,
 		fragment: Fragment,
 	},
 
@@ -100,23 +95,6 @@ pub enum RqlError {
 		fragment: Fragment,
 		window_type: String,
 		slide_type: String,
-	},
-
-	#[error("Tumbling windows should not specify a slide parameter")]
-	WindowTumblingWithSlide {
-		fragment: Fragment,
-	},
-
-	#[error("Incompatible window type and size combination")]
-	WindowIncompatibleTypeSize {
-		fragment: Fragment,
-		window_type: String,
-		size_type: String,
-	},
-
-	#[error("Window type and size must be specified")]
-	WindowMissingTypeOrSize {
-		fragment: Fragment,
 	},
 
 	#[error("Immutable must be smaller than lateness")]
@@ -523,40 +501,15 @@ impl IntoDiagnostic for RqlError {
 				}
 			}
 
-			RqlError::OperatorNoWithClause { kind, fragment } => {
-				let code = match kind {
-					OperationKind::Aggregate => "AGGREGATE_006",
-					OperationKind::Distinct => "DISTINCT_003",
-					OperationKind::Apply => "APPLY_003",
-					_ => "OP_002",
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message: format!("{kind} takes no WITH clause"),
-					column: None,
-					fragment,
-					label: Some("unexpected WITH clause".to_string()),
-					help: Some(format!("Remove the WITH clause: {kind} does not accept one")),
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
-
-			RqlError::WindowMissingSlideParameter { fragment } => Diagnostic {
-				code: "WINDOW_002".to_string(),
+			RqlError::OperatorWithDuplicateKey { key, fragment } => Diagnostic {
+				code: "OP_003".to_string(),
 				rql: None,
-				message: "Sliding windows must specify a slide parameter".to_string(),
+				message: format!("WITH key `{}` is given more than once", key),
 				column: None,
 				fragment,
-				label: Some("missing slide parameter".to_string()),
-				help: Some("Add a slide parameter to the WINDOW configuration, e.g., 'WINDOW WITH { duration: 5m, slide: 1m }'".to_string()),
-				notes: vec![
-					"Sliding windows create overlapping windows by advancing in smaller steps".to_string(),
-					"The slide parameter determines how far each window advances".to_string(),
-					"Example: WINDOW WITH { duration: 10m, slide: 2m } creates 10-minute windows that advance every 2 minutes".to_string(),
-				],
+				label: Some("key given twice".to_string()),
+				help: Some("Each WITH key may appear at most once in its block".to_string()),
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},
@@ -626,47 +579,6 @@ impl IntoDiagnostic for RqlError {
 				operator_chain: None,
 			},
 
-			RqlError::WindowTumblingWithSlide { fragment } => Diagnostic {
-				code: "WINDOW_005".to_string(),
-				rql: None,
-				message: "Tumbling windows should not specify a slide parameter".to_string(),
-				column: None,
-				fragment,
-				label: Some("unexpected slide parameter".to_string()),
-				help: Some(
-					"Remove the slide parameter for tumbling windows, or use sliding windows if overlap is needed"
-						.to_string(),
-				),
-				notes: vec![
-					"Tumbling windows are non-overlapping and advance by their full size".to_string(),
-					"For tumbling windows, use only: WINDOW WITH { duration: 5m } or WINDOW WITH { count: 100 }".to_string(),
-					"For overlapping windows, use sliding windows with both size and slide parameters".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::WindowIncompatibleTypeSize { fragment, window_type, size_type } => Diagnostic {
-				code: "WINDOW_006".to_string(),
-				rql: None,
-				message: format!(
-					"Incompatible window type {} and size type {} for window",
-					window_type, size_type
-				),
-				column: None,
-				fragment,
-				label: Some("mismatched window configuration".to_string()),
-				help: Some("Use 'duration' with time-based windows or 'count' with count-based windows".to_string()),
-				notes: vec![
-					"Time-based windows use the 'duration' parameter with duration literals (e.g., 5m, 1h)".to_string(),
-					"Count-based windows use 'count' parameter with numeric values (e.g., 100, 500)".to_string(),
-					"Example time window: WINDOW WITH { duration: 10m }".to_string(),
-					"Example count window: WINDOW WITH { count: 1000 }".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
 			RqlError::WindowImmutableNotSmallerThanLateness { fragment, immutable_value, lateness_value } => Diagnostic {
 				code: "WINDOW_009".to_string(),
 				rql: None,
@@ -706,27 +618,6 @@ impl IntoDiagnostic for RqlError {
 					"An immutable at or beyond the window's own span can never seal anything before the window closes".to_string(),
 					"Immutable is how long a row may still be updated or deleted before the accumulator folds it away".to_string(),
 					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, immutable: 15s }".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::WindowMissingTypeOrSize { fragment } => Diagnostic {
-				code: "WINDOW_007".to_string(),
-				rql: None,
-				message: "Window type and size must be specified for window".to_string(),
-				column: None,
-				fragment,
-				label: Some("incomplete window configuration".to_string()),
-				help: Some(
-					"Specify either 'duration' for time-based windows or 'count' for count-based windows"
-						.to_string(),
-				),
-				notes: vec![
-					"Windows require a size specification to determine their boundaries".to_string(),
-					"Use 'duration' with a duration literal for time-based windows: WINDOW WITH { duration: 5m }".to_string(),
-					"Use 'count' with number for count-based windows: WINDOW WITH { count: 100 }".to_string(),
-					"Additional parameters like 'slide' can be added for sliding windows".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

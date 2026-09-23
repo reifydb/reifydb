@@ -9,4 +9,4 @@ pub const PROCEDURE_ABI_TAG: u32 = 0x2820;
 
 pub type ExternCProcedureMagicFn = extern "C" fn() -> u32;
 
-pub type ExternCProcedureCreateFn = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;
+pub type ExternCProcedureCreateFn = extern "C" fn(params: *const u8, params_len: usize) -> *mut c_void;

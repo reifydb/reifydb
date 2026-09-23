@@ -40,7 +40,7 @@ use crate::{
 			key::{OperatorByFlowKey, OperatorKey},
 			state::OperatorStateKey,
 		},
-		operator_settings::OperatorSettingsKey,
+		operator_retention::OperatorRetentionKey,
 		output_frontier::OutputFrontierKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
@@ -135,7 +135,7 @@ pub enum TaggedKey {
 	ProcedureParam(ProcedureParamKey),
 	Binding(BindingKey),
 	NamespaceBinding(NamespaceBindingKey),
-	OperatorSettings(OperatorSettingsKey),
+	OperatorRetention(OperatorRetentionKey),
 	ColumnSnapshot(ColumnSnapshotKey),
 	SeriesColumnSnapshot(SeriesColumnSnapshotKey),
 	TableColumnSnapshot(TableColumnSnapshotKey),
@@ -227,7 +227,7 @@ impl TaggedKey {
 			Self::ProcedureParam(_) => KeyTag::ProcedureParam,
 			Self::Binding(_) => KeyTag::Binding,
 			Self::NamespaceBinding(_) => KeyTag::NamespaceBinding,
-			Self::OperatorSettings(_) => KeyTag::OperatorSettings,
+			Self::OperatorRetention(_) => KeyTag::OperatorRetention,
 			Self::ColumnSnapshot(_) => KeyTag::ColumnSnapshot,
 			Self::SeriesColumnSnapshot(_) => KeyTag::SeriesColumnSnapshot,
 			Self::TableColumnSnapshot(_) => KeyTag::TableColumnSnapshot,
@@ -320,7 +320,7 @@ impl TaggedKey {
 			Self::ProcedureParam(key) => key.encode(),
 			Self::Binding(key) => key.encode(),
 			Self::NamespaceBinding(key) => key.encode(),
-			Self::OperatorSettings(key) => key.encode(),
+			Self::OperatorRetention(key) => key.encode(),
 			Self::ColumnSnapshot(key) => key.encode(),
 			Self::SeriesColumnSnapshot(key) => key.encode(),
 			Self::TableColumnSnapshot(key) => key.encode(),
@@ -420,7 +420,7 @@ impl TaggedKey {
 			KeyTag::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyTag::Binding => BindingKey::decode(key).map(Self::Binding),
 			KeyTag::NamespaceBinding => NamespaceBindingKey::decode(key).map(Self::NamespaceBinding),
-			KeyTag::OperatorSettings => OperatorSettingsKey::decode(key).map(Self::OperatorSettings),
+			KeyTag::OperatorRetention => OperatorRetentionKey::decode(key).map(Self::OperatorRetention),
 			KeyTag::ColumnSnapshot => ColumnSnapshotKey::decode(key).map(Self::ColumnSnapshot),
 			KeyTag::SeriesColumnSnapshot => {
 				SeriesColumnSnapshotKey::decode(key).map(Self::SeriesColumnSnapshot)
@@ -847,9 +847,9 @@ impl From<NamespaceBindingKey> for TaggedKey {
 	}
 }
 
-impl From<OperatorSettingsKey> for TaggedKey {
-	fn from(key: OperatorSettingsKey) -> Self {
-		Self::OperatorSettings(key)
+impl From<OperatorRetentionKey> for TaggedKey {
+	fn from(key: OperatorRetentionKey) -> Self {
+		Self::OperatorRetention(key)
 	}
 }
 
@@ -1247,7 +1247,7 @@ impl KeyFields for TaggedKey {
 			Self::ProcedureParam(key) => key.fields(),
 			Self::Binding(key) => key.fields(),
 			Self::NamespaceBinding(key) => key.fields(),
-			Self::OperatorSettings(key) => key.fields(),
+			Self::OperatorRetention(key) => key.fields(),
 			Self::ColumnSnapshot(key) => key.fields(),
 			Self::SeriesColumnSnapshot(key) => key.fields(),
 			Self::TableColumnSnapshot(key) => key.fields(),
@@ -1344,7 +1344,7 @@ mod tests {
 				key::{OperatorByFlowKey, OperatorKey},
 				state::{GroupId, KeyspaceId, OperatorStateKey},
 			},
-			operator_settings::OperatorSettingsKey,
+			operator_retention::OperatorRetentionKey,
 			output_frontier::OutputFrontierKey,
 			partition::PartitionKey,
 			procedure::{ProcedureKey, ProcedureParamKey},
@@ -2232,7 +2232,7 @@ mod tests {
 				namespace: NamespaceId(85),
 				binding: BindingId(86),
 			}),
-			probe(OperatorSettingsKey {
+			probe(OperatorRetentionKey {
 				operator: OperatorId(87),
 			}),
 			probe(ColumnSnapshotKey {

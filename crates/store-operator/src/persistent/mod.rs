@@ -24,7 +24,6 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::byte_size::ByteSize;
-use tracing::warn;
 
 use crate::{
 	error::Result,
@@ -77,36 +76,6 @@ impl PersistentTier {
 		}
 	}
 
-	pub fn total_bytes(&self) -> ByteSize {
-		match self {
-			Self::Absent => ByteSize::ZERO,
-			Self::Memory(memory) => total_of(memory),
-			Self::Testing(testing) => total_of(testing),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.total_bytes(),
-		}
-	}
-
-	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
-		match self {
-			Self::Absent => Vec::new(),
-			Self::Memory(memory) => occupied_of(memory, operator),
-			Self::Testing(testing) => occupied_of(testing, operator),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.occupied_keyspaces(operator),
-		}
-	}
-
-	pub fn flush_batch(&self, batch: &FlushBatch) {
-		match self {
-			Self::Absent => {}
-			Self::Memory(memory) => flush_of(memory, batch),
-			Self::Testing(testing) => flush_of(testing, batch),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.flush_batch(batch),
-		}
-	}
-
 	pub fn page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Self::Sqlite(storage) = self {
@@ -138,34 +107,6 @@ impl PersistentTier {
 
 	#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {}
-}
-
-fn total_of(persistent: &impl Enumerate) -> ByteSize {
-	match persistent.census() {
-		Ok(entries) => ByteSize::from_bytes(
-			entries.iter().map(|entry| entry.key_bytes.as_bytes() + entry.value_bytes.as_bytes()).sum(),
-		),
-		Err(error) => {
-			warn!(error = %error, "operator census failed; reporting zero total bytes");
-			ByteSize::ZERO
-		}
-	}
-}
-
-fn occupied_of(persistent: &impl Enumerate, operator: OperatorId) -> Vec<KeyspaceId> {
-	match persistent.keyspaces(operator) {
-		Ok(keyspaces) => keyspaces,
-		Err(error) => {
-			warn!(error = %error, "operator keyspace enumeration failed; treating none as occupied");
-			Vec::new()
-		}
-	}
-}
-
-fn flush_of(persistent: &impl Apply, batch: &FlushBatch) {
-	if let Err(error) = persistent.apply(batch) {
-		warn!(error = %error, "operator flush batch failed; buffered rows were not persisted");
-	}
 }
 
 impl Shutdown for PersistentTier {

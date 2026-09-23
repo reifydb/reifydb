@@ -7,7 +7,7 @@ import {Shape} from '@reifydb/core';
 import type {WsClient} from '@reifydb/client';
 import {Store} from '@reifydb/store';
 import {StoreProvider, useSubscription} from '../../src';
-import {connect, namespace, poll} from './setup';
+import {connect, namespace, poll, readSpec} from './setup';
 
 const ns = namespace('use_sub_it');
 const items = Shape.object({id: Shape.int4(), name: Shape.utf8()});
@@ -45,7 +45,7 @@ describe('useSubscription against a live server', () => {
     it('renders loading first and then ready once the server acknowledges', async () => {
         const name = await table('ready');
         function View() {
-            const entry = useSubscription(`from ${name}`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${name}`), null);
             return <div data-testid="status">{entry.status}</div>;
         }
         render(<StoreProvider store={store}><View/></StoreProvider>);
@@ -56,7 +56,7 @@ describe('useSubscription against a live server', () => {
     it('an insert, an update and a delete each reach the rendered output', async () => {
         const name = await table('ops');
         function View() {
-            const entry = useSubscription(`from ${name}`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${name}`), null);
             return <ul data-testid={entry.status}>{entry.data.map(row => <li key={row.id}>{row.name}</li>)}</ul>;
         }
         render(<StoreProvider store={store}><View/></StoreProvider>);
@@ -76,7 +76,7 @@ describe('useSubscription against a live server', () => {
     it('unmounting removes the subscription from the server', async () => {
         const name = await table('unmount');
         function View() {
-            const entry = useSubscription(`from ${name}`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${name}`), null);
             return <div data-testid={entry.status}/>;
         }
         const before = await subscriptionCount();
@@ -90,7 +90,7 @@ describe('useSubscription against a live server', () => {
     it('under StrictMode a mount still leaves exactly one server subscription', async () => {
         const name = await table('strict');
         function View() {
-            const entry = useSubscription(`from ${name}`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${name}`), null);
             return <div data-testid={entry.status}/>;
         }
         const before = await subscriptionCount();
@@ -106,7 +106,7 @@ describe('useSubscription against a live server', () => {
     it('two components on the same query share one server subscription and both see the row', async () => {
         const name = await table('shared');
         function View({tag}: {tag: string}) {
-            const entry = useSubscription(`from ${name}`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${name}`), null);
             return <div data-testid={tag}>{entry.data.map(row => row.name).join(',')}</div>;
         }
         const before = await subscriptionCount();
@@ -125,7 +125,7 @@ describe('useSubscription against a live server', () => {
 
     it('a subscription to a missing table renders the error status', async () => {
         function View() {
-            const entry = useSubscription(`from ${ns}::not_there`, null, items);
+            const entry = useSubscription(readSpec(items, `from ${ns}::not_there`), null);
             return <div data-testid="status">{entry.status}</div>;
         }
         render(<StoreProvider store={store}><View/></StoreProvider>);
@@ -135,7 +135,7 @@ describe('useSubscription against a live server', () => {
     it('enabled false never subscribes on the server', async () => {
         const name = await table('disabled');
         function View() {
-            const entry = useSubscription(`from ${name}`, null, items, {enabled: false});
+            const entry = useSubscription(readSpec(items, `from ${name}`), null, {enabled: false});
             return <div data-testid="status">{entry.status}</div>;
         }
         const before = await subscriptionCount();
@@ -150,8 +150,8 @@ describe('useSubscription against a live server', () => {
         const primitive = Shape.object({id: Shape.int4(), big: Shape.int8()});
         const wrapped = Shape.object({id: Shape.int4(), big: Shape.int8Value()});
         function View() {
-            const plain = useSubscription(`from ${name}`, null, primitive);
-            const value = useSubscription(`from ${name}`, null, wrapped);
+            const plain = useSubscription(readSpec(primitive, `from ${name}`), null);
+            const value = useSubscription(readSpec(wrapped, `from ${name}`), null);
             return (
                 <div>
                     <span data-testid="plain">{plain.data.map(r => typeof r.big).join(',')}</span>

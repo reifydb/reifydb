@@ -4,12 +4,13 @@
 import { Component, type ReactNode } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ReifyError, Store, type StoreClient } from '@reifydb/react'
+import { ReifyError, Store, rql, type StoreClient } from '@reifydb/react'
 import type { TestDb, TestFactory } from '@reifydb/reifydb'
 import { AppLayout } from '@/components/layout/app-layout'
 import { useMe } from '@/hooks/use-me'
 import { connect } from '@/store/client'
 import { loadBackend } from '../../support/backend'
+import { adminRoot } from '../../support/db'
 import { createUserWithEmail, guestStore, identityNamed, storeAs } from '../../support/identity'
 import { setSessionToken, signOut } from '../../support/session-mock'
 
@@ -44,6 +45,8 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
 }
 
 const GUEST_ID = '01928f00-0000-7000-8000-000000000001'
+
+const CREATE_USER_PLAIN = rql.write([])`CREATE USER plain`
 
 let create: TestFactory
 let db: TestDb
@@ -132,7 +135,7 @@ describe('me over the store', () => {
 
   it('reads a user whose email attribute is none as a signed-in user named by its identity name', async () => {
     // Uptime names a user by its email, so me must take the email from the name; the email attribute may be none.
-    await db.adminRoot('CREATE USER plain', {}, [])
+    await adminRoot(db, CREATE_USER_PLAIN, null)
     const plain = await identityNamed(db, 'plain')
     stores.set('plain-token', storeAs(db, plain))
     setSessionToken('plain-token')

@@ -9,4 +9,4 @@ pub const TRANSFORM_ABI_TAG: u32 = 0x2830;
 
 pub type ExternCTransformMagicFn = extern "C" fn() -> u32;
 
-pub type ExternCTransformCreateFn = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;
+pub type ExternCTransformCreateFn = extern "C" fn(params: *const u8, params_len: usize) -> *mut c_void;

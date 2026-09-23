@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::AggregateWith};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -20,6 +20,7 @@ pub(crate) struct AggregateCompiler {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub with: AggregateWith,
 }
 
 impl From<AggregateNode> for AggregateCompiler {
@@ -28,6 +29,7 @@ impl From<AggregateNode> for AggregateCompiler {
 			input: node.input,
 			by: node.by,
 			map: node.map,
+			with: node.with,
 		}
 	}
 }
@@ -43,6 +45,7 @@ impl CompileOperator for AggregateCompiler {
 			Aggregate {
 				by: self.by,
 				map: self.map,
+				with: self.with,
 			},
 		)?;
 

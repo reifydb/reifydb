@@ -8,8 +8,9 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, ManagedKey, UnmanagedKey, guest_may_address},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -68,17 +69,6 @@ pub trait GuestState {
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &GroupStateKey) -> Result<()>;
 	fn contains(&self, key: &GroupStateKey) -> Result<bool>;
-	fn clear(&mut self) -> Result<()>;
-	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>>;
-	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>>;
-	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
-	fn range<T: OperatorState>(
-		&self,
-		group: GroupId,
-		keyspace: KeyspaceId,
-		start: GuestBound<'_>,
-		end: GuestBound<'_>,
-	) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
@@ -111,7 +101,7 @@ pub trait GuestState {
 		let mut seen = 0usize;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !keyspace.is_known() || (data_only && !keyspace.is_data()) {
+			if !guest_may_address(OperatorClass::Windowed, keyspace) || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {
@@ -177,7 +167,73 @@ pub trait GuestDictionary {
 	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 }
 
-pub trait GuestContext {
+pub struct Managed;
+
+pub struct Unmanaged;
+
+pub struct Nostate;
+
+pub struct Windowed;
+
+pub trait ClassValue {
+	const CLASS: OperatorClass;
+}
+
+impl ClassValue for Managed {
+	const CLASS: OperatorClass = OperatorClass::Managed;
+}
+
+impl ClassValue for Unmanaged {
+	const CLASS: OperatorClass = OperatorClass::Unmanaged;
+}
+
+impl ClassValue for Nostate {
+	const CLASS: OperatorClass = OperatorClass::Nostate;
+}
+
+impl ClassValue for Windowed {
+	const CLASS: OperatorClass = OperatorClass::Windowed;
+}
+
+pub trait CustomClass {
+	type Key: AsRef<GroupStateKey>;
+}
+
+impl CustomClass for Managed {
+	type Key = ManagedKey;
+}
+
+impl CustomClass for Unmanaged {
+	type Key = UnmanagedKey;
+}
+
+pub trait WindowClass {}
+
+impl WindowClass for Windowed {}
+
+pub trait ClassState<C: CustomClass> {
+	fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>>;
+	fn set<T: OperatorState>(&mut self, key: &C::Key, value: &T) -> Result<()>;
+	fn remove(&mut self, key: &C::Key) -> Result<()>;
+	fn contains(&self, key: &C::Key) -> Result<bool>;
+}
+
+impl<C: CustomClass, S: GuestState> ClassState<C> for S {
+	fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>> {
+		GuestState::get(self, key.as_ref())
+	}
+	fn set<T: OperatorState>(&mut self, key: &C::Key, value: &T) -> Result<()> {
+		GuestState::set(self, key.as_ref(), value)
+	}
+	fn remove(&mut self, key: &C::Key) -> Result<()> {
+		GuestState::remove(self, key.as_ref())
+	}
+	fn contains(&self, key: &C::Key) -> Result<bool> {
+		GuestState::contains(self, key.as_ref())
+	}
+}
+
+pub trait GuestEmitContext {
 	type InsertEmit<'a>: GuestEmit
 	where
 		Self: 'a;
@@ -190,7 +246,6 @@ pub trait GuestContext {
 
 	fn operator_id(&self) -> OperatorId;
 	fn written_at(&self) -> DateTime;
-	fn state(&mut self) -> impl GuestState + '_;
 	fn dictionary(&mut self) -> impl GuestDictionary + '_;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_pairs(
@@ -198,8 +253,6 @@ pub trait GuestContext {
 		pairs: &[(GroupId, EncodedKey)],
 	) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
@@ -243,4 +296,19 @@ pub trait GuestContext {
 		}
 		emit.finish(row_numbers)
 	}
+}
+
+pub trait GuestContext<C = Windowed>: GuestEmitContext {
+	fn state(&mut self) -> impl ClassState<C> + '_
+	where
+		C: CustomClass;
+	fn window_state(&mut self) -> impl GuestState + '_
+	where
+		C: WindowClass;
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
+	where
+		C: WindowClass;
+	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>
+	where
+		C: WindowClass;
 }

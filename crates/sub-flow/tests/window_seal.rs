@@ -359,3 +359,52 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
 	);
 }
+
+fn sealed_window_source(db: &TestDb) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, s: datetime, total: int8 } AS {
+			FROM app::t
+				| window tumbling { s: window::start(), total: math::sum(v) }
+					with { duration: 1s, lateness: 0s }
+					by { g }
+		}"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10, ts: "1970-01-01T00:00:20Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, v: 20, ts: "1970-01-01T00:00:30Z" }]"#);
+	db.await_row_count("FROM app::w FILTER { g == 2 }", 1, TIMEOUT);
+}
+
+#[test]
+fn a_delete_of_a_row_in_a_sealed_window_keeps_its_published_total() {
+	// A sealed window's state is reaped, so applying the remove would publish a total built from nothing.
+	let db = setup();
+	sealed_window_source(&db);
+
+	db.command("DELETE app::t FILTER { id == 1 }");
+	db.await_all_flows(TIMEOUT);
+
+	assert_eq!(
+		db.await_exact_row_count("FROM app::w FILTER { g == 1 and total == 10 }", 1, TIMEOUT),
+		1,
+		"the 20s window sealed once the 30s row arrived, so the delete must be dropped; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+}
+
+#[test]
+fn an_update_moving_a_row_out_of_a_sealed_window_counts_it_in_both_windows() {
+	// Taking the row back out of the sealed window would rewrite a total already published as final.
+	let db = setup();
+	sealed_window_source(&db);
+
+	db.command(r#"UPDATE app::t { ts: "1970-01-01T00:00:30Z" } FILTER { id == 1 }"#);
+	db.await_row_count("FROM app::w FILTER { g == 1 }", 2, TIMEOUT);
+	db.await_all_flows(TIMEOUT);
+
+	assert_eq!(
+		db.await_exact_row_count("FROM app::w FILTER { g == 1 and total == 10 }", 2, TIMEOUT),
+		2,
+		"the 20s window is sealed and keeps 10, and the 30s window gains the moved 10; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+}

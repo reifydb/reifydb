@@ -7,7 +7,10 @@ use reifydb_codec::{
 	row::shape::{RowFamily, RowShape, RowShapeField},
 	tag::ValueKind,
 };
-use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
+};
 use reifydb_sdk::{
 	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
 	error::Result,
@@ -21,7 +24,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
 use reifydb_testing_sdk::chaos::{context::ChaosContext, materialize::materialize_batches};
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -37,7 +40,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl ExternCOperator for PassthroughOperator {
-	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -69,7 +72,7 @@ impl OperatorMetadata for DoubleInsertOperator {
 }
 
 impl ExternCOperator for DoubleInsertOperator {
-	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -103,7 +106,7 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 }
 
 impl ExternCOperator for SwallowsRemoveOperator {
-	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 

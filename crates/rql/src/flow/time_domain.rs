@@ -3,12 +3,13 @@
 
 use std::collections::HashSet;
 
-use reifydb_catalog::{CatalogStore, catalog::Catalog};
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{flow_join_retention_requires_event_time, flow_rolling_lag_requires_event_time},
 	interface::catalog::{flow::FlowId, id::ViewId},
 	internal,
+	operator_with::{JoinWith, WindowWith},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
@@ -98,8 +99,11 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 		let operator = flow.get_operator(operator_id).unwrap();
 
 		if let OperatorDef::Window {
-			kind: WindowKind::Rolling {
-				lag: Some(_),
+			with: WindowWith {
+				kind: WindowKind::Rolling {
+					lag: Some(_),
+					..
+				},
 				..
 			},
 			..
@@ -126,12 +130,12 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 			continue;
 		};
 		let OperatorDef::Join {
+			with: JoinWith {
+				retention: Some(retention),
+				..
+			},
 			..
 		} = &operator.ty
-		else {
-			continue;
-		};
-		let Some(retention) = CatalogStore::find_operator_settings(txn, *operator_id)?.and_then(|s| s.join)
 		else {
 			continue;
 		};

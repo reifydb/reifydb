@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
+use reifydb_catalog::{catalog::Catalog, store::operator_retention::create::create_operator_retention};
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -17,10 +17,14 @@ use reifydb_core::{
 		view::View,
 	},
 	internal,
-	row::{JoinRetention, OperatorRetention, OperatorSettings},
+	row::OperatorRetention,
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_value::{Result, error::Error, value::blob::Blob};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{blob::Blob, duration::Duration},
+};
 
 use crate::{
 	flow::{
@@ -174,51 +178,24 @@ impl FlowCompiler {
 		Ok(operator_id)
 	}
 
-	pub(crate) fn write_operator_settings(
+	pub(crate) fn write_operator_retention(
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		retention: Option<OperatorRetention>,
+		retention: Option<Duration>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());
 		}
-		if let Some(retention) = retention {
-			create_operator_settings(
+		if let Some(duration) = retention {
+			create_operator_retention(
 				txn.admin_mut(),
 				operator_id,
-				&OperatorSettings {
-					retention: Some(retention),
-					join: None,
+				&OperatorRetention {
+					duration,
 				},
 			)?;
 		}
-		Ok(())
-	}
-
-	pub(crate) fn write_operator_settings_join(
-		&self,
-		txn: &mut Transaction<'_>,
-		operator_id: OperatorId,
-		join: Option<JoinRetention>,
-	) -> Result<()> {
-		if self.ephemeral {
-			return Ok(());
-		}
-		let Some(join) = join else {
-			return Ok(());
-		};
-		if join.left.is_none() && join.right.is_none() {
-			return Ok(());
-		}
-		create_operator_settings(
-			txn.admin_mut(),
-			operator_id,
-			&OperatorSettings {
-				retention: None,
-				join: Some(join),
-			},
-		)?;
 		Ok(())
 	}
 

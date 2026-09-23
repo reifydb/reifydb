@@ -28,11 +28,11 @@ impl<'bump> Parser<'bump> {
 
 		self.advance()?;
 
-		let mut expressions = Vec::new();
+		let mut params = Vec::new();
 
 		if !self.current()?.is_operator(Operator::CloseCurly) {
 			loop {
-				expressions.push(self.parse_node(Precedence::None)?);
+				params.push(self.parse_node(Precedence::None)?);
 
 				if self.current()?.is_separator(Separator::Comma) {
 					self.advance()?;
@@ -47,12 +47,13 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		self.reject_with_clause(OperationKind::Apply)?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstApply {
 			token,
 			operator,
-			expressions,
+			params,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -77,7 +78,7 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
 		assert_eq!(apply.operator.token.value(), "counter");
-		assert_eq!(apply.expressions.len(), 0);
+		assert_eq!(apply.params.len(), 0);
 	}
 
 	#[test]
@@ -92,8 +93,8 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
 		assert_eq!(apply.operator.text(), "running_sum");
-		assert_eq!(apply.expressions.len(), 1);
-		assert_eq!(apply.expressions[0].as_identifier().text(), "value");
+		assert_eq!(apply.params.len(), 1);
+		assert_eq!(apply.params[0].as_identifier().text(), "value");
 	}
 
 	#[test]
@@ -108,7 +109,7 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
 		assert_eq!(apply.operator.token.value(), "counter");
-		assert_eq!(apply.expressions.len(), 2);
+		assert_eq!(apply.params.len(), 2);
 	}
 
 	#[test]

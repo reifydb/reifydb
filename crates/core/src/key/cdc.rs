@@ -251,7 +251,7 @@ pub mod primary_key_tests {
 			KeyTag::NamespaceProcedure => {}
 			KeyTag::ProcedureParam => {}
 			KeyTag::Binding => {}
-			KeyTag::OperatorSettings => {}
+			KeyTag::OperatorRetention => {}
 			KeyTag::NamespaceBinding => {}
 			KeyTag::ColumnSnapshot => {}
 			KeyTag::SeriesColumnSnapshot => {}
@@ -463,8 +463,8 @@ pub mod primary_key_tests {
 	}
 
 	#[test]
-	fn test_include_operator_settings() {
-		assert!(!should_exclude_from_cdc(KeyTag::OperatorSettings));
+	fn test_include_operator_retention() {
+		assert!(!should_exclude_from_cdc(KeyTag::OperatorRetention));
 	}
 
 	#[test]

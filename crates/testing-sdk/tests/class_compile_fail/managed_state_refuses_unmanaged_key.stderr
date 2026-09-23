@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/class_compile_fail/managed_state_refuses_unmanaged_key.rs:11:25
+   |
+11 |     ctx.state().get::<i64>(key)
+   |                 ---------- ^^^ expected `&ManagedKey`, found `&UnmanagedKey`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected reference `&ManagedKey`
+              found reference `&UnmanagedKey`
+note: method defined here
+  --> $WORKSPACE/crates/sdk/src/flow/operator/context.rs
+   |
+   |     fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>>;
+   |        ^^^

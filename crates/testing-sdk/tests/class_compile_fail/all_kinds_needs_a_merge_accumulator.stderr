@@ -1,0 +1,25 @@
+error[E0277]: the trait bound `NoMerge: MergeAccumulator` is not satisfied
+  --> tests/class_compile_fail/all_kinds_needs_a_merge_accumulator.rs:98:15
+   |
+98 |     type Kinds = AllKinds;
+   |                  ^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `MergeAccumulator` is not implemented for `NoMerge`
+  --> tests/class_compile_fail/all_kinds_needs_a_merge_accumulator.rs:32:1
+   |
+32 | struct NoMerge {
+   | ^^^^^^^^^^^^^^
+   = help: the following other types implement trait `MergeAccumulator`:
+             KeyedInvertibleAccumulator<K, A>
+             LastValue<V>
+             Moments
+             RetainedAccumulator<K, V>
+             SealingEndpoint<S, V>
+             SealingMax<S, V>
+             SealingMin<S, V>
+   = note: required for `AllKinds` to implement `KindSet<Unmergeable>`
+note: required by a bound in `reifydb_sdk::flow::operator::windowed::operator::Emit::Kinds`
+  --> $WORKSPACE/crates/sdk/src/flow/operator/windowed/operator.rs
+   |
+   |     type Kinds: KindSet<Self>;
+   |                 ^^^^^^^^^^^^^ required by this bound in `Emit::Kinds`

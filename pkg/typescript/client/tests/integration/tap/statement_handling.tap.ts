@@ -72,7 +72,7 @@ describe('Statement Handling', () => {
 
         it('mixed_empty_and_non_empty', async () => {
             const frames = await wsClient.command(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}',
                 null,
                 [
                     Shape.object({ one: Shape.int4() }),
@@ -103,7 +103,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_same_structure', async () => {
             const frames = await wsClient.command(
-                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
+                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};OUTPUT MAP {result: 3};',
                 null,
                 [
                     Shape.object({ result: Shape.int4() }),
@@ -128,7 +128,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_different_structure', async () => {
             const frames = await wsClient.command(
-                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
+                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };OUTPUT MAP {result: 'ReifyDB'};",
                 null,
                 [
                     Shape.object({ result: Shape.int4() }),
@@ -165,7 +165,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_no_trailing_semicolon', async () => {
             const frames = await wsClient.command(
-                'OUTPUT MAP {x: 1};MAP {y: 2}',
+                'OUTPUT MAP {x: 1};OUTPUT MAP {y: 2}',
                 null,
                 [
                     Shape.object({ x: Shape.int4() }),
@@ -185,7 +185,7 @@ describe('Statement Handling', () => {
 
         it('statement_with_whitespace', async () => {
             const frames = await wsClient.command(
-                '  OUTPUT MAP {result: 1}  ;  MAP {result: 2}  ',
+                '  OUTPUT MAP {result: 1}  ;  OUTPUT MAP {result: 2}  ',
                 null,
                 [
                     Shape.object({ result: Shape.int4() }),
@@ -235,7 +235,7 @@ describe('Statement Handling', () => {
 
         it('query_mixed_empty_and_non_empty', async () => {
             const frames = await wsClient.query(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}',
                 null,
                 [
                     Shape.object({ one: Shape.int4() }),
@@ -266,7 +266,7 @@ describe('Statement Handling', () => {
 
         it('query_multiple_statements_same_structure', async () => {
             const frames = await wsClient.query(
-                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
+                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};OUTPUT MAP {result: 3};',
                 null,
                 [
                     Shape.object({ result: Shape.int4() }),
@@ -291,7 +291,7 @@ describe('Statement Handling', () => {
 
         it('query_multiple_statements_different_structure', async () => {
             const frames = await wsClient.query(
-                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
+                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };OUTPUT MAP {result: 'ReifyDB'};",
                 null,
                 [
                     Shape.object({ result: Shape.int4() }),

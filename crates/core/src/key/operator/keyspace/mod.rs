@@ -20,7 +20,7 @@ use crate::{
 		operator::{
 			keyspace::{
 				distinct::{DistinctEntry, DistinctLayout},
-				expiry::{Expiry, ReapQueue, TumblingExpiry},
+				expiry::{CustomManagedDue, CustomManagedLatest, Expiry, ReapQueue, TumblingExpiry},
 				join::{
 					JoinExpiryDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry,
 					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
@@ -32,8 +32,8 @@ use crate::{
 					RingbufferExpiry, RingbufferForward, RingbufferMeta, RingbufferTtlArm,
 				},
 				root::{
-					CustomNotCached, GateVisibility, GroupRowMapping, GuestRowMapping, NodeCounter,
-					SealLedger, SourceWatermark,
+					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
+					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark,
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
@@ -196,7 +196,10 @@ catalogue!(
 	GateVisibility,
 	GroupRowMapping,
 	GuestRowMapping,
-	CustomNotCached,
+	CustomUnmanaged,
+	CustomManaged,
+	CustomManagedDue,
+	CustomManagedLatest,
 );
 
 #[derive(Clone, Debug)]
@@ -242,7 +245,10 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::GATE_VISIBILITY
 		| KeyspaceId::GROUP_ROW_MAPPING
 		| KeyspaceId::GUEST_ROW_MAPPING
-		| KeyspaceId::CUSTOM_NOT_CACHED
+		| KeyspaceId::CUSTOM_UNMANAGED
+		| KeyspaceId::CUSTOM_MANAGED
+		| KeyspaceId::CUSTOM_MANAGED_DUE
+		| KeyspaceId::CUSTOM_MANAGED_LATEST
 		| KeyspaceId::RINGBUFFER_FORWARD
 		| KeyspaceId::RINGBUFFER_ENTRY
 		| KeyspaceId::RINGBUFFER_EXPIRY
@@ -425,13 +431,11 @@ mod tests {
 	}
 
 	#[test]
-	fn every_keyspace_names_and_tiers_itself_the_way_its_id_does() {
-		// the impl writes NAME and RANGE_CACHED down by hand and KeyspaceId answers them separately, so this is
-		// the only place the two lists are forced to agree; a keyspace that quietly changed tiers on one
-		// side would otherwise be cached by the store and uncached by the catalogue
-		for (name, id, range_cached) in catalogue() {
+	fn every_keyspace_names_itself_the_way_its_id_does() {
+		// the impl and KeyspaceId spell each name separately, so without this a rename on one side goes
+		// unnoticed
+		for (name, id, _) in catalogue() {
 			assert_eq!(name, id.name(), "{name} and its id disagree on the name");
-			assert_eq!(range_cached, id.caches_ranges(), "{name} and its id disagree on the range tier");
 		}
 	}
 
@@ -443,7 +447,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 44, "the catalogue is forty four keyspaces");
+		assert_eq!(seen.len(), 47, "the catalogue is forty seven keyspaces");
 	}
 
 	#[test]
@@ -463,16 +467,16 @@ mod tests {
 	}
 
 	#[test]
-	fn exactly_twenty_four_of_the_forty_four_keyspaces_are_group_scoped() {
+	fn exactly_twenty_five_of_the_forty_seven_keyspaces_are_group_scoped() {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			44,
+			47,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
 			group_scoped_keyspaces(),
-			24,
+			25,
 			"a keyspace changed group scope; confirm its key layout meant to"
 		);
 	}

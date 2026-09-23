@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_codec::value::encode_params;
-use reifydb_core::interface::catalog::flow::OperatorId;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_core::operator_with::encode_apply_with;
+use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -17,7 +19,7 @@ use reifydb_flow::{
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
-use reifydb_value::{Result, config::Config, error::Error};
+use reifydb_value::{Result, config::ExtensionParams, error::Error};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use tracing::instrument;
 
@@ -41,11 +43,16 @@ impl StandardOperatorProvider {
 }
 
 impl OperatorProvider for StandardOperatorProvider {
-	fn provide(&self, operator_id: OperatorId, config: &Config) -> Result<BoxedHostOperator> {
-		let operator = config.name();
+	fn provide(
+		&self,
+		operator_id: OperatorId,
+		params: &ExtensionParams,
+		with: &ApplyWith,
+	) -> Result<BoxedHostOperator> {
+		let operator = params.name();
 
 		if let Some(factory) = self.custom.get(operator) {
-			return factory(operator_id, config);
+			return factory(operator_id, params, with);
 		}
 
 		#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -54,12 +61,13 @@ impl OperatorProvider for StandardOperatorProvider {
 				return extern_rust_operator_loader().write().create_operator_by_name(
 					operator,
 					operator_id,
-					config,
+					params,
+					with,
 				);
 			}
 
 			if extern_c_operator_loader().read().has_operator(operator) {
-				return self.create_extern_c_operator(operator, operator_id, config);
+				return self.create_extern_c_operator(operator, operator_id, params, with);
 			}
 
 			Err(Error::from(FlowGraphError::UnknownOperator {
@@ -76,27 +84,29 @@ impl OperatorProvider for StandardOperatorProvider {
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 impl StandardOperatorProvider {
-	#[instrument(name = "flow::provider::create_extern_c_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
+	#[instrument(name = "flow::provider::create_extern_c_operator", level = "debug", skip(self, params, with), fields(operator = %operator, operator_id = ?operator_id))]
 	fn create_extern_c_operator(
 		&self,
 		operator: &str,
 		operator_id: OperatorId,
-		config: &Config,
+		params: &ExtensionParams,
+		with: &ApplyWith,
 	) -> Result<BoxedHostOperator> {
 		let loader = extern_c_operator_loader();
 		let mut loader_write = loader.write();
 
-		let config_params =
-			Params::Named(Arc::new(config.iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
-		let config_bytes = encode_params(&config_params).map_err(|e| {
+		let named = Params::Named(Arc::new(params.iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
+		let params_bytes = encode_params(&named).map_err(|e| {
 			Error::from(FlowStateError::Encode {
-				state: "operator config",
+				state: "operator params",
 				cause: e.to_string(),
 			})
 		})?;
 
-		let created = loader_write.create_operator_by_name(operator, operator_id, &config_bytes);
-		let (descriptor, instance) = match created {
+		let with_bytes = encode_apply_with(with)?;
+
+		let created = loader_write.create_operator_by_name(operator, operator_id, &params_bytes, &with_bytes);
+		let (descriptor, class, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
 				return Err(Error::from(ExternOperatorError::CreateFailed {
@@ -105,6 +115,6 @@ impl StandardOperatorProvider {
 			}
 		};
 
-		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id)))
+		Ok(Box::new(ExternCOperatorHandle::new(descriptor, class, instance, operator_id)))
 	}
 }

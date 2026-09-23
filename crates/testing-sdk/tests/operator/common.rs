@@ -4,59 +4,59 @@
 //! Shared fixtures, shapes, samplers and config matrices for the windowed operator
 //! differential-chaos suite.
 //!
-//! Each fixture implements both the operator trait (so its accumulator oracle can simulate
-//! it) and the registration trait (so the driver can run it through the `ChaosHarness`), and
-//! mirrors the in-crate unit-test fixtures so both suites exercise the same code paths.
+//! Each fixture implements the windowed operator traits, so its accumulator oracle can
+//! simulate it and the driver can run it through the `ChaosHarness`, and mirrors the in-crate
+//! unit-test fixtures so both suites exercise the same code paths.
 
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::shape::{RowFamily, RowShape, RowShapeField},
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 };
 use reifydb_flow::{
-	operator::state::seal::coord::Coord,
+	operator::state::{
+		seal::{coord::Coord, domain::SealDomain},
+		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
+	},
 	window::{
 		accumulator::{
-			WindowAccumulator,
+			MergeAccumulator, WindowAccumulator,
 			invertible::{
-				keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments,
-				multiset::Multiset, ordf64::OrdF64, retained_map::RetainedAccumulator,
+				keyed::KeyedInvertibleAccumulator, moments::Moments, multiset::Multiset,
+				ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
-			sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
 		},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
+		OperatorMetadata,
 		column::operator::OperatorColumn,
-		context::GuestContext,
+		context::{GuestContext, Windowed},
 		view::RowView,
-		windowed::{
-			rolling::{RollingOperator, RollingRegistration},
-			rolling_incremental::RollingIncrementalOperator,
-			rolling_top_k::{RollingTopKOperator, RollingTopKRegistration},
-			tumbling::{TumblingOperator, TumblingRegistration},
-			tumbling_carry::{TumblingCarryOperator, TumblingCarryRegistration},
-		},
+		windowed::operator::{AllKinds, CarryEmit, Emit, NoRolling, WindowedOperator},
 	},
 	row,
 };
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::{at_millis, millis},
-	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, value_type::ValueType},
 };
+
+pub fn settings(with: &ApplyWith) -> WindowSettings<DateTime> {
+	<DateTime as SealDomain>::window_settings_of(with).expect("valid window settings")
+}
 
 pub const WINDOW: u64 = 60;
 /// Held below WINDOW so aging is reachable inside a single window.
@@ -171,51 +171,49 @@ row!(VolumeOut {
 
 pub struct VolumeTumbling;
 
-impl TumblingOperator for VolumeTumbling {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = VolumeAccumulator;
-	type Output = VolumeOut;
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, size))
-	}
-
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, millis(WINDOW))
-	}
-
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OrdF64) -> Option<VolumeOut> {
-		Some(VolumeOut {
-			group: group.clone(),
-			window_start: span.start.to_order(),
-			volume: value.get(),
-		})
-	}
-}
-
-impl TumblingRegistration for VolumeTumbling {
+impl OperatorMetadata for VolumeTumbling {
 	const NAME: &'static str = "operator_test_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: invertible volume sum";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+impl WindowedOperator for VolumeTumbling {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = VolumeAccumulator;
+	type Output = VolumeOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
+
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let size = row.f64("size")?;
+		Some((group, size))
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
+		VolumeAccumulator::default()
+	}
+}
+
+impl Emit for VolumeTumbling {
+	type Kinds = NoRolling;
+
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OrdF64) -> Option<VolumeOut> {
+		Some(VolumeOut {
+			group: group.clone(),
+			window_start: span.start.to_order(),
+			volume: value.get(),
+		})
 	}
 }
 
@@ -261,51 +259,49 @@ row!(MinOut {
 
 pub struct MinTumbling;
 
-impl TumblingOperator for MinTumbling {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = MinAccumulator;
-	type Output = MinOut;
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, OrdF64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, OrdF64::new(size)?))
-	}
-
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, millis(WINDOW))
-	}
-
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OrdF64) -> Option<MinOut> {
-		Some(MinOut {
-			group: group.clone(),
-			window_start: span.start.to_order(),
-			min: value.get(),
-		})
-	}
-}
-
-impl TumblingRegistration for MinTumbling {
+impl OperatorMetadata for MinTumbling {
 	const NAME: &'static str = "operator_test_min";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: removal-safe min over a multiset";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+impl WindowedOperator for MinTumbling {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = MinAccumulator;
+	type Output = MinOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
+
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, OrdF64)> {
+		let group = row.utf8("group")?.to_string();
+		let size = row.f64("size")?;
+		Some((group, OrdF64::new(size)?))
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {
+		MinAccumulator::default()
+	}
+}
+
+impl Emit for MinTumbling {
+	type Kinds = NoRolling;
+
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OrdF64) -> Option<MinOut> {
+		Some(MinOut {
+			group: group.clone(),
+			window_start: span.start.to_order(),
+			min: value.get(),
+		})
 	}
 }
 
@@ -391,30 +387,49 @@ row!(OhlcvOut {
 
 pub struct OhlcvSealingTumbling;
 
-impl TumblingOperator for OhlcvSealingTumbling {
+impl OperatorMetadata for OhlcvSealingTumbling {
+	const NAME: &'static str = "operator_test_ohlcv_sealing";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "chaos fixture: sealing OHLCV with bounded lateness";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for OhlcvSealingTumbling {
+	type Coord = DateTime;
 	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
+	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (DateTime, OrdF64))> {
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Option<(String, (DateTime, OrdF64))> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let price = OrdF64::new(row.f64("price")?)?;
 		Some((group, (at_millis(slot), price)))
 	}
 
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, millis(WINDOW))
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> OhlcvAcc {
+		OhlcvAcc::default()
 	}
+}
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OhlcvValue) -> Option<OhlcvOut> {
+impl Emit for OhlcvSealingTumbling {
+	type Kinds = NoRolling;
+
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OhlcvValue) -> Option<OhlcvOut> {
 		Some(OhlcvOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -426,32 +441,27 @@ impl TumblingOperator for OhlcvSealingTumbling {
 	}
 }
 
-impl TumblingRegistration for OhlcvSealingTumbling {
-	const NAME: &'static str = "operator_test_ohlcv_sealing";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: sealing OHLCV with bounded lateness";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
-		Ok(Self)
-	}
-
-	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
-	}
-}
-
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, HeapSize)]
 pub struct WindowSum {
 	moments: Moments,
+	folded: u32,
+}
+
+impl WindowSum {
+	fn panes(&self) -> u32 {
+		// Without the folded count a merged accumulator would report one window whatever it holds.
+		if self.folded > 0 {
+			self.folded
+		} else {
+			u32::from(!self.moments.is_empty())
+		}
+	}
 }
 
 impl WindowAccumulator for WindowSum {
 	type Contribution = f64;
-	type Output = f64;
+	type Output = (f64, u32);
 
 	fn add(&mut self, contribution: &f64) {
 		self.moments.add(*contribution);
@@ -461,12 +471,19 @@ impl WindowAccumulator for WindowSum {
 		self.moments.remove(*contribution);
 	}
 
-	fn finalize(&self) -> Option<f64> {
-		(!self.moments.is_empty()).then(|| self.moments.sum())
+	fn finalize(&self) -> Option<(f64, u32)> {
+		(!self.moments.is_empty()).then(|| (self.moments.sum(), self.panes()))
 	}
 
 	fn is_empty(&self) -> bool {
 		self.moments.is_empty()
+	}
+}
+
+impl MergeAccumulator for WindowSum {
+	fn merge(&mut self, other: &Self) {
+		self.folded = self.panes() + other.panes();
+		self.moments.merge(&other.moments);
 	}
 }
 
@@ -483,69 +500,51 @@ row!(RollingOut {
 	windows: u32
 });
 
-pub struct RollingSum {
-	capacity: usize,
-}
+pub struct RollingSum;
 
-pub fn rolling_sum() -> RollingSum {
-	RollingSum {
-		capacity: ROLLING_CAPACITY,
-	}
-}
-
-impl RollingOperator for RollingSum {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = WindowSum;
-	type Output = RollingOut;
-
-	fn capacity(&self) -> usize {
-		self.capacity
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(ROLLING_BUCKET)
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
-	}
-
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<RollingOut> {
-		if buffer.is_empty() {
-			return None;
-		}
-		let rolling_sum = buffer.values().filter_map(|w| w.finalize()).sum();
-		Some(RollingOut {
-			group: group.clone(),
-			rolling_sum,
-			windows: buffer.len() as u32,
-		})
-	}
-}
-
-impl RollingRegistration for RollingSum {
+impl OperatorMetadata for RollingSum {
 	const NAME: &'static str = "operator_test_rolling_sum";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: rolling sum over last N windows";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
-		Ok(rolling_sum())
+impl WindowedOperator for RollingSum {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = WindowSum;
+	type Output = RollingOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str(group).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
+
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+		WindowSum::default()
+	}
+}
+
+impl Emit for RollingSum {
+	type Kinds = AllKinds;
+
+	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<RollingOut> {
+		Some(RollingOut {
+			group: group.clone(),
+			rolling_sum: value.0,
+			windows: value.1,
+		})
 	}
 }
 
@@ -567,48 +566,52 @@ row!(TopOut {
 
 pub struct TopVolumeRollingTopK;
 
-impl RollingTopKOperator for TopVolumeRollingTopK {
+impl OperatorMetadata for TopVolumeRollingTopK {
+	const NAME: &'static str = "operator_test_top_volume";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "chaos fixture: rolling top-2 volume by trader";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for TopVolumeRollingTopK {
+	type Coord = DateTime;
 	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
-	type SecondaryKey = u32;
-	type Output = TopOut;
+	type Output = BTreeMap<u32, TopOut>;
 
-	fn capacity(&self) -> usize {
-		ROLLING_CAPACITY
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(ROLLING_BUCKET)
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
 	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let trader = row.u64("trader")?;
 		let volume = row.f64("volume")?;
 		Some((group, (trader, volume)))
 	}
 
-	fn combine(
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+		KeyedInvertibleAccumulator::default()
+	}
+}
+
+impl Emit for TopVolumeRollingTopK {
+	type Kinds = AllKinds;
+
+	fn build_output(
 		&self,
 		group: &String,
-		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
-	) -> BTreeMap<u32, TopOut> {
-		let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
-		for window in buffer.values() {
-			if let Some(per_trader) = window.finalize() {
-				for (trader, moments) in per_trader {
-					*totals.entry(trader).or_insert(0.0) += moments.sum();
-				}
-			}
-		}
-		let mut ranked: Vec<(u64, f64)> = totals.into_iter().collect();
+		_span: WindowSpan<DateTime>,
+		value: &BTreeMap<u64, Moments>,
+	) -> Option<BTreeMap<u32, TopOut>> {
+		let mut ranked: Vec<(u64, f64)> =
+			value.iter().map(|(trader, moments)| (*trader, moments.sum())).collect();
 		ranked.sort_by(|a, b| {
 			b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0))
 		});
@@ -625,28 +628,7 @@ impl RollingTopKOperator for TopVolumeRollingTopK {
 				},
 			);
 		}
-		out
-	}
-}
-
-impl RollingTopKRegistration for TopVolumeRollingTopK {
-	const NAME: &'static str = "operator_test_top_volume";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: rolling top-2 volume by trader";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
-		Ok(Self)
-	}
-
-	fn encode_state_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str("state").str(group).build()
-	}
-
-	fn encode_row_key(&self, group: &String, secondary: &u32) -> EncodedKey {
-		EncodedKey::builder().str("row").str(group).u32(*secondary).build()
+		Some(out)
 	}
 }
 
@@ -668,39 +650,45 @@ row!(CarryOut {
 	has_carry: bool
 });
 
-pub struct TwapCarry {
-	retention: Option<u64>,
+pub struct TwapCarry;
+
+impl OperatorMetadata for TwapCarry {
+	const NAME: &'static str = "operator_test_carry";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "chaos fixture: tumbling carry-forward";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-pub fn twap_carry(retention: Option<u64>) -> TwapCarry {
-	TwapCarry {
-		retention,
-	}
-}
-
-impl TumblingCarryOperator for TwapCarry {
+impl WindowedOperator for TwapCarry {
+	type Coord = DateTime;
 	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
-	type Carry = f64;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(TwapCarry)
+	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let ts = row.u64("ts")?;
 		let price = row.f64("price")?;
 		Some((group, (ts, price)))
 	}
 
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, millis(WINDOW))
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
+		RetainedAccumulator::default()
 	}
+}
+
+impl CarryEmit for TwapCarry {
+	type Carry = f64;
 
 	fn build_output(
 		&self,
@@ -720,156 +708,6 @@ impl TumblingCarryOperator for TwapCarry {
 
 	fn carry_forward(&self, value: &BTreeMap<u64, f64>, _prev_carry: Option<&f64>) -> Option<f64> {
 		value.last_key_value().map(|(_, v)| *v)
-	}
-
-	fn retention(&self) -> Option<Duration> {
-		self.retention.map(millis)
-	}
-}
-
-impl TumblingCarryRegistration for TwapCarry {
-	const NAME: &'static str = "operator_test_carry";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: tumbling carry-forward";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_config(_operator_id: OperatorId, config: &Config) -> Result<Self> {
-		Ok(TwapCarry {
-			retention: config.u64("__retention"),
-		})
-	}
-
-	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
-	}
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct VelocityOut {
-	pub group: String,
-	pub recent: f64,
-	pub baseline: f64,
-	pub windows: u32,
-}
-
-row!(VelocityOut {
-	group: String,
-	recent: f64,
-	baseline: f64,
-	windows: u32
-});
-
-pub struct VelocityIncremental {
-	capacity: usize,
-}
-
-pub fn velocity_incremental() -> VelocityIncremental {
-	VelocityIncremental {
-		capacity: ROLLING_CAPACITY,
-	}
-}
-
-impl RollingOperator for VelocityIncremental {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = LastValue<f64>;
-	type Output = VelocityOut;
-
-	fn capacity(&self) -> usize {
-		self.capacity
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(ROLLING_BUCKET)
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
-	}
-
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<VelocityOut> {
-		let (_, newest) = buffer.iter().next_back()?;
-		let newest = *newest.get()?;
-		let total = buffer.len();
-		let mut sum = 0.0_f64;
-		let mut count = 0u32;
-		for (i, accumulator) in buffer.values().enumerate() {
-			if i + 1 == total {
-				continue;
-			}
-			if let Some(v) = accumulator.get() {
-				sum += *v;
-				count += 1;
-			}
-		}
-		let baseline = if count > 0 {
-			sum / count as f64
-		} else {
-			0.0
-		};
-		Some(VelocityOut {
-			group: group.clone(),
-			recent: newest,
-			baseline,
-			windows: total as u32,
-		})
-	}
-}
-
-impl RollingIncrementalOperator for VelocityIncremental {
-	type Running = Moments;
-
-	fn window_contribution(&self, window_value: &f64) -> f64 {
-		*window_value
-	}
-
-	fn combine_running(
-		&self,
-		group: &String,
-		running: &Moments,
-		newest_value: &f64,
-		_newest_coord: DateTime,
-	) -> Option<VelocityOut> {
-		let total_count = running.count();
-		let baseline_count = total_count.saturating_sub(1);
-		let baseline = if baseline_count > 0 {
-			(running.sum() - *newest_value) / baseline_count as f64
-		} else {
-			0.0
-		};
-		Some(VelocityOut {
-			group: group.clone(),
-			recent: *newest_value,
-			baseline,
-			windows: total_count as u32,
-		})
-	}
-}
-
-impl RollingRegistration for VelocityIncremental {
-	const NAME: &'static str = "operator_test_velocity";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: rolling velocity via running moments";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
-		Ok(velocity_incremental())
-	}
-
-	fn encode_row_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str(group).build()
 	}
 }
 

@@ -4,13 +4,13 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {DurationValue, Shape} from '@reifydb/core';
 import {WsClient} from '@reifydb/client';
 import type {SubscriptionConfig} from '@reifydb/client';
-import {Store} from '../src';
+import {Store, rql} from '../src';
 import {flush} from './fake-client';
 import {ScriptedSocket} from './scripted-socket';
 
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
-const rql = 'from test::items';
-const other = 'from test::others';
+const items = rql(shape)`from test::items`;
+const other = rql(shape)`from test::others`;
 const tuned: SubscriptionConfig = {hydration: {enabled: true, maxRows: 50}, throttle: DurationValue.fromMilliseconds(250), linger: DurationValue.fromMilliseconds(100)};
 
 let sockets: ScriptedSocket[] = [];
@@ -48,7 +48,7 @@ describe('reconnect', () => {
     it('replaces the rows with the snapshot the server re-hydrates after a reconnect', async () => {
         // The snapshot must replace the rows, otherwise a row deleted while offline renders forever.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         sockets[0].insert('server-1', [[1, 1, 'a'], [2, 2, 'b']]);
         await flush();
@@ -58,13 +58,13 @@ describe('reconnect', () => {
         second.insert('server-2', [[1, 1, 'a']]);
         await flush();
 
-        expect(store.getEntry(rql, null, shape).data).toEqual([{id: 1, name: 'a'}]);
+        expect(store.getEntry(items, null).data).toEqual([{id: 1, name: 'a'}]);
     });
 
     it('empties an entry whose rows were all deleted while disconnected', async () => {
         // An empty snapshot sends no change at all, so the rows must be dropped when the new id is acked.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         sockets[0].insert('server-1', [[1, 1, 'a'], [2, 2, 'b']]);
         await flush();
@@ -73,13 +73,13 @@ describe('reconnect', () => {
         second.ackSubscribe('server-2');
         await flush();
 
-        expect(store.getEntry(rql, null, shape).data).toEqual([]);
+        expect(store.getEntry(items, null).data).toEqual([]);
     });
 
     it('releases through the id the server issued on reconnect, not the old one', async () => {
         // The old id is dead on the new connection, so a release through it must never happen or the live one leaks.
         const store = new Store(await connect());
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         await flush();
 
@@ -95,7 +95,7 @@ describe('reconnect', () => {
     it('replaces the rows and adopts the new id for a batched subscription after a reconnect', async () => {
         // Pages open through batches, so the batched path must replace rows and adopt ids exactly like a single one.
         const store = new Store(await connect(), {batch: true});
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(items, null);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1']);
         sockets[0].insert('server-1', [[1, 1, 'a'], [2, 2, 'b']]);
@@ -106,7 +106,7 @@ describe('reconnect', () => {
         second.insert('server-2', [[1, 1, 'a']]);
         await flush();
 
-        expect(store.getEntry(rql, null, shape).data).toEqual([{id: 1, name: 'a'}]);
+        expect(store.getEntry(items, null).data).toEqual([{id: 1, name: 'a'}]);
         release();
         await flush();
         expect(second.unsubscribed()).toEqual(['server-2']);
@@ -117,8 +117,8 @@ describe('released batch subscriptions', () => {
     it('re-establishes only the subscriptions still held after a reconnect', async () => {
         // A released subscription must never come back on reconnect, or it streams rows nobody reads forever.
         const store = new Store(await connect(), {batch: true});
-        const release = store.subscribe(rql, null, shape);
-        store.subscribe(other, null, shape, tuned);
+        const release = store.subscribe(items, null);
+        store.subscribe(other.options({config: tuned}), null);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -136,8 +136,8 @@ describe('released batch subscriptions', () => {
     it('sends no batch at all once every subscription was released', async () => {
         // An emptied batch must be dropped, otherwise every reconnect re-opens subscriptions nobody holds.
         const store = new Store(await connect(), {batch: true});
-        const releaseItems = store.subscribe(rql, null, shape);
-        const releaseOthers = store.subscribe(other, null, shape);
+        const releaseItems = store.subscribe(items, null);
+        const releaseOthers = store.subscribe(other, null);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -158,9 +158,9 @@ describe('a second drop during resubscribe', () => {
     it('re-establishes every subscription on the next reconnect instead of losing them', async () => {
         // A drop mid-resubscribe must leave the unfinished ones for the next reconnect, or they go stale forever.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
-        store.subscribe(other, null, shape);
+        store.subscribe(other, null);
         sockets[0].ackSubscribe('server-2');
         sockets[0].insert('server-1', [[1, 1, 'a']]);
         sockets[0].insert('server-2', [[1, 1, 'b']]);
@@ -178,16 +178,16 @@ describe('a second drop during resubscribe', () => {
         third.insert('server-4', [[2, 2, 'd']]);
         await flush();
 
-        expect(store.getEntry(rql, null, shape)).toMatchObject({status: 'ready', data: [{id: 2, name: 'c'}]});
-        expect(store.getEntry(other, null, shape)).toMatchObject({status: 'ready', data: [{id: 2, name: 'd'}]});
+        expect(store.getEntry(items, null)).toMatchObject({status: 'ready', data: [{id: 2, name: 'c'}]});
+        expect(store.getEntry(other, null)).toMatchObject({status: 'ready', data: [{id: 2, name: 'd'}]});
     });
 
     it('re-establishes a subscription acknowledged on the connection that dropped again', async () => {
         // An id acked on the dead connection is dead too, so it must be resubscribed rather than kept as live.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
-        store.subscribe(other, null, shape);
+        store.subscribe(other, null);
         sockets[0].ackSubscribe('server-2');
         await flush();
 
@@ -201,8 +201,8 @@ describe('a second drop during resubscribe', () => {
         await flush();
 
         expect(third.requests('Subscribe')).toHaveLength(2);
-        expect(store.getEntry(rql, null, shape).status).toBe('ready');
-        expect(store.getEntry(other, null, shape).status).toBe('ready');
+        expect(store.getEntry(items, null).status).toBe('ready');
+        expect(store.getEntry(other, null).status).toBe('ready');
     });
 });
 
@@ -211,7 +211,7 @@ describe('subscribing while offline', () => {
         // A subscribe written into the dead socket is lost, so the entry would stay loading forever.
         const store = new Store(await connect());
         sockets[0].close();
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         await flush();
 
         expect(sockets[1].requests('Subscribe')).toHaveLength(1);
@@ -219,34 +219,34 @@ describe('subscribing while offline', () => {
         sockets[1].insert('server-1', [[1, 1, 'a']]);
         await flush();
 
-        expect(store.getEntry(rql, null, shape)).toMatchObject({status: 'ready', data: [{id: 1, name: 'a'}]});
+        expect(store.getEntry(items, null)).toMatchObject({status: 'ready', data: [{id: 1, name: 'a'}]});
     });
 
     it('sends a batch started while disconnected once the connection is back', async () => {
         // Pages open through batches, so an offline batch must be held exactly like a single subscribe.
         const store = new Store(await connect(), {batch: true});
         sockets[0].close();
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         await flush();
 
         expect(sockets[1].requests('BatchSubscribe')).toHaveLength(1);
         sockets[1].ackBatch('batch-1', ['server-1']);
         await flush();
 
-        expect(store.getEntry(rql, null, shape).status).toBe('ready');
+        expect(store.getEntry(items, null).status).toBe('ready');
     });
 
     it('retries a subscribe the dropped connection never acknowledged', async () => {
         // A drop before the ack must not fail the subscribe for good, or the entry errors on a routine blip.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
 
         const second = await dropConnection();
 
         expect(second.requests('Subscribe')).toHaveLength(1);
         second.ackSubscribe('server-1');
         await flush();
-        expect(store.getEntry(rql, null, shape).status).toBe('ready');
+        expect(store.getEntry(items, null).status).toBe('ready');
     });
 });
 
@@ -254,7 +254,7 @@ describe('unsubscribing while offline', () => {
     it('resolves an unsubscribe made while disconnected instead of waiting on the dead socket', async () => {
         // The server subscription died with the connection, so waiting on the dead socket hangs the caller forever.
         const ws = await connect();
-        const subscribed = ws.subscribe(rql, null, shape, {});
+        const subscribed = ws.subscribe(items.rql, null, shape, {});
         sockets[0].ackSubscribe('server-1');
         const id = await subscribed;
 
@@ -269,7 +269,7 @@ describe('unsubscribing while offline', () => {
     it('never re-establishes a subscription released while disconnected', async () => {
         // A release that only reaches the dead socket must still stop the reconnect from reviving the subscription.
         const store = new Store(await connect());
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         await flush();
 
@@ -283,8 +283,8 @@ describe('unsubscribing while offline', () => {
     it('never re-establishes a batch subscription released while disconnected', async () => {
         // Pages release batch subscriptions one by one, so a subscription released offline must not come back with its batch.
         const store = new Store(await connect(), {batch: true});
-        const release = store.subscribe(rql, null, shape);
-        store.subscribe(other, null, shape, tuned);
+        const release = store.subscribe(items, null);
+        store.subscribe(other.options({config: tuned}), null);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -300,7 +300,7 @@ describe('unsubscribing while offline', () => {
     it('never re-establishes a subscription released while a second drop left it waiting', async () => {
         // A subscription waiting to be re-established is still held, so a release must cancel the wait too.
         const store = new Store(await connect());
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         await flush();
 
@@ -315,9 +315,9 @@ describe('unsubscribing while offline', () => {
     it('never sends a resubscribe for a subscription released while the resubscribe was underway', async () => {
         // Resubscribes go out one at a time, so one released before its turn must be skipped rather than revived.
         const store = new Store(await connect());
-        store.subscribe(rql, null, shape);
+        store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
-        const release = store.subscribe(other, null, shape);
+        const release = store.subscribe(other, null);
         sockets[0].ackSubscribe('server-2');
         await flush();
 
@@ -334,7 +334,7 @@ describe('unsubscribing while offline', () => {
         // The caller already let go, so the fresh id must be returned to the server, never handed to its callback.
         const ws = await connect();
         const onResubscribe = vi.fn();
-        const subscribed = ws.subscribe(rql, null, shape, {onResubscribe});
+        const subscribed = ws.subscribe(items.rql, null, shape, {onResubscribe});
         sockets[0].ackSubscribe('server-1');
         const id = await subscribed;
 
@@ -351,7 +351,7 @@ describe('unsubscribing while offline', () => {
         // The drop ended the server subscription too, so the cut-off unsubscribe must neither fail nor revive it.
         const onBackgroundError = vi.fn();
         const store = new Store(await connect(), {onBackgroundError});
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(items, null);
         sockets[0].ackSubscribe('server-1');
         await flush();
         release();
@@ -366,7 +366,7 @@ describe('unsubscribing while offline', () => {
     it('resolves a batch unsubscribe made while disconnected and never re-establishes the batch', async () => {
         // The batch died with the connection, so waiting on the dead socket hangs and the reconnect revives it.
         const ws = await connect();
-        const subscribed = ws.batchSubscribe([{rql, shape, callbacks: {}}]);
+        const subscribed = ws.batchSubscribe([{rql: items.rql, shape, callbacks: {}}]);
         sockets[0].ackBatch('batch-1', ['server-1']);
         const {batchId} = await subscribed;
 
@@ -382,7 +382,7 @@ describe('unsubscribing while offline', () => {
     it('never re-establishes a batch unsubscribed while a second drop left its resubscribe waiting', async () => {
         // A batch waiting to be re-established is still held, so unsubscribing it must cancel the wait too.
         const ws = await connect();
-        const subscribed = ws.batchSubscribe([{rql, shape, callbacks: {}}]);
+        const subscribed = ws.batchSubscribe([{rql: items.rql, shape, callbacks: {}}]);
         sockets[0].ackBatch('batch-1', ['server-1']);
         const {batchId} = await subscribed;
 

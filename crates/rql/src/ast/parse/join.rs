@@ -22,22 +22,20 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_join(&mut self) -> Result<AstJoin<'bump>> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Join)?;
-		let with = self.parse_sub_query()?;
+		let subquery = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
-			with,
+			subquery,
 			using_clause,
 			alias,
-			retention,
-			snapshot,
-			pick,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -58,20 +56,18 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_keyword(Join)?;
 
-		let with = self.parse_sub_query()?;
+		let subquery = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
-		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
-			with,
+			subquery,
 			join_type,
 			alias,
-			retention,
-			snapshot,
-			pick,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -81,22 +77,20 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
-		let with = self.parse_sub_query()?;
+		let subquery = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
-			with,
+			subquery,
 			using_clause,
 			alias,
-			retention,
-			snapshot,
-			pick,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -106,22 +100,20 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 
-		let with = self.parse_sub_query()?;
+		let subquery = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
-			with,
+			subquery,
 			using_clause,
 			alias,
-			retention,
-			snapshot,
-			pick,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -189,7 +181,7 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::JoinType, sort::SortDirection};
+	use reifydb_core::common::JoinType;
 
 	use crate::{
 		ast::{
@@ -213,7 +205,7 @@ pub mod tests {
 		let join = result.first_unchecked().as_join();
 
 		let AstJoin::LeftJoin {
-			with,
+			subquery,
 			using_clause,
 			alias,
 			..
@@ -224,7 +216,7 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "orders");
 
-		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -259,7 +251,7 @@ pub mod tests {
 		let result = result[0].first_unchecked().as_join();
 
 		let AstJoin::LeftJoin {
-			with,
+			subquery,
 			using_clause,
 			alias,
 			..
@@ -270,7 +262,7 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "c");
 
-		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -318,7 +310,7 @@ pub mod tests {
 
 		let join = statement.nodes[1].as_join();
 		let AstJoin::LeftJoin {
-			with,
+			subquery,
 			using_clause,
 			alias,
 			..
@@ -329,7 +321,7 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "c");
 
-		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -364,7 +356,7 @@ pub mod tests {
 		let join = result.first_unchecked().as_join();
 
 		let AstJoin::LeftJoin {
-			with,
+			subquery,
 			using_clause,
 			alias,
 			..
@@ -375,7 +367,7 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "o");
 
-		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -473,12 +465,12 @@ pub mod tests {
 
 		match &join {
 			AstJoin::NaturalJoin {
-				with,
+				subquery,
 				join_type,
 				alias,
 				..
 			} => {
-				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 				if let Ast::From(AstFrom::Source {
 					source,
 					..
@@ -581,7 +573,7 @@ pub mod tests {
 		let join = result.first_unchecked().as_join();
 
 		let AstJoin::InnerJoin {
-			with,
+			subquery,
 			using_clause,
 			alias,
 			..
@@ -592,7 +584,7 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "o");
 
-		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		let first_node = subquery.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -629,296 +621,5 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "o");
 		assert_eq!(using_clause.pairs.len(), 1);
-	}
-
-	#[test]
-	fn test_inner_join_with_ttl_both_sides() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { retention: { left: 1h, right: 2d } }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::InnerJoin {
-			retention: ttl,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected InnerJoin");
-		};
-		let ttl = ttl.as_ref().expect("expected ttl block");
-		let left = ttl.left.as_ref().expect("left side present");
-		assert_eq!(left.fragment.text(), "1h");
-		let right = ttl.right.as_ref().expect("right side present");
-		assert_eq!(right.fragment.text(), "2d");
-	}
-
-	#[test]
-	fn test_inner_join_with_ttl_only_left() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { retention: { left: 10m } }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::InnerJoin {
-			retention: ttl,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected InnerJoin");
-		};
-		let ttl = ttl.as_ref().expect("expected ttl block");
-		let left = ttl.left.as_ref().expect("left present");
-		assert_eq!(left.fragment.text(), "10m");
-		assert!(ttl.right.is_none(), "right side must be absent when only left is given");
-	}
-
-	#[test]
-	fn test_left_join_with_ttl_only_right() {
-		let bump = Bump::new();
-		let source = "left join { from orders } as o using (id, o.user_id) \
-			with { retention: { right: 1d } }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::LeftJoin {
-			retention: ttl,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected LeftJoin");
-		};
-		let ttl = ttl.as_ref().expect("expected ttl block");
-		assert!(ttl.left.is_none());
-		assert_eq!(ttl.right.as_ref().unwrap().fragment.text(), "1d");
-	}
-
-	#[test]
-	fn test_join_with_ttl_empty_body_rejected() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) with { retention: { } }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error for empty join retention body");
-	}
-
-	#[test]
-	fn test_join_with_old_single_ttl_shorthand_rejected() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { retention: 1h }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(
-			result.is_err(),
-			"expected error for legacy shorthand: retention on join now requires explicit 'left'/'right' keys"
-		);
-	}
-
-	#[test]
-	fn test_join_with_unknown_side_key_rejected() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { retention: { middle: 1h } }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error for unknown side key in join retention");
-	}
-
-	#[test]
-	fn test_join_with_ttl_and_snapshot() {
-		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { retention: { left: 5m }, snapshot: true }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::InnerJoin {
-			retention: ttl,
-			snapshot,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected InnerJoin");
-		};
-		assert!(*snapshot, "snapshot flag should still parse alongside per-side retention");
-		let ttl = ttl.as_ref().expect("expected ttl");
-		assert!(ttl.left.is_some());
-		assert!(ttl.right.is_none());
-	}
-
-	fn parse_inner(source: &str) -> (bool, Option<Vec<(String, SortDirection)>>) {
-		// Reduces the pick to (column name, resolved direction) pairs so every assertion below reads
-		// as the ordering the RQL asked for, with the keyword's default already applied.
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::InnerJoin {
-			snapshot,
-			pick,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected InnerJoin");
-		};
-		let pick = pick.as_ref().map(|p| {
-			p.columns
-				.iter()
-				.zip(&p.directions)
-				.map(|(c, d)| {
-					(
-						c.name.text().to_string(),
-						d.clone().unwrap_or_else(|| p.default_direction.clone()),
-					)
-				})
-				.collect()
-		});
-		(*snapshot, pick)
-	}
-
-	fn join(clause: &str) -> String {
-		format!("inner join {{ from orders }} as o using (id, o.user_id) with {{ {clause} }}")
-	}
-
-	#[test]
-	fn test_join_with_latest_flag() {
-		// `latest: true` predates this feature and must keep meaning a pick by #time, which the
-		// parser represents as an empty column list for the logical layer to expand.
-		let (snapshot, pick) = parse_inner(&join("snapshot: true, latest: true, retention: { left: 10s }"));
-		assert!(snapshot, "snapshot must parse alongside latest");
-		assert_eq!(pick, Some(vec![]), "latest: true must parse as a pick with no ordering columns");
-	}
-
-	#[test]
-	fn test_join_latest_defaults_false() {
-		let (_, pick) = parse_inner("inner join { from orders } as o using (id, o.user_id)");
-		assert_eq!(pick, None, "a join with no with clause must not pick");
-	}
-
-	#[test]
-	fn test_join_latest_defaults_each_column_to_descending() {
-		// The keyword sets the default direction: `latest` means the greatest, so a bare column
-		// must not silently order ascending and return the smallest row.
-		let (_, pick) = parse_inner(&join("latest: { o.total }"));
-		assert_eq!(pick, Some(vec![("total".to_string(), SortDirection::Desc)]));
-	}
-
-	#[test]
-	fn test_join_earliest_defaults_each_column_to_ascending() {
-		let (_, pick) = parse_inner(&join("earliest: { o.total }"));
-		assert_eq!(pick, Some(vec![("total".to_string(), SortDirection::Asc)]));
-	}
-
-	#[test]
-	fn test_join_pick_mixes_directions_across_columns() {
-		// The whole reason directions are per column: "greatest total, ties to the smallest seq"
-		// is unsayable when one keyword fixes the direction for every column.
-		let (_, pick) = parse_inner(&join("latest: { o.total, o.seq: asc }"));
-		assert_eq!(
-			pick,
-			Some(
-				vec![
-					("total".to_string(), SortDirection::Desc),
-					("seq".to_string(), SortDirection::Asc),
-				]
-			),
-			"an explicit direction must override the keyword default, and only for its own column"
-		);
-	}
-
-	#[test]
-	fn test_join_pick_binds_four_columns_in_written_order() {
-		let (_, pick) = parse_inner(&join("earliest: { o.a, o.b: desc, o.c, o.d: desc }"));
-		assert_eq!(
-			pick,
-			Some(vec![
-				("a".to_string(), SortDirection::Asc),
-				("b".to_string(), SortDirection::Desc),
-				("c".to_string(), SortDirection::Asc),
-				("d".to_string(), SortDirection::Desc),
-			]),
-			"lexicographic order is written order, and each column keeps its own direction"
-		);
-	}
-
-	#[test]
-	fn test_join_explicit_direction_equals_the_mirrored_keyword() {
-		// R3 admits two spellings of one ordering; they must produce the same pick, or a view
-		// silently changes meaning when rewritten.
-		let (_, explicit) = parse_inner(&join("latest: { o.total: asc }"));
-		let (_, keyword) = parse_inner(&join("earliest: { o.total }"));
-		assert_eq!(explicit, keyword);
-	}
-
-	#[test]
-	fn test_join_empty_pick_braces_equal_the_boolean_form() {
-		let (_, braces) = parse_inner(&join("latest: { }"));
-		let (_, boolean) = parse_inner(&join("latest: true"));
-		assert_eq!(braces, boolean, "an empty brace list and the boolean form must be the same pick");
-	}
-
-	#[test]
-	fn test_join_latest_false_is_no_pick() {
-		let (_, pick) = parse_inner(&join("latest: false"));
-		assert_eq!(pick, None, "latest: false must leave the join an ordinary fan-out");
-	}
-
-	fn parse_err(source: &str) -> String {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		parser.parse().expect_err("must be rejected").to_string()
-	}
-
-	#[test]
-	fn test_join_pick_rejects_a_direction_that_is_not_asc_or_desc() {
-		let err = parse_err(&join("latest: { o.total: sideways }"));
-		assert!(err.contains("asc"), "the rejection must name what is allowed, got: {err}");
-	}
-
-	#[test]
-	fn test_join_rejects_latest_and_earliest_together() {
-		let err = parse_err(&join("latest: { o.total }, earliest: { o.seq }"));
-		assert!(err.contains("earliest"), "the rejection must name the clash, got: {err}");
-	}
-
-	#[test]
-	fn test_join_rejects_a_column_ordered_pick_with_a_right_retention() {
-		// The pick can crown a row that seals before one it outranked, which was never stored to fall back to.
-		for source in [
-			join("latest: { o.total }, retention: { right: 2s }"),
-			join("earliest: { o.total }, retention: { right: 2s }"),
-			join("latest: { o.total }, retention: { left: 1h, right: 2s }"),
-		] {
-			let err = parse_err(&source);
-			assert!(
-				err.contains("right"),
-				"the rejection must name the side that cannot be retained, got: {err}"
-			);
-		}
-	}
-
-	#[test]
-	fn test_join_accepts_a_column_ordered_pick_without_a_right_retention() {
-		// Only the right side clashes, so a left retention must never be swept up by the rejection.
-		let (_, pick) = parse_inner(&join("latest: { o.total }, retention: { left: 1h }"));
-		assert!(pick.is_some(), "a left retention alone must stay legal beside a column-ordered pick");
-	}
-
-	#[test]
-	fn test_join_accepts_a_time_ordered_pick_with_a_right_retention() {
-		// A pick by time crowns the newest row, which seals last, so no row it outranked can outlive it.
-		let (_, pick) = parse_inner(&join("latest: true, retention: { left: 1h, right: 2s }"));
-		assert_eq!(pick, Some(vec![]), "latest: true must stay legal beside a right retention");
 	}
 }

@@ -1004,14 +1004,6 @@ mod tests {
 		fn is_empty(&self) -> bool {
 			self.count == 0
 		}
-		fn merge(&mut self, other: &Self) {
-			self.sum += other.sum;
-			self.count += other.count;
-		}
-		fn unmerge(&mut self, other: &Self) {
-			self.sum -= other.sum;
-			self.count = self.count.saturating_sub(other.count);
-		}
 	}
 
 	#[test]

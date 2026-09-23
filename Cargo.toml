@@ -388,6 +388,7 @@ thiserror = { version = "2.0.18" }
 
 # testing
 test_each_file = { version = "0.3.7" }
+trybuild = { version = "1.0.121" }
 
 # proc-macro
 proc-macro2 = { version = "1.0.106" }

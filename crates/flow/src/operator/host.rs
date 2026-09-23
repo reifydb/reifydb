@@ -13,11 +13,15 @@ use reifydb_core::{
 		config::{ConfigKey, GetConfig},
 		flow::OperatorId,
 	},
+	internal_err,
 	key::{
 		any::TaggedKey,
 		operator::{
 			keyspace::join::JoinRowMappingKey,
-			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
+			state::{
+				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range_split,
+				node_prefix,
+			},
 		},
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -30,13 +34,20 @@ use reifydb_value::{
 		Value,
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
+		duration::Duration,
 		row_number::RowNumber,
 		value_type::ValueType,
 	},
 };
 
 use crate::{
-	operator::state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+	operator::state::{
+		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
+		iter::StateIterator,
+		reaper::IdentityReclaim,
+		reclaim::ReclaimOutcome,
+		seal::rule::SEAL_GATE_STEP,
+	},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,
@@ -124,17 +135,57 @@ pub struct TxnHostContext<'a, T: FlowTransaction> {
 	txn: &'a mut T,
 	operator: OperatorId,
 	now: DateTime,
+	retention: Option<Duration>,
 }
 
 impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
+		Self::with_retention(txn, operator, None)
+	}
+
+	pub fn with_retention(txn: &'a mut T, operator: OperatorId, retention: Option<Duration>) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,
 			operator,
 			now,
+			retention,
 		}
 	}
+
+	fn arm_reclaim(&mut self, key: &GroupStateKey) -> Result<()> {
+		if key.keyspace() != Some(KeyspaceId::CUSTOM_MANAGED) {
+			return Ok(());
+		}
+		let Some(group) = key.group().filter(|group| !group.is_root()) else {
+			return Ok(());
+		};
+		let Some(retention) = self.retention else {
+			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
+		};
+		let due = reclaim_due(self.now, retention);
+		let latest = managed_latest_key(group);
+		if let Some(previous) = expiry_get::<DateTime>(self, &latest)?.filter(|previous| *previous != due) {
+			expiry_drop(self, &managed_due_key(previous, group))?;
+		}
+		expiry_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
+		expiry_set(self, latest, due)?;
+		self.txn.arm_timer(
+			self.operator,
+			&Timer {
+				due,
+				kind: TimerKind::Reclaim,
+				key: EncodedKey::new(Vec::new()),
+			},
+		)
+	}
+}
+
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
+
+fn reclaim_due(written_at: DateTime, retention: Duration) -> DateTime {
+	let free = written_at.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
+	DateTime::from_nanos(free.to_nanos().div_ceil(NANOS_PER_SECOND).saturating_mul(NANOS_PER_SECOND))
 }
 
 impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
@@ -193,7 +244,8 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.txn.state_set(self.operator, key, payload)
+		self.txn.state_set(self.operator, key, payload)?;
+		self.arm_reclaim(key)
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {

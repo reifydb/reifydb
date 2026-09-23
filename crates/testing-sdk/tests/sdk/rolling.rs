@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
-
-use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
+use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
+	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
+	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::moments::Moments};
+use reifydb_flow::window::{
+	accumulator::{MergeAccumulator, WindowAccumulator, invertible::moments::Moments},
+	settings::WindowSettings,
+	span::WindowSpan,
+};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		column::operator::OperatorColumn, context::GuestContext,
-		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::rolling::*,
+		MountedOperator, OperatorMetadata,
+		column::operator::OperatorColumn,
+		context::{GuestContext, Windowed},
+		extern_c::binding::operator::ExternCOperatorAdapter,
+		view::RowView,
+		windowed::{
+			operator::{AllKinds, Emit, WindowedOperator},
+			plain::PlainDriver,
+		},
 	},
 	row,
 };
@@ -23,9 +34,9 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
 // Rolling sum where each window is itself an invertible accumulator, so rows can share a
@@ -35,11 +46,23 @@ use reifydb_value::{
 #[derive(Clone, Debug, Default, HeapSize)]
 struct WindowSum {
 	moments: Moments,
+	folded: u32,
+}
+
+impl WindowSum {
+	fn panes(&self) -> u32 {
+		// Without the folded count a merged accumulator would report one window whatever it holds.
+		if self.folded > 0 {
+			self.folded
+		} else {
+			u32::from(!self.moments.is_empty())
+		}
+	}
 }
 
 impl WindowAccumulator for WindowSum {
 	type Contribution = f64;
-	type Output = f64;
+	type Output = (f64, u32);
 
 	fn add(&mut self, contribution: &f64) {
 		self.moments.add(*contribution);
@@ -49,12 +72,19 @@ impl WindowAccumulator for WindowSum {
 		self.moments.remove(*contribution);
 	}
 
-	fn finalize(&self) -> Option<f64> {
-		(!self.moments.is_empty()).then(|| self.moments.sum())
+	fn finalize(&self) -> Option<(f64, u32)> {
+		(!self.moments.is_empty()).then(|| (self.moments.sum(), self.panes()))
 	}
 
 	fn is_empty(&self) -> bool {
 		self.moments.is_empty()
+	}
+}
+
+impl MergeAccumulator for WindowSum {
+	fn merge(&mut self, other: &Self) {
+		self.folded = self.panes() + other.panes();
+		self.moments.merge(&other.moments);
 	}
 }
 
@@ -71,65 +101,51 @@ row!(TestOut {
 	windows: u32
 });
 
-struct TestRollingSum {
-	capacity: usize,
-}
+struct TestRollingSum;
 
-impl RollingOperator for TestRollingSum {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = WindowSum;
-	type Output = TestOut;
-
-	fn capacity(&self) -> usize {
-		self.capacity
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(1)
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
-	}
-
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<TestOut> {
-		if buffer.is_empty() {
-			return None;
-		}
-		let rolling_sum = buffer.values().filter_map(|w| w.finalize()).sum();
-		Some(TestOut {
-			group: group.clone(),
-			rolling_sum,
-			windows: buffer.len() as u32,
-		})
-	}
-}
-
-impl RollingRegistration for TestRollingSum {
+impl OperatorMetadata for TestRollingSum {
 	const NAME: &'static str = "test_rolling_sum";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
-		Ok(Self {
-			capacity: 3,
-		})
+impl WindowedOperator for TestRollingSum {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = WindowSum;
+	type Output = TestOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str(group).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
+
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+		WindowSum::default()
+	}
+}
+
+impl Emit for TestRollingSum {
+	type Kinds = AllKinds;
+
+	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<TestOut> {
+		Some(TestOut {
+			group: group.clone(),
+			rolling_sum: value.0,
+			windows: value.1,
+		})
 	}
 }
 
@@ -152,9 +168,36 @@ fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {
 		.build()
 }
 
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+			pane: Some(millis(1)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+fn sealed_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+			pane: Some(millis(1)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(117))),
+		immutable: None,
+		retention: None,
+	}
+}
+
 #[test]
 fn single_insert_emits_insert() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -169,7 +212,8 @@ fn single_insert_emits_insert() {
 #[test]
 fn multiple_events_accumulate_within_one_window() {
 	// Two rows sharing a window coordinate must accumulate, not overwrite each other.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
@@ -186,7 +230,8 @@ fn multiple_events_accumulate_within_one_window() {
 #[test]
 fn partial_remove_within_window_keeps_window_alive() {
 	// Removing one of two events inside a window must leave the window standing, not drop it.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -203,7 +248,8 @@ fn partial_remove_within_window_keeps_window_alive() {
 
 #[test]
 fn update_within_window_applies_post_minus_pre() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -218,15 +264,16 @@ fn update_within_window_applies_post_minus_pre() {
 
 #[test]
 fn buffer_fills_then_evicts_oldest_window() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 1.0))
-			.insert(input_row(2, "BTC", 60, 2.0))
-			.insert(input_row(3, "BTC", 120, 3.0))
-			.insert(input_row(4, "BTC", 180, 4.0))
+			.insert(input_row(2, "BTC", 1, 2.0))
+			.insert(input_row(3, "BTC", 2, 3.0))
+			.insert(input_row(4, "BTC", 3, 4.0))
 			.build())
 		.expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
@@ -235,10 +282,10 @@ fn buffer_fills_then_evicts_oldest_window() {
 }
 
 #[test]
-fn late_window_event_accepted_without_sealing() {
-	// Without a lateness envelope there is no implicit high-water gate, so a late event merges
-	// into its older coordinate; capacity eviction is what bounds this driver.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+fn late_window_event_accepted_while_lateness_is_open() {
+	// while the lateness window has not elapsed, a late event must still merge into its older coordinate
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
@@ -250,7 +297,8 @@ fn late_window_event_accepted_without_sealing() {
 fn remove_clears_buffer_emits_remove() {
 	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -263,7 +311,8 @@ fn remove_clears_buffer_emits_remove() {
 
 #[test]
 fn multiple_groups_isolate_buffers() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
@@ -283,63 +332,43 @@ fn multiple_groups_isolate_buffers() {
 
 struct SealedRollingSum;
 
-impl RollingOperator for SealedRollingSum {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = WindowSum;
-	type Output = TestOut;
-
-	fn capacity(&self) -> usize {
-		3
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(1)
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(millis(120))
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		TestRollingSum {
-			capacity: 3,
-		}
-		.extract(ctx, row)
-	}
-
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<TestOut> {
-		if buffer.is_empty() {
-			return None;
-		}
-		Some(TestOut {
-			group: group.clone(),
-			rolling_sum: buffer.values().filter_map(|w| w.finalize()).sum(),
-			windows: buffer.len() as u32,
-		})
-	}
-}
-
-impl RollingRegistration for SealedRollingSum {
+impl OperatorMetadata for SealedRollingSum {
 	const NAME: &'static str = "sealed_rolling_sum";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+impl WindowedOperator for SealedRollingSum {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = WindowSum;
+	type Output = TestOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str(group).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
+
+	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+		TestRollingSum.extract(ctx, row)
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+		WindowSum::default()
+	}
+}
+
+impl Emit for SealedRollingSum {
+	type Kinds = AllKinds;
+
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<TestOut> {
+		TestRollingSum.build_output(group, span, value)
 	}
 }
 
@@ -347,7 +376,8 @@ impl RollingRegistration for SealedRollingSum {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<SealedRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedRollingSum>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -370,12 +400,39 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 }
 
 #[test]
-fn an_ungated_rolling_operator_arms_no_seal_timer() {
-	// An operator that never opted into sealing must not acquire a retention policy.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+fn a_rolling_time_window_arms_a_seal_timer() {
+	// a driver with a required window must always acquire a seal retention policy
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
+	assert!(!h.armed_timers().is_empty(), "a windowed operator must arm a seal timer on its first insert");
+}
+
+#[test]
+fn create_without_a_window_reports_flow_065() {
+	// require_window must refuse a missing window before any row reaches the aggregator
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+		.with(ApplyWith::default())
+		.build()
+	else {
+		panic!("create must refuse a missing window");
+	};
+	assert!(err.to_string().contains("FLOW_065"), "expected FLOW_065, got: {err}");
+}
+
+#[test]
+fn a_plain_operator_with_all_kinds_publishes_tumbling_sliding_session_and_rolling() {
+	// an AllKinds operator that hid sliding or rolling would have those views refused at create
+	assert_eq!(
+		<PlainDriver<TestRollingSum> as MountedOperator>::WINDOW,
+		WindowRequirements {
+			takes_window: true,
+			kinds: &["tumbling", "sliding", "session", "rolling"],
+			domain: WindowSizeDomain::Time,
+			needs_pane: false,
+		}
+	);
 }

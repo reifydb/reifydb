@@ -3,8 +3,9 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::{GroupStateKey, IntoGroupStateKey, custom_not_cached_key},
+	key::operator::state::{GroupStateKey, IntoGroupStateKey, unmanaged_key},
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 };
 use reifydb_flow::operator::state_access::{get, get_or_default, set, update};
 use reifydb_macro::operator_state;
@@ -19,7 +20,7 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::Config, value::Value};
+use reifydb_value::{config::ExtensionParams, value::Value};
 
 /// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -54,13 +55,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		custom_not_cached_key(&suffix).expect("a fixture pair must fit the keyspace's id width")
+		unmanaged_key(&suffix).expect("a fixture pair must fit the keyspace's id width").into()
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		custom_not_cached_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+		unmanaged_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width").into()
 	}
 }
 
@@ -102,7 +103,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl ExternCOperator for PassthroughOperator {
-	fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 

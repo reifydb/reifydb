@@ -5,28 +5,29 @@ use std::time::Duration as StdDuration;
 
 use reifydb::{
 	ConfigKey, Value, WithSubsystem,
-	codec::key::encoded::EncodedKey,
-	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	core::{
+		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+		operator_with::ApplyWith,
+	},
 	embedded,
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
+			OperatorMetadata,
 			column::operator::OperatorColumn,
-			context::GuestContext,
+			context::{GuestContext, Windowed},
 			view::RowView,
-			windowed::tumbling::{TumblingDriver, TumblingOperator, TumblingRegistration},
+			windowed::operator::{Emit, NoRolling, WindowedOperator},
 		},
 		row,
 	},
-	seal::coord::Coord,
 	testing::db::TestDb,
-	window::{accumulator::invertible::moments::Moments, span::WindowSpan},
+	window::{accumulator::invertible::moments::Moments, settings::WindowSettings, span::WindowSpan},
 };
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
-	config::Config,
-	factory::time::secs,
-	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
+	config::ExtensionParams,
+	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 };
 
 use crate::flow::state::{await_state_keys, state_keys};
@@ -53,31 +54,33 @@ row!(GuestWindow {
 
 struct GuestTumbling;
 
-impl TumblingOperator for GuestTumbling {
+impl WindowedOperator for GuestTumbling {
+	type Coord = DateTime;
 	type GroupKey = i32;
-
-	type WindowSlot = DateTime;
-
 	type Accumulator = Moments;
 	type Output = GuestWindow;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+		Ok(Self)
+	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(i32, f64)> {
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(i32, f64)> {
 		Some((row.i32("g")?, row.i32("v")? as f64))
 	}
 
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, secs(1))
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> Moments {
+		Moments::default()
 	}
+}
 
-	fn seal_span(&self) -> Option<Duration> {
-		Some(secs(1))
-	}
+impl Emit for GuestTumbling {
+	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &i32, _span: WindowSpan<DateTime>, value: Moments) -> Option<GuestWindow> {
+	fn build_output(&self, group: &i32, _span: WindowSpan<DateTime>, value: &Moments) -> Option<GuestWindow> {
 		Some(GuestWindow {
 			g: *group,
 			total: value.sum() as i64,
@@ -85,7 +88,7 @@ impl TumblingOperator for GuestTumbling {
 	}
 }
 
-impl TumblingRegistration for GuestTumbling {
+impl OperatorMetadata for GuestTumbling {
 	const NAME: &'static str = "tumbling_guest";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Sums v per g over one-second tumbling windows";
@@ -114,21 +117,13 @@ impl TumblingRegistration for GuestTumbling {
 		},
 	];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
-		Ok(Self)
-	}
-
-	fn encode_row_key(&self, group: &i32, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().i32(*group).u64(window_start.to_order()).build()
-	}
 }
 
 fn setup() -> TestDb {
 	// The guest operator is registered in process, so no dylib is built and the ABI plays no part here.
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<TumblingDriver<GuestTumbling>>())
+			.with_flow(|f| f.register_windowed_operator::<GuestTumbling, _>())
 			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
@@ -163,7 +158,7 @@ fn guest_window(db: &TestDb) {
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 				FROM app::t
-					| apply tumbling_guest{}
+					| apply tumbling_guest{} with { window: tumbling, duration: 1s }
 			}"#);
 }
 

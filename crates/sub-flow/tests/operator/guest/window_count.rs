@@ -4,6 +4,7 @@
 // A keyed sliding-window count must accumulate across applies within a window and reset for a new
 // one. Pinning the exact emitted (window_start, count) per apply is what catches lost state.
 
+use reifydb_sdk::flow::operator::UnmanagedMount;
 use reifydb_test_harness::operator::change::{diff_kind, row_ints, window_change};
 use reifydb_value::value::diff_type::DiffType;
 
@@ -12,7 +13,7 @@ use crate::common::ParityWindow;
 
 #[test]
 fn window_counts_accumulate_across_applies() {
-	let mut harness = Harness::<ParityWindow>::builder().build().expect("harness build");
+	let mut harness = Harness::<UnmanagedMount<ParityWindow>>::builder().build().expect("harness build");
 
 	for (row_number, timestamp) in [(1u64, 10i64), (2, 20), (3, 150), (4, 30)] {
 		harness.apply(window_change(row_number, timestamp)).expect("apply");

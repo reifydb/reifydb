@@ -4,37 +4,103 @@
 use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::timer::{StateStore, TimerKind, TimerStore};
+use reifydb_core::{
+	common::{WindowKind, WindowSize, WindowSizeDomain},
+	error::CoreError,
+	operator_with::{ApplyWith, WindowSealing},
+	state::timer::{StateStore, TimerKind, TimerStore},
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::state::seal::{coord::Coord, ledger::SealLedger, rule::SEAL_GATE_STEP};
+use crate::{
+	operator::state::seal::{
+		coord::Coord,
+		gate::rearm_seal,
+		ledger::SealLedger,
+		rule::{SEAL_GATE_STEP, SealRule},
+	},
+	window::settings::WindowSettings,
+};
 
 pub trait SealDomain: Coord {
 	type SealSpan: Copy + Debug + Send + Sync;
 
+	const SIZE_DOMAIN: WindowSizeDomain;
+
 	fn arms_timer() -> bool;
 
-	fn seal_span_duration(seal_span: Self::SealSpan) -> Option<Duration>;
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
+
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
 
 	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self>;
 
 	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
+
+	fn rearm_dead(
+		store: &mut (impl StateStore + TimerStore),
+		size: Self::Span,
+		seal_span: Self::SealSpan,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()>;
 }
+
+const ROLLING_DEAD_TIMER_KEY: &[u8] = b"rolling-dead";
 
 impl SealDomain for DateTime {
 	type SealSpan = Duration;
+
+	const SIZE_DOMAIN: WindowSizeDomain = WindowSizeDomain::Time;
 
 	fn arms_timer() -> bool {
 		true
 	}
 
-	fn seal_span_duration(seal_span: Duration) -> Option<Duration> {
-		Some(seal_span)
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Duration>> {
+		let Some(kind) = &with.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		if let Some(WindowSize::Count(count)) = kind.size() {
+			return Err(CoreError::OperatorWithWindowSizeCount {
+				count: *count,
+			}
+			.into());
+		}
+		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
+		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
+	}
+
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
+		let Some(kind) = &with.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		let (size, gap) = match with.window_session_gap() {
+			Some(gap) => (None, Some(gap)),
+			None => (Some(with.window_duration()?), None),
+		};
+		let sealing = WindowSealing::from_operator_with(with)?;
+		let pane = match kind {
+			WindowKind::Rolling {
+				pane,
+				..
+			} => *pane,
+			_ => None,
+		};
+		Ok(WindowSettings {
+			kind: kind.clone(),
+			size,
+			pane,
+			slide: with.window_slide_duration()?,
+			gap,
+			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
+			immutable: sealing.immutable,
+		})
 	}
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
@@ -51,10 +117,27 @@ impl SealDomain for DateTime {
 	fn horizon(frontier: Self, seal_span: Duration) -> Self {
 		frontier.saturating_sub(seal_span)
 	}
+
+	fn rearm_dead(
+		store: &mut (impl StateStore + TimerStore),
+		size: Duration,
+		seal_span: Duration,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()> {
+		rearm_seal(
+			store,
+			SealRule::of(size.try_add(seal_span)?),
+			&EncodedKey::new(ROLLING_DEAD_TIMER_KEY),
+			before,
+			after,
+		)
+	}
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::{common::WindowSize, operator_with::WithSpan};
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
@@ -121,9 +204,112 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_domain_seals_on_the_wheel_and_declares_its_lateness_to_the_flow() {
-		// the flow frontier reads this as a wall-clock span, so none would stop holding the watermark back
+	fn the_wall_clock_domain_seals_on_the_wheel() {
+		// the flow frontier reads this domain's span in wall-clock time, so it must arm off the timer wheel
 		assert!(DateTime::arms_timer());
-		assert_eq!(DateTime::seal_span_duration(ms(65_000)), Some(ms(65_000)));
+	}
+
+	#[test]
+	fn the_wall_clock_domain_rejects_a_count_size() {
+		// a count-sized window has no wall-clock span, so the wheel domain must refuse rather than guess one
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		assert!(DateTime::seal_span_of(&with).is_err());
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_rolling_pane_and_none_for_a_tumbling_window() {
+		// the pane lives only on a rolling window; a tumbling one that reported a pane would make the engine
+		// merge panes it never built
+		let rolling = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(Duration::from_seconds(3600).unwrap()),
+				lag: None,
+				pane: Some(Duration::from_seconds(1).unwrap()),
+			}),
+			lateness: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
+			immutable: Some(WithSpan::Duration(Duration::from_seconds(15).unwrap())),
+			retention: None,
+		};
+		let tumbling = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		let rolling = DateTime::window_settings_of(&rolling).unwrap();
+		let tumbling = DateTime::window_settings_of(&tumbling).unwrap();
+
+		assert_eq!(rolling.size, Some(Duration::from_seconds(3600).unwrap()));
+		assert_eq!(rolling.pane, Some(Duration::from_seconds(1).unwrap()));
+		assert_eq!(rolling.lateness, Duration::from_seconds(20).unwrap());
+		assert_eq!(rolling.immutable, Some(Duration::from_seconds(15).unwrap()));
+		assert_eq!(tumbling.pane, None);
+		assert_eq!(tumbling.lateness, Duration::zero());
+		assert_eq!(tumbling.immutable, None);
+	}
+
+	#[test]
+	fn the_wall_clock_settings_refuse_a_missing_window_and_a_count_size() {
+		// without a window there is nothing to size, and a count has no wall-clock span; both must fail loud
+		let count = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		assert!(DateTime::window_settings_of(&ApplyWith::default()).is_err());
+		assert!(DateTime::window_settings_of(&count).is_err());
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_slide_of_a_sliding_window() {
+		// a slide that came back as none would make create panic on every sliding view
+		let sliding = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Duration(Duration::from_seconds(600).unwrap()),
+				slide: WindowSize::Duration(Duration::from_seconds(300).unwrap()),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		let settings = DateTime::window_settings_of(&sliding).unwrap();
+
+		assert_eq!(settings.size, Some(Duration::from_seconds(600).unwrap()));
+		assert_eq!(settings.slide, Some(Duration::from_seconds(300).unwrap()));
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_gap_of_a_session_window() {
+		// A session read as a sized window would fail create or seal on a size it does not have.
+		let session = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: Duration::from_seconds(30).unwrap(),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		let settings = DateTime::window_settings_of(&session).unwrap();
+
+		assert_eq!(settings.gap, Some(Duration::from_seconds(30).unwrap()));
+		assert_eq!(settings.size, None, "a session has no fixed size");
+		assert_eq!(settings.slide, None);
 	}
 }

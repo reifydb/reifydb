@@ -5,9 +5,11 @@
 //! window space makes ranks appear, change and vanish across batches, which is what reaches
 //! the per-secondary-key emission and the high-water-driven Remove path.
 
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling_top_k::RollingTopKDriver,
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
 };
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::top_k::TopKDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -16,11 +18,25 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
+use reifydb_value::factory::time::millis;
 
 use super::common::{self, TopVolumeRollingTopK};
 
 fn rank_key() -> Vec<String> {
 	vec!["group".to_string(), "rank".to_string()]
+}
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
+			lag: None,
+			pane: Some(millis(common::ROLLING_BUCKET)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
 }
 
 fn volume_sampler(none_values: bool) -> ColumnSampler {
@@ -32,7 +48,7 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<RollingTopKDriver<TopVolumeRollingTopK>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<TopKDriver<TopVolumeRollingTopK>>>::builder()
 		.with_input_shape(common::rolling_top_k_shape())
 		.with_output_shape(common::top_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -44,8 +60,15 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_column("trader", samplers::u64_range(0..5))
 		.with_column("volume", volume_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			rolling_top_k_accumulator_oracle(&TopVolumeRollingTopK, ctx, batches, &rank_key())
+			rolling_top_k_accumulator_oracle(
+				&TopVolumeRollingTopK,
+				&common::settings(&window_with()),
+				ctx,
+				batches,
+				&rank_key(),
+			)
 		})
 		.seed(seed)
 		.build()

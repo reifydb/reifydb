@@ -20,7 +20,7 @@ pub mod identity_attribute_value;
 pub mod migration;
 pub mod namespace;
 pub mod operator;
-pub mod operator_settings;
+pub mod operator_retention;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;

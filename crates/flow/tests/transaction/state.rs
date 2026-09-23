@@ -19,8 +19,7 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		operator::state::{
-			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
-			group_inner_range,
+			GroupId, GroupStateKey, OperatorStateKey, group_inner_range, unmanaged_key, unmanaged_key_in,
 		},
 		queue::QueueDeduplicationKey,
 		row::RowKey,
@@ -97,7 +96,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 fn make_key(s: &str) -> GroupStateKey {
 	// Framed as an operator composes its keys, or these tests would assert against a key reclamation could
 	// prefix-delete.
-	custom_not_cached_key(s.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+	unmanaged_key(s.as_bytes()).expect("a fixture name must fit the keyspace's id width").into()
 }
 
 fn make_value(s: &str) -> EncodedPodRow {
@@ -784,7 +783,7 @@ fn a_state_range_whose_head_is_all_tombstones_still_reaches_the_row_behind_them(
 }
 
 fn grouped_key(group: GroupId, name: &str) -> GroupStateKey {
-	custom_not_cached_key_in(group, name.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+	unmanaged_key_in(group, name.as_bytes()).expect("a fixture name must fit the keyspace's id width").into()
 }
 
 #[test]

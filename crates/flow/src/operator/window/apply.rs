@@ -23,8 +23,8 @@ use crate::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{
-				EngineBuckets, WindowGroups, finish_tumbling_engine, intern_window_groups,
-				route_into_buckets, slot_coord,
+				EarliestTimes, EngineBuckets, SessionBounds, Stamp, WindowGroups,
+				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
 			},
 		},
 		host::HostContext,
@@ -81,6 +81,7 @@ fn push_count_event(
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	window_min_ts: &mut EarliestTimes,
 	hash: Hash128,
 	gvals: &[Value],
 	span: WindowSpan<DateTime>,
@@ -97,6 +98,7 @@ fn push_count_event(
 	if matches!(event, AccumulatorEvent::Add(_)) {
 		let entry = window_max_ts.entry(key).or_default();
 		*entry = (*entry).max(now);
+		window_min_ts.entry(key).and_modify(|first| *first = (*first).min(now)).or_insert(now);
 	}
 	if !buckets.contains_key(&key) {
 		arrival.push(key);
@@ -105,6 +107,7 @@ fn push_count_event(
 	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn route_count_tumbling(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
@@ -113,6 +116,7 @@ fn route_count_tumbling(
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	window_min_ts: &mut EarliestTimes,
 ) -> Result<()> {
 	let rows = TumblingOverRows::holding(RowSpan::of(operator.size_count().unwrap_or(1)));
 	for diff in change.diffs.iter() {
@@ -140,6 +144,7 @@ fn route_count_tumbling(
 						group_values,
 						arrival,
 						window_max_ts,
+						window_min_ts,
 						*hash,
 						gvals,
 						ordinal_window_span(window_id),
@@ -172,6 +177,7 @@ fn route_count_tumbling(
 							group_values,
 							arrival,
 							window_max_ts,
+							window_min_ts,
 							*hash,
 							gvals,
 							ordinal_window_span(window_id),
@@ -189,18 +195,21 @@ fn route_count_tumbling(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
+				let post_groups = operator.core.compute_groups(post)?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal = operator.get_and_increment_global_count(host, *hash)?;
+						let ordinal =
+							operator.get_and_increment_global_count(host, *post_hash)?;
 						let window_id = rows.window_id(ordinal);
 						operator.store_row_index(
 							host,
-							*hash,
+							*post_hash,
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
@@ -217,8 +226,9 @@ fn route_count_tumbling(
 							group_values,
 							arrival,
 							window_max_ts,
-							*hash,
-							gvals,
+							window_min_ts,
+							*post_hash,
+							post_gvals,
 							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Add(contribution),
@@ -239,12 +249,25 @@ fn route_count_tumbling(
 						);
 						let coord =
 							slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
+						let targets = if post_hash != hash {
+							operator.drop_row_index(host, *hash, row_number)?;
+							let ordinal = operator
+								.get_and_increment_global_count(host, *post_hash)?;
+							let window_id = rows.window_id(ordinal);
+							operator.store_row_index(
+								host, *post_hash, row_number, window_id,
+							)?;
+							vec![window_id]
+						} else {
+							existing.clone()
+						};
 						for window_id in existing {
 							push_count_event(
 								buckets,
 								group_values,
 								arrival,
 								window_max_ts,
+								window_min_ts,
 								*hash,
 								gvals,
 								ordinal_window_span(window_id),
@@ -252,13 +275,16 @@ fn route_count_tumbling(
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								times[row_idx],
 							);
+						}
+						for window_id in targets {
 							push_count_event(
 								buckets,
 								group_values,
 								arrival,
 								window_max_ts,
-								*hash,
-								gvals,
+								window_min_ts,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
@@ -286,6 +312,7 @@ pub fn apply_tumbling_engine(
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
+	let mut window_min_ts: EarliestTimes = HashMap::new();
 
 	if operator.is_count_based() {
 		route_count_tumbling(
@@ -296,6 +323,7 @@ pub fn apply_tumbling_engine(
 			&mut group_values,
 			&mut arrival,
 			&mut window_max_ts,
+			&mut window_min_ts,
 		)?;
 	} else {
 		for diff in change.diffs.iter() {
@@ -392,6 +420,11 @@ pub fn apply_tumbling_engine(
 		engine_immutable,
 		expiry_anchor,
 		count_based,
+		if count_based {
+			Stamp::Earliest(&window_min_ts)
+		} else {
+			Stamp::SpanStart
+		},
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -432,6 +465,7 @@ pub fn apply_sliding_engine(
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
+	let mut window_min_ts: EarliestTimes = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -440,11 +474,7 @@ pub fn apply_sliding_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(post)?;
-				let timestamps = if is_count && !operator.core.needs_event_time() {
-					Vec::new()
-				} else {
-					operator.row_times(post, post.row_count())?
-				};
+				let timestamps = operator.row_times(post, post.row_count())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
@@ -474,12 +504,13 @@ pub fn apply_sliding_engine(
 							&mut group_values,
 							&mut arrival,
 							&mut window_max_ts,
+							&mut window_min_ts,
 							*hash,
 							gvals,
 							operator.sliding_window_span(*wid),
 							coord,
 							AccumulatorEvent::Add(contribution.clone()),
-							event_ts,
+							timestamps[row_idx],
 						);
 					}
 				}
@@ -489,11 +520,7 @@ pub fn apply_sliding_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
-				let timestamps = if is_count && !operator.core.needs_event_time() {
-					Vec::new()
-				} else {
-					operator.row_times(pre, pre.row_count())?
-				};
+				let timestamps = operator.row_times(pre, pre.row_count())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
@@ -515,12 +542,13 @@ pub fn apply_sliding_engine(
 							&mut group_values,
 							&mut arrival,
 							&mut window_max_ts,
+							&mut window_min_ts,
 							*hash,
 							gvals,
 							operator.sliding_window_span(wid),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
-							event_ts,
+							timestamps[row_idx],
 						);
 					}
 					operator.drop_row_index(host, *hash, pre.row_numbers()[row_idx])?;
@@ -532,15 +560,14 @@ pub fn apply_sliding_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
-				let timestamps = if is_count && !operator.core.needs_event_time() {
-					Vec::new()
-				} else {
-					operator.row_times(post, post.row_count())?
-				};
+				let post_groups = operator.core.compute_groups(post)?;
+				let timestamps = operator.row_times(post, post.row_count())?;
+				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre.row_numbers()[row_idx];
 					let event_ts = if is_count {
 						DateTime::default()
@@ -550,7 +577,7 @@ pub fn apply_sliding_engine(
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
 						let window_ids = sliding_insert_anchors(
-							operator, host, *hash, event_ts, is_count,
+							operator, host, *post_hash, event_ts, is_count,
 						)?;
 						let contribution = operator.core.build_contribution(
 							post,
@@ -562,7 +589,7 @@ pub fn apply_sliding_engine(
 						for wid in &window_ids {
 							operator.store_row_index(
 								host,
-								*hash,
+								*post_hash,
 								post.row_numbers()[row_idx],
 								*wid,
 							)?;
@@ -571,12 +598,13 @@ pub fn apply_sliding_engine(
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
-								*hash,
-								gvals,
+								&mut window_min_ts,
+								*post_hash,
+								post_gvals,
 								operator.sliding_window_span(*wid),
 								coord,
 								AccumulatorEvent::Add(contribution.clone()),
-								event_ts,
+								timestamps[row_idx],
 							);
 						}
 					} else {
@@ -584,7 +612,7 @@ pub fn apply_sliding_engine(
 							pre,
 							&pre_cols,
 							row_idx,
-							timestamps.get(row_idx).copied().unwrap_or_default(),
+							pre_timestamps[row_idx],
 						);
 						let post_contrib = operator.core.build_contribution(
 							post,
@@ -592,31 +620,53 @@ pub fn apply_sliding_engine(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
 						);
-						let coord = slot_coord(is_count, event_ts, row_number.0);
+						let pre_coord =
+							slot_coord(is_count, pre_timestamps[row_idx], row_number.0);
+						let post_coord = slot_coord(is_count, event_ts, row_number.0);
+						let targets = if post_hash != hash
+							|| (!is_count && pre_timestamps[row_idx] != timestamps[row_idx])
+						{
+							operator.drop_row_index(host, *hash, row_number)?;
+							let window_ids = sliding_insert_anchors(
+								operator, host, *post_hash, event_ts, is_count,
+							)?;
+							for wid in &window_ids {
+								operator.store_row_index(
+									host, *post_hash, row_number, *wid,
+								)?;
+							}
+							window_ids
+						} else {
+							existing.clone()
+						};
 						for wid in existing {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
+								&mut window_min_ts,
 								*hash,
 								gvals,
 								operator.sliding_window_span(wid),
-								coord,
+								pre_coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								event_ts,
+								pre_timestamps[row_idx],
 							);
+						}
+						for wid in targets {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
-								*hash,
-								gvals,
+								&mut window_min_ts,
+								*post_hash,
+								post_gvals,
 								operator.sliding_window_span(wid),
-								coord,
+								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
-								event_ts,
+								timestamps[row_idx],
 							);
 						}
 					}
@@ -661,6 +711,11 @@ pub fn apply_sliding_engine(
 		engine_immutable,
 		expiry_anchor,
 		true,
+		if count_based {
+			Stamp::Earliest(&window_min_ts)
+		} else {
+			Stamp::SpanStart
+		},
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -673,14 +728,16 @@ fn session_assign(
 	event_ts: DateTime,
 	kind: &SessionKind,
 	trackers: &mut HashMap<Hash128, SessionTracker>,
+	bounds: &mut SessionBounds,
 ) -> Result<Option<u64>> {
 	let mut tracker = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
 		None => operator.load_session_tracker(host, hash)?,
 	};
 	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
-	if assignment.session_id().is_some() {
+	if let Some(session_id) = assignment.session_id() {
 		trackers.insert(hash, tracker);
+		bounds.insert((hash, session_id), (tracker.start, tracker.last));
 	}
 	Ok(assignment.session_id())
 }
@@ -698,7 +755,9 @@ pub fn apply_session_engine(
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
+	let mut window_min_ts: EarliestTimes = HashMap::new();
 	let mut trackers: HashMap<Hash128, SessionTracker> = HashMap::new();
+	let mut bounds: SessionBounds = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -712,9 +771,15 @@ pub fn apply_session_engine(
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					if let Some(session_id) =
-						session_assign(operator, host, *hash, event_ts, &kind, &mut trackers)?
-					{
+					if let Some(session_id) = session_assign(
+						operator,
+						host,
+						*hash,
+						event_ts,
+						&kind,
+						&mut trackers,
+						&mut bounds,
+					)? {
 						operator.store_row_index(
 							host,
 							*hash,
@@ -733,6 +798,7 @@ pub fn apply_session_engine(
 							&mut group_values,
 							&mut arrival,
 							&mut window_max_ts,
+							&mut window_min_ts,
 							*hash,
 							gvals,
 							ordinal_window_span(session_id),
@@ -768,6 +834,7 @@ pub fn apply_session_engine(
 							&mut group_values,
 							&mut arrival,
 							&mut window_max_ts,
+							&mut window_min_ts,
 							*hash,
 							gvals,
 							ordinal_window_span(session_id),
@@ -785,11 +852,14 @@ pub fn apply_session_engine(
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
+				let post_groups = operator.core.compute_groups(post)?;
 				let timestamps = operator.row_times(post, post.row_count())?;
+				let pre_timestamps = operator.row_times(pre, pre.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
+					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let existing =
 						operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])?;
@@ -797,14 +867,15 @@ pub fn apply_session_engine(
 						if let Some(session_id) = session_assign(
 							operator,
 							host,
-							*hash,
+							*post_hash,
 							event_ts,
 							&kind,
 							&mut trackers,
+							&mut bounds,
 						)? {
 							operator.store_row_index(
 								host,
-								*hash,
+								*post_hash,
 								post.row_numbers()[row_idx],
 								session_id,
 							)?;
@@ -824,8 +895,9 @@ pub fn apply_session_engine(
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
-								*hash,
-								gvals,
+								&mut window_min_ts,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(session_id),
 								coord,
 								AccumulatorEvent::Add(contribution),
@@ -837,7 +909,7 @@ pub fn apply_session_engine(
 							pre,
 							&pre_cols,
 							row_idx,
-							timestamps[row_idx],
+							pre_timestamps[row_idx],
 						);
 						let post_contrib = operator.core.build_contribution(
 							post,
@@ -845,29 +917,80 @@ pub fn apply_session_engine(
 							row_idx,
 							timestamps[row_idx],
 						);
-						let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
+						let pre_coord = slot_coord(
+							false,
+							pre_timestamps[row_idx],
+							pre.row_numbers()[row_idx].0,
+						);
+						let post_coord =
+							slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
+						let regrouped = post_hash != hash;
+						let assigned = if regrouped
+							|| pre_timestamps[row_idx] != timestamps[row_idx]
+						{
+							session_assign(
+								operator,
+								host,
+								*post_hash,
+								event_ts,
+								&kind,
+								&mut trackers,
+								&mut bounds,
+							)?
+						} else {
+							None
+						};
+						let targets = match assigned {
+							Some(session_id) => {
+								operator.drop_row_index(
+									host,
+									*hash,
+									pre.row_numbers()[row_idx],
+								)?;
+								operator.store_row_index(
+									host,
+									*post_hash,
+									pre.row_numbers()[row_idx],
+									session_id,
+								)?;
+								vec![session_id]
+							}
+							None if regrouped => {
+								operator.drop_row_index(
+									host,
+									*hash,
+									pre.row_numbers()[row_idx],
+								)?;
+								Vec::new()
+							}
+							None => existing.clone(),
+						};
 						for session_id in existing {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
+								&mut window_min_ts,
 								*hash,
 								gvals,
 								ordinal_window_span(session_id),
-								coord,
+								pre_coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								event_ts,
+								pre_timestamps[row_idx],
 							);
+						}
+						for session_id in targets {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
 								&mut arrival,
 								&mut window_max_ts,
-								*hash,
-								gvals,
+								&mut window_min_ts,
+								*post_hash,
+								post_gvals,
 								ordinal_window_span(session_id),
-								coord,
+								post_coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
 							);
@@ -889,6 +1012,7 @@ pub fn apply_session_engine(
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
+	let gap = operator.session_gap();
 	let armed_before = armed_engine_seal(operator, host, rule)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
@@ -904,6 +1028,7 @@ pub fn apply_session_engine(
 		engine_immutable,
 		ExpiryAnchor::LastEvent,
 		true,
+		Stamp::Session(gap, &bounds),
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))

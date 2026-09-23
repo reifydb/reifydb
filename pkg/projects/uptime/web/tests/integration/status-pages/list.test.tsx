@@ -4,15 +4,21 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Store } from '@reifydb/react'
+import { ListValue, Uuid7Value, rql, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { StatusPagesPage } from '@/pages/status-pages'
 import { loadBackend } from '../../support/backend'
+import { commandAs } from '../../support/db'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { createMonitor } from '../../support/monitors'
 import { createStatusPage, readMembers, readPages } from '../../support/status-pages'
 
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
+
+const ADD_STATUS_PAGE_MONITORS = rql.write([])<{
+  id: string
+  monitor_ids: ListValue
+}>`CALL uptime::add_status_page_monitors($id, $monitor_ids)`
 
 let create: TestFactory
 
@@ -24,10 +30,11 @@ describe('status pages list over a live subscription', () => {
   let db: TestDb
   let store: Store
   let client: BridgeClient
+  let identity: string
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client } = await bridgeStore(db, 'tester'))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
   })
 
   afterEach(() => {
@@ -44,9 +51,9 @@ describe('status pages list over a live subscription', () => {
 
   it('hydrates the pages that already exist, with their member counts', async () => {
     // Without hydration an account that already has pages would show the empty state until the next write.
-    const alpha = await createMonitor(client, 'alpha')
-    const beta = await createMonitor(client, 'beta')
-    await createStatusPage(client, 'acme', 'Acme status', [alpha, beta])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    const beta = await createMonitor(db, identity, 'beta')
+    await createStatusPage(db, identity, 'acme', 'Acme status', [alpha, beta])
 
     renderWithProviders(<StatusPagesPage />, store)
     await caughtUp()
@@ -62,8 +69,8 @@ describe('status pages list over a live subscription', () => {
     await caughtUp()
     expect(await screen.findByRole('heading', { name: 'No status pages yet' })).toBeInTheDocument()
 
-    const alpha = await createMonitor(client, 'alpha')
-    await createStatusPage(client, 'late', 'Late page', [alpha])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    await createStatusPage(db, identity, 'late', 'Late page', [alpha])
     await caughtUp()
 
     const row = await screen.findByRole('row', { name: /Late page/ })
@@ -73,18 +80,17 @@ describe('status pages list over a live subscription', () => {
 
   it('updates the member count live when another path adds a monitor to a mounted page', async () => {
     // The count is composed from a second subscription, so a change there alone must re-render the row.
-    const alpha = await createMonitor(client, 'alpha')
-    const beta = await createMonitor(client, 'beta')
-    const id = await createStatusPage(client, 'acme', 'Acme status', [alpha])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    const beta = await createMonitor(db, identity, 'beta')
+    const id = await createStatusPage(db, identity, 'acme', 'Acme status', [alpha])
     renderWithProviders(<StatusPagesPage />, store)
     await caughtUp()
     expect(within(await screen.findByRole('row', { name: /Acme status/ })).getByText('1')).toBeInTheDocument()
 
-    await client.command(
-      'CALL uptime::add_status_page_monitor($id, $monitor_id, 1)',
-      { id, monitor_id: beta },
-      [],
-    )
+    await commandAs(db, identity, ADD_STATUS_PAGE_MONITORS, {
+      id,
+      monitor_ids: new ListValue([new Uuid7Value(beta)], 'Uuid7'),
+    })
     await caughtUp()
 
     await waitFor(() =>
@@ -94,15 +100,15 @@ describe('status pages list over a live subscription', () => {
 
   it("never shows another owner's pages, neither hydrated nor written after mount", async () => {
     // The from-policy must scope both hydration and live diffs, or one user's list leaks every tenant.
-    const { client: other } = await bridgeStore(db, 'mallory')
-    const theirs = await createMonitor(other, 'theirs')
-    await createStatusPage(other, 'before', 'Mallory before', [theirs])
+    const { identity: mallory } = await bridgeStore(db, 'mallory')
+    const theirs = await createMonitor(db, mallory, 'theirs')
+    await createStatusPage(db, mallory, 'before', 'Mallory before', [theirs])
 
     renderWithProviders(<StatusPagesPage />, store)
     await caughtUp()
-    await createStatusPage(other, 'after', 'Mallory after', [theirs])
-    const mine = await createMonitor(client, 'mine')
-    await createStatusPage(client, 'mine', 'My page', [mine])
+    await createStatusPage(db, mallory, 'after', 'Mallory after', [theirs])
+    const mine = await createMonitor(db, identity, 'mine')
+    await createStatusPage(db, identity, 'mine', 'My page', [mine])
     await caughtUp()
 
     expect(await screen.findByRole('row', { name: /My page/ })).toBeInTheDocument()
@@ -112,9 +118,9 @@ describe('status pages list over a live subscription', () => {
 
   it('deletes a confirmed page with its members and the row leaves the list live', async () => {
     // Members left behind would still render on the public page; the sibling page must survive untouched.
-    const alpha = await createMonitor(client, 'alpha')
-    const keep = await createStatusPage(client, 'keep', 'Keep me', [alpha])
-    const drop = await createStatusPage(client, 'drop', 'Drop me', [alpha])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    const keep = await createStatusPage(db, identity, 'keep', 'Keep me', [alpha])
+    const drop = await createStatusPage(db, identity, 'drop', 'Drop me', [alpha])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithProviders(<StatusPagesPage />, store)
     await caughtUp()
@@ -134,8 +140,8 @@ describe('status pages list over a live subscription', () => {
 
   it('writes nothing when the delete confirmation is dismissed', async () => {
     // A dismissed confirm that still deleted would lose a page with no undo.
-    const alpha = await createMonitor(client, 'alpha')
-    const id = await createStatusPage(client, 'acme', 'Acme status', [alpha])
+    const alpha = await createMonitor(db, identity, 'alpha')
+    const id = await createStatusPage(db, identity, 'acme', 'Acme status', [alpha])
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderWithProviders(<StatusPagesPage />, store)
     await caughtUp()

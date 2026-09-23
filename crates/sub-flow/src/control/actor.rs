@@ -934,6 +934,7 @@ impl Actor for FlowActor {
 			} => {
 				state.flow_engine.forget_operator_samples();
 				self.on_stop(delete_checkpoint);
+				self.health.clear(self.flow_id);
 				(reply)();
 				Directive::Stop
 			}
@@ -2264,12 +2265,14 @@ mod tick_failures {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		actors::pending::Pending,
+		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 		interface::{
 			catalog::{flow::OperatorId, id::ViewId},
 			change::Change,
 			flow::OperatorCapability,
 		},
 		internal_error,
+		operator_with::ApplyWith,
 		state::timer::TimerKind,
 	};
 	use reifydb_engine::engine::StandardEngine;
@@ -2434,7 +2437,7 @@ mod tick_failures {
 		map.insert(
 			"boom".to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|id, _config| {
+				factory: Arc::new(|id, _params, _with| {
 					Ok(Box::new(Boom {
 						id,
 					}) as BoxedHostOperator)
@@ -2445,12 +2448,20 @@ mod tick_failures {
 				capabilities: 0,
 				input: Vec::new(),
 				output: Vec::new(),
+				class: OperatorClass::Unmanaged,
+				window: WindowRequirements {
+					takes_window: false,
+					kinds: &[],
+					domain: WindowSizeDomain::Time,
+					needs_pane: false,
+				},
+				unmanaged_because: None,
 			},
 		);
 		map.insert(
 			"silent".to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|id, _config| {
+				factory: Arc::new(|id, _params, _with| {
 					Ok(Box::new(Silent {
 						id,
 					}) as BoxedHostOperator)
@@ -2462,6 +2473,14 @@ mod tick_failures {
 				capabilities: 0,
 				input: Vec::new(),
 				output: Vec::new(),
+				class: OperatorClass::Unmanaged,
+				window: WindowRequirements {
+					takes_window: false,
+					kinds: &[],
+					domain: WindowSizeDomain::Time,
+					needs_pane: false,
+				},
+				unmanaged_because: None,
 			},
 		);
 		CustomOperators::new(map)
@@ -2551,7 +2570,8 @@ mod tick_failures {
 			TIMED,
 			OperatorDef::Apply {
 				operator: operator.to_string(),
-				expressions: Vec::new(),
+				params: Vec::new(),
+				with: ApplyWith::default(),
 			},
 		));
 		builder.add_edge(FlowEdge::new(1, SOURCE, TIMED)).expect("edge");

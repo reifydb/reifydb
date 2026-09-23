@@ -120,3 +120,48 @@ impl Workload for SlottedWindowWorkload {
 		self.inner.projection()
 	}
 }
+
+pub struct MovingWindowWorkload {
+	pub inner: WindowWorkload,
+	pub move_pct: u32,
+}
+
+impl Workload for MovingWindowWorkload {
+	type Row = WindowRow;
+
+	fn sample(&self, rng: &mut StdRng, number: RowNumber) -> WindowRow {
+		self.inner.sample(rng, number)
+	}
+
+	fn revalue(&self, rng: &mut StdRng, row: &WindowRow) -> WindowRow {
+		// No draw at a zero rate, otherwise every corpus recorded before moves existed would shift.
+		let post = self.inner.revalue(rng, row);
+		if self.move_pct == 0 || rng.random_range(0..100) >= self.move_pct {
+			return post;
+		}
+		WindowRow {
+			coord_ms: rng.random_range(0..self.inner.coord_span_ms),
+			..post
+		}
+	}
+
+	fn lanes(&self, row: &WindowRow) -> Lanes {
+		self.inner.lanes(row)
+	}
+
+	fn insert(&self, rows: &[WindowRow]) -> Change {
+		self.inner.insert(rows)
+	}
+
+	fn remove(&self, row: &WindowRow) -> Change {
+		self.inner.remove(row)
+	}
+
+	fn update(&self, pre: &WindowRow, post: &WindowRow) -> Change {
+		self.inner.update(pre, post)
+	}
+
+	fn projection(&self) -> &[usize] {
+		self.inner.projection()
+	}
+}
