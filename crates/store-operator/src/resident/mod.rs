@@ -49,7 +49,7 @@ use crate::{
 		bucket::write::Staged,
 		slot::{Slot, SlotInner},
 	},
-	types::{DropMarker, FlushBatch, OperatorWrite, StagedWrite},
+	types::{Applied, DropMarker, FlushBatch, OperatorWrite, StagedWrite},
 };
 
 const CLOCK_PASSES: usize = 2;
@@ -725,6 +725,26 @@ impl Resident {
 		}
 	}
 
+	#[cfg(feature = "testing")]
+	pub fn flush_slice(&self, slice: ByteSize) -> Applied {
+		let _flusher = self.shared.flusher.lock();
+		if self.device_absent() {
+			return Applied::default();
+		}
+		let batch = {
+			let _staging = self.flush_guard();
+			match self.take_drain_slice(slice) {
+				Some(batch) => batch,
+				None => return Applied::default(),
+			}
+		};
+		let applied =
+			self.persist(&batch).expect("operator state flush must persist; a dropped batch loses buffered rows");
+		let _staging = self.flush_guard();
+		self.settle(batch);
+		applied
+	}
+
 	#[instrument(name = "store::operator::resident::rebuild_in_flight", level = "trace", skip(self, global))]
 	fn rebuild_in_flight(&self, global: &GlobalInner) -> FlushBatch {
 		let mut batch = FlushBatch::default();
@@ -918,7 +938,7 @@ impl Resident {
 	}
 
 	#[instrument(name = "store::operator::resident::persist", level = "debug", skip_all)]
-	fn persist(&self, batch: &Arc<FlushBatch>) -> Result<()> {
+	fn persist(&self, batch: &Arc<FlushBatch>) -> Result<Applied> {
 		#[cfg(test)]
 		{
 			let interlock = self.shared.persist_interlock.lock().take();
@@ -931,9 +951,9 @@ impl Resident {
 			.sinks
 			.get()
 			.expect("the operator resident state flushed before its sinks were attached");
-		Apply::apply(&sinks.persistent, batch)?;
+		let applied = Apply::apply(&sinks.persistent, batch)?;
 		invalidate_flushed(&sinks.range, batch);
-		Ok(())
+		Ok(applied)
 	}
 
 	#[instrument(name = "store::operator::resident::settle", level = "debug", skip_all)]
