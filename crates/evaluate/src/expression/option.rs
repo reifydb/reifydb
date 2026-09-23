@@ -40,12 +40,45 @@ pub(crate) fn arith_op_unwrap_option(
 		(false, true) => Some(&left_data),
 		_ => None,
 	};
-	match typed {
-		Some(typed) => {
-			Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(typed.get_type(), left_data.len())))
-		}
-		None => binary_op_unwrap_option(left, right, fragment, inner),
+	if let Some(typed) = typed {
+		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(typed.get_type(), left_data.len())));
 	}
+
+	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
+		return binary_op_unwrap_option(left, right, fragment, inner);
+	}
+
+	let Some(nulls) = combine_option_bitvecs(left_nulls.as_ref(), right_nulls.as_ref()) else {
+		return binary_op_unwrap_option(left, right, fragment, inner);
+	};
+
+	let mut defined_left = left_data;
+	let mut defined_right = right_data;
+	defined_left.filter(nulls.inner())?;
+	defined_right.filter(nulls.inner())?;
+
+	let result = inner(
+		&ColumnWithName::new(left.name().clone(), defined_left),
+		&ColumnWithName::new(right.name().clone(), defined_right),
+	)?;
+
+	if result.data().len() == 0 {
+		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(result.data().get_type(), nulls.len())));
+	}
+
+	let placeholder = result.data().get_value(0);
+	let mut builder = ColumnBuilder::with_capacity(result.data().get_type(), nulls.len());
+	let mut defined = 0;
+	for row in 0..nulls.len() {
+		if nulls.is_null(row) {
+			builder.push_value(placeholder.clone());
+		} else {
+			builder.push_value(result.data().get_value(defined));
+			defined += 1;
+		}
+	}
+
+	Ok(ColumnWithName::new(fragment, builder.finish().with_nulls(nulls)))
 }
 
 pub(crate) fn binary_op_unwrap_option(
