@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::flow::{
-	extern_abi_tag_mismatch, extern_create_failed, extern_library_not_loaded, extern_operator_not_found,
-	extern_symbol_not_found, flow_catch_up_read_failed,
+	extern_abi_tag_mismatch, extern_create_failed, extern_library_load_failed, extern_library_not_loaded,
+	extern_operator_not_found, extern_symbol_not_found, flow_catch_up_read_failed,
 };
 use reifydb_store_cdc::error::CdcError;
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
@@ -49,6 +49,12 @@ pub enum ExternOperatorError {
 		path: String,
 	},
 
+	#[error("extern operator library failed to load: {path}: {cause}")]
+	LibraryLoadFailed {
+		path: String,
+		cause: String,
+	},
+
 	#[error("extern operator symbol '{symbol}' not found: {cause}")]
 	SymbolNotFound {
 		symbol: &'static str,
@@ -76,6 +82,10 @@ impl IntoDiagnostic for ExternOperatorError {
 			ExternOperatorError::LibraryNotLoaded {
 				path,
 			} => extern_library_not_loaded(&path),
+			ExternOperatorError::LibraryLoadFailed {
+				path,
+				cause,
+			} => extern_library_load_failed(&path, cause),
 			ExternOperatorError::SymbolNotFound {
 				symbol,
 				cause,

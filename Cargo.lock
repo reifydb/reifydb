@@ -3409,6 +3409,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "libloading 0.9.0",
+ "object",
  "postcard",
  "reifydb-build",
  "reifydb-codec",
