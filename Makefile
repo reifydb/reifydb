@@ -154,11 +154,15 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check build build-testcontainer test-full-local test-chaos-ci test-crate-loom all-siblings push-testcontainer push
+all: pull-siblings format-check check-code-quality check build build-testcontainer test-full-local test-chaos-ci test-crate-loom all-siblings push-testcontainer push
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
 	$(MAKE) test-workspace-chaos N=100
+
+.PHONY: pull-siblings
+pull-siblings:
+	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR)
 
 .PHONY: all-siblings
 all-siblings:
