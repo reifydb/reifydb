@@ -12,7 +12,7 @@ where
 	R: IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 {
-	l.checked_promote(r).and_then(|(lp, rp)| lp.partial_cmp(&rp))
+	l.compare(r)
 }
 
 #[inline]

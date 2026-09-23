@@ -4,6 +4,8 @@
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 
+use std::cmp::Ordering;
+
 use crate::value::is::IsNumber;
 
 pub trait Promote<R> where Self: IsNumber, R: IsNumber {
@@ -12,6 +14,9 @@ pub trait Promote<R> where Self: IsNumber, R: IsNumber {
     fn saturating_promote(&self, r: &R) -> (Self::Output, Self::Output);
     fn wrapping_promote(&self, r: &R) -> (Self::Output, Self::Output);
 
+    fn compare(&self, r: &R) -> Option<Ordering> {
+        self.checked_promote(r).and_then(|(l, r)| l.partial_cmp(&r))
+    }
 }
 
 macro_rules! impl_promote_float_float {
@@ -282,6 +287,13 @@ macro_rules! impl_promote_signed_unsigned {
             fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
                 (*self as $common, *r as $common)
             }
+
+            fn compare(&self, r: &$r) -> Option<Ordering> {
+                if *self < 0 {
+                    return Some(Ordering::Less);
+                }
+                Some((*self as u128).cmp(&(*r as u128)))
+            }
         }
     };
 }
@@ -312,6 +324,13 @@ macro_rules! impl_promote_unsigned_signed {
 
             fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
                 (*self as $common, *r as $common)
+            }
+
+            fn compare(&self, r: &$r) -> Option<Ordering> {
+                if *r < 0 {
+                    return Some(Ordering::Greater);
+                }
+                Some((*self as u128).cmp(&(*r as u128)))
             }
         }
     };

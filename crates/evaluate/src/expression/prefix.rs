@@ -18,47 +18,24 @@ use reifydb_value::{
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
+		value_type::ValueType,
 	},
 };
 
 use crate::{Result, expression::option::unary_op_unwrap_option};
 
 macro_rules! prefix_signed_int {
-	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident) => {{
+	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{
 		let values: &[_] = $container.values();
 		let mut result = Vec::with_capacity(values.len());
-		for (idx, val) in values.iter().enumerate() {
-			if idx < values.len() {
-				result.push(match $operator {
-					PrefixOperator::Minus(_) => -*val,
-					PrefixOperator::Plus(_) => *val,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: $fragment,
-						}
-						.into());
-					}
-				});
-			} else {
-				result.push(0);
-			}
-		}
-		let new_data = ColumnBuffer::$variant(result);
-		Ok($column.with_new_data(new_data))
-	}};
-}
-
-macro_rules! prefix_unsigned_int {
-	($column:expr, $values:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
-		let values: &[_] = $values;
-		let mut result = Vec::with_capacity(values.len());
 		for val in values.iter() {
-			let signed = *val as $signed_ty;
 			result.push(match $operator {
-				PrefixOperator::Minus(_) => -signed,
-				PrefixOperator::Plus(_) => signed,
+				PrefixOperator::Minus(_) => val.checked_neg().ok_or_else(|| TypeError::NumberOutOfRange {
+					target: $value_type,
+					fragment: $fragment,
+					descriptor: None,
+				})?,
+				PrefixOperator::Plus(_) => *val,
 				PrefixOperator::Not(_) => {
 					return Err(TypeError::LogicalOperatorNotApplicable {
 						operator: LogicalOp::Not,
@@ -69,8 +46,40 @@ macro_rules! prefix_unsigned_int {
 				}
 			});
 		}
-		let new_data = ColumnBuffer::$constructor(result);
+		let new_data = ColumnBuffer::$variant(result);
 		Ok($column.with_new_data(new_data))
+	}};
+}
+
+macro_rules! prefix_unsigned_int {
+	($column:expr, $values:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident, $value_type:expr) => {{
+		match $operator {
+			PrefixOperator::Plus(_) => Ok($column.clone()),
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Number,
+				fragment: $fragment,
+			}
+			.into()),
+			PrefixOperator::Minus(_) => {
+				let values: &[_] = $values;
+				let magnitude = <$signed_ty>::MIN.unsigned_abs();
+				let mut result = Vec::with_capacity(values.len());
+				for val in values.iter() {
+					if *val > magnitude {
+						return Err(TypeError::NumberOutOfRange {
+							target: $value_type,
+							fragment: $fragment,
+							descriptor: None,
+						}
+						.into());
+					}
+					result.push((*val as $signed_ty).wrapping_neg());
+				}
+				let new_data = ColumnBuffer::$constructor(result);
+				Ok($column.with_new_data(new_data))
+			}
+		}
 	}};
 }
 
@@ -102,7 +111,7 @@ macro_rules! prefix_float {
 }
 
 macro_rules! prefix_not_error {
-	($operator:expr, $fragment:expr, $category:expr) => {
+	($operator:expr, $fragment:expr, $category:expr, $what:expr) => {
 		match $operator {
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
 				operator: LogicalOp::Not,
@@ -110,7 +119,10 @@ macro_rules! prefix_not_error {
 				fragment: $fragment,
 			}
 			.into()),
-			_ => unimplemented!(),
+			_ => Err(CoreError::FrameError {
+				message: format!("Cannot apply arithmetic prefix operator to {}", $what),
+			}
+			.into()),
 		}
 	};
 }
@@ -140,23 +152,23 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		}
 
 		ColumnBuffer::Int1(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int1)
+			prefix_signed_int!(column, container, operator, fragment.clone(), int1, ValueType::Int1)
 		}
 
 		ColumnBuffer::Int2(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int2)
+			prefix_signed_int!(column, container, operator, fragment.clone(), int2, ValueType::Int2)
 		}
 
 		ColumnBuffer::Int4(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int4)
+			prefix_signed_int!(column, container, operator, fragment.clone(), int4, ValueType::Int4)
 		}
 
 		ColumnBuffer::Int8(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int8)
+			prefix_signed_int!(column, container, operator, fragment.clone(), int8, ValueType::Int8)
 		}
 
 		ColumnBuffer::Int16(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int16)
+			prefix_signed_int!(column, container, operator, fragment.clone(), int16, ValueType::Int16)
 		}
 
 		ColumnBuffer::Utf8 {
@@ -176,45 +188,45 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		},
 
 		ColumnBuffer::Uint1(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i8, int1)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i8, int1, ValueType::Int1)
 		}
 
 		ColumnBuffer::Uint2(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i16, int2)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i16, int2, ValueType::Int2)
 		}
 
 		ColumnBuffer::Uint4(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i32, int4)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i32, int4, ValueType::Int4)
 		}
 
 		ColumnBuffer::Uint8(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i64, int8)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i64, int8, ValueType::Int8)
 		}
 
 		ColumnBuffer::Uint16(container) => {
-			prefix_unsigned_int!(column, &u128s(container), operator, fragment.clone(), i128, int16)
+			prefix_unsigned_int!(column, &u128s(container), operator, fragment.clone(), i128, int16, ValueType::Int16)
 		}
 
 		ColumnBuffer::Date(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "date")
 		}
 		ColumnBuffer::DateTime(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "datetime")
 		}
 		ColumnBuffer::Time(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "time")
 		}
 		ColumnBuffer::Duration(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "duration")
 		}
 		ColumnBuffer::IdentityId(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "identity id")
 		}
 		ColumnBuffer::Uuid4(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "uuid4")
 		}
 		ColumnBuffer::Uuid7(_) => {
-			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "uuid7")
 		}
 
 		ColumnBuffer::Blob {

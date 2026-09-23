@@ -180,12 +180,12 @@ fn int16_prefix_plus_keeps_i128_min_and_max() {
 
 #[test]
 fn uint16_prefix_keeps_bits_above_64() {
-	// A lossy read of the Uint16 rows would drop every bit above 64 before the signed result is built.
+	// A lossy read of the Uint16 rows would drop every bit above 64; unary plus keeps the unsigned type.
 	let plus = prefix(
 		ColumnBuffer::uint16([TWO_POW_64, (1 << 127) - 1]),
 		PrefixOperator::Plus(Fragment::testing_empty()),
 	);
-	assert_eq!(int16_rows(&plus), [1 << 64, i128::MAX]);
+	assert_eq!(uint16_rows(&plus), [TWO_POW_64, (1 << 127) - 1]);
 
 	let minus = prefix(ColumnBuffer::uint16([TWO_POW_64]), PrefixOperator::Minus(Fragment::testing_empty()));
 	assert_eq!(int16_rows(&minus), [-(1 << 64)]);
