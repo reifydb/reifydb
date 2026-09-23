@@ -199,7 +199,7 @@ impl<'bump> Compiler<'bump> {
 				unresolved = unresolved.with_alias(*alias);
 				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
-			_ => unimplemented!(),
+			other => self.compile_single(other, tx)?,
 		};
 
 		let remaining: Vec<LogicalPlan<'bump>> =

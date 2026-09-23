@@ -71,6 +71,7 @@ pub mod filter;
 pub mod generator;
 pub mod inline;
 pub mod join;
+pub(crate) mod key_rows;
 pub mod map;
 pub mod merge;
 pub mod patch;

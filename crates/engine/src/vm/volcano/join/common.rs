@@ -3,10 +3,8 @@
 
 use std::sync::Arc;
 
-use postcard::to_stdvec;
 use reifydb_core::{
 	error::diagnostic::operation,
-	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::expression::compile::CompiledExpr;
@@ -14,7 +12,6 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	util::hash::{Hash128, xxh3_128},
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -218,41 +215,25 @@ pub(crate) fn ensure_join_keyable(columns: &Columns, key_indices: &[usize]) -> R
 	Ok(())
 }
 
-pub(crate) fn compute_join_hash(
-	columns: &Columns,
-	col_indices: &[usize],
-	row_idx: usize,
-	buf: &mut Vec<u8>,
-) -> Result<Option<Hash128>> {
-	buf.clear();
-	for &idx in col_indices {
-		let value = columns[idx].get_value(row_idx);
-		if matches!(value, Value::None { .. }) {
-			return Ok(None);
-		}
-		let bytes =
-			to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize join key value: {}", e))?;
-		buf.extend_from_slice(&bytes);
-	}
-	Ok(Some(xxh3_128(buf)))
-}
-
-pub(crate) fn keys_equal_by_index(
+pub(crate) fn ensure_join_key_types_match(
 	left: &Columns,
-	left_row: usize,
 	left_indices: &[usize],
 	right: &Columns,
-	right_row: usize,
 	right_indices: &[usize],
-) -> bool {
-	for (&li, &ri) in left_indices.iter().zip(right_indices.iter()) {
-		let lv = left[li].get_value(left_row);
-		let rv = right[ri].get_value(right_row);
-		if lv != rv {
-			return false;
+	fragment: impl Fn(usize) -> Fragment,
+) -> Result<()> {
+	for (key, (&li, &ri)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
+		let left_ty = left[li].get_type();
+		let right_ty = right[ri].get_type();
+		if left_ty.inner_type() != right_ty.inner_type() {
+			return Err(error!(operation::join_key_type_mismatch(
+				fragment(key),
+				left_ty.inner_type().clone(),
+				right_ty.inner_type().clone()
+			)));
 		}
 	}
-	true
+	Ok(())
 }
 
 pub(crate) fn eval_join_condition(

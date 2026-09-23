@@ -3,9 +3,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::{Array, ArrayRef};
+use arrow_row::{RowConverter, Rows};
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
 	interface::identifier::ColumnObject,
+	internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
@@ -14,16 +17,19 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_rql::expression::{AccessObjectExpression, Expression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment, reifydb_assertions, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::row_number::RowNumber};
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, JoinSlot, NO_MATCH, compute_join_hash, ensure_join_keyable, eval_join_condition,
-	keys_equal_by_index, load_and_merge_all, materialize_join, resolve_column_names,
+	JoinContext, JoinSlot, NO_MATCH, ensure_join_key_types_match, ensure_join_keyable, eval_join_condition,
+	load_and_merge_all, materialize_join, resolve_column_names,
 };
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		key_rows::{key_arrays, key_rows},
+		query::{QueryContext, QueryNode},
+	},
 };
 
 pub(crate) struct EquiKeyPair {
@@ -136,13 +142,15 @@ enum HashJoinMode {
 
 struct HashJoinState {
 	build_columns: Columns,
-	hash_table: HashMap<Hash128, Vec<usize>>,
+	converter: Option<RowConverter>,
+	hash_table: HashMap<Box<[u8]>, Vec<usize>>,
 	resolved_names: Vec<String>,
 	probe_shells: Vec<ColumnBuffer>,
 	right_key_indices: Vec<usize>,
 	left_key_indices: Vec<usize>,
 
 	probe_batch: Option<Columns>,
+	probe_keys: Option<(Rows, Vec<ArrayRef>)>,
 	probe_row_idx: usize,
 	current_matches: Vec<usize>,
 	current_match_idx: usize,
@@ -150,8 +158,6 @@ struct HashJoinState {
 	probe_exhausted: bool,
 
 	compiled_residual: Vec<CompiledExpr>,
-
-	hash_buf: Vec<u8>,
 }
 
 pub(crate) struct HashJoinNode {
@@ -264,14 +270,30 @@ impl HashJoinNode {
 		};
 		ensure_join_keyable(&build_columns, &right_key_indices)?;
 
-		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
-		let mut hash_buf = Vec::with_capacity(256);
-		let row_count = build_columns.row_count();
-		for j in 0..row_count {
-			if let Some(h) = compute_join_hash(&build_columns, &right_key_indices, j, &mut hash_buf)? {
-				hash_table.entry(h).or_default().push(j);
+		let mut hash_table: HashMap<Box<[u8]>, Vec<usize>> = HashMap::new();
+		let converter = if build_columns.is_empty() {
+			None
+		} else {
+			let key_columns: Vec<&ColumnBuffer> =
+				right_key_indices.iter().map(|&idx| &build_columns[idx]).collect();
+			let (converter, arrays) = key_rows(&key_columns)?;
+			let rows = converter
+				.convert_columns(&arrays)
+				.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
+			for j in 0..build_columns.row_count() {
+				if arrays.iter().any(|array| array.is_null(j)) {
+					continue;
+				}
+				let key = rows.row(j);
+				match hash_table.get_mut(key.as_ref()) {
+					Some(indices) => indices.push(j),
+					None => {
+						hash_table.insert(Box::from(key.as_ref()), vec![j]);
+					}
+				}
 			}
-		}
+			Some(converter)
+		};
 
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -281,19 +303,20 @@ impl HashJoinNode {
 
 		self.state = Some(HashJoinState {
 			build_columns,
+			converter,
 			hash_table,
 			resolved_names: Vec::new(),
 			probe_shells: Vec::new(),
 			right_key_indices,
 			left_key_indices: Vec::new(),
 			probe_batch: None,
+			probe_keys: None,
 			probe_row_idx: 0,
 			current_matches: Vec::new(),
 			current_match_idx: 0,
 			current_row_matched: false,
 			probe_exhausted: false,
 			compiled_residual,
-			hash_buf,
 		});
 
 		Ok(())
@@ -317,36 +340,32 @@ fn split_key_names(pairs: &[EquiKeyPair]) -> (KeyNamePairs, KeyNamePairs) {
 	(left, right)
 }
 
-fn compute_matches_for_probe_row(
-	hash_table: &HashMap<Hash128, Vec<usize>>,
-	build_columns: &Columns,
+fn probe_key_rows(
+	converter: Option<&RowConverter>,
 	probe: &Columns,
+	key_indices: &[usize],
+) -> Result<Option<(Rows, Vec<ArrayRef>)>> {
+	let Some(converter) = converter else {
+		return Ok(None);
+	};
+	let key_columns: Vec<&ColumnBuffer> = key_indices.iter().map(|&idx| &probe[idx]).collect();
+	let arrays = key_arrays(&key_columns);
+	let rows =
+		converter.convert_columns(&arrays).map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
+	Ok(Some((rows, arrays)))
+}
+
+fn matches_for_probe_row(
+	hash_table: &HashMap<Box<[u8]>, Vec<usize>>,
+	probe_keys: Option<&(Rows, Vec<ArrayRef>)>,
 	probe_row_idx: usize,
-	left_key_indices: &[usize],
-	right_key_indices: &[usize],
-	buf: &mut Vec<u8>,
-) -> Result<Vec<usize>> {
-	Ok(match compute_join_hash(probe, left_key_indices, probe_row_idx, buf)? {
-		Some(h) => hash_table
-			.get(&h)
-			.map(|indices| {
-				indices.iter()
-					.copied()
-					.filter(|&build_idx| {
-						keys_equal_by_index(
-							probe,
-							probe_row_idx,
-							left_key_indices,
-							build_columns,
-							build_idx,
-							right_key_indices,
-						)
-					})
-					.collect()
-			})
-			.unwrap_or_default(),
-		None => Vec::new(),
-	})
+) -> Vec<usize> {
+	match probe_keys {
+		Some((rows, arrays)) if !arrays.iter().any(|array| array.is_null(probe_row_idx)) => {
+			hash_table.get(rows.row(probe_row_idx).as_ref()).cloned().unwrap_or_default()
+		}
+		_ => Vec::new(),
+	}
 }
 
 impl QueryNode for HashJoinNode {
@@ -423,6 +442,13 @@ impl QueryNode for HashJoinNode {
 					Some(batch) => {
 						resolve_names_and_indices(&mut state, &batch, &self.left_keys)?;
 						ensure_join_keyable(&batch, &state.left_key_indices)?;
+						ensure_join_key_types_match(
+							&batch,
+							&state.left_key_indices,
+							&state.build_columns,
+							&state.right_key_indices,
+							|key| self.left_keys[key].1.clone(),
+						)?;
 						state.probe_batch = Some(batch);
 						state.probe_row_idx = 0;
 
@@ -435,15 +461,16 @@ impl QueryNode for HashJoinNode {
 							columns: probe.columns.clone(),
 							picks: Vec::new(),
 						});
-						state.current_matches = compute_matches_for_probe_row(
-							&state.hash_table,
-							&state.build_columns,
+						state.probe_keys = probe_key_rows(
+							state.converter.as_ref(),
 							probe,
-							0,
 							&state.left_key_indices,
-							&state.right_key_indices,
-							&mut state.hash_buf,
 						)?;
+						state.current_matches = matches_for_probe_row(
+							&state.hash_table,
+							state.probe_keys.as_ref(),
+							0,
+						);
 						state.current_match_idx = 0;
 						state.current_row_matched = false;
 					}
@@ -472,15 +499,11 @@ impl QueryNode for HashJoinNode {
 					continue;
 				}
 
-				state.current_matches = compute_matches_for_probe_row(
+				state.current_matches = matches_for_probe_row(
 					&state.hash_table,
-					&state.build_columns,
-					probe,
+					state.probe_keys.as_ref(),
 					state.probe_row_idx,
-					&state.left_key_indices,
-					&state.right_key_indices,
-					&mut state.hash_buf,
-				)?;
+				);
 				state.current_match_idx = 0;
 				state.current_row_matched = false;
 				continue;

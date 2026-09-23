@@ -128,6 +128,10 @@ mod insert_undefined_value;
 mod interceptor;
 #[path = "join_digest_key.rs"]
 mod join_digest_key;
+#[path = "join_key_normalized.rs"]
+mod join_key_normalized;
+#[path = "join_key_type_mismatch.rs"]
+mod join_key_type_mismatch;
 #[path = "join_natural.rs"]
 mod join_natural;
 #[path = "join_output_columns.rs"]
