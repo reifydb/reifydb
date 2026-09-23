@@ -58,7 +58,7 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		let extras = record.extras();
 		input_rows.push(extras[0]);
 		output_rows.push(extras[1]);
-		lock_wait.push(Duration::from_micros_infallible(extras[2].min(9_000_000_000_000_000)));
+		lock_wait.push(Duration::from_micros_infallible(extras[2]));
 	}
 
 	Columns::new(vec![

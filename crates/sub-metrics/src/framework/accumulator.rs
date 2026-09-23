@@ -455,6 +455,13 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 	}
 }
 
+fn micros_duration(micros: f64) -> Result<Duration> {
+	if micros.is_nan() || micros < 0.0 || micros > u64::MAX as f64 {
+		return Err(internal_error!("a reading of {} microseconds is not a Duration", micros));
+	}
+	Ok(Duration::from_micros_infallible(micros as u64))
+}
+
 fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
 	match target {
 		ValueType::Uint2 => Ok(Value::Uint2(reading.as_f64() as u16)),
@@ -462,7 +469,7 @@ fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
 		ValueType::Uint8 => Ok(Value::Uint8(reading.as_f64() as u64)),
 		ValueType::Duration => match reading {
 			Reading::Duration(duration) => Ok(Value::Duration(*duration)),
-			other => Ok(Value::Duration(Duration::from_microseconds(other.as_f64().min(9.0e15) as i64)?)),
+			other => Ok(Value::Duration(micros_duration(other.as_f64())?)),
 		},
 		_ => Ok(Value::float8(reading.as_f64())),
 	}
@@ -487,7 +494,7 @@ fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
 		Reading::Count(_) => Reading::Count(Count::new(delta as u64)),
 		Reading::Ratio(_) => Reading::Ratio(delta),
 		Reading::Version(_) => Reading::Version(delta as u64),
-		Reading::Duration(_) => Reading::Duration(Duration::from_microseconds(delta.min(9.0e15) as i64)?),
+		Reading::Duration(_) => Reading::Duration(micros_duration(delta)?),
 	})
 }
 
