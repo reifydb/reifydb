@@ -33,17 +33,13 @@ fn error_of(t: &TestEngine, rql: &str) -> String {
 
 fn assert_update_rejects_like_insert(t: &TestEngine, source: &str, filter: &str, insert_row: &str, assignment: &str) {
 	// The INSERT error is read at run time, so the UPDATE must follow whatever INSERT decides.
-	let before = format!("{:?}", t.query(&format!("FROM {source}")));
+	let before = t.query(&format!("FROM {source}"));
 	let insert = error_of(t, &format!("INSERT {source} [{{ {insert_row} }}]"));
 	let update = format!("UPDATE {source} {{ {assignment} }} FILTER {{ {filter} }}");
 
 	assert_ne!(insert, "no error", "INSERT {source} [{{ {insert_row} }}] must be rejected");
 	assert_eq!(error_of(t, &update), insert, "{update}");
-	assert_eq!(
-		format!("{:?}", t.query(&format!("FROM {source}"))),
-		before,
-		"{update} must leave the rows unchanged"
-	);
+	assert_eq!(t.query(&format!("FROM {source}")), before, "{update} must leave the rows unchanged");
 }
 
 #[test]
