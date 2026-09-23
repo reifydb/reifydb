@@ -319,7 +319,11 @@ fn build_updated_ringbuffer_row(
 			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
 				internal_error!("Dictionary {:?} not found for column {}", dict_id, rb_column.name)
 			})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &value)?;
+			let entry_id = if matches!(value, Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &value)?
+			};
 			entry_id.to_value()
 		} else {
 			value
