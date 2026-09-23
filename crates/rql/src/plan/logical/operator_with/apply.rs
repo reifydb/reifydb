@@ -156,14 +156,14 @@ impl<'bump> Compiler<'bump> {
 		reject_immutable_not_smaller_than_lateness_in_its_unit(immutable.as_ref(), lateness.as_ref())?;
 		reject_retention_below_lateness(retention.as_ref(), lateness.as_ref())?;
 
-		if window_kind.is_none() {
-			if let Some((_, fragment)) = size_keys_seen.first() {
-				return Err(AstError::UnexpectedToken {
-					expected: "window before duration, slots, slide, gap or lag".to_string(),
-					fragment: fragment.clone(),
-				}
-				.into());
+		if window_kind.is_none()
+			&& let Some((_, fragment)) = size_keys_seen.first()
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "window before duration, slots, slide, gap or lag".to_string(),
+				fragment: fragment.clone(),
 			}
+			.into());
 		}
 
 		let kind = match window_kind {

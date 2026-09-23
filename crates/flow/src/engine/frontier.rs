@@ -434,7 +434,8 @@ mod tests {
 
 	#[test]
 	fn an_apply_with_retention_alone_holds_nothing() {
-		// Retention bounds the state, not the output; a hold by it would delay every downstream seal for nothing.
+		// Retention bounds the state, not the output; a hold by it would delay every downstream seal for
+		// nothing.
 		let with = ApplyWith {
 			retention: Some(seconds(30)),
 			..ApplyWith::default()

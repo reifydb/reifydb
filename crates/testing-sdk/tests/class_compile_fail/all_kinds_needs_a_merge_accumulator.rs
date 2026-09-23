@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{accumulator::WindowAccumulator, span::WindowSpan};
+use reifydb_flow::window::{accumulator::WindowAccumulator, settings::WindowSettings, span::WindowSpan};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -11,7 +14,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		view::RowView,
-		windowed::operator::{AllKinds, Emit, WindowSettings, WindowedOperator},
+		windowed::operator::{AllKinds, Emit, WindowedOperator},
 	},
 	row,
 };

@@ -1137,7 +1137,6 @@ impl PersistentHooks for RefuseApply {
 #[test]
 #[should_panic(expected = "a dropped batch loses buffered rows")]
 fn a_refused_flush_stops_the_store_instead_of_settling_rows_it_never_wrote() {
-	// A swallowed apply settles the slice anyway, so rows leave memory without ever reaching the device.
 	let buffer = Resident::new();
 	buffer.attach_sinks(
 		PersistentTier::Testing(TestingPersistent::new(Arc::new(RefuseApply))),

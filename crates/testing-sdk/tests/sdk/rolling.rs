@@ -11,6 +11,7 @@ use reifydb_core::{
 };
 use reifydb_flow::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator, invertible::moments::Moments},
+	settings::WindowSettings,
 	span::WindowSpan,
 };
 use reifydb_sdk::{
@@ -22,7 +23,7 @@ use reifydb_sdk::{
 		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
-			operator::{AllKinds, Emit, WindowSettings, WindowedOperator},
+			operator::{AllKinds, Emit, WindowedOperator},
 			plain::PlainDriver,
 		},
 	},

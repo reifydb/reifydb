@@ -1,10 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
 use std::collections::BTreeMap;
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{accumulator::invertible::retained_map::RetainedAccumulator, span::WindowSpan};
+use reifydb_flow::window::{
+	accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
+};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -12,7 +17,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		view::RowView,
-		windowed::operator::{CarryEmit, Emit, NoRolling, WindowDriver, WindowSettings, WindowedOperator},
+		windowed::operator::{CarryEmit, Emit, NoRolling, WindowDriver, WindowedOperator},
 	},
 	row,
 };

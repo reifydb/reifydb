@@ -141,7 +141,8 @@ fn rolling_sum_empty_stream_is_empty() {
 
 #[test]
 fn rolling_sum_reaps_idle_groups_at_the_drain() {
-	// Without the drain reap the oracle keeps groups the operator removed; the no-drain replay must be larger on some seed.
+	// Without the drain reap the oracle keeps groups the operator removed; the no-drain replay must be larger on
+	// some seed.
 	let mut reaped = false;
 	for &seed in &common::SEEDS {
 		let outcome = run_reaping(seed);
@@ -150,7 +151,13 @@ fn rolling_sum_reaps_idle_groups_at_the_drain() {
 			drain_at_ms: 0,
 			..outcome.context.clone()
 		};
-		let kept = rolling_accumulator_oracle(&RollingSum, &reaping_with(), &undrained, &outcome.batches, &group_key());
+		let kept = rolling_accumulator_oracle(
+			&RollingSum,
+			&reaping_with(),
+			&undrained,
+			&outcome.batches,
+			&group_key(),
+		);
 		reaped |= kept.len() > outcome.oracle_table.len();
 	}
 	assert!(reaped, "no seed left a group idle past the drain cutoff");

@@ -12,7 +12,10 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
-	window::accumulator::{MergeAccumulator, WindowAccumulator},
+	window::{
+		accumulator::{MergeAccumulator, WindowAccumulator},
+		settings::WindowSettings,
+	},
 };
 use reifydb_sdk::{
 	error::Result,
@@ -23,7 +26,7 @@ use reifydb_sdk::{
 		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
-			operator::{AllKinds, Emit, NoRolling, WindowSettings, WindowedOperator},
+			operator::{AllKinds, Emit, NoRolling, WindowedOperator},
 			plain::PlainDriver,
 		},
 	},

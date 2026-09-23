@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
 #[test]
 fn class_rules_hold_at_compile_time() {
 	// without this, a loosened bound lets an operator reach state its class forbids and every other test still

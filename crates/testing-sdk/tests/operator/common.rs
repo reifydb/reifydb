@@ -31,6 +31,7 @@ use reifydb_flow::{
 				ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
 		},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
@@ -41,7 +42,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		view::RowView,
-		windowed::operator::{AllKinds, CarryEmit, Emit, NoRolling, WindowSettings, WindowedOperator},
+		windowed::operator::{AllKinds, CarryEmit, Emit, NoRolling, WindowedOperator},
 	},
 	row,
 };

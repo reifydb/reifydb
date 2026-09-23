@@ -107,6 +107,7 @@ fn push_count_event(
 	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn route_count_tumbling(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,

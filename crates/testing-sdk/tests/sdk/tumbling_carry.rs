@@ -13,7 +13,9 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
-	window::{accumulator::invertible::retained_map::RetainedAccumulator, span::WindowSpan},
+	window::{
+		accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
+	},
 };
 use reifydb_sdk::{
 	error::Result,
@@ -25,7 +27,7 @@ use reifydb_sdk::{
 		view::RowView,
 		windowed::{
 			carry::CarryDriver,
-			operator::{CarryEmit, WindowSettings, WindowedOperator},
+			operator::{CarryEmit, WindowedOperator},
 		},
 	},
 	row,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter::once};
 
 use reifydb_codec::tag::ValueKind;
 
@@ -30,7 +30,7 @@ impl<T: Row> OutputRows for T {
 	type Row = T;
 
 	fn rows(self) -> impl Iterator<Item = (Option<()>, T)> {
-		std::iter::once((None, self))
+		once((None, self))
 	}
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Debug, hash::Hash};
+use std::{fmt::Debug, hash::Hash, mem::take};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -120,7 +120,7 @@ where
 	}
 
 	pub fn take_refused(&mut self) -> u64 {
-		std::mem::take(&mut self.refused)
+		take(&mut self.refused)
 	}
 
 	pub fn tumbling_mut(&mut self) -> &mut TumblingEngine<G, S, Accumulator> {

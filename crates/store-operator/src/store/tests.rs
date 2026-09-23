@@ -471,20 +471,17 @@ fn faulted_store(fault: Arc<EnumerateFault>) -> StandardOperatorStore {
 #[test]
 #[should_panic(expected = "a failed one skips the key filter")]
 fn a_failed_census_at_start_stops_the_store_before_it_skips_the_key_filter() {
-	// Read as empty, a failed census starts no key filter and every durable key reads as absent.
 	faulted_store(EnumerateFault::from_call(1));
 }
 
 #[test]
 #[should_panic(expected = "an empty seed under-reports")]
 fn a_failed_census_seed_stops_the_store_instead_of_seeding_it_empty() {
-	// An empty seed bills every operator zero bytes until each of its keys is rewritten.
 	faulted_store(EnumerateFault::from_call(2));
 }
 
 #[test]
 fn a_failed_keyspace_enumeration_fails_the_group_page() {
-	// Read as no keyspaces, a failed enumeration pages a group as empty while it still holds rows.
 	let fault = EnumerateFault::disarmed();
 	let store = faulted_store(fault.clone());
 	fault.armed.store(true, Ordering::SeqCst);
@@ -496,7 +493,6 @@ fn a_failed_keyspace_enumeration_fails_the_group_page() {
 
 #[test]
 fn a_failed_keyspace_enumeration_fails_a_group_range_batch() {
-	// Read as no keyspaces, a failed enumeration pages a group range as empty while it still holds rows.
 	let fault = EnumerateFault::disarmed();
 	let store = faulted_store(fault.clone());
 	fault.armed.store(true, Ordering::SeqCst);
@@ -509,7 +505,6 @@ fn a_failed_keyspace_enumeration_fails_a_group_range_batch() {
 #[test]
 #[should_panic(expected = "a filter built on a partial one misses live keys")]
 fn a_failed_census_stops_the_key_filter_rebuild() {
-	// A filter rebuilt from no keyspaces answers absent for keys the store still holds.
 	let mut source = OperatorStateKeySource::new(PersistentTier::testing(EnumerateFault::from_call(1)));
 	source.restart();
 }

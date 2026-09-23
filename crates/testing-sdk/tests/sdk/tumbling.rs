@@ -19,6 +19,7 @@ use reifydb_flow::{
 			WindowAccumulator,
 			invertible::{moments::Moments, multiset::Multiset, ordf64::OrdF64},
 		},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
@@ -31,7 +32,7 @@ use reifydb_sdk::{
 		extern_c::binding::{exports::create_descriptor, operator::ExternCOperatorAdapter},
 		view::RowView,
 		windowed::{
-			operator::{Emit, NoRolling, WindowSettings, WindowedOperator},
+			operator::{Emit, NoRolling, WindowedOperator},
 			plain::PlainDriver,
 		},
 	},

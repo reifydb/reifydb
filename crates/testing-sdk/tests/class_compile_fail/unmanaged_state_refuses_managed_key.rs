@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
 use reifydb_core::key::operator::state::ManagedKey;
 use reifydb_sdk::{
 	error::Result,

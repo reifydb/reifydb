@@ -298,6 +298,40 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
+		if let Some(slide) = parsed
+			.slide_duration
+			.as_ref()
+			.map(|d| &d.fragment)
+			.or_else(|| parsed.slide_count.as_ref().map(|c| &c.fragment))
+			&& !matches!(kind, AstWindowKind::Sliding)
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "slide is only supported for sliding windows".to_string(),
+				fragment: slide.clone(),
+			}
+			.into());
+		}
+
+		if let Some(pane) = parsed.pane.as_ref()
+			&& !matches!(kind, AstWindowKind::Rolling)
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "pane is only supported for rolling windows".to_string(),
+				fragment: pane.fragment.clone(),
+			}
+			.into());
+		}
+
+		if let Some(gap) = parsed.gap.as_ref()
+			&& !matches!(kind, AstWindowKind::Session)
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "gap is only supported for session windows".to_string(),
+				fragment: gap.fragment.clone(),
+			}
+			.into());
+		}
+
 		match kind {
 			AstWindowKind::Tumbling => {
 				let size = Self::build_measure(parsed)?;
@@ -365,6 +399,15 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
+		if parsed.duration.is_some()
+			&& let Some(count) = parsed.count.as_ref()
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "duration and count cannot both be specified".to_string(),
+				fragment: count.fragment.clone(),
+			}
+			.into());
+		}
 		if let Some(d) = parsed.duration.as_ref() {
 			Ok(WindowSize::Duration(d.value))
 		} else if let Some(c) = parsed.count.as_ref() {
@@ -410,6 +453,99 @@ mod tests {
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");
+	}
+
+	#[test]
+	fn a_slide_outside_a_sliding_window_is_rejected() {
+		// Only the sliding arm reads the slide, so every other kind compiles a window that advances at a rate
+		// the author declared and nothing applies. Both spellings must be refused: `slide: 1m` lands in
+		// slide_duration and `slide: 10` in slide_count, and a guard reading one lets the other through.
+		for (source, kind, span) in [
+			(
+				r#"window tumbling { count(*) } with { duration: 5m, slide: 1m }"#,
+				AstWindowKind::Tumbling,
+				"1m",
+			),
+			(
+				r#"window rolling { count(*) } with { duration: 5m, slide: 1m }"#,
+				AstWindowKind::Rolling,
+				"1m",
+			),
+			(r#"window session { count(*) } with { gap: 5m, slide: 1m }"#, AstWindowKind::Session, "1m"),
+			(
+				r#"window tumbling { count(*) } with { count: 100, slide: 10 }"#,
+				AstWindowKind::Tumbling,
+				"10",
+			),
+		] {
+			let parsed = parse_window_config(source).unwrap();
+			let err = Compiler::<'static>::build_window_kind(kind, &parsed)
+				.expect_err(&format!("a slide outside a sliding window must be refused: {source}"));
+			assert!(
+				err.message.contains("slide is only supported for sliding windows"),
+				"wrong guard fired for: {source}"
+			);
+			assert_eq!(err.fragment.text(), span, "the slide is what the author must remove: {source}");
+		}
+	}
+
+	#[test]
+	fn a_gap_outside_a_session_window_is_rejected() {
+		// Only the session arm reads the gap; anywhere else it compiles away and leaves the author believing
+		// the window closes on inactivity when nothing reads the key at all.
+		for (source, kind) in [
+			(r#"window tumbling { count(*) } with { duration: 5m, gap: 1m }"#, AstWindowKind::Tumbling),
+			(
+				r#"window sliding { count(*) } with { duration: 5m, slide: 1m, gap: 1m }"#,
+				AstWindowKind::Sliding,
+			),
+			(r#"window rolling { count(*) } with { duration: 5m, gap: 1m }"#, AstWindowKind::Rolling),
+		] {
+			let parsed = parse_window_config(source).unwrap();
+			let err = Compiler::<'static>::build_window_kind(kind, &parsed)
+				.expect_err(&format!("a gap outside a session window must be refused: {source}"));
+			assert!(
+				err.message.contains("gap is only supported for session windows"),
+				"wrong guard fired for: {source}"
+			);
+			assert_eq!(err.fragment.text(), "1m", "the gap is what the author must remove: {source}");
+		}
+	}
+
+	#[test]
+	fn a_pane_outside_a_rolling_window_is_rejected() {
+		// `pane` reaches this config only through the apply path, where an earlier key check refuses it off a
+		// rolling window, so the guard has to be driven directly and must still hold if that outer check is
+		// ever relaxed. Every kind but rolling drops the pane on the floor with no error at all.
+		for kind in [AstWindowKind::Tumbling, AstWindowKind::Sliding, AstWindowKind::Session] {
+			let mut parsed =
+				parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, lag: 1m }"#)
+					.unwrap();
+			parsed.pane = parsed.lag.take();
+
+			let err = Compiler::<'static>::build_window_kind(kind, &parsed)
+				.expect_err(&format!("a pane outside a rolling window must be refused: {kind:?}"));
+			assert!(
+				err.message.contains("pane is only supported for rolling windows"),
+				"wrong guard fired for {kind:?}"
+			);
+			assert_eq!(err.fragment.text(), "1m", "the pane is what the author must remove: {kind:?}");
+		}
+	}
+
+	#[test]
+	fn a_window_sized_in_both_duration_and_count_is_rejected() {
+		// The measure reads duration first and drops the count on the floor, so the author gets a five minute
+		// window where they asked for a hundred rows and nothing anywhere says which key won.
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, count: 100 }"#)
+			.unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
+		assert!(
+			err.message.contains("duration and count cannot both be specified"),
+			"the two-measure guard must be the one that fires"
+		);
+		assert_eq!(err.fragment.text(), "100", "the count is the second measure the author must drop");
 	}
 
 	#[test]

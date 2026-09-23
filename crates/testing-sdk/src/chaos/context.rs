@@ -29,7 +29,9 @@ impl ChaosContext {
 
 impl Debug for ChaosContext {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ChaosContext").field("seed", &self.seed).field("now", &self.now())
+		f.debug_struct("ChaosContext")
+			.field("seed", &self.seed)
+			.field("now", &self.now())
 			.field("drain_at_ms", &self.drain_at_ms)
 			.finish()
 	}

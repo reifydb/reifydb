@@ -5,12 +5,12 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_codec::{key::encoded::IntoEncodedKey, row::operator::state::StateCodec};
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, operator_with::ApplyWith};
-pub use reifydb_flow::window::settings::WindowSettings;
 use reifydb_flow::{
 	operator::state::seal::domain::SealDomain,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
 		engine::rolling::{RollingBuffer, merge_panes},
+		settings::WindowSettings,
 		span::{WindowAnchor, WindowSpan},
 	},
 };

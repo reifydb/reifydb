@@ -19,6 +19,7 @@ use reifydb_flow::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
@@ -31,9 +32,7 @@ use reifydb_sdk::{
 		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
-			operator::{
-				AllKinds, Emit, PlainMarker, TopKMarker, WindowDriver, WindowSettings, WindowedOperator,
-			},
+			operator::{AllKinds, Emit, PlainMarker, TopKMarker, WindowDriver, WindowedOperator},
 			top_k::TopKDriver,
 		},
 	},

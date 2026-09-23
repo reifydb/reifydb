@@ -20,6 +20,7 @@ use reifydb_flow::{
 	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
@@ -27,7 +28,7 @@ use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::in_process::InProcessRowSink},
 	extern_c::{binding::context::ExternCContext, wire::context::ExternCContextRaw},
 	view::{ColumnsView, in_process::InProcessColumnsView},
-	windowed::operator::{CarryEmit, Contribution, Emit, WindowSettings, WindowedOperator},
+	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
 };
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
@@ -107,7 +108,7 @@ where
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn apply_leg<A>(
 	aggregate: &A,
 	settings: &WindowSettings<A::Coord>,

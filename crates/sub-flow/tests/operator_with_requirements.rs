@@ -10,7 +10,9 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{accumulator::invertible::last_value::LastValue, coord::OrdinalCoord, span::WindowSpan};
+use reifydb_flow::window::{
+	accumulator::invertible::last_value::LastValue, coord::OrdinalCoord, settings::WindowSettings, span::WindowSpan,
+};
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
 	error::Result as SdkResult,
@@ -20,9 +22,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
 		view::{ChangeView, RowView},
-		windowed::operator::{
-			AllKinds, Emit, NoRolling, PlainMarker, TopKMarker, WindowSettings, WindowedOperator,
-		},
+		windowed::operator::{AllKinds, Emit, NoRolling, PlainMarker, TopKMarker, WindowedOperator},
 	},
 	row,
 };
