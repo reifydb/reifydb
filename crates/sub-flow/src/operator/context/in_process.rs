@@ -11,8 +11,8 @@ use reifydb_core::{
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
-		keyspace_inner_range_in,
+		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_framed_inner,
+		is_guest_framed_inner, keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
 };
@@ -44,6 +44,16 @@ fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
 	}
 	Err(SdkError::Other(format!(
 		"a guest operator state key must name a guest keyspace and carry that keyspace's exact suffix width, got {} bytes",
+		key.as_slice().len()
+	)))
+}
+
+fn framed(key: &GroupStateKey) -> SdkResult<()> {
+	if is_framed_inner(key.as_slice()) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!(
+		"an operator state key must name a known keyspace, got {} bytes",
 		key.as_slice().len()
 	)))
 }
@@ -188,18 +198,21 @@ impl GuestState for InProcessState<'_> {
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)
 	}
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> SdkResult<()> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
 	}
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		framed(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
@@ -427,5 +440,35 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_flow::operator::host::TxnHostContext;
+	use reifydb_sdk::flow::operator::context::Windowed;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
+
+	use super::*;
+
+	#[test]
+	fn the_byte_accessors_refuse_a_key_that_frames_no_known_keyspace() {
+		// Without this a guest writes under a key naming no known keyspace and no later range scan can reach
+		// that row again.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut host = TxnHostContext::new(&mut txn, OperatorId(1));
+		let mut ctx = InProcessContext::new(&mut host, OperatorId(1));
+		let mut state = GuestContext::<Windowed>::window_state(&mut ctx);
+
+		let unframed = GroupStateKey::bound_unchecked(EncodedKey::new(vec![0xFF, 0xFF, 0xFF]));
+
+		let err = state.set_bytes(&unframed, EncodedPodRow::new(&[1])).unwrap_err();
+		assert!(
+			err.to_string().contains("must name a known keyspace"),
+			"set_bytes must refuse an unframed key, got {err}"
+		);
+		assert!(state.get_bytes(&unframed).is_err(), "get_bytes must refuse an unframed key too");
+		assert!(state.remove_bytes(&unframed).is_err(), "remove_bytes must refuse an unframed key too");
 	}
 }
