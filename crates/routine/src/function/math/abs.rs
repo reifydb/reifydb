@@ -17,6 +17,13 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
+fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
 pub struct Abs {
 	info: RoutineInfo,
 }
@@ -47,6 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let data = &args[0];
 		let row_count = data.len();
+		let column_type = data.get_type();
 
 		let result_data = match data {
 			ColumnBuffer::Int1(container) => {
@@ -54,7 +62,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						data.push(value.abs());
+						data.push(value.checked_abs().ok_or_else(|| {
+							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+						})?);
 						res_bitvec.push(true);
 					} else {
 						data.push(0);
@@ -68,7 +78,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						data.push(value.abs());
+						data.push(value.checked_abs().ok_or_else(|| {
+							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+						})?);
 						res_bitvec.push(true);
 					} else {
 						data.push(0);
@@ -82,7 +94,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						data.push(value.abs());
+						data.push(value.checked_abs().ok_or_else(|| {
+							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+						})?);
 						res_bitvec.push(true);
 					} else {
 						data.push(0);
@@ -96,7 +110,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						data.push(value.abs());
+						data.push(value.checked_abs().ok_or_else(|| {
+							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+						})?);
 						res_bitvec.push(true);
 					} else {
 						data.push(0);
@@ -110,7 +126,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						data.push(value.abs());
+						data.push(value.checked_abs().ok_or_else(|| {
+							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+						})?);
 						res_bitvec.push(true);
 					} else {
 						data.push(0);

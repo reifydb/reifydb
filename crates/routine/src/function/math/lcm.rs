@@ -25,24 +25,29 @@ impl Lcm {
 	}
 }
 
-fn numeric_to_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
+fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
+fn numeric_to_i128(data: &ColumnBuffer, i: usize) -> Option<i128> {
 	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int16(c) => c.values().get(i).copied(),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i128),
 		_ => None,
 	}
 }
 
-fn compute_gcd(mut a: i64, mut b: i64) -> i64 {
-	a = a.abs();
-	b = b.abs();
+fn compute_gcd(mut a: u128, mut b: u128) -> u128 {
 	while b != 0 {
 		let t = b;
 		b = a % b;
@@ -51,11 +56,13 @@ fn compute_gcd(mut a: i64, mut b: i64) -> i64 {
 	a
 }
 
-fn compute_lcm(a: i64, b: i64) -> i64 {
+fn compute_lcm(a: i128, b: i128) -> Option<u128> {
 	if a == 0 || b == 0 {
-		return 0;
+		return Some(0);
 	}
-	(a.abs() / compute_gcd(a, b)) * b.abs()
+	let a = a.unsigned_abs();
+	let b = b.unsigned_abs();
+	(a / compute_gcd(a, b)).checked_mul(b)
 }
 
 impl<'a> Routine<FunctionContext<'a>> for Lcm {
@@ -103,9 +110,17 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 		let mut res_bitvec = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			match (numeric_to_i64(a_data, i), numeric_to_i64(b_data, i)) {
+			match (numeric_to_i128(a_data, i), numeric_to_i128(b_data, i)) {
 				(Some(a), Some(b)) => {
-					result.push(compute_lcm(a, b));
+					let multiple = compute_lcm(a, b)
+						.and_then(|multiple| i64::try_from(multiple).ok())
+						.ok_or_else(|| {
+							failed(
+								ctx,
+								format!("the least common multiple of {a} and {b} is out of range for {}", ValueType::Int8),
+							)
+						})?;
+					result.push(multiple);
 					res_bitvec.push(true);
 				}
 				_ => {

@@ -25,24 +25,29 @@ impl Gcd {
 	}
 }
 
-fn numeric_to_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
+fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
+fn numeric_to_i128(data: &ColumnBuffer, i: usize) -> Option<i128> {
 	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Int16(c) => c.values().get(i).copied(),
+		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i128),
+		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i128),
 		_ => None,
 	}
 }
 
-fn compute_gcd(mut a: i64, mut b: i64) -> i64 {
-	a = a.abs();
-	b = b.abs();
+fn compute_gcd(mut a: u128, mut b: u128) -> u128 {
 	while b != 0 {
 		let t = b;
 		b = a % b;
@@ -96,9 +101,15 @@ impl<'a> Routine<FunctionContext<'a>> for Gcd {
 		let mut res_bitvec = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			match (numeric_to_i64(a_data, i), numeric_to_i64(b_data, i)) {
+			match (numeric_to_i128(a_data, i), numeric_to_i128(b_data, i)) {
 				(Some(a), Some(b)) => {
-					result.push(compute_gcd(a, b));
+					let divisor = compute_gcd(a.unsigned_abs(), b.unsigned_abs());
+					result.push(i64::try_from(divisor).map_err(|_| {
+						failed(
+							ctx,
+							format!("the greatest common divisor of {a} and {b} is out of range for {}", ValueType::Int8),
+						)
+					})?);
 					res_bitvec.push(true);
 				}
 				_ => {
