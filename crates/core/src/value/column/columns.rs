@@ -420,9 +420,7 @@ impl Columns {
 		let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
 			let mut builder = ColumnBuilder::with_capacity(field.constraint.get_type(), row_count);
-			if field.constraint.get_type() == ValueType::DictionaryId
-				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-			{
+			if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
 				builder.set_dictionary_id(*dict_id);
 			}
 			builders.push(builder);
@@ -619,9 +617,7 @@ impl Columns {
 			};
 			builder.push_value(value);
 
-			if column_type == ValueType::DictionaryId
-				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-			{
+			if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
 				builder.set_dictionary_id(*dict_id);
 			}
 			let data = builder.finish();

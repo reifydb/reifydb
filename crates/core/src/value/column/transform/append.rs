@@ -267,8 +267,7 @@ impl Columns {
 							vec![Default::default(); size],
 							BooleanBuffer::new_unset(size),
 						);
-						let bare = col_data.nulls().is_none();
-						if bare && let ColumnBuffer::DictionaryId {
+						if let ColumnBuffer::DictionaryId {
 							dictionary_id,
 							..
 						} = &mut col_data && let Some(Constraint::Dictionary(dict_id, _)) =
@@ -297,8 +296,7 @@ impl Columns {
 				*column = new_data;
 			}
 
-			let bare = column.nulls().is_none();
-			if bare && let ColumnBuffer::DictionaryId {
+			if let ColumnBuffer::DictionaryId {
 				dictionary_id,
 				..
 			} = &mut *column && dictionary_id.is_none()

@@ -79,7 +79,8 @@ impl ColumnBuffer {
 			_ => {}
 		}
 
-		scatter_merge_generic(self, other, then_mask, else_mask, total_len)
+		let merged = scatter_merge_generic(self, other, then_mask, else_mask, total_len);
+		carry_dictionary_id(merged, self, other)
 	}
 }
 
@@ -180,6 +181,33 @@ fn finish_merge(source: &ColumnBuffer, merged: &dyn Array, valid: BooleanBuffer)
 	match source.nulls().is_some() || valid.count_set_bits() != valid.len() {
 		true => result.replace_nulls(Some(NullBuffer::new(valid))),
 		false => result.replace_nulls(None),
+	}
+}
+
+fn carry_dictionary_id(merged: ColumnBuffer, a: &ColumnBuffer, b: &ColumnBuffer) -> ColumnBuffer {
+	let (
+		ColumnBuffer::DictionaryId {
+			container,
+			dictionary_id: None,
+		},
+		ColumnBuffer::DictionaryId {
+			dictionary_id: left,
+			..
+		},
+		ColumnBuffer::DictionaryId {
+			dictionary_id: right,
+			..
+		},
+	) = (&merged, a, b)
+	else {
+		return merged;
+	};
+	if left != right {
+		return merged;
+	}
+	ColumnBuffer::DictionaryId {
+		container: container.clone(),
+		dictionary_id: *left,
 	}
 }
 

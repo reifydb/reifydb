@@ -133,7 +133,28 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 			extract_typed_column!(col, take, Uuid7(i) => i, Uuid7::default(), uuid7_with_bitvec)
 		}
 		ValueType::DictionaryId => {
-			extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec)
+			let dictionary_id = match col.data() {
+				ColumnBuffer::DictionaryId {
+					dictionary_id,
+					..
+				} => *dictionary_id,
+				_ => None,
+			};
+			let taken: Result<ColumnWithName> = extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec);
+			let taken = taken?;
+			if let Some(id) = dictionary_id
+				&& let ColumnBuffer::DictionaryId {
+					container,
+					..
+				} = taken.data()
+			{
+				let restored = ColumnBuffer::DictionaryId {
+					container: container.clone(),
+					dictionary_id: Some(id),
+				};
+				return Ok(taken.with_new_data(restored));
+			}
+			Ok(taken)
 		}
 		ValueType::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)

@@ -277,12 +277,30 @@ impl ColumnBuilder {
 	}
 
 	pub fn set_dictionary_id(&mut self, id: DictionaryId) {
-		if let ColumnBuilder::DictionaryId {
-			dictionary_id,
-			..
-		} = self
-		{
-			*dictionary_id = Some(id);
+		match self {
+			ColumnBuilder::DictionaryId {
+				dictionary_id,
+				..
+			} => *dictionary_id = Some(id),
+			ColumnBuilder::Option {
+				inner,
+				..
+			} => inner.set_dictionary_id(id),
+			_ => {}
+		}
+	}
+
+	pub fn dictionary_id(&self) -> Option<DictionaryId> {
+		match self {
+			ColumnBuilder::DictionaryId {
+				dictionary_id,
+				..
+			} => *dictionary_id,
+			ColumnBuilder::Option {
+				inner,
+				..
+			} => inner.dictionary_id(),
+			_ => None,
 		}
 	}
 

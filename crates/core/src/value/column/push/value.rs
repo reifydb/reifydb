@@ -82,6 +82,7 @@ impl ColumnBuilder {
 				bitvec.append(false);
 			} else if UnalignedBitChunk::new(bitvec.as_slice(), 0, bitvec.len()).count_ones() == 0 {
 				let len = inner.len();
+				let dictionary_id = inner.dictionary_id();
 
 				let mut new_inner = match &value {
 					Value::Boolean(_) => ColumnBuffer::bool(vec![false; len]),
@@ -125,6 +126,9 @@ impl ColumnBuilder {
 					_ => unreachable!(),
 				}
 				.into_builder();
+				if let Some(id) = dictionary_id {
+					new_inner.set_dictionary_id(id);
+				}
 				new_inner.push_value(value);
 				if len > 0 {
 					let mut new_bitvec = BooleanBufferBuilder::new(len + 1);
