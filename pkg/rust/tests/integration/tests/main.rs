@@ -6,6 +6,7 @@
 
 mod auth;
 mod catalog;
+mod decimal_rql;
 mod dictionary_durability;
 mod dictionary_optional;
 mod digest_durability;

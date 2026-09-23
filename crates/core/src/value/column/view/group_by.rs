@@ -179,7 +179,7 @@ fn group_key_error(error: ArrowError) -> Error {
 
 fn row_format_matches_value_key(column: &ColumnBuffer) -> bool {
 	let ty = column.get_type();
-	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8)
+	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
 }
 
 impl HeapSize for GroupKeyDict {

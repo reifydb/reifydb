@@ -5,12 +5,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use reifydb_value::value::{container::temporal_array::duration_array, duration::Duration, value_type::ValueType};
+
 use crate::function::support::coerce::read_i64;
-use reifydb_value::value::{
-	container::temporal_array::duration_array,
-	duration::Duration,
-	value_type::ValueType,
-};
 
 pub struct DurationHours {
 	info: RoutineInfo,

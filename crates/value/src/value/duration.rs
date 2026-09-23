@@ -360,7 +360,9 @@ impl Duration {
 			.checked_neg()
 			.zip(self.days.checked_neg())
 			.zip(self.nanos.checked_neg())
-			.ok_or_else(|| Box::new(Self::overflow_err("negating the Duration overflows its range".to_string())))?;
+			.ok_or_else(|| {
+				Box::new(Self::overflow_err("negating the Duration overflows its range".to_string()))
+			})?;
 		let ((months, days), nanos) = negated;
 		Ok(Self {
 			months,

@@ -63,7 +63,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
 						data.push(value.checked_abs().ok_or_else(|| {
-							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+							failed(
+								ctx,
+								format!(
+									"the absolute value of {value} is out of range for {column_type}"
+								),
+							)
 						})?);
 						res_bitvec.push(true);
 					} else {
@@ -79,7 +84,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
 						data.push(value.checked_abs().ok_or_else(|| {
-							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+							failed(
+								ctx,
+								format!(
+									"the absolute value of {value} is out of range for {column_type}"
+								),
+							)
 						})?);
 						res_bitvec.push(true);
 					} else {
@@ -95,7 +105,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
 						data.push(value.checked_abs().ok_or_else(|| {
-							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+							failed(
+								ctx,
+								format!(
+									"the absolute value of {value} is out of range for {column_type}"
+								),
+							)
 						})?);
 						res_bitvec.push(true);
 					} else {
@@ -111,7 +126,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
 						data.push(value.checked_abs().ok_or_else(|| {
-							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+							failed(
+								ctx,
+								format!(
+									"the absolute value of {value} is out of range for {column_type}"
+								),
+							)
 						})?);
 						res_bitvec.push(true);
 					} else {
@@ -127,7 +147,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
 						data.push(value.checked_abs().ok_or_else(|| {
-							failed(ctx, format!("the absolute value of {value} is out of range for {column_type}"))
+							failed(
+								ctx,
+								format!(
+									"the absolute value of {value} is out of range for {column_type}"
+								),
+							)
 						})?);
 						res_bitvec.push(true);
 					} else {

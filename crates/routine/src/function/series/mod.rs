@@ -5,8 +5,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use crate::function::support::coerce::read_i32;
 use reifydb_value::value::value_type::ValueType;
+
+use crate::function::support::coerce::read_i32;
 
 pub struct GenerateSeries {
 	info: RoutineInfo,

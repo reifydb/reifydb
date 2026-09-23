@@ -268,7 +268,7 @@ impl KeySerializer {
 	}
 
 	pub fn extend_decimal(&mut self, decimal: &Decimal) -> &mut Self {
-		let (mantissa, scale) = decimal.0.as_bigint_and_exponent();
+		let (mantissa, scale) = decimal.0.normalized().as_bigint_and_exponent();
 		let sign = mantissa.sign();
 		let digits = mantissa.magnitude().to_str_radix(10);
 

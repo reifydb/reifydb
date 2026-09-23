@@ -5,12 +5,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use reifydb_value::value::{container::temporal_array::time_array, time::Time, value_type::ValueType};
+
 use crate::function::support::coerce::read_i32;
-use reifydb_value::value::{
-	container::temporal_array::time_array,
-	time::Time,
-	value_type::ValueType,
-};
 
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	RoutineError::FunctionExecutionFailed {

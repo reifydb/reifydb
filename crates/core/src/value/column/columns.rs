@@ -324,8 +324,7 @@ impl Columns {
 			if let ColumnBuffer::DictionaryId {
 				dictionary_id,
 				..
-			} = data
-				&& dictionary_id.is_none()
+			} = data && dictionary_id.is_none()
 				&& let Some(source) = from.column(name.text())
 				&& let ColumnBuffer::DictionaryId {
 					dictionary_id: source_id,

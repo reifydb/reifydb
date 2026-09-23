@@ -64,6 +64,10 @@ mod digest_row_storage;
 mod distinct_row_identity;
 #[path = "distinct_typed_key.rs"]
 mod distinct_typed_key;
+#[path = "division_by_a_none_divisor.rs"]
+mod division_by_a_none_divisor;
+#[path = "duration_add_overflow.rs"]
+mod duration_add_overflow;
 #[path = "duration_mixed_unit_identity.rs"]
 mod duration_mixed_unit_identity;
 #[path = "duration_subtract_and_scale_overflow.rs"]
@@ -90,6 +94,8 @@ mod extend_duplicate_column_fragment;
 mod flow_dag_load;
 #[path = "from_default_order.rs"]
 mod from_default_order;
+#[path = "grouped_sum_overflow.rs"]
+mod grouped_sum_overflow;
 #[path = "handler_body_pipe.rs"]
 mod handler_body_pipe;
 #[path = "identity_dml_context.rs"]
@@ -98,6 +104,8 @@ mod identity_dml_context;
 mod identity_inject_escalation;
 #[path = "identity_kind.rs"]
 mod identity_kind;
+#[path = "in_list_with_a_none_item.rs"]
+mod in_list_with_a_none_item;
 #[path = "inline_column_property_ddl.rs"]
 mod inline_column_property_ddl;
 #[path = "inline_constructor_unknown_column.rs"]

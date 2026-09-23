@@ -13,9 +13,9 @@ use arrow_array::{
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
-		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_duration_cell,
-		decode_int_cell, decode_uint_cell, encode_any_cell, encode_decimal_cell,
-		encode_dictionary_id_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
+		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_duration_cell, decode_int_cell,
+		decode_uint_cell, encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell,
+		encode_duration_cell, encode_int_cell, encode_uint_cell,
 	},
 	tag::ValueKind,
 };
@@ -60,7 +60,9 @@ use uuid::Uuid;
 
 use crate::{
 	common::extern_wasm::{
-		layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
+		layout::{
+			EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns,
+		},
 		marshal::util::{column_data_to_type_code, ensure_marshallable},
 	},
 	error::{Result as SdkResult, SdkError},
@@ -162,7 +164,9 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<Columns> {
 	let descriptors_end = column_count
 		.checked_mul(EXTERN_WASM_COLUMN_SIZE)
 		.and_then(|len| len.checked_add(EXTERN_WASM_COLUMNS_HEADER_SIZE))
-		.ok_or_else(|| malformed(format!("guest declared {column_count} columns, more than can be addressed")))?;
+		.ok_or_else(|| {
+			malformed(format!("guest declared {column_count} columns, more than can be addressed"))
+		})?;
 	if descriptors_end > bytes.len() {
 		return Err(malformed(format!(
 			"guest declared {column_count} columns needing {descriptors_end} bytes, but sent {}",
@@ -186,7 +190,8 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<Columns> {
 
 		let name_bytes = region(bytes, desc.name_offset, desc.name_len, "column name")?;
 		let name = Fragment::internal(
-			str::from_utf8(name_bytes).map_err(|_| malformed(format!("guest column {i} name is not utf8")))?,
+			str::from_utf8(name_bytes)
+				.map_err(|_| malformed(format!("guest column {i} name is not utf8")))?,
 		);
 
 		let data_row_count = desc.data_row_count as usize;
@@ -546,9 +551,16 @@ fn unmarshal_column_data(
 			max_bytes: MaxBytes::MAX,
 		},
 		ValueKind::Decimal => ColumnBuffer::Decimal {
-			container: decimal_array(unmarshal_cells(data, row_count, offsets_bytes, "decimal", |bytes| {
-				decode_decimal_cell(bytes).map_err(|e| malformed(format!("guest decimal cell: {e}")))
-			})?),
+			container: decimal_array(unmarshal_cells(
+				data,
+				row_count,
+				offsets_bytes,
+				"decimal",
+				|bytes| {
+					decode_decimal_cell(bytes)
+						.map_err(|e| malformed(format!("guest decimal cell: {e}")))
+				},
+			)?),
 			precision: Precision::MAX,
 			scale: Scale::MIN,
 		},
@@ -708,11 +720,7 @@ fn unmarshal_time(data: &[u8], row_count: usize) -> SdkResult<Time64NanosecondAr
 	Ok(time_array(times))
 }
 
-fn unmarshal_duration(
-	data: &[u8],
-	row_count: usize,
-	offsets_bytes: &[u8],
-) -> SdkResult<IntervalMonthDayNanoArray> {
+fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<IntervalMonthDayNanoArray> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(duration_array(vec![Duration::default(); row_count]));
 	}
@@ -731,10 +739,7 @@ fn unmarshal_uuids<T>(data: &[u8], row_count: usize, what: &str, build: impl Fn(
 	if data.len() < needed {
 		return Err(malformed(format!("guest sent {} {what} bytes for {row_count} rows", data.len())));
 	}
-	Ok(data[..needed]
-		.chunks_exact(16)
-		.map(|chunk| build(Uuid::from_bytes(chunk.try_into().unwrap())))
-		.collect())
+	Ok(data[..needed].chunks_exact(16).map(|chunk| build(Uuid::from_bytes(chunk.try_into().unwrap()))).collect())
 }
 
 fn unmarshal_identity_id(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
@@ -746,9 +751,7 @@ fn unmarshal_identity_id(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBi
 		.into_iter()
 		.map(|uuid| match uuid.get_version_num() {
 			7 => Ok(IdentityId(Uuid7(uuid))),
-			version => {
-				Err(malformed(format!("guest identity id is a uuid v{version}, not a uuid v7")))
-			}
+			version => Err(malformed(format!("guest identity id is a uuid v{version}, not a uuid v7"))),
 		})
 		.collect::<SdkResult<Vec<IdentityId>>>()?;
 	Ok(identity_id_array(ids))
@@ -795,11 +798,7 @@ fn unmarshal_cells<T: Default + Clone + IsNumber>(
 		.collect()
 }
 
-fn unmarshal_dictionary_ids(
-	data: &[u8],
-	row_count: usize,
-	offsets_bytes: &[u8],
-) -> SdkResult<Vec<DictionaryEntryId>> {
+fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<Vec<DictionaryEntryId>> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(vec![DictionaryEntryId::default(); row_count]);
 	}

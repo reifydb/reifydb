@@ -100,11 +100,7 @@ impl Function for TextChar {
 	}
 }
 
-fn convert_to_char<F>(
-	ctx: &FunctionContext,
-	row_count: usize,
-	get_value: F,
-) -> Result<ColumnBuffer, RoutineError>
+fn convert_to_char<F>(ctx: &FunctionContext, row_count: usize, get_value: F) -> Result<ColumnBuffer, RoutineError>
 where
 	F: Fn(usize) -> Option<i128>,
 {
@@ -113,12 +109,9 @@ where
 	for i in 0..row_count {
 		match get_value(i) {
 			Some(code_point) => {
-				let ch = u32::try_from(code_point)
-					.ok()
-					.and_then(char::from_u32)
-					.ok_or_else(|| {
-						failed(ctx, format!("{code_point} is not a character code point"))
-					})?;
+				let ch = u32::try_from(code_point).ok().and_then(char::from_u32).ok_or_else(|| {
+					failed(ctx, format!("{code_point} is not a character code point"))
+				})?;
 				result_data.push(ch.to_string());
 			}
 			None => {

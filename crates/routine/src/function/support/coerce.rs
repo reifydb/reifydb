@@ -21,19 +21,11 @@ use reifydb_value::{
 	},
 };
 
-pub(crate) fn read_i64(
-	function: &Fragment,
-	data: &ColumnBuffer,
-	row: usize,
-) -> StdResult<Option<i64>, RoutineError> {
+pub(crate) fn read_i64(function: &Fragment, data: &ColumnBuffer, row: usize) -> StdResult<Option<i64>, RoutineError> {
 	narrow(function, data, row, ValueType::Int8, |value| i64::try_from(value).ok())
 }
 
-pub(crate) fn read_i32(
-	function: &Fragment,
-	data: &ColumnBuffer,
-	row: usize,
-) -> StdResult<Option<i32>, RoutineError> {
+pub(crate) fn read_i32(function: &Fragment, data: &ColumnBuffer, row: usize) -> StdResult<Option<i32>, RoutineError> {
 	narrow(function, data, row, ValueType::Int4, |value| i32::try_from(value).ok())
 }
 

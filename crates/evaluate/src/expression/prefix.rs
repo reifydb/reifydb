@@ -30,11 +30,13 @@ macro_rules! prefix_signed_int {
 		let mut result = Vec::with_capacity(values.len());
 		for val in values.iter() {
 			result.push(match $operator {
-				PrefixOperator::Minus(_) => val.checked_neg().ok_or_else(|| TypeError::NumberOutOfRange {
-					target: $value_type,
-					fragment: $fragment,
-					descriptor: None,
-				})?,
+				PrefixOperator::Minus(_) => {
+					val.checked_neg().ok_or_else(|| TypeError::NumberOutOfRange {
+						target: $value_type,
+						fragment: $fragment,
+						descriptor: None,
+					})?
+				}
 				PrefixOperator::Plus(_) => *val,
 				PrefixOperator::Not(_) => {
 					return Err(TypeError::LogicalOperatorNotApplicable {
@@ -188,23 +190,63 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		},
 
 		ColumnBuffer::Uint1(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i8, int1, ValueType::Int1)
+			prefix_unsigned_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				i8,
+				int1,
+				ValueType::Int1
+			)
 		}
 
 		ColumnBuffer::Uint2(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i16, int2, ValueType::Int2)
+			prefix_unsigned_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				i16,
+				int2,
+				ValueType::Int2
+			)
 		}
 
 		ColumnBuffer::Uint4(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i32, int4, ValueType::Int4)
+			prefix_unsigned_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				i32,
+				int4,
+				ValueType::Int4
+			)
 		}
 
 		ColumnBuffer::Uint8(container) => {
-			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i64, int8, ValueType::Int8)
+			prefix_unsigned_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				i64,
+				int8,
+				ValueType::Int8
+			)
 		}
 
 		ColumnBuffer::Uint16(container) => {
-			prefix_unsigned_int!(column, &u128s(container), operator, fragment.clone(), i128, int16, ValueType::Int16)
+			prefix_unsigned_int!(
+				column,
+				&u128s(container),
+				operator,
+				fragment.clone(),
+				i128,
+				int16,
+				ValueType::Int16
+			)
 		}
 
 		ColumnBuffer::Date(_) => {

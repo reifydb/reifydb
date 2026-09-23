@@ -107,7 +107,7 @@ impl Display for Decimal {
 
 impl hash::Hash for Decimal {
 	fn hash<H: hash::Hasher>(&self, state: &mut H) {
-		self.0.to_string().hash(state);
+		self.0.normalized().to_string().hash(state);
 	}
 }
 

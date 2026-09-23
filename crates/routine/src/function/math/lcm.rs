@@ -117,7 +117,10 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 						.ok_or_else(|| {
 							failed(
 								ctx,
-								format!("the least common multiple of {a} and {b} is out of range for {}", ValueType::Int8),
+								format!(
+									"the least common multiple of {a} and {b} is out of range for {}",
+									ValueType::Int8
+								),
 							)
 						})?;
 					result.push(multiple);

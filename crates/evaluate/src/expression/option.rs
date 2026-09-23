@@ -63,7 +63,10 @@ pub(crate) fn arith_op_unwrap_option(
 	)?;
 
 	if result.data().len() == 0 {
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(result.data().get_type(), nulls.len())));
+		return Ok(ColumnWithName::new(
+			fragment,
+			ColumnBuffer::none_typed(result.data().get_type(), nulls.len()),
+		));
 	}
 
 	let placeholder = result.data().get_value(0);

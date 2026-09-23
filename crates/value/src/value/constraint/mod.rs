@@ -197,12 +197,8 @@ impl TypeConstraint {
 				if let Value::Decimal(decimal) = value {
 					let decimal_str = decimal.to_string();
 
-					let decimal_scale: u8 = if let Some(dot_pos) = decimal_str.find('.') {
-						let after_dot = &decimal_str[dot_pos + 1..];
-						after_dot.len().min(255) as u8
-					} else {
-						0
-					};
+					let decimal_scale: u8 =
+						decimal.0.as_bigint_and_exponent().1.clamp(0, 255) as u8;
 
 					let decimal_precision: u8 =
 						decimal_str.chars().filter(|c| c.is_ascii_digit()).count().min(255)

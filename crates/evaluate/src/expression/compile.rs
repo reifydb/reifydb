@@ -32,7 +32,10 @@ use crate::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		branch::BranchLayout,
 		call::call_builtin,
-		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns, length_mismatch},
+		compare::{
+			Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns,
+			length_mismatch,
+		},
 		constant::constant_value,
 		context::EvalContext,
 		logic::{execute_logical_op, try_short_circuit_and, try_short_circuit_or},
@@ -555,9 +558,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							.into_diagnostic()
 						},
 					)?;
-					result = combine_bool_columns(result, eq_result, fragment.clone(), |l, r| {
-						l || r
-					})?;
+					result = execute_logical_op(&result, &eq_result, &fragment, LogicalOp::Or)?;
 				}
 
 				if negated {

@@ -107,7 +107,10 @@ impl<'a> Routine<FunctionContext<'a>> for Gcd {
 					result.push(i64::try_from(divisor).map_err(|_| {
 						failed(
 							ctx,
-							format!("the greatest common divisor of {a} and {b} is out of range for {}", ValueType::Int8),
+							format!(
+								"the greatest common divisor of {a} and {b} is out of range for {}",
+								ValueType::Int8
+							),
 						)
 					})?);
 					res_bitvec.push(true);

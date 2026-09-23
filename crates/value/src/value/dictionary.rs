@@ -123,7 +123,16 @@ impl PartialOrd for DictionaryEntryId {
 
 impl Ord for DictionaryEntryId {
 	fn cmp(&self, other: &Self) -> cmp::Ordering {
-		self.to_u128().cmp(&other.to_u128())
+		fn width(id: &DictionaryEntryId) -> u8 {
+			match id {
+				DictionaryEntryId::U1(_) => 1,
+				DictionaryEntryId::U2(_) => 2,
+				DictionaryEntryId::U4(_) => 4,
+				DictionaryEntryId::U8(_) => 8,
+				DictionaryEntryId::U16(_) => 16,
+			}
+		}
+		width(self).cmp(&width(other)).then_with(|| self.to_u128().cmp(&other.to_u128()))
 	}
 }
 

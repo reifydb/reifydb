@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use crate::function::support::coerce::read_i32;
 use reifydb_value::value::{
 	container::bignum_array::{decimal_array, decimal_at},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
+
+use crate::function::support::coerce::read_i32;
 
 pub struct Round {
 	info: RoutineInfo,
@@ -121,10 +121,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				for i in 0..row_count {
 					if let Some(value) = decimal_at(container, i) {
 						let prec = get_precision(i)?;
-						let f_val = value.0.to_f64().unwrap_or(0.0);
-						let multiplier = 10_f64.powi(prec);
-						let rounded = (f_val * multiplier).round() / multiplier;
-						result.push(Decimal::from(rounded));
+						result.push(Decimal(value.0.round(prec as i64)));
 						bitvec.push(true);
 					} else {
 						result.push(Decimal::default());

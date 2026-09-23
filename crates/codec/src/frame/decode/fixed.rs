@@ -50,51 +50,52 @@ pub(crate) fn decode_fixed_plain(
 		Err(e) => return Some(Err(e)),
 	};
 
-	let result = match ty {
-		ValueType::Boolean => match packed_bits(data, row_count) {
-			Ok(()) => {
-				let bits = BooleanBuffer::collect_bool(row_count, |i| get_bit(data, i));
-				Ok(FrameColumnData::Bool(BooleanArray::from(bits)))
-			}
-			Err(e) => Err(e),
-		},
-		ValueType::Float4 => decode_le_array::<f32>(data, row_count)
-			.map(|values| FrameColumnData::Float4(values.into())),
-		ValueType::Float8 => decode_le_array::<f64>(data, row_count)
-			.map(|values| FrameColumnData::Float8(values.into())),
-		ValueType::Int1 => decode_le_array::<i8>(data, row_count)
-			.map(|values| FrameColumnData::Int1(values.into())),
-		ValueType::Int2 => decode_le_array::<i16>(data, row_count)
-			.map(|values| FrameColumnData::Int2(values.into())),
-		ValueType::Int4 => decode_le_array::<i32>(data, row_count)
-			.map(|values| FrameColumnData::Int4(values.into())),
-		ValueType::Int8 => decode_le_array::<i64>(data, row_count)
-			.map(|values| FrameColumnData::Int8(values.into())),
-		ValueType::Int16 => decode_le_array::<i128>(data, row_count)
-			.map(|values| FrameColumnData::Int16(int16_array(values))),
-		ValueType::Uint1 => decode_le_array::<u8>(data, row_count)
-			.map(|values| FrameColumnData::Uint1(values.into())),
-		ValueType::Uint2 => decode_le_array::<u16>(data, row_count)
-			.map(|values| FrameColumnData::Uint2(values.into())),
-		ValueType::Uint4 => decode_le_array::<u32>(data, row_count)
-			.map(|values| FrameColumnData::Uint4(values.into())),
-		ValueType::Uint8 => decode_le_array::<u64>(data, row_count)
-			.map(|values| FrameColumnData::Uint8(values.into())),
-		ValueType::Uint16 => decode_le_array::<u128>(data, row_count)
-			.map(|values| FrameColumnData::Uint16(uint16_array(values))),
-		ValueType::Date => decode_date_plain(data, row_count),
-		ValueType::DateTime => decode_datetime_plain(data, row_count),
-		ValueType::Time => decode_time_plain(data, row_count),
-		ValueType::Duration => decode_duration_plain(data, row_count),
-		ValueType::IdentityId => decode_le_array::<IdentityId>(data, row_count)
-			.map(|values| FrameColumnData::IdentityId(identity_id_array(values))),
-		ValueType::Uuid4 => decode_le_array::<Uuid4>(data, row_count)
-			.map(|values| FrameColumnData::Uuid4(uuid4_array(values))),
-		ValueType::Uuid7 => decode_le_array::<Uuid7>(data, row_count)
-			.map(|values| FrameColumnData::Uuid7(uuid7_array(values))),
-		ValueType::DictionaryId => decode_dictionary_ids(data, row_count),
-		_ => return None,
-	};
+	let result =
+		match ty {
+			ValueType::Boolean => match packed_bits(data, row_count) {
+				Ok(()) => {
+					let bits = BooleanBuffer::collect_bool(row_count, |i| get_bit(data, i));
+					Ok(FrameColumnData::Bool(BooleanArray::from(bits)))
+				}
+				Err(e) => Err(e),
+			},
+			ValueType::Float4 => decode_le_array::<f32>(data, row_count)
+				.map(|values| FrameColumnData::Float4(values.into())),
+			ValueType::Float8 => decode_le_array::<f64>(data, row_count)
+				.map(|values| FrameColumnData::Float8(values.into())),
+			ValueType::Int1 => decode_le_array::<i8>(data, row_count)
+				.map(|values| FrameColumnData::Int1(values.into())),
+			ValueType::Int2 => decode_le_array::<i16>(data, row_count)
+				.map(|values| FrameColumnData::Int2(values.into())),
+			ValueType::Int4 => decode_le_array::<i32>(data, row_count)
+				.map(|values| FrameColumnData::Int4(values.into())),
+			ValueType::Int8 => decode_le_array::<i64>(data, row_count)
+				.map(|values| FrameColumnData::Int8(values.into())),
+			ValueType::Int16 => decode_le_array::<i128>(data, row_count)
+				.map(|values| FrameColumnData::Int16(int16_array(values))),
+			ValueType::Uint1 => decode_le_array::<u8>(data, row_count)
+				.map(|values| FrameColumnData::Uint1(values.into())),
+			ValueType::Uint2 => decode_le_array::<u16>(data, row_count)
+				.map(|values| FrameColumnData::Uint2(values.into())),
+			ValueType::Uint4 => decode_le_array::<u32>(data, row_count)
+				.map(|values| FrameColumnData::Uint4(values.into())),
+			ValueType::Uint8 => decode_le_array::<u64>(data, row_count)
+				.map(|values| FrameColumnData::Uint8(values.into())),
+			ValueType::Uint16 => decode_le_array::<u128>(data, row_count)
+				.map(|values| FrameColumnData::Uint16(uint16_array(values))),
+			ValueType::Date => decode_date_plain(data, row_count),
+			ValueType::DateTime => decode_datetime_plain(data, row_count),
+			ValueType::Time => decode_time_plain(data, row_count),
+			ValueType::Duration => decode_duration_plain(data, row_count),
+			ValueType::IdentityId => decode_le_array::<IdentityId>(data, row_count)
+				.map(|values| FrameColumnData::IdentityId(identity_id_array(values))),
+			ValueType::Uuid4 => decode_le_array::<Uuid4>(data, row_count)
+				.map(|values| FrameColumnData::Uuid4(uuid4_array(values))),
+			ValueType::Uuid7 => decode_le_array::<Uuid7>(data, row_count)
+				.map(|values| FrameColumnData::Uuid7(uuid7_array(values))),
+			ValueType::DictionaryId => decode_dictionary_ids(data, row_count),
+			_ => return None,
+		};
 
 	Some(result)
 }

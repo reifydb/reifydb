@@ -59,6 +59,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExternWasmProcedure {
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "procedure", &params_bytes, &label)
 			.map_err(ext_err)?;
 
-		unmarshal_columns_from_bytes(&output_bytes).map_err(|e| ext_err(ExtensionError::Invocation(e.to_string())))
+		unmarshal_columns_from_bytes(&output_bytes)
+			.map_err(|e| ext_err(ExtensionError::Invocation(e.to_string())))
 	}
 }

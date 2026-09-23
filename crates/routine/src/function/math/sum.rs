@@ -18,6 +18,7 @@ use reifydb_routine_abi::{
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
+	error::TypeError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -111,21 +112,30 @@ impl SumAccumulator {
 }
 
 macro_rules! sum_arm {
-	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {{
+		let function = $self.function.clone();
+		let overflow = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: ValueType::$variant,
+				fragment: function.clone(),
+				descriptor: None,
+			}
+			.into()
+		};
 		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
 				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
-						delta += val;
+						delta = delta.checked_add(val).ok_or_else(overflow)?;
 						has_value = true;
 					}
 				}
 			}
 			if has_value {
 				let merged = match $self.sums.remove(group) {
-					Some(Value::$variant(prev)) => prev + delta,
+					Some(Value::$variant(prev)) => prev.checked_add(delta).ok_or_else(overflow)?,
 					_ => delta,
 				};
 				$self.sums.insert(group, Value::$variant(merged));
@@ -133,7 +143,7 @@ macro_rules! sum_arm {
 				$self.sums.or_insert(group, Value::none());
 			}
 		}
-	};
+	}};
 }
 
 macro_rules! sub_arm {
