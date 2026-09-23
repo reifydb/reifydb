@@ -10,16 +10,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{
-		catalog::{flow::OperatorId, object::ObjectId},
+		catalog::object::ObjectId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	key::{any::TaggedKey, tag::KeyTag},
-	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
-	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
+	operator::{HostOperator, host::TxnHostContext, sink::DurableSink},
 	timer::{Timer, wheel::TimerWheel},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -32,8 +30,6 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
-use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
@@ -145,18 +141,6 @@ impl<O: DurableSink> Harness<O> {
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
 		Ok(emitted)
-	}
-}
-
-impl Harness<ApplyOperator> {
-	pub fn guest<C: MountedOperator + OperatorMetadata + 'static>(
-		logic: C,
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-	) -> Self {
-		Self::new(|_| {
-			ApplyOperator::new(None, operator, mount(logic, operator, capabilities), &ApplyWith::default())
-		})
 	}
 }
 
