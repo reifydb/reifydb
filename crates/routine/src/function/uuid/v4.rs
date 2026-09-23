@@ -35,16 +35,24 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
 		ValueType::Uuid4
 	}
 
+	fn propagates_options(&self) -> bool {
+		false
+	}
+
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
-			let bytes = ctx.runtime_context.rng.bytes_16();
-			let uuid = Uuid4::from(Builder::from_random_bytes(bytes).into_uuid());
-			let result_data = ColumnBuffer::uuid4(vec![uuid]);
+			let mut generated = Vec::with_capacity(ctx.row_count);
+			for _ in 0..ctx.row_count {
+				let bytes = ctx.runtime_context.rng.bytes_16();
+				generated.push(Uuid4::from(Builder::from_random_bytes(bytes).into_uuid()));
+			}
+			let result_data = ColumnBuffer::uuid4(generated);
 			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
 		}
 
 		let data = &args[0];
 		let row_count = data.len();
+		let nulls = data.nulls();
 
 		match data {
 			ColumnBuffer::Utf8 {
@@ -52,7 +60,13 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
 				..
 			} => {
 				let mut result = Vec::with_capacity(row_count);
+				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
+					if nulls.is_some_and(|nulls| nulls.is_null(i)) {
+						result.push(Uuid4::default());
+						res_bitvec.push(false);
+						continue;
+					}
 					let s = varlen_array::get(container, i).unwrap();
 					let parsed = Uuid::parse_str(s).map_err(|e| {
 						RoutineError::FunctionExecutionFailed {
@@ -70,8 +84,12 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
 						});
 					}
 					result.push(Uuid4::from(parsed));
+					res_bitvec.push(true);
 				}
-				let result_data = ColumnBuffer::uuid4(result);
+				let result_data = match nulls {
+					Some(_) => ColumnBuffer::uuid4_with_bitvec(result, res_bitvec),
+					None => ColumnBuffer::uuid4(result),
+				};
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
