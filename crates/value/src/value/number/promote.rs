@@ -25,11 +25,7 @@ macro_rules! impl_promote_float_float {
             type Output = $common;
 
             fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)> {
-                if self.is_finite() && r.is_finite() {
-                    Some((*self as $common, *r as $common))
-                } else {
-                    None
-                }
+                Some((*self as $common, *r as $common))
             }
 
             fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {

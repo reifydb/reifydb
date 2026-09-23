@@ -19,7 +19,8 @@ fn prices() -> TypeConstraint {
 
 #[test]
 fn a_decimal_in_exponent_form_rounds_to_the_declared_scale() {
-	// Scale must come from the value, never the display string, or exponent form keeps digits the column cannot hold.
+	// Scale must come from the value, never the display string, or exponent form keeps digits the column cannot
+	// hold.
 	let tiny = Decimal::from_str("0.0000001").expect("a decimal literal");
 	let mut value = Value::Decimal(tiny.clone());
 
@@ -51,4 +52,17 @@ fn a_decimal_wider_than_its_precision_is_rejected() {
 	let result = prices().coerce(&mut value);
 
 	assert!(result.is_err(), "decimal(10, 2) holds 8 digits left of the point and must reject 123456789.99");
+}
+
+#[test]
+fn a_zero_decimal_keeps_the_scale_it_was_rounded_to() {
+	// Dropping the fraction on zero hides the declared scale and disagrees with what every non-zero value renders.
+	let mut zero = Value::Decimal(Decimal::from_str("0.0000001").expect("a decimal literal"));
+	let mut one = Value::Decimal(Decimal::from_str("1.5").expect("a decimal literal"));
+
+	prices().coerce(&mut zero).expect("decimal(10, 2) must accept a value it can round");
+	prices().coerce(&mut one).expect("decimal(10, 2) must accept a value it can round");
+
+	assert_eq!(one.to_string(), "1.50", "a non-zero value pads to the declared scale");
+	assert_eq!(zero.to_string(), "0.00", "so zero must pad too, not collapse to 0");
 }

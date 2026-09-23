@@ -77,10 +77,10 @@ impl SafeAdd for Decimal {
 impl SafeAdd for f32 {
 	fn checked_add(&self, r: &Self) -> Option<Self> {
 		let result = *self + *r;
-		if result.is_finite() {
-			Some(result)
-		} else {
+		if result.is_infinite() && self.is_finite() && r.is_finite() {
 			None
+		} else {
+			Some(result)
 		}
 	}
 
@@ -105,10 +105,10 @@ impl SafeAdd for f32 {
 impl SafeAdd for f64 {
 	fn checked_add(&self, r: &Self) -> Option<Self> {
 		let result = *self + *r;
-		if result.is_finite() {
-			Some(result)
-		} else {
+		if result.is_infinite() && self.is_finite() && r.is_finite() {
 			None
+		} else {
+			Some(result)
 		}
 	}
 

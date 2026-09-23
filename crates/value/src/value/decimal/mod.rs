@@ -105,6 +105,10 @@ impl Ord for Decimal {
 
 impl Display for Decimal {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let scale = self.0.as_bigint_and_exponent().1;
+		if self.0.is_zero() && scale > 0 {
+			return write!(f, "0.{}", "0".repeat(scale as usize));
+		}
 		self.0.fmt(f)
 	}
 }

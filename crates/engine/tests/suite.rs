@@ -60,12 +60,12 @@ mod digest_column_write;
 mod digest_query;
 #[path = "digest_row_storage.rs"]
 mod digest_row_storage;
+#[path = "distinct_over_negative_zero.rs"]
+mod distinct_over_negative_zero;
 #[path = "distinct_row_identity.rs"]
 mod distinct_row_identity;
 #[path = "distinct_typed_key.rs"]
 mod distinct_typed_key;
-#[path = "distinct_over_negative_zero.rs"]
-mod distinct_over_negative_zero;
 #[path = "division_by_a_none_divisor.rs"]
 mod division_by_a_none_divisor;
 #[path = "duration_add_overflow.rs"]
@@ -146,6 +146,8 @@ mod map_ends_in_a_comment;
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
 mod missing_column_lookup;
+#[path = "nan_arithmetic.rs"]
+mod nan_arithmetic;
 #[path = "nested_option_param_none.rs"]
 mod nested_option_param_none;
 #[path = "nested_option_types.rs"]

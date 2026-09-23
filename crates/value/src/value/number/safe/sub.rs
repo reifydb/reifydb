@@ -94,10 +94,10 @@ impl SafeSub for Decimal {
 impl SafeSub for f32 {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
 		let result = *self - *r;
-		if result.is_finite() {
-			Some(result)
-		} else {
+		if result.is_infinite() && self.is_finite() && r.is_finite() {
 			None
+		} else {
+			Some(result)
 		}
 	}
 
@@ -122,10 +122,10 @@ impl SafeSub for f32 {
 impl SafeSub for f64 {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
 		let result = *self - *r;
-		if result.is_finite() {
-			Some(result)
-		} else {
+		if result.is_infinite() && self.is_finite() && r.is_finite() {
 			None
+		} else {
+			Some(result)
 		}
 	}
 

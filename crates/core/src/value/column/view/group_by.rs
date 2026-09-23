@@ -2,13 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	borrow::Cow,
 	iter::{Enumerate, FilterMap},
 	mem,
 	sync::Arc,
 	vec::IntoIter as VecIntoIter,
 };
 
-use arrow_array::{Array, ArrayRef};
+use arrow_array::{Array, ArrayRef, Float32Array, Float64Array, LargeBinaryArray};
 use arrow_row::{RowConverter, Rows, SortField};
 use arrow_schema::ArrowError;
 use indexmap::IndexMap;
@@ -16,7 +17,7 @@ use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{Value, value_type::ValueType},
+	value::{Value, container::bignum_array::decimal_at, decimal::Decimal, value_type::ValueType},
 };
 
 use crate::{
@@ -190,6 +191,52 @@ fn row_format_matches_value_key(column: &ColumnBuffer) -> bool {
 	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
 }
 
+macro_rules! canonical_float {
+	($value:expr, $ty:ty) => {
+		if $value.is_nan() {
+			<$ty>::NAN
+		} else if $value == 0.0 {
+			0.0
+		} else {
+			$value
+		}
+	};
+}
+
+fn normalized_decimals(container: &LargeBinaryArray) -> ColumnBuffer {
+	let mut values = Vec::with_capacity(container.len());
+	let mut bitvec = Vec::with_capacity(container.len());
+	for index in 0..container.len() {
+		match decimal_at(container, index) {
+			Some(value) => {
+				values.push(Decimal(value.0.normalized()));
+				bitvec.push(true);
+			}
+			None => {
+				values.push(Decimal::default());
+				bitvec.push(false);
+			}
+		}
+	}
+	ColumnBuffer::decimal_with_bitvec(values, bitvec)
+}
+
+pub fn key_column(column: &ColumnBuffer) -> Cow<'_, ColumnBuffer> {
+	match column {
+		ColumnBuffer::Decimal {
+			container,
+			..
+		} => Cow::Owned(normalized_decimals(container)),
+		ColumnBuffer::Float4(container) => Cow::Owned(ColumnBuffer::Float4(
+			container.iter().map(|v| v.map(|f| canonical_float!(f, f32))).collect::<Float32Array>(),
+		)),
+		ColumnBuffer::Float8(container) => Cow::Owned(ColumnBuffer::Float8(
+			container.iter().map(|v| v.map(|f| canonical_float!(f, f64))).collect::<Float64Array>(),
+		)),
+		other => Cow::Borrowed(other),
+	}
+}
+
 impl HeapSize for GroupKeyDict {
 	fn heap_size(&self) -> usize {
 		self.entries.capacity()
@@ -203,14 +250,18 @@ impl Columns {
 		let row_count = self.columns.first().map_or(0, |c| c.len());
 		let key_columns = self.key_columns(keys)?;
 
-		let arrays: Vec<ArrayRef> = key_columns
+		let normalized: Vec<Cow<'_, ColumnBuffer>> = key_columns.iter().copied().map(key_column).collect();
+
+		let arrays: Vec<ArrayRef> = normalized
 			.iter()
-			.copied()
 			.filter(|column| row_format_matches_value_key(column))
-			.map(ColumnBuffer::to_array_ref)
+			.map(|column| column.to_array_ref())
 			.collect();
-		let value_columns: Vec<&ColumnBuffer> =
-			key_columns.iter().copied().filter(|column| !row_format_matches_value_key(column)).collect();
+		let value_columns: Vec<&ColumnBuffer> = normalized
+			.iter()
+			.filter(|column| !row_format_matches_value_key(column))
+			.map(Cow::as_ref)
+			.collect();
 		let row_keys = match arrays.is_empty() {
 			true => None,
 			false => Some(dict.row_keys(&arrays)?),
