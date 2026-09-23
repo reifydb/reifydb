@@ -541,7 +541,7 @@ fn build_insert_queue_row(
 			context,
 		)?;
 
-		if let Err(mut e) = queue_column.constraint.validate(&value) {
+		if let Err(mut e) = queue_column.constraint.coerce(&mut value) {
 			e.0.fragment = column_ident.clone();
 			return Err(e);
 		}

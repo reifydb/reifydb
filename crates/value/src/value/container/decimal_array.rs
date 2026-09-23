@@ -97,7 +97,9 @@ pub fn deserialize_uint16s<'de, D: Deserializer<'de>>(deserializer: D) -> StdRes
 mod tests {
 	use arrow_array::Array;
 	use arrow_buffer::BooleanBuffer;
+	use postcard::{from_bytes, to_allocvec};
 	use serde::{Deserialize, Serialize};
+	use serde_json::{from_str, to_string};
 
 	use super::*;
 
@@ -192,8 +194,8 @@ mod tests {
 	fn int16_deserialize_keeps_values_and_data_type() {
 		// The generic deserialize builds the arrow default type, which must be replaced on the way in.
 		let values = [i128::MIN, 0, i128::MAX];
-		let bytes = postcard::to_allocvec(&Int16Column(int16_array(values))).unwrap();
-		let back: Int16Column = postcard::from_bytes(&bytes).unwrap();
+		let bytes = to_allocvec(&Int16Column(int16_array(values))).unwrap();
+		let back: Int16Column = from_bytes(&bytes).unwrap();
 		assert_eq!(&back.0.values()[..], &values);
 		assert_eq!(back.0.data_type(), &INT16_DATA_TYPE);
 	}
@@ -202,21 +204,21 @@ mod tests {
 	fn uint16_serde_writes_u128_rows_and_keeps_the_data_type() {
 		// Writing the i256 native instead of the u128 value would change the wire bytes.
 		let column = Uint16Column(uint16_array(UINT16_BOUNDARIES));
-		let bytes = postcard::to_allocvec(&column).unwrap();
+		let bytes = to_allocvec(&column).unwrap();
 		#[derive(Serialize)]
 		struct Expected {
 			data: Vec<u128>,
 		}
-		let expected = postcard::to_allocvec(&Expected {
+		let expected = to_allocvec(&Expected {
 			data: UINT16_BOUNDARIES.to_vec(),
 		})
 		.unwrap();
 		assert_eq!(bytes, expected);
-		let back: Uint16Column = postcard::from_bytes(&bytes).unwrap();
+		let back: Uint16Column = from_bytes(&bytes).unwrap();
 		assert_eq!(u128s(&back.0), UINT16_BOUNDARIES);
 		assert_eq!(back.0.data_type(), &UINT16_DATA_TYPE);
-		let json = serde_json::to_string(&column).unwrap();
-		let back: Uint16Column = serde_json::from_str(&json).unwrap();
+		let json = to_string(&column).unwrap();
+		let back: Uint16Column = from_str(&json).unwrap();
 		assert_eq!(u128s(&back.0), UINT16_BOUNDARIES);
 	}
 }

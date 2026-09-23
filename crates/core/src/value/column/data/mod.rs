@@ -13,6 +13,11 @@ use crate::value::column::encoding::EncodingId;
 
 pub trait ColumnData: Send + Sync + 'static {
 	fn len(&self) -> usize;
+
+	fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	fn encoding(&self) -> EncodingId;
 
 	fn nones(&self) -> Option<&NullBuffer>;
@@ -48,6 +53,10 @@ impl Column {
 
 	pub fn len(&self) -> usize {
 		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
 	}
 
 	pub fn encoding(&self) -> EncodingId {

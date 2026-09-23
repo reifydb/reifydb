@@ -122,7 +122,7 @@ mod tests {
 	use std::borrow::Cow;
 
 	use arrow_buffer::BooleanBuffer;
-	use postcard::to_allocvec;
+	use postcard::{from_bytes, to_allocvec};
 	use serde::{Deserialize, Serialize};
 	use serde_json::{from_str, to_string};
 
@@ -257,7 +257,7 @@ mod tests {
 		// A postcard round trip must keep every bit and the length.
 		let bits = BooleanBuffer::from(pattern(13));
 		let bytes = to_allocvec(&Wrap(bits.clone())).unwrap();
-		let Wrap(back) = postcard::from_bytes::<Wrap>(&bytes).unwrap();
+		let Wrap(back) = from_bytes::<Wrap>(&bytes).unwrap();
 		assert_eq!(back, bits);
 	}
 }

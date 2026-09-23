@@ -51,21 +51,33 @@ fn group_by_puts_decimals_that_differ_only_in_trailing_zeros_in_one_group() {
 }
 
 #[test]
-fn insert_rejects_a_decimal_whose_scale_hides_in_exponent_form() {
+fn insert_rounds_a_decimal_whose_scale_hides_in_exponent_form() {
 	// Scale is a property of the value, so exponent display must never bypass decimal(10, 2).
 	let db = TestDb::memory();
 	db.admin("create namespace app");
 	db.admin("create table app::prices { amount: decimal(10, 2) }");
 
-	let result = db.try_command("insert app::prices [{ amount: 0.0000001 }]");
+	db.command("insert app::prices [{ amount: 0.0000001 }]");
 
-	assert!(
-		result.is_err(),
-		"0.0000001 has 7 decimal places and decimal(10, 2) must reject it; stored {:?}",
-		column_values(&db.query("from app::prices")[0], "amount")
+	assert_eq!(
+		column_values(&db.query("from app::prices")[0], "amount"),
+		vec![decimal("0.00")],
+		"0.0000001 must round into decimal(10, 2) as 0.00 rather than keep seven places"
 	);
-	let err = format!("{:?}", result.err().unwrap());
-	assert!(err.contains("exceeds maximum scale"), "the rejection must name the scale limit, got: {err}");
+}
+
+#[test]
+fn round_breaks_a_tie_away_from_zero() {
+	// Banker's rounding would send 0.125 to 0.12 and disagree with the scale a decimal column rounds to.
+	let db = TestDb::memory();
+
+	let frames = db.query("from [{ v: 0.125 }, { v: 0.135 }] map { r: math::round(v, 2) }");
+
+	assert_eq!(
+		column_values(&frames[0], "r"),
+		vec![decimal("0.13"), decimal("0.14")],
+		"0.125 and 0.135 must both round away from zero, not to the even digit"
+	);
 }
 
 #[test]

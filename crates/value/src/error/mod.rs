@@ -221,10 +221,6 @@ pub enum ConstraintKind {
 		actual: u8,
 		max: u8,
 	},
-	DecimalScale {
-		actual: u8,
-		max: u8,
-	},
 	NoneNotAllowed {
 		column_type: ValueType,
 	},

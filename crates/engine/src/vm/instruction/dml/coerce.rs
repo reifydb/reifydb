@@ -74,8 +74,8 @@ pub(crate) fn coerce_series_row(
 		let ident = input.map(|c| c.name().clone()).unwrap_or_else(|| Fragment::internal(&column.name));
 		let source = context.source.clone().expect("series write context must carry its series as source");
 		let resolved = ResolvedColumn::new(ident.clone(), source, column.clone());
-		let value = coerce_value_to_column_type(value, column.constraint.get_type(), resolved, context)?;
-		if let Err(mut e) = column.constraint.validate(&value) {
+		let mut value = coerce_value_to_column_type(value, column.constraint.get_type(), resolved, context)?;
+		if let Err(mut e) = column.constraint.coerce(&mut value) {
 			e.0.fragment = ident;
 			return Err(e);
 		}

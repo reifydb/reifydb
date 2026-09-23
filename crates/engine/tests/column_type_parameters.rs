@@ -59,18 +59,16 @@ fn an_optional_type_with_an_unknown_parameter_is_rejected() {
 
 #[test]
 fn an_optional_limited_decimal_keeps_its_scale() {
-	// Dropping the inner scale lets Option(decimal(10,2)) store digits that decimal(10,2) rejects.
+	// Dropping the inner scale would let Option(decimal(10,2)) keep digits decimal(10,2) rounds away.
 	let t = engine();
 	t.admin("CREATE TABLE test::prices { plain: decimal(10,2), opt: Option(decimal(10,2)) }");
 
-	let plain_err = t.command_err("INSERT test::prices [{ plain: 1.234, opt: none }]");
-	let opt_err = t.command_err("INSERT test::prices [{ plain: 1.23, opt: 1.234 }]");
+	t.command("INSERT test::prices [{ plain: 1.235, opt: 1.235 }]");
 
-	assert!(plain_err.contains("exceeds maximum scale"), "decimal(10,2) must reject 3 decimals, got: {plain_err}");
-	assert!(
-		opt_err.contains("exceeds maximum scale"),
-		"Option(decimal(10,2)) must reject 3 decimals, got: {opt_err}"
+	let rendered = format!("{}", t.query("FROM test::prices")[0]);
+	assert_eq!(
+		rendered.matches("1.24").count(),
+		2,
+		"the optional column must round 1.235 exactly like the plain one, got:\n{rendered}"
 	);
-	t.command("INSERT test::prices [{ plain: 1.23, opt: none }]");
-	t.command("INSERT test::prices [{ plain: 1.23, opt: 1.23 }]");
 }

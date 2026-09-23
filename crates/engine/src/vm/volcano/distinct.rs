@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef, Float32Array, Float64Array, LargeBinaryArray};
 use arrow_row::{Row, RowConverter, SortField};
 use reifydb_core::{
 	error::diagnostic::operation,
@@ -12,7 +12,11 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	value::{container::bignum_array::decimal_at, decimal::Decimal},
+};
 use tracing::instrument;
 
 use crate::{
@@ -28,8 +32,54 @@ fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
 	Ok(())
 }
 
+macro_rules! canonical_float {
+	($value:expr, $ty:ty) => {
+		if $value.is_nan() {
+			<$ty>::NAN
+		} else if $value == 0.0 {
+			0.0
+		} else {
+			$value
+		}
+	};
+}
+
+fn normalized_decimals(container: &LargeBinaryArray) -> ArrayRef {
+	let mut values = Vec::with_capacity(container.len());
+	let mut bitvec = Vec::with_capacity(container.len());
+	for index in 0..container.len() {
+		match decimal_at(container, index) {
+			Some(value) => {
+				values.push(Decimal(value.0.normalized()));
+				bitvec.push(true);
+			}
+			None => {
+				values.push(Decimal::default());
+				bitvec.push(false);
+			}
+		}
+	}
+	ColumnBuffer::decimal_with_bitvec(values, bitvec).to_array_ref()
+}
+
+fn key_array(column: &ColumnBuffer) -> ArrayRef {
+	match column {
+		ColumnBuffer::Decimal {
+			container,
+			..
+		} => normalized_decimals(container),
+		ColumnBuffer::Float4(container) => {
+			Arc::new(container.iter().map(|v| v.map(|f| canonical_float!(f, f32))).collect::<Float32Array>())
+		}
+		ColumnBuffer::Float8(container) => {
+			Arc::new(container.iter().map(|v| v.map(|f| canonical_float!(f, f64))).collect::<Float64Array>())
+		}
+		other => other.to_array_ref(),
+	}
+}
+
 fn key_rows(key_columns: &[&ColumnBuffer]) -> Result<(RowConverter, Vec<ArrayRef>)> {
-	let arrays: Vec<ArrayRef> = key_columns.iter().map(|column| column.to_array_ref()).collect();
+	let arrays: Vec<ArrayRef> = key_columns.iter().map(|column| key_array(column)).collect();
 	let fields = arrays.iter().map(|array| SortField::new(array.data_type().clone())).collect();
 	let converter =
 		RowConverter::new(fields).map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;

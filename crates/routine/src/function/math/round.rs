@@ -121,7 +121,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				for i in 0..row_count {
 					if let Some(value) = decimal_at(container, i) {
 						let prec = get_precision(i)?;
-						result.push(Decimal(value.0.round(prec as i64)));
+						result.push(value.round_to_scale(prec as i64));
 						bitvec.push(true);
 					} else {
 						result.push(Decimal::default());

@@ -64,6 +64,10 @@ impl<T> GroupSlots<T> {
 		self.occupied
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.occupied == 0
+	}
+
 	pub fn get(&self, group: GroupId) -> Option<&T> {
 		self.slots.get(group.index()).and_then(Option::as_ref)
 	}
@@ -140,6 +144,10 @@ impl GroupKeyDict {
 
 	pub fn len(&self) -> usize {
 		self.entries.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.entries.is_empty()
 	}
 
 	pub fn values(&self, group: GroupId) -> Option<&GroupKey> {

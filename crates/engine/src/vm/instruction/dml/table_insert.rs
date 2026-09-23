@@ -267,7 +267,7 @@ fn build_insert_table_row(
 			resolved_column,
 			context,
 		)?;
-		if let Err(mut e) = table_column.constraint.validate(&value) {
+		if let Err(mut e) = table_column.constraint.coerce(&mut value) {
 			e.0.fragment = column_ident.clone();
 			return Err(e);
 		}

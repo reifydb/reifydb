@@ -80,7 +80,7 @@ impl TypeConstraint {
 		&self.constraint
 	}
 
-	pub fn validate(&self, value: &Value) -> Result<(), Error> {
+	pub fn coerce(&self, value: &mut Value) -> Result<(), Error> {
 		let value_type = value.get_type();
 		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
 			if let ValueType::Option(inner) = &self.base_type {
@@ -195,46 +195,28 @@ impl TypeConstraint {
 			}
 			(ValueType::Decimal, Some(Constraint::PrecisionScale(precision, scale))) => {
 				if let Value::Decimal(decimal) = value {
-					let decimal_str = decimal.to_string();
-
-					let decimal_scale: u8 =
-						decimal.0.as_bigint_and_exponent().1.clamp(0, 255) as u8;
-
-					let decimal_precision: u8 =
-						decimal_str.chars().filter(|c| c.is_ascii_digit()).count().min(255)
-							as u8;
-
 					let scale_value: u8 = (*scale).into();
 					let precision_value: u8 = (*precision).into();
 
-					if decimal_scale > scale_value {
-						return Err(TypeError::ConstraintViolation {
-							kind: ConstraintKind::DecimalScale {
-								actual: decimal_scale,
-								max: scale_value,
-							},
-							message: format!(
-								"DECIMAL value exceeds maximum scale: {} decimal places (max: {} decimal places)",
-								decimal_scale, scale_value
-							),
-							fragment: Fragment::None,
-						}
-						.into());
-					}
-					if decimal_precision > precision_value {
+					let rounded = decimal.round_to_scale(scale_value as i64);
+					let digits = rounded.0.digits();
+
+					if digits > precision_value as u64 {
 						return Err(TypeError::ConstraintViolation {
 							kind: ConstraintKind::DecimalPrecision {
-								actual: decimal_precision,
+								actual: digits.min(255) as u8,
 								max: precision_value,
 							},
 							message: format!(
 								"DECIMAL value exceeds maximum precision: {} digits (max: {} digits)",
-								decimal_precision, precision_value
+								digits, precision_value
 							),
 							fragment: Fragment::None,
 						}
 						.into());
 					}
+
+					*decimal = rounded;
 				}
 			}
 
@@ -301,36 +283,36 @@ pub mod tests {
 	#[test]
 	fn test_validate_utf8_within_limit() {
 		let tc = TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(10)));
-		let value = Value::Utf8("hello".to_string());
-		assert!(tc.validate(&value).is_ok());
+		let mut value = Value::Utf8("hello".to_string());
+		assert!(tc.coerce(&mut value).is_ok());
 	}
 
 	#[test]
 	fn test_validate_utf8_exceeds_limit() {
 		let tc = TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
-		let value = Value::Utf8("hello world".to_string());
-		assert!(tc.validate(&value).is_err());
+		let mut value = Value::Utf8("hello world".to_string());
+		assert!(tc.coerce(&mut value).is_err());
 	}
 
 	#[test]
 	fn test_validate_unconstrained() {
 		let tc = TypeConstraint::unconstrained(ValueType::Utf8);
-		let value = Value::Utf8("any length string is fine here".to_string());
-		assert!(tc.validate(&value).is_ok());
+		let mut value = Value::Utf8("any length string is fine here".to_string());
+		assert!(tc.coerce(&mut value).is_ok());
 	}
 
 	#[test]
 	fn test_validate_none_rejected_for_non_option() {
 		let tc = TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
-		let value = Value::none();
-		assert!(tc.validate(&value).is_err());
+		let mut value = Value::none();
+		assert!(tc.coerce(&mut value).is_err());
 	}
 
 	#[test]
 	fn test_validate_none_accepted_for_option() {
 		let tc = TypeConstraint::unconstrained(ValueType::Option(Box::new(ValueType::Utf8)));
-		let value = Value::none();
-		assert!(tc.validate(&value).is_ok());
+		let mut value = Value::none();
+		assert!(tc.coerce(&mut value).is_ok());
 	}
 
 	#[test]

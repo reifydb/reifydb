@@ -216,8 +216,8 @@ fn group_by_dictionary_id_width_splits_groups() {
 }
 
 #[test]
-fn group_by_decimal_scale_splits_groups() {
-	// The key carries the scale, so numerically equal decimals of different scale must not collapse into one group.
+fn group_by_decimal_ignores_trailing_zeros() {
+	// Scale is presentation, not identity, so a key must never split rows that compare equal.
 	let decimal = |text: &str| Decimal::from_str(text).expect("a decimal literal");
 	let column = ColumnBuffer::decimal([decimal("1.0"), decimal("1.00"), decimal("1.0"), decimal("0.5")]);
 	let columns = frame(vec![("amount", column)]);
@@ -225,10 +225,9 @@ fn group_by_decimal_scale_splits_groups() {
 
 	let groups = group_rows(&columns, &["amount"], &mut dict);
 
-	assert_eq!(dict.len(), 3, "1.0, 1.00 and 0.5 are three distinct keys");
-	assert_eq!(groups[0].1, vec![0, 2], "both 1.0 rows must share one group");
-	assert_eq!(groups[1].1, vec![1]);
-	assert_eq!(groups[2].1, vec![3]);
+	assert_eq!(dict.len(), 2, "1.0, 1.00 and 1.0 are one key, 0.5 is the other");
+	assert_eq!(groups[0].1, vec![0, 1, 2], "1.0 and 1.00 must share one group");
+	assert_eq!(groups[1].1, vec![3]);
 }
 
 fn decimal(text: &str) -> Decimal {

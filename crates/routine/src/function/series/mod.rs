@@ -38,7 +38,7 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let start_value = match &args[0] {
-			ColumnBuffer::Int4(container) => container.values().get(0).copied().unwrap_or(1),
+			ColumnBuffer::Int4(container) => container.values().first().copied().unwrap_or(1),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -48,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 		};
 
 		let end_value = match &args[1] {
-			ColumnBuffer::Int4(container) => container.values().get(0).copied().unwrap_or(10),
+			ColumnBuffer::Int4(container) => container.values().first().copied().unwrap_or(10),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),

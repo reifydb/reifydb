@@ -10,7 +10,7 @@ use std::{
 	str::FromStr,
 };
 
-use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
+use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive, RoundingMode};
 use num_traits::{One, Zero};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -76,6 +76,10 @@ impl Decimal {
 
 	pub fn negate(self) -> Self {
 		Self(-self.0)
+	}
+
+	pub fn round_to_scale(&self, scale: i64) -> Self {
+		Self(self.0.with_scale_round(scale, RoundingMode::HalfUp))
 	}
 }
 

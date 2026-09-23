@@ -150,7 +150,9 @@ pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Fixe
 
 #[cfg(test)]
 mod tests {
+	use postcard::{from_bytes, to_allocvec};
 	use serde::{Deserialize, Serialize};
+	use serde_json::{from_str, to_string};
 
 	use super::*;
 
@@ -273,13 +275,13 @@ mod tests {
 		// The column bytes must match the entry list encoding, or stored frames stop decoding.
 		let entries = boundaries();
 		let column = DictionaryColumn(dictionary_array(entries.clone()));
-		let bytes = postcard::to_allocvec(&column).unwrap();
-		assert_eq!(bytes, postcard::to_allocvec(&entries).unwrap());
-		let back: DictionaryColumn = postcard::from_bytes(&bytes).unwrap();
+		let bytes = to_allocvec(&column).unwrap();
+		assert_eq!(bytes, to_allocvec(&entries).unwrap());
+		let back: DictionaryColumn = from_bytes(&bytes).unwrap();
 		assert_eq!(iter(&back.0).collect::<Vec<_>>(), entries);
-		let json = serde_json::to_string(&column).unwrap();
-		assert_eq!(json, serde_json::to_string(&entries).unwrap());
-		let back: DictionaryColumn = serde_json::from_str(&json).unwrap();
+		let json = to_string(&column).unwrap();
+		assert_eq!(json, to_string(&entries).unwrap());
+		let back: DictionaryColumn = from_str(&json).unwrap();
 		assert_eq!(iter(&back.0).collect::<Vec<_>>(), entries);
 	}
 
@@ -288,7 +290,7 @@ mod tests {
 		// Serializing the whole backing buffer would leak rows outside the slice.
 		let entries = boundaries();
 		let sliced = slice(&dictionary_array(entries.clone()), 2, 4);
-		let bytes = postcard::to_allocvec(&DictionaryColumn(sliced)).unwrap();
-		assert_eq!(bytes, postcard::to_allocvec(&entries[2..4]).unwrap());
+		let bytes = to_allocvec(&DictionaryColumn(sliced)).unwrap();
+		assert_eq!(bytes, to_allocvec(&entries[2..4]).unwrap());
 	}
 }

@@ -39,8 +39,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		let dt = DateTime::from_epoch_millis(millis)?;
 		let time = dt.time();
 
-		let mut container = Vec::with_capacity(1);
-		container.push(time);
+		let container = vec![time];
 
 		let result_data = ColumnBuffer::Time(time_array(container));
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))

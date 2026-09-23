@@ -6,7 +6,7 @@ use std::{borrow::Cow, cmp::Ordering};
 use arrow_array::{Array, BooleanArray, LargeBinaryArray, LargeStringArray};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder};
 use reifydb_value::{
-	error::{Diagnostic, RuntimeErrorKind, TypeError},
+	error::{Diagnostic, Error, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions, return_error,
 	value::{
@@ -327,7 +327,7 @@ fn compare_bool<Op: CompareOp>(l: &BooleanArray, r: &BooleanArray, fragment: Fra
 	}
 }
 
-pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> reifydb_value::error::Error {
+pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
 	TypeError::Runtime {
 		kind: RuntimeErrorKind::ColumnLengthMismatch {
 			left,

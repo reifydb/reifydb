@@ -310,7 +310,7 @@ fn build_updated_ringbuffer_row(
 			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
 
 		value = coerce_value_to_column_type(value, rb_column.constraint.get_type(), resolved_column, context)?;
-		if let Err(mut e) = rb_column.constraint.validate(&value) {
+		if let Err(mut e) = rb_column.constraint.coerce(&mut value) {
 			e.0.fragment = column_ident.clone();
 			return Err(e);
 		}

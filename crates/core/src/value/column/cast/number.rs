@@ -1044,8 +1044,7 @@ where
 	To: GetType,
 {
 	let mut out = ColumnBuilder::with_capacity(target_kind, container.len());
-	for idx in 0..container.len() {
-		let val = container[idx];
+	for &val in container {
 		let fragment = lazy_fragment.fragment();
 		match ctx.convert::<From, To>(val, fragment)? {
 			Some(v) => push(&mut out, v),
@@ -1067,8 +1066,8 @@ where
 	To: GetType,
 {
 	let mut out = ColumnBuilder::with_capacity(target_kind, container.len());
-	for idx in 0..container.len() {
-		let val = container[idx].clone();
+	for val in container {
+		let val = val.clone();
 		let fragment = lazy_fragment.fragment();
 		match ctx.convert::<From, To>(val, fragment)? {
 			Some(v) => push(&mut out, v),

@@ -62,7 +62,7 @@ pub(crate) fn arith_op_unwrap_option(
 		&ColumnWithName::new(right.name().clone(), defined_right),
 	)?;
 
-	if result.data().len() == 0 {
+	if result.data().is_empty() {
 		return Ok(ColumnWithName::new(
 			fragment,
 			ColumnBuffer::none_typed(result.data().get_type(), nulls.len()),

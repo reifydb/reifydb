@@ -52,13 +52,13 @@ where
 	T: Copy + Display + IsNumber + Default,
 {
 	let mut out = ColumnBuilder::with_capacity(ValueType::Boolean, container.len());
-	for idx in 0..container.len() {
-		match validate(container[idx]) {
+	for &value in container {
+		match validate(value) {
 			Some(b) => out.push::<bool>(b),
 			None => {
 				let base_fragment = lazy_fragment.fragment();
 				let error_fragment = Fragment::Statement {
-					text: Arc::from(container[idx].to_string()),
+					text: Arc::from(value.to_string()),
 					line: base_fragment.line(),
 					column: base_fragment.column(),
 				};

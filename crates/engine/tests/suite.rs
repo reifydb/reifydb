@@ -64,6 +64,8 @@ mod digest_row_storage;
 mod distinct_row_identity;
 #[path = "distinct_typed_key.rs"]
 mod distinct_typed_key;
+#[path = "distinct_over_negative_zero.rs"]
+mod distinct_over_negative_zero;
 #[path = "division_by_a_none_divisor.rs"]
 mod division_by_a_none_divisor;
 #[path = "duration_add_overflow.rs"]

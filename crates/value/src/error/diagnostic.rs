@@ -391,13 +391,6 @@ impl IntoDiagnostic for TypeError {
 							max
 						),
 					),
-					ConstraintKind::DecimalScale { max, .. } => (
-						"CONSTRAINT_006",
-						format!(
-							"The DECIMAL field is constrained to a maximum of {} decimal places. Consider rounding the value or increasing the scale constraint.",
-							max
-						),
-					),
 					ConstraintKind::NoneNotAllowed { column_type } => (
 						"CONSTRAINT_007",
 						format!(

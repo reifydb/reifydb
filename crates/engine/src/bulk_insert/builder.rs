@@ -327,15 +327,15 @@ fn prepare_table_row<V: ValidationMode>(
 	fill_auto_increment_table(catalog, txn, table, &mut values)?;
 	dictionary_encode_table(catalog, txn, table, &mut values)?;
 	if V::VALIDATED {
-		validate_table_constraints(table, &values)?;
+		coerce_table_constraints(table, &mut values)?;
 	}
 	encode_row(table, shape, &values, clock)
 }
 
 #[inline]
-fn validate_table_constraints(table: &Table, values: &[Value]) -> Result<()> {
+fn coerce_table_constraints(table: &Table, values: &mut [Value]) -> Result<()> {
 	for (idx, col) in table.columns.iter().enumerate() {
-		col.constraint.validate(&values[idx])?;
+		col.constraint.coerce(&mut values[idx])?;
 	}
 	Ok(())
 }
@@ -476,7 +476,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 
 		if V::VALIDATED {
 			for (idx, col) in ringbuffer.columns.iter().enumerate() {
-				col.constraint.validate(&values[idx])?;
+				col.constraint.coerce(&mut values[idx])?;
 			}
 		}
 
@@ -727,7 +727,7 @@ fn insert_series_rows<V: ValidationMode>(
 
 		if V::VALIDATED {
 			for (idx, col) in series.columns.iter().enumerate() {
-				col.constraint.validate(&values[idx])?;
+				col.constraint.coerce(&mut values[idx])?;
 			}
 		}
 
