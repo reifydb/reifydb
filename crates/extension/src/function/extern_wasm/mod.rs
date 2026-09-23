@@ -58,7 +58,8 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)
 			.map_err(|e| self.err(e.to_string()))?;
 
-		let output_columns = unmarshal_columns_from_bytes(&output_bytes);
+		let output_columns =
+			unmarshal_columns_from_bytes(&output_bytes).map_err(|e| self.err(e.to_string()))?;
 
 		match output_columns.first() {
 			Some(col) => {

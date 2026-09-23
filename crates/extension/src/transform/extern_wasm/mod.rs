@@ -39,6 +39,6 @@ impl Transform for ExternWasmTransform {
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "transform", &input_bytes, &label)?;
 
-		Ok(unmarshal_columns_from_bytes(&output_bytes))
+		Ok(unmarshal_columns_from_bytes(&output_bytes)?)
 	}
 }

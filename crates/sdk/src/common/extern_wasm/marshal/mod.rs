@@ -58,9 +58,12 @@ use reifydb_value::{
 };
 use uuid::Uuid;
 
-use crate::common::extern_wasm::{
-	layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
-	marshal::util::{column_data_to_type_code, ensure_marshallable},
+use crate::{
+	common::extern_wasm::{
+		layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
+		marshal::util::{column_data_to_type_code, ensure_marshallable},
+	},
+	error::{Result as SdkResult, SdkError},
 };
 
 pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
@@ -140,9 +143,12 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 	Ok(buf)
 }
 
-pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
+pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<Columns> {
 	if bytes.len() < EXTERN_WASM_COLUMNS_HEADER_SIZE {
-		return Columns::empty();
+		return Err(malformed(format!(
+			"guest sent {} bytes, fewer than the {EXTERN_WASM_COLUMNS_HEADER_SIZE} byte header",
+			bytes.len()
+		)));
 	}
 
 	let header = ExternWasmColumns::read_from_bytes(bytes);
@@ -150,20 +156,24 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	let column_count = header.column_count as usize;
 
 	if row_count == 0 && column_count == 0 {
-		return Columns::empty();
+		return Ok(Columns::empty());
+	}
+
+	let descriptors_end = column_count
+		.checked_mul(EXTERN_WASM_COLUMN_SIZE)
+		.and_then(|len| len.checked_add(EXTERN_WASM_COLUMNS_HEADER_SIZE))
+		.ok_or_else(|| malformed(format!("guest declared {column_count} columns, more than can be addressed")))?;
+	if descriptors_end > bytes.len() {
+		return Err(malformed(format!(
+			"guest declared {column_count} columns needing {descriptors_end} bytes, but sent {}",
+			bytes.len()
+		)));
 	}
 
 	let row_numbers: Vec<RowNumber> = if header.row_numbers_offset > 0 && header.row_numbers_len > 0 {
-		let start = header.row_numbers_offset as usize;
-		let end = start + header.row_numbers_len as usize;
-		let rn_bytes = &bytes[start..end];
-		rn_bytes.chunks_exact(8)
-			.map(|chunk| {
-				let val = u64::from_le_bytes([
-					chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-				]);
-				RowNumber(val)
-			})
+		region(bytes, header.row_numbers_offset, header.row_numbers_len, "row numbers")?
+			.chunks_exact(8)
+			.map(|chunk| RowNumber(u64::from_le_bytes(chunk.try_into().unwrap())))
 			.collect()
 	} else {
 		Vec::new()
@@ -174,55 +184,60 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let desc_start = EXTERN_WASM_COLUMNS_HEADER_SIZE + i * EXTERN_WASM_COLUMN_SIZE;
 		let desc = ExternWasmColumn::read_from_bytes(&bytes[desc_start..]);
 
-		let name = if desc.name_len > 0 {
-			let start = desc.name_offset as usize;
-			let end = start + desc.name_len as usize;
-			let s = str::from_utf8(&bytes[start..end]).unwrap_or("");
-			Fragment::internal(s)
-		} else {
-			Fragment::internal("")
-		};
+		let name_bytes = region(bytes, desc.name_offset, desc.name_len, "column name")?;
+		let name = Fragment::internal(
+			str::from_utf8(name_bytes).map_err(|_| malformed(format!("guest column {i} name is not utf8")))?,
+		);
 
 		let data_row_count = desc.data_row_count as usize;
-		let type_code = ValueKind::from_byte(desc.type_code).unwrap_or(ValueKind::None);
+		let type_code = ValueKind::from_byte(desc.type_code).ok_or_else(|| {
+			malformed(format!("guest column {i} carries unknown type code {}", desc.type_code))
+		})?;
 
 		let bitvec = if desc.bitvec_len > 0 {
-			let start = desc.bitvec_offset as usize;
-			let end = start + desc.bitvec_len as usize;
-			unmarshal_bitvec_from_bytes(&bytes[start..end], data_row_count)
+			let bitvec_bytes = region(bytes, desc.bitvec_offset, desc.bitvec_len, "bitvec")?;
+			if bitvec_bytes.len() * 8 < data_row_count {
+				return Err(malformed(format!(
+					"guest column {i} sent {} bitvec bytes for {data_row_count} rows",
+					bitvec_bytes.len()
+				)));
+			}
+			unmarshal_bitvec_from_bytes(bitvec_bytes, data_row_count)
 		} else {
 			BooleanBuffer::new_set(data_row_count)
 		};
 
-		let data_slice = if desc.data_len > 0 {
-			let start = desc.data_offset as usize;
-			let end = start + desc.data_len as usize;
-			&bytes[start..end]
-		} else {
-			&[]
-		};
+		let data_slice = region(bytes, desc.data_offset, desc.data_len, "data")?;
+		let offsets_slice = region(bytes, desc.offsets_offset, desc.offsets_len, "offsets")?;
 
-		let offsets_slice = if desc.offsets_len > 0 {
-			let start = desc.offsets_offset as usize;
-			let end = start + desc.offsets_len as usize;
-			&bytes[start..end]
-		} else {
-			&[]
-		};
-
-		let data = unmarshal_column_data(type_code, data_row_count, data_slice, bitvec, offsets_slice);
+		let data = unmarshal_column_data(type_code, data_row_count, data_slice, bitvec, offsets_slice)?;
 
 		columns.push(ColumnWithName::new(name, data));
 	}
 
 	if row_numbers.is_empty() {
-		Columns::new(columns)
+		Ok(Columns::new(columns))
 	} else {
-		Columns::with_system(
+		Ok(Columns::with_system(
 			columns,
 			SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
-		)
+		))
 	}
+}
+
+fn malformed(reason: String) -> SdkError {
+	SdkError::InvalidInput(reason)
+}
+
+fn region<'a>(bytes: &'a [u8], offset: u32, len: u32, what: &str) -> SdkResult<&'a [u8]> {
+	if len == 0 {
+		return Ok(&[]);
+	}
+	let start = offset as usize;
+	let end = start + len as usize;
+	bytes.get(start..end).ok_or_else(|| {
+		malformed(format!("guest {what} region spans {start}..{end}, past the {} bytes sent", bytes.len()))
+	})
 }
 
 fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BooleanBuffer) -> (u32, u32) {
@@ -298,7 +313,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::DateTime(container) => {
-			let encoded: Vec<i64> = datetimes(container).iter().map(|dt| dt.to_epoch_secs()).collect();
+			let encoded: Vec<i64> = datetimes(container).iter().map(|dt| dt.to_nanos() as i64).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::Time(container) => {
@@ -475,89 +490,74 @@ fn unmarshal_column_data(
 	data: &[u8],
 	bitvec: BooleanBuffer,
 	offsets_bytes: &[u8],
-) -> ColumnBuffer {
+) -> SdkResult<ColumnBuffer> {
 	if row_count == 0 {
-		return ColumnBuffer::none_typed(ValueType::Any, 0);
+		return Ok(ColumnBuffer::none_typed(ValueType::Any, 0));
 	}
 
 	let inner = match type_code {
 		ValueKind::Boolean => {
-			let mut values = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let byte_idx = i / 8;
-				let bit_idx = i % 8;
-				let val = if byte_idx < data.len() {
-					(data[byte_idx] & (1 << bit_idx)) != 0
-				} else {
-					false
-				};
-				values.push(val);
+			if data.len() * 8 < row_count {
+				return Err(malformed(format!(
+					"guest sent {} boolean bytes for {row_count} rows",
+					data.len()
+				)));
 			}
+			let values: Vec<bool> = (0..row_count).map(|i| (data[i / 8] & (1 << (i % 8))) != 0).collect();
 			ColumnBuffer::Bool(BooleanArray::from(values))
 		}
-		ValueKind::Float4 => ColumnBuffer::float4(unmarshal_numeric::<f32>(data, row_count)),
-		ValueKind::Float8 => ColumnBuffer::float8(unmarshal_numeric::<f64>(data, row_count)),
-		ValueKind::Int1 => ColumnBuffer::int1(unmarshal_numeric::<i8>(data, row_count)),
-		ValueKind::Int2 => ColumnBuffer::int2(unmarshal_numeric::<i16>(data, row_count)),
-		ValueKind::Int4 => ColumnBuffer::int4(unmarshal_numeric::<i32>(data, row_count)),
-		ValueKind::Int8 => ColumnBuffer::int8(unmarshal_numeric::<i64>(data, row_count)),
-		ValueKind::Int16 => ColumnBuffer::int16(unmarshal_numeric::<i128>(data, row_count)),
-		ValueKind::Uint1 => ColumnBuffer::uint1(unmarshal_numeric::<u8>(data, row_count)),
-		ValueKind::Uint2 => ColumnBuffer::uint2(unmarshal_numeric::<u16>(data, row_count)),
-		ValueKind::Uint4 => ColumnBuffer::uint4(unmarshal_numeric::<u32>(data, row_count)),
-		ValueKind::Uint8 => ColumnBuffer::uint8(unmarshal_numeric::<u64>(data, row_count)),
-		ValueKind::Uint16 => ColumnBuffer::uint16(unmarshal_numeric::<u128>(data, row_count)),
-		ValueKind::Utf8 => {
-			let container = unmarshal_utf8(data, row_count, offsets_bytes);
-			ColumnBuffer::Utf8 {
-				container,
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Date => ColumnBuffer::Date(unmarshal_date(data, row_count)),
-		ValueKind::DateTime => ColumnBuffer::DateTime(unmarshal_datetime(data, row_count)),
-		ValueKind::Time => ColumnBuffer::Time(unmarshal_time(data, row_count)),
-		ValueKind::Duration => ColumnBuffer::Duration(unmarshal_duration(data, row_count, offsets_bytes)),
-		ValueKind::IdentityId => ColumnBuffer::IdentityId(unmarshal_identity_id(data, row_count)),
-		ValueKind::Uuid4 => ColumnBuffer::Uuid4(unmarshal_uuid4(data, row_count)),
-		ValueKind::Uuid7 => ColumnBuffer::Uuid7(unmarshal_uuid7(data, row_count)),
-		ValueKind::Blob => {
-			let container = unmarshal_blob(data, row_count, offsets_bytes);
-			ColumnBuffer::Blob {
-				container,
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Int => {
-			let container = int_array(unmarshal_cells(data, row_count, offsets_bytes, decode_int_cell));
-			ColumnBuffer::Int {
-				container,
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Uint => {
-			let container = uint_array(unmarshal_cells(data, row_count, offsets_bytes, decode_uint_cell));
-			ColumnBuffer::Uint {
-				container,
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Decimal => {
-			let container = decimal_array(unmarshal_cells(data, row_count, offsets_bytes, |b| {
-				decode_decimal_cell(b).unwrap_or_default()
-			}));
-			ColumnBuffer::Decimal {
-				container,
-				precision: Precision::MAX,
-				scale: Scale::MIN,
-			}
-		}
+		ValueKind::Float4 => ColumnBuffer::float4(unmarshal_numeric::<f32>(data, row_count)?),
+		ValueKind::Float8 => ColumnBuffer::float8(unmarshal_numeric::<f64>(data, row_count)?),
+		ValueKind::Int1 => ColumnBuffer::int1(unmarshal_numeric::<i8>(data, row_count)?),
+		ValueKind::Int2 => ColumnBuffer::int2(unmarshal_numeric::<i16>(data, row_count)?),
+		ValueKind::Int4 => ColumnBuffer::int4(unmarshal_numeric::<i32>(data, row_count)?),
+		ValueKind::Int8 => ColumnBuffer::int8(unmarshal_numeric::<i64>(data, row_count)?),
+		ValueKind::Int16 => ColumnBuffer::int16(unmarshal_numeric::<i128>(data, row_count)?),
+		ValueKind::Uint1 => ColumnBuffer::uint1(unmarshal_numeric::<u8>(data, row_count)?),
+		ValueKind::Uint2 => ColumnBuffer::uint2(unmarshal_numeric::<u16>(data, row_count)?),
+		ValueKind::Uint4 => ColumnBuffer::uint4(unmarshal_numeric::<u32>(data, row_count)?),
+		ValueKind::Uint8 => ColumnBuffer::uint8(unmarshal_numeric::<u64>(data, row_count)?),
+		ValueKind::Uint16 => ColumnBuffer::uint16(unmarshal_numeric::<u128>(data, row_count)?),
+		ValueKind::Utf8 => ColumnBuffer::Utf8 {
+			container: unmarshal_utf8(data, row_count, offsets_bytes)?,
+			max_bytes: MaxBytes::MAX,
+		},
+		ValueKind::Date => ColumnBuffer::Date(unmarshal_date(data, row_count)?),
+		ValueKind::DateTime => ColumnBuffer::DateTime(unmarshal_datetime(data, row_count)?),
+		ValueKind::Time => ColumnBuffer::Time(unmarshal_time(data, row_count)?),
+		ValueKind::Duration => ColumnBuffer::Duration(unmarshal_duration(data, row_count, offsets_bytes)?),
+		ValueKind::IdentityId => ColumnBuffer::IdentityId(unmarshal_identity_id(data, row_count)?),
+		ValueKind::Uuid4 => ColumnBuffer::Uuid4(unmarshal_uuid4(data, row_count)?),
+		ValueKind::Uuid7 => ColumnBuffer::Uuid7(unmarshal_uuid7(data, row_count)?),
+		ValueKind::Blob => ColumnBuffer::Blob {
+			container: unmarshal_blob(data, row_count, offsets_bytes)?,
+			max_bytes: MaxBytes::MAX,
+		},
+		ValueKind::Int => ColumnBuffer::Int {
+			container: int_array(unmarshal_cells(data, row_count, offsets_bytes, "int", |bytes| {
+				Ok(decode_int_cell(bytes))
+			})?),
+			max_bytes: MaxBytes::MAX,
+		},
+		ValueKind::Uint => ColumnBuffer::Uint {
+			container: uint_array(unmarshal_cells(data, row_count, offsets_bytes, "uint", |bytes| {
+				Ok(decode_uint_cell(bytes))
+			})?),
+			max_bytes: MaxBytes::MAX,
+		},
+		ValueKind::Decimal => ColumnBuffer::Decimal {
+			container: decimal_array(unmarshal_cells(data, row_count, offsets_bytes, "decimal", |bytes| {
+				decode_decimal_cell(bytes).map_err(|e| malformed(format!("guest decimal cell: {e}")))
+			})?),
+			precision: Precision::MAX,
+			scale: Scale::MIN,
+		},
 		ValueKind::Any => ColumnBuffer::Any {
-			container: unmarshal_any(data, row_count, offsets_bytes),
+			container: unmarshal_any(data, row_count, offsets_bytes)?,
 			declared_type: None,
 		},
 		ValueKind::DictionaryId => {
-			ColumnBuffer::dictionary_id(unmarshal_dictionary_ids(data, row_count, offsets_bytes))
+			ColumnBuffer::dictionary_id(unmarshal_dictionary_ids(data, row_count, offsets_bytes)?)
 		}
 		ValueKind::None
 		| ValueKind::Type
@@ -565,15 +565,38 @@ fn unmarshal_column_data(
 		| ValueKind::Record
 		| ValueKind::Tuple
 		| ValueKind::Digest => {
-			return ColumnBuffer::none_typed(ValueType::Any, row_count);
+			return Ok(ColumnBuffer::none_typed(ValueType::Any, row_count));
 		}
 	};
 
-	maybe_wrap_option(inner, bitvec)
+	Ok(maybe_wrap_option(inner, bitvec))
 }
 
 fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()
+}
+
+fn cell_ranges(data: &[u8], row_count: usize, offsets_bytes: &[u8], what: &str) -> SdkResult<Vec<(usize, usize)>> {
+	let offsets = read_offsets(offsets_bytes);
+	if offsets.len() < row_count + 1 {
+		return Err(malformed(format!(
+			"guest sent {} offsets for {row_count} rows of {what}, needing {}",
+			offsets.len(),
+			row_count + 1
+		)));
+	}
+	(0..row_count)
+		.map(|i| {
+			let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
+			if start > end || end > data.len() {
+				return Err(malformed(format!(
+					"guest {what} cell {i} spans {start}..{end}, outside the {} data bytes sent",
+					data.len()
+				)));
+			}
+			Ok((start, end))
+		})
+		.collect()
 }
 
 fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BooleanBuffer) -> ColumnBuffer {
@@ -586,202 +609,218 @@ fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BooleanBuffer) -> ColumnBuffer
 	}
 }
 
-fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> Vec<T> {
+fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> SdkResult<Vec<T>> {
 	if data.is_empty() {
-		return vec![T::default(); row_count];
+		return Ok(vec![T::default(); row_count]);
 	}
-	let count = data.len() / size_of::<T>();
-	let mut values = vec![T::default(); count];
-	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<T>()` readable
-	// bytes and the freshly allocated `values` holds that many writable bytes at alignment 1; the two
-	// allocations are disjoint, and every `T` reaching here is a primitive with no invalid bit patterns.
+	let needed = row_count * size_of::<T>();
+	if data.len() < needed {
+		return Err(malformed(format!(
+			"guest sent {} data bytes for {row_count} rows of {} bytes each",
+			data.len(),
+			size_of::<T>()
+		)));
+	}
+	let mut values = vec![T::default(); row_count];
+	// SAFETY: `needed` bytes were just bounds-checked against `data`, and the freshly allocated `values`
+	// holds exactly that many writable bytes at alignment 1; the two allocations are disjoint, and every
+	// `T` reaching here is a primitive with no invalid bit patterns.
 	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, count * size_of::<T>());
+		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, needed);
 	}
-	values
+	Ok(values)
 }
 
-fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeStringArray {
+fn unmarshal_raw<T: Copy + Default>(data: &[u8], row_count: usize, what: &str) -> SdkResult<Vec<T>> {
+	let needed = row_count * size_of::<T>();
+	if data.len() < needed {
+		return Err(malformed(format!(
+			"guest sent {} {what} bytes for {row_count} rows of {} bytes each",
+			data.len(),
+			size_of::<T>()
+		)));
+	}
+	let mut values = vec![T::default(); row_count];
+	// SAFETY: `needed` bytes were just bounds-checked against `data`, and the freshly allocated `values`
+	// holds exactly that many writable bytes at alignment 1; the two allocations are disjoint, and every
+	// `T` reaching here is a primitive with no invalid bit patterns.
+	unsafe {
+		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, needed);
+	}
+	Ok(values)
+}
+
+fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeStringArray> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return LargeStringArray::from(vec![String::new(); row_count]);
+		return Ok(LargeStringArray::from(vec![String::new(); row_count]));
 	}
-	let offsets = read_offsets(offsets_bytes);
-	let mut strings = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		let start = offsets[i] as usize;
-		let end = offsets[i + 1] as usize;
-		let s = str::from_utf8(&data[start..end]).unwrap_or("").to_string();
-		strings.push(s);
-	}
-	LargeStringArray::from(strings)
+	let strings = cell_ranges(data, row_count, offsets_bytes, "utf8")?
+		.into_iter()
+		.map(|(start, end)| {
+			str::from_utf8(&data[start..end])
+				.map(str::to_string)
+				.map_err(|_| malformed("guest utf8 cell is not utf8".to_string()))
+		})
+		.collect::<SdkResult<Vec<String>>>()?;
+	Ok(LargeStringArray::from(strings))
 }
 
-fn unmarshal_date(data: &[u8], row_count: usize) -> Date32Array {
+fn unmarshal_date(data: &[u8], row_count: usize) -> SdkResult<Date32Array> {
 	if data.is_empty() {
-		return date_array(vec![Date::default(); row_count]);
+		return Ok(date_array(vec![Date::default(); row_count]));
 	}
-	let count = data.len() / size_of::<i32>();
-	let mut raw = vec![0i32; count];
-	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<i32>()`
-	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
-	// two allocations are disjoint, and every bit pattern is a valid `i32`.
-	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i32>());
-	}
-	let dates: Vec<Date> = raw.iter().map(|&days| Date::from_days_since_epoch(days).unwrap_or_default()).collect();
-	date_array(dates)
+	let dates = unmarshal_raw::<i32>(data, row_count, "date")?
+		.into_iter()
+		.map(|days| {
+			Date::from_days_since_epoch(days)
+				.ok_or_else(|| malformed(format!("guest date is {days} days since the epoch")))
+		})
+		.collect::<SdkResult<Vec<Date>>>()?;
+	Ok(date_array(dates))
 }
 
-fn unmarshal_datetime(data: &[u8], row_count: usize) -> UInt64Array {
+fn unmarshal_datetime(data: &[u8], row_count: usize) -> SdkResult<UInt64Array> {
 	if data.is_empty() {
-		return datetime_array(vec![DateTime::default(); row_count]);
+		return Ok(datetime_array(vec![DateTime::default(); row_count]));
 	}
-	let count = data.len() / size_of::<i64>();
-	let mut raw = vec![0i64; count];
-	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<i64>()`
-	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
-	// two allocations are disjoint, and every bit pattern is a valid `i64`.
-	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i64>());
-	}
-	let datetimes: Vec<DateTime> =
-		raw.iter().map(|&ts| DateTime::from_epoch_secs(ts).unwrap_or_default()).collect();
-	datetime_array(datetimes)
+	let datetimes = unmarshal_raw::<i64>(data, row_count, "datetime")?
+		.into_iter()
+		.map(|nanos| {
+			u64::try_from(nanos).map(DateTime::from_nanos).map_err(|_| {
+				malformed(format!("guest datetime {nanos} nanoseconds lies before the epoch"))
+			})
+		})
+		.collect::<SdkResult<Vec<DateTime>>>()?;
+	Ok(datetime_array(datetimes))
 }
 
-fn unmarshal_time(data: &[u8], row_count: usize) -> Time64NanosecondArray {
+fn unmarshal_time(data: &[u8], row_count: usize) -> SdkResult<Time64NanosecondArray> {
 	if data.is_empty() {
-		return time_array(vec![Time::default(); row_count]);
+		return Ok(time_array(vec![Time::default(); row_count]));
 	}
-	let count = data.len() / size_of::<u64>();
-	let mut raw = vec![0u64; count];
-	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<u64>()`
-	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
-	// two allocations are disjoint, and every bit pattern is a valid `u64`.
-	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<u64>());
-	}
-	let times: Vec<Time> = raw.iter().map(|&ns| Time::from_nanos_since_midnight(ns).unwrap_or_default()).collect();
-	time_array(times)
+	let times = unmarshal_raw::<u64>(data, row_count, "time")?
+		.into_iter()
+		.map(|nanos| {
+			Time::from_nanos_since_midnight(nanos)
+				.ok_or_else(|| malformed(format!("guest time is {nanos} nanoseconds since midnight")))
+		})
+		.collect::<SdkResult<Vec<Time>>>()?;
+	Ok(time_array(times))
 }
 
-fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> IntervalMonthDayNanoArray {
+fn unmarshal_duration(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+) -> SdkResult<IntervalMonthDayNanoArray> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return duration_array(vec![Duration::default(); row_count]);
+		return Ok(duration_array(vec![Duration::default(); row_count]));
 	}
-	let offsets = read_offsets(offsets_bytes);
-	let mut durations = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		let start = offsets[i] as usize;
-		let end = offsets[i + 1] as usize;
-		let duration: Duration = decode_duration_cell(&data[start..end]).unwrap_or_default();
-		durations.push(duration);
-	}
-	duration_array(durations)
-}
-
-fn unmarshal_identity_id(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
-	if data.is_empty() {
-		return identity_id_array(vec![IdentityId::default(); row_count]);
-	}
-	let ids: Vec<IdentityId> = data
-		.chunks(16)
-		.map(|chunk| {
-			let mut arr = [0u8; 16];
-			arr.copy_from_slice(chunk);
-			IdentityId(Uuid7(Uuid::from_bytes(arr)))
+	let durations = cell_ranges(data, row_count, offsets_bytes, "duration")?
+		.into_iter()
+		.map(|(start, end)| {
+			decode_duration_cell(&data[start..end])
+				.map_err(|e| malformed(format!("guest duration cell: {e}")))
 		})
-		.collect();
-	identity_id_array(ids)
+		.collect::<SdkResult<Vec<Duration>>>()?;
+	Ok(duration_array(durations))
 }
 
-fn unmarshal_uuid4(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
-	if data.is_empty() {
-		return uuid4_array(vec![Uuid4::default(); row_count]);
+fn unmarshal_uuids<T>(data: &[u8], row_count: usize, what: &str, build: impl Fn(Uuid) -> T) -> SdkResult<Vec<T>> {
+	let needed = row_count * 16;
+	if data.len() < needed {
+		return Err(malformed(format!("guest sent {} {what} bytes for {row_count} rows", data.len())));
 	}
-	let uuids: Vec<Uuid4> = data
-		.chunks(16)
-		.map(|chunk| {
-			let mut arr = [0u8; 16];
-			arr.copy_from_slice(chunk);
-			Uuid4(Uuid::from_bytes(arr))
-		})
-		.collect();
-	uuid4_array(uuids)
+	Ok(data[..needed]
+		.chunks_exact(16)
+		.map(|chunk| build(Uuid::from_bytes(chunk.try_into().unwrap())))
+		.collect())
 }
 
-fn unmarshal_uuid7(data: &[u8], row_count: usize) -> FixedSizeBinaryArray {
+fn unmarshal_identity_id(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
 	if data.is_empty() {
-		return uuid7_array(vec![Uuid7::default(); row_count]);
+		return Ok(identity_id_array(vec![IdentityId::default(); row_count]));
 	}
-	let uuids: Vec<Uuid7> = data
-		.chunks(16)
-		.map(|chunk| {
-			let mut arr = [0u8; 16];
-			arr.copy_from_slice(chunk);
-			Uuid7(Uuid::from_bytes(arr))
+	let ids = unmarshal_uuids(data, row_count, "identity id", |uuid| uuid)?;
+	let ids = ids
+		.into_iter()
+		.map(|uuid| match uuid.get_version_num() {
+			7 => Ok(IdentityId(Uuid7(uuid))),
+			version => {
+				Err(malformed(format!("guest identity id is a uuid v{version}, not a uuid v7")))
+			}
 		})
-		.collect();
-	uuid7_array(uuids)
+		.collect::<SdkResult<Vec<IdentityId>>>()?;
+	Ok(identity_id_array(ids))
 }
 
-fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeBinaryArray {
+fn unmarshal_uuid4(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
+	if data.is_empty() {
+		return Ok(uuid4_array(vec![Uuid4::default(); row_count]));
+	}
+	Ok(uuid4_array(unmarshal_uuids(data, row_count, "uuid4", Uuid4)?))
+}
+
+fn unmarshal_uuid7(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
+	if data.is_empty() {
+		return Ok(uuid7_array(vec![Uuid7::default(); row_count]));
+	}
+	Ok(uuid7_array(unmarshal_uuids(data, row_count, "uuid7", Uuid7)?))
+}
+
+fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeBinaryArray> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return blob_array(&vec![Blob::empty(); row_count]);
+		return Ok(blob_array(&vec![Blob::empty(); row_count]));
 	}
-	let offsets = read_offsets(offsets_bytes);
-	let mut blobs = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		let start = offsets[i] as usize;
-		let end = offsets[i + 1] as usize;
-		blobs.push(Blob::new(data[start..end].to_vec()));
-	}
-	blob_array(&blobs)
+	let blobs: Vec<Blob> = cell_ranges(data, row_count, offsets_bytes, "blob")?
+		.into_iter()
+		.map(|(start, end)| Blob::new(data[start..end].to_vec()))
+		.collect();
+	Ok(blob_array(&blobs))
 }
 
 fn unmarshal_cells<T: Default + Clone + IsNumber>(
 	data: &[u8],
 	row_count: usize,
 	offsets_bytes: &[u8],
-	decode: impl Fn(&[u8]) -> T,
-) -> Vec<T> {
+	what: &str,
+	decode: impl Fn(&[u8]) -> SdkResult<T>,
+) -> SdkResult<Vec<T>> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return vec![T::default(); row_count];
+		return Ok(vec![T::default(); row_count]);
 	}
-	let offsets = read_offsets(offsets_bytes);
-	let mut values = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		let start = offsets[i] as usize;
-		let end = offsets[i + 1] as usize;
-		values.push(decode(&data[start..end]));
-	}
-	values
+	cell_ranges(data, row_count, offsets_bytes, what)?
+		.into_iter()
+		.map(|(start, end)| decode(&data[start..end]))
+		.collect()
 }
 
-fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Vec<DictionaryEntryId> {
+fn unmarshal_dictionary_ids(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+) -> SdkResult<Vec<DictionaryEntryId>> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return vec![DictionaryEntryId::default(); row_count];
+		return Ok(vec![DictionaryEntryId::default(); row_count]);
 	}
-	let offsets = read_offsets(offsets_bytes);
-	(0..row_count)
-		.map(|i| {
-			let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
-			decode_dictionary_id_cell(&data[start..end]).unwrap_or_default()
+	cell_ranges(data, row_count, offsets_bytes, "dictionary id")?
+		.into_iter()
+		.map(|(start, end)| {
+			decode_dictionary_id_cell(&data[start..end])
+				.map_err(|e| malformed(format!("guest dictionary id cell: {e}")))
 		})
 		.collect()
 }
 
-fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeBinaryArray {
+fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeBinaryArray> {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return any_array(vec![Value::none(); row_count]);
+		return Ok(any_array(vec![Value::none(); row_count]));
 	}
-	let offsets = read_offsets(offsets_bytes);
-	let mut values = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		let start = offsets[i] as usize;
-		let end = offsets[i + 1] as usize;
-		let value: Value = decode_any_cell(&data[start..end]).unwrap_or_else(|_| Value::none());
-		values.push(value);
-	}
-	any_array(values)
+	let values = cell_ranges(data, row_count, offsets_bytes, "any")?
+		.into_iter()
+		.map(|(start, end)| {
+			decode_any_cell(&data[start..end]).map_err(|e| malformed(format!("guest any cell: {e}")))
+		})
+		.collect::<SdkResult<Vec<Value>>>()?;
+	Ok(any_array(values))
 }
