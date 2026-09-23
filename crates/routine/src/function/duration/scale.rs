@@ -87,7 +87,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 				for i in 0..row_count {
 					match (durations(dur_container).get(i), read_i64(&ctx.fragment, scalar_data, i)?) {
 						(Some(dur), Some(scalar)) => {
-							container.push(*dur * scalar);
+							container.push(dur.try_mul(scalar)?);
 						}
 						_ => container.push(Duration::default()),
 					}

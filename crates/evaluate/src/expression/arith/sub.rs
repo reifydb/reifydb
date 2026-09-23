@@ -12,7 +12,6 @@ use reifydb_value::{
 			decimal_array::u128s,
 			temporal_array::{duration_array, durations},
 		},
-		duration::Duration,
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},
 		value_type::{ValueType, get::GetType},
@@ -21,7 +20,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, option::arith_op_unwrap_option},
+	expression::{compare::length_mismatch, context::EvalContext, option::arith_op_unwrap_option},
 };
 
 pub fn sub_columns(
@@ -40,11 +39,13 @@ pub fn sub_columns(
 
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
 				let (l, r) = (durations(l), durations(r));
-				let container = duration_array((0..l.len()).map(|i| match (l.get(i), r.get(i)) {
-					(Some(lv), Some(rv)) => *lv - *rv,
-					_ => Duration::default(),
-				}));
-				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
+				let values = (0..l.len())
+					.map(|i| match (l.get(i), r.get(i)) {
+						(Some(lv), Some(rv)) => lv.try_sub(*rv).map_err(|e| (*e).into()),
+						_ => Err(length_mismatch(l.len(), r.len(), &fragment.fragment())),
+					})
+					.collect::<Result<Vec<_>>>()?;
+				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(duration_array(values))))
 			}
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {

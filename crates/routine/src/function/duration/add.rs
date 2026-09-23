@@ -50,7 +50,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationAdd {
 				for i in 0..row_count {
 					match (durations(lhs_container).get(i), durations(rhs_container).get(i)) {
 						(Some(lv), Some(rv)) => {
-							container.push(*lv + *rv);
+							container.push(lv.try_add(*rv)?);
 						}
 						_ => container.push(Duration::default()),
 					}
