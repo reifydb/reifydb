@@ -85,7 +85,7 @@ impl ApplyWith {
 		match kind.size() {
 			None => Err(CoreError::OperatorWithWindowKindUnsupported {
 				kind: kind.name(),
-				supported: "tumbling, sliding or rolling",
+				supported: "tumbling, sliding or rolling".to_string(),
 			}
 			.into()),
 			Some(WindowSize::Duration(d)) => Ok(*d),
@@ -103,7 +103,7 @@ impl ApplyWith {
 		match kind.size() {
 			None => Err(CoreError::OperatorWithWindowKindUnsupported {
 				kind: kind.name(),
-				supported: "tumbling, sliding or rolling",
+				supported: "tumbling, sliding or rolling".to_string(),
 			}
 			.into()),
 			Some(WindowSize::Count(n)) => Ok(*n),
@@ -216,7 +216,7 @@ impl ApplyWith {
 		if kind.name() != supported {
 			return Err(CoreError::OperatorWithWindowKindUnsupported {
 				kind: kind.name(),
-				supported,
+				supported: supported.to_string(),
 			}
 			.into());
 		}
@@ -1029,7 +1029,8 @@ mod tests {
 
 	#[test]
 	fn reject_retention_refuses_only_a_declared_retention() {
-		// A retention silently dropped on a class that never reclaims by it is a bound the author believes holds.
+		// A retention silently dropped on a class that never reclaims by it is a bound the author believes
+		// holds.
 		assert!(with(Some(20), None).reject_retention().is_ok());
 		let declared = ApplyWith {
 			retention: Some(secs(60)),

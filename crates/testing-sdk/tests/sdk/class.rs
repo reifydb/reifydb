@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{OperatorClass, WindowKind, WindowSize},
+	common::{OperatorClass, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::{ApplyWith, WithSpan},
 };
@@ -75,6 +75,12 @@ impl OperatorMetadata for UnmanagedProbe {
 
 impl UnmanagedOperator for UnmanagedProbe {
 	const UNMANAGED_BECAUSE: &'static str = "frees its own rows";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(UnmanagedProbe)
@@ -82,6 +88,44 @@ impl UnmanagedOperator for UnmanagedProbe {
 
 	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<()> {
 		Ok(())
+	}
+}
+
+struct UnmanagedWindowProbe;
+
+impl OperatorMetadata for UnmanagedWindowProbe {
+	const NAME: &'static str = "unmanaged_window_probe";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "Holds unmanaged state and takes a tumbling window";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl UnmanagedOperator for UnmanagedWindowProbe {
+	const UNMANAGED_BECAUSE: &'static str = "frees its own rows";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: true,
+		kinds: &["tumbling"],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(UnmanagedWindowProbe)
+	}
+
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<()> {
+		Ok(())
+	}
+}
+
+fn tumbling_of(seconds: u64) -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(secs(seconds)),
+		}),
+		..ApplyWith::default()
 	}
 }
 
@@ -194,6 +238,27 @@ fn an_unmanaged_operator_refuses_a_retention() {
 		panic!("create must refuse a retention");
 	};
 	assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");
+}
+
+#[test]
+fn an_unmanaged_operator_builds_with_the_window_it_declares() {
+	// The harness skips the create-time checks, so the mount is the last guard before a flow dies at start.
+	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<UnmanagedMount<UnmanagedWindowProbe>>>::new()
+		.with(tumbling_of(60))
+		.build()
+		.expect("an unmanaged operator declaring a tumbling window must build with one");
+}
+
+#[test]
+fn an_unmanaged_operator_refuses_a_window_it_does_not_declare() {
+	// A mount that took any window would let an operator with no window logic silently receive one.
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<UnmanagedMount<UnmanagedProbe>>>::new()
+		.with(tumbling_of(60))
+		.build()
+	else {
+		panic!("create must refuse a window the operator does not declare");
+	};
+	assert!(err.to_string().contains("FLOW_067"), "expected FLOW_067, got: {err}");
 }
 
 #[test]

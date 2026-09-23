@@ -97,9 +97,44 @@ impl OperatorMetadata for UnmanagedProbe {
 
 impl UnmanagedOperator for UnmanagedProbe {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(UnmanagedProbe)
+	}
+
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
+		Ok(())
+	}
+}
+
+struct UnmanagedWindowProbe;
+
+impl OperatorMetadata for UnmanagedWindowProbe {
+	const NAME: &'static str = "unmanaged_window_probe";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test-only unmanaged operator that takes a tumbling window";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl UnmanagedOperator for UnmanagedWindowProbe {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: true,
+		kinds: &["tumbling"],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+		Ok(UnmanagedWindowProbe)
 	}
 
 	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
@@ -120,6 +155,7 @@ fn memory() -> TestDb {
 				f.register_nostate_operator::<NostateProbe>()
 					.register_managed_operator::<ManagedProbe>()
 					.register_unmanaged_operator::<UnmanagedProbe>()
+					.register_unmanaged_operator::<UnmanagedWindowProbe>()
 			})
 			.build()
 			.expect("build memory db with flow"),
@@ -210,7 +246,68 @@ fn a_rejected_create_registers_no_flow() {
 }
 
 #[test]
-fn nostate_managed_and_unmanaged_operators_each_publish_takes_window_false() {
+fn an_unmanaged_apply_declaring_a_window_creates_with_one() {
+	// Without this an unmanaged operator can never be given the window it needs and its flow dies at start.
+	let db = memory();
+	event_time_source(&db);
+
+	let created = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_window_probe{} WITH { window: tumbling, duration: 5s } }",
+	);
+
+	assert!(created.is_ok(), "an unmanaged apply declaring a window must take one: {created:?}");
+}
+
+#[test]
+fn an_unmanaged_apply_declaring_a_window_is_refused_without_one() {
+	// Otherwise the missing window surfaces only when the operator is built, long after create returned ok.
+	let db = memory();
+	event_time_source(&db);
+
+	let Err(err) = db
+		.try_admin("CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_window_probe{} }")
+	else {
+		panic!("an unmanaged apply that needs a window must be refused without one");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_065", "{diagnostic:?}");
+}
+
+#[test]
+fn an_unmanaged_apply_declaring_a_window_is_refused_with_another_kind() {
+	// A declared kind list no one checks would hand a tumbling-only operator a sliding window.
+	let db = memory();
+	event_time_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_window_probe{} WITH { window: sliding, duration: 5s, slide: 1s } }",
+	) else {
+		panic!("a tumbling-only operator must refuse a sliding window");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_066", "{diagnostic:?}");
+}
+
+#[test]
+fn an_unmanaged_apply_declaring_no_window_is_still_refused_with_one() {
+	// Forwarding the declaration must never open the gate for unmanaged operators that take no window.
+	let db = memory();
+	event_time_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { window: tumbling, duration: 5s } }",
+	) else {
+		panic!("an unmanaged apply that takes no window must be refused with one");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_067", "{diagnostic:?}");
+}
+
+#[test]
+fn nostate_managed_and_unmanaged_probes_each_publish_takes_window_false() {
 	// a mount that claimed a window would let a view give it one at create, which the mount then refuses
 	let no_window = WindowRequirements {
 		takes_window: false,

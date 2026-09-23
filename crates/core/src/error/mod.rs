@@ -79,7 +79,7 @@ pub enum CoreError {
 	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
 	OperatorWithWindowKindUnsupported {
 		kind: &'static str,
-		supported: &'static str,
+		supported: String,
 	},
 
 	#[error("this operator takes no window, but window '{kind}' was given")]

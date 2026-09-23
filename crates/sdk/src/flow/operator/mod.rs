@@ -58,6 +58,8 @@ pub trait ManagedOperator: OperatorMetadata + Send + Sync + Sized {
 pub trait UnmanagedOperator: OperatorMetadata + Send + Sync + Sized {
 	const UNMANAGED_BECAUSE: &'static str;
 
+	const WINDOW: WindowRequirements;
+
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()>;
@@ -177,17 +179,13 @@ impl<T: OperatorMetadata> OperatorMetadata for UnmanagedMount<T> {
 impl<T: UnmanagedOperator> MountedOperator for UnmanagedMount<T> {
 	type Class = Unmanaged;
 
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
+	const WINDOW: WindowRequirements = T::WINDOW;
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = Some(T::UNMANAGED_BECAUSE);
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.reject_retention()?;
+		T::WINDOW.check(with)?;
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
 

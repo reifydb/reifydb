@@ -11,6 +11,8 @@ use std::{
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
+use crate::{error::CoreError, operator_with::ApplyWith};
+
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct CommitVersion(pub u64);
@@ -287,6 +289,53 @@ impl WindowRequirements {
 
 	pub fn kinds_from_bitmask(mask: u32) -> Option<&'static [&'static str]> {
 		WINDOW_KIND_SETS.get(usize::try_from(mask).ok()?).copied()
+	}
+
+	pub fn check(&self, with: &ApplyWith) -> reifydb_value::Result<()> {
+		let kind = match (&with.window, self.takes_window) {
+			(Some(kind), true) => kind,
+			(Some(kind), false) => {
+				return Err(CoreError::OperatorWithWindowNotSupported {
+					kind: kind.name(),
+				}
+				.into());
+			}
+			(None, true) => return Err(CoreError::OperatorWithWindowMissing.into()),
+			(None, false) => return Ok(()),
+		};
+		if !self.kinds.contains(&kind.name()) {
+			return Err(CoreError::OperatorWithWindowKindUnsupported {
+				kind: kind.name(),
+				supported: self.kinds.join(", "),
+			}
+			.into());
+		}
+		match (self.domain, kind.size()) {
+			(WindowSizeDomain::Time, Some(WindowSize::Count(count))) => {
+				return Err(CoreError::OperatorWithWindowSizeCount {
+					count: *count,
+				}
+				.into());
+			}
+			(WindowSizeDomain::Slots, Some(WindowSize::Duration(size))) => {
+				return Err(CoreError::OperatorWithWindowSizeDuration {
+					size: *size,
+				}
+				.into());
+			}
+			_ => {}
+		}
+		if self.needs_pane
+			&& matches!(
+				kind,
+				WindowKind::Rolling {
+					pane: None,
+					..
+				}
+			) {
+			return Err(CoreError::OperatorWithPaneMissing.into());
+		}
+		with.check_session_window()
 	}
 }
 

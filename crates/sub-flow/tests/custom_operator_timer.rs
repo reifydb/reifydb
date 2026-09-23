@@ -10,6 +10,7 @@ use std::time::Duration as StdDuration;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
+	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupId, unmanaged_key_in},
 	operator_with::ApplyWith,
@@ -76,6 +77,12 @@ fn group_key(g: i32) -> EncodedKey {
 
 impl UnmanagedOperator for Alarm {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Alarm)
@@ -274,6 +281,12 @@ impl OperatorMetadata for Snooze {
 
 impl UnmanagedOperator for Snooze {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Snooze {

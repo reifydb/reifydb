@@ -133,7 +133,7 @@ impl IntoDiagnostic for CoreError {
 			CoreError::OperatorWithWindowKindUnsupported {
 				kind,
 				supported,
-			} => flow_operator_with_window_kind_unsupported(kind, supported),
+			} => flow_operator_with_window_kind_unsupported(kind, &supported),
 
 			CoreError::OperatorWithWindowNotSupported {
 				kind,
