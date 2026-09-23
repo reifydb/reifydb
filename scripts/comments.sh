@@ -40,18 +40,39 @@ my $n   = length $content;
 my $i   = 0;
 my $out = "";
 
-# Header: preserve all leading blank/comment lines before first code line.
-while ($i < $n) {
-    my $sol = $i;
-    $i++ while $i < $n && substr($content, $i, 1) ne "\n";
-    my $line = substr($content, $sol, $i - $sol);
-    (my $t = $line) =~ s/^\s+|\s+$//g;
-    if ($t eq "" || $t =~ m{SPDX-License-Identifier|Copyright}) {
-        $out .= $line . ($i < $n ? "\n" : "");
-        $i++ if $i < $n;
+# Header: a leading comment block is kept whole or not at all, never half-stripped.
+{
+    my $start        = $i;
+    my $header       = "";
+    my $anchored     = 0;
+    my $seen_comment = 0;
+    my $j            = $i;
+
+    while ($j < $n) {
+        my $sol = $j;
+        my $eol = $j;
+        $eol++ while $eol < $n && substr($content, $eol, 1) ne "\n";
+        my $line = substr($content, $sol, $eol - $sol);
+        (my $t = $line) =~ s/^\s+|\s+$//g;
+
+        if ($t eq "") {
+            last if $seen_comment;
+        } elsif ($t =~ m{^//}) {
+            $seen_comment = 1;
+            $anchored = 1 if $t =~ m{SPDX-License-Identifier|Copyright};
+        } else {
+            last;
+        }
+
+        $header .= $line . ($eol < $n ? "\n" : "");
+        $j = $eol < $n ? $eol + 1 : $n;
+    }
+
+    if ($anchored) {
+        $out .= $header;
+        $i = $j;
     } else {
-        $i = $sol;
-        last;
+        $i = $start;
     }
 }
 

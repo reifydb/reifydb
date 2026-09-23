@@ -4,3 +4,7 @@
 pub use num_cpus;
 pub use rayon;
 pub use tokio;
+
+pub mod arrow {
+	pub use arrow_array as array;
+}

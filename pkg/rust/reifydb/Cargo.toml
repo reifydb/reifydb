@@ -66,6 +66,7 @@ reifydb-testing-flow = { workspace = true, optional = true }
 reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-test-harness = { workspace = true, optional = true }
 
+arrow-array = { workspace = true }
 rayon = { workspace = true }
 tokio = { workspace = true }
 num_cpus = { workspace = true }
