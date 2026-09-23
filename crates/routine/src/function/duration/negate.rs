@@ -48,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationNegate {
 
 				for i in 0..row_count {
 					if let Some(val) = durations(container_in).get(i) {
-						container.push(val.negate());
+						container.push(val.negate()?);
 					} else {
 						container.push(Duration::default());
 					}

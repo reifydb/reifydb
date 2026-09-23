@@ -86,11 +86,17 @@ impl Duration {
 	}
 
 	pub fn from_seconds(seconds: i64) -> Result<Self, Box<TypeError>> {
-		Self::normalized(0, 0, seconds * 1_000_000_000)
+		Self::normalized(0, 0, Self::scaled(seconds, 1_000_000_000, "seconds")?)
 	}
 
 	pub fn from_milliseconds(milliseconds: i64) -> Result<Self, Box<TypeError>> {
-		Self::normalized(0, 0, milliseconds * 1_000_000)
+		Self::normalized(0, 0, Self::scaled(milliseconds, 1_000_000, "milliseconds")?)
+	}
+
+	fn scaled(amount: i64, nanos_per_unit: i64, unit: &str) -> Result<i64, Box<TypeError>> {
+		amount.checked_mul(nanos_per_unit).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("{} {} overflows Duration range", amount, unit)))
+		})
 	}
 
 	pub fn from_microseconds(microseconds: i64) -> Result<Self, Box<TypeError>> {
@@ -202,11 +208,11 @@ impl Duration {
 	}
 
 	pub fn from_minutes(minutes: i64) -> Result<Self, Box<TypeError>> {
-		Self::normalized(0, 0, minutes * 60 * 1_000_000_000)
+		Self::normalized(0, 0, Self::scaled(minutes, 60_000_000_000, "minutes")?)
 	}
 
 	pub fn from_hours(hours: i64) -> Result<Self, Box<TypeError>> {
-		Self::normalized(0, 0, hours * 60 * 60 * 1_000_000_000)
+		Self::normalized(0, 0, Self::scaled(hours, 3_600_000_000_000, "hours")?)
 	}
 
 	pub fn from_days(days: i64) -> Result<Self, Box<TypeError>> {
@@ -349,12 +355,19 @@ impl Duration {
 		}
 	}
 
-	pub fn negate(&self) -> Self {
-		Self {
-			months: -self.months,
-			days: -self.days,
-			nanos: -self.nanos,
-		}
+	pub fn negate(&self) -> Result<Self, Box<TypeError>> {
+		let negated = self
+			.months
+			.checked_neg()
+			.zip(self.days.checked_neg())
+			.zip(self.nanos.checked_neg())
+			.ok_or_else(|| Box::new(Self::overflow_err("negating the Duration overflows its range".to_string())))?;
+		let ((months, days), nanos) = negated;
+		Ok(Self {
+			months,
+			days,
+			nanos,
+		})
 	}
 
 	pub fn to_iso_string(&self) -> String {
@@ -600,8 +613,13 @@ impl Duration {
 	}
 
 	pub fn to_std(&self) -> StdDuration {
-		let nanos = self.nanoseconds().map(|n| n.max(0)).unwrap_or(0);
-		StdDuration::from_nanos(nanos as u64)
+		let years = (self.months / 12) as i128;
+		let rem_months = (self.months % 12) as i128;
+		let total = years * SECONDS_PER_YEAR as i128 * 1_000_000_000
+			+ rem_months * DAYS_PER_MONTH as i128 * NANOS_PER_DAY as i128
+			+ self.days as i128 * NANOS_PER_DAY as i128
+			+ self.nanos as i128;
+		StdDuration::from_nanos(u64::try_from(total.max(0)).unwrap_or(u64::MAX))
 	}
 
 	pub fn from_std(duration: StdDuration) -> Self {
@@ -1101,7 +1119,7 @@ pub mod tests {
 		assert_eq!(format!("{}", d.abs()), "30s");
 
 		let d = Duration::from_seconds(30).unwrap();
-		assert_eq!(format!("{}", d.negate()), "-30s");
+		assert_eq!(format!("{}", d.negate().unwrap()), "-30s");
 	}
 
 	#[test]
