@@ -213,7 +213,7 @@ pub fn serialize_identity_ids<Ser: Serializer>(
 pub fn deserialize_identity_ids<'de, D: Deserializer<'de>>(
 	deserializer: D,
 ) -> StdResult<FixedSizeBinaryArray, D::Error> {
-	Ok(identity_id_array(deserialize_values::<IdentityId, D>(deserializer)?))
+	Ok(identity_id_array(deserialize_values::<Uuid7, D>(deserializer)?.into_iter().map(IdentityId)))
 }
 
 #[cfg(test)]
