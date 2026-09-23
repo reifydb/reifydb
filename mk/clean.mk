@@ -5,11 +5,17 @@
 # Clean Targets - Remove build artifacts from all packages
 # =============================================================================
 
-.PHONY: clean clean-cargo clean-workspace clean-pkg-typescript
+.PHONY: clean clean-cargo clean-workspace clean-pkg-typescript clean-siblings
 
 # Main clean target - cleans everything
-clean: clean-workspace clean-cargo clean-pkg-typescript
+clean: clean-siblings clean-workspace clean-cargo clean-pkg-typescript
 	@echo "✅ All packages cleaned!"
+
+clean-siblings:
+	cd $(TEST_SUITE_DIR) && $(MAKE) clean
+	cd $(TEST_CRATE_DIR) && $(MAKE) clean
+	cd $(TEST_CHAOS_DIR) && $(MAKE) clean
+	cd $(TEST_QUERY_DIR) && $(MAKE) clean
 
 # Clean the entire cargo target directory
 clean-cargo:
