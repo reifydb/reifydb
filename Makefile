@@ -154,11 +154,17 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check build build-testcontainer test-full test-chaos-ci test-crate-loom push-testcontainer push
+all: format-check check-code-quality check build build-testcontainer test-full-local test-chaos-ci test-crate-loom all-siblings push-testcontainer push
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
 	$(MAKE) test-workspace-chaos N=100
+
+.PHONY: all-siblings
+all-siblings:
+	cd $(TEST_SUITE_DIR) && $(MAKE) all
+	cd $(TEST_CRATE_DIR) && $(MAKE) all
+	cd $(TEST_CHAOS_DIR) && $(MAKE) all
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -213,6 +219,8 @@ test: test-full
 
 test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-query test-chaos test-external test-pkg-typescript test-projects fuzz-regression
 	@echo "✅ All tests completed successfully!"
+
+test-full-local: test-workspace test-dst test-pkg-rust test-examples test-query test-external test-pkg-typescript test-projects fuzz-regression
 
 test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev test-query-dev
 	@echo "🚀 Development tests completed!"
