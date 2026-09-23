@@ -6,6 +6,7 @@ use reifydb_core::{
 	row::{JoinPick, JoinRetention, OperatorRetention},
 	sort::{SortDirection, SortKey},
 };
+use reifydb_value::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	Result,
@@ -58,7 +59,16 @@ impl<'bump> Compiler<'bump> {
 		if let Some(entry) = column_pick
 			&& join.retention.as_ref().is_some_and(|retention| retention.right.is_some())
 		{
-			return Err(unknown_key(entry, "a pick by time, or a retention without 'right'"));
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a pick by time, or a retention without 'right'".to_string(),
+				},
+				message: "a column-ordered pick holds one right row per key, and a right retention can free \
+					  that row while a row it outranked is still live, leaving the join with nothing to \
+					  fall back to"
+					.to_string(),
+				fragment: entry.key.fragment(),
+			}));
 		}
 		Ok(join)
 	}

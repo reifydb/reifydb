@@ -738,8 +738,9 @@ impl Resident {
 				None => return Applied::default(),
 			}
 		};
-		let applied =
-			self.persist(&batch).expect("operator state flush must persist; a dropped batch loses buffered rows");
+		let applied = self
+			.persist(&batch)
+			.expect("operator state flush must persist; a dropped batch loses buffered rows");
 		let _staging = self.flush_guard();
 		self.settle(batch);
 		applied
@@ -834,7 +835,7 @@ impl Resident {
 		let mut exhausted = false;
 
 		for group in self.pending_groups() {
-			if consumed >= slice {
+			if staged > 0 && consumed >= slice {
 				exhausted = true;
 				break;
 			}
