@@ -11,6 +11,13 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
+fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
 pub struct TimeNew {
 	info: RoutineInfo,
 }
@@ -171,14 +178,16 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 
 			match (hour, min, sec, nano) {
 				(Some(h), Some(m), Some(s), Some(n)) => {
-					if h >= 0 && m >= 0 && s >= 0 && n >= 0 {
-						match Time::new(h as u32, m as u32, s as u32, n as u32) {
-							Some(time) => container.push(time),
-							None => container.push(Time::default()),
-						}
-					} else {
-						container.push(Time::default());
-					}
+					let time = u32::try_from(h)
+						.ok()
+						.zip(u32::try_from(m).ok())
+						.zip(u32::try_from(s).ok())
+						.zip(u32::try_from(n).ok())
+						.and_then(|(((h, m), s), n)| Time::new(h, m, s, n))
+						.ok_or_else(|| {
+							failed(ctx, format!("{h}:{m}:{s}.{n} is not a time of day"))
+						})?;
+					container.push(time);
 				}
 				_ => container.push(Time::default()),
 			}

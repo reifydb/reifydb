@@ -8,6 +8,13 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
 
+fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
 pub struct TextChar {
 	info: RoutineInfo,
 }
@@ -41,25 +48,25 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 
 		let result_data = match data {
 			ColumnBuffer::Int1(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Int2(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Int4(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Int8(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Uint1(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Uint2(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).map(|&v| v as u32))
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			ColumnBuffer::Uint4(c) => {
-				convert_to_char(row_count, c.values().len(), |i| c.values().get(i).copied())
+				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
@@ -90,20 +97,26 @@ impl Function for TextChar {
 	}
 }
 
-fn convert_to_char<F>(row_count: usize, _capacity: usize, get_value: F) -> ColumnBuffer
+fn convert_to_char<F>(
+	ctx: &FunctionContext,
+	row_count: usize,
+	get_value: F,
+) -> Result<ColumnBuffer, RoutineError>
 where
-	F: Fn(usize) -> Option<u32>,
+	F: Fn(usize) -> Option<i128>,
 {
 	let mut result_data = Vec::with_capacity(row_count);
 
 	for i in 0..row_count {
 		match get_value(i) {
 			Some(code_point) => {
-				if let Some(ch) = char::from_u32(code_point) {
-					result_data.push(ch.to_string());
-				} else {
-					result_data.push(String::new());
-				}
+				let ch = u32::try_from(code_point)
+					.ok()
+					.and_then(char::from_u32)
+					.ok_or_else(|| {
+						failed(ctx, format!("{code_point} is not a character code point"))
+					})?;
+				result_data.push(ch.to_string());
 			}
 			None => {
 				result_data.push(String::new());
@@ -111,8 +124,8 @@ where
 		}
 	}
 
-	ColumnBuffer::Utf8 {
+	Ok(ColumnBuffer::Utf8 {
 		container: LargeStringArray::from(result_data),
 		max_bytes: MaxBytes::MAX,
-	}
+	})
 }
