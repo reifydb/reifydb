@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 ReifyDB
 #
-# Rebase every sibling test repository onto its upstream before the build runs.
+# Rebase reifydb and every sibling test repository onto its upstream.
 #
-# Each directory given on the command line is pulled with --rebase. A repository
+# Each directory given on the command line is cloned from the same base url as
+# reifydb when missing, otherwise pulled with --rebase. A repository
 # holding any local change, staged, unstaged or untracked, is refused before the
 # pull starts. A pull that hits a conflict is aborted, so no repository is left
 # half-rebased, and the conflicted paths are reported.
@@ -18,12 +19,24 @@ set -e
 
 status=0
 listed=10
+origin=$(git remote get-url origin)
+base=${origin%/*}
 
-echo "Rebasing sibling test repositories..."
+echo "Rebasing repositories..."
 echo ""
 
 for dir in "$@"; do
-    name=$(basename "$dir")
+    name=$(basename "$(realpath -m "$dir")")
+
+    if [ ! -e "$dir" ]; then
+        if git clone --quiet "$base/$name.git" "$dir"; then
+            echo "  $name was cloned from $base/$name.git"
+        else
+            echo "Error: $name could not be cloned from $base/$name.git"
+            status=1
+        fi
+        continue
+    fi
 
     if [ ! -d "$dir/.git" ]; then
         echo "Error: $name is not a git repository ($dir)"
@@ -34,7 +47,7 @@ for dir in "$@"; do
     changes=$(git -C "$dir" status --porcelain)
     if [ -n "$changes" ]; then
         total=$(echo "$changes" | wc -l)
-        echo "Error: $name has $total local changes, commit or stash them before running make all"
+        echo "Error: $name has $total local changes, commit or stash them first"
         echo "$changes" | head -n "$listed" | sed 's/^/    /'
         if [ "$total" -gt "$listed" ]; then
             echo "    ... and $((total - listed)) more"
@@ -59,9 +72,9 @@ done
 
 echo ""
 if [ $status -eq 0 ]; then
-    echo "All sibling test repositories are up to date."
+    echo "All repositories are up to date."
 else
-    echo "Sibling test repositories are not ready, see the errors above."
+    echo "Repositories are not ready, see the errors above."
 fi
 
 exit $status
