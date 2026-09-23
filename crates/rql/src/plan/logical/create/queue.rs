@@ -25,6 +25,7 @@ use crate::{
 	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
+		create::{column_saturation_property, reject_column_default},
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 	token::token::Token,
@@ -49,7 +50,7 @@ impl<'bump> Compiler<'bump> {
 
 			let mut auto_increment = false;
 			let mut dictionary_id = None;
-			let properties = vec![];
+			let mut properties = vec![];
 
 			for property in &col.properties {
 				match property {
@@ -97,8 +98,10 @@ impl<'bump> Compiler<'bump> {
 							Constraint::Dictionary(dictionary.id, dictionary.id_type),
 						);
 					}
-					AstColumnProperty::Saturation(_) => {}
-					AstColumnProperty::Default(_) => {}
+					AstColumnProperty::Saturation(value) => {
+						properties.push(column_saturation_property(value)?)
+					}
+					AstColumnProperty::Default(value) => return Err(reject_column_default(value)),
 				}
 			}
 

@@ -25,13 +25,20 @@ pub mod test;
 pub mod transactional;
 pub mod ttl;
 
-use reifydb_core::partition::PartitionError;
+use reifydb_core::{
+	interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
+	partition::PartitionError,
+};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	error::{AstErrorKind, Error, TypeError},
+	fragment::Fragment,
+	value::value_type::ValueType,
+};
 
 use crate::{
 	Result,
-	ast::ast::AstCreate,
+	ast::ast::{Ast, AstCreate},
 	plan::logical::{
 		Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
 		CreateRoleNode, LogicalPlan,
@@ -96,6 +103,28 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Relationship(node) => self.compile_create_relationship(node, tx),
 		}
 	}
+}
+
+pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnPropertyKind> {
+	if value.is_literal_none() {
+		return Ok(ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None));
+	}
+	if value.is_identifier() && value.as_identifier().text() == "error" {
+		return Ok(ColumnPropertyKind::Saturation(ColumnSaturationStrategy::Error));
+	}
+	Err(invalid_column_property(value, format!("Unknown saturation strategy: {}", value.token().fragment.text())))
+}
+
+pub(crate) fn reject_column_default(value: &Ast<'_>) -> Error {
+	invalid_column_property(value, "Column defaults are not supported".to_string())
+}
+
+fn invalid_column_property(value: &Ast<'_>, message: String) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::InvalidColumnProperty,
+		message,
+		fragment: value.token().fragment.to_owned(),
+	})
 }
 
 pub(crate) fn reject_digest_partition_columns<'a>(

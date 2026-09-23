@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	Result,
 	ast::ast::{AstColumnPropertyKind, AstCreateColumnProperty},
-	plan::logical::{Compiler, CreateColumnPropertyNode, LogicalPlan},
+	plan::logical::{
+		Compiler, CreateColumnPropertyNode, LogicalPlan,
+		create::{column_saturation_property, reject_column_default},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -20,22 +22,10 @@ impl<'bump> Compiler<'bump> {
 			.properties
 			.iter()
 			.map(|entry| match entry.kind {
-				AstColumnPropertyKind::Saturation => {
-					if entry.value.is_literal_none() {
-						ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)
-					} else {
-						let ident = entry.value.as_identifier().text();
-						match ident {
-							"error" => ColumnPropertyKind::Saturation(
-								ColumnSaturationStrategy::Error,
-							),
-							_ => unimplemented!(),
-						}
-					}
-				}
-				AstColumnPropertyKind::Default => unimplemented!(),
+				AstColumnPropertyKind::Saturation => column_saturation_property(&entry.value),
+				AstColumnPropertyKind::Default => Err(reject_column_default(&entry.value)),
 			})
-			.collect();
+			.collect::<Result<Vec<_>>>()?;
 
 		Ok(LogicalPlan::CreateColumnProperty(CreateColumnPropertyNode {
 			column: ast.column,

@@ -17,7 +17,7 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateRingBufferNode, LogicalPlan,
-		create::reject_digest_partition_columns,
+		create::{column_saturation_property, reject_column_default, reject_digest_partition_columns},
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 };
@@ -43,7 +43,7 @@ impl<'bump> Compiler<'bump> {
 
 			let mut auto_increment = false;
 			let mut dictionary_id = None;
-			let properties = vec![];
+			let mut properties = vec![];
 
 			for property in &col.properties {
 				match property {
@@ -102,12 +102,10 @@ impl<'bump> Compiler<'bump> {
 							Constraint::Dictionary(dictionary.id, dictionary.id_type),
 						);
 					}
-					AstColumnProperty::Saturation(_) => {
-						// TODO: inline saturation policy
+					AstColumnProperty::Saturation(value) => {
+						properties.push(column_saturation_property(value)?)
 					}
-					AstColumnProperty::Default(_) => {
-						// TODO: inline default policy
-					}
+					AstColumnProperty::Default(value) => return Err(reject_column_default(value)),
 				}
 			}
 
