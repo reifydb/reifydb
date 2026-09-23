@@ -181,7 +181,12 @@ impl HostOperator for ExternCOperatorHandle {
 			.into());
 		}
 
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
+		let mut output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
+		for columns in output_change.diffs.iter_mut().flat_map(Diff::columns_mut) {
+			for source in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
+				columns.reattach_dictionary_ids(source);
+			}
+		}
 
 		Span::current().record("output_diff_count", output_change.diffs.len());
 

@@ -319,6 +319,24 @@ impl Columns {
 		self.names.iter().position(|n| n.text() == name).and_then(|i| self.get(i))
 	}
 
+	pub fn reattach_dictionary_ids(&mut self, from: &Columns) {
+		for (name, data) in self.names.iter().zip(self.columns.iter_mut()) {
+			if let ColumnBuffer::DictionaryId {
+				dictionary_id,
+				..
+			} = data
+				&& dictionary_id.is_none()
+				&& let Some(source) = from.column(name.text())
+				&& let ColumnBuffer::DictionaryId {
+					dictionary_id: source_id,
+					..
+				} = source.data()
+			{
+				*dictionary_id = *source_id;
+			}
+		}
+	}
+
 	pub fn row_count(&self) -> usize {
 		if !self.row_numbers().is_empty() {
 			self.row_numbers().len()

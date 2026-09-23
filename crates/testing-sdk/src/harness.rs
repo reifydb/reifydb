@@ -20,7 +20,7 @@ use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
-		change::{Change, ChangeOrigin},
+		change::{Change, ChangeOrigin, Diff},
 	},
 	key::{
 		any::TaggedKey,
@@ -114,11 +114,16 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			self.operator.apply(&mut op_ctx, borrowed)
 		});
 
-		drop(input);
 		result?;
 
 		let emitted = self.builder_registry.drain_diffs();
-		let diffs = into_diffs(emitted);
+		let mut diffs = into_diffs(emitted);
+		for columns in diffs.iter_mut().flat_map(Diff::columns_mut) {
+			for source in input.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
+				columns.reattach_dictionary_ids(source);
+			}
+		}
+		drop(input);
 		let output = match origin {
 			ChangeOrigin::Flow(operator) => Change::from_flow(operator, version, diffs, changed_at),
 			ChangeOrigin::Object(_) => Change::from_flow(self.operator_id, version, diffs, changed_at),

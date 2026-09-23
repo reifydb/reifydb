@@ -119,7 +119,9 @@ impl Transform for ExternCTransform {
 			.into());
 		}
 
-		Ok(single_columns_from_registry(&self.builder_registry))
+		let mut output = single_columns_from_registry(&self.builder_registry);
+		output.reattach_dictionary_ids(&input);
+		Ok(output)
 	}
 }
 

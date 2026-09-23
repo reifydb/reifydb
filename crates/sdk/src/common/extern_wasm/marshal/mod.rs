@@ -13,8 +13,9 @@ use arrow_array::{
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
-		decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell,
-		encode_any_cell, encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
+		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_duration_cell,
+		decode_int_cell, decode_uint_cell, encode_any_cell, encode_decimal_cell,
+		encode_dictionary_id_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
 	},
 	tag::ValueKind,
 };
@@ -374,8 +375,15 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			container,
 			..
 		} => {
-			let encoded: Vec<u128> = dictionary_array::iter(container).map(|id| id.to_u128()).collect();
-			marshal_numeric_to_buf(buf, &encoded)
+			let entries: Vec<DictionaryEntryId> = dictionary_array::iter(container).collect();
+			let mut offsets: Vec<u64> = Vec::with_capacity(entries.len() + 1);
+			let mut data_bytes: Vec<u8> = Vec::new();
+			offsets.push(0);
+			for entry in &entries {
+				encode_dictionary_id_cell(entry, &mut data_bytes);
+				offsets.push(data_bytes.len() as u64);
+			}
+			marshal_data_with_offsets_to_buf(buf, &data_bytes, &offsets)
 		}
 
 		ColumnBuffer::Digest {
@@ -549,11 +557,7 @@ fn unmarshal_column_data(
 			declared_type: None,
 		},
 		ValueKind::DictionaryId => {
-			let entries: Vec<DictionaryEntryId> = unmarshal_numeric::<u128>(data, row_count)
-				.into_iter()
-				.map(DictionaryEntryId::U16)
-				.collect();
-			ColumnBuffer::dictionary_id(entries)
+			ColumnBuffer::dictionary_id(unmarshal_dictionary_ids(data, row_count, offsets_bytes))
 		}
 		ValueKind::None
 		| ValueKind::Type
@@ -752,6 +756,19 @@ fn unmarshal_cells<T: Default + Clone + IsNumber>(
 		values.push(decode(&data[start..end]));
 	}
 	values
+}
+
+fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Vec<DictionaryEntryId> {
+	if data.is_empty() || offsets_bytes.is_empty() {
+		return vec![DictionaryEntryId::default(); row_count];
+	}
+	let offsets = read_offsets(offsets_bytes);
+	(0..row_count)
+		.map(|i| {
+			let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
+			decode_dictionary_id_cell(&data[start..end]).unwrap_or_default()
+		})
+		.collect()
 }
 
 fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> LargeBinaryArray {
