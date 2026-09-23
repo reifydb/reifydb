@@ -183,6 +183,7 @@ fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(lateness))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -194,6 +195,7 @@ fn tumbling(size: u64) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::WindowSize,
+	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
@@ -23,7 +23,8 @@ use crate::{
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, or immutable";
+const APPLY_WITH_KEYS: &str =
+	"window, duration, slots, slide, gap, lag, pane, lateness, retention, throttle, or immutable";
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -34,6 +35,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith> {
 		let mut lateness: Option<Declared<WithSpan>> = None;
 		let mut retention: Option<Declared<Duration>> = None;
+		let mut throttle: Option<Declared<Duration>> = None;
 		let mut immutable: Option<Immutable> = None;
 		let mut window_kind: Option<AstWindowKind> = None;
 		let mut parsed = ParsedConfig::default();
@@ -126,6 +128,13 @@ impl<'bump> Compiler<'bump> {
 						literal(entry)?,
 						"'retention'",
 						DurationBound::AllowZero,
+					)?)
+				}
+				Some("throttle") => {
+					throttle = Some(declared_duration(
+						literal(entry)?,
+						"'throttle'",
+						DurationBound::Positive,
 					)?)
 				}
 				Some("immutable") => {
@@ -253,11 +262,26 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
+		if let Some(throttle) = &throttle
+			&& !matches!(
+				kind,
+				Some(WindowKind::Tumbling {
+					size: WindowSize::Duration(_),
+				})
+			) {
+			return Err(AstError::UnexpectedToken {
+				expected: "a tumbling window sized by a duration for throttle".to_string(),
+				fragment: throttle.fragment.clone(),
+			}
+			.into());
+		}
+
 		Ok(ApplyWith {
 			window: kind,
 			lateness: Declared::value_of(&lateness),
 			immutable: Declared::value_of(&immutable),
 			retention: Declared::value_of(&retention),
+			throttle: Declared::value_of(&throttle),
 		})
 	}
 }
@@ -388,6 +412,7 @@ mod tests {
 				lateness: seconds(30),
 				immutable: seconds(10),
 				retention: None,
+				throttle: None,
 			}
 		);
 	}
@@ -411,6 +436,7 @@ mod tests {
 				lateness: seconds(30),
 				immutable: None,
 				retention: Some(Duration::from_hours(1).unwrap()),
+				throttle: None,
 			}
 		);
 		assert_eq!(
@@ -621,5 +647,45 @@ mod tests {
 			.expect_err("must be rejected")
 			.to_string();
 		assert!(err.contains("expected a key the rolling window reads, got lag"), "got: {err}");
+	}
+
+	#[test]
+	fn throttle_parses_as_a_duration() {
+		// A throttle dropped by the compiler would publish every batch while the view declares a rate.
+		assert_eq!(
+			apply_with("apply op { } with { window: tumbling, duration: 1m, throttle: 10s }").unwrap().throttle,
+			Some(Duration::from_seconds(10).unwrap())
+		);
+		assert_eq!(apply_with("apply op { } with { window: tumbling, duration: 1m }").unwrap().throttle, None);
+	}
+
+	#[test]
+	fn a_count_throttle_is_rejected() {
+		// A bare number has no unit the event-time frontier can be compared against.
+		assert!(apply_with("apply op { } with { window: tumbling, duration: 1m, throttle: 10 }").is_err());
+	}
+
+	#[test]
+	fn a_zero_throttle_is_rejected() {
+		// A zero throttle holds nothing back, so accepting it declares a rate that does not exist.
+		assert!(apply_with("apply op { } with { window: tumbling, duration: 1m, throttle: 0s }").is_err());
+	}
+
+	#[test]
+	fn throttle_needs_a_tumbling_window_sized_by_a_duration() {
+		// A throttle on a window with no event-time close would hold its last change back forever.
+		for source in [
+			"apply op { } with { throttle: 10s }",
+			"apply op { } with { window: tumbling, slots: 4, throttle: 10s }",
+			"apply op { } with { window: sliding, duration: 1m, slide: 30s, throttle: 10s }",
+			"apply op { } with { window: session, gap: 1m, throttle: 10s }",
+			"apply op { } with { window: rolling, duration: 1h, pane: 1m, throttle: 10s }",
+		] {
+			let err = apply_with(source).expect_err(source).to_string();
+			assert!(
+				err.contains("expected a tumbling window sized by a duration for throttle"),
+				"{source}: {err}"
+			);
+		}
 	}
 }

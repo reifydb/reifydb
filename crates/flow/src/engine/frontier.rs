@@ -418,6 +418,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let held = Harness::new()
 			.node(source(1))

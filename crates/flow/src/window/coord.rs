@@ -324,6 +324,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(6)),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
@@ -339,6 +340,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), None);
@@ -354,6 +356,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert!(OrdinalCoord::seal_span_of(&with).is_err());
@@ -398,6 +401,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
 			retention: None,
+			throttle: None,
 		};
 		let omitted = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -406,6 +410,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		let declared = OrdinalCoord::window_settings_of(&declared).unwrap();
@@ -429,6 +434,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert!(OrdinalCoord::window_settings_of(&ApplyWith::default()).is_err());
@@ -446,6 +452,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		let settings = OrdinalCoord::window_settings_of(&sliding).unwrap();

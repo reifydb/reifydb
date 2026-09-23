@@ -341,6 +341,7 @@ fn window_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -352,6 +353,7 @@ fn sealed_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(60))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -427,6 +429,43 @@ fn remove_clears_window_emits_remove() {
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
 	let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
 	assert_eq!(r.f64("volume"), Some(10.0));
+}
+
+#[test]
+fn an_update_carries_the_published_row_as_its_pre() {
+	// A pre equal to the post makes every downstream consumer retract the new value instead of the old one.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+		.with(window_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1);
+	let diff = &out.diffs[0];
+	assert_eq!(diff.kind(), DiffType::Update);
+	let pre = diff.pre().expect("pre").row_ref(0).expect("r0");
+	assert_eq!(pre.f64("volume"), Some(10.0));
+	let post = diff.post().expect("post").row_ref(0).expect("r0");
+	assert_eq!(post.f64("volume"), Some(15.0));
+}
+
+#[test]
+fn a_second_update_carries_the_row_of_the_first_update_as_its_pre() {
+	// A pre frozen at the insert row would retract a value downstream no longer holds.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+		.with(window_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 40, 1.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1);
+	let diff = &out.diffs[0];
+	assert_eq!(diff.kind(), DiffType::Update);
+	let pre = diff.pre().expect("pre").row_ref(0).expect("r0");
+	assert_eq!(pre.f64("volume"), Some(15.0));
+	let post = diff.post().expect("post").row_ref(0).expect("r0");
+	assert_eq!(post.f64("volume"), Some(16.0));
 }
 
 #[test]
@@ -659,6 +698,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		lateness: None,
 		immutable: None,
 		retention: None,
+		throttle: None,
 	};
 	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
 		.with(with)

@@ -133,6 +133,7 @@ impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
@@ -227,6 +228,7 @@ impl<T: NostateOperator> MountedOperator for NostateMount<T> {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;

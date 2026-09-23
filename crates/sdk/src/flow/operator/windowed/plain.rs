@@ -979,6 +979,7 @@ where
 		},
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
 		needs_pane: false,
+		throttles: true,
 	};
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
@@ -1255,6 +1256,7 @@ mod tests {
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
 			retention: None,
+			throttle: None,
 		}
 	}
 
@@ -1334,6 +1336,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
 			retention: None,
+			throttle: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1358,6 +1361,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1391,6 +1395,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());
@@ -1408,6 +1413,7 @@ mod tests {
 				kinds: &["tumbling", "sliding", "session"],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
+				throttles: true,
 			}
 		);
 	}

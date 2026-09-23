@@ -24,6 +24,7 @@ fn session(gap: u64, lateness: Option<u64>) -> ApplyWith {
 		lateness: lateness.map(|n| WithSpan::Duration(millis(n))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 

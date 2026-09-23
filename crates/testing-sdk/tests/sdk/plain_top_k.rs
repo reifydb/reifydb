@@ -227,6 +227,7 @@ fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(lateness))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -421,6 +422,7 @@ fn create_with_a_tumbling_window_reports_flow_066() {
 		lateness: None,
 		immutable: None,
 		retention: None,
+		throttle: None,
 	};
 
 	let err = harness!(TopVolume, with).err().expect("create must fail");

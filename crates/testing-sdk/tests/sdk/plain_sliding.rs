@@ -25,6 +25,7 @@ fn sliding(size: u64, slide: u64, lateness: u64) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(lateness))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -58,6 +59,28 @@ fn a_remove_retracts_the_row_from_every_window_it_joined() {
 		render(&out),
 		vec![(DiffType::Update, 2.0, at(105), at(115)), (DiffType::Remove, 1.0, at(100), at(110))]
 	);
+}
+
+#[test]
+fn an_update_carries_each_window_s_published_row_as_its_pre() {
+	// A pre equal to the post makes every downstream consumer retract the new sum instead of the old one.
+	let mut h = harness!(SumTumblingOnly, sliding(10, 5, 3_600_000)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 107, 1.0)).build()).expect("apply");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 108, 2.0)).build()).expect("apply");
+
+	let mut pre_post = Vec::new();
+	for diff in &out.diffs {
+		assert_eq!(diff.kind(), DiffType::Update);
+		let (pres, posts) = (diff.pre().expect("pre"), diff.post().expect("post"));
+		for i in 0..posts.row_count() {
+			let pre = pres.row_ref(i).expect("pre row");
+			let post = posts.row_ref(i).expect("post row");
+			pre_post.push((pre.f64("sum").expect("sum"), post.f64("sum").expect("sum"), post.u64("start").expect("start")));
+		}
+	}
+	pre_post.sort_by_key(|(_, _, start)| *start);
+	assert_eq!(pre_post, vec![(1.0, 3.0, at(100)), (1.0, 3.0, at(105))]);
 }
 
 #[test]
