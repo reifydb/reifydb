@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
+use std::{fmt::Display, result::Result as StdResult};
 
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
@@ -15,10 +15,72 @@ use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	value::{
+		container::decimal_array::u128_at,
 		number::safe::convert::SafeConvert,
 		value_type::{ValueType, get::GetType},
 	},
 };
+
+pub(crate) fn read_i64(
+	function: &Fragment,
+	data: &ColumnBuffer,
+	row: usize,
+) -> StdResult<Option<i64>, RoutineError> {
+	narrow(function, data, row, ValueType::Int8, |value| i64::try_from(value).ok())
+}
+
+pub(crate) fn read_i32(
+	function: &Fragment,
+	data: &ColumnBuffer,
+	row: usize,
+) -> StdResult<Option<i32>, RoutineError> {
+	narrow(function, data, row, ValueType::Int4, |value| i32::try_from(value).ok())
+}
+
+fn narrow<T>(
+	function: &Fragment,
+	data: &ColumnBuffer,
+	row: usize,
+	target: ValueType,
+	fit: impl Fn(i128) -> Option<T>,
+) -> StdResult<Option<T>, RoutineError> {
+	if let ColumnBuffer::Uint16(container) = data {
+		return match u128_at(container, row) {
+			None => Ok(None),
+			Some(value) => i128::try_from(value)
+				.ok()
+				.and_then(&fit)
+				.map(Some)
+				.ok_or_else(|| out_of_range(function, value, target)),
+		};
+	}
+	match wide_at(data, row) {
+		None => Ok(None),
+		Some(value) => fit(value).map(Some).ok_or_else(|| out_of_range(function, value, target)),
+	}
+}
+
+fn wide_at(data: &ColumnBuffer, row: usize) -> Option<i128> {
+	match data {
+		ColumnBuffer::Int1(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Int2(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Int4(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Int8(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Int16(c) => c.values().get(row).copied(),
+		ColumnBuffer::Uint1(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Uint2(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Uint4(c) => c.values().get(row).map(|&v| v as i128),
+		ColumnBuffer::Uint8(c) => c.values().get(row).map(|&v| v as i128),
+		_ => None,
+	}
+}
+
+fn out_of_range(function: &Fragment, value: impl Display, target: ValueType) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: function.clone(),
+		reason: format!("{value} is out of range for {target}"),
+	}
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum CoerceMode {

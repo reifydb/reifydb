@@ -5,6 +5,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use crate::function::support::coerce::read_i32;
 use reifydb_value::value::value_type::ValueType;
 
 pub struct GenerateSeries {
@@ -90,17 +91,24 @@ impl Series {
 	}
 }
 
-fn extract_i32(data: &ColumnBuffer, index: usize) -> Option<i32> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(index).map(|&v| v as i32),
-		ColumnBuffer::Int2(c) => c.values().get(index).map(|&v| v as i32),
-		ColumnBuffer::Int4(c) => c.values().get(index).copied(),
-		ColumnBuffer::Int8(c) => c.values().get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint1(c) => c.values().get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint2(c) => c.values().get(index).map(|&v| v as i32),
-		ColumnBuffer::Uint4(c) => c.values().get(index).map(|&v| v as i32),
-		_ => None,
-	}
+fn bound(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: usize) -> Result<i32, RoutineError> {
+	read_i32(&ctx.fragment, data, 0)?.ok_or_else(|| RoutineError::FunctionInvalidArgumentType {
+		function: ctx.fragment.clone(),
+		argument_index,
+		expected: vec![
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Int16,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Uint16,
+		],
+		actual: data.get_type(),
+	})
 }
 
 impl<'a> Routine<FunctionContext<'a>> for Series {
@@ -113,9 +121,8 @@ impl<'a> Routine<FunctionContext<'a>> for Series {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let start_value = extract_i32(&args[0], 0).unwrap_or(1);
-
-		let end_value = extract_i32(&args[1], 0).unwrap_or(10);
+		let start_value = bound(ctx, &args[0], 0)?;
+		let end_value = bound(ctx, &args[1], 1)?;
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int4(series))]))

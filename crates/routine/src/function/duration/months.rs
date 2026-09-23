@@ -5,8 +5,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use crate::function::support::coerce::read_i64;
 use reifydb_value::value::{
-	container::{decimal_array::u128_at, temporal_array::duration_array},
+	container::temporal_array::duration_array,
 	duration::Duration,
 	value_type::ValueType,
 };
@@ -26,22 +27,6 @@ impl DurationMonths {
 		Self {
 			info: RoutineInfo::new("duration::months"),
 		}
-	}
-}
-
-fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as i64),
-		_ => None,
 	}
 }
 
@@ -97,10 +82,9 @@ impl<'a> Routine<FunctionContext<'a>> for DurationMonths {
 		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			if let Some(val) = extract_i64(data, i) {
-				container.push(Duration::from_months(val)?);
-			} else {
-				container.push(Duration::default());
+			match read_i64(&ctx.fragment, data, i)? {
+				Some(val) => container.push(Duration::from_months(val)?),
+				None => container.push(Duration::default()),
 			}
 		}
 

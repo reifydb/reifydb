@@ -6,11 +6,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use crate::function::support::coerce::read_i32;
 use reifydb_value::value::{
-	container::{
-		bignum_array::{decimal_array, decimal_at},
-		decimal_array::u128_at,
-	},
+	container::bignum_array::{decimal_array, decimal_at},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -48,44 +46,33 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 
 		let row_count = val_data.len();
 
-		let get_precision = |row_idx: usize| -> i32 {
-			if let Some(prec_col) = precision_column {
-				let p_data = prec_col.data();
-				match p_data {
-					ColumnBuffer::Int4(prec_container) => {
-						prec_container.values().get(row_idx).copied().unwrap_or(0)
-					}
-					ColumnBuffer::Int1(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Int2(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Int8(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Int16(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Uint1(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Uint2(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Uint4(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Uint8(prec_container) => {
-						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
-					}
-					ColumnBuffer::Uint16(prec_container) => {
-						u128_at(prec_container, row_idx).map(|v| v as i32).unwrap_or(0)
-					}
-					_ => 0,
-				}
-			} else {
-				0
+		if let Some(prec_col) = precision_column
+			&& !prec_col.data().get_type().is_integer()
+		{
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 1,
+				expected: vec![
+					ValueType::Int1,
+					ValueType::Int2,
+					ValueType::Int4,
+					ValueType::Int8,
+					ValueType::Int16,
+					ValueType::Uint1,
+					ValueType::Uint2,
+					ValueType::Uint4,
+					ValueType::Uint8,
+					ValueType::Uint16,
+				],
+				actual: prec_col.data().get_type(),
+			});
+		}
+
+		let fragment = ctx.fragment.clone();
+		let get_precision = |row_idx: usize| -> Result<i32, RoutineError> {
+			match precision_column {
+				Some(prec_col) => Ok(read_i32(&fragment, prec_col.data(), row_idx)?.unwrap_or(0)),
+				None => Ok(0),
 			}
 		};
 
@@ -95,7 +82,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						let precision = get_precision(i);
+						let precision = get_precision(i)?;
 						let multiplier = 10_f32.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;
 						result.push(rounded);
@@ -112,7 +99,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(&value) = container.values().get(i) {
-						let precision = get_precision(i);
+						let precision = get_precision(i)?;
 						let multiplier = 10_f64.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;
 						result.push(rounded);
@@ -133,7 +120,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(value) = decimal_at(container, i) {
-						let prec = get_precision(i);
+						let prec = get_precision(i)?;
 						let f_val = value.0.to_f64().unwrap_or(0.0);
 						let multiplier = 10_f64.powi(prec);
 						let rounded = (f_val * multiplier).round() / multiplier;

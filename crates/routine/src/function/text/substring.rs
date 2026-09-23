@@ -6,6 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use crate::function::support::coerce::read_i32;
 use reifydb_value::value::value_type::ValueType;
 
 pub struct TextSubstring {
@@ -110,49 +111,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					if i < text_container.len() {
 						let original_str = text_container.value(i);
 
-						let start_pos = match start_d {
-							ColumnBuffer::Int1(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							ColumnBuffer::Int2(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							ColumnBuffer::Int4(container) => {
-								container.values().get(i).copied().unwrap_or(0)
-							}
-							ColumnBuffer::Int8(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							_ => 0,
-						};
+						let start_pos = read_i32(&ctx.fragment, start_d, i)?.unwrap_or(0);
 
-						let length = match length_d {
-							ColumnBuffer::Int1(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							ColumnBuffer::Int2(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							ColumnBuffer::Int4(container) => {
-								container.values().get(i).copied().unwrap_or(0)
-							}
-							ColumnBuffer::Int8(container) => container
-								.values()
-								.get(i)
-								.map(|&v| v as i32)
-								.unwrap_or(0),
-							_ => 0,
-						};
+						let length = read_i32(&ctx.fragment, length_d, i)?.unwrap_or(0);
 
 						let chars: Vec<char> = original_str.chars().collect();
 						let chars_len = chars.len();

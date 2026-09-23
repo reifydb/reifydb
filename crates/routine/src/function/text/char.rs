@@ -77,6 +77,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 						ValueType::Int2,
 						ValueType::Int4,
 						ValueType::Int8,
+						ValueType::Uint1,
+						ValueType::Uint2,
+						ValueType::Uint4,
 					],
 					actual: other.get_type(),
 				});

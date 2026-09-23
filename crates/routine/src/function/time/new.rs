@@ -5,8 +5,9 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
+use crate::function::support::coerce::read_i32;
 use reifydb_value::value::{
-	container::{decimal_array::u128_at, temporal_array::time_array},
+	container::temporal_array::time_array,
 	time::Time,
 	value_type::ValueType,
 };
@@ -33,22 +34,6 @@ impl TimeNew {
 		Self {
 			info: RoutineInfo::new("time::new"),
 		}
-	}
-}
-
-fn extract_i32(data: &ColumnBuffer, i: usize) -> Option<i32> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Int4(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as i32),
-		_ => None,
 	}
 }
 
@@ -155,9 +140,12 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 					ValueType::Int2,
 					ValueType::Int4,
 					ValueType::Int8,
+					ValueType::Int16,
 					ValueType::Uint1,
 					ValueType::Uint2,
 					ValueType::Uint4,
+					ValueType::Uint8,
+					ValueType::Uint16,
 				],
 				actual: nd.get_type(),
 			});
@@ -167,11 +155,11 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let hour = extract_i32(hour_data, i);
-			let min = extract_i32(min_data, i);
-			let sec = extract_i32(sec_data, i);
+			let hour = read_i32(&ctx.fragment, hour_data, i)?;
+			let min = read_i32(&ctx.fragment, min_data, i)?;
+			let sec = read_i32(&ctx.fragment, sec_data, i)?;
 			let nano = if let Some(nd) = nano_data {
-				extract_i32(nd, i)
+				read_i32(&ctx.fragment, nd, i)?
 			} else {
 				Some(0)
 			};
