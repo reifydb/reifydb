@@ -22,11 +22,11 @@ build-workspace:
 		MAKEFLAGS= cargo build --release --workspace; \
 	fi
 	@echo "🔍 Checking all-features compile..."
-	@MAKEFLAGS= cargo check --workspace --all-features
+	@MAKEFLAGS= cargo check --release --workspace --all-features
 
 check:
 	@echo "🔍 Checking all features compile..."
-	@MAKEFLAGS= cargo check --workspace --all-features --all-targets
+	@MAKEFLAGS= cargo check --release --workspace --all-features --all-targets
 	cd $(TEST_SUITE_DIR) && $(MAKE) check
 	cd $(TEST_CRATE_DIR) && $(MAKE) check
 	cd $(TEST_CHAOS_DIR) && $(MAKE) check
@@ -34,7 +34,7 @@ check:
 
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."
-	@MAKEFLAGS= cargo test -p reifydb-value --no-run $(CARGO_OFFLINE)
+	@MAKEFLAGS= cargo test --release -p reifydb-value --no-run $(CARGO_OFFLINE)
 
 # Build pkg/typescript packages
 build-pkg-typescript:
