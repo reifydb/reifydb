@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { digestType, digestTypeName, type DigestType } from "@reifydb/core";
+import { digestType, digestTypeName, fixedPointType, fixedPointTypeName, type DigestType } from "@reifydb/core";
 
 import {
     EXTENDED_TYPE_TAG, RESERVED_KIND, TAG_DEPTH_SHIFT, TAG_KIND_MASK,
@@ -75,6 +75,19 @@ export function decodeTypeInfo(data: Uint8Array, pos: number): DecodedTypeInfo {
         case TYPE_CODE.Digest: {
             base = digestTypeName(decodeDigestParams(data, pos));
             pos += DIGEST_PARAMS_SIZE;
+            break;
+        }
+        case TYPE_CODE.Int:
+        case TYPE_CODE.Uint: {
+            if (pos >= data.length) throw new Error(`RBCF: ${kindName} precision truncated`);
+            base = fixedPointTypeName(fixedPointType(kind === TYPE_CODE.Int ? "Int" : "Uint", data[pos], 0));
+            pos += 1;
+            break;
+        }
+        case TYPE_CODE.Decimal: {
+            if (pos + 2 > data.length) throw new Error("RBCF: Decimal precision and scale truncated");
+            base = fixedPointTypeName(fixedPointType("Decimal", data[pos], data[pos + 1]));
+            pos += 2;
             break;
         }
         default:

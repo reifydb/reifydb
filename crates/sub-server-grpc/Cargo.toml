@@ -39,7 +39,6 @@ serde_json = { workspace = true }
 
 # Types
 uuid = { workspace = true }
-num-bigint = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

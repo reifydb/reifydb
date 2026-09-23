@@ -50,10 +50,6 @@ pub fn render_column_type(
 				dictionary: None,
 			})
 		}
-		Some(Constraint::PrecisionScale(precision, scale)) => Ok(RenderedColumnType {
-			type_text: wrap_option(&constraint.get_type(), format!("decimal({},{})", precision, scale)),
-			dictionary: None,
-		}),
 		None => Ok(RenderedColumnType {
 			type_text: render_value_type(&constraint.get_type(), object)?,
 			dictionary: None,
@@ -92,9 +88,25 @@ pub fn render_value_type(ty: &ValueType, object: &str) -> Result<String, ExportE
 		ValueType::Uuid4 => "uuid4".to_string(),
 		ValueType::Uuid7 => "uuid7".to_string(),
 		ValueType::Blob => "blob".to_string(),
-		ValueType::Int => "int".to_string(),
-		ValueType::Uint => "uint".to_string(),
-		ValueType::Decimal => "decimal".to_string(),
+		ValueType::Int {
+			..
+		} if *ty == ValueType::INT => "int".to_string(),
+		ValueType::Uint {
+			..
+		} if *ty == ValueType::UINT => "uint".to_string(),
+		ValueType::Decimal {
+			..
+		} if *ty == ValueType::DECIMAL => "decimal".to_string(),
+		ValueType::Int {
+			precision,
+		} => format!("int({})", precision),
+		ValueType::Uint {
+			precision,
+		} => format!("uint({})", precision),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => format!("decimal({},{})", precision, scale),
 		ValueType::Option(inner) => format!("option({})", render_value_type(inner, object)?),
 		ValueType::Any
 		| ValueType::DictionaryId
@@ -145,10 +157,7 @@ mod tests {
 		let utf8 = TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(255)));
 		assert_eq!(render_column_type(&utf8, &r, "s").unwrap().type_text, "utf8(255)");
 
-		let dec = TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		);
+		let dec = TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2)));
 		assert_eq!(render_column_type(&dec, &r, "s").unwrap().type_text, "decimal(10,2)");
 	}
 
@@ -163,11 +172,27 @@ mod tests {
 		);
 		assert_eq!(render_column_type(&utf8, &r, "s").unwrap().type_text, "option(utf8(255))");
 
-		let dec = TypeConstraint::with_constraint(
-			ValueType::Option(Box::new(ValueType::Decimal)),
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		);
+		let dec = TypeConstraint::unconstrained(ValueType::Option(Box::new(ValueType::decimal(
+			Precision::new(10),
+			Scale::new(2),
+		))));
 		assert_eq!(render_column_type(&dec, &r, "s").unwrap().type_text, "option(decimal(10,2))");
+	}
+
+	#[test]
+	fn family_types_render_the_parameters_they_were_declared_with() {
+		// A re-imported export must declare the same precision and scale, so a non-default one may never be
+		// dropped.
+		let r = NameResolver::empty();
+		let render = |ty: ValueType| {
+			render_column_type(&TypeConstraint::unconstrained(ty), &r, "s").unwrap().type_text
+		};
+		assert_eq!(render(ValueType::INT), "int");
+		assert_eq!(render(ValueType::UINT), "uint");
+		assert_eq!(render(ValueType::DECIMAL), "decimal");
+		assert_eq!(render(ValueType::int(Precision::new(20))), "int(20)");
+		assert_eq!(render(ValueType::uint(Precision::new(39))), "uint(39)");
+		assert_eq!(render(ValueType::decimal(Precision::new(76), Scale::new(0))), "decimal(76,0)");
 	}
 
 	#[test]

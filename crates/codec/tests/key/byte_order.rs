@@ -3,11 +3,11 @@
 
 use std::str::FromStr;
 
-use num_bigint::BigInt;
 use reifydb_codec::key::{deserializer::KeyDeserializer, encode_bytes, serializer::KeySerializer, sort::SortOrder};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -58,21 +58,24 @@ fn a_zero_byte_sorts_last_within_a_position() {
 	assert!(one < zero, "0x01 is greater than 0x00 so it must encode smaller");
 }
 
+const KEY_PRECISION: Precision = Precision::new(38);
+const KEY_SCALE: Scale = Scale::new(5);
+
 fn enc_int(v: i64) -> Vec<u8> {
 	let mut s = KeySerializer::new();
-	s.extend_int(&Int(BigInt::from(v)));
+	s.extend_int(&Int::from(v), KEY_PRECISION).unwrap();
 	s.to_encoded_key().to_vec()
 }
 
 fn enc_uint(v: u64) -> Vec<u8> {
 	let mut s = KeySerializer::new();
-	s.extend_uint(&Uint(BigInt::from(v)));
+	s.extend_uint(&Uint::from(v), KEY_PRECISION).unwrap();
 	s.to_encoded_key().to_vec()
 }
 
 fn enc_dec(s: &str) -> Vec<u8> {
 	let mut ser = KeySerializer::new();
-	ser.extend_decimal(&Decimal::from_str(s).unwrap());
+	ser.extend_decimal(&Decimal::from_str(s).unwrap(), KEY_PRECISION, KEY_SCALE).unwrap();
 	ser.to_encoded_key().to_vec()
 }
 
@@ -111,18 +114,20 @@ fn int_uint_decimal_round_trip_the_awkward_cases() {
 	for v in [0i64, 1, -1, 255, -256, i64::MIN, i64::MAX] {
 		let b = enc_int(v);
 		let mut d = KeyDeserializer::from_bytes(&b);
-		assert_eq!(d.read_int().unwrap(), Int(BigInt::from(v)), "int {v}");
+		assert_eq!(d.read_int().unwrap(), Int::from(v), "int {v}");
 	}
 	for v in [0u64, 1, 255, 256, u64::MAX] {
 		let b = enc_uint(v);
 		let mut d = KeyDeserializer::from_bytes(&b);
-		assert_eq!(d.read_uint().unwrap(), Uint(BigInt::from(v)), "uint {v}");
+		assert_eq!(d.read_uint().unwrap(), Uint::from(v), "uint {v}");
 	}
 	for s in ["0", "0.00", "1.0", "1.00", "-3.14159", "1e10", "-0.0001"] {
 		let b = enc_dec(s);
 		let mut d = KeyDeserializer::from_bytes(&b);
-		let want = Decimal::from_str(s).unwrap();
-		assert_eq!(d.read_decimal().unwrap().to_string(), want.to_string(), "decimal {s}");
+		let want = Decimal::from_str(s).unwrap().fits(KEY_PRECISION.value(), KEY_SCALE.value()).unwrap();
+		let read = d.read_decimal().unwrap();
+		assert_eq!(read.scale(), KEY_SCALE.value(), "decimal {s}");
+		assert_eq!(read.to_string(), want.to_string(), "decimal {s}");
 	}
 }
 
@@ -175,22 +180,25 @@ fn ascending_samples() -> Vec<(&'static str, Vec<Value>)> {
 			"Int",
 			[-300i64, -256, -255, -1, 0, 1, 255, 256, 300]
 				.into_iter()
-				.map(|v| Value::Int(Int(BigInt::from(v))))
+				.map(|v| Value::Int(Int::from(v)))
 				.collect(),
 		),
 		(
 			"Uint",
 			[0u128, 1, 255, 256, u64::MAX as u128, u128::MAX]
 				.into_iter()
-				.map(|v| Value::Uint(Uint(BigInt::from(v))))
+				.map(|v| Value::Uint(Uint::from(v)))
 				.collect(),
 		),
 		(
 			"Decimal",
-			["-100", "-10", "-1", "-0.1", "-0.01", "0", "0.01", "0.1", "1", "9", "10", "100"]
-				.into_iter()
-				.map(|s| Value::Decimal(Decimal::from_str(s).unwrap()))
-				.collect(),
+			[
+				"-100.00", "-10.00", "-1.00", "-0.10", "-0.01", "0.00", "0.01", "0.10", "1.00", "9.00",
+				"10.00", "100.00",
+			]
+			.into_iter()
+			.map(|s| Value::Decimal(Decimal::from_str(s).unwrap()))
+			.collect(),
 		),
 		(
 			"Date",

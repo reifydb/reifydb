@@ -60,7 +60,7 @@ fn test_blob_all_byte_values() {
 fn test_dynamic_field_interleaving() {
 	// Adjacent dynamic fields share one growable section, so a bad offset shift corrupts a neighbour.
 	let shape =
-		RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Int]);
+		RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::INT]);
 
 	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "first");

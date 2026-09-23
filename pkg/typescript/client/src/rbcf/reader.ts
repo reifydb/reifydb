@@ -170,3 +170,8 @@ export function readU128(buf: Uint8Array, pos: number): bigint {
     const hi = readU64(buf, pos + 8);
     return (hi << 64n) | lo;
 }
+export function readI256(buf: Uint8Array, pos: number): bigint {
+    const lo = readU128(buf, pos);
+    const hi = readI128(buf, pos + 16);
+    return (hi << 128n) | lo;
+}

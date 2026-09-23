@@ -66,7 +66,6 @@ pub fn encoding_for_type(ty: &ValueType) -> EncodingId {
 		| ValueType::Digest {
 			..
 		} => EncodingId::CANONICAL_VARLEN,
-		ValueType::Int | ValueType::Uint | ValueType::Decimal => EncodingId::CANONICAL_BIGNUM,
 		_ => EncodingId::CANONICAL_FIXED,
 	}
 }

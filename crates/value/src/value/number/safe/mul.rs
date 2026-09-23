@@ -31,46 +31,43 @@ use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeMul for Int {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
-		Some(Int::from(&self.0 * &r.0))
+		Int::checked_mul(self, r)
 	}
 
 	fn saturating_mul(&self, r: &Self) -> Self {
-		Int::from(&self.0 * &r.0)
+		Int::saturating_mul(self, r)
 	}
 
 	fn wrapping_mul(&self, r: &Self) -> Self {
-		Int::from(&self.0 * &r.0)
+		Int::saturating_mul(self, r)
 	}
 }
 
 impl SafeMul for Uint {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
-		Some(Uint::from(&self.0 * &r.0))
+		Uint::checked_mul(self, r)
 	}
 
 	fn saturating_mul(&self, r: &Self) -> Self {
-		Uint::from(&self.0 * &r.0)
+		Uint::saturating_mul(self, r)
 	}
 
 	fn wrapping_mul(&self, r: &Self) -> Self {
-		Uint::from(&self.0 * &r.0)
+		Uint::saturating_mul(self, r)
 	}
 }
 
 impl SafeMul for Decimal {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
-		let result = self.inner() * r.inner();
-		Some(Decimal::from(result))
+		Decimal::checked_mul(self, r)
 	}
 
 	fn saturating_mul(&self, r: &Self) -> Self {
-		let result = self.inner() * r.inner();
-		Decimal::from(result)
+		Decimal::saturating_mul(self, r)
 	}
 
 	fn wrapping_mul(&self, r: &Self) -> Self {
-		let result = self.inner() * r.inner();
-		Decimal::from(result)
+		Decimal::saturating_mul(self, r)
 	}
 }
 

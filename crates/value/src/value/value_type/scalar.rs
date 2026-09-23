@@ -57,9 +57,9 @@ mod tests {
 			Uuid4,
 			Uuid7,
 			Blob,
-			Int,
-			Uint,
-			Decimal,
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
 			DictionaryId,
 		];
 		for ty in scalars {

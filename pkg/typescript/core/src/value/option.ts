@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {OptionType, Type, digestTypeName, isDigestType, isListType, isOptionType, isRecordType} from '.';
+import {OptionType, Type, digestTypeName, fixedPointTypeName, isDigestType, isFixedPointType, isListType, isOptionType, isRecordType} from '.';
 import {NONE_PRESENTATION} from '../present/value';
 
 type State<T> = {some: true; value: T} | {some: false; inner: Type};
@@ -8,6 +8,9 @@ type State<T> = {some: true; value: T} | {some: false; inner: Type};
 function describeType(t: Type): string {
     if (isDigestType(t)) {
         return digestTypeName(t);
+    }
+    if (isFixedPointType(t)) {
+        return fixedPointTypeName(t);
     }
     if (isOptionType(t)) {
         return `Option(${describeType(t.Option)})`;

@@ -5,6 +5,7 @@ use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -515,6 +516,7 @@ fn option_uuid7_all_undefined() {
 #[test]
 fn option_int_alternating() {
 	let input = ColumnBuffer::int_with_bitvec(
+		Precision::MAX,
 		[Int::zero(), Int::default(), Int::from_i64(42), Int::default(), Int::from_i128(i128::MAX)],
 		vec![true, false, true, false, true],
 	);
@@ -524,7 +526,7 @@ fn option_int_alternating() {
 
 #[test]
 fn option_int_all_undefined() {
-	let input = ColumnBuffer::int_with_bitvec(vec![Int::default(); 4], vec![false; 4]);
+	let input = ColumnBuffer::int_with_bitvec(Precision::MAX, vec![Int::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int_all_undef", &input, &output);
 }
@@ -532,6 +534,7 @@ fn option_int_all_undefined() {
 #[test]
 fn option_uint_alternating() {
 	let input = ColumnBuffer::uint_with_bitvec(
+		Precision::MAX,
 		[Uint::zero(), Uint::default(), Uint::from_u64(42), Uint::default(), Uint::from_u128(u128::MAX)],
 		vec![true, false, true, false, true],
 	);
@@ -541,7 +544,7 @@ fn option_uint_alternating() {
 
 #[test]
 fn option_uint_all_undefined() {
-	let input = ColumnBuffer::uint_with_bitvec(vec![Uint::default(); 4], vec![false; 4]);
+	let input = ColumnBuffer::uint_with_bitvec(Precision::MAX, vec![Uint::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_uint_all_undef", &input, &output);
 }
@@ -550,6 +553,8 @@ fn option_uint_all_undefined() {
 fn option_decimal_alternating() {
 	use std::str::FromStr;
 	let input = ColumnBuffer::decimal_with_bitvec(
+		Precision::MAX,
+		Scale::new(14),
 		[
 			Decimal::zero(),
 			Decimal::default(),
@@ -565,7 +570,12 @@ fn option_decimal_alternating() {
 
 #[test]
 fn option_decimal_all_undefined() {
-	let input = ColumnBuffer::decimal_with_bitvec(vec![Decimal::default(); 4], vec![false; 4]);
+	let input = ColumnBuffer::decimal_with_bitvec(
+		Precision::MAX,
+		Scale::new(14),
+		vec![Decimal::default(); 4],
+		vec![false; 4],
+	);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_decimal_all_undef", &input, &output);
 }

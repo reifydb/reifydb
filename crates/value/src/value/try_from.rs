@@ -388,7 +388,7 @@ impl TryFromValue for Int {
 		match value {
 			Value::Int(v) => Ok(v.clone()),
 			_ => Err(FromValueError::TypeMismatch {
-				expected: ValueType::Int,
+				expected: ValueType::INT,
 				found: value.get_type(),
 			}),
 		}
@@ -400,7 +400,7 @@ impl TryFromValue for Uint {
 		match value {
 			Value::Uint(v) => Ok(v.clone()),
 			_ => Err(FromValueError::TypeMismatch {
-				expected: ValueType::Uint,
+				expected: ValueType::UINT,
 				found: value.get_type(),
 			}),
 		}
@@ -412,7 +412,7 @@ impl TryFromValue for Decimal {
 		match value {
 			Value::Decimal(v) => Ok(v.clone()),
 			_ => Err(FromValueError::TypeMismatch {
-				expected: ValueType::Decimal,
+				expected: ValueType::DECIMAL,
 				found: value.get_type(),
 			}),
 		}

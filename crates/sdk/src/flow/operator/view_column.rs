@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{extern_c::cells::decode_decimal_cell, tag::ValueKind};
-use reifydb_value::value::decimal::Decimal;
+use reifydb_codec::tag::ValueKind;
+use reifydb_value::value::{decimal::Decimal, int::Int, uint::Uint};
 
-use crate::flow::operator::change::{BorrowedColumn, BorrowedColumns};
+use crate::{
+	common::family::FamilyValue,
+	flow::operator::change::{BorrowedColumn, BorrowedColumns},
+};
 
 #[derive(Clone, Copy)]
 pub struct ColumnView<'a> {
@@ -180,19 +183,24 @@ impl<'a> ColumnView<'a> {
 		Some(self.inner.iter_bytes())
 	}
 
-	pub fn decimal_iter(&self) -> Option<impl Iterator<Item = Option<Decimal>> + 'a> {
-		if self.type_code() != ValueKind::Decimal {
+	pub fn int_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Int>> + 'a> {
+		self.family_iter()
+	}
+
+	pub fn uint_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Uint>> + 'a> {
+		self.family_iter()
+	}
+
+	pub fn decimal_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Decimal>> + 'a> {
+		self.family_iter()
+	}
+
+	fn family_iter<T: FamilyValue>(&self) -> Option<impl ExactSizeIterator<Item = Option<T>> + 'a> {
+		if self.type_code() != T::KIND {
 			return None;
 		}
-		let data = self.inner.data_bytes();
-		let offsets = self.inner.offsets();
-		let row_count = self.inner.row_count();
-		Some(DecimalIter {
-			data,
-			offsets,
-			row_count,
-			index: 0,
-		})
+		let inner = self.inner;
+		Some((0..inner.row_count()).map(move |index| inner.family_cell_at::<T>(index)))
 	}
 
 	pub fn to_u64_vec(&self) -> Option<Vec<u64>> {
@@ -250,41 +258,6 @@ impl<'a> Iterator for BoolIter<'a> {
 }
 
 impl<'a> ExactSizeIterator for BoolIter<'a> {}
-
-pub struct DecimalIter<'a> {
-	data: &'a [u8],
-	offsets: &'a [u64],
-	row_count: usize,
-	index: usize,
-}
-
-impl<'a> Iterator for DecimalIter<'a> {
-	type Item = Option<Decimal>;
-
-	fn next(&mut self) -> Option<Option<Decimal>> {
-		if self.index >= self.row_count {
-			return None;
-		}
-		let i = self.index;
-		self.index += 1;
-		if i + 1 >= self.offsets.len() {
-			return Some(None);
-		}
-		let start = self.offsets[i] as usize;
-		let end = self.offsets[i + 1] as usize;
-		if end > self.data.len() || start > end {
-			return Some(None);
-		}
-		Some(decode_decimal_cell(&self.data[start..end]).ok())
-	}
-
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		let remaining = self.row_count - self.index;
-		(remaining, Some(remaining))
-	}
-}
-
-impl<'a> ExactSizeIterator for DecimalIter<'a> {}
 
 impl<'a> BorrowedColumns<'a> {
 	pub fn column_view(&self, name: &str) -> Option<ColumnView<'a>> {

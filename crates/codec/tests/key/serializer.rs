@@ -3,7 +3,6 @@
 
 use std::{f64, str::FromStr};
 
-use num_bigint::BigInt;
 use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer, sort::SortOrder};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
@@ -14,6 +13,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -621,8 +621,8 @@ fn test_blob() {
 #[test]
 fn test_int() {
 	let mut serializer = KeySerializer::new();
-	let int = Int(BigInt::from(42));
-	serializer.extend_int(&int);
+	let int = Int::from(42);
+	serializer.extend_int(&int, Precision::new(38)).unwrap();
 	let result = serializer.finish();
 	assert!(result.len() > 0);
 }
@@ -630,8 +630,8 @@ fn test_int() {
 #[test]
 fn test_uint() {
 	let mut serializer = KeySerializer::new();
-	let uint = Uint(BigInt::from(42));
-	serializer.extend_uint(&uint);
+	let uint = Uint::from(42u64);
+	serializer.extend_uint(&uint, Precision::new(38)).unwrap();
 	let result = serializer.finish();
 	assert!(result.len() > 0);
 }
@@ -640,7 +640,7 @@ fn test_uint() {
 fn test_decimal() {
 	let mut serializer = KeySerializer::new();
 	let decimal = Decimal::from_str("3.14").unwrap();
-	serializer.extend_decimal(&decimal);
+	serializer.extend_decimal(&decimal, Precision::new(38), Scale::new(2)).unwrap();
 	let result = serializer.finish();
 	assert!(result.len() > 0);
 }
@@ -956,7 +956,7 @@ fn test_roundtrip_blob() {
 
 #[test]
 fn test_roundtrip_int() {
-	let value = Value::Int(Int(BigInt::from(-42)));
+	let value = Value::Int(Int::from(-42));
 	let mut ser = KeySerializer::new();
 	ser.extend_value(&value);
 	let bytes = ser.finish();
@@ -967,7 +967,7 @@ fn test_roundtrip_int() {
 
 #[test]
 fn test_roundtrip_uint() {
-	let value = Value::Uint(Uint(BigInt::from(42)));
+	let value = Value::Uint(Uint::from(42u64));
 	let mut ser = KeySerializer::new();
 	ser.extend_value(&value);
 	let bytes = ser.finish();
@@ -1071,8 +1071,8 @@ fn test_roundtrip_all() {
 		Value::Uuid4(Uuid4::generate()),
 		Value::Uuid7(Uuid7::generate(&clock, &rng)),
 		Value::Blob(Blob::from(vec![0x01, 0x02, 0x03])),
-		Value::Int(Int(BigInt::from(-42))),
-		Value::Uint(Uint(BigInt::from(42))),
+		Value::Int(Int::from(-42)),
+		Value::Uint(Uint::from(42u64)),
 		Value::Decimal(Decimal::from_str("3.14").unwrap()),
 		Value::DictionaryId(DictionaryEntryId::U8(42)),
 	];

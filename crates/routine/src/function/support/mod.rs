@@ -2,3 +2,4 @@
 // Copyright (c) 2026 ReifyDB
 
 pub(crate) mod coerce;
+pub(crate) mod numeric;

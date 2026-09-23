@@ -82,6 +82,9 @@ mod biguint;
 #[path = "extern_c/decimal.rs"]
 mod decimal;
 
+#[path = "extern_c/family_guest_api.rs"]
+mod family_guest_api;
+
 #[path = "extern_c/any.rs"]
 mod any;
 

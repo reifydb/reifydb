@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod bigint;
+mod biguint;
 mod date;
 mod datetime;
+mod decimal;
 mod int16;
 mod int4;
 mod int8;

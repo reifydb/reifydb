@@ -21,10 +21,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::{
-			bignum_array::{decimal_at, int_at, uint_at},
-			decimal_array::u128s,
-		},
+		container::decimal_array::{decimal_at, int_at, u128s, uint_at},
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
@@ -261,10 +258,7 @@ impl Accumulator for MinAccumulator {
 				}
 				Ok(())
 			}
-			ColumnBuffer::Int {
-				container,
-				..
-			} => {
+			ColumnBuffer::Int(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut min: Option<Int> = None;
 					for &i in indices {
@@ -290,10 +284,7 @@ impl Accumulator for MinAccumulator {
 				}
 				Ok(())
 			}
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => {
+			ColumnBuffer::Uint(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut min: Option<Uint> = None;
 					for &i in indices {
@@ -319,10 +310,7 @@ impl Accumulator for MinAccumulator {
 				}
 				Ok(())
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
+			ColumnBuffer::Decimal(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut min: Option<Decimal> = None;
 					for &i in indices {

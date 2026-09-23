@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, str::FromStr};
-
-use bigdecimal::BigDecimal as BigDecimalInner;
+use std::borrow::Cow;
 
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::{decimal::Decimal, value_type::ValueType},
+	value::{
+		decimal::{Decimal, parse_error},
+		value_type::ValueType,
+	},
 };
 
 pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
@@ -28,21 +29,13 @@ pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
 
 	if value.is_empty() {
 		return Err(TypeError::InvalidNumberFormat {
-			target: ValueType::Decimal,
+			target: ValueType::DECIMAL,
 			fragment: fragment_owned,
 		}
 		.into());
 	}
 
-	let big_decimal = BigDecimalInner::from_str(&value).map_err(|_| -> Error {
-		TypeError::InvalidNumberFormat {
-			target: ValueType::Decimal,
-			fragment: fragment_owned,
-		}
-		.into()
-	})?;
-
-	Ok(Decimal::new(big_decimal))
+	Decimal::parse(&value).map_err(|error| parse_error(error, fragment_owned))
 }
 
 #[cfg(test)]
@@ -87,5 +80,14 @@ pub mod tests {
 	fn test_parse_decimal_scientific_notation() {
 		let decimal = parse_decimal(Fragment::testing("1.23e2")).unwrap();
 		assert_eq!(decimal.to_string(), "123");
+	}
+
+	#[test]
+	fn parse_keeps_the_literal_scale_and_rejects_seventy_seven_digits() {
+		// The literal scale is what the column type derives from, and 77 digits cannot be stored.
+		let decimal = parse_decimal(Fragment::testing(" 1_000.50 ")).unwrap();
+		assert_eq!((decimal.to_string(), decimal.scale()), ("1000.50".to_string(), 2));
+		let error = parse_decimal(Fragment::testing("9".repeat(77))).unwrap_err();
+		assert_eq!(error.code, "NUMBER_002");
 	}
 }

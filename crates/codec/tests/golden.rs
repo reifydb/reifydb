@@ -8,7 +8,6 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
-use num_bigint::BigInt;
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	key::{deserializer::KeyDeserializer, serializer::KeySerializer},
@@ -100,11 +99,8 @@ fn value_cases() -> Vec<(&'static str, Value)> {
 		("value/uuid4_nil.bin", Value::Uuid4(Uuid4(uuid::Uuid::nil()))),
 		("value/uuid7.bin", Value::Uuid7(Uuid7(uuid::Uuid::from_u128(0x0123_4567_89ab_cdef)))),
 		("value/blob.bin", Value::Blob(Blob::new(vec![0x00, 0xff, 0x7f]))),
-		(
-			"value/int_big_negative.bin",
-			Value::Int(Int(BigInt::parse_bytes(b"-12345678901234567890", 10).unwrap())),
-		),
-		("value/uint_big.bin", Value::Uint(Uint(BigInt::parse_bytes(b"98765432109876543210", 10).unwrap()))),
+		("value/int_big_negative.bin", Value::Int(Int::from_str("-12345678901234567890").unwrap())),
+		("value/uint_big.bin", Value::Uint(Uint::from_str("98765432109876543210").unwrap())),
 		("value/decimal_pi.bin", Value::Decimal(Decimal::from_str("3.14159").unwrap())),
 		("value/any_int4.bin", Value::Any(Box::new(Value::Int4(5)))),
 		("value/any_none_duration.bin", Value::Any(Box::new(Value::none_of(ValueType::Duration)))),

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import type { Type } from "@reifydb/core";
-import { noneMarker } from "@reifydb/core";
+import type { FixedPointKind, FixedPointType, Type } from "@reifydb/core";
+import { FIXED_POINT_NARROW_PRECISION, fixedPointType, noneMarker } from "@reifydb/core";
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
@@ -11,12 +11,12 @@ import {
 } from "./format";
 import { BinaryReader } from "./reader";
 import { decodeBitvec } from "./nones";
-import { formatDateTime } from "./values";
+import { digitCount, formatDateTime, formatFixedPoint } from "./values";
 import type { WireColumn, WireFrame } from "./types";
-import { decodeDigestPlain, decodePlain } from "./encoding/plain";
+import { decodeDigestPlain, decodePlain, decodePlainFixedPoint } from "./encoding/plain";
 import { decodeDict } from "./encoding/dict";
-import { decodeRle } from "./encoding/rle";
-import { decodeDelta, decodeDeltaRle } from "./encoding/delta";
+import { decodeRle, decodeRleFixedPoint } from "./encoding/rle";
+import { decodeDelta, decodeDeltaFixedPoint, decodeDeltaRle } from "./encoding/delta";
 
 export function decode(bytes: Uint8Array): WireFrame[] {
     const r = new BinaryReader(bytes);
@@ -125,6 +125,10 @@ function decodeColumn(r: BinaryReader): WireColumn {
             const digest = decodeDigestPlain(rowCount, dataBytes, offsetsBytes, extraBytes);
             type = digest.type;
             payload = digest.payload;
+        } else if (kind === TYPE_CODE.Int || kind === TYPE_CODE.Uint || kind === TYPE_CODE.Decimal) {
+            const fixed = decodeFixedPointColumn(baseName as FixedPointKind, encoding, rowCount, dataBytes, extraBytes);
+            type = fixed.type;
+            payload = fixed.payload;
         } else {
             payload = decodeByStrategy(baseName, encoding, flags, rowCount, dataBytes, offsetsBytes, extraBytes);
         }
@@ -146,6 +150,45 @@ function decodeColumn(r: BinaryReader): WireColumn {
     }
 
     return { name, type, payload };
+}
+
+function decodeFixedPointColumn(
+    kind: FixedPointKind,
+    encoding: ColumnEncoding,
+    rowCount: number,
+    data: Uint8Array,
+    extra: Uint8Array
+): { type: FixedPointType; payload: string[] } {
+    if (extra.length !== 2) {
+        throw new Error(`${kind} column needs precision and scale in 2 extra bytes, found ${extra.length}`);
+    }
+    const [precision, scale] = extra;
+    const type = fixedPointType(kind, precision, scale);
+    const width = precision <= FIXED_POINT_NARROW_PRECISION ? 16 : 32;
+    let values: bigint[];
+    switch (encoding) {
+        case ColumnEncoding.Plain:
+            values = decodePlainFixedPoint(rowCount, data, width);
+            break;
+        case ColumnEncoding.Rle:
+            values = decodeRleFixedPoint(rowCount, data, width);
+            break;
+        case ColumnEncoding.Delta:
+            values = decodeDeltaFixedPoint(rowCount, data, width, false);
+            break;
+        case ColumnEncoding.DeltaRle:
+            values = decodeDeltaFixedPoint(rowCount, data, width, true);
+            break;
+        default:
+            throw new Error(`${ColumnEncoding[encoding] ?? encoding} encoding not supported for type ${kind}`);
+    }
+    for (const value of values) {
+        if (digitCount(value) > precision) {
+            throw new Error(`${kind} value ${value} has more digits than precision ${precision}`);
+        }
+        if (kind === "Uint" && value < 0n) throw new Error(`Uint value ${value} is negative`);
+    }
+    return { type, payload: values.map((value) => formatFixedPoint(value, scale)) };
 }
 
 function decodeByStrategy(

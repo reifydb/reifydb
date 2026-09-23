@@ -27,9 +27,6 @@ impl CanonicalEncoding {
 	pub const VARLEN: Self = Self {
 		id: EncodingId::CANONICAL_VARLEN,
 	};
-	pub const BIGNUM: Self = Self {
-		id: EncodingId::CANONICAL_BIGNUM,
-	};
 }
 
 impl Encoding for CanonicalEncoding {
@@ -86,7 +83,6 @@ mod tests {
 			EncodingId::CANONICAL_BOOL,
 			EncodingId::CANONICAL_FIXED,
 			EncodingId::CANONICAL_VARLEN,
-			EncodingId::CANONICAL_BIGNUM,
 			EncodingId::CONSTANT,
 			EncodingId::ALL_NONE,
 			EncodingId::DICT,

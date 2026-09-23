@@ -7,12 +7,15 @@ use reifydb_value::{
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
+		decimal::Decimal,
+		int::Int,
 		is::IsNumber,
 		number::{
 			promote::Promote,
 			safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
 		},
-		value_type::get::GetType,
+		uint::Uint,
+		value_type::{ValueType, get::GetType},
 	},
 };
 
@@ -146,6 +149,52 @@ macro_rules! impl_scalar_divisive_op {
 			}
 		}
 	};
+}
+
+pub(crate) trait FitFamily: Sized {
+	fn fit_family(&self, target: &ValueType) -> Option<Self>;
+}
+
+impl FitFamily for Int {
+	fn fit_family(&self, target: &ValueType) -> Option<Self> {
+		target.precision().is_none_or(|precision| self.digits() <= precision.value()).then(|| self.clone())
+	}
+}
+
+impl FitFamily for Uint {
+	fn fit_family(&self, target: &ValueType) -> Option<Self> {
+		target.precision().is_none_or(|precision| self.digits() <= precision.value()).then(|| self.clone())
+	}
+}
+
+impl FitFamily for Decimal {
+	fn fit_family(&self, target: &ValueType) -> Option<Self> {
+		let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
+			return Some(self.clone());
+		};
+		let rounded = self.round_to_scale(scale.value())?;
+		(rounded.digits() <= precision.value()).then_some(rounded)
+	}
+}
+
+impl EvalContext<'_> {
+	pub(crate) fn fit_family<T: FitFamily>(
+		&self,
+		value: T,
+		target: &ValueType,
+		fragment: impl LazyFragment + Copy,
+	) -> Result<Option<T>> {
+		match (value.fit_family(target), &self.saturation_policy()) {
+			(Some(fitted), _) => Ok(Some(fitted)),
+			(None, ColumnSaturationStrategy::None) => Ok(None),
+			(None, ColumnSaturationStrategy::Error) => Err(TypeError::NumberOutOfRange {
+				target: target.clone(),
+				fragment: fragment.fragment(),
+				descriptor: self.target.as_ref().and_then(|c| c.to_number_descriptor()),
+			}
+			.into()),
+		}
+	}
 }
 
 impl_scalar_op!(add, SafeAdd, checked_add);

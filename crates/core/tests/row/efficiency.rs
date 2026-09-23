@@ -81,7 +81,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Int]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::INT]);
 
 	let iterations = 1000;
 

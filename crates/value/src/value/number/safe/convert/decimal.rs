@@ -8,77 +8,45 @@ macro_rules! impl_safe_convert_decimal_to_int {
         $(
             impl SafeConvert<$dst> for Decimal {
                 fn checked_convert(self) -> Option<$dst> {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        <$dst>::try_from(int_part).ok()
-                    } else {
-                        None
-                    }
+                    narrow_i256(self.trunc())
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        if let Ok(val) = <$dst>::try_from(&int_part) {
-                            val
-                        } else if int_part < BigInt::from(0) {
-                            <$dst>::MIN
-                        } else {
-                            <$dst>::MAX
-                        }
+                    if let Some(value) = narrow_i256(self.trunc()) {
+                        value
+                    } else if self.is_negative() {
+                        <$dst>::MIN
                     } else {
-                        0
+                        <$dst>::MAX
                     }
                 }
 
                 fn wrapping_convert(self) -> $dst {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        if let Ok(val) = <$dst>::try_from(&int_part) {
-                            val
-                        } else {
-                            self.saturating_convert()
-                        }
-                    } else {
-                        0
-                    }
+                    self.saturating_convert()
                 }
             }
         )*
     };
 }
 
-fn decimal_to_f64(decimal: &Decimal) -> f64 {
-	format!("{:e}", decimal.inner())
-		.parse::<f64>()
-		.expect("BigDecimal LowerExp always emits parseable f64 scientific notation")
-}
-
 macro_rules! impl_safe_convert_decimal_to_float {
-    ($($dst:ty),*) => {
+    ($($dst:ty => $to:ident),*) => {
         $(
             impl SafeConvert<$dst> for Decimal {
                 fn checked_convert(self) -> Option<$dst> {
-                    let f = decimal_to_f64(&self);
-                    if !f.is_finite() {
-                        return None;
-                    }
-                    let converted = f as $dst;
-                    if !converted.is_finite() {
-                        return None;
-                    }
-                    Some(converted)
+                    let value = self.$to();
+                    value.is_finite().then_some(value)
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    let f = decimal_to_f64(&self);
-                    if !f.is_finite() {
-                        return if f.is_sign_negative() { <$dst>::MIN } else { <$dst>::MAX };
+                    let value = self.$to();
+                    if value.is_finite() {
+                        value
+                    } else if value.is_sign_negative() {
+                        <$dst>::MIN
+                    } else {
+                        <$dst>::MAX
                     }
-                    if f < <$dst>::MIN as f64 {
-                        return <$dst>::MIN;
-                    }
-                    if f > <$dst>::MAX as f64 {
-                        return <$dst>::MAX;
-                    }
-                    f as $dst
                 }
 
                 fn wrapping_convert(self) -> $dst {
@@ -90,15 +58,15 @@ macro_rules! impl_safe_convert_decimal_to_float {
 }
 
 impl_safe_convert_decimal_to_int!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
-impl_safe_convert_decimal_to_float!(f32, f64);
+impl_safe_convert_decimal_to_float!(f32 => to_f32, f64 => to_f64);
 
 impl SafeConvert<Int> for Decimal {
 	fn checked_convert(self) -> Option<Int> {
-		self.inner().to_bigint().map(Int)
+		Int::from_i256(self.trunc())
 	}
 
 	fn saturating_convert(self) -> Int {
-		self.checked_convert().unwrap_or(Int::zero())
+		Int::from_i256(self.trunc()).expect("the integer part of a decimal is a valid int")
 	}
 
 	fn wrapping_convert(self) -> Int {
@@ -108,35 +76,16 @@ impl SafeConvert<Int> for Decimal {
 
 impl SafeConvert<Uint> for Decimal {
 	fn checked_convert(self) -> Option<Uint> {
-		if let Some(big_int) = self.inner().to_bigint() {
-			if big_int >= BigInt::from(0) {
-				Some(Uint(big_int))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+		Uint::from_i256(self.trunc())
 	}
 
 	fn saturating_convert(self) -> Uint {
-		if let Some(big_int) = self.inner().to_bigint() {
-			if big_int >= BigInt::from(0) {
-				Uint(big_int)
-			} else {
-				Uint::zero()
-			}
-		} else {
-			Uint::zero()
-		}
+		Uint::from_i256(self.trunc()).unwrap_or_default()
 	}
 
 	fn wrapping_convert(self) -> Uint {
-		if let Some(big_int) = self.inner().to_bigint() {
-			Uint(big_int.abs())
-		} else {
-			Uint::zero()
-		}
+		Uint::from_i256(self.trunc().wrapping_abs())
+			.expect("the integer magnitude of a decimal is a valid uint")
 	}
 }
 
@@ -249,8 +198,6 @@ pub mod tests {
 	mod f32 {
 		use std::str::FromStr;
 
-		use bigdecimal::BigDecimal;
-
 		use super::*;
 		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
@@ -271,16 +218,14 @@ pub mod tests {
 		#[test]
 		fn checked_convert_f32_max_exact_literal_roundtrips() {
 			// The exact decimal expansion of f32::MAX must convert back to it unchanged.
-			let bd = BigDecimal::from_str("3.4028234663852886e38").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("3.4028234663852886e38").unwrap();
 			let out: Option<f32> = dec.checked_convert();
 			assert_eq!(out, Some(f32::MAX));
 		}
 
 		#[test]
 		fn checked_convert_neg_f32_max_exact_literal_roundtrips() {
-			let bd = BigDecimal::from_str("-3.4028234663852886e38").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("-3.4028234663852886e38").unwrap();
 			let out: Option<f32> = dec.checked_convert();
 			assert_eq!(out, Some(f32::MIN));
 		}
@@ -290,32 +235,28 @@ pub mod tests {
 			// This is the shortest decimal that prints f32::MAX, and as an exact value it is
 			// slightly above it. Conversion accepts anything that rounds into range and
 			// rejects only true overflow, so printing f32::MAX and reading it back works.
-			let bd = BigDecimal::from_str("3.4028235e38").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("3.4028235e38").unwrap();
 			let out: Option<f32> = dec.checked_convert();
 			assert_eq!(out, Some(f32::MAX));
 		}
 
 		#[test]
 		fn checked_convert_rejects_value_above_f32_max() {
-			let bd = BigDecimal::from_str("1e40").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("1e40").unwrap();
 			let out: Option<f32> = dec.checked_convert();
 			assert_eq!(out, None);
 		}
 
 		#[test]
 		fn saturating_convert_above_f32_max_returns_max() {
-			let bd = BigDecimal::from_str("1e40").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("1e40").unwrap();
 			let out: f32 = dec.saturating_convert();
 			assert_eq!(out, f32::MAX);
 		}
 
 		#[test]
 		fn saturating_convert_below_neg_f32_max_returns_min() {
-			let bd = BigDecimal::from_str("-1e40").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("-1e40").unwrap();
 			let out: f32 = dec.saturating_convert();
 			assert_eq!(out, f32::MIN);
 		}
@@ -323,8 +264,7 @@ pub mod tests {
 		#[test]
 		fn checked_convert_f32_min_positive_roundtrips() {
 			// Subnormal boundary - must not flush to zero or fail.
-			let bd = BigDecimal::from_str("1.17549435e-38").unwrap();
-			let dec = Decimal::new(bd);
+			let dec = Decimal::from_str("1.17549435e-38").unwrap();
 			let out: Option<f32> = dec.checked_convert();
 			assert_eq!(out, Some(f32::MIN_POSITIVE));
 		}
@@ -332,8 +272,6 @@ pub mod tests {
 
 	mod f64 {
 		use std::str::FromStr;
-
-		use bigdecimal::BigDecimal;
 
 		use super::*;
 		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
@@ -353,54 +291,46 @@ pub mod tests {
 		}
 
 		#[test]
-		fn checked_convert_f64_max_literal_roundtrips() {
-			// bigdecimal 0.4.10's to_f64 returns infinity for this representation through its
-			// lossy "simple integer" branch, so the conversion has to go via the string form.
-			let bd = BigDecimal::from_str("1.7976931348623157e308").unwrap();
-			let dec = Decimal::new(bd);
+		fn checked_convert_widest_decimal_literal_roundtrips() {
+			// The conversion goes through the exact text, so 76 nines must land on the f64 that literal
+			// parses to.
+			let dec = Decimal::from_str(&"9".repeat(76)).unwrap();
 			let out: Option<f64> = dec.checked_convert();
-			assert_eq!(out, Some(f64::MAX));
+			assert_eq!(out, Some(1e76));
 		}
 
 		#[test]
-		fn checked_convert_neg_f64_max_literal_roundtrips() {
-			let bd = BigDecimal::from_str("-1.7976931348623157e308").unwrap();
-			let dec = Decimal::new(bd);
+		fn checked_convert_neg_widest_decimal_literal_roundtrips() {
+			let dec = Decimal::from_str(&format!("-{}", "9".repeat(76))).unwrap();
 			let out: Option<f64> = dec.checked_convert();
-			assert_eq!(out, Some(f64::MIN));
+			assert_eq!(out, Some(-1e76));
 		}
 
 		#[test]
-		fn checked_convert_rejects_value_above_f64_max() {
-			// Past f64::MAX the parse yields infinity, which must be rejected, not stored.
-			let bd = BigDecimal::from_str("1e400").unwrap();
-			let dec = Decimal::new(bd);
+		fn saturating_convert_of_the_widest_decimals_stays_finite() {
+			// Every decimal is below 1e76, so saturation to f64::MAX must never be reached.
+			let max = Decimal::from_str(&"9".repeat(76)).unwrap();
+			let out: f64 = max.clone().saturating_convert();
+			assert_eq!(out, 1e76);
+			let out: f64 = max.negate().saturating_convert();
+			assert_eq!(out, -1e76);
+		}
+
+		#[test]
+		fn checked_convert_smallest_positive_decimal_roundtrips() {
+			// The smallest decimal step must not flush to zero or fail.
+			let dec = Decimal::from_str(&format!("0.{}1", "0".repeat(75))).unwrap();
 			let out: Option<f64> = dec.checked_convert();
-			assert_eq!(out, None);
+			assert_eq!(out, Some(1e-76));
 		}
 
 		#[test]
-		fn saturating_convert_above_f64_max_returns_max() {
-			let bd = BigDecimal::from_str("1e400").unwrap();
-			let dec = Decimal::new(bd);
-			let out: f64 = dec.saturating_convert();
-			assert_eq!(out, f64::MAX);
-		}
-
-		#[test]
-		fn saturating_convert_below_neg_f64_max_returns_min() {
-			let bd = BigDecimal::from_str("-1e400").unwrap();
-			let dec = Decimal::new(bd);
-			let out: f64 = dec.saturating_convert();
-			assert_eq!(out, f64::MIN);
-		}
-
-		#[test]
-		fn checked_convert_f64_min_positive_roundtrips() {
-			let bd = BigDecimal::from_str("2.2250738585072014e-308").unwrap();
-			let dec = Decimal::new(bd);
+		fn checked_convert_rounds_at_seventeen_digits_like_the_literal() {
+			// Double rounding through a shorter form would disagree with parsing the same literal.
+			let text = "0.12345678901234567890123456789";
+			let dec = Decimal::from_str(text).unwrap();
 			let out: Option<f64> = dec.checked_convert();
-			assert_eq!(out, Some(f64::MIN_POSITIVE));
+			assert_eq!(out, Some(text.parse::<f64>().unwrap()));
 		}
 	}
 
@@ -485,6 +415,37 @@ pub mod tests {
 			let x = Decimal::from(999i64);
 			let y: Decimal = x.clone().wrapping_convert();
 			assert_eq!(y, x);
+		}
+	}
+
+	mod range {
+		use std::str::FromStr;
+
+		use crate::value::{decimal::Decimal, int::Int, number::safe::convert::SafeConvert, uint::Uint};
+
+		#[test]
+		fn integer_targets_truncate_toward_zero() {
+			// Flooring would turn -1.9 into -2 where every integer conversion truncates.
+			let dec = Decimal::from_str("-1.9").unwrap();
+			assert_eq!(SafeConvert::<i8>::checked_convert(dec.clone()), Some(-1));
+			assert_eq!(SafeConvert::<Int>::checked_convert(dec.clone()), Some(Int::from(-1)));
+			assert_eq!(SafeConvert::<Uint>::checked_convert(dec), None);
+			let dec = Decimal::from_str("-0.9").unwrap();
+			assert_eq!(SafeConvert::<Uint>::checked_convert(dec), Some(Uint::zero()));
+		}
+
+		#[test]
+		fn wide_decimals_refuse_narrow_targets_and_clamp_with_their_sign() {
+			// A 76 digit decimal must never truncate to its low bits.
+			let max = Decimal::from_str(&"9".repeat(76)).unwrap();
+			assert_eq!(SafeConvert::<i128>::checked_convert(max.clone()), None);
+			assert_eq!(SafeConvert::<u128>::checked_convert(max.clone()), None);
+			assert_eq!(SafeConvert::<u128>::saturating_convert(max.clone()), u128::MAX);
+			assert_eq!(SafeConvert::<i64>::saturating_convert(max.negate()), i64::MIN);
+			assert_eq!(SafeConvert::<Int>::checked_convert(max.clone()), Some(Int::MAX));
+			assert_eq!(SafeConvert::<Uint>::wrapping_convert(max.negate()), Uint::MAX);
+			let u128_max = Decimal::from_str(&u128::MAX.to_string()).unwrap();
+			assert_eq!(SafeConvert::<u128>::checked_convert(u128_max), Some(u128::MAX));
 		}
 	}
 }

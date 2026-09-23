@@ -146,18 +146,18 @@ impl GetType for Uuid7 {
 
 impl GetType for Int {
 	fn get_type() -> ValueType {
-		ValueType::Int
+		ValueType::INT
 	}
 }
 
 impl GetType for Uint {
 	fn get_type() -> ValueType {
-		ValueType::Uint
+		ValueType::UINT
 	}
 }
 
 impl GetType for Decimal {
 	fn get_type() -> ValueType {
-		ValueType::Decimal
+		ValueType::DECIMAL
 	}
 }

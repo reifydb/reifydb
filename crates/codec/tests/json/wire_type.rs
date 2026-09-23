@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::json::wire_type::{WireValueType, from_json, to_json};
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	constraint::{precision::Precision, scale::Scale},
+	value_type::ValueType,
+};
 use serde_json::{Value as JsonValue, from_str, from_value, json, to_value};
 
 // The wire names a type by its `id` and carries the types it wraps under `underlying`. Requests and
@@ -122,9 +125,13 @@ fn every_type_the_wire_can_carry_survives_a_round_trip() {
 		ValueType::Uuid4,
 		ValueType::Uuid7,
 		ValueType::Blob,
-		ValueType::Int,
-		ValueType::Uint,
-		ValueType::Decimal,
+		ValueType::INT,
+		ValueType::UINT,
+		ValueType::DECIMAL,
+		ValueType::int(Precision::new(20)),
+		ValueType::uint(Precision::new(1)),
+		ValueType::decimal(Precision::new(10), Scale::new(2)),
+		ValueType::decimal(Precision::new(76), Scale::new(76)),
 		ValueType::Any,
 		ValueType::DictionaryId,
 	] {
@@ -197,4 +204,46 @@ fn a_descriptor_parses_from_the_text_a_client_would_actually_send() {
 	let wire: WireValueType =
 		from_str(r#"{"id":"Option","underlying":{"id":"Option","underlying":{"id":"Utf8"}}}"#).unwrap();
 	assert_eq!(wire.0, option(option(ValueType::Utf8)));
+}
+
+#[test]
+fn a_family_type_carries_its_precision_and_scale() {
+	// Without the params a client reads every int column as int(76) and every decimal at scale 10.
+	assert_eq!(to_json(&ValueType::int(Precision::new(20))), json!({"id": "Int", "precision": 20}));
+	assert_eq!(to_json(&ValueType::UINT), json!({"id": "Uint", "precision": 76}));
+	assert_eq!(
+		to_json(&ValueType::decimal(Precision::new(10), Scale::new(2))),
+		json!({"id": "Decimal", "precision": 10, "scale": 2})
+	);
+	assert_eq!(
+		to_json(&option(ValueType::decimal(Precision::new(5), Scale::new(0)))),
+		json!({"id": "Option", "underlying": {"id": "Decimal", "precision": 5, "scale": 0}})
+	);
+}
+
+#[test]
+fn a_family_descriptor_without_params_reads_as_the_bare_default() {
+	// An older client sends a bare id; it must mean the bare RQL type, not an error or a narrow column.
+	assert_eq!(from_json(&json!({"id": "Int"})), Ok(ValueType::INT));
+	assert_eq!(from_json(&json!({"id": "Uint"})), Ok(ValueType::UINT));
+	assert_eq!(from_json(&json!({"id": "Decimal"})), Ok(ValueType::DECIMAL));
+	assert_eq!(
+		from_json(&json!({"id": "Decimal", "precision": 20})),
+		Ok(ValueType::decimal(Precision::new(20), Scale::new(10)))
+	);
+}
+
+#[test]
+fn a_family_descriptor_with_invalid_params_is_rejected() {
+	// A precision past 76 or a scale past the precision has no storage layout, so it must never be accepted.
+	for bad in [
+		json!({"id": "Int", "precision": 0}),
+		json!({"id": "Int", "precision": 77}),
+		json!({"id": "Uint", "precision": "20"}),
+		json!({"id": "Int", "precision": 300}),
+		json!({"id": "Decimal", "precision": 5, "scale": 6}),
+		json!({"id": "Decimal", "precision": 5, "scale": -1}),
+	] {
+		assert!(from_json(&bad).is_err(), "{bad} must be rejected");
+	}
 }

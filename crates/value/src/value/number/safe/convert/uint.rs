@@ -1,59 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use bigdecimal::BigDecimal as BigDecimalInner;
-
 use super::*;
 
-macro_rules! impl_safe_convert_uint_to_signed {
+macro_rules! impl_safe_convert_uint_to_integer {
     ($($dst:ty),*) => {
         $(
             impl SafeConvert<$dst> for Uint {
                 fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
+                    self.to_u128().and_then(|value| <$dst>::try_from(value).ok())
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        <$dst>::MAX
-                    }
+                    self.checked_convert().unwrap_or(<$dst>::MAX)
                 }
 
                 fn wrapping_convert(self) -> $dst {
-                    if let Ok(val) = u64::try_from(&self.0) {
-                        val as $dst
-                    } else {
-                        self.saturating_convert()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_uint_to_unsigned {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for Uint {
-                fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if let Ok(val) = u64::try_from(&self.0) {
-                        val as $dst
-                    } else {
-                        self.saturating_convert()
+                    match self.to_u128().and_then(|value| u64::try_from(value).ok()) {
+                        Some(value) => value as $dst,
+                        None => self.saturating_convert(),
                     }
                 }
             }
@@ -66,25 +31,12 @@ macro_rules! impl_safe_convert_uint_to_float {
         $(
             impl SafeConvert<$dst> for Uint {
                 fn checked_convert(self) -> Option<$dst> {
-                    self.0.to_f64().and_then(|f| {
-                        if f.is_finite() {
-                            Some(f as $dst)
-                        } else {
-                            None
-                        }
-                    })
+                    let value = self.to_f64() as $dst;
+                    value.is_finite().then_some(value)
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if let Some(f) = self.0.to_f64() {
-                        if f.is_finite() {
-                            f as $dst
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else {
-                        <$dst>::MAX
-                    }
+                    self.checked_convert().unwrap_or(<$dst>::MAX)
                 }
 
                 fn wrapping_convert(self) -> $dst {
@@ -95,37 +47,34 @@ macro_rules! impl_safe_convert_uint_to_float {
     };
 }
 
-impl_safe_convert_uint_to_signed!(i8, i16, i32, i64, i128);
-impl_safe_convert_uint_to_unsigned!(u8, u16, u32, u64, u128);
+impl_safe_convert_uint_to_integer!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 impl_safe_convert_uint_to_float!(f32, f64);
 
 impl SafeConvert<Int> for Uint {
 	fn checked_convert(self) -> Option<Int> {
-		Some(Int(self.0))
+		Some(Int::from(self))
 	}
 
 	fn saturating_convert(self) -> Int {
-		Int(self.0)
+		Int::from(self)
 	}
 
 	fn wrapping_convert(self) -> Int {
-		Int(self.0)
+		Int::from(self)
 	}
 }
 
 impl SafeConvert<Decimal> for Uint {
 	fn checked_convert(self) -> Option<Decimal> {
-		let big_decimal = BigDecimalInner::from(self.0);
-		Some(Decimal::from(big_decimal))
+		Some(Decimal::from(self))
 	}
 
 	fn saturating_convert(self) -> Decimal {
-		let big_decimal = BigDecimalInner::from(self.0);
-		Decimal::from(big_decimal)
+		Decimal::from(self)
 	}
 
 	fn wrapping_convert(self) -> Decimal {
-		self.saturating_convert()
+		Decimal::from(self)
 	}
 }
 
@@ -348,6 +297,23 @@ pub mod tests {
 			let x = Uint::from(999u32);
 			let y: Uint = x.clone().wrapping_convert();
 			assert_eq!(y, x);
+		}
+	}
+
+	mod range {
+		use super::*;
+
+		#[test]
+		fn wide_uints_refuse_narrow_targets_and_clamp_to_the_max() {
+			// A 76 digit uint must never truncate to its low bits when a checked or saturating cast is
+			// asked for.
+			assert_eq!(SafeConvert::<u128>::checked_convert(Uint::MAX), None);
+			assert_eq!(SafeConvert::<u128>::saturating_convert(Uint::MAX), u128::MAX);
+			assert_eq!(SafeConvert::<i128>::saturating_convert(Uint::from(u128::MAX)), i128::MAX);
+			assert_eq!(SafeConvert::<u128>::checked_convert(Uint::from(u128::MAX)), Some(u128::MAX));
+			assert_eq!(SafeConvert::<f32>::checked_convert(Uint::MAX), None);
+			assert_eq!(SafeConvert::<f32>::saturating_convert(Uint::MAX), f32::MAX);
+			assert_eq!(SafeConvert::<Int>::checked_convert(Uint::MAX), Some(Int::MAX));
 		}
 	}
 }

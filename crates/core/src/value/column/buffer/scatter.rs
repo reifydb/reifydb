@@ -10,7 +10,10 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
-			decimal_array::{int16_array, u128s, uint16_array},
+			decimal_array::{
+				decimal_array, decimals, int_array, int16_array, ints, u128s, uint_array, uint16_array,
+				uints,
+			},
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
 				times,
@@ -19,9 +22,12 @@ use reifydb_value::{
 		},
 		date::Date,
 		datetime::DateTime,
+		decimal::Decimal,
 		duration::Duration,
+		int::Int,
 		is::{IsNumber, IsTemporal, IsUuid},
 		time::Time,
+		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -238,6 +244,23 @@ fn scatter_merge_typed(
 			}
 		};
 	}
+	macro_rules! family_kernel {
+		($variant:ident, $t:ty, $values:ident, |$a:ident, $data:ident| $build:expr) => {
+			if let (ColumnBuffer::$variant($a), ColumnBuffer::$variant(b)) = (self_col, other)
+				&& $a.data_type() == b.data_type()
+			{
+				let ($data, validity) = number_scatter::<$t>(
+					&$values($a),
+					&$values(b),
+					then_mask,
+					else_mask,
+					total_len,
+				);
+				let inner = ColumnBuffer::$variant($build);
+				return Some(finalize(inner, validity));
+			}
+		};
+	}
 	macro_rules! temporal_kernel {
 		($variant:ident, $t:ty, $typed:ident, $build:ident) => {
 			if let (ColumnBuffer::$variant(a), ColumnBuffer::$variant(b)) = (self_col, other) {
@@ -277,6 +300,9 @@ fn scatter_merge_typed(
 	native_kernel!(Uint4, u32);
 	native_kernel!(Uint8, u64);
 	number_kernel!(Uint16, u128, u128s, uint16_array);
+	family_kernel!(Int, Int, ints, |a, data| int_array(a.precision(), data));
+	family_kernel!(Uint, Uint, uints, |a, data| uint_array(a.precision(), data));
+	family_kernel!(Decimal, Decimal, decimals, |a, data| decimal_array(a.precision(), a.scale(), data));
 
 	temporal_kernel!(Date, Date, dates, date_array);
 	temporal_kernel!(DateTime, DateTime, datetimes, datetime_array);

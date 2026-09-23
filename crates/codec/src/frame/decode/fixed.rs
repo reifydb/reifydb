@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::BooleanArray;
-use arrow_buffer::{BooleanBuffer, bit_util::get_bit};
+use arrow_buffer::{BooleanBuffer, bit_util::get_bit, i256};
 use reifydb_value::{
 	encoding::LeBytes,
 	value::{
 		container::{
-			decimal_array::{int16_array, uint16_array},
+			decimal_array::{DecimalArray, int16_array, uint16_array},
 			dictionary_array::dictionary_array,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
@@ -27,17 +27,23 @@ use reifydb_value::{
 use super::column_type_from_code;
 use crate::{
 	error::DecodeError,
-	frame::encoding::{
-		delta::{
-			decode_delta_f32, decode_delta_f64, decode_delta_i8, decode_delta_i16, decode_delta_i32,
-			decode_delta_i64, decode_delta_i128, decode_delta_rle_f32, decode_delta_rle_f64,
-			decode_delta_rle_i8, decode_delta_rle_i16, decode_delta_rle_i32, decode_delta_rle_i64,
-			decode_delta_rle_i128, decode_delta_rle_u8, decode_delta_rle_u16, decode_delta_rle_u32,
-			decode_delta_rle_u64, decode_delta_rle_u128, decode_delta_u8, decode_delta_u16,
-			decode_delta_u32, decode_delta_u64, decode_delta_u128,
+	frame::{
+		encoding::{
+			delta::{
+				decode_delta_f32, decode_delta_f64, decode_delta_i8, decode_delta_i16,
+				decode_delta_i32, decode_delta_i64, decode_delta_i128, decode_delta_i256,
+				decode_delta_rle_f32, decode_delta_rle_f64, decode_delta_rle_i8, decode_delta_rle_i16,
+				decode_delta_rle_i32, decode_delta_rle_i64, decode_delta_rle_i128,
+				decode_delta_rle_i256, decode_delta_rle_u8, decode_delta_rle_u16, decode_delta_rle_u32,
+				decode_delta_rle_u64, decode_delta_rle_u128, decode_delta_u8, decode_delta_u16,
+				decode_delta_u32, decode_delta_u64, decode_delta_u128,
+			},
+			rle::{decode_rle, decode_rle_i32, decode_rle_i64, decode_rle_u64},
 		},
-		rle::{decode_rle, decode_rle_i32, decode_rle_i64, decode_rle_u64},
+		format::Encoding,
 	},
+	tag::ValueKind,
+	unscaled::{NARROW, WIDE, check_unscaled, decode_params, family_type, read_le, width},
 };
 
 pub(crate) fn decode_fixed_plain(
@@ -370,6 +376,53 @@ pub(crate) fn decode_delta_rle_column(
 		}
 		_ => Err(DecodeError::InvalidData(format!("DeltaRLE not supported for type {:?}", ty))),
 	}
+}
+
+pub(crate) fn decode_unscaled_column(
+	kind: ValueKind,
+	encoding: Encoding,
+	row_count: usize,
+	data: &[u8],
+	extra: &[u8],
+) -> Result<FrameColumnData, DecodeError> {
+	let &[precision, scale] = extra else {
+		return Err(DecodeError::InvalidData(format!(
+			"{kind:?} column needs precision and scale in 2 extra bytes, found {}",
+			extra.len()
+		)));
+	};
+	let (precision, scale) = decode_params(precision, scale)?;
+	family_type(kind, precision, scale)?;
+	let narrow = width(precision) == NARROW;
+	let values: Vec<i256> = match encoding {
+		Encoding::Plain => (0..row_count)
+			.map(|i| fixed_slot(data, i, width(precision)).map(read_le))
+			.collect::<Result<_, _>>()?,
+		Encoding::Rle if narrow => decode_rle(data, row_count, NARROW, |b| read_le(&b[..NARROW]))?,
+		Encoding::Rle => decode_rle(data, row_count, WIDE, |b| read_le(&b[..WIDE]))?,
+		Encoding::Delta if narrow => {
+			decode_delta_i128(data, row_count)?.into_iter().map(i256::from_i128).collect()
+		}
+		Encoding::Delta => decode_delta_i256(data, row_count)?,
+		Encoding::DeltaRle if narrow => {
+			decode_delta_rle_i128(data, row_count)?.into_iter().map(i256::from_i128).collect()
+		}
+		Encoding::DeltaRle => decode_delta_rle_i256(data, row_count)?,
+		Encoding::Dict | Encoding::BitPack => {
+			return Err(DecodeError::InvalidData(format!(
+				"{encoding:?} encoding not supported for type {kind:?}"
+			)));
+		}
+	};
+	for &value in &values {
+		check_unscaled(kind, value, precision)?;
+	}
+	let array = DecimalArray::from_unscaled(precision, scale, values);
+	Ok(match kind {
+		ValueKind::Int => FrameColumnData::Int(array),
+		ValueKind::Uint => FrameColumnData::Uint(array),
+		_ => FrameColumnData::Decimal(array),
+	})
 }
 
 fn decode_le_array<T: LeBytes>(data: &[u8], row_count: usize) -> Result<Vec<T>, DecodeError> {

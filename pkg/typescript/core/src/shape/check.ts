@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {Column, Frame} from '../types';
-import {Type, digestTypeName, isDigestType, isListType, isOptionType, isRecordType} from '../value';
+import {
+    Type, digestTypeName, fixedPointKind, fixedPointTypeName, isDigestType, isFixedPointType, isListType, isOptionType,
+    isRecordType,
+} from '../value';
 import {ShapeNode} from '.';
 import {widens} from './widen';
 
@@ -55,6 +58,12 @@ function familyOf(type: string): readonly string[] {
 }
 
 function matches(shape: ShapeNode, type: Type): boolean {
+    if (isFixedPointType(type)) {
+        const kind = fixedPointKind(type);
+        if (shape.kind === 'primitive') return familyOf(shape.type).includes(kind);
+        if (shape.kind === 'value') return shape.type === kind;
+        return false;
+    }
     switch (shape.kind) {
         case 'primitive':
             if (shape.type === 'None') {
@@ -90,6 +99,9 @@ function describe(shape: ShapeNode): string {
 function typeName(type: Type): string {
     if (isDigestType(type)) {
         return digestTypeName(type);
+    }
+    if (isFixedPointType(type)) {
+        return fixedPointTypeName(type);
     }
     if (isOptionType(type)) {
         return `Option(${typeName(type.Option)})`;

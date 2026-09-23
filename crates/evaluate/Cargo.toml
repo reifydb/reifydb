@@ -17,6 +17,7 @@ default = []
 arrow-arith = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-ord = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-rql = { workspace = true }

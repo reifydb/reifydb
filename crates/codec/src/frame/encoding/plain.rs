@@ -10,8 +10,7 @@ use reifydb_value::{
 	value::{
 		container::{
 			any_array,
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
+			decimal_array::{DecimalArray, u128s},
 			dictionary_array, digest_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -161,18 +160,9 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 		}
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
 		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
-		FrameColumnData::Int(c) => {
-			let slice = &ints(c);
-			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Int)
-		}
-		FrameColumnData::Uint(c) => {
-			let slice = &uints(c);
-			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Uint)
-		}
-		FrameColumnData::Decimal(c) => {
-			let slice = &decimals(c);
-			encode_varlen(slice.len(), |i| slice[i].to_string().into_bytes(), ValueType::Decimal)
-		}
+		FrameColumnData::Int(c) => encode_unscaled(c, ValueKind::Int),
+		FrameColumnData::Uint(c) => encode_unscaled(c, ValueKind::Uint),
+		FrameColumnData::Decimal(c) => encode_unscaled(c, ValueKind::Decimal),
 		FrameColumnData::Any {
 			container,
 			..
@@ -207,6 +197,18 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 		} => unreachable!("Option layers are stripped before plain encoding"),
 	};
 	Ok(result)
+}
+
+fn encode_unscaled(array: &DecimalArray, kind: ValueKind) -> PlainEncoded {
+	let data = match array {
+		DecimalArray::Decimal128(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
+		DecimalArray::Decimal256(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
+	};
+	PlainEncoded {
+		data,
+		offsets: vec![],
+		type_code: kind.byte(),
+	}
 }
 
 fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: ValueType) -> PlainEncoded {

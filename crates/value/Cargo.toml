@@ -26,8 +26,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 uuid = { workspace = true }
-num-bigint = { workspace = true, features = ["serde"] }
-bigdecimal = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-array = { workspace = true }

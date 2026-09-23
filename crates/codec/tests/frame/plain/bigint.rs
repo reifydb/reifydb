@@ -1,15 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_bigint::BigInt;
-use reifydb_value::value::{container::bignum_array::int_array, frame::data::FrameColumnData, int::Int};
+use reifydb_value::value::{
+	constraint::precision::Precision, container::decimal_array::int_array, frame::data::FrameColumnData, int::Int,
+};
 
-fn make(v: Vec<Int>) -> FrameColumnData {
-	FrameColumnData::Int(int_array(v))
+fn column(precision: u8, values: Vec<Int>) -> FrameColumnData {
+	FrameColumnData::Int(int_array(Precision::new(precision), values))
 }
 
-crate::plain_tests! {
-	typical: vec![Int(BigInt::from(0)), Int(BigInt::from(i64::MAX)), Int(BigInt::from(i64::MIN))],
-	boundary: vec![Int(BigInt::from(0)), Int(BigInt::from(-1)), Int(BigInt::from(1))],
-	single: Int(BigInt::from(0)),
+fn int(value: i128) -> Int {
+	Int::from_i128(value)
+}
+
+mod narrow {
+	use super::*;
+
+	fn make(values: Vec<Int>) -> FrameColumnData {
+		column(38, values)
+	}
+
+	crate::plain_tests! {
+		typical: vec![int(0), int(i64::MAX as i128), int(i64::MIN as i128)],
+		boundary: vec![int(0), int(-1), int(1), int(99_999_999_999_999_999_999_999_999_999_999_999_99), int(-99_999_999_999_999_999_999_999_999_999_999_999_99)],
+		single: int(0),
+	}
+}
+
+mod wide {
+	use super::*;
+
+	fn make(values: Vec<Int>) -> FrameColumnData {
+		column(76, values)
+	}
+
+	crate::plain_tests! {
+		typical: vec![int(0), int(i128::MAX), int(i128::MIN), Int::MAX, Int::MIN],
+		boundary: vec![int(0), int(-1), int(1), Int::MAX, Int::MIN],
+		single: Int::MAX,
+	}
 }

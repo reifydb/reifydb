@@ -65,101 +65,68 @@ macro_rules! impl_safe_div_unsigned {
 impl_safe_div_signed!(i8, i16, i32, i64, i128);
 impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 
-use bigdecimal::{BigDecimal, Zero};
-use num_bigint::BigInt;
-
 use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeDiv for Int {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
-		if r.0 == BigInt::from(0) {
-			None
-		} else {
-			Some(Int::from(&self.0 / &r.0))
-		}
+		Int::checked_div(self, r)
 	}
 
 	fn saturating_div(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			self.clone()
-		} else {
-			Int::from(&self.0 / &r.0)
+		if r.is_zero() {
+			return Int::zero();
 		}
+		Int::checked_div(self, r).unwrap_or(Int::MAX)
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Int::from(0)
-		} else {
-			Int::from(&self.0 / &r.0)
-		}
+		Int::checked_div(self, r).unwrap_or_default()
 	}
 
 	fn is_zero(&self) -> bool {
-		self.0 == BigInt::from(0)
+		Int::is_zero(self)
 	}
 }
 
 impl SafeDiv for Uint {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
-		if r.0 == BigInt::from(0) {
-			None
-		} else {
-			Some(Uint::from(&self.0 / &r.0))
-		}
+		Uint::checked_div(self, r)
 	}
 
 	fn saturating_div(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			self.clone()
-		} else {
-			Uint::from(&self.0 / &r.0)
+		if r.is_zero() {
+			return Uint::zero();
 		}
+		Uint::checked_div(self, r).unwrap_or(Uint::MAX)
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Uint::from(0u64)
-		} else {
-			Uint::from(&self.0 / &r.0)
-		}
+		Uint::checked_div(self, r).unwrap_or_default()
 	}
 
 	fn is_zero(&self) -> bool {
-		self.0 == BigInt::from(0)
+		Uint::is_zero(self)
 	}
 }
 
 impl SafeDiv for Decimal {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
-		if r.inner().is_zero() {
-			None
-		} else {
-			let result = self.inner() / r.inner();
-			Some(Decimal::from(result))
-		}
+		Decimal::checked_div(self, r)
 	}
 
 	fn saturating_div(&self, r: &Self) -> Self {
-		if r.inner().is_zero() {
-			self.clone()
-		} else {
-			let result = self.inner() / r.inner();
-			Decimal::from(result)
-		}
+		Decimal::saturating_div(self, r)
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
-		if r.inner().is_zero() {
-			Decimal::from(BigDecimal::from(0))
-		} else {
-			let result = self.inner() / r.inner();
-			Decimal::from(result)
+		if r.is_zero() {
+			return Decimal::zero();
 		}
+		Decimal::saturating_div(self, r)
 	}
 
 	fn is_zero(&self) -> bool {
-		self.inner().is_zero()
+		Decimal::is_zero(self)
 	}
 }
 

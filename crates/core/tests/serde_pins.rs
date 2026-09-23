@@ -3,12 +3,12 @@
 
 use std::fmt::{Debug, Write as _};
 
-use num_bigint::BigInt;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -194,24 +194,24 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "int",
-		column_postcard: "16030000ff040000008080808008ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1cffffffff0f",
-		column_json: "{\"Int\":{\"container\":{\"data\":[[0,[]],[-1,[0,0,0,2147483648]],[-1,[2789360843,3218433301,1529874786,296143865,3628]]]},\"max_bytes\":4294967295}}",
-		frame_postcard: "16030000ff040000008080808008ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1c",
-		frame_json: "{\"Int\":{\"data\":[[0,[]],[-1,[0,0,0,2147483648]],[-1,[2789360843,3218433301,1529874786,296143865,3628]]]}}",
+		column_postcard: "16014c000300008080808080808080808080808080808080800201b5f6f6cda5dda695c0badaffccd4819ad9dc03d938",
+		column_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[170141183460469231731687303715884105728,-1],[316819432628894896240771468652271483701,-3629]]}}}",
+		frame_postcard: "16014c000300008080808080808080808080808080808080800201b5f6f6cda5dda695c0badaffccd4819ad9dc03d938",
+		frame_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[170141183460469231731687303715884105728,-1],[316819432628894896240771468652271483701,-3629]]}}}",
 	},
 	Pin {
 		name: "uint",
-		column_postcard: "170300000104ffffffff0fffffffff0fffffffff0fffffffff0f0105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db11ffffffff0f",
-		column_json: "{\"Uint\":{\"container\":{\"data\":[[0,[]],[1,[4294967295,4294967295,4294967295,4294967295]],[1,[1505606452,1095215850,2286885549,2228032345,290245]]]},\"max_bytes\":4294967295}}",
-		frame_postcard: "170300000104ffffffff0fffffffff0fffffffff0fffffffff0f0105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db11",
-		frame_json: "{\"Uint\":{\"data\":[[0,[]],[1,[4294967295,4294967295,4294967295,4294967295]],[1,[1505606452,1095215850,2286885549,2228032345,290245]]]}}",
+		column_postcard: "17014c00030000ffffffffffffffffffffffffffffffffffff0300b4f6f6cda5ddeaa3c1daeaf884b1d689cd89028ab723",
+		column_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[340282366920938463463374607431768211455,0],[176522908758883060491387065200898063156,290245]]}}}",
+		frame_postcard: "17014c00030000ffffffffffffffffffffffffffffffffffff0300b4f6f6cda5ddeaa3c1daeaf884b1d689cd89028ab723",
+		frame_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[340282366920938463463374607431768211455,0],[176522908758883060491387065200898063156,290245]]}}}",
 	},
 	Pin {
 		name: "decimal",
-		column_postcard: "18030130042d312e35253132333435363738393031323334353637383930313233343536373839302e303030303031ff00",
-		column_json: "{\"Decimal\":{\"container\":{\"data\":[\"0\",\"-1.5\",\"123456789012345678901234567890.000001\"]},\"precision\":255,\"scale\":0}}",
-		frame_postcard: "18030130042d312e35253132333435363738393031323334353637383930313233343536373839302e303030303031",
-		frame_json: "{\"Decimal\":{\"data\":[\"0\",\"-1.5\",\"123456789012345678901234567890.000001\"]}}",
+		column_postcard: "18014c06030000a0b9a4ffffffffffffffffffffffffffffff030181b1eb9697ae90f6eabdbfb8fdf7b8e31700",
+		column_json: "{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":6,\"data\":[[0,0],[340282366920938463463374607431766711456,-1],[123456789012345678901234567890000001,0]]}}}",
+		frame_postcard: "18014c06030000a0b9a4ffffffffffffffffffffffffffffff030181b1eb9697ae90f6eabdbfb8fdf7b8e31700",
+		frame_json: "{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":6,\"data\":[[0,0],[340282366920938463463374607431766711456,-1],[123456789012345678901234567890000001,0]]}}}",
 	},
 	Pin {
 		name: "any",
@@ -324,8 +324,8 @@ fn digest_buffer() -> ColumnBuffer {
 }
 
 fn fixtures() -> Vec<(&'static str, ColumnBuffer)> {
-	let big = "-1234567890123456789012345678901234567890123".parse::<BigInt>().unwrap();
-	let big_unsigned = "98765432109876543210987654321098765432109876".parse::<BigInt>().unwrap();
+	let big = "-1234567890123456789012345678901234567890123".parse::<Int>().unwrap();
+	let big_unsigned = "98765432109876543210987654321098765432109876".parse::<Uint>().unwrap();
 	vec![
 		("bool", ColumnBuffer::bool([true, false, true])),
 		("float4", ColumnBuffer::float4([f32::MIN, -0.0, 1.5, f32::MAX])),
@@ -378,11 +378,13 @@ fn fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		("uuid4", ColumnBuffer::uuid4([Uuid4(Uuid::from_u128(0x0123_4567_89ab_4cde_8f01_2345_6789_abcd))])),
 		("uuid7", ColumnBuffer::uuid7([Uuid7(uuid7_bits(2)), Uuid7(uuid7_bits(3))])),
 		("blob", ColumnBuffer::blob([Blob::new(vec![]), Blob::new(vec![0, 255, 7])])),
-		("int", ColumnBuffer::int([Int::from(0i64), Int::from(i128::MIN), Int(big)])),
-		("uint", ColumnBuffer::uint([Uint::from(0u64), Uint::from(u128::MAX), Uint(big_unsigned)])),
+		("int", ColumnBuffer::int(Precision::MAX, [Int::from(0i64), Int::from(i128::MIN), big])),
+		("uint", ColumnBuffer::uint(Precision::MAX, [Uint::from(0u64), Uint::from(u128::MAX), big_unsigned])),
 		(
 			"decimal",
 			ColumnBuffer::decimal(
+				Precision::MAX,
+				Scale::new(6),
 				["0", "-1.5", "123456789012345678901234567890.000001"]
 					.map(|s| s.parse::<Decimal>().unwrap()),
 			),

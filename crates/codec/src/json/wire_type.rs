@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{digest::Digest, value_type::ValueType};
+use reifydb_value::value::{
+	constraint::{precision::Precision, scale::Scale},
+	digest::Digest,
+	value_type::ValueType,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError, ser::Error as SerError};
 use serde_json::{Map, Value as JsonValue};
 
@@ -25,6 +29,8 @@ const UNDERLYING: &str = "underlying";
 const NAME: &str = "name";
 const TYPE: &str = "type";
 const ACCURACY: &str = "accuracy";
+const PRECISION: &str = "precision";
+const SCALE: &str = "scale";
 
 fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 	Some(match ty {
@@ -50,12 +56,18 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Uuid4 => "Uuid4",
 		ValueType::Uuid7 => "Uuid7",
 		ValueType::Blob => "Blob",
-		ValueType::Int => "Int",
-		ValueType::Uint => "Uint",
-		ValueType::Decimal => "Decimal",
 		ValueType::Any => "Any",
 		ValueType::DictionaryId => "DictionaryId",
-		ValueType::Option(_)
+		ValueType::Int {
+			..
+		}
+		| ValueType::Uint {
+			..
+		}
+		| ValueType::Decimal {
+			..
+		}
+		| ValueType::Option(_)
 		| ValueType::List(_)
 		| ValueType::Record(_)
 		| ValueType::Tuple(_)
@@ -91,13 +103,39 @@ fn scalar_from_id(id: &str) -> Option<ValueType> {
 		"Uuid4" => ValueType::Uuid4,
 		"Uuid7" => ValueType::Uuid7,
 		"Blob" => ValueType::Blob,
-		"Int" => ValueType::Int,
-		"Uint" => ValueType::Uint,
-		"Decimal" => ValueType::Decimal,
 		"Any" => ValueType::Any,
 		"DictionaryId" => ValueType::DictionaryId,
 		_ => return None,
 	})
+}
+
+fn family_descriptor(id: &str, precision: Precision, scale: Option<Scale>) -> JsonValue {
+	let mut object = Map::new();
+	object.insert(ID.to_string(), JsonValue::String(id.to_string()));
+	object.insert(PRECISION.to_string(), JsonValue::from(precision.value()));
+	if let Some(scale) = scale {
+		object.insert(SCALE.to_string(), JsonValue::from(scale.value()));
+	}
+	JsonValue::Object(object)
+}
+
+fn family_param(object: &Map<String, JsonValue>, key: &str, default: u8, value: &JsonValue) -> Result<u8, String> {
+	match object.get(key) {
+		None => Ok(default),
+		Some(param) => param
+			.as_u64()
+			.and_then(|param| u8::try_from(param).ok())
+			.ok_or_else(|| format!("`{key}` must be an unsigned 8-bit integer: {value}")),
+	}
+}
+
+fn family_precision(
+	object: &Map<String, JsonValue>,
+	default: Precision,
+	value: &JsonValue,
+) -> Result<Precision, String> {
+	let precision = family_param(object, PRECISION, default.value(), value)?;
+	Precision::try_new(precision).map_err(|error| format!("invalid `{PRECISION}` {precision}: {error}"))
 }
 
 fn descriptor(id: &str, underlying: Option<JsonValue>) -> JsonValue {
@@ -114,6 +152,16 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 		return descriptor(id, None);
 	}
 	match ty {
+		ValueType::Int {
+			precision,
+		} => family_descriptor("Int", *precision, None),
+		ValueType::Uint {
+			precision,
+		} => family_descriptor("Uint", *precision, None),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => family_descriptor("Decimal", *precision, Some(*scale)),
 		ValueType::Option(inner) => descriptor("Option", Some(to_json(inner))),
 		ValueType::List(inner) => descriptor("List", Some(to_json(inner))),
 		ValueType::Tuple(members) => {
@@ -164,6 +212,27 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 	};
 
 	match id {
+		"Int" | "Uint" => {
+			let default = ValueType::INT.precision().expect("int carries a precision");
+			let precision = family_precision(object, default, value)?;
+			Ok(if id == "Int" {
+				ValueType::int(precision)
+			} else {
+				ValueType::uint(precision)
+			})
+		}
+		"Decimal" => {
+			let precision = family_precision(
+				object,
+				ValueType::DECIMAL.precision().expect("decimal carries a precision"),
+				value,
+			)?;
+			let default_scale = ValueType::DECIMAL.scale().expect("decimal carries a scale");
+			let scale = family_param(object, SCALE, default_scale.value(), value)?;
+			let scale = Scale::try_new_with_precision(scale, precision)
+				.map_err(|error| format!("invalid `{SCALE}` {scale}: {error}"))?;
+			Ok(ValueType::decimal(precision, scale))
+		}
 		"Option" => Ok(ValueType::Option(Box::new(child()?))),
 		"List" => Ok(ValueType::List(Box::new(child()?))),
 		"Tuple" => {

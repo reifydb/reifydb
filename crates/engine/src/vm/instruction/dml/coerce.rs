@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::{catalog::series::Series, evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::{buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
+use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, value_type::ValueType},
@@ -29,6 +30,10 @@ pub(crate) fn coerce_value_to_column_type(
 	if let ValueType::Option(inner) = &target
 		&& value.get_type() == **inner
 	{
+		return Ok(value);
+	}
+
+	if loses_scale(&value, &target) {
 		return Ok(value);
 	}
 

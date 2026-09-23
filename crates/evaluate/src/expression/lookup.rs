@@ -28,7 +28,7 @@ use reifydb_value::{
 use crate::{Result, expression::context::EvalContext, stack::Variable};
 
 macro_rules! extract_typed_column {
-	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident) => {{
+	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident $(, $arg:expr)*) => {{
 		let mut data = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut count = 0;
@@ -48,7 +48,7 @@ macro_rules! extract_typed_column {
 			}
 			count += 1;
 		}
-		Ok($col.with_new_data(ColumnBuffer::$constructor(data, bitvec)))
+		Ok($col.with_new_data(ColumnBuffer::$constructor($($arg,)* data, bitvec)))
 	}};
 }
 
@@ -159,15 +159,20 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 		ValueType::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)
 		}
-		ValueType::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
-		ValueType::Uint => {
-			extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec)
-		}
+		ValueType::Int {
+			precision,
+		} => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec, precision),
+		ValueType::Uint {
+			precision,
+		} => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec, precision),
 		ValueType::Any => {
 			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}
-		ValueType::Decimal => {
-			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => {
+			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::zero(), decimal_with_bitvec, precision, scale)
 		}
 		ValueType::Option(inner) => extract_column_data_by_type(col, take, *inner),
 		ValueType::List(_) => {

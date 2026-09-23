@@ -17,7 +17,6 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::Constraint,
 		container::{
-			bignum_array::{push_decimal, push_int, push_uint},
 			decimal_array::uint16_to_native,
 			dictionary_array::push_entry,
 			digest_array::push_digest,
@@ -250,16 +249,27 @@ impl Columns {
 						vec![Blob::new(vec![]); size],
 						BooleanBuffer::new_unset(size),
 					),
-					ValueType::Int => ColumnBuffer::int_with_bitvec(
+					ValueType::Int {
+						precision,
+					} => ColumnBuffer::int_with_bitvec(
+						precision,
 						vec![Int::default(); size],
 						BooleanBuffer::new_unset(size),
 					),
-					ValueType::Uint => ColumnBuffer::uint_with_bitvec(
+					ValueType::Uint {
+						precision,
+					} => ColumnBuffer::uint_with_bitvec(
+						precision,
 						vec![Uint::default(); size],
 						BooleanBuffer::new_unset(size),
 					),
-					ValueType::Decimal => ColumnBuffer::decimal_with_bitvec(
-						vec![Decimal::from(0); size],
+					ValueType::Decimal {
+						precision,
+						scale,
+					} => ColumnBuffer::decimal_with_bitvec(
+						precision,
+						scale,
+						vec![Decimal::default(); size],
 						BooleanBuffer::new_unset(size),
 					),
 					ValueType::DictionaryId => {
@@ -444,31 +454,28 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Int {
-						builder,
+					ColumnBuilder::Int(builder),
+					ValueType::Int {
 						..
 					},
-					ValueType::Int,
 				) => {
-					push_int(builder, &shape.get_int(bytes, index));
+					builder.push(&Decimal::from(shape.get_int(bytes, index)));
 				}
 				(
-					ColumnBuilder::Uint {
-						builder,
+					ColumnBuilder::Uint(builder),
+					ValueType::Uint {
 						..
 					},
-					ValueType::Uint,
 				) => {
-					push_uint(builder, &shape.get_uint(bytes, index));
+					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
 				}
 				(
-					ColumnBuilder::Decimal {
-						builder,
+					ColumnBuilder::Decimal(builder),
+					ValueType::Decimal {
 						..
 					},
-					ValueType::Decimal,
 				) => {
-					push_decimal(builder, &shape.get_decimal(bytes, index));
+					builder.push(&shape.get_decimal(bytes, index));
 				}
 				(
 					ColumnBuilder::DictionaryId {
@@ -613,31 +620,28 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Int {
-						builder,
+					ColumnBuilder::Int(builder),
+					ValueType::Int {
 						..
 					},
-					ValueType::Int,
 				) => {
-					push_int(builder, &shape.get_int(bytes, index));
+					builder.push(&Decimal::from(shape.get_int(bytes, index)));
 				}
 				(
-					ColumnBuilder::Uint {
-						builder,
+					ColumnBuilder::Uint(builder),
+					ValueType::Uint {
 						..
 					},
-					ValueType::Uint,
 				) => {
-					push_uint(builder, &shape.get_uint(bytes, index));
+					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
 				}
 				(
-					ColumnBuilder::Decimal {
-						builder,
+					ColumnBuilder::Decimal(builder),
+					ValueType::Decimal {
 						..
 					},
-					ValueType::Decimal,
 				) => {
-					push_decimal(builder, &shape.get_decimal(bytes, index));
+					builder.push(&shape.get_decimal(bytes, index));
 				}
 				(
 					ColumnBuilder::DictionaryId {

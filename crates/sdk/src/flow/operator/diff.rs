@@ -4,8 +4,11 @@
 use core::ffi::c_void;
 use std::{collections::HashMap, thread};
 
-use reifydb_codec::{extern_c::cells::encode_decimal_cell, tag::ValueKind};
-use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value_type::ValueType};
+use reifydb_codec::tag::ValueKind;
+use reifydb_value::value::{
+	Value, constraint::precision::Precision, decimal::Decimal, int::Int, row_number::RowNumber, uint::Uint,
+	value_type::ValueType,
+};
 
 use crate::{
 	common::extern_c::binding::builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
@@ -319,8 +322,7 @@ fn emit_insert(
 	let columns = transpose(schema, &rows.iter().map(|r| &r.fields).collect::<Vec<_>>())?;
 	let mut committed: Vec<CommittedColumn> = Vec::with_capacity(schema.len());
 	for (i, (_, type_code)) in schema.iter().enumerate() {
-		let col = inner.acquire(*type_code, row_count.max(1))?;
-		committed.push(write_column(col, *type_code, &columns[i])?);
+		committed.push(emit_column(inner, *type_code, &columns[i], row_count.max(1))?);
 	}
 	inner.emit_insert(&committed, &names_ref, &row_numbers)
 }
@@ -343,10 +345,8 @@ fn emit_update(
 	let mut pre_committed: Vec<CommittedColumn> = Vec::with_capacity(schema.len());
 	let mut post_committed: Vec<CommittedColumn> = Vec::with_capacity(schema.len());
 	for (i, (_, type_code)) in schema.iter().enumerate() {
-		let pre_col = inner.acquire(*type_code, row_count.max(1))?;
-		pre_committed.push(write_column(pre_col, *type_code, &pre_cols[i])?);
-		let post_col = inner.acquire(*type_code, row_count.max(1))?;
-		post_committed.push(write_column(post_col, *type_code, &post_cols[i])?);
+		pre_committed.push(emit_column(inner, *type_code, &pre_cols[i], row_count.max(1))?);
+		post_committed.push(emit_column(inner, *type_code, &post_cols[i], row_count.max(1))?);
 	}
 	inner.emit_update(
 		&pre_committed,
@@ -376,8 +376,7 @@ fn emit_remove(
 	let columns = transpose(schema, &rows.iter().map(|r| &r.fields).collect::<Vec<_>>())?;
 	let mut committed: Vec<CommittedColumn> = Vec::with_capacity(schema.len());
 	for (i, (_, type_code)) in schema.iter().enumerate() {
-		let col = inner.acquire(*type_code, row_count.max(1))?;
-		committed.push(write_column(col, *type_code, &columns[i])?);
+		committed.push(emit_column(inner, *type_code, &columns[i], row_count.max(1))?);
 	}
 	inner.emit_remove(&committed, &names_ref, &row_numbers)
 }
@@ -399,6 +398,31 @@ fn transpose(schema: &[(String, ValueKind)], rows: &[&Vec<(String, Value)>]) -> 
 		}
 	}
 	Ok(columns)
+}
+
+fn emit_column(
+	inner: &mut ColumnsBuilder<'_>,
+	type_code: ValueKind,
+	values: &[Value],
+	capacity: usize,
+) -> Result<CommittedColumn, SdkError> {
+	let (precision, scale) = family_column_params(type_code, values)?;
+	let col = inner.acquire_with_params(type_code, precision, scale, capacity)?;
+	write_column(col, type_code, values)
+}
+
+fn family_column_params(type_code: ValueKind, values: &[Value]) -> Result<(u8, u8), SdkError> {
+	match type_code {
+		ValueKind::Int | ValueKind::Uint => Ok((Precision::MAX.value(), 0)),
+		ValueKind::Decimal => {
+			let mut scale = 0;
+			for value in values {
+				scale = scale.max(value_to_decimal(value)?.scale());
+			}
+			Ok((Precision::MAX.value(), scale))
+		}
+		_ => Ok((0, 0)),
+	}
 }
 
 fn write_column(col: ColumnBuilder<'_>, type_code: ValueKind, values: &[Value]) -> Result<CommittedColumn, SdkError> {
@@ -468,33 +492,20 @@ fn write_column(col: ColumnBuilder<'_>, type_code: ValueKind, values: &[Value]) 
 			let buf: Vec<Vec<u8>> = values.iter().map(value_to_blob).collect::<Result<_, _>>()?;
 			col.write_blob(&buf)
 		}
-		ValueKind::Decimal => write_decimal_column(col, values),
+		ValueKind::Int => {
+			let buf: Vec<Int> = values.iter().map(value_to_int).collect::<Result<_, _>>()?;
+			col.write_int(&buf)
+		}
+		ValueKind::Uint => {
+			let buf: Vec<Uint> = values.iter().map(value_to_uint).collect::<Result<_, _>>()?;
+			col.write_uint(&buf)
+		}
+		ValueKind::Decimal => {
+			let buf: Vec<Decimal> = values.iter().map(value_to_decimal).collect::<Result<_, _>>()?;
+			col.write_decimal(&buf)
+		}
 		other => Err(SdkError::NotImplemented(format!("emit: unsupported column type {:?}", other))),
 	}
-}
-
-fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<CommittedColumn, SdkError> {
-	let mut serialized: Vec<Vec<u8>> = Vec::with_capacity(values.len());
-	for v in values {
-		let dec: Decimal = match v {
-			Value::Decimal(d) => d.clone(),
-			Value::Float4(f) => Decimal::from(f64::from(f32::from(*f))),
-			Value::Float8(f) => Decimal::from(f64::from(*f)),
-			Value::None {
-				..
-			} => Decimal::from_i64(0),
-			_ => {
-				return Err(SdkError::InvalidInput(format!(
-					"emit decimal: expected Decimal, got {:?}",
-					v
-				)));
-			}
-		};
-		let mut bytes = Vec::new();
-		encode_decimal_cell(&dec, &mut bytes);
-		serialized.push(bytes);
-	}
-	col.write_blob(&serialized)
 }
 
 fn value_to_type_code(value: &Value) -> Option<ValueKind> {
@@ -513,6 +524,8 @@ fn value_to_type_code(value: &Value) -> Option<ValueKind> {
 		Value::Uint8(_) => ValueKind::Uint8,
 		Value::Uint16(_) => ValueKind::Uint16,
 		Value::Utf8(_) => ValueKind::Utf8,
+		Value::Int(_) => ValueKind::Int,
+		Value::Uint(_) => ValueKind::Uint,
 		Value::Decimal(_) => ValueKind::Decimal,
 		Value::Blob(_) => ValueKind::Blob,
 		Value::None {
@@ -539,7 +552,15 @@ fn type_to_column_code(ty: ValueType) -> Option<ValueKind> {
 		ValueType::Uint8 => ValueKind::Uint8,
 		ValueType::Uint16 => ValueKind::Uint16,
 		ValueType::Utf8 => ValueKind::Utf8,
-		ValueType::Decimal => ValueKind::Decimal,
+		ValueType::Int {
+			..
+		} => ValueKind::Int,
+		ValueType::Uint {
+			..
+		} => ValueKind::Uint,
+		ValueType::Decimal {
+			..
+		} => ValueKind::Decimal,
 		ValueType::Blob => ValueKind::Blob,
 		_ => return Option::None,
 	};
@@ -622,5 +643,37 @@ fn value_to_blob(v: &Value) -> Result<Vec<u8>, SdkError> {
 			..
 		} => Ok(Vec::new()),
 		_ => Err(type_mismatch_err("Blob", v)),
+	}
+}
+
+fn value_to_int(v: &Value) -> Result<Int, SdkError> {
+	match v {
+		Value::Int(x) => Ok(x.clone()),
+		Value::None {
+			..
+		} => Ok(Int::zero()),
+		_ => Err(type_mismatch_err("Int", v)),
+	}
+}
+
+fn value_to_uint(v: &Value) -> Result<Uint, SdkError> {
+	match v {
+		Value::Uint(x) => Ok(x.clone()),
+		Value::None {
+			..
+		} => Ok(Uint::zero()),
+		_ => Err(type_mismatch_err("Uint", v)),
+	}
+}
+
+fn value_to_decimal(v: &Value) -> Result<Decimal, SdkError> {
+	match v {
+		Value::Decimal(d) => Ok(d.clone()),
+		Value::Float4(f) => Ok(Decimal::from(f64::from(f32::from(*f)))),
+		Value::Float8(f) => Ok(Decimal::from(f64::from(*f))),
+		Value::None {
+			..
+		} => Ok(Decimal::from_i64(0)),
+		_ => Err(SdkError::InvalidInput(format!("emit decimal: expected Decimal, got {:?}", v))),
 	}
 }

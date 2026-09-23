@@ -22,8 +22,8 @@ fn encode_constraint(type_constraint: &TypeConstraint) -> Vec<u8> {
 		panic!("column type {} cannot be encoded: {error}", type_constraint.get_type())
 	});
 	match type_constraint.constraint() {
-		None if encoded.constraint_type == 5 => {
-			let mut bytes = vec![5];
+		None if matches!(encoded.constraint_type, 2 | 5) => {
+			let mut bytes = vec![encoded.constraint_type];
 			bytes.extend_from_slice(&encoded.constraint_param1.to_le_bytes());
 			bytes.extend_from_slice(&encoded.constraint_param2.to_le_bytes());
 			bytes
@@ -34,9 +34,6 @@ fn encode_constraint(type_constraint: &TypeConstraint) -> Vec<u8> {
 			let max_value: u32 = (*max_bytes).into();
 			bytes.extend_from_slice(&max_value.to_le_bytes());
 			bytes
-		}
-		Some(Constraint::PrecisionScale(precision, scale)) => {
-			vec![2, (*precision).into(), (*scale).into()]
 		}
 		Some(Constraint::Dictionary(dict_id, id_type)) => {
 			let mut bytes = vec![3];

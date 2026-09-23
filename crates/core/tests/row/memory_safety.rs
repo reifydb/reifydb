@@ -32,9 +32,9 @@ fn test_unaligned_access_all_types() {
 		ValueType::IdentityId,
 		ValueType::Utf8,
 		ValueType::Blob,
-		ValueType::Int,
-		ValueType::Uint,
-		ValueType::Decimal,
+		ValueType::INT,
+		ValueType::UINT,
+		ValueType::DECIMAL,
 	];
 
 	for target_type in types_to_test {
@@ -106,7 +106,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 			ValueType::Float8, // Static
 			ValueType::Utf8,   // Dynamic
 			ValueType::Blob,   // Dynamic
-			ValueType::Int,    // Dynamic/Static depending on value
+			ValueType::INT,    // Static
 		],
 	);
 

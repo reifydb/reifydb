@@ -16,7 +16,7 @@ use reifydb_core::{
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
 	value::column::{
 		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
-		headers::ColumnHeaders,
+		headers::ColumnHeaders, view::group_by::common_key_type,
 	},
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
@@ -621,7 +621,7 @@ impl QueryNode for InlineDataNode {
 	}
 }
 
-type EvaluatedColumnValues = (Vec<(Value, Fragment)>, Option<ValueType>, Option<Fragment>);
+type EvaluatedColumnValues = (Vec<(Value, ValueType, Fragment)>, Option<ValueType>, Option<Fragment>);
 
 impl InlineDataNode {
 	fn find_optimal_integer_type(column: &ColumnBuffer) -> ValueType {
@@ -664,7 +664,15 @@ impl InlineDataNode {
 
 	fn widen_numeric(wide: ValueType, fractional: ValueType) -> ValueType {
 		match wide {
-			ValueType::Int | ValueType::Uint if fractional.is_floating_point() => ValueType::Float8,
+			ValueType::Int {
+				..
+			}
+			| ValueType::Uint {
+				..
+			} if fractional.is_floating_point() => ValueType::Float8,
+			ValueType::Decimal {
+				..
+			} if matches!(fractional, ValueType::Decimal { .. }) => common_key_type(&wide, &fractional).unwrap_or(wide),
 			_ if wide.is_number() => ValueType::promote(wide, fractional),
 			_ => wide,
 		}
@@ -719,17 +727,22 @@ impl InlineDataNode {
 
 				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
+				let evaluated_type = evaluated.data().get_type().inner_type().clone();
 				let mut iter = evaluated.data().iter();
 				if let Some(value) = iter.next() {
 					if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
-						first_value_type = Some(value.get_type());
+						first_value_type = Some(evaluated_type.clone());
 					}
-					all_values.push((value, alias_expr.expression.full_fragment_owned()));
+					all_values.push((
+						value,
+						evaluated_type,
+						alias_expr.expression.full_fragment_owned(),
+					));
 				} else {
-					all_values.push((Value::none(), Fragment::none()));
+					all_values.push((Value::none(), ValueType::Any, Fragment::none()));
 				}
 			} else {
-				all_values.push((Value::none(), Fragment::none()));
+				all_values.push((Value::none(), ValueType::Any, Fragment::none()));
 			}
 		}
 
@@ -739,28 +752,42 @@ impl InlineDataNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::materialize")]
 	fn materialize_inferred_column(
 		session: &EvalContext<'_>,
-		all_values: &[(Value, Fragment)],
+		all_values: &[(Value, ValueType, Fragment)],
 		first_value_type: Option<ValueType>,
 	) -> Result<ColumnBuffer> {
 		let wide_type = first_value_type.map(|fvt| {
 			let first = match fvt {
-				ValueType::Int | ValueType::Uint => fvt,
+				ValueType::Int {
+					..
+				}
+				| ValueType::Uint {
+					..
+				} => fvt,
 				_ if fvt.is_integer() => ValueType::Int16,
 				_ if fvt.is_floating_point() => ValueType::Float8,
 				_ => fvt,
 			};
 			all_values
 				.iter()
-				.filter(|(value, _)| !matches!(value, Value::None { .. }))
-				.map(|(value, _)| value.get_type())
-				.filter(|ty| ty.is_floating_point() || *ty == ValueType::Decimal)
-				.fold(first, Self::widen_numeric)
+				.filter(|(value, _, _)| !matches!(value, Value::None { .. }))
+				.map(|(_, ty, _)| ty.clone())
+				.filter(|ty| {
+					ty.is_floating_point()
+						|| ty.is_integer() || matches!(ty, ValueType::Decimal { .. })
+				})
+				.fold(first, |wide, ty| match wide {
+					ValueType::Decimal {
+						..
+					} => Self::widen_numeric(wide, ty),
+					_ if ty.is_integer() => wide,
+					_ => Self::widen_numeric(wide, ty),
+				})
 		});
 
 		let mut column_data = if wide_type.is_none() {
 			let none_type = all_values
 				.iter()
-				.find_map(|(value, _)| match value {
+				.find_map(|(value, _, _)| match value {
 					Value::None {
 						inner,
 					} if *inner != ValueType::Any => Some(inner.clone()),
@@ -771,10 +798,10 @@ impl InlineDataNode {
 		} else {
 			let mut data = ColumnBuilder::with_capacity(wide_type.clone().unwrap(), 0);
 
-			for (value, fragment) in all_values {
+			for (value, value_type, fragment) in all_values {
 				if matches!(value, Value::None { .. }) {
 					data.push_none();
-				} else if wide_type.as_ref().is_some_and(|wt| value.get_type() == *wt) {
+				} else if wide_type.as_ref().is_some_and(|wt| value_type == wt) {
 					data.push_value(value.clone());
 				} else {
 					let temp_data = ColumnBuffer::from(value.clone());

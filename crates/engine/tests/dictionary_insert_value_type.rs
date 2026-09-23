@@ -126,7 +126,7 @@ fn every_dictionary_value_type_reports_and_stores_the_inserted_value_in_that_typ
 			"550e8400-e29b-41d4-a716-446655440000",
 		),
 		("blob", "blob::hex('deadbeef')", ValueType::Blob, "0xdeadbeef"),
-		("decimal", "cast('1.25', decimal)", ValueType::Decimal, "1.25"),
+		("decimal", "cast('1.25', decimal)", ValueType::DECIMAL, "1.2500000000"),
 	];
 	for (ty, literal, value_type, text) in cases {
 		let t = TestEngine::new();

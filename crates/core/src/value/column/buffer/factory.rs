@@ -12,8 +12,10 @@ use reifydb_value::value::{
 	constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 	container::{
 		any_array::any_array,
-		bignum_array::{decimal_array, int_array, uint_array},
-		decimal_array::{int16_array, uint16_array, with_int16_type, with_uint16_type},
+		decimal_array::{
+			DecimalArray, decimal_array, int_array, int16_array, uint_array, uint16_array, with_int16_type,
+			with_uint16_type,
+		},
 		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH, dictionary_array},
 		digest_array::digest_array,
 		temporal_array::{date_array, datetime_array, duration_array, time_array},
@@ -331,42 +333,31 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn int(data: impl IntoIterator<Item = Int>) -> Self {
-		ColumnBuffer::Int {
-			container: int_array(data),
-			max_bytes: MaxBytes::MAX,
-		}
+	pub fn int(precision: Precision, data: impl IntoIterator<Item = Int>) -> Self {
+		ColumnBuffer::Int(int_array(precision, data))
 	}
 
-	pub fn uint(data: impl IntoIterator<Item = Uint>) -> Self {
-		ColumnBuffer::Uint {
-			container: uint_array(data),
-			max_bytes: MaxBytes::MAX,
-		}
+	pub fn uint(precision: Precision, data: impl IntoIterator<Item = Uint>) -> Self {
+		ColumnBuffer::Uint(uint_array(precision, data))
 	}
 
-	pub(crate) fn int_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::Int {
-			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
-			max_bytes: MaxBytes::MAX,
-		}
+	pub(crate) fn int_with_capacity(precision: Precision, capacity: usize) -> Self {
+		ColumnBuffer::Int(DecimalArray::from_unscaled(precision, Scale::MIN, Vec::with_capacity(capacity)))
 	}
 
-	pub(crate) fn uint_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::Uint {
-			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
-			max_bytes: MaxBytes::MAX,
-		}
+	pub(crate) fn uint_with_capacity(precision: Precision, capacity: usize) -> Self {
+		ColumnBuffer::Uint(DecimalArray::from_unscaled(precision, Scale::MIN, Vec::with_capacity(capacity)))
 	}
 
-	pub fn int_with_bitvec(data: impl IntoIterator<Item = Int>, bitvec: impl Into<BooleanBuffer>) -> Self {
+	pub fn int_with_bitvec(
+		precision: Precision,
+		data: impl IntoIterator<Item = Int>,
+		bitvec: impl Into<BooleanBuffer>,
+	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Int {
-			container: int_array(&data),
-			max_bytes: MaxBytes::MAX,
-		};
+		let inner = ColumnBuffer::Int(int_array(precision, &data));
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -374,14 +365,15 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn uint_with_bitvec(data: impl IntoIterator<Item = Uint>, bitvec: impl Into<BooleanBuffer>) -> Self {
+	pub fn uint_with_bitvec(
+		precision: Precision,
+		data: impl IntoIterator<Item = Uint>,
+		bitvec: impl Into<BooleanBuffer>,
+	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Uint {
-			container: uint_array(&data),
-			max_bytes: MaxBytes::MAX,
-		};
+		let inner = ColumnBuffer::Uint(uint_array(precision, &data));
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -389,31 +381,24 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
-		ColumnBuffer::Decimal {
-			container: decimal_array(data),
-			precision: Precision::MAX,
-			scale: Scale::new(0),
-		}
+	pub fn decimal(precision: Precision, scale: Scale, data: impl IntoIterator<Item = Decimal>) -> Self {
+		ColumnBuffer::Decimal(decimal_array(precision, scale, data))
 	}
 
-	pub(crate) fn decimal_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::Decimal {
-			container: LargeBinaryBuilder::with_capacity(capacity, 0).finish(),
-			precision: Precision::MAX,
-			scale: Scale::new(0),
-		}
+	pub(crate) fn decimal_with_capacity(precision: Precision, scale: Scale, capacity: usize) -> Self {
+		ColumnBuffer::Decimal(DecimalArray::from_unscaled(precision, scale, Vec::with_capacity(capacity)))
 	}
 
-	pub fn decimal_with_bitvec(data: impl IntoIterator<Item = Decimal>, bitvec: impl Into<BooleanBuffer>) -> Self {
+	pub fn decimal_with_bitvec(
+		precision: Precision,
+		scale: Scale,
+		data: impl IntoIterator<Item = Decimal>,
+		bitvec: impl Into<BooleanBuffer>,
+	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Decimal {
-			container: decimal_array(&data),
-			precision: Precision::MAX,
-			scale: Scale::new(0),
-		};
+		let inner = ColumnBuffer::Decimal(decimal_array(precision, scale, &data));
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -549,9 +534,16 @@ impl ColumnBuffer {
 			ValueType::Uuid4 => Self::uuid4(vec![Uuid4::default(); len]),
 			ValueType::Uuid7 => Self::uuid7(vec![Uuid7::default(); len]),
 			ValueType::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
-			ValueType::Int => Self::int(vec![Int::default(); len]),
-			ValueType::Uint => Self::uint(vec![Uint::default(); len]),
-			ValueType::Decimal => Self::decimal(vec![Decimal::from(0); len]),
+			ValueType::Int {
+				precision,
+			} => Self::int(precision, vec![Int::default(); len]),
+			ValueType::Uint {
+				precision,
+			} => Self::uint(precision, vec![Uint::default(); len]),
+			ValueType::Decimal {
+				precision,
+				scale,
+			} => Self::decimal(precision, scale, vec![Decimal::default(); len]),
 			ValueType::Any => Self::any(vec![Value::none(); len]),
 			ValueType::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
 			list_ty @ ValueType::List(_) => Self::any_typed(vec![Value::List(vec![]); len], list_ty),

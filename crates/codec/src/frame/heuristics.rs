@@ -3,10 +3,10 @@
 
 use std::collections::HashSet;
 
+use arrow_buffer::i256;
 use reifydb_value::value::{
 	container::{
-		bignum_array::{decimals, ints, uints},
-		decimal_array::u128s,
+		decimal_array::{DecimalArray, u128s},
 		temporal_array::times,
 	},
 	frame::data::FrameColumnData,
@@ -37,9 +37,10 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	match inner {
 		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
 
-		FrameColumnData::Int(c) => try_varlen_numeric_heuristic(&ints(c), inner),
-		FrameColumnData::Uint(c) => try_varlen_numeric_heuristic(&uints(c), inner),
-		FrameColumnData::Decimal(c) => try_varlen_numeric_heuristic(&decimals(c), inner),
+		FrameColumnData::Int(c) | FrameColumnData::Uint(c) | FrameColumnData::Decimal(c) => match c {
+			DecimalArray::Decimal128(array) => try_numeric_heuristic_i128(array.values()),
+			DecimalArray::Decimal256(array) => try_numeric_heuristic_i256(array.values()),
+		},
 
 		FrameColumnData::Int1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
@@ -215,7 +216,7 @@ fn try_numeric_heuristic_u128(slice: &[u128]) -> Encoding {
 	Encoding::Plain
 }
 
-fn try_varlen_numeric_heuristic<T: PartialEq>(slice: &[T], data: &FrameColumnData) -> Encoding {
+fn try_numeric_heuristic_i256(slice: &[i256]) -> Encoding {
 	if slice.len() < MIN_ROWS {
 		return Encoding::Plain;
 	}
@@ -225,7 +226,17 @@ fn try_varlen_numeric_heuristic<T: PartialEq>(slice: &[T], data: &FrameColumnDat
 		return Encoding::Rle;
 	}
 
-	try_dict_heuristic(data)
+	let is_asc = slice.windows(2).all(|w| w[0] <= w[1]);
+	let is_desc = !is_asc && slice.windows(2).all(|w| w[0] >= w[1]);
+
+	if is_asc || is_desc {
+		if has_constant_stride_i256(slice) {
+			return Encoding::DeltaRle;
+		}
+		return Encoding::Delta;
+	}
+
+	Encoding::Plain
 }
 
 fn is_monotonic_i64(slice: &[i64]) -> bool {
@@ -260,6 +271,14 @@ fn has_constant_stride_u128(slice: &[u128]) -> bool {
 	slice.windows(2).all(|w| w[1].wrapping_sub(w[0]) == stride)
 }
 
+fn has_constant_stride_i256(slice: &[i256]) -> bool {
+	if slice.len() < 3 {
+		return true;
+	}
+	let stride = slice[1].wrapping_sub(slice[0]);
+	slice.windows(2).all(|w| w[1].wrapping_sub(w[0]) == stride)
+}
+
 fn count_runs_generic<T: PartialEq>(slice: &[T]) -> usize {
 	if slice.is_empty() {
 		return 0;
@@ -277,10 +296,10 @@ fn count_runs_generic<T: PartialEq>(slice: &[T]) -> usize {
 mod tests {
 	use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
 	use arrow_buffer::BooleanBuffer;
-	use num_bigint::BigInt;
 	use reifydb_value::value::{
+		constraint::{precision::Precision, scale::Scale},
 		container::{
-			bignum_array::{decimal_array, int_array, uint_array},
+			decimal_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, time_array},
 		},
 		date::Date,
@@ -399,17 +418,6 @@ mod tests {
 	}
 
 	#[test]
-	fn try_varlen_numeric_heuristic_checks_runs_before_falling_back_to_dict() {
-		let runny: Vec<Int> = (0..20).flat_map(|i| vec![Int(BigInt::from(i)); 10]).collect();
-		let data = FrameColumnData::Int(int_array(&runny));
-		assert_eq!(try_varlen_numeric_heuristic::<Int>(&runny, &data), Encoding::Rle);
-
-		let low_cardinality: Vec<Int> = (0..100).map(|i| Int(BigInt::from(i % 5))).collect();
-		let data = FrameColumnData::Int(int_array(&low_cardinality));
-		assert_eq!(try_varlen_numeric_heuristic::<Int>(&low_cardinality, &data), Encoding::Dict);
-	}
-
-	#[test]
 	fn choose_encoding_ignores_the_heuristic_entirely_when_compression_is_off() {
 		let data = FrameColumnData::Int4(Int32Array::from_iter_values((0..100).map(|i| i * 3)));
 		assert_eq!(choose_encoding(&data, CompressionLevel::None), Encoding::Plain);
@@ -458,14 +466,51 @@ mod tests {
 	}
 
 	#[test]
-	fn choose_encoding_dispatches_arbitrary_precision_columns_through_the_varlen_path() {
-		let low_cardinality: Vec<Uint> = (0..100).map(|i| Uint(BigInt::from(i % 5))).collect();
-		let uints = FrameColumnData::Uint(uint_array(low_cardinality));
-		assert_eq!(choose_encoding(&uints, CompressionLevel::Fast), Encoding::Dict);
+	fn choose_encoding_dispatches_fixed_width_family_columns_by_storage_width() {
+		// Int, uint and decimal ride the fixed int16 heuristics at 16 bytes and the i256 twin at 32 bytes.
+		let narrow = Precision::new(38);
+		let wide = Precision::new(76);
 
-		let low_cardinality: Vec<Decimal> =
-			(0..100).map(|i| Decimal::new(format!("{}.00", i % 5).parse().unwrap())).collect();
-		let decimals = FrameColumnData::Decimal(decimal_array(low_cardinality));
-		assert_eq!(choose_encoding(&decimals, CompressionLevel::Fast), Encoding::Dict);
+		let strided: Vec<Uint> = (0..100u64).map(|i| Uint::from_u64(i * 7)).collect();
+		assert_eq!(
+			choose_encoding(&FrameColumnData::Uint(uint_array(narrow, &strided)), CompressionLevel::Fast),
+			Encoding::DeltaRle
+		);
+		assert_eq!(
+			choose_encoding(&FrameColumnData::Uint(uint_array(wide, &strided)), CompressionLevel::Fast),
+			Encoding::DeltaRle
+		);
+
+		let irregular: Vec<Int> = (0..100i64).map(|i| Int::from_i64(-i * i)).collect();
+		assert_eq!(
+			choose_encoding(&FrameColumnData::Int(int_array(narrow, &irregular)), CompressionLevel::Fast),
+			Encoding::Delta
+		);
+		assert_eq!(
+			choose_encoding(&FrameColumnData::Int(int_array(wide, &irregular)), CompressionLevel::Fast),
+			Encoding::Delta
+		);
+
+		let runny: Vec<Decimal> = (0..100i64).map(|i| Decimal::from_i64(i / 10)).collect();
+		assert_eq!(
+			choose_encoding(
+				&FrameColumnData::Decimal(decimal_array(narrow, Scale::new(2), &runny)),
+				CompressionLevel::Fast
+			),
+			Encoding::Rle
+		);
+		assert_eq!(
+			choose_encoding(
+				&FrameColumnData::Decimal(decimal_array(wide, Scale::new(2), &runny)),
+				CompressionLevel::Fast
+			),
+			Encoding::Rle
+		);
+
+		let scattered: Vec<Int> = [5i64, 1, 9, 2, 8, 3, 7, 4].into_iter().map(Int::from_i64).collect();
+		assert_eq!(
+			choose_encoding(&FrameColumnData::Int(int_array(wide, &scattered)), CompressionLevel::Fast),
+			Encoding::Plain
+		);
 	}
 }

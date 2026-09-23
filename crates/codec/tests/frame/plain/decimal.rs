@@ -1,22 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::bignum_array::decimal_array, decimal::Decimal, frame::data::FrameColumnData};
+use reifydb_value::value::{
+	constraint::{precision::Precision, scale::Scale},
+	container::decimal_array::decimal_array,
+	decimal::Decimal,
+	frame::data::FrameColumnData,
+};
 
-fn make(v: Vec<Decimal>) -> FrameColumnData {
-	FrameColumnData::Decimal(decimal_array(v))
+fn column(precision: u8, values: Vec<Decimal>) -> FrameColumnData {
+	FrameColumnData::Decimal(decimal_array(Precision::new(precision), Scale::new(9), values))
 }
 
-crate::plain_tests! {
-	typical: vec![
-		Decimal::new("0".parse().unwrap()),
-		Decimal::new("123.456".parse().unwrap()),
-		Decimal::new("-99.99".parse().unwrap()),
-	],
-	boundary: vec![
-		Decimal::new("0".parse().unwrap()),
-		Decimal::new("0.000001".parse().unwrap()),
-		Decimal::new("-999999999.999999999".parse().unwrap()),
-	],
-	single: Decimal::new("0".parse().unwrap()),
+fn dec(text: &str) -> Decimal {
+	Decimal::parse(text).expect("valid decimal literal")
+}
+
+mod narrow {
+	use super::*;
+
+	fn make(values: Vec<Decimal>) -> FrameColumnData {
+		column(38, values)
+	}
+
+	crate::plain_tests! {
+		typical: vec![dec("0"), dec("123.456"), dec("-99.99")],
+		boundary: vec![dec("0"), dec("0.000001"), dec("-999999999.999999999"), dec("99999999999999999999999999999.999999999")],
+		single: dec("0"),
+	}
+}
+
+mod wide {
+	use super::*;
+
+	fn make(values: Vec<Decimal>) -> FrameColumnData {
+		column(76, values)
+	}
+
+	crate::plain_tests! {
+		typical: vec![dec("0"), dec("123.456"), dec("-99.99"), dec("9999999999999999999999999999999999999999999999999999999999999999999.999999999")],
+		boundary: vec![dec("0"), dec("0.000001"), dec("9999999999999999999999999999999999999999999999999999999999999999999.999999999"), dec("-9999999999999999999999999999999999999999999999999999999999999999999.999999999")],
+		single: dec("9999999999999999999999999999999999999999999999999999999999999999999.999999999"),
+	}
 }

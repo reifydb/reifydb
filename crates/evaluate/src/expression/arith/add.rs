@@ -9,8 +9,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		container::{
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
+			decimal_array::{decimals, ints, u128s, uints},
 			temporal_array::{duration_array, durations},
 			varlen_array::get,
 		},
@@ -22,7 +21,13 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{compare::length_mismatch, context::EvalContext, option::arith_op_unwrap_option},
+	expression::{
+		arith::{ArithOp, arith_target},
+		compare::length_mismatch,
+		context::EvalContext,
+		option::arith_op_unwrap_option,
+		scalar::FitFamily,
+	},
 };
 
 pub fn add_columns(
@@ -32,7 +37,7 @@ pub fn add_columns(
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
-		let target = ValueType::promote(left.get_type(), right.get_type());
+		let target = arith_target(ArithOp::Add, left.get_type(), right.get_type());
 
 		dispatch_arith!(
 			&left.data(), &right.data();
@@ -132,7 +137,7 @@ fn add_numeric_clone<L, R>(
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
-	<L as Promote<R>>::Output: IsNumber,
+	<L as Promote<R>>::Output: IsNumber + FitFamily,
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
@@ -140,16 +145,18 @@ where
 		assert_eq!(l.len(), r.len());
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target, l.len());
+	let mut data = ColumnBuilder::with_capacity(target.clone(), l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_val), Some(r_val)) => {
 				let l_clone = l_val.clone();
 				let r_clone = r_val.clone();
-				if let Some(value) = ctx.add(&l_clone, &r_clone, fragment)? {
-					data.push(value);
-				} else {
-					data.push_none()
+				match ctx.add(&l_clone, &r_clone, fragment)? {
+					Some(value) => match ctx.fit_family(value, &target, fragment)? {
+						Some(value) => data.push(value),
+						None => data.push_none(),
+					},
+					None => data.push_none(),
 				}
 			}
 			_ => data.push_none(),

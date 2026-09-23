@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod any_array;
-pub mod bignum_array;
 pub mod bool_array;
 pub mod decimal_array;
 pub mod dictionary_array;

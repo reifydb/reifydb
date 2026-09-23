@@ -6,13 +6,19 @@ use core::{slice, str};
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{date::Date, datetime::DateTime, diff_type::DiffType, duration::Duration, time::Time},
+	value::{
+		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
+		time::Time, uint::Uint,
+	},
 };
 
 use crate::{
-	common::extern_c::wire::{
-		buffer::ExternCBuffer,
-		columns::{ExternCColumn, ExternCColumns},
+	common::{
+		extern_c::wire::{
+			buffer::ExternCBuffer,
+			columns::{ExternCColumn, ExternCColumns},
+		},
+		family::{FamilyValue, cell_width, family_params},
 	},
 	flow::extern_c::wire::change::{ExternCChange, ExternCDiff, ExternCOrigin},
 };
@@ -192,6 +198,14 @@ impl<'a> BorrowedColumn<'a> {
 
 	pub fn type_code(&self) -> ValueKind {
 		self.extern_c.data.type_code
+	}
+
+	pub fn precision(&self) -> u8 {
+		self.extern_c.data.precision
+	}
+
+	pub fn scale(&self) -> u8 {
+		self.extern_c.data.scale
 	}
 
 	pub fn row_count(&self) -> usize {
@@ -465,6 +479,41 @@ impl<'a> BorrowedColumn<'a> {
 		// SAFETY: the Int16 check above means the buffer is a marshalled &[i128], so it carries i128's
 		// 16-byte alignment and is initialized.
 		unsafe { self.as_slice::<i128>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn int_at(&self, index: usize) -> Option<Int> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		self.family_cell_at(index)
+	}
+
+	#[inline]
+	pub fn uint_at(&self, index: usize) -> Option<Uint> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		self.family_cell_at(index)
+	}
+
+	#[inline]
+	pub fn decimal_at(&self, index: usize) -> Option<Decimal> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		self.family_cell_at(index)
+	}
+
+	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
+		if self.type_code() != T::KIND {
+			return None;
+		}
+		let (precision, scale) = family_params(T::KIND, self.precision(), self.scale())?;
+		let width = cell_width(precision);
+		let start = index.checked_mul(width)?;
+		let cell = self.data_bytes().get(start..start.checked_add(width)?)?;
+		T::decode_cell(cell, scale).ok()
 	}
 
 	#[inline]

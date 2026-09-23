@@ -3,12 +3,14 @@
 
 use std::borrow::Cow;
 
-use num_bigint::{BigInt, Sign};
-
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::{uint::Uint, value_type::ValueType},
+	value::{
+		decimal::unscaled::ParseError,
+		uint::{Uint, parse_error},
+		value_type::ValueType,
+	},
 };
 
 pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
@@ -29,89 +31,18 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 
 	if value.is_empty() {
 		return Err(TypeError::InvalidNumberFormat {
-			target: ValueType::Uint,
+			target: ValueType::UINT,
 			fragment,
 		}
 		.into());
 	}
 
-	if value.starts_with('-')
-		&& value != "-0.0"
-		&& value != "-0"
-		&& let Ok(bigint) = value.parse::<BigInt>()
-		&& bigint.sign() == Sign::Minus
-	{
-		return Err(TypeError::NumberOutOfRange {
-			target: ValueType::Uint,
-			fragment,
-			descriptor: None,
+	match Uint::parse(&value) {
+		Ok(uint) => Ok(uint),
+		Err(ParseError::Invalid) if value.parse::<f64>().is_ok_and(f64::is_infinite) => {
+			Err(parse_error(ParseError::OutOfRange, fragment))
 		}
-		.into());
-	}
-
-	match value.parse::<BigInt>() {
-		Ok(v) => {
-			if v.sign() == Sign::Minus {
-				return Err(TypeError::NumberOutOfRange {
-					target: ValueType::Uint,
-					fragment,
-					descriptor: None,
-				}
-				.into());
-			}
-			Ok(Uint::from(v))
-		}
-		Err(_) => {
-			if let Ok(f) = value.parse::<f64>() {
-				if f.is_infinite() {
-					Err(TypeError::NumberOutOfRange {
-						target: ValueType::Uint,
-						fragment,
-						descriptor: None,
-					}
-					.into())
-				} else {
-					let truncated = f.trunc();
-
-					if truncated < 0.0 && truncated != -0.0 {
-						return Err(TypeError::NumberOutOfRange {
-							target: ValueType::Uint,
-							fragment,
-							descriptor: None,
-						}
-						.into());
-					}
-
-					let abs_truncated = if truncated == -0.0 {
-						0.0
-					} else {
-						truncated
-					};
-					if let Ok(bigint) = format!("{:.0}", abs_truncated).parse::<BigInt>() {
-						Ok(Uint::from(bigint))
-					} else {
-						Err(TypeError::InvalidNumberFormat {
-							target: ValueType::Uint,
-							fragment,
-						}
-						.into())
-					}
-				}
-			} else if value.contains('-') {
-				Err(TypeError::NumberOutOfRange {
-					target: ValueType::Uint,
-					fragment,
-					descriptor: None,
-				}
-				.into())
-			} else {
-				Err(TypeError::InvalidNumberFormat {
-					target: ValueType::Uint,
-					fragment,
-				}
-				.into())
-			}
-		}
+		Err(error) => Err(parse_error(error, fragment)),
 	}
 }
 
@@ -235,5 +166,17 @@ pub mod tests {
 	#[test]
 	fn test_parse_uint_negative_infinity() {
 		assert!(parse_uint(Fragment::testing("-inf")).is_err());
+	}
+
+	#[test]
+	fn parse_uint_refuses_negatives_and_seventy_seven_digits_as_out_of_range() {
+		// Both are values a uint column cannot hold, so both must be range errors and never wrap.
+		assert_eq!(parse_uint(Fragment::testing("-1")).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_uint(Fragment::testing("-1.5e3")).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_uint(Fragment::testing("9".repeat(77))).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_uint(Fragment::testing("-inf")).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_uint(Fragment::testing("abc")).unwrap_err().code, "NUMBER_001");
+		assert_eq!(parse_uint(Fragment::testing("-0.9")).unwrap(), Uint::zero());
+		assert_eq!(parse_uint(Fragment::testing("9".repeat(76))).unwrap(), Uint::MAX);
 	}
 }

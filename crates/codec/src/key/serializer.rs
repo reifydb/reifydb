@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_bigint::Sign;
+use arrow_buffer::i256;
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	value::{
 		Value,
 		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -25,17 +26,14 @@ use reifydb_value::{
 
 use super::{
 	ByteSink, CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_fixed, encode_i8,
-	encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128,
-	encode_u128_varint,
+	encode_i16, encode_i32, encode_i64, encode_i128, encode_i256, encode_u8, encode_u16, encode_u32, encode_u64,
+	encode_u128, encode_u128_varint,
 };
 use crate::{
 	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
 	tag::{TypeTag, ValueKind},
+	unscaled::{NARROW, decimal_unscaled, int_unscaled, uint_unscaled, width},
 };
-
-pub(crate) const DECIMAL_END_POSITIVE: u8 = 0xff;
-pub(crate) const DECIMAL_END_NEGATIVE: u8 = 0x00;
-pub(crate) const DECIMAL_ZERO_EXPONENT: i32 = i32::MIN;
 
 fn keycode_type_descending(ty: &ValueType) -> bool {
 	matches!(
@@ -52,8 +50,9 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 			| ValueType::Utf8 | ValueType::Blob
 			| ValueType::Uuid4 | ValueType::Uuid7
 			| ValueType::IdentityId
-			| ValueType::Int | ValueType::Uint
-			| ValueType::Decimal
+			| ValueType::Int { .. }
+			| ValueType::Uint { .. }
+			| ValueType::Decimal { .. }
 	)
 }
 
@@ -241,61 +240,43 @@ impl KeySerializer {
 		self.extend_bytes(blob.as_ref() as &[u8])
 	}
 
-	pub fn extend_int(&mut self, int: &Int) -> &mut Self {
-		let (sign, bytes) = int.to_bytes_be();
-
-		if matches!(sign, Sign::Minus) {
-			self.buffer.push(encode_u8(0));
-			self.buffer.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
-			self.buffer.extend_from_slice(&bytes);
-		} else {
-			self.buffer.push(encode_u8(1));
-			self.extend_u32(bytes.len() as u32);
-			for byte in &bytes {
-				self.buffer.push(encode_u8(*byte));
-			}
-		}
-		self
+	pub fn extend_int(&mut self, value: &Int, precision: Precision) -> Result<&mut Self> {
+		let unscaled = int_unscaled(value, precision).ok_or_else(|| {
+			key_error(format!("int {value} does not fit precision {}", precision.value()))
+		})?;
+		self.buffer.push(encode_u8(precision.value()));
+		Ok(self.extend_unscaled(unscaled, precision))
 	}
 
-	pub fn extend_uint(&mut self, uint: &Uint) -> &mut Self {
-		let (_sign, bytes) = uint.0.to_bytes_be();
-		self.extend_u32(bytes.len() as u32);
-		for byte in &bytes {
-			self.buffer.push(encode_u8(*byte));
-		}
-		self
+	pub fn extend_uint(&mut self, value: &Uint, precision: Precision) -> Result<&mut Self> {
+		let unscaled = uint_unscaled(value, precision).ok_or_else(|| {
+			key_error(format!("uint {value} does not fit precision {}", precision.value()))
+		})?;
+		self.buffer.push(encode_u8(precision.value()));
+		Ok(self.extend_unscaled(unscaled, precision))
 	}
 
-	pub fn extend_decimal(&mut self, decimal: &Decimal) -> &mut Self {
-		let (mantissa, scale) = decimal.0.as_bigint_and_exponent();
-		let sign = mantissa.sign();
-		let digits = mantissa.magnitude().to_str_radix(10);
+	pub fn extend_decimal(&mut self, value: &Decimal, precision: Precision, scale: Scale) -> Result<&mut Self> {
+		let unscaled = decimal_unscaled(value, precision, scale).ok_or_else(|| {
+			key_error(format!(
+				"decimal {value} does not fit precision {} and scale {}",
+				precision.value(),
+				scale.value()
+			))
+		})?;
+		self.buffer.push(encode_u8(precision.value()));
+		self.buffer.push(encode_u8(scale.value()));
+		Ok(self.extend_unscaled(unscaled, precision))
+	}
 
-		if matches!(sign, Sign::NoSign) {
-			self.buffer.push(encode_u8(1));
-			self.buffer.extend_from_slice(&encode_i32(DECIMAL_ZERO_EXPONENT));
-			self.buffer.push(DECIMAL_END_POSITIVE);
-			return self.extend_i64(scale);
-		}
-
-		let exponent =
-			(digits.len() as i64 - scale).clamp(DECIMAL_ZERO_EXPONENT as i64 + 1, i32::MAX as i64) as i32;
-
-		if matches!(sign, Sign::Minus) {
-			self.buffer.push(encode_u8(0));
-			self.buffer.extend_from_slice(&((exponent as u32) ^ 0x8000_0000).to_be_bytes());
-			self.buffer.extend_from_slice(digits.as_bytes());
-			self.buffer.push(DECIMAL_END_NEGATIVE);
+	fn extend_unscaled(&mut self, unscaled: i256, precision: Precision) -> &mut Self {
+		if width(precision) == NARROW {
+			let narrow = unscaled.to_i128().expect("a value within precision 38 fits i128");
+			self.buffer.extend_from_slice(&encode_i128(narrow));
 		} else {
-			self.buffer.push(encode_u8(1));
-			self.buffer.extend_from_slice(&encode_i32(exponent));
-			for byte in digits.as_bytes() {
-				self.buffer.push(encode_u8(*byte));
-			}
-			self.buffer.push(DECIMAL_END_POSITIVE);
+			self.buffer.extend_from_slice(&encode_i256(unscaled));
 		}
-		self.extend_i64(scale)
+		self
 	}
 
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
@@ -419,15 +400,15 @@ impl KeySerializer {
 			}
 			Value::Int(i) => {
 				self.buffer.push(ValueKind::Int.byte());
-				self.extend_int(i);
+				self.extend_int(i, Precision::MAX)?;
 			}
 			Value::Uint(u) => {
 				self.buffer.push(ValueKind::Uint.byte());
-				self.extend_uint(u);
+				self.extend_uint(u, Precision::MAX)?;
 			}
 			Value::Decimal(d) => {
 				self.buffer.push(ValueKind::Decimal.byte());
-				self.extend_decimal(d);
+				self.extend_decimal(d, Precision::MAX, Scale::new(d.scale()))?;
 			}
 			Value::List(items) => {
 				self.buffer.push(ValueKind::List.byte());
@@ -503,4 +484,10 @@ impl ByteSink for KeySerializer {
 	fn extend_from_slice(&mut self, slice: &[u8]) {
 		self.buffer.extend_from_slice(slice);
 	}
+}
+
+fn key_error(message: String) -> Error {
+	Error::from(TypeError::SerdeKeycode {
+		message,
+	})
 }

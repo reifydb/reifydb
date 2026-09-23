@@ -1,13 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::fmt::Display;
+
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value, blob::Blob, date::Date, datetime::DateTime, duration::Duration, ordered_f32::OrderedF32,
-		ordered_f64::OrderedF64, row_number::RowNumber, system_columns::SystemColumns, time::Time,
+		Value,
+		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		row_number::RowNumber,
+		system_columns::SystemColumns,
+		time::Time,
+		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -67,6 +81,27 @@ impl InProcessRowSink {
 	fn push(&mut self, col: usize, value: Value) {
 		self.cols[col].push_value(value);
 	}
+
+	fn family_params_at(&self, col: usize) -> Result<(Precision, Scale), SdkError> {
+		let ty = &self.types[col];
+		match (ty.precision(), ty.scale()) {
+			(Some(precision), Some(scale)) => Ok((precision, scale)),
+			_ => Err(SdkError::InvalidInput(format!(
+				"native sink column {col} of type {ty:?} is not an int, uint or decimal column"
+			))),
+		}
+	}
+
+	fn check_digits(&self, col: usize, digits: u8, value: &dyn Display) -> Result<(), SdkError> {
+		let (precision, _) = self.family_params_at(col)?;
+		if digits > precision.value() {
+			return Err(SdkError::InvalidInput(format!(
+				"{value} does not fit native sink column {col} of precision {}",
+				precision.value()
+			)));
+		}
+		Ok(())
+	}
 }
 
 fn code_to_type(code: ValueKind) -> Result<ValueType, SdkError> {
@@ -90,9 +125,12 @@ fn code_to_type(code: ValueKind) -> Result<ValueType, SdkError> {
 		ValueKind::Duration => ValueType::Duration,
 		ValueKind::Utf8 => ValueType::Utf8,
 		ValueKind::Blob => ValueType::Blob,
+		ValueKind::Int => ValueType::INT,
+		ValueKind::Uint => ValueType::UINT,
+		ValueKind::Decimal => ValueType::DECIMAL,
 		other => {
 			return Err(SdkError::NotImplemented(format!(
-				"native sink does not support column type {:?} (Decimal and others deferred)",
+				"native sink does not support column type {:?}",
 				other
 			)));
 		}
@@ -185,8 +223,29 @@ impl RowSink for InProcessRowSink {
 		Ok(())
 	}
 	#[inline]
-	fn push_decimal_bytes(&mut self, _col: usize, _v: &[u8]) -> Result<(), SdkError> {
-		Err(SdkError::NotImplemented("native sink does not yet support Decimal columns".to_string()))
+	fn push_int(&mut self, col: usize, v: &Int) -> Result<(), SdkError> {
+		self.check_digits(col, v.digits(), v)?;
+		self.push(col, Value::Int(v.clone()));
+		Ok(())
+	}
+	#[inline]
+	fn push_uint(&mut self, col: usize, v: &Uint) -> Result<(), SdkError> {
+		self.check_digits(col, v.digits(), v)?;
+		self.push(col, Value::Uint(v.clone()));
+		Ok(())
+	}
+	#[inline]
+	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
+		let (precision, scale) = self.family_params_at(col)?;
+		let fitted = v.fits(precision.value(), scale.value()).ok_or_else(|| {
+			SdkError::InvalidInput(format!(
+				"{v} does not fit native sink column {col} of precision {} and scale {}",
+				precision.value(),
+				scale.value()
+			))
+		})?;
+		self.push(col, Value::Decimal(fitted));
+		Ok(())
 	}
 	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {

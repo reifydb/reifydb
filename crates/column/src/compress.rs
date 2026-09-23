@@ -58,7 +58,6 @@ impl Compressor {
 					*id,
 					EncodingId::CANONICAL_BOOL
 						| EncodingId::CANONICAL_FIXED | EncodingId::CANONICAL_VARLEN
-						| EncodingId::CANONICAL_BIGNUM
 				)
 			})
 			.filter_map(|id| registry.get(id).cloned())

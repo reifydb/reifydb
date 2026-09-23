@@ -13,7 +13,7 @@ use reifydb_value::{
 	Result,
 	error::Diagnostic,
 	fragment::Fragment,
-	value::{container::decimal_array::u128s, uint::Uint, value_type::ValueType},
+	value::{constraint::precision::Precision, container::decimal_array::u128s, uint::Uint, value_type::ValueType},
 };
 
 const TWO_POW_64: u128 = 1 << 64;
@@ -87,7 +87,12 @@ fn uint16_compare_against_uint8_on_either_side() {
 fn uint16_compare_against_arbitrary_uint_on_either_side() {
 	// The arbitrary precision arms read Uint16 rows on their own; a lossy read there shrinks u128::MAX.
 	let wide = || ColumnBuffer::uint16([u128::MAX, TWO_POW_64, TWO_POW_64]);
-	let big = || ColumnBuffer::uint([Uint::from(u128::MAX), Uint::from(TWO_POW_64 - 1), Uint::from(TWO_POW_64)]);
+	let big = || {
+		ColumnBuffer::uint(
+			Precision::MAX,
+			[Uint::from(u128::MAX), Uint::from(TWO_POW_64 - 1), Uint::from(TWO_POW_64)],
+		)
+	};
 
 	assert_eq!(compare::<Equal>(wide(), big()), ColumnBuffer::bool([true, false, true]));
 	assert_eq!(compare::<GreaterThan>(wide(), big()), ColumnBuffer::bool([false, true, false]));

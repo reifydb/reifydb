@@ -6,19 +6,20 @@ use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
 use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use reifydb_codec::{
-	extern_c::cells::{
-		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
-	},
+	extern_c::cells::{decode_any_cell, decode_dictionary_id_cell},
 	tag::ValueKind,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_sdk::common::extern_c::wire::{
-	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
-	status::{
-		EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_ERROR_NULL_PTR,
-		EXTERN_C_OK,
+use reifydb_sdk::common::{
+	extern_c::wire::{
+		callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
+		status::{
+			EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL,
+			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_OK,
+		},
 	},
+	family::{cell_width, decode_family_column, family_params, is_family},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -28,21 +29,17 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::any_array,
-			bignum_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -67,6 +64,8 @@ enum BuilderSlot {
 
 pub struct ActiveBuilder {
 	pub type_code: ValueKind,
+	pub family: Option<(Precision, Scale)>,
+	pub elem_size: usize,
 	pub data: Vec<u8>,
 	pub offsets: Option<Vec<u64>>,
 	pub bitvec: Option<Vec<u8>>,
@@ -160,19 +159,34 @@ pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R 
 pub unsafe extern "C" fn host_builder_acquire(
 	_ctx: *mut c_void,
 	type_code: ValueKind,
+	precision: u8,
+	scale: u8,
 	capacity: usize,
 ) -> *mut ColumnBufferHandle {
 	let Some(registry) = current_registry() else {
 		return ptr::null_mut();
 	};
+	let family = if is_family(type_code) {
+		match family_params(type_code, precision, scale) {
+			Some(params) => Some(params),
+			None => return ptr::null_mut(),
+		}
+	} else {
+		None
+	};
+	let elem_size = match family {
+		Some((precision, _)) => cell_width(precision),
+		None => elem_size_for(type_code),
+	};
 	let mut inner = registry.inner.lock();
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
-	let elem_size = elem_size_for(type_code);
 	let initial_data_capacity = capacity.saturating_mul(elem_size);
 	let active = ActiveBuilder {
 		type_code,
+		family,
+		elem_size,
 		data: Vec::with_capacity(initial_data_capacity),
 		offsets: if is_var_len(type_code) {
 			let mut o = Vec::with_capacity(capacity + 1);
@@ -237,7 +251,7 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			if active.bitvec.is_none() {
-				let elem_cap = active.data.capacity() / elem_size_for(active.type_code).max(1);
+				let elem_cap = active.data.capacity() / active.elem_size.max(1);
 				active.bitvec = Some(vec![0u8; elem_cap.div_ceil(8)]);
 			}
 			active.bitvec.as_mut().unwrap().as_mut_ptr()
@@ -257,7 +271,7 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
-			let elem = elem_size_for(active.type_code);
+			let elem = active.elem_size;
 			let extra_bytes = additional.saturating_mul(elem);
 			let target_cap = active.data.capacity().saturating_add(extra_bytes);
 			let needed_reserve = target_cap.saturating_sub(active.data.len());
@@ -319,6 +333,7 @@ impl RegistryInner {
 	fn store_committed(&mut self, h: Handle, active: ActiveBuilder, written_count: usize) -> i32 {
 		let buffer = match finalize_buffer(
 			active.type_code,
+			active.family,
 			active.data,
 			active.offsets,
 			active.bitvec,
@@ -353,7 +368,7 @@ impl ActiveBuilder {
 			);
 		}
 
-		let elem = elem_size_for(self.type_code);
+		let elem = self.elem_size;
 
 		if let Some(offsets) = self.offsets.as_mut() {
 			let offsets_len = written_count + 1;
@@ -579,8 +594,11 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 		ValueKind::IdentityId | ValueKind::Uuid4 | ValueKind::Uuid7 => 16,
 		ValueKind::Utf8 | ValueKind::Blob => 1,
 		ValueKind::DictionaryId => 16,
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal | ValueKind::Any => 1,
-		ValueKind::None
+		ValueKind::Any => 1,
+		ValueKind::Int
+		| ValueKind::Uint
+		| ValueKind::Decimal
+		| ValueKind::None
 		| ValueKind::Type
 		| ValueKind::List
 		| ValueKind::Record
@@ -590,17 +608,12 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 }
 
 fn is_var_len(type_code: ValueKind) -> bool {
-	matches!(
-		type_code,
-		ValueKind::Utf8
-			| ValueKind::Blob | ValueKind::Int
-			| ValueKind::Uint | ValueKind::Decimal
-			| ValueKind::Any | ValueKind::DictionaryId
-	)
+	matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId)
 }
 
 fn finalize_buffer(
 	type_code: ValueKind,
+	family: Option<(Precision, Scale)>,
 	mut data: Vec<u8>,
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
@@ -713,36 +726,10 @@ fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ValueKind::Int => {
-			let v = decode_per_element::<Int>(&data, &offsets, written_count, |bytes| {
-				Some(decode_int_cell(bytes))
-			})
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
-			ColumnBuffer::Int {
-				container: int_array(v),
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Uint => {
-			let v = decode_per_element::<Uint>(&data, &offsets, written_count, |bytes| {
-				Some(decode_uint_cell(bytes))
-			})
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
-			ColumnBuffer::Uint {
-				container: uint_array(v),
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Decimal => {
-			let v = decode_per_element::<Decimal>(&data, &offsets, written_count, |bytes| {
-				decode_decimal_cell(bytes).ok()
-			})
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
-			ColumnBuffer::Decimal {
-				container: decimal_array(v),
-				precision: Precision::MAX,
-				scale: Scale::MIN,
-			}
+		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+			let (precision, scale) = family.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			decode_family_column(type_code, precision, scale, &data, written_count)
+				.map_err(|_| EXTERN_C_ERROR_MARSHAL)?
 		}
 		ValueKind::Any => {
 			let values: Vec<Value> = decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
@@ -836,8 +823,12 @@ mod tests {
 		fragment::Fragment,
 		value::{
 			blob::Blob,
+			constraint::{precision::Precision, scale::Scale},
 			container::decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
+			decimal::Decimal,
 			dictionary::DictionaryEntryId,
+			int::Int,
+			uint::Uint,
 		},
 	};
 	use serde_json::to_string;
@@ -846,6 +837,10 @@ mod tests {
 		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
 		host_builder_data_ptr, host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
 	};
+
+	fn decimals(texts: &[&str]) -> Vec<Decimal> {
+		texts.iter().map(|t| Decimal::parse(t).unwrap()).collect()
+	}
 
 	fn commit_varlen(
 		registry: &BuilderRegistry,
@@ -858,7 +853,8 @@ mod tests {
 		with_registry(registry, || {
 			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
 			unsafe {
-				let handle = host_builder_acquire(ptr::null_mut(), type_code, data.len().max(rows));
+				let handle =
+					host_builder_acquire(ptr::null_mut(), type_code, 0, 0, data.len().max(rows));
 				ptr::copy_nonoverlapping(data.as_ptr(), host_builder_data_ptr(handle), data.len());
 				ptr::copy_nonoverlapping(
 					offsets.as_ptr(),
@@ -889,8 +885,13 @@ mod tests {
 		let (code, handle) = with_registry(&registry, || {
 			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
 			unsafe {
-				let handle =
-					host_builder_acquire(ptr::null_mut(), column.type_code(), data.len().max(rows));
+				let handle = host_builder_acquire(
+					ptr::null_mut(),
+					column.type_code(),
+					column.precision(),
+					column.scale(),
+					data.len().max(rows),
+				);
 				ptr::copy_nonoverlapping(data.as_ptr(), host_builder_data_ptr(handle), data.len());
 				if !offsets.is_empty() {
 					ptr::copy_nonoverlapping(
@@ -1009,28 +1010,29 @@ mod tests {
 	#[test]
 	fn utf8_last_offset_past_the_data_is_a_marshal_error() {
 		// A last offset past the data would read bytes the guest never wrote.
-		let result = finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2);
+		let result = finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2);
 		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
 	}
 
 	#[test]
 	fn blob_last_offset_past_the_data_is_a_marshal_error() {
 		// A last offset past the data would read bytes the guest never wrote.
-		let result = finalize_buffer(ValueKind::Blob, vec![1, 2], Some(vec![0, 1, 5]), None, 2);
+		let result = finalize_buffer(ValueKind::Blob, None, vec![1, 2], Some(vec![0, 1, 5]), None, 2);
 		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
 	}
 
 	#[test]
 	fn utf8_offset_beyond_i64_is_a_marshal_error() {
 		// Arrow offsets are i64, so a larger u64 offset cannot be represented and must not wrap negative.
-		let result = finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1);
+		let result = finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1);
 		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
 	}
 
 	#[test]
 	fn guest_bool_column_serializes_like_an_equal_host_column() {
 		// A guest hands over one data byte per row, yet equal Bool columns must serialize byte for byte alike.
-		let guest = finalize_buffer(ValueKind::Boolean, vec![5, 0, 0], None, None, 3).expect("a Bool column");
+		let guest =
+			finalize_buffer(ValueKind::Boolean, None, vec![5, 0, 0], None, None, 3).expect("a Bool column");
 		let host = ColumnBuffer::bool([true, false, true]);
 		assert_eq!(to_string(&guest).unwrap(), to_string(&host).unwrap());
 		assert_eq!(to_allocvec(&guest).unwrap(), to_allocvec(&host).unwrap());
@@ -1046,5 +1048,114 @@ mod tests {
 		let values = [i128::MIN, 1, i128::MAX];
 		let bytes: Vec<u8> = [0u8].into_iter().chain(values.iter().flat_map(|v| v.to_ne_bytes())).collect();
 		assert_eq!(numeric_bytes_to_vec::<i128>(&bytes[1..], values.len()), Some(values.to_vec()));
+	}
+
+	#[test]
+	fn int_at_both_widths_round_trips_through_the_host_builder() {
+		// A 16 byte cell read as 32 bytes, or a lost sign extension, changes every value at the width edge.
+		let narrow = Precision::new(38);
+		let edge = Int::parse("99999999999999999999999999999999999999").unwrap();
+		let narrow_values = vec![edge.clone(), edge.negate(), Int::zero(), Int::from_i64(-1)];
+		let output = host_to_guest_to_host(ColumnBuffer::int(narrow, narrow_values.clone()));
+		assert_eq!(output, ColumnBuffer::int(narrow, narrow_values));
+
+		let wide = Precision::MAX;
+		let wide_values = vec![
+			Int::MAX,
+			Int::MIN,
+			Int::from_i128(i128::MIN),
+			Int::from_i128(i128::MAX),
+			Int::from_i64(-1),
+		];
+		let output = host_to_guest_to_host(ColumnBuffer::int(wide, wide_values.clone()));
+		assert_eq!(output, ColumnBuffer::int(wide, wide_values));
+	}
+
+	#[test]
+	fn uint_at_both_widths_round_trips_through_the_host_builder() {
+		// A 16 byte cell read as 32 bytes, or an unsigned value read as signed, changes the top values.
+		let narrow = Precision::new(38);
+		let narrow_values = vec![
+			Uint::parse("99999999999999999999999999999999999999").unwrap(),
+			Uint::from_u128(1u128 << 64),
+			Uint::zero(),
+		];
+		let output = host_to_guest_to_host(ColumnBuffer::uint(narrow, narrow_values.clone()));
+		assert_eq!(output, ColumnBuffer::uint(narrow, narrow_values));
+
+		let wide = Precision::MAX;
+		let wide_values = vec![Uint::MAX, Uint::from_u128(u128::MAX), Uint::zero()];
+		let output = host_to_guest_to_host(ColumnBuffer::uint(wide, wide_values.clone()));
+		assert_eq!(output, ColumnBuffer::uint(wide, wide_values));
+	}
+
+	#[test]
+	fn decimal_at_both_widths_round_trips_through_the_host_builder() {
+		// Dropping the scale on the way back would read every unscaled value as a whole number.
+		let (narrow, narrow_scale) = (Precision::new(38), Scale::new(10));
+		let narrow_values =
+			decimals(&["9999999999999999999999999999.9999999999", "-0.0000000001", "0", "12.5"]);
+		let output = host_to_guest_to_host(ColumnBuffer::decimal(narrow, narrow_scale, narrow_values.clone()));
+		assert_eq!(output, ColumnBuffer::decimal(narrow, narrow_scale, narrow_values));
+
+		let (wide, wide_scale) = (Precision::MAX, Scale::new(20));
+		let wide_values = decimals(&[
+			"99999999999999999999999999999999999999999999999999999999.99999999999999999999",
+			"-99999999999999999999999999999999999999999999999999999999.99999999999999999999",
+			"0.00000000000000000001",
+		]);
+		let output = host_to_guest_to_host(ColumnBuffer::decimal(wide, wide_scale, wide_values.clone()));
+		assert_eq!(output, ColumnBuffer::decimal(wide, wide_scale, wide_values));
+	}
+
+	#[test]
+	fn family_acquire_with_invalid_precision_or_scale_returns_null() {
+		// Without the check a guest could size cells from a precision the column type cannot hold.
+		let registry = BuilderRegistry::new();
+		let bad = [
+			(ValueKind::Int, 0, 0),
+			(ValueKind::Int, 77, 0),
+			(ValueKind::Int, 38, 1),
+			(ValueKind::Uint, 38, 2),
+			(ValueKind::Decimal, 10, 11),
+			(ValueKind::Decimal, 0, 0),
+		];
+		for (kind, precision, scale) in bad {
+			// SAFETY: a registry is installed and nothing is written through the handle.
+			let handle = with_registry(&registry, || unsafe {
+				host_builder_acquire(ptr::null_mut(), kind, precision, scale, 4)
+			});
+			assert!(
+				handle.is_null(),
+				"{kind:?} with precision {precision} and scale {scale} must be rejected"
+			);
+		}
+		assert!(registry.inner.lock().slots.is_empty(), "a rejected acquire must not leave a builder behind");
+	}
+
+	#[test]
+	fn family_cell_with_more_digits_than_the_precision_is_a_marshal_error() {
+		// Building the column anyway would panic in arrow or store a value the column type forbids.
+		let precision = Precision::new(5);
+		let mut cells = 100_000i128.to_le_bytes().to_vec();
+		cells.extend_from_slice(&7i128.to_le_bytes());
+		for kind in [ValueKind::Int, ValueKind::Uint, ValueKind::Decimal] {
+			let result = finalize_buffer(kind, Some((precision, Scale::MIN)), cells.clone(), None, None, 2);
+			assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL), "{kind:?} must reject a 6 digit cell");
+		}
+	}
+
+	#[test]
+	fn negative_uint_cell_is_a_marshal_error() {
+		// A signed cell accepted as uint would wrap to a huge positive value.
+		let result = finalize_buffer(
+			ValueKind::Uint,
+			Some((Precision::new(38), Scale::MIN)),
+			(-1i128).to_le_bytes().to_vec(),
+			None,
+			None,
+			1,
+		);
+		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
 	}
 }

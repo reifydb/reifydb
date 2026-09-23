@@ -9,10 +9,7 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::{
-		bignum_array::{decimals, ints, uints},
-		decimal_array::u128s,
-	},
+	container::decimal_array::{decimals, ints, u128s, uints},
 	is::IsNumber,
 	value_type::ValueType,
 };
@@ -98,21 +95,9 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				};
 				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
 			}};
-			($variant:ident { .. }, $decode:ident) => {{
-				let (
-					ColumnBuffer::$variant {
-						container: v,
-						..
-					},
-					ColumnBuffer::$variant {
-						container: lo,
-						..
-					},
-					ColumnBuffer::$variant {
-						container: hi,
-						..
-					},
-				) = (v_inner, lo_inner, hi_inner)
+			($variant:ident(..), $decode:ident) => {{
+				let (ColumnBuffer::$variant(v), ColumnBuffer::$variant(lo), ColumnBuffer::$variant(hi)) =
+					(v_inner, lo_inner, hi_inner)
 				else {
 					unreachable!()
 				};
@@ -175,17 +160,24 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				let (values, bits) = run!(Float8);
 				ColumnBuffer::float8_with_bitvec(values, bits)
 			}
-			ValueType::Int => {
-				let (values, bits) = run!(Int { .. }, ints);
-				ColumnBuffer::int_with_bitvec(values, bits)
+			ValueType::Int {
+				precision,
+			} => {
+				let (values, bits) = run!(Int(..), ints);
+				ColumnBuffer::int_with_bitvec(precision, values, bits)
 			}
-			ValueType::Uint => {
-				let (values, bits) = run!(Uint { .. }, uints);
-				ColumnBuffer::uint_with_bitvec(values, bits)
+			ValueType::Uint {
+				precision,
+			} => {
+				let (values, bits) = run!(Uint(..), uints);
+				ColumnBuffer::uint_with_bitvec(precision, values, bits)
 			}
-			ValueType::Decimal => {
-				let (values, bits) = run!(Decimal { .. }, decimals);
-				ColumnBuffer::decimal_with_bitvec(values, bits)
+			ValueType::Decimal {
+				precision,
+				scale,
+			} => {
+				let (values, bits) = run!(Decimal(..), decimals);
+				ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits)
 			}
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};

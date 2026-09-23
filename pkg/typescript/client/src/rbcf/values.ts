@@ -106,20 +106,6 @@ export function formatBlob(bytes: Uint8Array): string {
     return `0x${hex}`;
 }
 
-export function signedBigIntFromLeBytes(bytes: Uint8Array): bigint {
-    if (bytes.length === 0) return 0n;
-    let u = 0n;
-    for (let i = bytes.length - 1; i >= 0; i--) {
-        u = (u << 8n) | BigInt(bytes[i]);
-    }
-    const highBit = bytes[bytes.length - 1] & 0x80;
-    if (highBit) {
-        const bits = BigInt(bytes.length) * 8n;
-        u -= 1n << bits;
-    }
-    return u;
-}
-
 export function signedBigIntToLeBytes(v: bigint): Uint8Array {
     if (v === 0n) return new Uint8Array(0);
     const negative = v < 0n;
@@ -137,6 +123,19 @@ export function signedBigIntToLeBytes(v: bigint): Uint8Array {
         cur = nextCur;
     }
     return Uint8Array.from(out);
+}
+
+export function digitCount(v: bigint): number {
+    return (v < 0n ? -v : v).toString().length;
+}
+
+export function formatFixedPoint(unscaled: bigint, scale: number): string {
+    const sign = unscaled < 0n ? "-" : "";
+    const magnitude = (unscaled < 0n ? -unscaled : unscaled).toString();
+    if (scale === 0) return `${sign}${magnitude}`;
+    const padded = magnitude.length <= scale ? "0".repeat(scale + 1 - magnitude.length) + magnitude : magnitude;
+    const point = padded.length - scale;
+    return `${sign}${padded.slice(0, point)}.${padded.slice(point)}`;
 }
 
 export function formatF32(v: number): string {

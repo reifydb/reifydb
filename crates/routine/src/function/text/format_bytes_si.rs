@@ -6,7 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::bignum_array::decimal_at, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, container::decimal_array::decimals, value_type::ValueType};
 
 use crate::function::text::format_bytes::{
 	format_bytes_internal, process_decimal_column, process_float_column, process_int_column,
@@ -60,11 +60,8 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 			ColumnBuffer::Float8(container) => {
 				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
-				process_decimal_column!(container, row_count, 1000.0, &SI_UNITS)
+			ColumnBuffer::Decimal(container) => {
+				process_decimal_column!(ctx, container, row_count, 1000.0, &SI_UNITS)
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
@@ -81,7 +78,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 						ValueType::Uint8,
 						ValueType::Float4,
 						ValueType::Float8,
-						ValueType::Decimal,
+						ValueType::DECIMAL,
 					],
 					actual: other.get_type(),
 				});

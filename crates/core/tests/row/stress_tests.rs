@@ -57,9 +57,9 @@ fn test_mixed_type_stress() {
 			ValueType::Uuid4,
 			ValueType::Uuid7,
 			ValueType::IdentityId,
-			ValueType::Int,
-			ValueType::Uint,
-			ValueType::Decimal,
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
 		],
 	);
 

@@ -12,7 +12,7 @@ impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 impl_safe_convert_float_to_int!(f64);
 impl_safe_convert_float_to_uint!(f64);
 
-impl_safe_convert_to_decimal_from_float!(f64);
+impl_safe_convert_to_decimal_from_float!(f64 => from_f64);
 
 #[cfg(test)]
 pub mod tests {
@@ -763,6 +763,20 @@ pub mod tests {
 			let y: Decimal = x.wrapping_convert();
 			let str_repr = y.to_string();
 			assert!(str_repr.starts_with("3.141"), "actual: {}", str_repr);
+		}
+
+		#[test]
+		fn checked_convert_refuses_floats_past_seventy_six_digits() {
+			// 1e80 has no decimal form, so a checked cast must fail and a saturating one must clamp with
+			// its sign.
+			let y: Option<Decimal> = 1e80f64.checked_convert();
+			assert_eq!(y, None);
+			let y: Decimal = 1e80f64.saturating_convert();
+			assert_eq!(y.to_string(), "9".repeat(76));
+			let y: Decimal = (-1e80f64).saturating_convert();
+			assert_eq!(y.to_string(), format!("-{}", "9".repeat(76)));
+			let y: Option<Decimal> = 1e-300f64.checked_convert();
+			assert_eq!(y, Some(Decimal::zero()));
 		}
 	}
 }

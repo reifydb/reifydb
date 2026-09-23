@@ -79,101 +79,59 @@ macro_rules! impl_safe_rem_unsigned {
 impl_safe_rem_signed!(i8, i16, i32, i64, i128);
 impl_safe_rem_unsigned!(u8, u16, u32, u64, u128);
 
-use bigdecimal::{BigDecimal, Zero};
-use num_bigint::BigInt;
-
 use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeRemainder for Int {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		if r.0 == BigInt::from(0) {
-			None
-		} else {
-			Some(Int::from(&self.0 % &r.0))
-		}
+		Int::checked_rem(self, r)
 	}
 
 	fn saturating_rem(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Int::from(0)
-		} else {
-			Int::from(&self.0 % &r.0)
-		}
+		Int::checked_rem(self, r).unwrap_or_default()
 	}
 
 	fn wrapping_rem(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Int::from(0)
-		} else {
-			Int::from(&self.0 % &r.0)
-		}
+		Int::checked_rem(self, r).unwrap_or_default()
 	}
 
 	fn is_zero(&self) -> bool {
-		self.0 == BigInt::from(0)
+		Int::is_zero(self)
 	}
 }
 
 impl SafeRemainder for Uint {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		if r.0 == BigInt::from(0) {
-			None
-		} else {
-			Some(Uint::from(&self.0 % &r.0))
-		}
+		Uint::checked_rem(self, r)
 	}
 
 	fn saturating_rem(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Uint::from(0u64)
-		} else {
-			Uint::from(&self.0 % &r.0)
-		}
+		Uint::checked_rem(self, r).unwrap_or_default()
 	}
 
 	fn wrapping_rem(&self, r: &Self) -> Self {
-		if r.0 == BigInt::from(0) {
-			Uint::from(0u64)
-		} else {
-			Uint::from(&self.0 % &r.0)
-		}
+		Uint::checked_rem(self, r).unwrap_or_default()
 	}
 
 	fn is_zero(&self) -> bool {
-		self.0 == BigInt::from(0)
+		Uint::is_zero(self)
 	}
 }
 
 impl SafeRemainder for Decimal {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		if r.inner().is_zero() {
-			None
-		} else {
-			let result = self.inner() % r.inner();
-			Some(Decimal::from(result))
-		}
+		Decimal::checked_rem(self, r)
 	}
 
 	fn saturating_rem(&self, r: &Self) -> Self {
-		if r.inner().is_zero() {
-			Decimal::from(BigDecimal::from(0))
-		} else {
-			let result = self.inner() % r.inner();
-			Decimal::from(result)
-		}
+		Decimal::saturating_rem(self, r)
 	}
 
 	fn wrapping_rem(&self, r: &Self) -> Self {
-		if r.inner().is_zero() {
-			Decimal::from(BigDecimal::from(0))
-		} else {
-			let result = self.inner() % r.inner();
-			Decimal::from(result)
-		}
+		Decimal::saturating_rem(self, r)
 	}
 
 	fn is_zero(&self) -> bool {
-		self.inner().is_zero()
+		Decimal::is_zero(self)
 	}
 }
 

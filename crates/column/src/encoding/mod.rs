@@ -67,7 +67,6 @@ impl EncodingRegistry {
 		r.register(Arc::new(CanonicalEncoding::BOOL));
 		r.register(Arc::new(CanonicalEncoding::FIXED));
 		r.register(Arc::new(CanonicalEncoding::VARLEN));
-		r.register(Arc::new(CanonicalEncoding::BIGNUM));
 		r.register(Arc::new(ConstantEncoding));
 		r.register(Arc::new(AllNoneEncoding));
 		r.register(Arc::new(DictEncoding));

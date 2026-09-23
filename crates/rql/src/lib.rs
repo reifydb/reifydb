@@ -10,7 +10,7 @@ use reifydb_core::internal_error;
 use reifydb_value::{
 	Result,
 	value::{
-		constraint::{Constraint, TypeConstraint},
+		constraint::{Constraint, TypeConstraint, precision::Precision, scale::Scale},
 		digest::{Digest, DigestError, literal::parse_accuracy},
 		value_type::ValueType,
 	},
@@ -65,9 +65,9 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 		"uuid7" => ValueType::Uuid7,
 		"identityid" | "identity_id" => ValueType::IdentityId,
 		"blob" => ValueType::Blob,
-		"int" => ValueType::Int,
-		"uint" => ValueType::Uint,
-		"decimal" => ValueType::Decimal,
+		"int" => ValueType::INT,
+		"uint" => ValueType::UINT,
+		"decimal" => ValueType::DECIMAL,
 		_ => {
 			return Err(AstError::UnrecognizedType {
 				fragment: ast.to_owned(),
@@ -97,44 +97,50 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		} => {
 			let base_type = convert_data_type(name)?;
 
-			let constraint = match (base_type.clone(), params.as_slice()) {
-				(ValueType::Utf8, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
+			Ok(match (base_type.clone(), params.as_slice()) {
+				(ValueType::Utf8, [AstTypeParameter::Literal(AstLiteral::Number(n))])
+				| (ValueType::Blob, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
-					Constraint::MaxBytes(max_bytes.into())
-				}
-				(ValueType::Blob, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
-					let max_bytes = parse_number_literal(n.value())? as u32;
-					Constraint::MaxBytes(max_bytes.into())
-				}
-				(ValueType::Int, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
-					let max_bytes = parse_number_literal(n.value())? as u32;
-					Constraint::MaxBytes(max_bytes.into())
-				}
-				(ValueType::Uint, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
-					let max_bytes = parse_number_literal(n.value())? as u32;
-					Constraint::MaxBytes(max_bytes.into())
+					TypeConstraint::with_constraint(
+						base_type,
+						Constraint::MaxBytes(max_bytes.into()),
+					)
 				}
 				(
-					ValueType::Decimal,
+					ValueType::Int {
+						..
+					},
+					[AstTypeParameter::Literal(AstLiteral::Number(n))],
+				) => TypeConstraint::unconstrained(ValueType::int(parse_precision(n.value())?)),
+				(
+					ValueType::Uint {
+						..
+					},
+					[AstTypeParameter::Literal(AstLiteral::Number(n))],
+				) => TypeConstraint::unconstrained(ValueType::uint(parse_precision(n.value())?)),
+				(
+					ValueType::Decimal {
+						..
+					},
 					[
 						AstTypeParameter::Literal(AstLiteral::Number(p)),
 						AstTypeParameter::Literal(AstLiteral::Number(s)),
 					],
 				) => {
-					let precision = parse_number_literal(p.value())? as u8;
-					let scale = parse_number_literal(s.value())? as u8;
-					Constraint::PrecisionScale(precision.into(), scale.into())
+					let precision = parse_precision(p.value())?;
+					let scale = Scale::try_new_with_precision(
+						parse_type_parameter(s.value())?,
+						precision,
+					)?;
+					TypeConstraint::unconstrained(ValueType::decimal(precision, scale))
 				}
-
 				_ => {
 					return Err(AstError::UnsupportedTypeParameters {
 						fragment: name.to_owned(),
 					}
 					.into());
 				}
-			};
-
-			Ok(TypeConstraint::with_constraint(base_type, constraint))
+			})
 		}
 		AstType::Optional(inner) => {
 			if let AstType::Optional(nested) = inner.as_ref() {
@@ -162,6 +168,14 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 
 fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
+}
+
+fn parse_type_parameter(s: &str) -> Result<u8> {
+	Ok(u8::try_from(parse_number_literal(s)?).unwrap_or(u8::MAX))
+}
+
+fn parse_precision(s: &str) -> Result<Precision> {
+	Ok(Precision::try_new(parse_type_parameter(s)?)?)
 }
 
 pub(crate) fn convert_procedure_param_type(ast: &AstType) -> Result<TypeConstraint> {

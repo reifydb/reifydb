@@ -8,7 +8,6 @@ impl EncodingId {
 	pub const CANONICAL_BOOL: EncodingId = EncodingId("column.canonical.bool");
 	pub const CANONICAL_FIXED: EncodingId = EncodingId("column.canonical.fixed");
 	pub const CANONICAL_VARLEN: EncodingId = EncodingId("column.canonical.varlen");
-	pub const CANONICAL_BIGNUM: EncodingId = EncodingId("column.canonical.bignum");
 	pub const CONSTANT: EncodingId = EncodingId("column.constant");
 	pub const ALL_NONE: EncodingId = EncodingId("column.all_none");
 	pub const DICT: EncodingId = EncodingId("column.dict");

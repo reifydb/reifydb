@@ -97,7 +97,7 @@ fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
 	let shape = RowShape::testing(
 		RowFamily::Pod,
-		&[ValueType::Utf8, ValueType::Blob, ValueType::Int, ValueType::Decimal],
+		&[ValueType::Utf8, ValueType::Blob, ValueType::INT, ValueType::DECIMAL],
 	);
 
 	let mut original = shape.allocate_pod();

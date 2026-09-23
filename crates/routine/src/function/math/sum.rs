@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
+use std::{iter, mem};
 
 use reifydb_core::{
 	metrics::heap::HeapSize,
@@ -22,10 +22,8 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::{
-			bignum_array::{decimal_at, int_at, uint_at},
-			decimal_array::u128s,
-		},
+		constraint::{precision::Precision, scale::Scale},
+		container::decimal_array::{decimals, ints, u128s, uints},
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
@@ -57,7 +55,7 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 	}
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
-		input_types.first().cloned().unwrap_or(ValueType::Int8)
+		sum_type(input_types.first().cloned().unwrap_or(ValueType::Int8), iter::empty())
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -92,6 +90,30 @@ impl Function for Sum {
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
 		&[AggregateFunctionCapability::Retractable]
+	}
+}
+
+fn sum_type<'a>(input: ValueType, sums: impl Iterator<Item = &'a Value>) -> ValueType {
+	match input {
+		ValueType::Int {
+			..
+		} => ValueType::INT,
+		ValueType::Uint {
+			..
+		} => ValueType::UINT,
+		ValueType::Decimal {
+			scale,
+			..
+		} => {
+			let widest = sums
+				.filter_map(|sum| match sum {
+					Value::Decimal(value) => Some(value.scale()),
+					_ => None,
+				})
+				.fold(scale.value(), u8::max);
+			ValueType::decimal(Precision::MAX, Scale::new(widest))
+		}
+		other => other,
 	}
 }
 
@@ -212,6 +234,73 @@ macro_rules! sub_arm_float {
 	};
 }
 
+macro_rules! sum_family_arm {
+	($self:expr, $column:expr, $groups:expr, $values:expr, $zero:expr, $variant:ident, $target:expr) => {{
+		let function = $self.function.clone();
+		let target = $target;
+		let overflow = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: target.clone(),
+				fragment: function.clone(),
+				descriptor: None,
+			}
+			.into()
+		};
+		for &(group, ref indices) in $groups.iter() {
+			let mut delta = $zero;
+			let mut has_value = false;
+			for &i in indices {
+				if $column.is_defined(i)
+					&& let Some(val) = $values.get(i)
+				{
+					delta = delta.checked_add(val).ok_or_else(overflow)?;
+					has_value = true;
+				}
+			}
+			if has_value {
+				let merged = match $self.sums.remove(group) {
+					Some(Value::$variant(prev)) => prev.checked_add(&delta).ok_or_else(overflow)?,
+					_ => delta,
+				};
+				$self.sums.insert(group, Value::$variant(merged));
+			} else {
+				$self.sums.or_insert(group, Value::none());
+			}
+		}
+	}};
+}
+
+macro_rules! sub_family_arm {
+	($self:expr, $column:expr, $groups:expr, $values:expr, $zero:expr, $variant:ident, $target:expr) => {{
+		let function = $self.function.clone();
+		let target = $target;
+		let overflow = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: target.clone(),
+				fragment: function.clone(),
+				descriptor: None,
+			}
+			.into()
+		};
+		for &(group, ref indices) in $groups.iter() {
+			let mut delta = $zero;
+			let mut has_value = false;
+			for &i in indices {
+				if $column.is_defined(i)
+					&& let Some(val) = $values.get(i)
+				{
+					delta = delta.checked_add(val).ok_or_else(overflow)?;
+					has_value = true;
+				}
+			}
+			if has_value && let Some(Value::$variant(prev)) = $self.sums.remove(group) {
+				let remaining = prev.checked_sub(&delta).ok_or_else(overflow)?;
+				$self.sums.insert(group, Value::$variant(remaining));
+			}
+		}
+	}};
+}
+
 impl Accumulator for SumAccumulator {
 	fn heap_size(&self) -> usize {
 		self.sums.heap_size()
@@ -275,85 +364,20 @@ impl Accumulator for SumAccumulator {
 				sum_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
 				Ok(())
 			}
-			ColumnBuffer::Int {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Int::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = int_at(container, i)
-						{
-							delta = Int(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value {
-						let merged = match self.sums.remove(group) {
-							Some(Value::Int(prev)) => Int(prev.0 + &delta.0),
-							_ => delta,
-						};
-						self.sums.insert(group, Value::Int(merged));
-					} else {
-						self.sums.or_insert(group, Value::none());
-					}
-				}
+			ColumnBuffer::Int(container) => {
+				let values = ints(container);
+				sum_family_arm!(self, column, groups, values, Int::zero(), Int, ValueType::INT);
 				Ok(())
 			}
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Uint::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = uint_at(container, i)
-						{
-							delta = Uint(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value {
-						let merged = match self.sums.remove(group) {
-							Some(Value::Uint(prev)) => Uint(prev.0 + &delta.0),
-							_ => delta,
-						};
-						self.sums.insert(group, Value::Uint(merged));
-					} else {
-						self.sums.or_insert(group, Value::none());
-					}
-				}
+			ColumnBuffer::Uint(container) => {
+				let values = uints(container);
+				sum_family_arm!(self, column, groups, values, Uint::zero(), Uint, ValueType::UINT);
 				Ok(())
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Decimal::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = decimal_at(container, i)
-						{
-							delta = Decimal(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value {
-						let merged = match self.sums.remove(group) {
-							Some(Value::Decimal(prev)) => Decimal(prev.0 + &delta.0),
-							_ => delta,
-						};
-						self.sums.insert(group, Value::Decimal(merged));
-					} else {
-						self.sums.or_insert(group, Value::none());
-					}
-				}
+			ColumnBuffer::Decimal(container) => {
+				let values = decimals(container);
+				let target = ValueType::decimal(Precision::MAX, container.scale());
+				sum_family_arm!(self, column, groups, values, Decimal::zero(), Decimal, target);
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
@@ -366,11 +390,12 @@ impl Accumulator for SumAccumulator {
 	}
 
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
-		let ty = self.input_type.take().unwrap_or(ValueType::Int8);
-		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data = ColumnBuilder::with_capacity(ty, self.sums.len());
+		let sums: Vec<(GroupId, Value)> = mem::take(&mut self.sums).into_iter().collect();
+		let ty = sum_type(self.input_type.take().unwrap_or(ValueType::Int8), sums.iter().map(|(_, sum)| sum));
+		let mut keys = Vec::with_capacity(sums.len());
+		let mut data = ColumnBuilder::with_capacity(ty, sums.len());
 
-		for (key, sum) in mem::take(&mut self.sums) {
+		for (key, sum) in sums {
 			keys.push(key);
 			data.push_value(sum);
 		}
@@ -440,67 +465,20 @@ impl Accumulator for SumAccumulator {
 				sub_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
 				Ok(())
 			}
-			ColumnBuffer::Int {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Int::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = int_at(container, i)
-						{
-							delta = Int(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value && let Some(Value::Int(prev)) = self.sums.remove(group) {
-						self.sums.insert(group, Value::Int(Int(prev.0 - &delta.0)));
-					}
-				}
+			ColumnBuffer::Int(container) => {
+				let values = ints(container);
+				sub_family_arm!(self, column, groups, values, Int::zero(), Int, ValueType::INT);
 				Ok(())
 			}
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Uint::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = uint_at(container, i)
-						{
-							delta = Uint(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value && let Some(Value::Uint(prev)) = self.sums.remove(group) {
-						self.sums.insert(group, Value::Uint(Uint(prev.0 - &delta.0)));
-					}
-				}
+			ColumnBuffer::Uint(container) => {
+				let values = uints(container);
+				sub_family_arm!(self, column, groups, values, Uint::zero(), Uint, ValueType::UINT);
 				Ok(())
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Decimal::zero();
-					let mut has_value = false;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = decimal_at(container, i)
-						{
-							delta = Decimal(delta.0 + &val.0);
-							has_value = true;
-						}
-					}
-					if has_value && let Some(Value::Decimal(prev)) = self.sums.remove(group) {
-						self.sums.insert(group, Value::Decimal(Decimal(prev.0 - &delta.0)));
-					}
-				}
+			ColumnBuffer::Decimal(container) => {
+				let values = decimals(container);
+				let target = ValueType::decimal(Precision::MAX, container.scale());
+				sub_family_arm!(self, column, groups, values, Decimal::zero(), Decimal, target);
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

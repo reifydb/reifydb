@@ -16,7 +16,8 @@ use crate::{
 pub struct Scale(u8);
 
 impl Scale {
-	pub fn new(scale: u8) -> Self {
+	pub const fn new(scale: u8) -> Self {
+		assert!(scale <= Self::MAX.0, "scale must be between 0 and 76");
 		Self(scale)
 	}
 
@@ -32,11 +33,11 @@ impl Scale {
 		Ok(Self(scale))
 	}
 
-	pub fn value(self) -> u8 {
+	pub const fn value(self) -> u8 {
 		self.0
 	}
 
-	pub const MAX: Self = Self(255);
+	pub const MAX: Self = Self(76);
 
 	pub const MIN: Self = Self(0);
 }

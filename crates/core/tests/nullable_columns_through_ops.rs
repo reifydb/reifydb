@@ -4,7 +4,6 @@
 use std::fmt::Write as _;
 
 use arrow_buffer::BooleanBuffer;
-use num_bigint::BigInt;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
@@ -14,8 +13,19 @@ use reifydb_core::value::column::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value, blob::Blob, date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId,
-		digest::Digest, duration::Duration, frame::data::FrameColumnData, int::Int, time::Time, uuid::Uuid4,
+		Value,
+		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		digest::Digest,
+		duration::Duration,
+		frame::data::FrameColumnData,
+		int::Int,
+		time::Time,
+		uuid::Uuid4,
 		value_type::ValueType,
 	},
 };
@@ -303,19 +313,23 @@ matrix! {
 	dictionary_id => ValueType::DictionaryId, |rows| {
 		ColumnBuffer::dictionary_id(rows.iter().map(|&row| DictionaryEntryId::U4([1, 99, 3, 4][row])))
 	};
-	int => ValueType::Int, |rows| {
-		ColumnBuffer::int(rows.iter().map(|&row| {
+	int => ValueType::int(Precision::new(40)), |rows| {
+		ColumnBuffer::int(Precision::new(40), rows.iter().map(|&row| {
 			[
 				Int::from(1i64),
 				Int::from(99i64),
-				Int("-1234567890123456789012345678901234567890".parse::<BigInt>().unwrap()),
+				"-1234567890123456789012345678901234567890".parse::<Int>().unwrap(),
 				Int::from(-3i64),
 			][row]
 				.clone()
 		}))
 	};
-	decimal => ValueType::Decimal, |rows| {
-		ColumnBuffer::decimal(rows.iter().map(|&row| ["1.5", "99", "-3.25", "4"][row].parse::<Decimal>().unwrap()))
+	decimal => ValueType::decimal(Precision::new(10), Scale::new(2)), |rows| {
+		ColumnBuffer::decimal(
+			Precision::new(10),
+			Scale::new(2),
+			rows.iter().map(|&row| ["1.5", "99", "-3.25", "4"][row].parse::<Decimal>().unwrap()),
+		)
 	};
 	any => ValueType::Any, |rows| {
 		ColumnBuffer::any(rows.iter().map(|&row| {

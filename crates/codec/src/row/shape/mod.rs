@@ -9,7 +9,6 @@ use std::{
 	fmt::Debug,
 	iter,
 	ops::Deref,
-	ptr,
 	sync::{Arc, OnceLock},
 };
 
@@ -39,11 +38,6 @@ use crate::row::{
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
 	table::EncodedTableRowBuilder,
 };
-
-const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
-const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
-const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
-const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -340,22 +334,6 @@ impl RowShape {
 						as usize;
 				Some((offset, length))
 			}
-			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
-				// SAFETY: these three types occupy a 16-byte static slot, and the shape
-				// guarantees field.offset + 16 lies inside the row's static section;
-				// read_unaligned needs no alignment and u128 has no invalid patterns.
-				let packed = unsafe {
-					(row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned()
-				};
-				let packed = u128::from_le(packed);
-				if packed & PACKED_MODE_MASK != 0 {
-					let offset = (packed & PACKED_OFFSET_MASK) as usize;
-					let length = ((packed & PACKED_LENGTH_MASK) >> 64) as usize;
-					Some((offset, length))
-				} else {
-					None
-				}
-			}
 			_ => None,
 		}
 	}
@@ -373,20 +351,6 @@ impl RowShape {
 					&mut row.as_mut_slice()[field.offset as usize..field.offset as usize + 8];
 				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());
 				ref_slice[4..8].copy_from_slice(&(length as u32).to_le_bytes());
-			}
-			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
-				let offset_part = (offset as u128) & PACKED_OFFSET_MASK;
-				let length_part = ((length as u128) << 64) & PACKED_LENGTH_MASK;
-				let packed = PACKED_MODE_DYNAMIC | offset_part | length_part;
-				// SAFETY: these three types occupy a 16-byte static slot, and the shape
-				// guarantees field.offset + 16 lies inside the row's static section;
-				// make_mut() gives unique ownership and write_unaligned needs no alignment.
-				unsafe {
-					ptr::write_unaligned(
-						row.as_mut_slice().as_mut_ptr().add(field.offset as usize) as *mut u128,
-						packed.to_le(),
-					);
-				}
 			}
 			_ => {}
 		}

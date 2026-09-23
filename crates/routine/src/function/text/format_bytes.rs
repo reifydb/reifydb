@@ -6,7 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::bignum_array::decimal_at, value_type::ValueType};
+use reifydb_value::value::{constraint::bytes::MaxBytes, container::decimal_array::decimals, value_type::ValueType};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -83,18 +83,17 @@ macro_rules! process_float_column {
 
 #[macro_export]
 macro_rules! process_decimal_column {
-	($container:expr, $row_count:expr, $base:expr, $units:expr) => {{
+	($ctx:expr, $container:expr, $row_count:expr, $base:expr, $units:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
 
-		for i in 0..$row_count {
-			if let Some(value) = decimal_at($container, i) {
-				let s = value.to_string();
-				let int_part = s.split('.').next().unwrap_or("0");
-				let bytes = int_part.parse::<i64>().unwrap_or(0);
-				result_data.push(format_bytes_internal(bytes, $base, $units));
-			} else {
-				result_data.push(String::new());
-			}
+		for value in decimals($container) {
+			let bytes = value.trunc().to_i128().and_then(|bytes| i64::try_from(bytes).ok()).ok_or_else(
+				|| RoutineError::FunctionExecutionFailed {
+					function: $ctx.fragment.clone(),
+					reason: format!("{value} is out of range for {}", ValueType::Int8),
+				},
+			)?;
+			result_data.push(format_bytes_internal(bytes, $base, $units));
 		}
 
 		ColumnBuffer::Utf8 {
@@ -150,11 +149,8 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytes {
 			ColumnBuffer::Float8(container) => {
 				process_float_column!(container, row_count, 1024.0, &IEC_UNITS)
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
-				process_decimal_column!(container, row_count, 1024.0, &IEC_UNITS)
+			ColumnBuffer::Decimal(container) => {
+				process_decimal_column!(ctx, container, row_count, 1024.0, &IEC_UNITS)
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
@@ -171,7 +167,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytes {
 						ValueType::Uint8,
 						ValueType::Float4,
 						ValueType::Float8,
-						ValueType::Decimal,
+						ValueType::DECIMAL,
 					],
 					actual: other.get_type(),
 				});

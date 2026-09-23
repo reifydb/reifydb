@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::operation,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::common_key_type},
 };
 use reifydb_evaluate::expression::compile::CompiledExpr;
 use reifydb_transaction::transaction::Transaction;
@@ -215,25 +215,29 @@ pub(crate) fn ensure_join_keyable(columns: &Columns, key_indices: &[usize]) -> R
 	Ok(())
 }
 
-pub(crate) fn ensure_join_key_types_match(
+pub(crate) fn join_key_types(
 	left: &Columns,
 	left_indices: &[usize],
 	right: &Columns,
 	right_indices: &[usize],
 	fragment: impl Fn(usize) -> Fragment,
-) -> Result<()> {
+) -> Result<Vec<ValueType>> {
+	let mut targets = Vec::with_capacity(left_indices.len());
 	for (key, (&li, &ri)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
 		let left_ty = left[li].get_type();
 		let right_ty = right[ri].get_type();
-		if left_ty.inner_type() != right_ty.inner_type() {
-			return Err(error!(operation::join_key_type_mismatch(
-				fragment(key),
-				left_ty.inner_type().clone(),
-				right_ty.inner_type().clone()
-			)));
+		match common_key_type(left_ty.inner_type(), right_ty.inner_type()) {
+			Some(target) => targets.push(target),
+			None => {
+				return Err(error!(operation::join_key_type_mismatch(
+					fragment(key),
+					left_ty.inner_type().clone(),
+					right_ty.inner_type().clone()
+				)));
+			}
 		}
 	}
-	Ok(())
+	Ok(targets)
 }
 
 pub(crate) fn eval_join_condition(

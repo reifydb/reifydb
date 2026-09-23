@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::bignum_array::{decimal_array, decimal_at},
+	container::decimal_array::{decimal_array, decimals},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -72,25 +71,23 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				}
 				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => {
+			ColumnBuffer::Decimal(container) => {
+				let precision = container.precision();
+				let scale = container.scale();
 				let mut data = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					if let Some(value) = decimal_at(container, i) {
-						let f = value.0.to_f64().unwrap_or(0.0);
-						data.push(Decimal::from(f.trunc()));
-					} else {
-						data.push(Decimal::default());
-					}
+				for value in decimals(container) {
+					let rounded = Decimal::from_f64(value.to_f64().trunc())
+						.and_then(|rounded| rounded.fits(precision.value(), scale.value()))
+						.ok_or_else(|| RoutineError::FunctionExecutionFailed {
+							function: ctx.fragment.clone(),
+							reason: format!(
+								"truncate of {value} is out of range for {}",
+								ValueType::decimal(precision, scale)
+							),
+						})?;
+					data.push(rounded);
 				}
-				ColumnBuffer::Decimal {
-					container: decimal_array(data),
-					precision: *precision,
-					scale: *scale,
-				}
+				ColumnBuffer::Decimal(decimal_array(precision, scale, data))
 			}
 			other if other.get_type().is_number() => data.clone(),
 			other => {

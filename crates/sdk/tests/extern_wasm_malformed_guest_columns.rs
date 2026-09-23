@@ -28,6 +28,22 @@ impl<E: Display> Unmarshalled for Result<Columns, E> {
 }
 
 fn guest_bytes(type_code: u8, name: &[u8], rows: u32, data: &[u8], offsets: &[u64]) -> Vec<u8> {
+	guest_bytes_with_params(type_code, 0, 0, name, rows, data, offsets)
+}
+
+fn guest_family_bytes(kind: ValueKind, precision: u8, scale: u8, rows: u32, data: &[u8]) -> Vec<u8> {
+	guest_bytes_with_params(kind.byte(), precision, scale, b"c", rows, data, &[])
+}
+
+fn guest_bytes_with_params(
+	type_code: u8,
+	precision: u8,
+	scale: u8,
+	name: &[u8],
+	rows: u32,
+	data: &[u8],
+	offsets: &[u64],
+) -> Vec<u8> {
 	let name_offset = (EXTERN_WASM_COLUMNS_HEADER_SIZE + EXTERN_WASM_COLUMN_SIZE) as u32;
 	let data_offset = name_offset + name.len() as u32;
 	let offsets_offset = data_offset + data.len() as u32;
@@ -43,6 +59,8 @@ fn guest_bytes(type_code: u8, name: &[u8], rows: u32, data: &[u8], offsets: &[u6
 		name_offset,
 		name_len: name.len() as u32,
 		type_code,
+		precision,
+		scale,
 		data_row_count: rows,
 		data_offset,
 		data_len: data.len() as u32,
@@ -96,10 +114,59 @@ fn not_rejected(bytes: &[u8]) -> Option<String> {
 }
 
 #[test]
-fn guest_decimal_that_does_not_parse_is_an_error_not_zero() {
-	// A decimal cell that does not parse must fail the call, never read back as zero.
-	let cell = b"not a decimal";
-	assert_rejected(&guest_bytes(ValueKind::Decimal.byte(), b"c", 1, cell, &[0, cell.len() as u64]));
+fn guest_family_cell_past_its_precision_is_an_error_not_a_value() {
+	// A cell with more digits than the column precision must fail the call, never read back as a value the type
+	// forbids.
+	let cell = 100_000i128.to_le_bytes();
+	let failures: Vec<String> = [ValueKind::Int, ValueKind::Uint, ValueKind::Decimal]
+		.into_iter()
+		.filter_map(|kind| {
+			not_rejected(&guest_family_bytes(kind, 5, 0, 1, &cell))
+				.map(|failure| format!("{kind:?} {failure}"))
+		})
+		.collect();
+	assert!(failures.is_empty(), "a 6 digit cell at precision 5 was not rejected: {failures:?}");
+}
+
+#[test]
+fn guest_negative_uint_cell_is_an_error_not_a_large_value() {
+	// A negative cell accepted as uint would wrap to a huge positive value.
+	assert_rejected(&guest_family_bytes(ValueKind::Uint, 38, 0, 1, &(-1i128).to_le_bytes()));
+}
+
+#[test]
+fn guest_family_data_shorter_than_the_row_count_is_an_error_not_a_panic() {
+	// Two rows need two whole cells; a guest that sends a partial second cell must fail the call, never panic the
+	// host.
+	let failures: Vec<String> = [ValueKind::Int, ValueKind::Uint, ValueKind::Decimal]
+		.into_iter()
+		.flat_map(|kind| [(kind, 38u8, 17usize), (kind, 76, 33)])
+		.filter_map(|(kind, precision, len)| {
+			not_rejected(&guest_family_bytes(kind, precision, 0, 2, &vec![0u8; len]))
+				.map(|failure| format!("{kind:?} at precision {precision} {failure}"))
+		})
+		.collect();
+	assert!(failures.is_empty(), "a partial second cell was not rejected: {failures:?}");
+}
+
+#[test]
+fn guest_family_column_with_invalid_precision_or_scale_is_an_error() {
+	// Without the check a guest could size cells from a precision the column type cannot hold.
+	let failures: Vec<String> = [
+		(ValueKind::Int, 0, 0),
+		(ValueKind::Int, 77, 0),
+		(ValueKind::Int, 38, 1),
+		(ValueKind::Uint, 38, 2),
+		(ValueKind::Decimal, 10, 11),
+		(ValueKind::Decimal, 0, 0),
+	]
+	.into_iter()
+	.filter_map(|(kind, precision, scale)| {
+		not_rejected(&guest_family_bytes(kind, precision, scale, 1, &[0u8; 32]))
+			.map(|failure| format!("{kind:?} with precision {precision} and scale {scale} {failure}"))
+	})
+	.collect();
+	assert!(failures.is_empty(), "invalid family params were not rejected: {failures:?}");
 }
 
 #[test]
@@ -151,21 +218,13 @@ fn guest_sixteen_byte_columns_with_a_partial_value_are_an_error_not_a_panic() {
 #[test]
 fn guest_offsets_shorter_than_the_row_count_are_an_error_not_a_panic() {
 	// Two rows need three offsets; a guest that sends fewer must fail the call, never panic the host.
-	let failures: Vec<String> = [
-		ValueKind::Utf8,
-		ValueKind::Blob,
-		ValueKind::Duration,
-		ValueKind::Int,
-		ValueKind::Uint,
-		ValueKind::Decimal,
-		ValueKind::Any,
-	]
-	.into_iter()
-	.filter_map(|kind| {
-		not_rejected(&guest_bytes(kind.byte(), b"c", 2, b"ab", &[0]))
-			.map(|failure| format!("{kind:?} {failure}"))
-	})
-	.collect();
+	let failures: Vec<String> = [ValueKind::Utf8, ValueKind::Blob, ValueKind::Duration, ValueKind::Any]
+		.into_iter()
+		.filter_map(|kind| {
+			not_rejected(&guest_bytes(kind.byte(), b"c", 2, b"ab", &[0]))
+				.map(|failure| format!("{kind:?} {failure}"))
+		})
+		.collect();
 	assert!(failures.is_empty(), "one offset for 2 rows was not rejected: {failures:?}");
 }
 

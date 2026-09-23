@@ -5,7 +5,10 @@ use std::cmp::min;
 
 use ValueType::*;
 
-use crate::value::value_type::ValueType;
+use crate::value::{
+	constraint::{precision::Precision, scale::Scale},
+	value_type::ValueType,
+};
 
 impl ValueType {
 	pub fn promote(left: ValueType, right: ValueType) -> ValueType {
@@ -25,19 +28,17 @@ impl ValueType {
 			return Boolean;
 		}
 
-		if left == Decimal || right == Decimal {
-			return Decimal;
+		if matches!(left, Decimal { .. }) || matches!(right, Decimal { .. }) {
+			let scale = left.scale().max(right.scale()).unwrap_or(Scale::MIN);
+			return ValueType::decimal(Precision::MAX, scale);
 		}
 
-		if left == Int || right == Int {
-			if matches!(left, Uint) || matches!(right, Uint) {
-				return Int;
-			}
-			return Int;
+		if matches!(left, Int { .. }) || matches!(right, Int { .. }) {
+			return ValueType::INT;
 		}
 
-		if left == Uint || right == Uint {
-			return Uint;
+		if matches!(left, Uint { .. }) || matches!(right, Uint { .. }) {
+			return ValueType::UINT;
 		}
 
 		if left == Float8 || right == Float8 {
@@ -90,7 +91,10 @@ impl ValueType {
 pub mod tests {
 	use ValueType::*;
 
-	use crate::value::value_type::ValueType;
+	use crate::value::{
+		constraint::{precision::Precision, scale::Scale},
+		value_type::ValueType,
+	};
 
 	#[test]
 	fn test_promote_bool() {
@@ -405,9 +409,9 @@ pub mod tests {
 			Blob,
 			IdentityId,
 			DictionaryId,
-			Int,
-			Uint,
-			Decimal,
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
 			Any,
 		];
 		for ty in kinds {
@@ -439,5 +443,22 @@ pub mod tests {
 		for (left, right, expected) in cases {
 			assert_eq!(ValueType::promote(left, right), expected);
 		}
+	}
+
+	#[test]
+	fn promote_to_decimal_keeps_the_widest_scale_at_full_precision() {
+		// A narrower scale would drop fraction digits of one operand when the other is widened into it.
+		let narrow = ValueType::decimal(Precision::new(10), Scale::new(2));
+		let deep = ValueType::decimal(Precision::new(20), Scale::new(5));
+		assert_eq!(ValueType::promote(narrow.clone(), deep), ValueType::decimal(Precision::MAX, Scale::new(5)));
+		assert_eq!(ValueType::promote(narrow.clone(), Int4), ValueType::decimal(Precision::MAX, Scale::new(2)));
+		assert_eq!(
+			ValueType::promote(ValueType::INT, narrow.clone()),
+			ValueType::decimal(Precision::MAX, Scale::new(2))
+		);
+		assert_eq!(ValueType::promote(Float8, narrow), ValueType::decimal(Precision::MAX, Scale::new(2)));
+		assert_eq!(ValueType::promote(ValueType::int(Precision::new(5)), Int16), ValueType::INT);
+		assert_eq!(ValueType::promote(ValueType::uint(Precision::new(5)), ValueType::INT), ValueType::INT);
+		assert_eq!(ValueType::promote(ValueType::uint(Precision::new(5)), Uint1), ValueType::UINT);
 	}
 }

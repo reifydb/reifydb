@@ -6,11 +6,23 @@ use core::marker::PhantomData;
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{date::Date, datetime::DateTime, duration::Duration, time::Time},
+	value::{
+		constraint::{precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		time::Time,
+		uint::Uint,
+	},
 };
 
 use crate::{
-	common::extern_c::binding::builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
+	common::{
+		extern_c::binding::builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
+		family::{FamilyValue, cell_width},
+	},
 	error::SdkError,
 };
 
@@ -138,6 +150,105 @@ impl<'a> BoolWriter<'a> {
 	}
 }
 
+pub struct FamilyWriter<'a, T: FamilyValue> {
+	inner: ColumnBuilder<'a>,
+	precision: Precision,
+	scale: Scale,
+	width: usize,
+	cursor: usize,
+	capacity: usize,
+	cell: Vec<u8>,
+	defined: Option<Vec<bool>>,
+	_t: PhantomData<T>,
+}
+
+impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
+	fn new(inner: ColumnBuilder<'a>, capacity: usize, precision: Precision, scale: Scale) -> Self {
+		let width = cell_width(precision);
+		Self {
+			inner,
+			precision,
+			scale,
+			width,
+			cursor: 0,
+			capacity,
+			cell: Vec::with_capacity(width),
+			defined: None,
+			_t: PhantomData,
+		}
+	}
+
+	#[inline]
+	pub fn push(&mut self, v: &T) -> Result<(), SdkError> {
+		self.cell.clear();
+		v.encode_cell(self.precision, self.scale, &mut self.cell)?;
+		self.write_cell()?;
+		if let Some(d) = self.defined.as_mut() {
+			d.push(true);
+		}
+		Ok(())
+	}
+
+	#[inline]
+	pub fn push_none(&mut self) -> Result<(), SdkError> {
+		self.cell.clear();
+		self.cell.resize(self.width, 0);
+		let cursor = self.cursor;
+		self.write_cell()?;
+		let d = self.defined.get_or_insert_with(|| vec![true; cursor]);
+		d.push(false);
+		Ok(())
+	}
+
+	fn write_cell(&mut self) -> Result<(), SdkError> {
+		if self.cursor >= self.capacity {
+			return Err(SdkError::InvalidInput(format!(
+				"{:?} writer is full at {} rows",
+				T::KIND,
+				self.capacity
+			)));
+		}
+		if self.cell.len() != self.width {
+			return Err(SdkError::InvalidInput(format!(
+				"{:?} cell is {} bytes, expected {}",
+				T::KIND,
+				self.cell.len(),
+				self.width
+			)));
+		}
+		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` cells of `self.width` bytes, the check above keeps `self.cursor` below that
+		// capacity, and `self.cell` is a distinct live allocation of exactly `self.width` bytes.
+		unsafe {
+			let data = self.inner.data_ptr();
+			core::ptr::copy_nonoverlapping(
+				self.cell.as_ptr(),
+				data.add(self.cursor * self.width),
+				self.width,
+			);
+		}
+		self.cursor += 1;
+		Ok(())
+	}
+
+	#[inline]
+	pub fn len(&self) -> usize {
+		self.cursor
+	}
+
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.cursor == 0
+	}
+
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+		if let Some(d) = &self.defined {
+			self.inner.set_defined(d);
+		}
+		self.inner.commit(self.cursor)
+	}
+}
+
 pub struct VarLenWriter<'a> {
 	inner: ColumnBuilder<'a>,
 	item_cursor: usize,
@@ -157,16 +268,16 @@ impl<'a> VarLenWriter<'a> {
 			assert!(
 				matches!(
 					type_code,
-					ValueKind::Utf8 | ValueKind::Blob | ValueKind::Decimal
+					ValueKind::Utf8 | ValueKind::Blob
 				),
-				"VarLenWriter requires Utf8, Blob, or Decimal",
+				"VarLenWriter requires Utf8 or Blob",
 			);
 		}
 		let initial = expected_bytes.max(capacity);
 		if initial > 0 {
 			inner.grow(initial)?;
 		}
-		// SAFETY: Utf8, Blob and Decimal are all var-len type codes, so `offsets_ptr` is non-null and
+		// SAFETY: Utf8 and Blob are both var-len type codes, so `offsets_ptr` is non-null and
 		// the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
 		unsafe {
 			core::ptr::write(inner.offsets_ptr(), 0u64);
@@ -227,7 +338,7 @@ impl<'a> VarLenWriter<'a> {
 
 	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), SdkError> {
 		reifydb_assertions! {
-			assert!(matches!(self.type_code, ValueKind::Blob | ValueKind::Decimal));
+			assert_eq!(self.type_code, ValueKind::Blob);
 		}
 		self.push_bytes_internal(b)
 	}
@@ -285,7 +396,9 @@ pub type TimeWriter<'a> = ScalarWriter<'a, Time>;
 pub type DurationWriter<'a> = ScalarWriter<'a, Duration>;
 pub type Utf8Writer<'a> = VarLenWriter<'a>;
 pub type BlobWriter<'a> = VarLenWriter<'a>;
-pub type DecimalWriter<'a> = VarLenWriter<'a>;
+pub type IntWriter<'a> = FamilyWriter<'a, Int>;
+pub type UintWriter<'a> = FamilyWriter<'a, Uint>;
+pub type DecimalWriter<'a> = FamilyWriter<'a, Decimal>;
 
 impl<'a> ColumnsBuilder<'a> {
 	pub fn u8_writer(&mut self, capacity: usize) -> Result<U8Writer<'_>, SdkError> {
@@ -345,11 +458,27 @@ impl<'a> ColumnsBuilder<'a> {
 	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, SdkError> {
 		VarLenWriter::new(self.acquire(ValueKind::Blob, capacity)?, capacity, expected_bytes)
 	}
+	pub fn int_writer(&mut self, capacity: usize, precision: Precision) -> Result<IntWriter<'_>, SdkError> {
+		self.family_writer(capacity, precision, Scale::MIN)
+	}
+	pub fn uint_writer(&mut self, capacity: usize, precision: Precision) -> Result<UintWriter<'_>, SdkError> {
+		self.family_writer(capacity, precision, Scale::MIN)
+	}
 	pub fn decimal_writer(
 		&mut self,
 		capacity: usize,
-		expected_bytes: usize,
+		precision: Precision,
+		scale: Scale,
 	) -> Result<DecimalWriter<'_>, SdkError> {
-		VarLenWriter::new(self.acquire(ValueKind::Decimal, capacity)?, capacity, expected_bytes)
+		self.family_writer(capacity, precision, scale)
+	}
+	fn family_writer<T: FamilyValue>(
+		&mut self,
+		capacity: usize,
+		precision: Precision,
+		scale: Scale,
+	) -> Result<FamilyWriter<'_, T>, SdkError> {
+		let col = self.acquire_with_params(T::KIND, precision.value(), scale.value(), capacity)?;
+		Ok(FamilyWriter::new(col, capacity, precision, scale))
 	}
 }

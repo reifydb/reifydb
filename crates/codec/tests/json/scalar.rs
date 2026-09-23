@@ -7,9 +7,10 @@ use reifydb_value::{
 	value::{
 		Value,
 		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
 		date::Date,
 		datetime::DateTime,
-		decimal::parse::parse_decimal,
+		decimal::{Decimal, parse::parse_decimal},
 		duration::Duration,
 		identity::IdentityId,
 		int::parse::parse_int,
@@ -121,13 +122,29 @@ fn garbage_text_is_rejected_with_the_type_in_the_message() {
 		(ValueType::Uuid7, "550e8400-e29b-41d4-a716-446655440000"),
 		(ValueType::IdentityId, "not-a-uuid"),
 		(ValueType::Blob, "0xzz"),
-		(ValueType::Int, "abc"),
-		(ValueType::Uint, "-1"),
-		(ValueType::Decimal, "twelve"),
+		(ValueType::INT, "abc"),
+		(ValueType::UINT, "-1"),
+		(ValueType::DECIMAL, "twelve"),
+		(ValueType::int(Precision::new(2)), "100"),
+		(ValueType::uint(Precision::new(2)), "100"),
+		(ValueType::decimal(Precision::new(5), Scale::new(1)), "1.25"),
+		(ValueType::decimal(Precision::new(3), Scale::new(1)), "100.0"),
 		(option(ValueType::Int4), "abc"),
 	];
 	for (ty, text) in cases {
 		let err = parse_value(&ty, text).unwrap_err().to_string();
 		assert!(err.contains(&ty.to_string()) && err.contains(text), "{ty}: {err}");
 	}
+}
+
+#[test]
+fn a_family_value_is_parsed_at_the_column_scale() {
+	// The column scale, not the literal's, decides the stored scale, so 1.5 must come back as 1.5000.
+	let parsed = parse_value(&ValueType::decimal(Precision::new(10), Scale::new(4)), "1.5").unwrap();
+	let Value::Decimal(decimal) = &parsed else {
+		panic!("expected a decimal, got {parsed:?}");
+	};
+	assert_eq!(decimal.scale(), 4);
+	assert_eq!(decimal.to_string(), "1.5000");
+	assert_eq!(*decimal, Decimal::parse("1.5").unwrap());
 }

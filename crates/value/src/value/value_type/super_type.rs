@@ -59,9 +59,9 @@ mod tests {
 			Blob,
 			IdentityId,
 			DictionaryId,
-			Int,
-			Uint,
-			Decimal,
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
 			Any,
 			opt(Int4),
 		];
@@ -292,9 +292,9 @@ mod tests {
 			Blob,
 			IdentityId,
 			DictionaryId,
-			Decimal,
-			Int,
-			Uint,
+			ValueType::DECIMAL,
+			ValueType::INT,
+			ValueType::UINT,
 		];
 		for ty in cases {
 			let got = ValueType::super_type_of([ty.clone(), ty.clone()]);

@@ -201,7 +201,7 @@ fn test_set_uuid_types() {
 
 #[test]
 fn test_set_decimal_int_uint() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal, ValueType::Int, ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DECIMAL, ValueType::INT, ValueType::UINT]);
 	let mut row = shape.allocate_pod();
 
 	let decimal = Decimal::from_str("123.45").unwrap();

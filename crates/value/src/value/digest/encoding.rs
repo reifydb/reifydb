@@ -258,8 +258,8 @@ mod tests {
 			(ValueType::Uint8, 13),
 			(ValueType::Uint16, 14),
 			(ValueType::Duration, 18),
-			(ValueType::Int, 23),
-			(ValueType::Uint, 24),
+			(ValueType::INT, 23),
+			(ValueType::UINT, 24),
 		];
 		for (inner, tag) in pinned {
 			let digest = Digest::new(inner.clone(), 10_000).unwrap();

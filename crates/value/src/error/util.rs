@@ -1,9 +1,71 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::borrow::Cow;
+
 use crate::value::value_type::ValueType;
 
-pub fn value_max<'a>(value: ValueType) -> &'a str {
+pub fn value_max(value: ValueType) -> Cow<'static, str> {
+	match value {
+		ValueType::Int {
+			precision,
+		}
+		| ValueType::Uint {
+			precision,
+		} => Cow::Owned(nines(precision.value(), 0)),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => Cow::Owned(nines(precision.value(), scale.value())),
+		other => Cow::Borrowed(fixed_max(other)),
+	}
+}
+
+pub fn value_range(value: ValueType) -> Cow<'static, str> {
+	match value {
+		ValueType::Int {
+			precision,
+		} => {
+			let max = nines(precision.value(), 0);
+			Cow::Owned(format!("-{max} to {max}"))
+		}
+		ValueType::Uint {
+			precision,
+		} => Cow::Owned(format!("0 to {}", nines(precision.value(), 0))),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => {
+			let max = nines(precision.value(), scale.value());
+			Cow::Owned(format!("-{max} to {max}"))
+		}
+		other => Cow::Borrowed(fixed_range(other)),
+	}
+}
+
+fn nines(precision: u8, scale: u8) -> String {
+	let integer_digits = precision.saturating_sub(scale) as usize;
+	let integer = if integer_digits == 0 {
+		"0".to_string()
+	} else {
+		let digits = "9".repeat(integer_digits);
+		let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+		for (index, digit) in digits.chars().enumerate() {
+			if index > 0 && (digits.len() - index).is_multiple_of(3) {
+				grouped.push('_');
+			}
+			grouped.push(digit);
+		}
+		grouped
+	};
+	if scale == 0 {
+		integer
+	} else {
+		format!("{integer}.{}", "9".repeat(scale as usize))
+	}
+}
+
+fn fixed_max(value: ValueType) -> &'static str {
 	match value {
 		ValueType::Boolean => unreachable!(),
 		ValueType::Float4 => "+3.4e38",
@@ -27,9 +89,15 @@ pub fn value_max<'a>(value: ValueType) -> &'a str {
 		ValueType::Uuid4 => unreachable!(),
 		ValueType::Uuid7 => unreachable!(),
 		ValueType::Blob => unreachable!(),
-		ValueType::Int => "unlimited",
-		ValueType::Uint => "unlimited",
-		ValueType::Decimal => "unlimited",
+		ValueType::Int {
+			..
+		}
+		| ValueType::Uint {
+			..
+		}
+		| ValueType::Decimal {
+			..
+		} => unreachable!(),
 		ValueType::Option(_) => unreachable!(),
 		ValueType::Any => unreachable!(),
 		ValueType::DictionaryId => unreachable!(),
@@ -42,7 +110,7 @@ pub fn value_max<'a>(value: ValueType) -> &'a str {
 	}
 }
 
-pub fn value_range<'a>(value: ValueType) -> &'a str {
+fn fixed_range(value: ValueType) -> &'static str {
 	match value {
 		ValueType::Boolean => unreachable!(),
 		ValueType::Float4 => "-3.4e38 to +3.4e38",
@@ -68,9 +136,15 @@ pub fn value_range<'a>(value: ValueType) -> &'a str {
 		ValueType::Uuid4 => unreachable!(),
 		ValueType::Uuid7 => unreachable!(),
 		ValueType::Blob => unreachable!(),
-		ValueType::Int => "unlimited",
-		ValueType::Uint => "unlimited",
-		ValueType::Decimal => "unlimited",
+		ValueType::Int {
+			..
+		}
+		| ValueType::Uint {
+			..
+		}
+		| ValueType::Decimal {
+			..
+		} => unreachable!(),
 		ValueType::Option(_) => unreachable!(),
 		ValueType::Any => unreachable!(),
 		ValueType::DictionaryId => unreachable!(),
@@ -148,6 +222,28 @@ pub mod tests {
 		fn test_floats() {
 			assert_eq!(value_range(ValueType::Float4), "-3.4e38 to +3.4e38");
 			assert_eq!(value_range(ValueType::Float8), "-1.8e308 to +1.8e308");
+		}
+	}
+
+	mod parameterized {
+		use crate::{
+			error::util::{value_max, value_range},
+			value::{
+				constraint::{precision::Precision, scale::Scale},
+				value_type::ValueType,
+			},
+		};
+
+		#[test]
+		fn range_follows_the_declared_precision_and_scale() {
+			// The error text must name the bound the column enforces, not the widest one.
+			let decimal = ValueType::decimal(Precision::new(10), Scale::new(2));
+			assert_eq!(value_max(decimal.clone()), "99_999_999.99");
+			assert_eq!(value_range(decimal), "-99_999_999.99 to 99_999_999.99");
+			assert_eq!(value_range(ValueType::int(Precision::new(4))), "-9_999 to 9_999");
+			assert_eq!(value_range(ValueType::uint(Precision::new(3))), "0 to 999");
+			assert_eq!(value_max(ValueType::decimal(Precision::new(2), Scale::new(2))), "0.99");
+			assert_eq!(value_max(ValueType::INT).matches('9').count(), 76);
 		}
 	}
 }

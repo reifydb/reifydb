@@ -91,8 +91,7 @@ pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Larg
 #[cfg(test)]
 mod tests {
 	use ::uuid::Uuid as StdUuid;
-	use bigdecimal::BigDecimal;
-	use num_bigint::BigInt;
+	use arrow_buffer::i256;
 	use postcard::to_allocvec;
 	use serde::{Deserialize, Serialize};
 	use serde_json::{from_str, to_string};
@@ -162,7 +161,7 @@ mod tests {
 			Value::Blob(Blob::new(vec![1, 2, 3])),
 			Value::Int(Int::from_i128(i128::MIN)),
 			Value::Uint(Uint::from_u128(u128::MAX)),
-			Value::Decimal(Decimal(BigDecimal::new(BigInt::from(150), 2))),
+			Value::Decimal(Decimal::from_parts(i256::from_i128(150), 2).unwrap()),
 			Value::Any(Box::new(Value::Boolean(false))),
 			Value::DictionaryId(DictionaryEntryId::U16(u128::MAX)),
 			Value::Type(ValueType::Record(vec![("k".to_string(), ValueType::Int4)])),
@@ -221,8 +220,8 @@ mod tests {
 	#[test]
 	fn any_columns_are_equal_by_value_not_by_row_bytes() {
 		// Postcard bytes of 1.5 and 1.50 differ; equality must still compare values.
-		let one_and_a_half = |mantissa: i64, scale: i64| {
-			Value::Decimal(Decimal(BigDecimal::new(BigInt::from(mantissa), scale)))
+		let one_and_a_half = |mantissa: i128, scale: u8| {
+			Value::Decimal(Decimal::from_parts(i256::from_i128(mantissa), scale).unwrap())
 		};
 		assert!(equals(&any_array([one_and_a_half(15, 1)]), &any_array([one_and_a_half(150, 2)])));
 		assert!(!equals(&any_array([Value::Int4(1)]), &any_array([Value::Int4(2)])));

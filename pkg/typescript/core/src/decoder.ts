@@ -6,7 +6,8 @@ import {
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     ListValue, RecordValue,
-    Value, TypeValuePair, Type, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption
+    Value, TypeValuePair, Type, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
+    fixedPointKind, fixedPointTypeName, isFixedPointType
 } from './value';
 import {noneMarkerDepth, ROW_NUMBER_KEY} from './constant';
 import {Column} from './types';
@@ -31,6 +32,16 @@ export function decode(pair: TypeValuePair): Value {
 
     if (isDigestType(pair.type)) {
         return DigestValue.parse(pair.value as string, pair.type);
+    }
+
+    if (isFixedPointType(pair.type)) {
+        if (typeof pair.value !== 'string') {
+            throw new Error(`Cell for type ${fixedPointTypeName(pair.type)} must be a JSON string, got ${typeof pair.value}`);
+        }
+        if (fixedPointKind(pair.type) !== 'Decimal') {
+            throw new Error(`Unsupported type: ${fixedPointTypeName(pair.type)}`);
+        }
+        return DecimalValue.parse(pair.value);
     }
 
     if (isListType(pair.type)) {

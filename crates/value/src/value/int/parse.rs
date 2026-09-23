@@ -3,12 +3,14 @@
 
 use std::borrow::Cow;
 
-use num_bigint::BigInt;
-
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::{int::Int, value_type::ValueType},
+	value::{
+		decimal::unscaled::ParseError,
+		int::{Int, parse_error},
+		value_type::ValueType,
+	},
 };
 
 pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
@@ -28,44 +30,18 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 
 	if value.is_empty() {
 		return Err(TypeError::InvalidNumberFormat {
-			target: ValueType::Int,
+			target: ValueType::INT,
 			fragment,
 		}
 		.into());
 	}
 
-	match value.parse::<BigInt>() {
-		Ok(v) => Ok(Int::from(v)),
-		Err(_) => {
-			if let Ok(f) = value.parse::<f64>() {
-				if f.is_infinite() {
-					Err(TypeError::NumberOutOfRange {
-						target: ValueType::Int,
-						fragment,
-						descriptor: None,
-					}
-					.into())
-				} else {
-					let truncated = f.trunc();
-
-					if let Ok(bigint) = format!("{:.0}", truncated).parse::<BigInt>() {
-						Ok(Int::from(bigint))
-					} else {
-						Err(TypeError::InvalidNumberFormat {
-							target: ValueType::Int,
-							fragment,
-						}
-						.into())
-					}
-				}
-			} else {
-				Err(TypeError::InvalidNumberFormat {
-					target: ValueType::Int,
-					fragment,
-				}
-				.into())
-			}
+	match Int::parse(&value) {
+		Ok(int) => Ok(int),
+		Err(ParseError::Invalid) if value.parse::<f64>().is_ok_and(f64::is_infinite) => {
+			Err(parse_error(ParseError::OutOfRange, fragment))
 		}
+		Err(error) => Err(parse_error(error, fragment)),
 	}
 }
 
@@ -180,5 +156,19 @@ pub mod tests {
 	#[test]
 	fn test_parse_int_negative_infinity() {
 		assert!(parse_int(Fragment::testing("-inf")).is_err());
+	}
+
+	#[test]
+	fn parse_int_refuses_seventy_seven_digits_as_out_of_range() {
+		// A 77 digit int does not fit any int column, so it must be a range error and not a wrap.
+		assert_eq!(parse_int(Fragment::testing("9".repeat(77))).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_int(Fragment::testing("-1e76")).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_int(Fragment::testing("inf")).unwrap_err().code, "NUMBER_002");
+		assert_eq!(parse_int(Fragment::testing("abc")).unwrap_err().code, "NUMBER_001");
+		assert_eq!(parse_int(Fragment::testing("9".repeat(76))).unwrap(), Int::MAX);
+		assert_eq!(
+			parse_int(Fragment::testing("-99.9e74")).unwrap().to_string(),
+			format!("-999{}", "0".repeat(73))
+		);
 	}
 }

@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_traits::sign::Signed;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::{
-		bignum_array::{decimal_array, decimal_at, int_array, int_at, uint_array, uint_at},
-		decimal_array::u128_at,
-	},
+	container::decimal_array::{decimal_array, decimals, int_array, ints, u128_at},
 	decimal::Decimal,
 	int::Int,
-	uint::Uint,
 	value_type::ValueType,
 };
 
@@ -260,59 +255,16 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				}
 				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => {
-				let mut data = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					if let Some(value) = int_at(container, i) {
-						data.push(Int::from(value.0.abs()));
-					} else {
-						data.push(Int::default());
-					}
-				}
-				ColumnBuffer::Int {
-					container: int_array(data),
-					max_bytes: *max_bytes,
-				}
-			}
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => {
-				let mut data = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					if let Some(value) = uint_at(container, i) {
-						data.push(value);
-					} else {
-						data.push(Uint::default());
-					}
-				}
-				ColumnBuffer::Uint {
-					container: uint_array(data),
-					max_bytes: *max_bytes,
-				}
-			}
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => {
-				let mut data = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					if let Some(value) = decimal_at(container, i) {
-						data.push(Decimal::from(value.0.abs()));
-					} else {
-						data.push(Decimal::default());
-					}
-				}
-				ColumnBuffer::Decimal {
-					container: decimal_array(data),
-					precision: *precision,
-					scale: *scale,
-				}
-			}
+			ColumnBuffer::Int(container) => ColumnBuffer::Int(int_array(
+				container.precision(),
+				ints(container).iter().map(Int::abs),
+			)),
+			ColumnBuffer::Uint(container) => ColumnBuffer::Uint(container.clone()),
+			ColumnBuffer::Decimal(container) => ColumnBuffer::Decimal(decimal_array(
+				container.precision(),
+				container.scale(),
+				decimals(container).iter().map(Decimal::abs),
+			)),
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
@@ -330,9 +282,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						ValueType::Uint16,
 						ValueType::Float4,
 						ValueType::Float8,
-						ValueType::Int,
-						ValueType::Uint,
-						ValueType::Decimal,
+						ValueType::INT,
+						ValueType::UINT,
+						ValueType::DECIMAL,
 					],
 					actual: other.get_type(),
 				});

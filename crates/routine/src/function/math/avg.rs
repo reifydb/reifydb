@@ -18,16 +18,17 @@ use reifydb_routine_abi::{
 	error::RoutineError,
 };
 use reifydb_value::{
+	error::TypeError,
 	fragment::Fragment,
 	value::{
-		container::{
-			bignum_array::{decimal_at, int_at, uint_at},
-			decimal_array::u128s,
-		},
+		constraint::{precision::Precision, scale::Scale},
+		container::decimal_array::{decimals, ints, u128s, uints},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
+
+use crate::function::support::numeric::MIN_DIVISION_SCALE;
 
 pub struct Avg {
 	info: RoutineInfo,
@@ -47,19 +48,51 @@ impl Avg {
 	}
 }
 
+fn avg_decimal_type(input_scale: u8) -> ValueType {
+	ValueType::decimal(Precision::MAX, Scale::new(input_scale.max(MIN_DIVISION_SCALE)))
+}
+
 fn avg_return_type(input_type: &ValueType) -> ValueType {
 	match input_type {
 		ValueType::Float4 => ValueType::Float4,
 		ValueType::Float8 => ValueType::Float8,
-		_ => ValueType::Decimal,
+		ValueType::Decimal {
+			scale,
+			..
+		} => avg_decimal_type(scale.value()),
+		_ => avg_decimal_type(0),
 	}
 }
 
+fn avg_overflow(function: &Fragment, input_scale: u8) -> RoutineError {
+	TypeError::NumberOutOfRange {
+		target: avg_decimal_type(input_scale),
+		fragment: function.clone(),
+		descriptor: None,
+	}
+	.into()
+}
+
+fn average(function: &Fragment, sum: &Decimal, count: u64, input_scale: u8) -> Result<Decimal, RoutineError> {
+	sum.checked_div(&Decimal::from(count)).ok_or_else(|| avg_overflow(function, input_scale))
+}
+
+fn average_column(input_scale: u8, values: Vec<Decimal>, valids: Vec<bool>) -> ColumnBuffer {
+	let ValueType::Decimal {
+		precision,
+		scale,
+	} = avg_decimal_type(values.iter().map(Decimal::scale).fold(input_scale, u8::max))
+	else {
+		unreachable!("an average of integers or decimals is a decimal")
+	};
+	ColumnBuffer::decimal_with_bitvec(precision, scale, values, valids)
+}
+
 macro_rules! exec_int_arm {
-	($container:expr, $row_count:expr, $sums:expr, $counts:expr) => {
+	($container:expr, $row_count:expr, $sums:expr, $counts:expr, $overflow:expr) => {
 		for i in 0..$row_count {
 			if let Some(value) = $container.get(i) {
-				$sums[i] = &$sums[i] + &Decimal::from(*value);
+				$sums[i] = $sums[i].checked_add(&Decimal::from(value.clone())).ok_or_else($overflow)?;
 				$counts[i] += 1;
 			}
 		}
@@ -67,21 +100,21 @@ macro_rules! exec_int_arm {
 }
 
 macro_rules! acc_int_arm {
-	($sums:expr, $counts:expr, $column:expr, $groups:expr, $container:expr) => {
+	($sums:expr, $counts:expr, $column:expr, $groups:expr, $container:expr, $overflow:expr) => {
 		for &(group, ref indices) in $groups.iter() {
 			let mut delta = Decimal::zero();
 			let mut count = 0u64;
 			for &i in indices {
 				if $column.is_defined(i)
-					&& let Some(&val) = $container.get(i)
+					&& let Some(val) = $container.get(i)
 				{
-					delta = &delta + &Decimal::from(val);
+					delta = delta.checked_add(&Decimal::from(val.clone())).ok_or_else($overflow)?;
 					count += 1;
 				}
 			}
 			if count > 0 {
 				let merged = match $sums.remove(group) {
-					Some(prev) => &prev + &delta,
+					Some(prev) => prev.checked_add(&delta).ok_or_else($overflow)?,
 					None => delta,
 				};
 				$sums.insert(group, merged);
@@ -100,7 +133,7 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 	}
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
-		input_types.first().map(avg_return_type).unwrap_or(ValueType::Decimal)
+		input_types.first().map(avg_return_type).unwrap_or_else(|| avg_decimal_type(0))
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -213,52 +246,66 @@ fn execute_decimal<'a>(
 ) -> Result<Columns, RoutineError> {
 	let mut sums: Vec<Decimal> = vec![Decimal::zero(); row_count];
 	let mut counts = vec![0u64; row_count];
+	let input_scale = args
+		.iter()
+		.filter_map(|col| match col.data().get_type() {
+			ValueType::Decimal {
+				scale,
+				..
+			} => Some(scale.value()),
+			_ => None,
+		})
+		.fold(0, u8::max);
+	let function = ctx.fragment.clone();
+	let overflow = || avg_overflow(&function, input_scale);
 
 	for (col_idx, col) in args.iter().enumerate() {
 		let data = col.data();
 		match data {
-			ColumnBuffer::Int1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Int2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Int4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Int8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Int16(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Uint1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Uint2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Uint4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Uint8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
+			ColumnBuffer::Int1(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Int2(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Int4(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Int8(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Int16(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Uint1(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Uint2(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Uint4(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
+			ColumnBuffer::Uint8(container) => {
+				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+			}
 			ColumnBuffer::Uint16(container) => {
 				let values = u128s(container);
-				exec_int_arm!(values, row_count, sums, counts)
+				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int {
-				container,
-				..
-			} => {
-				for i in 0..row_count {
-					if let Some(value) = int_at(container, i) {
-						sums[i] = &sums[i] + &Decimal::from(value);
-						counts[i] += 1;
-					}
-				}
+			ColumnBuffer::Int(container) => {
+				let values = ints(container);
+				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => {
-				for i in 0..row_count {
-					if let Some(value) = uint_at(container, i) {
-						sums[i] = &sums[i] + &Decimal::from(value);
-						counts[i] += 1;
-					}
-				}
+			ColumnBuffer::Uint(container) => {
+				let values = uints(container);
+				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
+			ColumnBuffer::Decimal(container) => {
+				let values = decimals(container);
 				for i in 0..row_count {
-					if let Some(value) = decimal_at(container, i) {
-						sums[i] = &sums[i] + &value;
+					if let Some(value) = values.get(i) {
+						sums[i] = sums[i].checked_add(value).ok_or_else(overflow)?;
 						counts[i] += 1;
 					}
 				}
@@ -278,8 +325,7 @@ fn execute_decimal<'a>(
 	let mut valids = Vec::with_capacity(row_count);
 	for i in 0..row_count {
 		if counts[i] > 0 {
-			let divisor = Decimal::from(counts[i] as i64);
-			out.push(&sums[i] / &divisor);
+			out.push(average(&ctx.fragment, &sums[i], counts[i], input_scale)?);
 			valids.push(true);
 		} else {
 			out.push(Decimal::zero());
@@ -287,10 +333,7 @@ fn execute_decimal<'a>(
 		}
 	}
 
-	Ok(Columns::new(vec![ColumnWithName::new(
-		ctx.fragment.clone(),
-		ColumnBuffer::decimal_with_bitvec(out, valids),
-	)]))
+	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), average_column(input_scale, out, valids))]))
 }
 
 impl Function for Avg {
@@ -358,135 +401,60 @@ impl Accumulator for AvgAccumulator {
 			self.state = match input_type {
 				ValueType::Float4 => AvgState::Float4(GroupSlots::new()),
 				ValueType::Float8 => AvgState::Float8(GroupSlots::new()),
-				ValueType::Decimal => AvgState::Decimal(GroupSlots::new()),
+				ValueType::Decimal {
+					..
+				} => AvgState::Decimal(GroupSlots::new()),
 				_ => AvgState::Int(GroupSlots::new()),
 			};
 		}
 
+		let input_scale = self.input_type.as_ref().and_then(ValueType::scale).map_or(0, |scale| scale.value());
+		let function = self.function.clone();
+		let overflow = || avg_overflow(&function, input_scale);
+
 		match (&mut self.state, &data) {
 			(AvgState::Int(sums), ColumnBuffer::Int1(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int2(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int4(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int8(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int16(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint1(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint2(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint4(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint8(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values());
+				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
 				let values = u128s(container);
-				acc_int_arm!(sums, self.counts, column, groups, values);
+				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(
-				AvgState::Int(sums),
-				ColumnBuffer::Int {
-					container,
-					..
-				},
-			) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Decimal::zero();
-					let mut count = 0u64;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = int_at(container, i)
-						{
-							delta = &delta + &Decimal::from(val);
-							count += 1;
-						}
-					}
-					if count > 0 {
-						let merged = match sums.remove(group) {
-							Some(prev) => &prev + &delta,
-							None => delta,
-						};
-						sums.insert(group, merged);
-						*self.counts.or_insert(group, 0) += count;
-					} else {
-						sums.or_insert(group, Decimal::zero());
-						self.counts.or_insert(group, 0);
-					}
-				}
+			(AvgState::Int(sums), ColumnBuffer::Int(container)) => {
+				let values = ints(container);
+				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(
-				AvgState::Int(sums),
-				ColumnBuffer::Uint {
-					container,
-					..
-				},
-			) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Decimal::zero();
-					let mut count = 0u64;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = uint_at(container, i)
-						{
-							delta = &delta + &Decimal::from(val);
-							count += 1;
-						}
-					}
-					if count > 0 {
-						let merged = match sums.remove(group) {
-							Some(prev) => &prev + &delta,
-							None => delta,
-						};
-						sums.insert(group, merged);
-						*self.counts.or_insert(group, 0) += count;
-					} else {
-						sums.or_insert(group, Decimal::zero());
-						self.counts.or_insert(group, 0);
-					}
-				}
+			(AvgState::Int(sums), ColumnBuffer::Uint(container)) => {
+				let values = uints(container);
+				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(
-				AvgState::Decimal(sums),
-				ColumnBuffer::Decimal {
-					container,
-					..
-				},
-			) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut delta = Decimal::zero();
-					let mut count = 0u64;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = decimal_at(container, i)
-						{
-							delta = &delta + &val;
-							count += 1;
-						}
-					}
-					if count > 0 {
-						let merged = match sums.remove(group) {
-							Some(prev) => &prev + &delta,
-							None => delta,
-						};
-						sums.insert(group, merged);
-						*self.counts.or_insert(group, 0) += count;
-					} else {
-						sums.or_insert(group, Decimal::zero());
-						self.counts.or_insert(group, 0);
-					}
-				}
+			(AvgState::Decimal(sums), ColumnBuffer::Decimal(container)) => {
+				let values = decimals(container);
+				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
 			(AvgState::Float4(sums), ColumnBuffer::Float4(container)) => {
 				for &(group, ref indices) in groups.iter() {
@@ -547,10 +515,11 @@ impl Accumulator for AvgAccumulator {
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let state = mem::replace(&mut self.state, AvgState::Unset);
 		let counts = mem::take(&mut self.counts);
+		let input_scale = self.input_type.as_ref().and_then(ValueType::scale).map_or(0, |scale| scale.value());
 
 		match state {
 			AvgState::Unset => {
-				Ok((Vec::new(), ColumnBuilder::with_capacity(ValueType::Decimal, 0).finish()))
+				Ok((Vec::new(), ColumnBuilder::with_capacity(avg_decimal_type(0), 0).finish()))
 			}
 			AvgState::Int(sums) | AvgState::Decimal(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
@@ -560,15 +529,14 @@ impl Accumulator for AvgAccumulator {
 					let count = counts.get(key).copied().unwrap_or(0);
 					keys.push(key);
 					if count > 0 {
-						let divisor = Decimal::from(count as i64);
-						out.push(&sum / &divisor);
+						out.push(average(&self.function, &sum, count, input_scale)?);
 						valids.push(true);
 					} else {
 						out.push(Decimal::zero());
 						valids.push(false);
 					}
 				}
-				Ok((keys, ColumnBuffer::decimal_with_bitvec(out, valids)))
+				Ok((keys, average_column(input_scale, out, valids)))
 			}
 			AvgState::Float4(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());

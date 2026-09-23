@@ -25,15 +25,17 @@ fn a_utf8_cast_to_int_uint_or_decimal_gives_that_type_with_the_parsed_value() {
 	// Text must parse into the arbitrary-precision type, otherwise the text cast only works in one direction.
 	let t = TestEngine::new();
 
-	for (text, target, expected_type) in
-		[("42", "int", ValueType::Int), ("42", "uint", ValueType::Uint), ("1.5", "decimal", ValueType::Decimal)]
-	{
+	for (text, target, expected_type, expected_text) in [
+		("42", "int", ValueType::INT, "42"),
+		("42", "uint", ValueType::UINT, "42"),
+		("1.5", "decimal", ValueType::DECIMAL, "1.5000000000"),
+	] {
 		let frames = query(&t, &format!("map {{ v: cast('{text}', {target}) }}"));
 
 		let (ty, values) = column(&frames, "v");
 		assert_eq!(
 			(ty, values.iter().map(|v| v.to_string()).collect::<Vec<_>>()),
-			(expected_type, vec![text.to_string()]),
+			(expected_type, vec![expected_text.to_string()]),
 			"{target}"
 		);
 	}

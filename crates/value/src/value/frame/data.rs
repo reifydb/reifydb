@@ -17,16 +17,12 @@ use crate::{
 	value::{
 		Value,
 		container::{
-			any_array,
-			bignum_array::{
-				decimal_as_string, decimal_get_value, decimals_equal, deserialize_decimals,
-				deserialize_ints, deserialize_uints, int_as_string, int_get_value, serialize_decimals,
-				serialize_ints, serialize_uints, uint_as_string, uint_get_value,
-			},
-			bool_array,
+			any_array, bool_array,
 			decimal_array::{
-				deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string,
-				uint16_get_value,
+				DecimalArray, decimal_as_string, decimal_get_value, deserialize_decimal_array,
+				deserialize_int_array, deserialize_int16s, deserialize_uint_array, deserialize_uint16s,
+				int_as_string, int_get_value, serialize_decimal_array, serialize_uint16s,
+				uint_as_string, uint_get_value, uint16_as_string, uint16_get_value,
 			},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{
@@ -106,11 +102,17 @@ pub enum FrameColumnData {
 		)]
 		LargeBinaryArray,
 	),
-	Int(#[serde(serialize_with = "serialize_ints", deserialize_with = "deserialize_ints")] LargeBinaryArray),
-	Uint(#[serde(serialize_with = "serialize_uints", deserialize_with = "deserialize_uints")] LargeBinaryArray),
+	Int(
+		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_int_array")]
+		DecimalArray,
+	),
+	Uint(
+		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_uint_array")]
+		DecimalArray,
+	),
 	Decimal(
-		#[serde(serialize_with = "serialize_decimals", deserialize_with = "deserialize_decimals")]
-		LargeBinaryArray,
+		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_decimal_array")]
+		DecimalArray,
 	),
 	Any {
 		#[serde(
@@ -197,9 +199,9 @@ impl PartialEq for FrameColumnData {
 			(FrameColumnData::Uuid4(a), FrameColumnData::Uuid4(b)) => uuid4s(a) == uuid4s(b),
 			(FrameColumnData::Uuid7(a), FrameColumnData::Uuid7(b)) => uuid7s(a) == uuid7s(b),
 			(FrameColumnData::Blob(a), FrameColumnData::Blob(b)) => varlen_array::equals(a, b),
-			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => varlen_array::equals(a, b),
-			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => varlen_array::equals(a, b),
-			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => decimals_equal(a, b),
+			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => a == b,
+			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => a == b,
+			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => a == b,
 			(
 				FrameColumnData::Any {
 					container: a_container,
@@ -278,9 +280,11 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(_) => ValueType::Uuid4,
 			FrameColumnData::Uuid7(_) => ValueType::Uuid7,
 			FrameColumnData::Blob(_) => ValueType::Blob,
-			FrameColumnData::Int(_) => ValueType::Int,
-			FrameColumnData::Uint(_) => ValueType::Uint,
-			FrameColumnData::Decimal(_) => ValueType::Decimal,
+			FrameColumnData::Int(container) => ValueType::int(container.precision()),
+			FrameColumnData::Uint(container) => ValueType::uint(container.precision()),
+			FrameColumnData::Decimal(container) => {
+				ValueType::decimal(container.precision(), container.scale())
+			}
 			FrameColumnData::Any {
 				declared_type,
 				..

@@ -12,12 +12,17 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{row_number::RowNumber, value_type::ValueType},
+};
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, JoinSlot, NO_MATCH, ensure_join_key_types_match, ensure_join_keyable, load_and_merge_all,
-	materialize_join, resolve_column_names,
+	JoinContext, JoinSlot, NO_MATCH, ensure_join_keyable, join_key_types, load_and_merge_all, materialize_join,
+	resolve_column_names,
 };
 use crate::{
 	Result,
@@ -123,21 +128,19 @@ impl QueryNode for NaturalJoinNode {
 		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
 		ensure_join_keyable(&left_columns, &left_col_indices)?;
 		ensure_join_keyable(&right_columns, &right_col_indices)?;
-		ensure_join_key_types_match(
-			&left_columns,
-			&left_col_indices,
-			&right_columns,
-			&right_col_indices,
-			|_| self.fragment.clone(),
-		)?;
+		let targets =
+			join_key_types(&left_columns, &left_col_indices, &right_columns, &right_col_indices, |_| {
+				self.fragment.clone()
+			})?;
 
-		let (converter, hash_table) = Self::build(&right_columns, &right_col_indices)?;
+		let (converter, hash_table) = Self::build(&right_columns, &right_col_indices, &targets)?;
 
 		let (left_picks, right_picks, result_row_numbers) = self.probe(
 			&left_columns,
 			&converter,
 			&hash_table,
 			&left_col_indices,
+			&targets,
 			&left_row_numbers,
 			left_rows,
 		)?;
@@ -176,10 +179,14 @@ type KeyIndex = HashMap<Box<[u8]>, Vec<usize>>;
 
 impl NaturalJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::build")]
-	fn build(right_columns: &Columns, right_col_indices: &[usize]) -> Result<(RowConverter, KeyIndex)> {
+	fn build(
+		right_columns: &Columns,
+		right_col_indices: &[usize],
+		targets: &[ValueType],
+	) -> Result<(RowConverter, KeyIndex)> {
 		let key_columns: Vec<&ColumnBuffer> =
 			right_col_indices.iter().map(|&idx| &right_columns[idx]).collect();
-		let (converter, arrays) = key_rows(&key_columns)?;
+		let (converter, arrays) = key_rows(&key_columns, targets)?;
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
@@ -206,11 +213,12 @@ impl NaturalJoinNode {
 		converter: &RowConverter,
 		hash_table: &KeyIndex,
 		left_col_indices: &[usize],
+		targets: &[ValueType],
 		left_row_numbers: &[RowNumber],
 		left_rows: usize,
 	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
 		let key_columns: Vec<&ColumnBuffer> = left_col_indices.iter().map(|&idx| &left_columns[idx]).collect();
-		let arrays = key_arrays(&key_columns);
+		let arrays = key_arrays(&key_columns, targets);
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;

@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{
-	container::{
-		bignum_array::{decimal_at, int_at, uint_at},
-		decimal_array::u128_at,
-	},
-	value_type::{ValueType, input_types::InputTypes},
-};
+use reifydb_value::value::value_type::{ValueType, input_types::InputTypes};
+
+use crate::function::support::numeric::numeric_to_f64;
 
 pub struct Log {
 	info: RoutineInfo,
@@ -29,36 +24,6 @@ impl Log {
 		Self {
 			info: RoutineInfo::new("math::log"),
 		}
-	}
-}
-
-fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as f64),
-		ColumnBuffer::Float4(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Float8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int {
-			container,
-			..
-		} => int_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => uint_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => decimal_at(container, i).map(|v| v.0.to_f64().unwrap_or(0.0)),
-		_ => None,
 	}
 }
 

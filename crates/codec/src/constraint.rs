@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
+	constraint::{Constraint, TypeConstraint, bytes::MaxBytes},
 	dictionary::DictionaryId,
 	digest::Digest,
 	sumtype::SumTypeId,
@@ -12,6 +12,7 @@ use reifydb_value::value::{
 use crate::{
 	error::{DecodeError, EncodeError},
 	tag::{TypeTag, ValueKind, peel_options},
+	unscaled::{decode_params, family_type, params},
 };
 
 #[repr(C)]
@@ -51,6 +52,19 @@ pub fn encode_type_constraint(tc: &TypeConstraint) -> Result<EncodedTypeConstrai
 			constraint_param2: u32::from(TypeTag::of_type(inner)?.byte()),
 		});
 	}
+	if let Some((precision, scale)) = params(peel_options(&ty).0) {
+		if let Some(constraint) = tc.constraint() {
+			return Err(EncodeError::UnsupportedType(format!(
+				"{ty} cannot carry the {constraint:?} constraint"
+			)));
+		}
+		return Ok(EncodedTypeConstraint {
+			base_type,
+			constraint_type: 2,
+			constraint_param1: u32::from(precision.value()),
+			constraint_param2: u32::from(scale.value()),
+		});
+	}
 	Ok(match tc.constraint() {
 		None => EncodedTypeConstraint {
 			base_type,
@@ -63,12 +77,6 @@ pub fn encode_type_constraint(tc: &TypeConstraint) -> Result<EncodedTypeConstrai
 			constraint_type: 1,
 			constraint_param1: max.value(),
 			constraint_param2: 0,
-		},
-		Some(Constraint::PrecisionScale(p, s)) => EncodedTypeConstraint {
-			base_type,
-			constraint_type: 2,
-			constraint_param1: p.value() as u32,
-			constraint_param2: s.value() as u32,
 		},
 		Some(Constraint::Dictionary(dict_id, id_type)) => EncodedTypeConstraint {
 			base_type,
@@ -90,18 +98,14 @@ pub fn decode_type_constraint(encoded: &EncodedTypeConstraint) -> Result<TypeCon
 	if encoded.constraint_type == 5 {
 		return decode_digest_type(tag, encoded).map(TypeConstraint::unconstrained);
 	}
+	if encoded.constraint_type == 2 {
+		return decode_family_type(tag, encoded).map(TypeConstraint::unconstrained);
+	}
 	let ty = tag.to_type()?;
 	Ok(match encoded.constraint_type {
 		1 => TypeConstraint::with_constraint(
 			ty,
 			Constraint::MaxBytes(MaxBytes::new(encoded.constraint_param1)),
-		),
-		2 => TypeConstraint::with_constraint(
-			ty,
-			Constraint::PrecisionScale(
-				Precision::new(encoded.constraint_param1 as u8),
-				Scale::new(encoded.constraint_param2 as u8),
-			),
 		),
 		3 => TypeConstraint::with_constraint(
 			ty,
@@ -116,6 +120,17 @@ pub fn decode_type_constraint(encoded: &EncodedTypeConstraint) -> Result<TypeCon
 		),
 		_ => TypeConstraint::unconstrained(ty),
 	})
+}
+
+fn decode_family_type(tag: TypeTag, encoded: &EncodedTypeConstraint) -> Result<ValueType, DecodeError> {
+	let kind = tag.kind().ok_or(DecodeError::UnknownTypeCode(encoded.base_type))?;
+	let param = |value: u32| {
+		u8::try_from(value)
+			.map_err(|_| DecodeError::InvalidData(format!("type parameter {value} does not fit in a byte")))
+	};
+	let (precision, scale) = decode_params(param(encoded.constraint_param1)?, param(encoded.constraint_param2)?)?;
+	let base = family_type(kind, precision, scale)?;
+	Ok((0..tag.depth()).fold(base, |ty, _| ValueType::Option(Box::new(ty))))
 }
 
 fn decode_digest_type(tag: TypeTag, encoded: &EncodedTypeConstraint) -> Result<ValueType, DecodeError> {

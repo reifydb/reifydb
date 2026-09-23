@@ -1,21 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	container::bignum_array::{decimals, ints, uints},
-	frame::data::FrameColumnData,
-};
+use reifydb_value::value::frame::data::FrameColumnData;
 
 use super::EncodedColumn;
-use crate::{
-	frame::{
-		encoding::{
-			dict::{try_dict_encode_blob, try_dict_encode_bytes, try_dict_encode_utf8},
-			rle::try_rle_encode_varlen,
-		},
-		format::Encoding,
-	},
-	tag::ValueKind,
+use crate::frame::{
+	encoding::dict::{try_dict_encode_blob, try_dict_encode_utf8},
+	format::Encoding,
 };
 
 pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
@@ -43,102 +34,6 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				data: dict.data,
 				offsets: vec![],
 				extra: dict.extra,
-				row_count: 0,
-			})
-		}
-		FrameColumnData::Int(c) => {
-			let slice = &ints(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
-			let dict = try_dict_encode_bytes(&serialized, ValueKind::Int.byte(), 0.5)?;
-			Some(EncodedColumn {
-				type_code: dict.type_code,
-				encoding: Encoding::Dict,
-				flags: dict.flags_bits,
-				nones: vec![],
-				data: dict.data,
-				offsets: vec![],
-				extra: dict.extra,
-				row_count: 0,
-			})
-		}
-		FrameColumnData::Uint(c) => {
-			let slice = &uints(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
-			let dict = try_dict_encode_bytes(&serialized, ValueKind::Uint.byte(), 0.5)?;
-			Some(EncodedColumn {
-				type_code: dict.type_code,
-				encoding: Encoding::Dict,
-				flags: dict.flags_bits,
-				nones: vec![],
-				data: dict.data,
-				offsets: vec![],
-				extra: dict.extra,
-				row_count: 0,
-			})
-		}
-		FrameColumnData::Decimal(c) => {
-			let slice = &decimals(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.to_string().into_bytes()).collect();
-			let dict = try_dict_encode_bytes(&serialized, ValueKind::Decimal.byte(), 0.5)?;
-			Some(EncodedColumn {
-				type_code: dict.type_code,
-				encoding: Encoding::Dict,
-				flags: dict.flags_bits,
-				nones: vec![],
-				data: dict.data,
-				offsets: vec![],
-				extra: dict.extra,
-				row_count: 0,
-			})
-		}
-		_ => None,
-	}
-}
-
-pub(crate) fn try_rle_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
-	match inner {
-		FrameColumnData::Int(c) => {
-			let slice = &ints(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
-			let encoded = try_rle_encode_varlen(&serialized)?;
-			Some(EncodedColumn {
-				type_code: ValueKind::Int.byte(),
-				encoding: Encoding::Rle,
-				flags: 0,
-				nones: vec![],
-				data: encoded,
-				offsets: vec![],
-				extra: vec![],
-				row_count: 0,
-			})
-		}
-		FrameColumnData::Uint(c) => {
-			let slice = &uints(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.0.to_signed_bytes_le()).collect();
-			let encoded = try_rle_encode_varlen(&serialized)?;
-			Some(EncodedColumn {
-				type_code: ValueKind::Uint.byte(),
-				encoding: Encoding::Rle,
-				flags: 0,
-				nones: vec![],
-				data: encoded,
-				offsets: vec![],
-				extra: vec![],
-				row_count: 0,
-			})
-		}
-		FrameColumnData::Decimal(c) => {
-			let slice = &decimals(c);
-			let serialized: Vec<Vec<u8>> = slice.iter().map(|v| v.to_string().into_bytes()).collect();
-			let encoded = try_rle_encode_varlen(&serialized)?;
-			Some(EncodedColumn {
-				type_code: ValueKind::Decimal.byte(),
-				encoding: Encoding::Rle,
-				flags: 0,
-				nones: vec![],
-				data: encoded,
-				offsets: vec![],
-				extra: vec![],
 				row_count: 0,
 			})
 		}

@@ -658,7 +658,8 @@ pub mod tests {
 		for col in cols.columns() {
 			let type_code = col.type_code();
 			let bytes = col.data_bytes();
-			let active = builder.acquire(type_code, row_count.max(1))?;
+			let active =
+				builder.acquire_with_params(type_code, col.precision(), col.scale(), row_count.max(1))?;
 			active.grow(bytes.len().max(row_count))?;
 			let dst = active.data_ptr();
 			if !dst.is_null() && !bytes.is_empty() {

@@ -8,11 +8,12 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
+	eval::cast_for_write,
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -180,8 +181,7 @@ impl Transform for PatchNode {
 				&& column.data.get_type() != target_type
 			{
 				column.data.check_digest_write(&target_type, expr.lazy_fragment())?;
-				let data =
-					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
+				let data = cast_for_write(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
 				column = ColumnWithName {
 					name: column.name,
 					data,

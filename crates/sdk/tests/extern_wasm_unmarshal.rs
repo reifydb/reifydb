@@ -45,6 +45,8 @@ fn guest_bytes(kind: ValueKind, rows: u32, data: &[u8], offsets: &[u64]) -> Vec<
 		name_offset,
 		name_len: name.len() as u32,
 		type_code: kind.byte(),
+		precision: 0,
+		scale: 0,
 		data_row_count: rows,
 		data_offset,
 		data_len: data.len() as u32,

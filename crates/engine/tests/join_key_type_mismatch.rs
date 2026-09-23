@@ -96,3 +96,46 @@ fn matching_key_types_still_join() {
 
 	assert_eq!(TestEngine::row_count(&frames), 1, "only k = 1 is on both sides, got:\n{}", frames[0]);
 }
+
+#[test]
+fn decimal_keys_of_different_precision_and_scale_join_by_value() {
+	// Both keys are decimals, so a JOIN_004 or a byte compare on the scale would drop 1.5 = 1.500.
+	let t = engine();
+	t.admin("CREATE TABLE test::dl { k: decimal(5,1), a: int4 }");
+	t.admin("CREATE TABLE test::dr { k: decimal(12,3), b: int4 }");
+	t.command("INSERT test::dl [{ k: 1.5, a: 10 }, { k: 2.0, a: 20 }]");
+	t.command("INSERT test::dr [{ k: 1.500, b: 100 }, { k: 2.001, b: 200 }]");
+
+	let hash = query(&t, "FROM test::dl INNER JOIN { FROM test::dr } AS s USING (k, s.k)", Params::None).unwrap();
+	let natural = query(&t, "FROM test::dl NATURAL JOIN { FROM test::dr } AS s", Params::None).unwrap();
+
+	assert_eq!(TestEngine::row_count(&hash), 1, "only 1.5 = 1.500 must match, got:\n{}", hash[0]);
+	assert_eq!(TestEngine::row_count(&natural), 1, "only 1.5 = 1.500 must match, got:\n{}", natural[0]);
+}
+
+#[test]
+fn int_keys_of_different_precision_join_by_value() {
+	// int(5) and int(30) are one family, so the wider precision must hold both sides instead of JOIN_004.
+	let t = engine();
+	t.admin("CREATE TABLE test::il { k: int(5), a: int4 }");
+	t.admin("CREATE TABLE test::ir { k: int(30), b: int4 }");
+	t.command("INSERT test::il [{ k: 7, a: 10 }, { k: 8, a: 20 }]");
+	t.command("INSERT test::ir [{ k: 7, b: 100 }, { k: 123456789012345678901234567890, b: 200 }]");
+
+	let frames = query(&t, "FROM test::il INNER JOIN { FROM test::ir } AS s USING (k, s.k)", Params::None).unwrap();
+
+	assert_eq!(TestEngine::row_count(&frames), 1, "only k = 7 is on both sides, got:\n{}", frames[0]);
+}
+
+#[test]
+fn a_decimal_key_against_an_int_key_still_reports_join_004() {
+	// Only keys of one family share a common type, so decimal against int must stay a type mismatch.
+	let t = engine();
+	t.admin("CREATE TABLE test::xl { k: decimal(5,1), a: int4 }");
+	t.admin("CREATE TABLE test::xr { k: int(5), b: int4 }");
+
+	let err =
+		query(&t, "FROM test::xl INNER JOIN { FROM test::xr } AS s USING (k, s.k)", Params::None).unwrap_err();
+
+	assert_eq!(err.code, "JOIN_004", "decimal against int must be a key type mismatch, got: {}", err.message);
+}

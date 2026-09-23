@@ -25,16 +25,14 @@ use reifydb_value::{
 	util::bitmap,
 	value::{
 		Value,
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		constraint::bytes::MaxBytes,
 		container::{
-			any_array,
-			bignum_array::{
-				decimal_as_string, decimals_equal, deserialize_decimals, deserialize_ints,
-				deserialize_uints, int_as_string, serialize_decimals, serialize_ints, serialize_uints,
-				uint_as_string,
+			any_array, bool_array,
+			decimal_array::{
+				DecimalArray, decimal_as_string, deserialize_decimal_array, deserialize_int_array,
+				deserialize_int16s, deserialize_uint_array, deserialize_uint16s, int_as_string,
+				serialize_decimal_array, serialize_uint16s, uint_as_string, uint16_as_string,
 			},
-			bool_array,
-			decimal_array::{deserialize_int16s, deserialize_uint16s, serialize_uint16s, uint16_as_string},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{
 				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
@@ -85,19 +83,9 @@ pub enum ColumnBuffer {
 		container: LargeBinaryArray,
 		max_bytes: MaxBytes,
 	},
-	Int {
-		container: LargeBinaryArray,
-		max_bytes: MaxBytes,
-	},
-	Uint {
-		container: LargeBinaryArray,
-		max_bytes: MaxBytes,
-	},
-	Decimal {
-		container: LargeBinaryArray,
-		precision: Precision,
-		scale: Scale,
-	},
+	Int(DecimalArray),
+	Uint(DecimalArray),
+	Decimal(DecimalArray),
 
 	Any {
 		container: LargeBinaryArray,
@@ -153,29 +141,9 @@ impl Clone for ColumnBuffer {
 				container: container.clone(),
 				max_bytes: *max_bytes,
 			},
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Int {
-				container: container.clone(),
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Uint {
-				container: container.clone(),
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => ColumnBuffer::Decimal {
-				container: container.clone(),
-				precision: *precision,
-				scale: *scale,
-			},
+			ColumnBuffer::Int(c) => ColumnBuffer::Int(c.clone()),
+			ColumnBuffer::Uint(c) => ColumnBuffer::Uint(c.clone()),
+			ColumnBuffer::Decimal(c) => ColumnBuffer::Decimal(c.clone()),
 			ColumnBuffer::Any {
 				container,
 				declared_type,
@@ -251,38 +219,9 @@ impl PartialEq for ColumnBuffer {
 					max_bytes: bm,
 				},
 			) => varlen_array::equals(a, b) && am == bm,
-			(
-				ColumnBuffer::Int {
-					container: a,
-					max_bytes: am,
-				},
-				ColumnBuffer::Int {
-					container: b,
-					max_bytes: bm,
-				},
-			) => varlen_array::equals(a, b) && am == bm,
-			(
-				ColumnBuffer::Uint {
-					container: a,
-					max_bytes: am,
-				},
-				ColumnBuffer::Uint {
-					container: b,
-					max_bytes: bm,
-				},
-			) => varlen_array::equals(a, b) && am == bm,
-			(
-				ColumnBuffer::Decimal {
-					container: a,
-					precision: ap,
-					scale: as_,
-				},
-				ColumnBuffer::Decimal {
-					container: b,
-					precision: bp,
-					scale: bs,
-				},
-			) => decimals_equal(a, b) && ap == bp && as_ == bs,
+			(ColumnBuffer::Int(a), ColumnBuffer::Int(b))
+			| (ColumnBuffer::Uint(a), ColumnBuffer::Uint(b))
+			| (ColumnBuffer::Decimal(a), ColumnBuffer::Decimal(b)) => a.data_type() == b.data_type() && a == b,
 			(
 				ColumnBuffer::Any {
 					container: a,
@@ -355,23 +294,9 @@ impl fmt::Debug for ColumnBuffer {
 				container,
 				max_bytes,
 			} => f.debug_struct("Blob").field("container", container).field("max_bytes", max_bytes).finish(),
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => f.debug_struct("Int").field("container", container).field("max_bytes", max_bytes).finish(),
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => f.debug_struct("Uint").field("container", container).field("max_bytes", max_bytes).finish(),
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => f.debug_struct("Decimal")
-				.field("container", container)
-				.field("precision", precision)
-				.field("scale", scale)
-				.finish(),
+			ColumnBuffer::Int(c) => f.debug_tuple("Int").field(c).finish(),
+			ColumnBuffer::Uint(c) => f.debug_tuple("Uint").field(c).finish(),
+			ColumnBuffer::Decimal(c) => f.debug_tuple("Decimal").field(c).finish(),
 			ColumnBuffer::Any {
 				container,
 				declared_type,
@@ -433,22 +358,9 @@ impl Serialize for ColumnBuffer {
 				container: &'a LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
-			Int {
-				#[serde(serialize_with = "serialize_ints")]
-				container: &'a LargeBinaryArray,
-				max_bytes: MaxBytes,
-			},
-			Uint {
-				#[serde(serialize_with = "serialize_uints")]
-				container: &'a LargeBinaryArray,
-				max_bytes: MaxBytes,
-			},
-			Decimal {
-				#[serde(serialize_with = "serialize_decimals")]
-				container: &'a LargeBinaryArray,
-				precision: Precision,
-				scale: Scale,
-			},
+			Int(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
+			Uint(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
+			Decimal(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
 			Any(AnyShape<'a>),
 			DictionaryId {
 				#[serde(rename = "data", serialize_with = "dictionary_array::serialize")]
@@ -511,29 +423,9 @@ impl Serialize for ColumnBuffer {
 						container,
 						max_bytes: *max_bytes,
 					},
-					ColumnBuffer::Int {
-						container,
-						max_bytes,
-					} => Helper::Int {
-						container,
-						max_bytes: *max_bytes,
-					},
-					ColumnBuffer::Uint {
-						container,
-						max_bytes,
-					} => Helper::Uint {
-						container,
-						max_bytes: *max_bytes,
-					},
-					ColumnBuffer::Decimal {
-						container,
-						precision,
-						scale,
-					} => Helper::Decimal {
-						container,
-						precision: *precision,
-						scale: *scale,
-					},
+					ColumnBuffer::Int(c) => Helper::Int(c),
+					ColumnBuffer::Uint(c) => Helper::Uint(c),
+					ColumnBuffer::Decimal(c) => Helper::Decimal(c),
 					ColumnBuffer::Any {
 						container,
 						declared_type,
@@ -606,22 +498,9 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				container: LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
-			Int {
-				#[serde(deserialize_with = "deserialize_ints")]
-				container: LargeBinaryArray,
-				max_bytes: MaxBytes,
-			},
-			Uint {
-				#[serde(deserialize_with = "deserialize_uints")]
-				container: LargeBinaryArray,
-				max_bytes: MaxBytes,
-			},
-			Decimal {
-				#[serde(deserialize_with = "deserialize_decimals")]
-				container: LargeBinaryArray,
-				precision: Precision,
-				scale: Scale,
-			},
+			Int(#[serde(deserialize_with = "deserialize_int_array")] DecimalArray),
+			Uint(#[serde(deserialize_with = "deserialize_uint_array")] DecimalArray),
+			Decimal(#[serde(deserialize_with = "deserialize_decimal_array")] DecimalArray),
 			Any(AnyShape),
 			DictionaryId {
 				#[serde(rename = "data", deserialize_with = "dictionary_array::deserialize")]
@@ -683,29 +562,9 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				container,
 				max_bytes,
 			},
-			Helper::Int {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Int {
-				container,
-				max_bytes,
-			},
-			Helper::Uint {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			},
-			Helper::Decimal {
-				container,
-				precision,
-				scale,
-			} => ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			},
+			Helper::Int(c) => ColumnBuffer::Int(c),
+			Helper::Uint(c) => ColumnBuffer::Uint(c),
+			Helper::Decimal(c) => ColumnBuffer::Decimal(c),
 			Helper::Any(AnyShape {
 				data,
 				declared_type,
@@ -788,18 +647,6 @@ macro_rules! with_container {
 				container: $v,
 				..
 			} => $varlen,
-			ColumnBuffer::Int {
-				container: $v,
-				..
-			} => $varlen,
-			ColumnBuffer::Uint {
-				container: $v,
-				..
-			} => $varlen,
-			ColumnBuffer::Decimal {
-				container: $v,
-				..
-			} => $varlen,
 			ColumnBuffer::Any {
 				container: $v,
 				..
@@ -818,6 +665,11 @@ macro_rules! with_container {
 					"with_container! must not be called on Uint16 variant directly; handle it explicitly"
 				)
 			}
+			ColumnBuffer::Int(_) | ColumnBuffer::Uint(_) | ColumnBuffer::Decimal(_) => {
+				unreachable!(
+					"with_container! must not be called on a decimal backed variant directly; handle it explicitly"
+				)
+			}
 			ColumnBuffer::DictionaryId {
 				..
 			} => {
@@ -831,11 +683,40 @@ macro_rules! with_container {
 
 pub(crate) use with_container;
 
+macro_rules! on_decimal {
+	($array:expr, |$a:ident| $body:expr) => {
+		match $array {
+			::reifydb_value::value::container::decimal_array::DecimalArray::Decimal128($a) => $body,
+			::reifydb_value::value::container::decimal_array::DecimalArray::Decimal256($a) => $body,
+		}
+	};
+}
+
+pub(crate) use on_decimal;
+
+macro_rules! map_decimal {
+	($array:expr, |$a:ident| $body:expr) => {
+		match $array {
+			::reifydb_value::value::container::decimal_array::DecimalArray::Decimal128($a) => {
+				::reifydb_value::value::container::decimal_array::DecimalArray::Decimal128($body)
+			}
+			::reifydb_value::value::container::decimal_array::DecimalArray::Decimal256($a) => {
+				::reifydb_value::value::container::decimal_array::DecimalArray::Decimal256($body)
+			}
+		}
+	};
+}
+
+pub(crate) use map_decimal;
+
 impl ColumnBuffer {
 	pub fn nulls(&self) -> Option<&NullBuffer> {
 		match self {
 			ColumnBuffer::Bool(a) => a.nulls(),
 			ColumnBuffer::Uint16(a) => a.nulls(),
+			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => {
+				on_decimal!(a, |d| d.nulls())
+			}
 			ColumnBuffer::DictionaryId {
 				container,
 				..
@@ -897,29 +778,15 @@ impl ColumnBuffer {
 				container: varlen_array::attach_nulls(container, nulls),
 				max_bytes,
 			},
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Int {
-				container: varlen_array::attach_nulls(container, nulls),
-				max_bytes,
-			},
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => ColumnBuffer::Uint {
-				container: varlen_array::attach_nulls(container, nulls),
-				max_bytes,
-			},
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => ColumnBuffer::Decimal {
-				container: varlen_array::attach_nulls(container, nulls),
-				precision,
-				scale,
-			},
+			ColumnBuffer::Int(a) => {
+				ColumnBuffer::Int(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
+			}
+			ColumnBuffer::Uint(a) => {
+				ColumnBuffer::Uint(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
+			}
+			ColumnBuffer::Decimal(a) => {
+				ColumnBuffer::Decimal(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
+			}
 			ColumnBuffer::Any {
 				container,
 				declared_type,
@@ -985,15 +852,9 @@ impl ColumnBuffer {
 			ColumnBuffer::Blob {
 				..
 			} => ValueType::Blob,
-			ColumnBuffer::Int {
-				..
-			} => ValueType::Int,
-			ColumnBuffer::Uint {
-				..
-			} => ValueType::Uint,
-			ColumnBuffer::Decimal {
-				..
-			} => ValueType::Decimal,
+			ColumnBuffer::Int(a) => ValueType::int(a.precision()),
+			ColumnBuffer::Uint(a) => ValueType::uint(a.precision()),
+			ColumnBuffer::Decimal(a) => ValueType::decimal(a.precision(), a.scale()),
 			ColumnBuffer::DictionaryId {
 				..
 			} => ValueType::DictionaryId,
@@ -1049,18 +910,9 @@ impl ColumnBuffer {
 				container: c,
 				..
 			} => idx < c.len(),
-			ColumnBuffer::Int {
-				container: c,
-				..
-			} => idx < c.len(),
-			ColumnBuffer::Uint {
-				container: c,
-				..
-			} => idx < c.len(),
-			ColumnBuffer::Decimal {
-				container: c,
-				..
-			} => idx < c.len(),
+			ColumnBuffer::Int(c) => idx < c.len(),
+			ColumnBuffer::Uint(c) => idx < c.len(),
+			ColumnBuffer::Decimal(c) => idx < c.len(),
 			ColumnBuffer::DictionaryId {
 				container: c,
 				..
@@ -1093,8 +945,8 @@ impl ColumnBuffer {
 				| ValueType::Int8 | ValueType::Int16
 				| ValueType::Uint1 | ValueType::Uint2
 				| ValueType::Uint4 | ValueType::Uint8
-				| ValueType::Uint16 | ValueType::Int
-				| ValueType::Uint | ValueType::Decimal
+				| ValueType::Uint16 | ValueType::Int { .. }
+				| ValueType::Uint { .. } | ValueType::Decimal { .. }
 		)
 	}
 
@@ -1122,6 +974,7 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => a.len(),
 			ColumnBuffer::Uint16(a) => a.len(),
+			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => a.len(),
 			ColumnBuffer::DictionaryId {
 				container,
 				..
@@ -1149,6 +1002,9 @@ impl ColumnBuffer {
 			}
 			ColumnBuffer::Bool(a) => bool_array::heap_size(a),
 			ColumnBuffer::Uint16(a) => primitive::heap_size(a),
+			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => {
+				on_decimal!(a, |d| primitive::heap_size(d))
+			}
 			ColumnBuffer::DictionaryId {
 				container,
 				..
@@ -1167,6 +1023,9 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(_)
 			| ColumnBuffer::Uint16(_)
+			| ColumnBuffer::Int(_)
+			| ColumnBuffer::Uint(_)
+			| ColumnBuffer::Decimal(_)
 			| ColumnBuffer::DictionaryId {
 				..
 			} => {}
@@ -1200,18 +1059,9 @@ impl ColumnBuffer {
 				container,
 				..
 			} => dictionary_array::as_string(container, index),
-			ColumnBuffer::Int {
-				container,
-				..
-			} => int_as_string(container, index),
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => uint_as_string(container, index),
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => decimal_as_string(container, index),
+			ColumnBuffer::Int(a) => int_as_string(a, index),
+			ColumnBuffer::Uint(a) => uint_as_string(a, index),
+			ColumnBuffer::Decimal(a) => decimal_as_string(a, index),
 			ColumnBuffer::Any {
 				container,
 				..
@@ -1250,9 +1100,16 @@ impl ColumnBuffer {
 			ValueType::Uuid4 => Self::uuid4_with_capacity(capacity),
 			ValueType::Uuid7 => Self::uuid7_with_capacity(capacity),
 			ValueType::Blob => Self::blob_with_capacity(capacity),
-			ValueType::Int => Self::int_with_capacity(capacity),
-			ValueType::Uint => Self::uint_with_capacity(capacity),
-			ValueType::Decimal => Self::decimal_with_capacity(capacity),
+			ValueType::Int {
+				precision,
+			} => Self::int_with_capacity(precision, capacity),
+			ValueType::Uint {
+				precision,
+			} => Self::uint_with_capacity(precision, capacity),
+			ValueType::Decimal {
+				precision,
+				scale,
+			} => Self::decimal_with_capacity(precision, scale, capacity),
 			ValueType::DictionaryId => Self::dictionary_id_with_capacity(capacity),
 			ValueType::Option(inner) => ColumnBuffer::with_capacity(*inner, capacity)
 				.replace_nulls(Some(NullBuffer::new_valid(0))),
@@ -1293,42 +1150,7 @@ impl ColumnBuffer {
 					max_bytes: dst,
 					..
 				},
-			)
-			| (
-				ColumnBuffer::Int {
-					max_bytes: src,
-					..
-				},
-				ColumnBuffer::Int {
-					max_bytes: dst,
-					..
-				},
-			)
-			| (
-				ColumnBuffer::Uint {
-					max_bytes: src,
-					..
-				},
-				ColumnBuffer::Uint {
-					max_bytes: dst,
-					..
-				},
 			) => *dst = *src,
-			(
-				ColumnBuffer::Decimal {
-					precision: src_precision,
-					scale: src_scale,
-					..
-				},
-				ColumnBuffer::Decimal {
-					precision: dst_precision,
-					scale: dst_scale,
-					..
-				},
-			) => {
-				*dst_precision = *src_precision;
-				*dst_scale = *src_scale;
-			}
 			(
 				ColumnBuffer::DictionaryId {
 					dictionary_id: Some(src),

@@ -7,11 +7,11 @@ use reifydb_value::{fragment::Fragment, util::bitmap::and_nulls, value::value_ty
 
 use crate::Result;
 
-fn is_all_none(nulls: Option<&NullBuffer>) -> bool {
+pub(crate) fn is_all_none(nulls: Option<&NullBuffer>) -> bool {
 	nulls.is_some_and(|nulls| nulls.null_count() == nulls.len())
 }
 
-fn is_untyped_none(data: &ColumnBuffer, nulls: Option<&NullBuffer>) -> bool {
+pub(crate) fn is_untyped_none(data: &ColumnBuffer, nulls: Option<&NullBuffer>) -> bool {
 	is_all_none(nulls) && matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
 }
 

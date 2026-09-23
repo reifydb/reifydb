@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { DigestValue, NONE_VALUE, digestTypeName, type DigestType } from "@reifydb/core";
+import { DigestValue, FIXED_POINT_MAX_PRECISION, NONE_VALUE, digestTypeName, type DigestType } from "@reifydb/core";
 
 import { TYPE_CODE, type TypeName } from "../format";
 import {
-    readF32, readF64, readI8, readI16, readI32, readI64, readI128,
+    readF32, readF64, readI8, readI16, readI32, readI64, readI128, readI256,
     readU16, readU32, readU64, readU128,
 } from "../reader";
 import { DIGEST_PARAMS_SIZE, decodeDigestParams, decodeTypeInfo } from "../typeinfo";
 import {
     formatBlob, formatDate, formatDateTime, formatDuration, formatF32, formatF64,
-    formatTime, formatUuid, signedBigIntFromLeBytes,
+    digitCount, formatFixedPoint, formatTime, formatUuid,
 } from "../values";
 import { decodeBitvec } from "../nones";
 
@@ -91,11 +91,6 @@ export function decodePlain(
             return decodeVarlenStrings(data, offsets, rowCount);
         case "Blob":
             return decodeVarlenBlobs(data, offsets, rowCount);
-        case "Int":
-        case "Uint":
-            return decodeVarlenBigNumbers(data, offsets, rowCount);
-        case "Decimal":
-            return decodeVarlenStrings(data, offsets, rowCount);
         case "Any":
             return decodeAny(rowCount, data);
         case "DictionaryId":
@@ -171,16 +166,6 @@ function decodeDigest(bytes: Uint8Array, where: string): DigestValue {
     }
 }
 
-function decodeVarlenBigNumbers(data: Uint8Array, offsets: Uint8Array, rowCount: number): string[] {
-    const offs = decodeU32Offsets(offsets, rowCount);
-    const out = new Array<string>(rowCount);
-    for (let i = 0; i < rowCount; i++) {
-        const slice = data.subarray(offs[i], offs[i + 1]);
-        out[i] = signedBigIntFromLeBytes(slice).toString();
-    }
-    return out;
-}
-
 function decodeAny(rowCount: number, data: Uint8Array): string[] {
     const out = new Array<string>(rowCount);
     let pos = 0;
@@ -252,15 +237,17 @@ export function decodeAnyValue(data: Uint8Array, pos: number): { value: string; 
             return { value: formatBlob(data.subarray(pos + 4, pos + 4 + len)), nextPos: pos + 4 + len };
         }
         case TYPE_CODE.Int:
+            return { value: readI256Checked(data, pos).toString(), nextPos: pos + 32 };
         case TYPE_CODE.Uint: {
-            const len = readU32(data, pos);
-            const slice = data.subarray(pos + 4, pos + 4 + len);
-            return { value: signedBigIntFromLeBytes(slice).toString(), nextPos: pos + 4 + len };
+            const value = readI256Checked(data, pos);
+            if (value < 0n) throw new Error(`RBCF: Uint value ${value} is negative`);
+            return { value: value.toString(), nextPos: pos + 32 };
         }
         case TYPE_CODE.Decimal: {
-            const len = readU32(data, pos);
-            const slice = data.subarray(pos + 4, pos + 4 + len);
-            return { value: new TextDecoder("utf-8").decode(slice), nextPos: pos + 4 + len };
+            if (pos >= data.length) throw new Error("RBCF: Decimal value truncated");
+            const scale = data[pos];
+            if (scale > FIXED_POINT_MAX_PRECISION) throw new Error(`RBCF: Decimal scale ${scale} exceeds ${FIXED_POINT_MAX_PRECISION}`);
+            return { value: formatFixedPoint(readI256Checked(data, pos + 1), scale), nextPos: pos + 33 };
         }
         case TYPE_CODE.Any:
             return decodeAnyValue(data, pos);
@@ -320,6 +307,24 @@ export function decodeAnyValue(data: Uint8Array, pos: number): { value: string; 
         default:
             throw new Error(`RBCF: unsupported Any type tag: ${tag}`);
     }
+}
+
+function readI256Checked(data: Uint8Array, pos: number): bigint {
+    if (pos + 32 > data.length) throw new Error("RBCF: 32 byte value truncated");
+    const value = readI256(data, pos);
+    if (digitCount(value) > FIXED_POINT_MAX_PRECISION) {
+        throw new Error(`RBCF: value ${value} exceeds ${FIXED_POINT_MAX_PRECISION} digits`);
+    }
+    return value;
+}
+
+export function decodePlainFixedPoint(rowCount: number, data: Uint8Array, width: 16 | 32): bigint[] {
+    if (data.length < rowCount * width) {
+        throw new Error(`RBCF: ${data.length} data bytes do not hold ${rowCount} values of ${width} bytes`);
+    }
+    const out = new Array<bigint>(rowCount);
+    for (let i = 0; i < rowCount; i++) out[i] = width === 16 ? readI128(data, i * 16) : readI256(data, i * 32);
+    return out;
 }
 
 function decodeDictionaryIds(rowCount: number, data: Uint8Array): string[] {

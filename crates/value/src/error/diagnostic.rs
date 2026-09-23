@@ -370,17 +370,17 @@ impl IntoDiagnostic for TypeError {
 							max
 						),
 					),
-					ConstraintKind::IntMaxBytes { max, .. } => (
+					ConstraintKind::IntPrecision { max, .. } => (
 						"CONSTRAINT_003",
 						format!(
-							"The INT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
+							"The INT field is constrained to a maximum precision of {} digits. Consider using a smaller value or increasing the precision.",
 							max
 						),
 					),
-					ConstraintKind::UintMaxBytes { max, .. } => (
+					ConstraintKind::UintPrecision { max, .. } => (
 						"CONSTRAINT_004",
 						format!(
-							"The UINT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
+							"The UINT field is constrained to a maximum precision of {} digits. Consider using a smaller value or increasing the precision.",
 							max
 						),
 					),
@@ -388,6 +388,13 @@ impl IntoDiagnostic for TypeError {
 						"CONSTRAINT_005",
 						format!(
 							"The DECIMAL field is constrained to a maximum precision of {} digits. Consider using a smaller number or increasing the precision constraint.",
+							max
+						),
+					),
+					ConstraintKind::DecimalScale { max, .. } => (
+						"CONSTRAINT_006",
+						format!(
+							"The DECIMAL field has a scale of {} fraction digits and a write is never rounded. Round the value explicitly or increase the scale.",
 							max
 						),
 					),
@@ -612,14 +619,14 @@ impl IntoDiagnostic for TypeError {
 			}
 
 			TypeError::DecimalPrecisionInvalid { precision } => {
-				let label = Some(format!("precision ({}) must be at least 1", precision));
+				let label = Some(format!("precision ({}) must be between 1 and 76", precision));
 				Diagnostic {
 					code: "NUMBER_006".to_string(),
 					rql: None,
 					message: "invalid decimal precision".to_string(),
 					fragment: Fragment::None,
 					label,
-					help: Some("use a precision value of at least 1".to_string()),
+					help: Some("use a precision value between 1 and 76".to_string()),
 					notes: vec![
 						format!("current precision: {}", precision),
 						"precision represents the total number of significant digits".to_string(),

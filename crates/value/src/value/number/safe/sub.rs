@@ -27,67 +27,47 @@ macro_rules! impl_safe_sub {
 
 impl_safe_sub!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use num_bigint::BigInt;
-
 use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeSub for Int {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		Some(Int::from(&self.0 - &r.0))
+		Int::checked_sub(self, r)
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		Int::from(&self.0 - &r.0)
+		Int::saturating_sub(self, r)
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		Int::from(&self.0 - &r.0)
+		Int::saturating_sub(self, r)
 	}
 }
 
 impl SafeSub for Uint {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		let result = &self.0 - &r.0;
-		if result < BigInt::from(0) {
-			None
-		} else {
-			Some(Uint::from(result))
-		}
+		Uint::checked_sub(self, r)
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		let result = &self.0 - &r.0;
-		if result < BigInt::from(0) {
-			Uint::from(0u64)
-		} else {
-			Uint::from(result)
-		}
+		Uint::saturating_sub(self, r)
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		let result = &self.0 - &r.0;
-		if result < BigInt::from(0) {
-			Uint::from(0u64)
-		} else {
-			Uint::from(result)
-		}
+		Uint::saturating_sub(self, r)
 	}
 }
 
 impl SafeSub for Decimal {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		let result = self.inner() - r.inner();
-		Some(Decimal::from(result))
+		Decimal::checked_sub(self, r)
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		let result = self.inner() - r.inner();
-		Decimal::from(result)
+		Decimal::saturating_sub(self, r)
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		let result = self.inner() - r.inner();
-		Decimal::from(result)
+		Decimal::saturating_sub(self, r)
 	}
 }
 

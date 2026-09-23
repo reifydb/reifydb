@@ -28,7 +28,7 @@ fn scalar_targets() -> Vec<ValueType> {
 		ValueType::Utf8,
 		ValueType::Int4,
 		ValueType::Float8,
-		ValueType::Decimal,
+		ValueType::DECIMAL,
 		ValueType::Boolean,
 		ValueType::Blob,
 		ValueType::Date,

@@ -9,6 +9,7 @@ use crate::{
 	error::{DecodeError, EncodeError},
 	reader::Reader,
 	tag::{EXTENDED_TYPE_TAG, MAX_OPTION_DEPTH, TypeTag, ValueKind, peel_options},
+	unscaled::{decode_params, family_type},
 };
 
 pub fn encode_value_type(ty: &ValueType, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
@@ -52,6 +53,19 @@ fn encode_base(base: &ValueType, depth: u8, buf: &mut Vec<u8>) -> Result<(), Enc
 			inner,
 			accuracy,
 		} => encode_digest_params(inner, *accuracy, buf)?,
+		ValueType::Int {
+			precision,
+		}
+		| ValueType::Uint {
+			precision,
+		} => buf.push(precision.value()),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => {
+			buf.push(precision.value());
+			buf.push(scale.value());
+		}
 		_ => {}
 	}
 	Ok(())
@@ -113,6 +127,15 @@ pub fn decode_value_type(r: &mut Reader) -> Result<ValueType, DecodeError> {
 				inner: Box::new(inner),
 				accuracy,
 			}
+		}
+		ValueKind::Int | ValueKind::Uint => {
+			let (precision, scale) = decode_params(r.u8()?, 0)?;
+			family_type(kind, precision, scale)?
+		}
+		ValueKind::Decimal => {
+			let precision = r.u8()?;
+			let (precision, scale) = decode_params(precision, r.u8()?)?;
+			family_type(kind, precision, scale)?
 		}
 		_ => return tag.to_type(),
 	};

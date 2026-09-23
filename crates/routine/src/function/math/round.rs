@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::i256;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::bignum_array::{decimal_array, decimal_at},
-	decimal::Decimal,
+	constraint::{precision::Precision, scale::Scale},
+	container::decimal_array::{decimal_array, decimals},
+	decimal::{Decimal, unscaled},
 	value_type::{ValueType, input_types::InputTypes},
 };
 
@@ -29,6 +31,22 @@ impl Round {
 			info: RoutineInfo::new("math::round"),
 		}
 	}
+}
+
+fn round_decimal(value: &Decimal, digits: i32, precision: Precision, scale: Scale) -> Option<Decimal> {
+	let scale = scale.value();
+	let drop = (scale as i32).saturating_sub(digits);
+	if drop <= 0 {
+		return value.fits(precision.value(), scale);
+	}
+	let drop = drop.min(unscaled::MAX_DIGITS as i32 + 1) as u8;
+	let rounded = unscaled::round_half_up(value.unscaled(), drop);
+	let unscaled = if rounded == i256::ZERO {
+		i256::ZERO
+	} else {
+		unscaled::upscale(rounded, drop)?
+	};
+	Decimal::from_parts(unscaled, scale)?.fits(precision.value(), scale)
 }
 
 impl<'a> Routine<FunctionContext<'a>> for Round {
@@ -111,28 +129,22 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				}
 				ColumnBuffer::float8_with_bitvec(result, bitvec)
 			}
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => {
+			ColumnBuffer::Decimal(container) => {
+				let precision = container.precision();
+				let scale = container.scale();
 				let mut result = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					if let Some(value) = decimal_at(container, i) {
-						let prec = get_precision(i)?;
-						result.push(value.round_to_scale(prec as i64));
-						bitvec.push(true);
-					} else {
-						result.push(Decimal::default());
-						bitvec.push(false);
-					}
+				for (i, value) in decimals(container).into_iter().enumerate() {
+					let rounded = round_decimal(&value, get_precision(i)?, precision, scale)
+						.ok_or_else(|| RoutineError::FunctionExecutionFailed {
+							function: ctx.fragment.clone(),
+							reason: format!(
+								"round of {value} is out of range for {}",
+								ValueType::decimal(precision, scale)
+							),
+						})?;
+					result.push(rounded);
 				}
-				ColumnBuffer::Decimal {
-					container: decimal_array(result),
-					precision: *precision,
-					scale: *scale,
-				}
+				ColumnBuffer::Decimal(decimal_array(precision, scale, result))
 			}
 			other if other.get_type().is_number() => val_data.clone(),
 			other => {

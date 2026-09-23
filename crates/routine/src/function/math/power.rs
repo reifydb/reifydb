@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBuffer, NullBuffer};
-use num_traits::ToPrimitive;
+use arrow_buffer::{BooleanBuffer, NullBuffer, i256};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -10,10 +9,7 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::{
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
-		},
+		container::decimal_array::{decimals, ints, u128s, uints},
 		decimal::Decimal,
 		int::Int,
 		is::IsNumber,
@@ -105,23 +101,14 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
 				ColumnBuffer::$factory(values, bits)
 			}};
-			($variant:ident { .. }, $decode:ident, $factory:ident, $op:expr) => {{
-				let (
-					ColumnBuffer::$variant {
-						container: b,
-						..
-					},
-					ColumnBuffer::$variant {
-						container: e,
-						..
-					},
-				) = (base_inner, exp_inner)
+			($variant:ident(..), $decode:ident, $build:expr, $op:expr) => {{
+				let (ColumnBuffer::$variant(b), ColumnBuffer::$variant(e)) = (base_inner, exp_inner)
 				else {
 					unreachable!()
 				};
 				let (values, bits) =
 					pow_rows(&$decode(b), base_bv, &$decode(e), exp_bv, $op, &overflow)?;
-				ColumnBuffer::$factory(values, bits)
+				$build(values, bits)
 			}};
 		}
 
@@ -163,28 +150,52 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
-			ValueType::Int => run!(Int { .. }, ints, int_with_bitvec, |b: &Int, e: &Int| {
-				if *e < Int::zero() {
-					Some(Int::zero())
-				} else {
-					e.0.to_u32().map(|exp| Int::from(b.0.pow(exp)))
+			ValueType::Int {
+				precision,
+			} => run!(
+				Int(..),
+				ints,
+				|values, bits| ColumnBuffer::int_with_bitvec(precision, values, bits),
+				|b: &Int, e: &Int| {
+					if e.is_negative() {
+						Some(Int::zero())
+					} else {
+						family_exponent(e.to_i256())
+							.and_then(|exp| b.to_i256().checked_pow(exp))
+							.and_then(Int::from_i256)
+					}
 				}
-			}),
-			ValueType::Uint => run!(Uint { .. }, uints, uint_with_bitvec, |b: &Uint, e: &Uint| {
-				e.0.to_u32().map(|exp| Uint::from(b.0.pow(exp)))
-			}),
-			ValueType::Decimal => {
-				run!(Decimal { .. }, decimals, decimal_with_bitvec, |b: &Decimal, e: &Decimal| {
-					let base = b.0.to_f64().unwrap_or(0.0);
-					let exp = e.0.to_f64().unwrap_or(0.0);
-					Some(Decimal::from(base.powf(exp)))
-				})
-			}
+			),
+			ValueType::Uint {
+				precision,
+			} => run!(
+				Uint(..),
+				uints,
+				|values, bits| ColumnBuffer::uint_with_bitvec(precision, values, bits),
+				|b: &Uint, e: &Uint| family_exponent(e.to_i256())
+					.and_then(|exp| b.to_i256().checked_pow(exp))
+					.and_then(Uint::from_i256)
+			),
+			ValueType::Decimal {
+				precision,
+				scale,
+			} => run!(
+				Decimal(..),
+				decimals,
+				|values, bits| ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits),
+				|b: &Decimal, e: &Decimal| Decimal::from_f64(b.to_f64().powf(e.to_f64()))
+					.and_then(|value| value.round_to_scale(scale.value()))
+					.and_then(|value| value.fits(precision.value(), scale.value()))
+			),
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
 	}
+}
+
+fn family_exponent(exponent: i256) -> Option<u32> {
+	exponent.to_i128().and_then(|exp| u32::try_from(exp).ok())
 }
 
 fn pow_rows<T, F>(

@@ -4,19 +4,24 @@
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{date::Date, datetime::DateTime, duration::Duration, time::Time},
+	value::{
+		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
+	},
 };
 
 use crate::{
-	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
+	common::{
+		extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
+		family::default_family_params,
+	},
 	error::SdkError,
 	flow::operator::column::{
 		row::Row,
 		sink::RowSink,
 		writer::{
 			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter, F32Writer,
-			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, TimeWriter, U8Writer,
-			U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
+			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, IntWriter, TimeWriter,
+			U8Writer, U16Writer, U32Writer, U64Writer, U128Writer, UintWriter, Utf8Writer,
 		},
 	},
 };
@@ -46,6 +51,8 @@ enum AnyWriter<'a> {
 	Bool(BoolWriter<'a>),
 	Utf8(Utf8Writer<'a>),
 	Blob(BlobWriter<'a>),
+	Int(IntWriter<'a>),
+	Uint(UintWriter<'a>),
 	Decimal(DecimalWriter<'a>),
 }
 
@@ -61,6 +68,13 @@ impl<'a> AnyWriter<'a> {
 		// the ExternCContextRaw behind that pointer outlives `'a`.
 		let builder: &mut ColumnsBuilder<'a> =
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
+		if let Some((precision, scale)) = default_family_params(type_code) {
+			return Ok(match type_code {
+				ValueKind::Int => AnyWriter::Int(builder.int_writer(row_capacity, precision)?),
+				ValueKind::Uint => AnyWriter::Uint(builder.uint_writer(row_capacity, precision)?),
+				_ => AnyWriter::Decimal(builder.decimal_writer(row_capacity, precision, scale)?),
+			});
+		}
 		Ok(match type_code {
 			ValueKind::Uint1 => AnyWriter::U8(builder.u8_writer(row_capacity)?),
 			ValueKind::Uint2 => AnyWriter::U16(builder.u16_writer(row_capacity)?),
@@ -81,7 +95,6 @@ impl<'a> AnyWriter<'a> {
 			ValueKind::Boolean => AnyWriter::Bool(builder.bool_writer(row_capacity)?),
 			ValueKind::Utf8 => AnyWriter::Utf8(builder.utf8_writer(row_capacity, var_bytes_hint)?),
 			ValueKind::Blob => AnyWriter::Blob(builder.blob_writer(row_capacity, var_bytes_hint)?),
-			ValueKind::Decimal => AnyWriter::Decimal(builder.decimal_writer(row_capacity, var_bytes_hint)?),
 			other => {
 				return Err(SdkError::Other(format!(
 					"ExternCRowSink: unsupported column type {:?}",
@@ -112,6 +125,8 @@ impl<'a> AnyWriter<'a> {
 			AnyWriter::Bool(w) => w.finish(),
 			AnyWriter::Utf8(w) => w.finish(),
 			AnyWriter::Blob(w) => w.finish(),
+			AnyWriter::Int(w) => w.finish(),
+			AnyWriter::Uint(w) => w.finish(),
 			AnyWriter::Decimal(w) => w.finish(),
 		}
 	}
@@ -310,11 +325,33 @@ impl RowSink for ExternCRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
+	fn push_int(&mut self, col: usize, v: &Int) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Decimal(w) => w.push_bytes(v),
+			AnyWriter::Int(w) => w.push(v),
 			_ => {
-				debug_panic("push_decimal_bytes on wrong column type");
+				debug_panic("push_int on wrong column type");
+				Ok(())
+			}
+		}
+	}
+
+	#[inline]
+	fn push_uint(&mut self, col: usize, v: &Uint) -> Result<(), SdkError> {
+		match &mut self.writers[col] {
+			AnyWriter::Uint(w) => w.push(v),
+			_ => {
+				debug_panic("push_uint on wrong column type");
+				Ok(())
+			}
+		}
+	}
+
+	#[inline]
+	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
+		match &mut self.writers[col] {
+			AnyWriter::Decimal(w) => w.push(v),
+			_ => {
+				debug_panic("push_decimal on wrong column type");
 				Ok(())
 			}
 		}
@@ -342,6 +379,8 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Bool(w) => w.push_none(),
 			AnyWriter::Utf8(w) => return w.push_none(),
 			AnyWriter::Blob(w) => return w.push_none(),
+			AnyWriter::Int(w) => return w.push_none(),
+			AnyWriter::Uint(w) => return w.push_none(),
 			AnyWriter::Decimal(w) => return w.push_none(),
 		}
 		Ok(())

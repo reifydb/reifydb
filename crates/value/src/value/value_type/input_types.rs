@@ -25,9 +25,9 @@ impl InputTypes {
 			ValueType::Uint16,
 			ValueType::Float4,
 			ValueType::Float8,
-			ValueType::Int,
-			ValueType::Uint,
-			ValueType::Decimal,
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
 		])
 	}
 

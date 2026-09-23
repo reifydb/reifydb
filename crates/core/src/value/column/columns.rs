@@ -161,9 +161,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
 		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
 		Value::Blob(v) => ColumnBuffer::blob([v]),
-		Value::Int(v) => ColumnBuffer::int(vec![v]),
-		Value::Uint(v) => ColumnBuffer::uint(vec![v]),
-		Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
+		value @ (Value::Int(_) | Value::Uint(_) | Value::Decimal(_)) => ColumnBuffer::from(value),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
 		Value::Any(v) => ColumnBuffer::any(vec![*v]),
 		Value::Type(v) => ColumnBuffer::any(vec![Value::Type(v)]),
@@ -621,10 +619,14 @@ impl Columns {
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
 
-			let column_type = if matches!(value, Value::None { .. }) {
-				field.constraint.get_type()
-			} else {
-				value.get_type()
+			let column_type = match value {
+				Value::None {
+					..
+				} => field.constraint.get_type(),
+				Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
+					field.constraint.get_type().inner_type().clone()
+				}
+				_ => value.get_type(),
 			};
 
 			let mut builder = if column_type.is_option() {
@@ -841,13 +843,13 @@ pub mod tests {
 	#[test]
 	fn extract_by_indices_preserves_int_values() {
 		let data = [Int::from(-1i64), Int::from(2i64), Int::from(-3i64), Int::from(4i64)];
-		assert_extract_preserves_values(ColumnBuffer::int(data), &[3, 1, 2]);
+		assert_extract_preserves_values(ColumnBuffer::int(Precision::MAX, data), &[3, 1, 2]);
 	}
 
 	#[test]
 	fn extract_by_indices_preserves_uint_values() {
 		let data = [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64), Uint::from(4u64)];
-		assert_extract_preserves_values(ColumnBuffer::uint(data), &[3, 1, 2]);
+		assert_extract_preserves_values(ColumnBuffer::uint(Precision::MAX, data), &[3, 1, 2]);
 	}
 
 	#[test]
@@ -858,7 +860,7 @@ pub mod tests {
 			Decimal::from_str("-3.75").unwrap(),
 			Decimal::from_str("4.00").unwrap(),
 		];
-		assert_extract_preserves_values(ColumnBuffer::decimal(data), &[3, 1, 2]);
+		assert_extract_preserves_values(ColumnBuffer::decimal(Precision::MAX, Scale::new(2), data), &[3, 1, 2]);
 	}
 
 	#[test]
@@ -1088,81 +1090,67 @@ pub mod tests {
 	}
 
 	#[test]
-	fn extract_by_indices_preserves_int_max_bytes_metadata() {
-		let mut buffer = ColumnBuffer::int([Int::from(1i64), Int::from(2i64), Int::from(3i64)]);
-		match &mut buffer {
-			ColumnBuffer::Int {
-				max_bytes,
-				..
-			} => *max_bytes = MaxBytes::new(16),
-			_ => unreachable!(),
-		}
+	fn extract_by_indices_preserves_int_precision_metadata() {
+		let buffer = ColumnBuffer::int(Precision::new(16), [Int::from(1i64), Int::from(2i64), Int::from(3i64)]);
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
 		let extracted = original.extract_by_indices(&[2, 0]);
 
 		match extracted.data_at(0) {
-			ColumnBuffer::Int {
-				max_bytes,
-				..
-			} => assert_eq!(*max_bytes, MaxBytes::new(16), "Int max_bytes must survive extraction"),
+			ColumnBuffer::Int(array) => {
+				assert_eq!(
+					array.precision(),
+					Precision::new(16),
+					"Int precision must survive extraction"
+				)
+			}
 			other => panic!("expected Int buffer, got {:?}", other.get_type()),
 		}
 	}
 
 	#[test]
-	fn extract_by_indices_preserves_uint_max_bytes_metadata() {
-		let mut buffer = ColumnBuffer::uint([Uint::from(1u64), Uint::from(2u64), Uint::from(3u64)]);
-		match &mut buffer {
-			ColumnBuffer::Uint {
-				max_bytes,
-				..
-			} => *max_bytes = MaxBytes::new(8),
-			_ => unreachable!(),
-		}
+	fn extract_by_indices_preserves_uint_precision_metadata() {
+		let buffer =
+			ColumnBuffer::uint(Precision::new(8), [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64)]);
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
 		let extracted = original.extract_by_indices(&[2, 0]);
 
 		match extracted.data_at(0) {
-			ColumnBuffer::Uint {
-				max_bytes,
-				..
-			} => assert_eq!(*max_bytes, MaxBytes::new(8), "Uint max_bytes must survive extraction"),
+			ColumnBuffer::Uint(array) => {
+				assert_eq!(
+					array.precision(),
+					Precision::new(8),
+					"Uint precision must survive extraction"
+				)
+			}
 			other => panic!("expected Uint buffer, got {:?}", other.get_type()),
 		}
 	}
 
 	#[test]
 	fn extract_by_indices_preserves_decimal_precision_and_scale_metadata() {
-		let mut buffer = ColumnBuffer::decimal([
-			Decimal::from_str("1.50").unwrap(),
-			Decimal::from_str("2.25").unwrap(),
-			Decimal::from_str("3.75").unwrap(),
-		]);
-		match &mut buffer {
-			ColumnBuffer::Decimal {
-				precision,
-				scale,
-				..
-			} => {
-				*precision = Precision::new(10);
-				*scale = Scale::new(2);
-			}
-			_ => unreachable!(),
-		}
+		let buffer = ColumnBuffer::decimal(
+			Precision::new(10),
+			Scale::new(2),
+			[
+				Decimal::from_str("1.50").unwrap(),
+				Decimal::from_str("2.25").unwrap(),
+				Decimal::from_str("3.75").unwrap(),
+			],
+		);
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
 		let extracted = original.extract_by_indices(&[2, 0]);
 
 		match extracted.data_at(0) {
-			ColumnBuffer::Decimal {
-				precision,
-				scale,
-				..
-			} => {
-				assert_eq!(*precision, Precision::new(10), "Decimal precision must survive extraction");
-				assert_eq!(*scale, Scale::new(2), "Decimal scale must survive extraction");
+			ColumnBuffer::Decimal(array) => {
+				assert_eq!(
+					array.precision(),
+					Precision::new(10),
+					"Decimal precision must survive extraction"
+				);
+				assert_eq!(array.scale(), Scale::new(2), "Decimal scale must survive extraction");
 			}
 			other => panic!("expected Decimal buffer, got {:?}", other.get_type()),
 		}

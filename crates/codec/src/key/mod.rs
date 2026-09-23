@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use arrow_buffer::i256;
 use reifydb_value::value::datetime::DateTime;
 
 pub mod buf;
@@ -144,6 +145,18 @@ pub fn encode_i128(value: i128) -> [u8; 16] {
 
 pub fn decode_i128(bytes: [u8; 16]) -> i128 {
 	(!u128::from_be_bytes(bytes) ^ 0x80000000000000000000000000000000) as i128
+}
+
+pub fn encode_i256(value: i256) -> [u8; 32] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 0x80;
+	bytes.map(|byte| !byte)
+}
+
+pub fn decode_i256(bytes: [u8; 32]) -> i256 {
+	let mut raw = bytes.map(|byte| !byte);
+	raw[0] ^= 0x80;
+	i256::from_be_bytes(raw)
 }
 
 pub fn encode_u8(value: u8) -> u8 {

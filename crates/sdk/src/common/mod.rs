@@ -4,3 +4,5 @@
 #[cfg(feature = "host")]
 pub mod extern_c;
 pub mod extern_wasm;
+#[cfg(feature = "host")]
+pub mod family;

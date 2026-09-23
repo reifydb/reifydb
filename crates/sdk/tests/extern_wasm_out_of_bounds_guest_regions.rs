@@ -45,6 +45,8 @@ fn guest_bytes(patch: impl Fn(&mut ExternWasmColumns, &mut ExternWasmColumn)) ->
 		name_offset,
 		name_len: 1,
 		type_code: ValueKind::Utf8.byte(),
+		precision: 0,
+		scale: 0,
 		data_row_count: 1,
 		data_offset,
 		data_len: 2,
@@ -83,6 +85,8 @@ fn cell_bytes(kind: ValueKind, data: &[u8], offsets: &[u64]) -> Vec<u8> {
 		name_offset,
 		name_len: 1,
 		type_code: kind.byte(),
+		precision: 0,
+		scale: 0,
 		data_row_count: 1,
 		data_offset,
 		data_len: data.len() as u32,
@@ -172,20 +176,13 @@ fn guest_regions_past_the_end_of_the_bytes_are_an_error_not_a_panic() {
 #[test]
 fn guest_offsets_outside_the_data_are_an_error_not_a_panic() {
 	// A cell whose offsets do not lie inside the data region must fail the call, never panic the host.
-	let failures: Vec<String> = [
-		ValueKind::Utf8,
-		ValueKind::Blob,
-		ValueKind::Duration,
-		ValueKind::Int,
-		ValueKind::Uint,
-		ValueKind::Decimal,
-		ValueKind::Any,
-	]
-	.into_iter()
-	.flat_map(|kind| [(kind, "past the end", [0u64, 3]), (kind, "reversed", [2, 1])])
-	.filter_map(|(kind, case, offsets)| {
-		not_rejected(&cell_bytes(kind, b"ab", &offsets)).map(|failure| format!("{kind:?} {case}: {failure}"))
-	})
-	.collect();
+	let failures: Vec<String> = [ValueKind::Utf8, ValueKind::Blob, ValueKind::Duration, ValueKind::Any]
+		.into_iter()
+		.flat_map(|kind| [(kind, "past the end", [0u64, 3]), (kind, "reversed", [2, 1])])
+		.filter_map(|(kind, case, offsets)| {
+			not_rejected(&cell_bytes(kind, b"ab", &offsets))
+				.map(|failure| format!("{kind:?} {case}: {failure}"))
+		})
+		.collect();
 	assert!(failures.is_empty(), "offsets outside 2 data bytes were not rejected: {failures:?}");
 }

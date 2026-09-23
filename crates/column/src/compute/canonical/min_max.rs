@@ -56,6 +56,31 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		}};
 	}
 
+	macro_rules! reduce_family {
+		($array:expr) => {{
+			let values = $array.unscaled_values();
+			let mut low: Option<usize> = None;
+			let mut high: Option<usize> = None;
+			for (i, &x) in values.iter().enumerate() {
+				if skip(i) {
+					continue;
+				}
+				if low.is_none_or(|m| x < values[m]) {
+					low = Some(i);
+				}
+				if high.is_none_or(|m| x > values[m]) {
+					high = Some(i);
+				}
+			}
+			match (low, high) {
+				(Some(low), Some(high)) => {
+					Ok((array.buffer.get_value(low), array.buffer.get_value(high)))
+				}
+				_ => Err(ColumnError::MinMaxAllNone.into()),
+			}
+		}};
+	}
+
 	match &array.buffer {
 		ColumnBuffer::Int1(c) => reduce_arrow!(c, Int1),
 		ColumnBuffer::Int2(c) => reduce_arrow!(c, Int2),
@@ -67,6 +92,7 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Uint4(c) => reduce_arrow!(c, Uint4),
 		ColumnBuffer::Uint8(c) => reduce_arrow!(c, Uint8),
 		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
+		ColumnBuffer::Int(c) | ColumnBuffer::Uint(c) | ColumnBuffer::Decimal(c) => reduce_family!(c),
 		ColumnBuffer::Any {
 			..
 		} => Err(ColumnError::FixedArrayRequired {
@@ -101,7 +127,12 @@ fn reduce_ordered(array: &Canonical) -> Result<(Value, Value)> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::builder::ColumnBuilder;
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::value::{
+		constraint::{precision::Precision, scale::Scale},
+		decimal::Decimal,
+		int::Int,
+		value_type::ValueType,
+	};
 
 	use super::*;
 
@@ -132,6 +163,37 @@ mod tests {
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int16(i128::MIN));
 		assert_eq!(max, Value::Int16(i128::MAX));
+	}
+
+	#[test]
+	fn min_max_wide_int_across_the_sign() {
+		// An untyped value compare or a truncating read past i128 picks the wrong bounds at 76 digits.
+		let big = Int::parse(&"9".repeat(76)).unwrap();
+		let cd = ColumnBuffer::int(
+			Precision::new(76),
+			[Int::from_i128(-1), big.clone(), big.negate(), Int::zero()],
+		);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
+		let (min, max) = min_max(&ca).unwrap();
+		assert_eq!(min, Value::Int(big.negate()));
+		assert_eq!(max, Value::Int(big));
+	}
+
+	#[test]
+	fn min_max_decimal_skips_nones_and_keeps_the_column_scale() {
+		// The bounds must come back at the column scale, and a none row must never win as zero.
+		let d = |t: &str| Decimal::parse(t).unwrap();
+		let cd = ColumnBuffer::decimal_with_bitvec(
+			Precision::new(10),
+			Scale::new(2),
+			[d("1.50"), d("0.00"), d("-2.25"), d("0.00"), d("3.10")],
+			vec![true, false, true, false, true],
+		);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
+		let (min, max) = min_max(&ca).unwrap();
+		assert_eq!(min.to_string(), "-2.25");
+		assert_eq!(max.to_string(), "3.10");
+		assert!(matches!(&min, Value::Decimal(v) if v.scale() == 2));
 	}
 
 	#[test]

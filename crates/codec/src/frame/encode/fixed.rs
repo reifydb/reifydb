@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{
 	container::{
-		decimal_array::u128s,
+		decimal_array::{DecimalArray, u128s},
 		temporal_array::{dates, datetimes, times},
 	},
 	frame::data::FrameColumnData,
@@ -16,11 +16,11 @@ use crate::{
 		encoding::{
 			delta::{
 				try_delta_f32, try_delta_f64, try_delta_i8, try_delta_i16, try_delta_i32,
-				try_delta_i64, try_delta_i128, try_delta_rle_f32, try_delta_rle_f64, try_delta_rle_i8,
-				try_delta_rle_i16, try_delta_rle_i32, try_delta_rle_i64, try_delta_rle_i128,
-				try_delta_rle_u8, try_delta_rle_u16, try_delta_rle_u32, try_delta_rle_u64,
-				try_delta_rle_u128, try_delta_u8, try_delta_u16, try_delta_u32, try_delta_u64,
-				try_delta_u128,
+				try_delta_i64, try_delta_i128, try_delta_i256, try_delta_rle_f32, try_delta_rle_f64,
+				try_delta_rle_i8, try_delta_rle_i16, try_delta_rle_i32, try_delta_rle_i64,
+				try_delta_rle_i128, try_delta_rle_i256, try_delta_rle_u8, try_delta_rle_u16,
+				try_delta_rle_u32, try_delta_rle_u64, try_delta_rle_u128, try_delta_u8, try_delta_u16,
+				try_delta_u32, try_delta_u64, try_delta_u128,
 			},
 			rle::{try_rle_encode, try_rle_i32, try_rle_u64},
 		},
@@ -51,7 +51,40 @@ macro_rules! try_rle_fixed {
 	}};
 }
 
+fn family(inner: &FrameColumnData) -> Option<(ValueKind, &DecimalArray)> {
+	match inner {
+		FrameColumnData::Int(c) => Some((ValueKind::Int, c)),
+		FrameColumnData::Uint(c) => Some((ValueKind::Uint, c)),
+		FrameColumnData::Decimal(c) => Some((ValueKind::Decimal, c)),
+		_ => None,
+	}
+}
+
+fn family_column(kind: ValueKind, encoding: Encoding, data: Vec<u8>) -> EncodedColumn {
+	EncodedColumn {
+		type_code: kind.byte(),
+		encoding,
+		flags: 0,
+		nones: vec![],
+		data,
+		offsets: vec![],
+		extra: vec![],
+		row_count: 0,
+	}
+}
+
 pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(inner) {
+		let data = match array {
+			DecimalArray::Decimal128(a) => {
+				try_rle_encode(a.values(), 16, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))?
+			}
+			DecimalArray::Decimal256(a) => {
+				try_rle_encode(a.values(), 32, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))?
+			}
+		};
+		return Some(family_column(kind, Encoding::Rle, data));
+	}
 	match inner {
 		FrameColumnData::Int1(c) => try_rle_fixed!(c, ValueType::Int1, 1),
 		FrameColumnData::Int2(c) => try_rle_fixed!(c, ValueType::Int2, 2),
@@ -112,6 +145,13 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 }
 
 pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(inner) {
+		let data = match array {
+			DecimalArray::Decimal128(a) => try_delta_i128(a.values())?,
+			DecimalArray::Decimal256(a) => try_delta_i256(a.values())?,
+		};
+		return Some(family_column(kind, Encoding::Delta, data));
+	}
 	match inner {
 		FrameColumnData::Int1(c) => {
 			let encoded = try_delta_i8(c.values())?;
@@ -316,6 +356,13 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 }
 
 pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(inner) {
+		let data = match array {
+			DecimalArray::Decimal128(a) => try_delta_rle_i128(a.values())?,
+			DecimalArray::Decimal256(a) => try_delta_rle_i256(a.values())?,
+		};
+		return Some(family_column(kind, Encoding::DeltaRle, data));
+	}
 	match inner {
 		FrameColumnData::Int1(c) => {
 			let encoded = try_delta_rle_i8(c.values())?;

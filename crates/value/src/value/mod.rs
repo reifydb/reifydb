@@ -6,7 +6,6 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
@@ -45,6 +44,7 @@ pub mod value_type;
 use std::{fmt, hash, mem};
 
 use blob::Blob;
+use constraint::{precision::Precision, scale::Scale};
 use date::Date;
 use datetime::DateTime;
 use decimal::Decimal;
@@ -300,9 +300,13 @@ impl Value {
 					None
 				}
 			}
-			Value::Int(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
-			Value::Uint(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
-			Value::Decimal(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
+			Value::Int(v) => Uint::from_i256(v.to_i256())
+				.and_then(|n| n.to_u128())
+				.and_then(|n| usize::try_from(n).ok()),
+			Value::Uint(v) => v.to_u128().and_then(|n| usize::try_from(n).ok()),
+			Value::Decimal(v) => Uint::from_i256(v.trunc())
+				.and_then(|n| n.to_u128())
+				.and_then(|n| usize::try_from(n).ok()),
 			Value::Utf8(s) => {
 				let s = s.trim();
 				if let Ok(n) = s.parse::<u64>() {
@@ -607,9 +611,9 @@ impl Value {
 			Value::Uuid4(_) => ValueType::Uuid4,
 			Value::Uuid7(_) => ValueType::Uuid7,
 			Value::Blob(_) => ValueType::Blob,
-			Value::Int(_) => ValueType::Int,
-			Value::Uint(_) => ValueType::Uint,
-			Value::Decimal(_) => ValueType::Decimal,
+			Value::Int(_) => ValueType::INT,
+			Value::Uint(_) => ValueType::UINT,
+			Value::Decimal(v) => ValueType::decimal(Precision::MAX, Scale::new(v.scale())),
 			Value::Any(_) => ValueType::Any,
 			Value::DictionaryId(_) => ValueType::DictionaryId,
 			Value::Type(t) => t.clone(),
@@ -641,8 +645,7 @@ mod tests {
 	use std::str::FromStr;
 
 	use ::uuid::Uuid as StdUuid;
-	use bigdecimal::BigDecimal;
-	use num_bigint::BigInt;
+	use arrow_buffer::i256;
 	use postcard::{from_bytes, to_allocvec};
 
 	use super::*;
@@ -910,7 +913,7 @@ mod tests {
 			Value::Blob(Blob::new(vec![1, 2, 3])),
 			Value::Int(Int::from_i128(i128::MIN)),
 			Value::Uint(Uint::from_u128(u128::MAX)),
-			Value::Decimal(Decimal(BigDecimal::new(BigInt::from(-12345), 3))),
+			Value::Decimal(Decimal::from_parts(i256::from_i128(-12345), 3).unwrap()),
 			Value::Any(Box::new(Value::Boolean(false))),
 			Value::DictionaryId(DictionaryEntryId::U16(u128::MAX)),
 			Value::Type(ValueType::Record(vec![("k".to_string(), ValueType::Int4)])),

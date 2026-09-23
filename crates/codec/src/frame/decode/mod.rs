@@ -9,24 +9,16 @@ use std::str;
 
 use arrow_array::LargeStringArray;
 use arrow_buffer::{BooleanBuffer, Buffer};
-use bigdecimal::BigDecimal;
-use num_bigint::BigInt;
 use reifydb_value::{
 	encoding::LeBytes,
 	reifydb_assertions,
 	value::{
-		container::{
-			bignum_array::{decimal_array, int_array, uint_array},
-			varlen_array::blob_array,
-		},
+		container::varlen_array::blob_array,
 		datetime::DateTime,
-		decimal::Decimal,
 		diff_type::DiffType,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		int::Int,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -34,7 +26,7 @@ use reifydb_value::{
 use crate::{
 	error::DecodeError,
 	frame::{
-		encoding::dict::{decode_dict_blob, decode_dict_table_bytes, decode_dict_utf8, read_index},
+		encoding::dict::{decode_dict_blob, decode_dict_utf8},
 		format::{
 			COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE,
 			META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC,
@@ -334,6 +326,9 @@ fn decode_column_dispatch(
 		}
 		return varlen::decode_digest_plain(row_count, data, offsets, extra);
 	}
+	if let Some(kind @ (ValueKind::Int | ValueKind::Uint | ValueKind::Decimal)) = ValueKind::from_byte(type_code) {
+		return fixed::decode_unscaled_column(kind, encoding, row_count, data, extra);
+	}
 	let ty = column_type_from_code(type_code)?;
 
 	match encoding {
@@ -362,73 +357,9 @@ fn decode_column_dispatch(
 				let blobs = decode_dict_blob(data, extra, row_count, index_width)?;
 				Ok(FrameColumnData::Blob(blob_array(&blobs)))
 			}
-			ValueType::Int => {
-				let index_width = dict_index_width_from_flags(flags);
-				let dict_entries = decode_dict_table_bytes(extra)?;
-				let mut values = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					let idx = read_index(data, i, index_width) as usize;
-					if idx >= dict_entries.len() {
-						return Err(DecodeError::InvalidData(format!(
-							"dict index {} out of range (dict has {} entries)",
-							idx,
-							dict_entries.len()
-						)));
-					}
-					let big = BigInt::from_signed_bytes_le(&dict_entries[idx]);
-					values.push(Int(big));
-				}
-				Ok(FrameColumnData::Int(int_array(values)))
-			}
-			ValueType::Uint => {
-				let index_width = dict_index_width_from_flags(flags);
-				let dict_entries = decode_dict_table_bytes(extra)?;
-				let mut values = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					let idx = read_index(data, i, index_width) as usize;
-					if idx >= dict_entries.len() {
-						return Err(DecodeError::InvalidData(format!(
-							"dict index {} out of range (dict has {} entries)",
-							idx,
-							dict_entries.len()
-						)));
-					}
-					let big = BigInt::from_signed_bytes_le(&dict_entries[idx]);
-					values.push(Uint(big));
-				}
-				Ok(FrameColumnData::Uint(uint_array(values)))
-			}
-			ValueType::Decimal => {
-				let index_width = dict_index_width_from_flags(flags);
-				let dict_entries = decode_dict_table_bytes(extra)?;
-				let mut values = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					let idx = read_index(data, i, index_width) as usize;
-					if idx >= dict_entries.len() {
-						return Err(DecodeError::InvalidData(format!(
-							"dict index {} out of range (dict has {} entries)",
-							idx,
-							dict_entries.len()
-						)));
-					}
-					let s = str::from_utf8(&dict_entries[idx]).map_err(|e| {
-						DecodeError::InvalidData(format!("invalid decimal string: {}", e))
-					})?;
-					let dec: BigDecimal = s.parse().map_err(|e| {
-						DecodeError::InvalidData(format!("invalid decimal: {}", e))
-					})?;
-					values.push(Decimal::new(dec));
-				}
-				Ok(FrameColumnData::Decimal(decimal_array(values)))
-			}
 			_ => Err(DecodeError::InvalidData(format!("Dict encoding not supported for type {:?}", ty))),
 		},
-		Encoding::Rle => match ty {
-			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
-				varlen::decode_rle_varlen_column(type_code, row_count, data)
-			}
-			_ => fixed::decode_rle_column(type_code, row_count, data),
-		},
+		Encoding::Rle => fixed::decode_rle_column(type_code, row_count, data),
 		Encoding::Delta => fixed::decode_delta_column(type_code, row_count, data),
 		Encoding::DeltaRle => fixed::decode_delta_rle_column(type_code, row_count, data),
 	}

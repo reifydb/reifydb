@@ -26,6 +26,7 @@ reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
 reifydb-column = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-evaluate = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
@@ -61,6 +62,10 @@ harness = false
 
 [[bench]]
 name = "columns"
+harness = false
+
+[[bench]]
+name = "compare"
 harness = false
 
 [build-dependencies]

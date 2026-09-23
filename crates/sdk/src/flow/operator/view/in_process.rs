@@ -9,8 +9,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-	row_number::RowNumber, time::Time,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
+	row_number::RowNumber, time::Time, uint::Uint,
 };
 
 use super::{ChangeView, ColumnsView, DiffView, RowView};
@@ -107,6 +107,14 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn f64(&self, name: &str) -> Option<f64> {
+		self.typed(name)
+	}
+
+	fn int(&self, name: &str) -> Option<Int> {
+		self.typed(name)
+	}
+
+	fn uint(&self, name: &str) -> Option<Uint> {
 		self.typed(name)
 	}
 

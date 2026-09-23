@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_bigint::BigInt;
-use num_traits::Zero;
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_value::value::{uint::Uint, value_type::ValueType};
+use reifydb_value::value::{constraint::precision::Precision, uint::Uint, value_type::ValueType};
+
+const NARROW: ValueType = ValueType::uint(Precision::new(38));
+const WIDE: ValueType = ValueType::uint(Precision::new(76));
+
+fn uint(text: &str) -> Uint {
+	text.parse().expect("valid uint literal")
+}
 
 #[test]
 fn test_u64_inline() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW]);
 	let mut row = shape.allocate_pod();
 
 	let small = Uint::from(42u64);
@@ -26,48 +31,72 @@ fn test_u64_inline() {
 
 #[test]
 fn test_u128_boundary() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
-	let mut row = shape.allocate_pod();
+	// The 16 byte slot holds all 38 digits; u128::MAX (39 digits) needs the 32 byte slot and
+	// must not come back as a negative two's complement value.
+	let narrow = RowShape::testing(RowFamily::Pod, &[NARROW]);
+	for value in [Uint::from(u64::MAX), uint("99999999999999999999999999999999999999")] {
+		let mut row = narrow.allocate_pod();
+		narrow.set_uint(&mut row, 0, &value);
+		assert!(row.is_defined(0));
+		assert_eq!(narrow.get_uint(&row, 0), value);
+	}
 
-	// The top bit of the slot is the mode flag, so 2^127 - 1 is the largest value that can
-	// still be stored inline.
-	let large = Uint::from(u64::MAX);
-	shape.set_uint(&mut row, 0, &large);
-	assert!(row.is_defined(0));
-
-	let retrieved = shape.get_uint(&row, 0);
-	assert_eq!(retrieved, large);
-
-	let mut row2 = shape.allocate_pod();
-	let max_u127 = Uint::from(u128::MAX >> 1); // 127 bits
-	shape.set_uint(&mut row2, 0, &max_u127);
-	assert_eq!(shape.get_uint(&row2, 0), max_u127);
+	let wide = RowShape::testing(RowFamily::Pod, &[WIDE]);
+	for value in [Uint::from(u128::MAX >> 1), Uint::from(u128::MAX)] {
+		let mut row = wide.allocate_pod();
+		wide.set_uint(&mut row, 0, &value);
+		assert_eq!(wide.get_uint(&row, 0), value);
+	}
 }
 
 #[test]
 fn test_dynamic_storage() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[WIDE]);
 	let mut row = shape.allocate_pod();
 
-	// Past 2^127, so the value is stored as little-endian magnitude bytes in the dynamic
-	// section instead of the fixed slot.
-	let huge = Uint::from(
-		BigInt::parse_bytes(b"123456789012345678901234567890123456789012345678901234567890", 10).unwrap(),
-	);
+	// Past 2^128 the value still lives in the fixed 32 byte slot; a row that grew would mean it spilled.
+	let huge = uint("123456789012345678901234567890123456789012345678901234567890");
 
 	shape.set_uint(&mut row, 0, &huge);
 	assert!(row.is_defined(0));
+	assert_eq!(row.len(), shape.total_static_size());
 
 	let retrieved = shape.get_uint(&row, 0);
 	assert_eq!(retrieved, huge);
 }
 
 #[test]
+fn test_slot_width_follows_precision() {
+	// Precision 38 is the widest that fits i128; one more digit must switch to the 32 byte slot.
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW, ValueType::uint(Precision::new(39)), ValueType::UINT]);
+	let sizes: Vec<u32> = shape.fields().iter().map(|field| field.size).collect();
+	assert_eq!(sizes, vec![16, 32, 32]);
+}
+
+#[test]
+fn test_max_of_the_wide_slot() {
+	// Uint::MAX uses all 76 digits, so any truncation of the upper 16 bytes shows up here.
+	let shape = RowShape::testing(RowFamily::Pod, &[WIDE]);
+	let mut row = shape.allocate_pod();
+	shape.set_uint(&mut row, 0, &Uint::MAX);
+	assert_eq!(shape.get_uint(&row, 0), Uint::MAX);
+}
+
+#[test]
+#[should_panic(expected = "does not fit")]
+fn test_set_past_precision_panics() {
+	// A value with more digits than the column precision must never be written silently truncated.
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::uint(Precision::new(2))]);
+	let mut row = shape.allocate_pod();
+	shape.set_uint(&mut row, 0, &Uint::from(100u64));
+}
+
+#[test]
 fn test_zero() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW]);
 	let mut row = shape.allocate_pod();
 
-	let zero = Uint::from(0);
+	let zero = Uint::from(0u64);
 	shape.set_uint(&mut row, 0, &zero);
 	assert!(row.is_defined(0));
 
@@ -77,7 +106,7 @@ fn test_zero() {
 
 #[test]
 fn test_try_get() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::UINT]);
 	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get_uint(&row, 0), None);
@@ -89,7 +118,7 @@ fn test_try_get() {
 
 #[test]
 fn test_clone_on_write() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW]);
 	let row1 = shape.allocate_pod();
 	let mut row2 = row1.clone();
 
@@ -106,7 +135,7 @@ fn test_clone_on_write() {
 fn test_multiple_fields() {
 	let shape = RowShape::testing(
 		RowFamily::Pod,
-		&[ValueType::Boolean, ValueType::Uint, ValueType::Utf8, ValueType::Uint, ValueType::Int4],
+		&[ValueType::Boolean, NARROW, ValueType::Utf8, WIDE, ValueType::Int4],
 	);
 	let mut row = shape.allocate_pod();
 
@@ -131,16 +160,15 @@ fn test_multiple_fields() {
 
 #[test]
 fn test_negative_input_handling() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW]);
 
-	// Uint wraps a signed BigInt, so a negative can be constructed; the encoder converts it
-	// to zero rather than failing or storing a wrapped magnitude.
+	// A negative source clamps to zero on the way into Uint, so the row must never see a wrapped magnitude.
 	let mut row1 = shape.allocate_pod();
 	let negative = Uint::from(-42);
 	shape.set_uint(&mut row1, 0, &negative);
 
 	let retrieved = shape.get_uint(&row1, 0);
-	assert_eq!(retrieved, Uint::from(0));
+	assert_eq!(retrieved, Uint::from(0u64));
 }
 
 #[test]
@@ -155,7 +183,7 @@ fn test_try_get_uint_wrong_type() {
 
 #[test]
 fn test_update_uint_inline_to_inline() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[NARROW]);
 	let mut row = shape.allocate_pod();
 
 	shape.set_uint(&mut row, 0, &Uint::from(42u64));
@@ -166,25 +194,28 @@ fn test_update_uint_inline_to_inline() {
 }
 
 #[test]
-fn test_update_uint_inline_to_dynamic() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+fn test_update_uint_small_to_huge() {
+	let shape = RowShape::testing(RowFamily::Pod, &[WIDE]);
 	let mut row = shape.allocate_pod();
 
 	shape.set_uint(&mut row, 0, &Uint::from(42u64));
 
-	let huge = Uint::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap());
+	// A wider value overwrites the whole slot in place; the row must not grow.
+	let huge = uint("999999999999999999999999999999999999999999999999");
 	shape.set_uint(&mut row, 0, &huge);
 	assert_eq!(shape.get_uint(&row, 0), huge);
+	assert_eq!(row.len(), shape.total_static_size());
 }
 
 #[test]
-fn test_update_uint_dynamic_to_inline() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+fn test_update_uint_huge_to_small() {
+	let shape = RowShape::testing(RowFamily::Pod, &[WIDE]);
 	let mut row = shape.allocate_pod();
 
-	let huge = Uint::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap());
+	let huge = uint("999999999999999999999999999999999999999999999999");
 	shape.set_uint(&mut row, 0, &huge);
 
+	// Stale upper bytes of the old value would corrupt the new one.
 	shape.set_uint(&mut row, 0, &Uint::from(42u64));
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(42u64));
 	assert_eq!(row.len(), shape.total_static_size());
@@ -192,14 +223,14 @@ fn test_update_uint_dynamic_to_inline() {
 
 #[test]
 fn test_update_uint_with_other_dynamic_fields() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint, ValueType::Utf8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[WIDE, ValueType::Utf8]);
 	let mut row = shape.allocate_pod();
 
-	let huge = Uint::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap());
+	let huge = uint("999999999999999999999999999999999999999999999999");
 	shape.set_uint(&mut row, 0, &huge);
 	shape.set_utf8(&mut row, 1, "hello");
 
-	// Dropping the first field's dynamic bytes must rewrite the utf8 field's offset.
+	// Rewriting the uint slot must leave the utf8 field's dynamic bytes untouched.
 	shape.set_uint(&mut row, 0, &Uint::from(1u64));
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(1u64));
 	assert_eq!(shape.get_utf8(&row, 1), "hello");

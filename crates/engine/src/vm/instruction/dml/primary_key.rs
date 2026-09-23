@@ -136,13 +136,19 @@ pub fn encode_primary_key(pk_def: &PrimaryKey, row: &[u8], table: &Table, shape:
 				let val = shape.get::<IdentityId>(row, table_idx);
 				index_shape.set_identity_id(&mut index_key, pk_idx, val);
 			}
-			ValueType::Int => {
+			ValueType::Int {
+				..
+			} => {
 				panic!("Int columns in primary keys not yet supported");
 			}
-			ValueType::Uint => {
+			ValueType::Uint {
+				..
+			} => {
 				panic!("Uint columns in primary keys not yet supported");
 			}
-			ValueType::Decimal => {
+			ValueType::Decimal {
+				..
+			} => {
 				panic!("Decimal columns in primary keys not yet supported");
 			}
 			ValueType::Option(_) => {

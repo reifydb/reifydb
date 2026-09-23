@@ -46,6 +46,16 @@ fn narrow<T>(
 				.ok_or_else(|| out_of_range(function, value, target)),
 		};
 	}
+	if let ColumnBuffer::Int(container) | ColumnBuffer::Uint(container) = data {
+		return match container.unscaled_at(row) {
+			None => Ok(None),
+			Some(value) => value
+				.to_i128()
+				.and_then(&fit)
+				.map(Some)
+				.ok_or_else(|| out_of_range(function, value, target)),
+		};
+	}
 	match wide_at(data, row) {
 		None => Ok(None),
 		Some(value) => fit(value).map(Some).ok_or_else(|| out_of_range(function, value, target)),

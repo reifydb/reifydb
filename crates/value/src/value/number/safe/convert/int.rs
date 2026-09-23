@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use bigdecimal::BigDecimal as BigDecimalInner;
-
 use super::*;
 
 macro_rules! impl_safe_convert_int_to_signed {
@@ -10,13 +8,13 @@ macro_rules! impl_safe_convert_int_to_signed {
         $(
             impl SafeConvert<$dst> for Int {
                 fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
+                    self.to_i128().and_then(|value| <$dst>::try_from(value).ok())
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else if self.0 < BigInt::from(0) {
+                    if let Some(value) = self.to_i128().and_then(|value| <$dst>::try_from(value).ok()) {
+                        value
+                    } else if self.is_negative() {
                         <$dst>::MIN
                     } else {
                         <$dst>::MAX
@@ -24,13 +22,9 @@ macro_rules! impl_safe_convert_int_to_signed {
                 }
 
                 fn wrapping_convert(self) -> $dst {
-                    if let Some(val) = self.0.to_i64() {
-                        val as $dst
-                    } else if let Some(val) = self.0.to_i128() {
-                        val as $dst
-                    } else {
-
-                        self.saturating_convert()
+                    match self.to_i128() {
+                        Some(value) => value as $dst,
+                        None => self.saturating_convert(),
                     }
                 }
             }
@@ -43,31 +37,21 @@ macro_rules! impl_safe_convert_int_to_unsigned {
         $(
             impl SafeConvert<$dst> for Int {
                 fn checked_convert(self) -> Option<$dst> {
-                    if self.0 >= BigInt::from(0) {
-                        <$dst>::try_from(&self.0).ok()
-                    } else {
-                        None
-                    }
+                    Uint::from_i256(self.to_i256())
+                        .and_then(|uint| uint.to_u128())
+                        .and_then(|value| <$dst>::try_from(value).ok())
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if self.0 < BigInt::from(0) {
+                    if self.is_negative() {
                         0
-                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
                     } else {
-                        <$dst>::MAX
+                        self.checked_convert().unwrap_or(<$dst>::MAX)
                     }
                 }
 
                 fn wrapping_convert(self) -> $dst {
-                    if self.0 < BigInt::from(0) {
-                        0
-                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        self.saturating_convert()
-                    }
+                    self.saturating_convert()
                 }
             }
         )*
@@ -79,25 +63,15 @@ macro_rules! impl_safe_convert_int_to_float {
         $(
             impl SafeConvert<$dst> for Int {
                 fn checked_convert(self) -> Option<$dst> {
-                    self.0.to_f64().and_then(|f| {
-                        if f.is_finite() {
-                            Some(f as $dst)
-                        } else {
-                            None
-                        }
-                    })
+                    let value = self.to_f64() as $dst;
+                    value.is_finite().then_some(value)
                 }
 
                 fn saturating_convert(self) -> $dst {
-                    if let Some(f) = self.0.to_f64() {
-                        if f.is_finite() {
-                            f as $dst
-                        } else if f.is_sign_negative() {
-                            <$dst>::MIN
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else if self.0 < BigInt::from(0) {
+                    let value = self.to_f64() as $dst;
+                    if value.is_finite() {
+                        value
+                    } else if self.is_negative() {
                         <$dst>::MIN
                     } else {
                         <$dst>::MAX
@@ -118,39 +92,29 @@ impl_safe_convert_int_to_float!(f32, f64);
 
 impl SafeConvert<Uint> for Int {
 	fn checked_convert(self) -> Option<Uint> {
-		if self.0 >= BigInt::from(0) {
-			Some(Uint(self.0))
-		} else {
-			None
-		}
+		Uint::from_i256(self.to_i256())
 	}
 
 	fn saturating_convert(self) -> Uint {
-		if self.0 >= BigInt::from(0) {
-			Uint(self.0)
-		} else {
-			Uint::zero()
-		}
+		Uint::from_i256(self.to_i256()).unwrap_or_default()
 	}
 
 	fn wrapping_convert(self) -> Uint {
-		Uint(self.0.abs())
+		Uint::from_i256(self.abs().to_i256()).expect("the magnitude of an int is a valid uint")
 	}
 }
 
 impl SafeConvert<Decimal> for Int {
 	fn checked_convert(self) -> Option<Decimal> {
-		let big_decimal = BigDecimalInner::from(self.0);
-		Some(Decimal::from(big_decimal))
+		Some(Decimal::from(self))
 	}
 
 	fn saturating_convert(self) -> Decimal {
-		let big_decimal = BigDecimalInner::from(self.0);
-		Decimal::from(big_decimal)
+		Decimal::from(self)
 	}
 
 	fn wrapping_convert(self) -> Decimal {
-		self.saturating_convert()
+		Decimal::from(self)
 	}
 }
 
@@ -343,7 +307,7 @@ pub mod tests {
 
 		#[test]
 		fn test_checked_convert_large() {
-			// Decimal is arbitrary precision, so even i128::MAX converts exactly.
+			// Decimal holds 76 digits, so even i128::MAX converts exactly.
 			let x = Int::from(i128::MAX);
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
@@ -388,6 +352,25 @@ pub mod tests {
 			let x = Int::from(999);
 			let y: Int = x.clone().wrapping_convert();
 			assert_eq!(y, x);
+		}
+	}
+
+	mod range {
+		use super::*;
+
+		#[test]
+		fn wide_ints_refuse_narrow_targets_and_clamp_with_their_sign() {
+			// A 76 digit int must never truncate to its low bits when a checked or saturating cast is asked
+			// for.
+			assert_eq!(SafeConvert::<i128>::checked_convert(Int::MAX), None);
+			assert_eq!(SafeConvert::<u128>::checked_convert(Int::MAX), None);
+			assert_eq!(SafeConvert::<i64>::saturating_convert(Int::MIN), i64::MIN);
+			assert_eq!(SafeConvert::<u128>::saturating_convert(Int::MAX), u128::MAX);
+			assert_eq!(SafeConvert::<u128>::checked_convert(Int::from(u128::MAX)), Some(u128::MAX));
+			assert_eq!(SafeConvert::<f32>::checked_convert(Int::MAX), None);
+			assert_eq!(SafeConvert::<f32>::saturating_convert(Int::MIN), f32::MIN);
+			assert_eq!(SafeConvert::<f64>::checked_convert(Int::MAX), Some(1e76));
+			assert_eq!(SafeConvert::<Uint>::wrapping_convert(Int::MIN), Uint::MAX);
 		}
 	}
 }

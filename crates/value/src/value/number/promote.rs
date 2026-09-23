@@ -412,17 +412,17 @@ impl Promote<Uint> for Int {
     type Output = Int;
 
     fn checked_promote(&self, r: &Uint) -> Option<(Self::Output, Self::Output)> {
-        let r_as_int = Int::from(r.0.clone());
+        let r_as_int = Int::from(r.clone());
         Some((self.clone(), r_as_int))
     }
 
     fn saturating_promote(&self, r: &Uint) -> (Self::Output, Self::Output) {
-        let r_as_int = Int::from(r.0.clone());
+        let r_as_int = Int::from(r.clone());
         (self.clone(), r_as_int)
     }
 
     fn wrapping_promote(&self, r: &Uint) -> (Self::Output, Self::Output) {
-        let r_as_int = Int::from(r.0.clone());
+        let r_as_int = Int::from(r.clone());
         (self.clone(), r_as_int)
     }
 }
@@ -431,17 +431,17 @@ impl Promote<Int> for Uint {
     type Output = Int;
 
     fn checked_promote(&self, r: &Int) -> Option<(Self::Output, Self::Output)> {
-        let l_as_int = Int::from(self.0.clone());
+        let l_as_int = Int::from(self.clone());
         Some((l_as_int, r.clone()))
     }
 
     fn saturating_promote(&self, r: &Int) -> (Self::Output, Self::Output) {
-        let l_as_int = Int::from(self.0.clone());
+        let l_as_int = Int::from(self.clone());
         (l_as_int, r.clone())
     }
 
     fn wrapping_promote(&self, r: &Int) -> (Self::Output, Self::Output) {
-        let l_as_int = Int::from(self.0.clone());
+        let l_as_int = Int::from(self.clone());
         (l_as_int, r.clone())
     }
 }
@@ -1028,15 +1028,15 @@ macro_rules! impl_promote_int_to_uint {
                 type Output = Int;
                 
                 fn checked_promote(&self, r: &Uint) -> Option<(Self::Output, Self::Output)> {
-                    Some((Int::from(*self), Int(r.0.clone())))
+                    Some((Int::from(*self), Int::from(r.clone())))
                 }
                 
                 fn saturating_promote(&self, r: &Uint) -> (Self::Output, Self::Output) {
-                    (Int::from(*self), Int(r.0.clone()))
+                    (Int::from(*self), Int::from(r.clone()))
                 }
                 
                 fn wrapping_promote(&self, r: &Uint) -> (Self::Output, Self::Output) {
-                    (Int::from(*self), Int(r.0.clone()))
+                    (Int::from(*self), Int::from(r.clone()))
                 }
             }
             
@@ -1044,15 +1044,15 @@ macro_rules! impl_promote_int_to_uint {
                 type Output = Int;
                 
                 fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
-                    Some((Int(self.0.clone()), Int::from(*r)))
+                    Some((Int::from(self.clone()), Int::from(*r)))
                 }
                 
                 fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
-                    (Int(self.0.clone()), Int::from(*r))
+                    (Int::from(self.clone()), Int::from(*r))
                 }
                 
                 fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
-                    (Int(self.0.clone()), Int::from(*r))
+                    (Int::from(self.clone()), Int::from(*r))
                 }
             }
         )*

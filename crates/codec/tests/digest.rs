@@ -41,8 +41,8 @@ const SUPPORTED_INNER: [ValueType; 15] = [
 	ValueType::Uint8,
 	ValueType::Uint16,
 	ValueType::Duration,
-	ValueType::Int,
-	ValueType::Uint,
+	ValueType::INT,
+	ValueType::UINT,
 ];
 
 fn digest_type(inner: ValueType, accuracy: u32) -> ValueType {

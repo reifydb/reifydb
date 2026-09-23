@@ -232,25 +232,34 @@ macro_rules! impl_safe_convert_float_to_unsigned {
     };
 }
 
-use num_bigint::{BigInt, ToBigInt};
-use num_traits::{Signed, ToPrimitive};
+use arrow_buffer::i256;
 
 use crate::value::{decimal::Decimal, int::Int, uint::Uint};
+
+fn narrow_i256<T: TryFrom<i128> + TryFrom<u128>>(value: i256) -> Option<T> {
+	match value.to_i128() {
+		Some(value) => T::try_from(value).ok(),
+		None => match value.to_parts() {
+			(low, 0) => T::try_from(low).ok(),
+			_ => None,
+		},
+	}
+}
 
 macro_rules! impl_safe_convert_to_int {
     ($($from:ty),*) => {
         $(
             impl SafeConvert<Int> for $from {
                 fn checked_convert(self) -> Option<Int> {
-                    Some(Int(BigInt::from(self)))
+                    Some(Int::from(self))
                 }
 
                 fn saturating_convert(self) -> Int {
-                    Int(BigInt::from(self))
+                    Int::from(self)
                 }
 
                 fn wrapping_convert(self) -> Int {
-                    Int(BigInt::from(self))
+                    Int::from(self)
                 }
             }
         )*
@@ -262,15 +271,15 @@ macro_rules! impl_safe_convert_unsigned_to_uint {
         $(
             impl SafeConvert<Uint> for $from {
                 fn checked_convert(self) -> Option<Uint> {
-                    Some(Uint(BigInt::from(self)))
+                    Some(Uint::from(self))
                 }
 
                 fn saturating_convert(self) -> Uint {
-                    Uint(BigInt::from(self))
+                    Uint::from(self)
                 }
 
                 fn wrapping_convert(self) -> Uint {
-                    Uint(BigInt::from(self))
+                    Uint::from(self)
                 }
             }
         )*
@@ -282,33 +291,22 @@ macro_rules! impl_safe_convert_float_to_int {
         $(
             impl SafeConvert<Int> for $from {
                 fn checked_convert(self) -> Option<Int> {
-                    if self.is_finite() {
-                        let truncated = self.trunc();
-
-                        truncated.to_bigint().map(Int)
-                    } else {
-                        None
-                    }
+                    Int::from_f64(self as f64)
                 }
 
                 fn saturating_convert(self) -> Int {
                     if self.is_nan() {
                         Int::zero()
-                    } else if self.is_infinite() {
-                        if self.is_sign_positive() {
-                            Int(BigInt::from(i64::MAX))
-                        } else {
-                            Int(BigInt::from(i64::MIN))
-                        }
+                    } else if self.is_sign_negative() {
+                        Int::from_f64(self as f64).unwrap_or(Int::MIN)
                     } else {
-                        let truncated = self.trunc() as i64;
-                        Int(BigInt::from(truncated))
+                        Int::from_f64(self as f64).unwrap_or(Int::MAX)
                     }
                 }
 
                 fn wrapping_convert(self) -> Int {
                     if self.is_finite() {
-                        Int(BigInt::from(self.trunc() as i64))
+                        Int::from(self.trunc() as i64)
                     } else {
                         Int::zero()
                     }
@@ -323,16 +321,8 @@ macro_rules! impl_safe_convert_float_to_uint {
         $(
             impl SafeConvert<Uint> for $from {
                 fn checked_convert(self) -> Option<Uint> {
-                    if self.is_finite() && self >= 0.0 {
-                        let truncated = self.trunc();
-
-                        truncated.to_bigint().and_then(|big_int| {
-                            if big_int >= BigInt::from(0) {
-                                Some(Uint(big_int))
-                            } else {
-                                None
-                            }
-                        })
+                    if self >= 0.0 {
+                        Uint::from_f64(self as f64)
                     } else {
                         None
                     }
@@ -341,20 +331,16 @@ macro_rules! impl_safe_convert_float_to_uint {
                 fn saturating_convert(self) -> Uint {
                     if self.is_nan() || self < 0.0 {
                         Uint::zero()
-                    } else if self.is_infinite() {
-                        Uint(BigInt::from(u64::MAX))
                     } else {
-                        let truncated = self.trunc() as u64;
-                        Uint(BigInt::from(truncated))
+                        Uint::from_f64(self as f64).unwrap_or(Uint::MAX)
                     }
                 }
 
                 fn wrapping_convert(self) -> Uint {
                     if self.is_finite() && self >= 0.0 {
-                        Uint(BigInt::from(self.trunc() as u64))
+                        Uint::from(self.trunc() as u64)
                     } else if self.is_finite() && self < 0.0 {
-
-                        Uint(BigInt::from(self.trunc() as i64 as u64))
+                        Uint::from(self.trunc() as i64 as u64)
                     } else {
                         Uint::zero()
                     }
@@ -549,23 +535,19 @@ macro_rules! impl_safe_convert_to_decimal_from_uint {
 }
 
 macro_rules! impl_safe_convert_to_decimal_from_float {
-    ($($src:ty),* $(,)?) => {
+    ($($src:ty => $from:ident),* $(,)?) => {
         $(
             impl SafeConvert<Decimal> for $src {
                 fn checked_convert(self) -> Option<Decimal> {
-                    if !self.is_finite() {
-                        return None;
-                    }
-                    Some(Decimal::from(self))
+                    Decimal::$from(self)
                 }
 
                 fn saturating_convert(self) -> Decimal {
-                    self.checked_convert()
-                        .unwrap_or_else(|| Decimal::default())
+                    Decimal::from(self)
                 }
 
                 fn wrapping_convert(self) -> Decimal {
-                    self.saturating_convert()
+                    Decimal::from(self)
                 }
             }
         )*

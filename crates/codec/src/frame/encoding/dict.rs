@@ -145,67 +145,6 @@ pub fn try_dict_encode_blob(container: &LargeBinaryArray, min_ratio: f64) -> Opt
 	})
 }
 
-pub fn try_dict_encode_bytes(serialized: &[Vec<u8>], type_code: u8, min_ratio: f64) -> Option<DictEncoded> {
-	if serialized.is_empty() {
-		return None;
-	}
-
-	let mut dict_map: HashMap<&[u8], u32> = HashMap::new();
-	let mut dict_entries: Vec<&[u8]> = Vec::new();
-
-	for bytes in serialized {
-		if !dict_map.contains_key(bytes.as_slice()) {
-			let idx = dict_entries.len() as u32;
-			dict_map.insert(bytes.as_slice(), idx);
-			dict_entries.push(bytes.as_slice());
-		}
-	}
-
-	let dict_count = dict_entries.len();
-
-	if dict_count as f64 >= serialized.len() as f64 * min_ratio {
-		return None;
-	}
-
-	let (index_width, flags_bits) = if dict_count <= 255 {
-		(1usize, dict_index_width_to_flags(1))
-	} else if dict_count <= 65535 {
-		(2, dict_index_width_to_flags(2))
-	} else {
-		(4, dict_index_width_to_flags(4))
-	};
-
-	let mut data = Vec::with_capacity(serialized.len() * index_width);
-	for bytes in serialized {
-		let idx = dict_map[bytes.as_slice()];
-		match index_width {
-			1 => data.push(idx as u8),
-			2 => data.extend_from_slice(&(idx as u16).to_le_bytes()),
-			4 => data.extend_from_slice(&idx.to_le_bytes()),
-			_ => unreachable!(),
-		}
-	}
-
-	let mut extra = Vec::new();
-	extra.extend_from_slice(&(dict_count as u32).to_le_bytes());
-	let mut offset: u32 = 0;
-	extra.extend_from_slice(&offset.to_le_bytes());
-	for entry in &dict_entries {
-		offset += entry.len() as u32;
-		extra.extend_from_slice(&offset.to_le_bytes());
-	}
-	for entry in &dict_entries {
-		extra.extend_from_slice(entry);
-	}
-
-	Some(DictEncoded {
-		data,
-		extra,
-		type_code,
-		flags_bits,
-	})
-}
-
 pub fn decode_dict_utf8(
 	data: &[u8],
 	extra: &[u8],

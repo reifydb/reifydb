@@ -120,11 +120,9 @@ fn test_fingerprint_utf8_different_max_bytes() {
 
 #[test]
 fn test_fingerprint_int_constrained_vs_unconstrained() {
-	let unconstrained = vec![make_field("num", ValueType::Int)];
-	let constrained = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(8))),
-	)];
+	let unconstrained = vec![make_field("num", ValueType::INT)];
+	let constrained =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(8))))];
 
 	assert_ne!(
 		compute_fingerprint(RowFamily::Table, &unconstrained),
@@ -135,14 +133,10 @@ fn test_fingerprint_int_constrained_vs_unconstrained() {
 
 #[test]
 fn test_fingerprint_int_same_constraint_deterministic() {
-	let fields1 = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(16))),
-	)];
-	let fields2 = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(16))),
-	)];
+	let fields1 =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(16))))];
+	let fields2 =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(16))))];
 
 	assert_eq!(
 		compute_fingerprint(RowFamily::Table, &fields1),
@@ -153,14 +147,10 @@ fn test_fingerprint_int_same_constraint_deterministic() {
 
 #[test]
 fn test_fingerprint_int_different_max_bytes() {
-	let small = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(4))),
-	)];
-	let large = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(32))),
-	)];
+	let small =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(4))))];
+	let large =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(32))))];
 
 	assert_ne!(
 		compute_fingerprint(RowFamily::Table, &small),
@@ -171,11 +161,9 @@ fn test_fingerprint_int_different_max_bytes() {
 
 #[test]
 fn test_fingerprint_uint_constrained_vs_unconstrained() {
-	let unconstrained = vec![make_field("num", ValueType::Uint)];
-	let constrained = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(8))),
-	)];
+	let unconstrained = vec![make_field("num", ValueType::UINT)];
+	let constrained =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(8))))];
 
 	assert_ne!(
 		compute_fingerprint(RowFamily::Table, &unconstrained),
@@ -186,14 +174,10 @@ fn test_fingerprint_uint_constrained_vs_unconstrained() {
 
 #[test]
 fn test_fingerprint_uint_same_constraint_deterministic() {
-	let fields1 = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
-	)];
-	let fields2 = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
-	)];
+	let fields1 =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(64))))];
+	let fields2 =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(64))))];
 
 	assert_eq!(
 		compute_fingerprint(RowFamily::Table, &fields1),
@@ -204,19 +188,15 @@ fn test_fingerprint_uint_same_constraint_deterministic() {
 
 #[test]
 fn test_fingerprint_uint_different_max_bytes() {
-	let small = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(2))),
-	)];
-	let large = vec![make_constrained_field(
-		"num",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(128))),
-	)];
+	let small =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(2))))];
+	let large =
+		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(38))))];
 
 	assert_ne!(
 		compute_fingerprint(RowFamily::Table, &small),
 		compute_fingerprint(RowFamily::Table, &large),
-		"Uint(2) should differ from Uint(128)"
+		"Uint(2) should differ from Uint(38)"
 	);
 }
 
@@ -273,13 +253,10 @@ fn test_fingerprint_blob_different_max_bytes() {
 
 #[test]
 fn test_fingerprint_decimal_constrained_vs_unconstrained() {
-	let unconstrained = vec![make_field("amount", ValueType::Decimal)];
+	let unconstrained = vec![make_field("amount", ValueType::DECIMAL)];
 	let constrained = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2))),
 	)];
 
 	assert_ne!(
@@ -293,17 +270,11 @@ fn test_fingerprint_decimal_constrained_vs_unconstrained() {
 fn test_fingerprint_decimal_same_constraint_deterministic() {
 	let fields1 = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(18), Scale::new(6)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(18), Scale::new(6))),
 	)];
 	let fields2 = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(18), Scale::new(6)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(18), Scale::new(6))),
 	)];
 
 	assert_eq!(
@@ -317,17 +288,11 @@ fn test_fingerprint_decimal_same_constraint_deterministic() {
 fn test_fingerprint_decimal_different_precision() {
 	let low_precision = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(5), Scale::new(2)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(5), Scale::new(2))),
 	)];
 	let high_precision = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(38), Scale::new(2)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(38), Scale::new(2))),
 	)];
 
 	assert_ne!(
@@ -341,17 +306,11 @@ fn test_fingerprint_decimal_different_precision() {
 fn test_fingerprint_decimal_different_scale() {
 	let low_scale = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(0)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(0))),
 	)];
 	let high_scale = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(8)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(8))),
 	)];
 
 	assert_ne!(
@@ -365,17 +324,11 @@ fn test_fingerprint_decimal_different_scale() {
 fn test_fingerprint_decimal_different_precision_and_scale() {
 	let fields1 = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2))),
 	)];
 	let fields2 = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(15), Scale::new(4)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(15), Scale::new(4))),
 	)];
 
 	assert_ne!(
@@ -387,7 +340,7 @@ fn test_fingerprint_decimal_different_precision_and_scale() {
 
 #[test]
 fn test_fingerprint_different_types_same_max_bytes() {
-	// Same MaxBytes value but different base types should produce different fingerprints
+	// The same parameter value on a different base type must never collide, or a column retype goes unnoticed.
 	let utf8 = vec![make_constrained_field(
 		"field",
 		TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
@@ -398,11 +351,11 @@ fn test_fingerprint_different_types_same_max_bytes() {
 	)];
 	let int = vec![make_constrained_field(
 		"field",
-		TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(100))),
+		TypeConstraint::unconstrained(ValueType::int(Precision::new(38))),
 	)];
 	let uint = vec![make_constrained_field(
 		"field",
-		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(100))),
+		TypeConstraint::unconstrained(ValueType::uint(Precision::new(38))),
 	)];
 
 	let fp_utf8 = compute_fingerprint(RowFamily::Table, &utf8);
@@ -411,11 +364,11 @@ fn test_fingerprint_different_types_same_max_bytes() {
 	let fp_uint = compute_fingerprint(RowFamily::Table, &uint);
 
 	assert_ne!(fp_utf8, fp_blob, "Utf8(100) should differ from Blob(100)");
-	assert_ne!(fp_utf8, fp_int, "Utf8(100) should differ from Int(100)");
-	assert_ne!(fp_utf8, fp_uint, "Utf8(100) should differ from Uint(100)");
-	assert_ne!(fp_blob, fp_int, "Blob(100) should differ from Int(100)");
-	assert_ne!(fp_blob, fp_uint, "Blob(100) should differ from Uint(100)");
-	assert_ne!(fp_int, fp_uint, "Int(100) should differ from Uint(100)");
+	assert_ne!(fp_utf8, fp_int, "Utf8(100) should differ from Int(38)");
+	assert_ne!(fp_utf8, fp_uint, "Utf8(100) should differ from Uint(38)");
+	assert_ne!(fp_blob, fp_int, "Blob(100) should differ from Int(38)");
+	assert_ne!(fp_blob, fp_uint, "Blob(100) should differ from Uint(38)");
+	assert_ne!(fp_int, fp_uint, "Int(38) should differ from Uint(38)");
 }
 
 #[test]
@@ -427,10 +380,7 @@ fn test_fingerprint_multiple_constrained_fields() {
 		),
 		make_constrained_field(
 			"price",
-			TypeConstraint::with_constraint(
-				ValueType::Decimal,
-				Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-			),
+			TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2))),
 		),
 		make_constrained_field(
 			"data",
@@ -445,10 +395,7 @@ fn test_fingerprint_multiple_constrained_fields() {
 		),
 		make_constrained_field(
 			"price",
-			TypeConstraint::with_constraint(
-				ValueType::Decimal,
-				Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-			),
+			TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2))),
 		),
 		make_constrained_field(
 			"data",
@@ -472,10 +419,7 @@ fn test_fingerprint_multiple_fields_one_constraint_differs() {
 		),
 		make_constrained_field(
 			"price",
-			TypeConstraint::with_constraint(
-				ValueType::Decimal,
-				Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-			),
+			TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(2))),
 		),
 	];
 
@@ -486,10 +430,7 @@ fn test_fingerprint_multiple_fields_one_constraint_differs() {
 		),
 		make_constrained_field(
 			"price",
-			TypeConstraint::with_constraint(
-				ValueType::Decimal,
-				Constraint::PrecisionScale(Precision::new(10), Scale::new(4)), // Different scale
-			),
+			TypeConstraint::unconstrained(ValueType::decimal(Precision::new(10), Scale::new(4))),
 		),
 	];
 
@@ -546,23 +487,17 @@ fn test_fingerprint_max_bytes_edge_values() {
 fn test_fingerprint_decimal_edge_precision_scale() {
 	let min_precision = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(1), Scale::new(0)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(1), Scale::new(0))),
 	)];
 	let max_precision = vec![make_constrained_field(
 		"amount",
-		TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(255), Scale::new(255)),
-		),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(76), Scale::new(76))),
 	)];
 
 	assert_ne!(
 		compute_fingerprint(RowFamily::Table, &min_precision),
 		compute_fingerprint(RowFamily::Table, &max_precision),
-		"Decimal(1,0) should differ from Decimal(255,255)"
+		"Decimal(1,0) should differ from Decimal(76,76)"
 	);
 }
 

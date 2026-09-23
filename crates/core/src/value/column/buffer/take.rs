@@ -8,7 +8,11 @@ use reifydb_value::{
 	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
 };
 
-use crate::value::column::{ColumnBuffer, buffer::with_container, builder::ColumnBuilder};
+use crate::value::column::{
+	ColumnBuffer,
+	buffer::{map_decimal, on_decimal, with_container},
+	builder::ColumnBuilder,
+};
 
 macro_rules! map_container {
 	($self:expr, |$a:ident| $native:expr, |$u:ident| $fixed:expr, |$v:ident| $varlen:expr) => {
@@ -59,29 +63,9 @@ macro_rules! map_container {
 				container: $varlen,
 				max_bytes: *max_bytes,
 			},
-			ColumnBuffer::Int {
-				container: $v,
-				max_bytes,
-			} => ColumnBuffer::Int {
-				container: $varlen,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Uint {
-				container: $v,
-				max_bytes,
-			} => ColumnBuffer::Uint {
-				container: $varlen,
-				max_bytes: *max_bytes,
-			},
-			ColumnBuffer::Decimal {
-				container: $v,
-				precision,
-				scale,
-			} => ColumnBuffer::Decimal {
-				container: $varlen,
-				precision: *precision,
-				scale: *scale,
-			},
+			ColumnBuffer::Int(d) => ColumnBuffer::Int(map_decimal!(d, |$a| $native)),
+			ColumnBuffer::Uint(d) => ColumnBuffer::Uint(map_decimal!(d, |$a| $native)),
+			ColumnBuffer::Decimal(d) => ColumnBuffer::Decimal(map_decimal!(d, |$a| $native)),
 			ColumnBuffer::Any {
 				container: $v,
 				declared_type,
@@ -231,6 +215,9 @@ pub(crate) fn as_array(buffer: &ColumnBuffer) -> &dyn Array {
 	match buffer {
 		ColumnBuffer::Bool(a) => a,
 		ColumnBuffer::Uint16(a) => a,
+		ColumnBuffer::Int(d) | ColumnBuffer::Uint(d) | ColumnBuffer::Decimal(d) => {
+			on_decimal!(d, |a| a as &dyn Array)
+		}
 		ColumnBuffer::DictionaryId {
 			container,
 			..

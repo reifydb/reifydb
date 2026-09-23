@@ -53,6 +53,8 @@ fn guest_datetime_bytes(nanos: &[i64]) -> Vec<u8> {
 		name_offset,
 		name_len: 1,
 		type_code: ValueKind::DateTime.byte(),
+		precision: 0,
+		scale: 0,
 		data_row_count: nanos.len() as u32,
 		data_offset,
 		data_len: data.len() as u32,

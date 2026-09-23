@@ -7,7 +7,6 @@ use reifydb_value::value::{
 	blob::Blob,
 	container::{
 		any_array::push_any,
-		bignum_array::{push_decimal, push_int, push_uint},
 		decimal_array::uint16_to_native,
 		dictionary_array::push_entry,
 		digest_array::push_digest,
@@ -19,9 +18,7 @@ use reifydb_value::value::{
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
 
@@ -59,12 +56,9 @@ macro_rules! push_or_promote {
 		}
 	};
 
-	(struct_direct $self:expr, $val:expr, $col_variant:ident, $push:ident) => {
+	(decimal $self:expr, $val:expr, $col_variant:ident) => {
 		match $self {
-			ColumnBuilder::$col_variant {
-				builder,
-				..
-			} => $push(builder, &$val),
+			ColumnBuilder::$col_variant(builder) => builder.push(&$val),
 			_ => unimplemented!(),
 		}
 	};
@@ -112,9 +106,15 @@ impl ColumnBuilder {
 						ColumnBuffer::dictionary_id(vec![DictionaryEntryId::default(); len])
 					}
 					Value::Blob(_) => ColumnBuffer::blob(vec![Blob::default(); len]),
-					Value::Int(_) => ColumnBuffer::int(vec![Int::default(); len]),
-					Value::Uint(_) => ColumnBuffer::uint(vec![Uint::default(); len]),
-					Value::Decimal(_) => ColumnBuffer::decimal(vec![Decimal::default(); len]),
+					Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
+						let declared = match (&**inner, &value) {
+							(ColumnBuilder::Int(_), Value::Int(_))
+							| (ColumnBuilder::Uint(_), Value::Uint(_))
+							| (ColumnBuilder::Decimal(_), Value::Decimal(_)) => inner.get_type(),
+							_ => value.get_type(),
+						};
+						ColumnBuffer::none_typed(declared, len).split_nulls().0
+					}
 					Value::Any(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Record(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Tuple(_) => ColumnBuffer::any(vec![Value::none(); len]),
@@ -180,9 +180,9 @@ impl ColumnBuilder {
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => push_or_promote!(varlen self, v.as_bytes(), Blob),
-			Value::Int(v) => push_or_promote!(struct_direct self, v, Int, push_int),
-			Value::Uint(v) => push_or_promote!(struct_direct self, v, Uint, push_uint),
-			Value::Decimal(v) => push_or_promote!(struct_direct self, v, Decimal, push_decimal),
+			Value::Int(v) => push_or_promote!(decimal self, Decimal::from(v), Int),
+			Value::Uint(v) => push_or_promote!(decimal self, Decimal::from(v), Uint),
+			Value::Decimal(v) => push_or_promote!(decimal self, v, Decimal),
 			Value::None {
 				..
 			} => self.push_none(),

@@ -161,9 +161,15 @@ impl ValueKind {
 			ValueType::Uuid4 => ValueKind::Uuid4,
 			ValueType::Uuid7 => ValueKind::Uuid7,
 			ValueType::Blob => ValueKind::Blob,
-			ValueType::Int => ValueKind::Int,
-			ValueType::Uint => ValueKind::Uint,
-			ValueType::Decimal => ValueKind::Decimal,
+			ValueType::Int {
+				..
+			} => ValueKind::Int,
+			ValueType::Uint {
+				..
+			} => ValueKind::Uint,
+			ValueType::Decimal {
+				..
+			} => ValueKind::Decimal,
 			ValueType::Any => ValueKind::Any,
 			ValueType::DictionaryId => ValueKind::DictionaryId,
 			ValueType::List(_) => ValueKind::List,
@@ -271,9 +277,9 @@ impl TypeTag {
 			ValueKind::Uuid4 => ValueType::Uuid4,
 			ValueKind::Uuid7 => ValueType::Uuid7,
 			ValueKind::Blob => ValueType::Blob,
-			ValueKind::Int => ValueType::Int,
-			ValueKind::Uint => ValueType::Uint,
-			ValueKind::Decimal => ValueType::Decimal,
+			ValueKind::Int => ValueType::INT,
+			ValueKind::Uint => ValueType::UINT,
+			ValueKind::Decimal => ValueType::DECIMAL,
 			ValueKind::Any => ValueType::Any,
 			ValueKind::DictionaryId => ValueType::DictionaryId,
 			ValueKind::List => ValueType::List(Box::new(ValueType::Any)),

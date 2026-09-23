@@ -175,7 +175,7 @@ checksum = "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
 dependencies = [
  "bytes",
  "half",
- "num-bigint 0.5.1",
+ "num-bigint",
  "num-traits",
 ]
 
@@ -369,20 +369,6 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
-
-[[package]]
-name = "bigdecimal"
-version = "0.4.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d6867f1565b3aad85681f1015055b087fcfd840d6aeee6eee7f2da317603695"
-dependencies = [
- "autocfg",
- "libm",
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "serde",
-]
 
 [[package]]
 name = "bitflags"
@@ -2402,17 +2388,6 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
-dependencies = [
- "num-integer",
- "num-traits",
- "serde",
-]
-
-[[package]]
-name = "num-bigint"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
@@ -3152,6 +3127,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-column",
  "reifydb-core",
+ "reifydb-evaluate",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -3231,7 +3207,6 @@ dependencies = [
  "bs58",
  "ed25519-dalek",
  "futures-util",
- "num-bigint 0.4.6",
  "prost",
  "reifydb",
  "reifydb-build",
@@ -3268,10 +3243,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
- "bigdecimal",
  "crc32fast",
- "num-bigint 0.4.6",
- "num-traits",
  "postcard",
  "reifydb-build",
  "reifydb-runtime",
@@ -3310,7 +3282,6 @@ dependencies = [
  "arrow-select",
  "crossbeam-skiplist",
  "indexmap",
- "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "postcard",
@@ -3384,6 +3355,7 @@ dependencies = [
  "arrow-arith",
  "arrow-array",
  "arrow-buffer",
+ "arrow-ord",
  "reifydb-build",
  "reifydb-core",
  "reifydb-routine-abi",
@@ -3560,7 +3532,6 @@ dependencies = [
  "arrow-string",
  "bumpalo",
  "indexmap",
- "num-traits",
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
@@ -4022,7 +3993,6 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "futures-util",
- "num-bigint 0.4.6",
  "prost",
  "reifydb-auth",
  "reifydb-build",
@@ -4384,9 +4354,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-schema",
  "arrow-select",
- "bigdecimal",
  "libm",
- "num-bigint 0.4.6",
  "num-traits",
  "postcard",
  "reifydb-build",

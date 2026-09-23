@@ -1,44 +1,86 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::str::from_utf8;
-
-use bigdecimal::BigDecimal;
-use num_bigint::BigInt;
+use arrow_buffer::i256;
 use reifydb_value::value::{
-	Value, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration, int::Int, uint::Uint,
+	Value,
+	constraint::{precision::Precision, scale::Scale},
+	decimal::Decimal,
+	dictionary::DictionaryEntryId,
+	duration::Duration,
+	int::Int,
+	uint::Uint,
 };
 
 use crate::{
 	error::{DecodeError, EncodeError},
 	reader::Reader,
+	tag::ValueKind,
+	unscaled::{NARROW, WIDE, decimal_unscaled, extend_le, int_unscaled, read_le, uint_unscaled, width},
 	value::{decode_value, encode_value_into},
 };
 
-pub fn encode_int_cell(value: &Int, buf: &mut Vec<u8>) {
-	buf.extend_from_slice(&value.0.to_signed_bytes_le());
+pub fn encode_int_cell(value: &Int, precision: Precision, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
+	let unscaled = int_unscaled(value, precision).ok_or_else(|| {
+		EncodeError::UnsupportedType(format!("int {value} does not fit precision {}", precision.value()))
+	})?;
+	extend_le(unscaled, width(precision), buf);
+	Ok(())
 }
 
-pub fn decode_int_cell(bytes: &[u8]) -> Int {
-	Int(BigInt::from_signed_bytes_le(bytes))
+pub fn decode_int_cell(bytes: &[u8]) -> Result<Int, DecodeError> {
+	let unscaled = read_cell(ValueKind::Int, bytes)?;
+	Int::from_i256(unscaled)
+		.ok_or_else(|| DecodeError::InvalidData(format!("int cell {unscaled} exceeds 76 digits")))
 }
 
-pub fn encode_uint_cell(value: &Uint, buf: &mut Vec<u8>) {
-	buf.extend_from_slice(&value.0.to_signed_bytes_le());
+pub fn encode_uint_cell(value: &Uint, precision: Precision, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
+	let unscaled = uint_unscaled(value, precision).ok_or_else(|| {
+		EncodeError::UnsupportedType(format!("uint {value} does not fit precision {}", precision.value()))
+	})?;
+	extend_le(unscaled, width(precision), buf);
+	Ok(())
 }
 
-pub fn decode_uint_cell(bytes: &[u8]) -> Uint {
-	Uint(BigInt::from_signed_bytes_le(bytes))
+pub fn decode_uint_cell(bytes: &[u8]) -> Result<Uint, DecodeError> {
+	let unscaled = read_cell(ValueKind::Uint, bytes)?;
+	Uint::from_i256(unscaled).ok_or_else(|| {
+		DecodeError::InvalidData(format!("uint cell {unscaled} is negative or exceeds 76 digits"))
+	})
 }
 
-pub fn encode_decimal_cell(value: &Decimal, buf: &mut Vec<u8>) {
-	buf.extend_from_slice(value.to_string().as_bytes());
+pub fn encode_decimal_cell(
+	value: &Decimal,
+	precision: Precision,
+	scale: Scale,
+	buf: &mut Vec<u8>,
+) -> Result<(), EncodeError> {
+	let unscaled = decimal_unscaled(value, precision, scale).ok_or_else(|| {
+		EncodeError::UnsupportedType(format!(
+			"decimal {value} does not fit precision {} and scale {}",
+			precision.value(),
+			scale.value()
+		))
+	})?;
+	extend_le(unscaled, width(precision), buf);
+	Ok(())
 }
 
-pub fn decode_decimal_cell(bytes: &[u8]) -> Result<Decimal, DecodeError> {
-	let s = from_utf8(bytes).map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {e}")))?;
-	let dec: BigDecimal = s.parse().map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {e}")))?;
-	Ok(Decimal::new(dec))
+pub fn decode_decimal_cell(bytes: &[u8], scale: Scale) -> Result<Decimal, DecodeError> {
+	let unscaled = read_cell(ValueKind::Decimal, bytes)?;
+	Decimal::from_parts(unscaled, scale.value()).ok_or_else(|| {
+		DecodeError::InvalidData(format!(
+			"decimal cell {unscaled} at scale {} exceeds 76 digits",
+			scale.value()
+		))
+	})
+}
+
+fn read_cell(kind: ValueKind, bytes: &[u8]) -> Result<i256, DecodeError> {
+	match bytes.len() {
+		NARROW | WIDE => Ok(read_le(bytes)),
+		other => Err(DecodeError::InvalidData(format!("{kind:?} cell is {other} bytes, expected 16 or 32"))),
+	}
 }
 
 pub fn encode_any_cell(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeError> {

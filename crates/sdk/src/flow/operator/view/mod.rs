@@ -4,8 +4,8 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-	row_number::RowNumber, time::Time,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
+	row_number::RowNumber, time::Time, uint::Uint,
 };
 
 pub trait RowView {
@@ -25,6 +25,8 @@ pub trait RowView {
 	fn i128(&self, name: &str) -> Option<i128>;
 	fn f32(&self, name: &str) -> Option<f32>;
 	fn f64(&self, name: &str) -> Option<f64>;
+	fn int(&self, name: &str) -> Option<Int>;
+	fn uint(&self, name: &str) -> Option<Uint>;
 	fn decimal(&self, name: &str) -> Option<Decimal>;
 	fn date(&self, name: &str) -> Option<Date>;
 	fn datetime(&self, name: &str) -> Option<DateTime>;

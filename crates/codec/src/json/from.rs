@@ -9,10 +9,10 @@ use reifydb_value::{
 	value::{
 		Value,
 		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
 		container::{
 			any_array::any_array,
-			bignum_array::{decimal_array, int_array, uint_array},
-			decimal_array::{int16_array, uint16_array},
+			decimal_array::{decimal_array, int_array, int16_array, uint_array, uint16_array},
 			digest_array::{push_digest, push_none_slot},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
@@ -50,6 +50,7 @@ use crate::{
 	error::DecodeError,
 	json::{excerpt, none_marker_depth, types::ResponseFrame},
 	tag::peel_options,
+	unscaled::{decimal_unscaled, int_unscaled, uint_unscaled},
 };
 
 pub fn frames_from_json(json: &str) -> Result<Vec<Frame>, Error> {
@@ -228,9 +229,16 @@ fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 		ValueType::Uuid7 => parse_uuid7_text(text).map(Value::Uuid7),
 		ValueType::IdentityId => parse_identity_id(text).map(Value::IdentityId),
 		ValueType::Blob => parse_blob(text).map(Value::Blob),
-		ValueType::Int => parse_int_text(text).map(Value::Int),
-		ValueType::Uint => parse_uint_text(text).map(Value::Uint),
-		ValueType::Decimal => parse_decimal_text(text).map(Value::Decimal),
+		ValueType::Int {
+			precision,
+		} => parse_int_text(text, *precision).map(Value::Int),
+		ValueType::Uint {
+			precision,
+		} => parse_uint_text(text, *precision).map(Value::Uint),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => parse_decimal_text(text, *precision, *scale).map(Value::Decimal),
 		ValueType::Option(inner) => parse_base(inner, text),
 		ValueType::Digest {
 			inner,
@@ -292,16 +300,20 @@ fn parse_digest_text(inner: &ValueType, accuracy: u32, text: &str) -> Option<Dig
 	(*digest.inner() == *inner && digest.accuracy() == accuracy).then_some(digest)
 }
 
-fn parse_int_text(text: &str) -> Option<Int> {
-	parse_int(Fragment::internal(text)).ok()
+fn parse_int_text(text: &str, precision: Precision) -> Option<Int> {
+	let value = parse_int(Fragment::internal(text)).ok()?;
+	int_unscaled(&value, precision).map(|_| value)
 }
 
-fn parse_uint_text(text: &str) -> Option<Uint> {
-	parse_uint(Fragment::internal(text)).ok()
+fn parse_uint_text(text: &str, precision: Precision) -> Option<Uint> {
+	let value = parse_uint(Fragment::internal(text)).ok()?;
+	uint_unscaled(&value, precision).map(|_| value)
 }
 
-fn parse_decimal_text(text: &str) -> Option<Decimal> {
-	parse_decimal(Fragment::internal(text)).ok()
+fn parse_decimal_text(text: &str, precision: Precision, scale: Scale) -> Option<Decimal> {
+	let value = parse_decimal(Fragment::internal(text)).ok()?;
+	let unscaled = decimal_unscaled(&value, precision, scale)?;
+	Decimal::from_parts(unscaled, scale.value())
 }
 
 fn cells<T: Clone>(
@@ -506,19 +518,26 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		ValueType::Blob => {
 			FrameColumnData::Blob(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?))
 		}
-		ValueType::Int => {
-			FrameColumnData::Int(int_array(cells(name, base, rows, Int::zero(), parse_int_text)?))
-		}
-		ValueType::Uint => {
-			FrameColumnData::Uint(uint_array(cells(name, base, rows, Uint::zero(), parse_uint_text)?))
-		}
-		ValueType::Decimal => FrameColumnData::Decimal(decimal_array(cells(
-			name,
-			base,
-			rows,
-			Decimal::zero(),
-			parse_decimal_text,
-		)?)),
+		ValueType::Int {
+			precision,
+		} => FrameColumnData::Int(int_array(
+			*precision,
+			cells(name, base, rows, Int::zero(), |text| parse_int_text(text, *precision))?,
+		)),
+		ValueType::Uint {
+			precision,
+		} => FrameColumnData::Uint(uint_array(
+			*precision,
+			cells(name, base, rows, Uint::zero(), |text| parse_uint_text(text, *precision))?,
+		)),
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => FrameColumnData::Decimal(decimal_array(
+			*precision,
+			*scale,
+			cells(name, base, rows, Decimal::zero(), |text| parse_decimal_text(text, *precision, *scale))?,
+		)),
 		ValueType::Digest {
 			inner,
 			accuracy,

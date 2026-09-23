@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { DigestValue, isDigestType, noneMarkerDepth, optionDepth, unwrapOptionType, type DigestType } from "@reifydb/core";
+import {
+    DigestValue, fixedPointKind, isDigestType, isFixedPointType, noneMarkerDepth, optionDepth, unwrapOptionType,
+    type DigestType,
+} from "@reifydb/core";
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
@@ -60,7 +63,7 @@ function encodeFrame(w: BinaryWriter, frame: WireFrame): void {
 
 function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     const unwrapped = unwrapOptionType(col.type);
-    const base = (isDigestType(unwrapped) ? "Digest" : unwrapped) as TypeName;
+    const base = (isDigestType(unwrapped) ? "Digest" : isFixedPointType(unwrapped) ? fixedPointKind(unwrapped) : unwrapped) as TypeName;
     const depth = optionDepth(col.type);
     const rowCount = col.payload.length;
 
@@ -129,9 +132,6 @@ function placeholderFor(base: TypeName): string {
         case "Boolean": return "false";
         case "Utf8":
         case "Blob":
-        case "Decimal":
-        case "Int":
-        case "Uint":
         case "Any": return "";
         case "Float4":
         case "Float8": return "0";

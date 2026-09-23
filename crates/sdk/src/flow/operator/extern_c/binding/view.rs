@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{extern_c::cells::decode_decimal_cell, tag::ValueKind};
+use reifydb_codec::tag::ValueKind;
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-	ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
+	ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time, uint::Uint,
+	value_type::ValueType,
 };
 
-use crate::flow::operator::{
-	change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
-	view::{ChangeView, ColumnsView, DiffView, RowView},
+use crate::{
+	common::family::family_params,
+	flow::operator::{
+		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+	},
 };
 
 #[derive(Clone, Copy)]
@@ -186,10 +190,18 @@ impl<'a> RowView for ExternCRowView<'a> {
 		fixed_at::<f32>(&col, self.index)
 	}
 
+	fn int(&self, name: &str) -> Option<Int> {
+		self.column_defined(name)?.family_cell_at(self.index)
+	}
+
+	fn uint(&self, name: &str) -> Option<Uint> {
+		self.column_defined(name)?.family_cell_at(self.index)
+	}
+
 	fn decimal(&self, name: &str) -> Option<Decimal> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
-			ValueKind::Decimal => decode_decimal_at(&col, self.index),
+			ValueKind::Decimal => col.family_cell_at(self.index),
 			ValueKind::Float8 => fixed_at::<f64>(&col, self.index).map(Decimal::from),
 			ValueKind::Float4 => fixed_at::<f32>(&col, self.index).map(|v| Decimal::from(v as f64)),
 			_ => None,
@@ -262,21 +274,8 @@ pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Optio
 	slice.get(index).copied()
 }
 
-pub(crate) fn decode_decimal_at(col: &BorrowedColumn<'_>, index: usize) -> Option<Decimal> {
-	let data = col.data_bytes();
-	let offsets = col.offsets();
-	if index + 1 >= offsets.len() {
-		return None;
-	}
-	let start = offsets[index] as usize;
-	let end = offsets[index + 1] as usize;
-	if end > data.len() || start > end {
-		return None;
-	}
-	decode_decimal_cell(&data[start..end]).ok()
-}
-
-fn type_for_code(code: ValueKind) -> ValueType {
+fn type_for_column(col: &BorrowedColumn<'_>) -> ValueType {
+	let code = col.type_code();
 	match code {
 		ValueKind::Boolean => ValueType::Boolean,
 		ValueKind::Float4 => ValueType::Float4,
@@ -292,22 +291,29 @@ fn type_for_code(code: ValueKind) -> ValueType {
 		ValueKind::Uint8 => ValueType::Uint8,
 		ValueKind::Uint16 => ValueType::Uint16,
 		ValueKind::Utf8 => ValueType::Utf8,
-		ValueKind::Decimal => ValueType::Decimal,
+		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+			match family_params(code, col.precision(), col.scale()) {
+				Some((precision, _)) if code == ValueKind::Int => ValueType::int(precision),
+				Some((precision, _)) if code == ValueKind::Uint => ValueType::uint(precision),
+				Some((precision, scale)) => ValueType::decimal(precision, scale),
+				None => ValueType::Any,
+			}
+		}
 		ValueKind::Blob => ValueType::Blob,
 		_ => ValueType::Any,
 	}
 }
 
-fn none_value(code: ValueKind) -> Value {
+fn none_value(col: &BorrowedColumn<'_>) -> Value {
 	Value::None {
-		inner: type_for_code(code),
+		inner: type_for_column(col),
 	}
 }
 
 fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 	let code = col.type_code();
 	if !is_defined_at(col, index) {
-		return none_value(code);
+		return none_value(col);
 	}
 	match code {
 		ValueKind::Boolean => col
@@ -315,36 +321,32 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 			.get(index / 8)
 			.copied()
 			.map(|b| Value::Boolean((b >> (index % 8)) & 1 == 1))
-			.unwrap_or_else(|| none_value(code)),
+			.unwrap_or_else(|| none_value(col)),
 		ValueKind::Float4 => fixed_at::<f32>(col, index)
 			.and_then(|v| OrderedF32::try_from(v).ok())
 			.map(Value::Float4)
-			.unwrap_or_else(|| none_value(code)),
+			.unwrap_or_else(|| none_value(col)),
 		ValueKind::Float8 => fixed_at::<f64>(col, index)
 			.and_then(|v| OrderedF64::try_from(v).ok())
 			.map(Value::Float8)
-			.unwrap_or_else(|| none_value(code)),
-		ValueKind::Int1 => fixed_at::<i8>(col, index).map(Value::Int1).unwrap_or_else(|| none_value(code)),
-		ValueKind::Int2 => fixed_at::<i16>(col, index).map(Value::Int2).unwrap_or_else(|| none_value(code)),
-		ValueKind::Int4 => fixed_at::<i32>(col, index).map(Value::Int4).unwrap_or_else(|| none_value(code)),
-		ValueKind::Int8 => fixed_at::<i64>(col, index).map(Value::Int8).unwrap_or_else(|| none_value(code)),
-		ValueKind::Int16 => fixed_at::<i128>(col, index).map(Value::Int16).unwrap_or_else(|| none_value(code)),
-		ValueKind::Uint1 => fixed_at::<u8>(col, index).map(Value::Uint1).unwrap_or_else(|| none_value(code)),
-		ValueKind::Uint2 => fixed_at::<u16>(col, index).map(Value::Uint2).unwrap_or_else(|| none_value(code)),
-		ValueKind::Uint4 => fixed_at::<u32>(col, index).map(Value::Uint4).unwrap_or_else(|| none_value(code)),
-		ValueKind::Uint8 => fixed_at::<u64>(col, index).map(Value::Uint8).unwrap_or_else(|| none_value(code)),
-		ValueKind::Uint16 => {
-			fixed_at::<u128>(col, index).map(Value::Uint16).unwrap_or_else(|| none_value(code))
+			.unwrap_or_else(|| none_value(col)),
+		ValueKind::Int1 => fixed_at::<i8>(col, index).map(Value::Int1).unwrap_or_else(|| none_value(col)),
+		ValueKind::Int2 => fixed_at::<i16>(col, index).map(Value::Int2).unwrap_or_else(|| none_value(col)),
+		ValueKind::Int4 => fixed_at::<i32>(col, index).map(Value::Int4).unwrap_or_else(|| none_value(col)),
+		ValueKind::Int8 => fixed_at::<i64>(col, index).map(Value::Int8).unwrap_or_else(|| none_value(col)),
+		ValueKind::Int16 => fixed_at::<i128>(col, index).map(Value::Int16).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint1 => fixed_at::<u8>(col, index).map(Value::Uint1).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint2 => fixed_at::<u16>(col, index).map(Value::Uint2).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint4 => fixed_at::<u32>(col, index).map(Value::Uint4).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint8 => fixed_at::<u64>(col, index).map(Value::Uint8).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint16 => fixed_at::<u128>(col, index).map(Value::Uint16).unwrap_or_else(|| none_value(col)),
+		ValueKind::Utf8 => {
+			col.iter_str().nth(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
 		}
-		ValueKind::Utf8 => col
-			.iter_str()
-			.nth(index)
-			.map(|s| Value::Utf8(s.to_string()))
-			.unwrap_or_else(|| none_value(code)),
-		ValueKind::Decimal => {
-			decode_decimal_at(col, index).map(Value::Decimal).unwrap_or_else(|| none_value(code))
-		}
-		_ => none_value(code),
+		ValueKind::Int => col.family_cell_at(index).map(Value::Int).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint => col.family_cell_at(index).map(Value::Uint).unwrap_or_else(|| none_value(col)),
+		ValueKind::Decimal => col.family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col)),
+		_ => none_value(col),
 	}
 }
 

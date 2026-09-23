@@ -13,9 +13,8 @@ use arrow_array::{
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_codec::{
 	extern_c::cells::{
-		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_duration_cell, decode_int_cell,
-		decode_uint_cell, encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell,
-		encode_duration_cell, encode_int_cell, encode_uint_cell,
+		decode_any_cell, decode_dictionary_id_cell, decode_duration_cell, encode_any_cell,
+		encode_dictionary_id_cell, encode_duration_cell,
 	},
 	tag::ValueKind,
 };
@@ -30,8 +29,7 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::{self, any_array},
-			bignum_array::{decimal_array, decimals, int_array, ints, uint_array, uints},
-			decimal_array::u128s,
+			decimal_array::{DecimalArray, u128s},
 			dictionary_array,
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
@@ -42,16 +40,13 @@ use reifydb_value::{
 		},
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		is::IsNumber,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -59,11 +54,15 @@ use reifydb_value::{
 use uuid::Uuid;
 
 use crate::{
-	common::extern_wasm::{
-		layout::{
-			EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns,
+	common::{
+		extern_wasm::{
+			layout::{
+				EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn,
+				ExternWasmColumns,
+			},
+			marshal::util::{column_data_to_type_code, ensure_marshallable},
 		},
-		marshal::util::{column_data_to_type_code, ensure_marshallable},
+		family::{cell_width, column_params, decode_family_column, family_params, is_family},
 	},
 	error::{Result as SdkResult, SdkError},
 };
@@ -99,6 +98,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 		let data = col.data();
 		let data_row_count = data.len() as u32;
 		let type_code = column_data_to_type_code(data).byte();
+		let (precision, scale) = column_params(data);
 
 		let (bitvec_offset, bitvec_len) = if let Some(nulls) = data.nulls() {
 			marshal_bitvec_to_buf(&mut buf, nulls.inner())
@@ -116,6 +116,8 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
 			name_offset,
 			name_len,
 			type_code,
+			precision,
+			scale,
 			data_row_count,
 			data_offset,
 			data_len,
@@ -215,7 +217,18 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<Columns> {
 		let data_slice = region(bytes, desc.data_offset, desc.data_len, "data")?;
 		let offsets_slice = region(bytes, desc.offsets_offset, desc.offsets_len, "offsets")?;
 
-		let data = unmarshal_column_data(type_code, data_row_count, data_slice, bitvec, offsets_slice)?;
+		let data = if is_family(type_code) {
+			let (precision, scale) =
+				family_params(type_code, desc.precision, desc.scale).ok_or_else(|| {
+					malformed(format!(
+						"guest column {i} carries {type_code:?} precision {} and scale {}",
+						desc.precision, desc.scale
+					))
+				})?;
+			unmarshal_family(type_code, precision, scale, data_row_count, data_slice, bitvec)?
+		} else {
+			unmarshal_column_data(type_code, data_row_count, data_slice, bitvec, offsets_slice)?
+		};
 
 		columns.push(ColumnWithName::new(name, data));
 	}
@@ -355,27 +368,10 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			..
 		} => marshal_blobs_iter_to_buf(buf, (0..container.len()).map(|i| container.value(i))),
 
-		ColumnBuffer::Int {
-			container,
-			..
-		} => {
-			let values: Vec<Int> = ints(container);
-			marshal_cells_to_buf(buf, values.len(), |i, out| encode_int_cell(&values[i], out))
-		}
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => {
-			let values: Vec<Uint> = uints(container);
-			marshal_cells_to_buf(buf, values.len(), |i, out| encode_uint_cell(&values[i], out))
-		}
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => {
-			let values: Vec<Decimal> = decimals(container);
-			marshal_cells_to_buf(buf, values.len(), |i, out| encode_decimal_cell(&values[i], out))
-		}
+		ColumnBuffer::Int(array) | ColumnBuffer::Uint(array) | ColumnBuffer::Decimal(array) => match array {
+			DecimalArray::Decimal128(array) => marshal_numeric_to_buf(buf, array.values()),
+			DecimalArray::Decimal256(array) => marshal_numeric_to_buf(buf, array.values()),
+		},
 		ColumnBuffer::Any {
 			container,
 			..
@@ -538,38 +534,15 @@ fn unmarshal_column_data(
 			container: unmarshal_blob(data, row_count, offsets_bytes)?,
 			max_bytes: MaxBytes::MAX,
 		},
-		ValueKind::Int => ColumnBuffer::Int {
-			container: int_array(unmarshal_cells(data, row_count, offsets_bytes, "int", |bytes| {
-				Ok(decode_int_cell(bytes))
-			})?),
-			max_bytes: MaxBytes::MAX,
-		},
-		ValueKind::Uint => ColumnBuffer::Uint {
-			container: uint_array(unmarshal_cells(data, row_count, offsets_bytes, "uint", |bytes| {
-				Ok(decode_uint_cell(bytes))
-			})?),
-			max_bytes: MaxBytes::MAX,
-		},
-		ValueKind::Decimal => ColumnBuffer::Decimal {
-			container: decimal_array(unmarshal_cells(
-				data,
-				row_count,
-				offsets_bytes,
-				"decimal",
-				|bytes| {
-					decode_decimal_cell(bytes)
-						.map_err(|e| malformed(format!("guest decimal cell: {e}")))
-				},
-			)?),
-			precision: Precision::MAX,
-			scale: Scale::MIN,
-		},
 		ValueKind::Any => ColumnBuffer::Any {
 			container: unmarshal_any(data, row_count, offsets_bytes)?,
 			declared_type: None,
 		},
 		ValueKind::DictionaryId => {
 			ColumnBuffer::dictionary_id(unmarshal_dictionary_ids(data, row_count, offsets_bytes)?)
+		}
+		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+			return Err(malformed(format!("guest {type_code:?} column reached the var-len decoder")));
 		}
 		ValueKind::None
 		| ValueKind::Type
@@ -581,6 +554,29 @@ fn unmarshal_column_data(
 		}
 	};
 
+	Ok(maybe_wrap_option(inner, bitvec))
+}
+
+fn unmarshal_family(
+	type_code: ValueKind,
+	precision: Precision,
+	scale: Scale,
+	row_count: usize,
+	data: &[u8],
+	bitvec: BooleanBuffer,
+) -> SdkResult<ColumnBuffer> {
+	if row_count == 0 {
+		return Ok(ColumnBuffer::none_typed(ValueType::Any, 0));
+	}
+	let zeros;
+	let data = if data.is_empty() {
+		zeros = vec![0u8; row_count * cell_width(precision)];
+		&zeros[..]
+	} else {
+		data
+	};
+	let inner = decode_family_column(type_code, precision, scale, data, row_count)
+		.map_err(|e| malformed(format!("guest {type_code:?} column: {e}")))?;
 	Ok(maybe_wrap_option(inner, bitvec))
 }
 
@@ -780,22 +776,6 @@ fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkRes
 		.map(|(start, end)| Blob::new(data[start..end].to_vec()))
 		.collect();
 	Ok(blob_array(&blobs))
-}
-
-fn unmarshal_cells<T: Default + Clone + IsNumber>(
-	data: &[u8],
-	row_count: usize,
-	offsets_bytes: &[u8],
-	what: &str,
-	decode: impl Fn(&[u8]) -> SdkResult<T>,
-) -> SdkResult<Vec<T>> {
-	if data.is_empty() || offsets_bytes.is_empty() {
-		return Ok(vec![T::default(); row_count]);
-	}
-	cell_ranges(data, row_count, offsets_bytes, what)?
-		.into_iter()
-		.map(|(start, end)| decode(&data[start..end]))
-		.collect()
 }
 
 fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<Vec<DictionaryEntryId>> {

@@ -370,15 +370,15 @@ mod tests {
 
 	#[test]
 	fn declines_decimal() {
-		// 1.0 == 1.00 compares equal but BigDecimal encodes scale.
-		let columns = vec![col("d", ValueType::Decimal)];
+		// 1.0 == 1.00 compares equal but the serialized decimal keeps its scale.
+		let columns = vec![col("d", ValueType::DECIMAL)];
 		let condition = eq(column_ref("d"), number("1.0"));
 		assert_eq!(extract_partition(&condition, &columns, &by(&["d"])), None);
 	}
 
 	#[test]
 	fn declines_bignum_int() {
-		let columns = vec![col("n", ValueType::Int)];
+		let columns = vec![col("n", ValueType::INT)];
 		let condition = eq(column_ref("n"), number("1"));
 		assert_eq!(extract_partition(&condition, &columns, &by(&["n"])), None);
 	}

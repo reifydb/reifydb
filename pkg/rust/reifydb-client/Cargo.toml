@@ -23,7 +23,7 @@ required-features = ["ws"]
 [features]
 default = []
 dst = ["dep:reifydb-core", "dep:reifydb-runtime"]
-grpc = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:uuid", "dep:num-bigint"]
+grpc = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:uuid"]
 http = ["dep:reqwest"]
 ws = ["dep:tokio-tungstenite", "dep:futures-util"]
 
@@ -57,7 +57,6 @@ tonic = { workspace = true, optional = true }
 tonic-prost = { workspace = true, optional = true }
 prost = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
-num-bigint = { workspace = true, optional = true }
 
 [dev-dependencies]
 arrow-array = { workspace = true }

@@ -27,6 +27,7 @@ use crate::{
 	},
 	tag::TypeTag,
 	typeinfo::encode_digest_params,
+	unscaled::params,
 };
 
 pub(crate) struct EncodedColumn {
@@ -196,7 +197,7 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 
 	let result = match desired {
 		Encoding::Dict => varlen::try_dict_varlen(inner),
-		Encoding::Rle => fixed::try_rle_fixed(inner).or_else(|| varlen::try_rle_varlen(inner)),
+		Encoding::Rle => fixed::try_rle_fixed(inner),
 		Encoding::Delta => fixed::try_delta_fixed(inner),
 		Encoding::DeltaRle => fixed::try_delta_rle_fixed(inner),
 		_ => None,
@@ -227,6 +228,10 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 			}
 		}
 	};
+
+	if let Some((precision, scale)) = params(&inner.get_type()) {
+		enc.extra = vec![precision.value(), scale.value()];
+	}
 
 	if has_nones {
 		enc.type_code = TypeTag::of_type(&col_data.get_type())?.byte();

@@ -9,7 +9,10 @@ use reifydb_value::{
 	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
 };
 
-use crate::value::column::{ColumnBuffer, buffer::with_container};
+use crate::value::column::{
+	ColumnBuffer,
+	buffer::{map_decimal, with_container},
+};
 
 impl ColumnBuffer {
 	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
@@ -20,6 +23,9 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => *a = bool_array::filter_with(a, predicate),
 			ColumnBuffer::Uint16(a) => *a = primitive::filter_with(a, predicate),
+			ColumnBuffer::Int(d) | ColumnBuffer::Uint(d) | ColumnBuffer::Decimal(d) => {
+				*d = map_decimal!(&*d, |a| primitive::filter_with(a, predicate))
+			}
 			ColumnBuffer::DictionaryId {
 				container,
 				..

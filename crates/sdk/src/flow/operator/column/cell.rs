@@ -3,8 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{extern_c::cells::encode_decimal_cell, tag::ValueKind};
-use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
+use reifydb_codec::tag::ValueKind;
+use reifydb_value::value::{
+	date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
+};
 
 use crate::{
 	error::SdkError,
@@ -113,14 +115,35 @@ impl Cell for Vec<u8> {
 	}
 }
 
-impl Cell for Decimal {
-	const COLUMN_TYPE: ValueKind = ValueKind::Decimal;
-	const AVG_BYTES: usize = 16;
+impl Cell for Int {
+	const COLUMN_TYPE: ValueKind = ValueKind::Int;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		let mut bytes = Vec::new();
-		encode_decimal_cell(self, &mut bytes);
-		e.push_decimal_bytes(col, &bytes)
+		e.push_int(col, self)
+	}
+	#[inline]
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
+		view.int(name)
+	}
+}
+
+impl Cell for Uint {
+	const COLUMN_TYPE: ValueKind = ValueKind::Uint;
+	#[inline]
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
+		e.push_uint(col, self)
+	}
+	#[inline]
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
+		view.uint(name)
+	}
+}
+
+impl Cell for Decimal {
+	const COLUMN_TYPE: ValueKind = ValueKind::Decimal;
+	#[inline]
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
+		e.push_decimal(col, self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {

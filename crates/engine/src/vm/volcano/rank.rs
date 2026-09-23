@@ -59,7 +59,7 @@ fn options(direction: &SortDirection) -> SortOptions {
 }
 
 fn ranks_by_value(data: &ColumnBuffer) -> bool {
-	matches!(data, ColumnBuffer::DictionaryId { .. } | ColumnBuffer::Decimal { .. })
+	matches!(data, ColumnBuffer::DictionaryId { .. })
 }
 
 fn compare_rank(keys: &[(ColumnBuffer, SortDirection)], row_count: usize, limit: Option<usize>) -> Vec<usize> {
@@ -90,7 +90,11 @@ mod tests {
 	use std::str::FromStr;
 
 	use reifydb_core::{sort::SortDirection, value::column::buffer::ColumnBuffer};
-	use reifydb_value::value::{decimal::Decimal, dictionary::DictionaryEntryId};
+	use reifydb_value::value::{
+		constraint::{precision::Precision, scale::Scale},
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+	};
 
 	use super::rank_rows;
 
@@ -113,9 +117,13 @@ mod tests {
 
 	#[test]
 	fn a_decimal_key_ranks_numerically_so_equal_values_of_different_scale_tie() {
-		// The stored row carries the scale after the value, so a byte order would never tie 1.0 with 1.00.
+		// The column stores every value at its own scale, so 1.0 and 1.00 must tie and keep input order.
 		let decimal = |text: &str| Decimal::from_str(text).expect("a decimal literal");
-		let data = ColumnBuffer::decimal([decimal("1.00"), decimal("0.5"), decimal("1.0")]);
+		let data = ColumnBuffer::decimal(
+			Precision::new(10),
+			Scale::new(2),
+			[decimal("1.00"), decimal("0.5"), decimal("1.0")],
+		);
 
 		assert_eq!(ranked(data, SortDirection::Asc), vec![1, 0, 2]);
 	}

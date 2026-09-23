@@ -4,7 +4,6 @@
 use std::collections::BTreeMap;
 
 use libm::{ceil, log, pow};
-use num_traits::ToPrimitive;
 
 use crate::{
 	error::{Error, TypeError},
@@ -31,8 +30,8 @@ const INNER_TAGS: [(u8, ValueType); 15] = [
 	(13, ValueType::Uint8),
 	(14, ValueType::Uint16),
 	(18, ValueType::Duration),
-	(23, ValueType::Int),
-	(24, ValueType::Uint),
+	(23, ValueType::INT),
+	(24, ValueType::UINT),
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -295,8 +294,18 @@ impl Digest {
 			(ValueType::Uint4, Value::Uint4(v)) => Ok(f64::from(*v)),
 			(ValueType::Uint8, Value::Uint8(v)) => Ok(*v as f64),
 			(ValueType::Uint16, Value::Uint16(v)) => Ok(*v as f64),
-			(ValueType::Int, Value::Int(v)) => Ok(v.0.to_f64().expect("int value converts to f64")),
-			(ValueType::Uint, Value::Uint(v)) => Ok(v.0.to_f64().expect("uint value converts to f64")),
+			(
+				ValueType::Int {
+					..
+				},
+				Value::Int(v),
+			) => Ok(v.to_f64()),
+			(
+				ValueType::Uint {
+					..
+				},
+				Value::Uint(v),
+			) => Ok(v.to_f64()),
 			(ValueType::Duration, Value::Duration(v)) if v.get_months() != 0 => {
 				Err(DigestError::DurationMonthPart)
 			}
@@ -405,10 +414,9 @@ fn remove_from_store(store: &mut BTreeMap<i32, u64>, name: &str, index: i32, cou
 
 #[cfg(test)]
 pub mod tests {
-	use num_bigint::BigInt;
 
 	use super::*;
-	use crate::value::{int::Int, uint::Uint};
+	use crate::value::{constraint::precision::Precision, int::Int, uint::Uint};
 
 	const ACCURACIES: [u32; 3] = [1_000, 10_000, 100_000];
 
@@ -536,7 +544,9 @@ pub mod tests {
 			ValueType::Uuid4,
 			ValueType::Uuid7,
 			ValueType::Blob,
-			ValueType::Decimal,
+			ValueType::DECIMAL,
+			ValueType::int(Precision::new(10)),
+			ValueType::uint(Precision::new(10)),
 			ValueType::Any,
 			ValueType::DictionaryId,
 			ValueType::Option(Box::new(ValueType::Int4)),
@@ -718,9 +728,11 @@ pub mod tests {
 			(ValueType::Uint4, Value::Uint4(4_000_000_000), 4_000_000_000.0),
 			(ValueType::Uint8, Value::Uint8(u64::MAX), u64::MAX as f64),
 			(ValueType::Uint16, Value::Uint16(u128::MAX), u128::MAX as f64),
-			(ValueType::Int, Value::Int(Int::from_i64(-12_345)), -12_345.0),
-			(ValueType::Int, Value::Int(Int(BigInt::from(10).pow(400))), f64::INFINITY),
-			(ValueType::Uint, Value::Uint(Uint::from_u64(987_654_321)), 987_654_321.0),
+			(ValueType::INT, Value::Int(Int::from_i64(-12_345)), -12_345.0),
+			(ValueType::INT, Value::Int(Int::MAX), 1e76),
+			(ValueType::INT, Value::Int(Int::MIN), -1e76),
+			(ValueType::UINT, Value::Uint(Uint::from_u64(987_654_321)), 987_654_321.0),
+			(ValueType::UINT, Value::Uint(Uint::MAX), 1e76),
 			(ValueType::Duration, Value::Duration(Duration::from_milliseconds(1_500).unwrap()), 1.5e9),
 			(ValueType::Duration, Value::Duration(Duration::from_days(-2).unwrap()), -1.728e14),
 		];

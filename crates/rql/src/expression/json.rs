@@ -11,7 +11,10 @@ use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{
+		constraint::{precision::Precision, scale::Scale},
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
@@ -340,7 +343,7 @@ impl From<&Expression> for JsonExpression {
 			},
 			Expression::Cast(e) => JsonExpression::Cast {
 				expression: Box::new((&*e.expression).into()),
-				to: format!("{:?}", e.to.ty),
+				to: type_name(&e.to.ty),
 			},
 			Expression::Call(e) => JsonExpression::Call {
 				function: e.func.name().to_string(),
@@ -397,7 +400,7 @@ impl From<&Expression> for JsonExpression {
 				expressions: e.expressions.iter().map(|a| a.into()).collect(),
 			},
 			Expression::Type(e) => JsonExpression::Type {
-				ty: format!("{:?}", e.ty),
+				ty: type_name(&e.ty),
 			},
 			Expression::SumTypeConstructor(_) => JsonExpression::Type {
 				ty: "SumTypeConstructor".to_string(),
@@ -765,7 +768,35 @@ impl TryFrom<JsonExpression> for Expression {
 	}
 }
 
+fn type_name(ty: &ValueType) -> String {
+	match ty.precision() {
+		Some(_) => ty.to_string(),
+		None => format!("{:?}", ty),
+	}
+}
+
+fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
+	let Some((name, params)) = s.strip_suffix(')').and_then(|rest| rest.split_once('(')) else {
+		return Ok(None);
+	};
+	let param = |text: &str| -> Result<u8> {
+		text.trim().parse::<u8>().map_err(|_| Error(Box::new(internal!("Invalid type parameter: {}", s))))
+	};
+	Ok(match (name, params.split_once(',')) {
+		("int", None) => Some(ValueType::int(Precision::try_new(param(params)?)?)),
+		("uint", None) => Some(ValueType::uint(Precision::try_new(param(params)?)?)),
+		("decimal", Some((p, sc))) => {
+			let precision = Precision::try_new(param(p)?)?;
+			Some(ValueType::decimal(precision, Scale::try_new_with_precision(param(sc)?, precision)?))
+		}
+		_ => None,
+	})
+}
+
 fn parse_type(s: &str) -> Result<ValueType> {
+	if let Some(ty) = parse_family_type(&s.to_lowercase())? {
+		return Ok(ty);
+	}
 	let ty = match s.to_lowercase().as_str() {
 		"boolean" => ValueType::Boolean,
 		"bool" => ValueType::Boolean,
@@ -796,9 +827,9 @@ fn parse_type(s: &str) -> Result<ValueType> {
 		"datetime" => ValueType::DateTime,
 		"duration" => ValueType::Duration,
 		"identityid" => ValueType::IdentityId,
-		"int" => ValueType::Int,
-		"uint" => ValueType::Uint,
-		"decimal" => ValueType::Decimal,
+		"int" => ValueType::INT,
+		"uint" => ValueType::UINT,
+		"decimal" => ValueType::DECIMAL,
 		_ => {
 			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
 		}
@@ -1517,6 +1548,28 @@ pub mod tests {
 
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
+	}
+
+	#[test]
+	fn test_family_type_expression_keeps_its_parameters() {
+		// A round trip that drops precision or scale would re-plan a cast to a different type.
+		for ty in [
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::DECIMAL,
+			ValueType::int(Precision::new(20)),
+			ValueType::uint(Precision::new(39)),
+			ValueType::decimal(Precision::new(10), Scale::new(2)),
+		] {
+			let expr = Expression::Type(TypeExpression {
+				ty: ty.clone(),
+				fragment: internal_fragment("t"),
+			});
+			let Expression::Type(recovered) = from_json(&to_json(&expr)).unwrap() else {
+				panic!("a type expression must come back as a type expression");
+			};
+			assert_eq!(recovered.ty, ty);
+		}
 	}
 
 	#[test]

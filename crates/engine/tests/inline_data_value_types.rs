@@ -8,8 +8,18 @@ use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
 	value::{
-		Value, blob::Blob, date::Date, datetime::DateTime, digest::Digest, duration::Duration,
-		frame::frame::Frame, identity::IdentityId, time::Time, uuid::Uuid4, value_type::ValueType,
+		Value,
+		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		digest::Digest,
+		duration::Duration,
+		frame::frame::Frame,
+		identity::IdentityId,
+		time::Time,
+		uuid::Uuid4,
+		value_type::ValueType,
 	},
 };
 
@@ -305,7 +315,10 @@ fn integer_then_decimal_rows_widen_to_decimal_and_keep_both_values() {
 	// Decimal holds every integer exactly, so the fractional row must not be cast down to the first row type.
 	let frames = query("from [{ v: 1 }, { v: 1.5 }]", Params::None);
 
-	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1".to_string(), "1.5".to_string()]));
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::decimal(Precision::new(76), Scale::new(1)), vec!["1.0".to_string(), "1.5".to_string()])
+	);
 }
 
 #[test]
@@ -313,7 +326,10 @@ fn decimal_then_integer_rows_widen_to_decimal_and_keep_both_values() {
 	// The widest row type must win in either order, never only the first row type.
 	let frames = query("from [{ v: 1.5 }, { v: 1 }]", Params::None);
 
-	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1.5".to_string(), "1".to_string()]));
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::decimal(Precision::new(76), Scale::new(1)), vec!["1.5".to_string(), "1.0".to_string()])
+	);
 }
 
 #[test]
@@ -357,7 +373,10 @@ fn int16_sized_integer_with_a_decimal_row_widens_to_decimal_and_keeps_every_digi
 
 	assert_eq!(
 		column_text(&frames, "v"),
-		(ValueType::Decimal, vec!["170141183460469231731687303715884105727".to_string(), "1.5".to_string()])
+		(
+			ValueType::decimal(Precision::new(76), Scale::new(1)),
+			vec!["170141183460469231731687303715884105727.0".to_string(), "1.5".to_string()]
+		)
 	);
 }
 
@@ -396,7 +415,10 @@ fn decimal_then_float_rows_widen_to_decimal_and_keep_both_values() {
 
 	assert_eq!(
 		column_text(&frames, "v"),
-		(ValueType::Decimal, vec!["1.00000000000000000001".to_string(), "0.25".to_string()])
+		(
+			ValueType::decimal(Precision::new(76), Scale::new(20)),
+			vec!["1.00000000000000000001".to_string(), "0.25000000000000000000".to_string()]
+		)
 	);
 }
 
@@ -407,7 +429,10 @@ fn float_then_decimal_rows_widen_to_decimal_and_keep_every_digit() {
 
 	assert_eq!(
 		column_text(&frames, "v"),
-		(ValueType::Decimal, vec!["0.25".to_string(), "1.00000000000000000001".to_string()])
+		(
+			ValueType::decimal(Precision::new(76), Scale::new(20)),
+			vec!["0.25000000000000000000".to_string(), "1.00000000000000000001".to_string()]
+		)
 	);
 }
 

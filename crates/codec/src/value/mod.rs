@@ -3,8 +3,7 @@
 
 use std::{collections::HashMap, str::from_utf8};
 
-use bigdecimal::BigDecimal;
-use num_bigint::BigInt;
+use arrow_buffer::i256;
 use reifydb_value::{
 	encoding::LeBytes,
 	params::Params,
@@ -68,9 +67,12 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 		Value::Uuid4(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
 		Value::Uuid7(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
 		Value::Blob(b) => encode_len_prefixed(b.as_bytes(), buf),
-		Value::Int(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
-		Value::Uint(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
-		Value::Decimal(v) => encode_len_prefixed(v.to_string().as_bytes(), buf),
+		Value::Int(v) => buf.extend_from_slice(&v.to_i256().to_le_bytes()),
+		Value::Uint(v) => buf.extend_from_slice(&v.to_i256().to_le_bytes()),
+		Value::Decimal(v) => {
+			buf.push(v.scale());
+			buf.extend_from_slice(&v.unscaled().to_le_bytes());
+		}
 		Value::Any(inner) => encode_value_into(inner, buf)?,
 		Value::DictionaryId(id) => match id {
 			DictionaryEntryId::U1(v) => {
@@ -177,13 +179,26 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 		ValueKind::Uuid4 => Ok(Value::Uuid4(Uuid4::read_le(r.take(Uuid4::ENCODED_SIZE)?))),
 		ValueKind::Uuid7 => Ok(Value::Uuid7(Uuid7::read_le(r.take(Uuid7::ENCODED_SIZE)?))),
 		ValueKind::Blob => Ok(Value::Blob(Blob::new(decode_len_prefixed_bytes(r)?.to_vec()))),
-		ValueKind::Int => Ok(Value::Int(Int(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
-		ValueKind::Uint => Ok(Value::Uint(Uint(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
+		ValueKind::Int => {
+			let unscaled = decode_i256(r)?;
+			Int::from_i256(unscaled)
+				.map(Value::Int)
+				.ok_or_else(|| DecodeError::InvalidData(format!("int {unscaled} exceeds 76 digits")))
+		}
+		ValueKind::Uint => {
+			let unscaled = decode_i256(r)?;
+			Uint::from_i256(unscaled).map(Value::Uint).ok_or_else(|| {
+				DecodeError::InvalidData(format!("uint {unscaled} is negative or exceeds 76 digits"))
+			})
+		}
 		ValueKind::Decimal => {
-			let s = decode_len_prefixed_str(r)?;
-			let dec: BigDecimal =
-				s.parse().map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {e}")))?;
-			Ok(Value::Decimal(Decimal::new(dec)))
+			let scale = r.u8()?;
+			let unscaled = decode_i256(r)?;
+			Decimal::from_parts(unscaled, scale).map(Value::Decimal).ok_or_else(|| {
+				DecodeError::InvalidData(format!(
+					"decimal {unscaled} at scale {scale} exceeds 76 digits"
+				))
+			})
 		}
 		ValueKind::Any => Ok(Value::Any(Box::new(decode_value_from(r)?))),
 		ValueKind::DictionaryId => {
@@ -218,6 +233,12 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 			.map(|digest| Value::Digest(Box::new(digest)))
 			.map_err(|error| DecodeError::InvalidData(format!("invalid digest: {error}"))),
 	}
+}
+
+fn decode_i256(r: &mut Reader) -> Result<i256, DecodeError> {
+	let mut bytes = [0u8; 32];
+	bytes.copy_from_slice(r.take(32)?);
+	Ok(i256::from_le_bytes(bytes))
 }
 
 fn decode_value_sequence(r: &mut Reader) -> Result<Vec<Value>, DecodeError> {

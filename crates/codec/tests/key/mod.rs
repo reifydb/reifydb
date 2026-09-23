@@ -5,6 +5,7 @@ mod byte_order;
 mod container_keys;
 mod deserializer;
 mod encoded;
+mod family_order;
 mod serializer;
 
 use reifydb_codec::key::{serializer::KeySerializer, *};

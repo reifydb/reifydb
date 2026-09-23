@@ -1,25 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBuffer, NullBuffer};
+use std::convert::identity;
+
+use arrow_buffer::{BooleanBuffer, NullBuffer, i256};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
 	value::{
+		constraint::{precision::Precision, scale::Scale},
 		container::{
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
+			decimal_array::{decimals, ints, u128s, uints},
 			varlen_array,
 		},
+		decimal::{Decimal, unscaled},
+		int::Int,
 		is::IsNumber,
 		number::safe::div::SafeDiv,
+		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
 use crate::function::{
-	math::arith::op::{ArithOp, SafeNum},
+	math::arith::op::{ArithOp, FamilyDigits, SafeNum},
 	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_pair},
 };
 
@@ -75,6 +80,101 @@ pub(crate) fn ensure_numeric(
 		});
 	}
 	Ok(())
+}
+
+struct FamilyOperand {
+	coerce_to: ValueType,
+	digits: FamilyDigits,
+}
+
+fn family_operand(original: &ValueType, promoted: &ValueType) -> FamilyOperand {
+	let (integer, scale) = match original {
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => (precision.value().saturating_sub(scale.value()), Some(scale.value())),
+		ValueType::Int {
+			precision,
+		}
+		| ValueType::Uint {
+			precision,
+		} => (precision.value(), Some(0)),
+		ValueType::Int1 | ValueType::Uint1 => (3, Some(0)),
+		ValueType::Int2 | ValueType::Uint2 => (5, Some(0)),
+		ValueType::Int4 | ValueType::Uint4 => (10, Some(0)),
+		ValueType::Int8 => (19, Some(0)),
+		ValueType::Uint8 => (20, Some(0)),
+		ValueType::Int16 | ValueType::Uint16 => (39, Some(0)),
+		_ => (unscaled::MAX_DIGITS, None),
+	};
+	match promoted {
+		ValueType::Decimal {
+			scale: promoted_scale,
+			..
+		} => {
+			let scale = scale.unwrap_or(promoted_scale.value());
+			FamilyOperand {
+				coerce_to: ValueType::decimal(Precision::MAX, Scale::new(scale)),
+				digits: FamilyDigits {
+					integer,
+					scale,
+				},
+			}
+		}
+		other => FamilyOperand {
+			coerce_to: other.clone(),
+			digits: FamilyDigits {
+				integer,
+				scale: 0,
+			},
+		},
+	}
+}
+
+fn unwrap_option(ty: ValueType) -> ValueType {
+	match ty {
+		ValueType::Option(inner) => *inner,
+		other => other,
+	}
+}
+
+fn family_target<Op: ArithOp>(
+	promoted: &ValueType,
+	left: &FamilyOperand,
+	right: &FamilyOperand,
+	fallback: Option<&FamilyOperand>,
+) -> ValueType {
+	let mut digits = Op::family_digits(left.digits, right.digits);
+	if let Some(fallback) = fallback {
+		digits.integer = digits.integer.max(fallback.digits.integer);
+		digits.scale = digits.scale.max(fallback.digits.scale);
+	}
+	let max = unscaled::MAX_DIGITS;
+	let scale = digits.scale.min(max);
+	match promoted {
+		ValueType::Int {
+			..
+		} => ValueType::int(Precision::new(digits.integer.clamp(1, max))),
+		ValueType::Uint {
+			..
+		} => ValueType::uint(Precision::new(digits.integer.clamp(1, max))),
+		ValueType::Decimal {
+			..
+		} => ValueType::decimal(
+			Precision::new(digits.integer.saturating_add(scale).clamp(1, max)),
+			Scale::new(scale),
+		),
+		other => other.clone(),
+	}
+}
+
+fn family_bound(precision: Precision, negative: bool) -> i256 {
+	let max = unscaled::pow10(precision.value()).expect("a precision is at most 76 digits").wrapping_sub(i256::ONE);
+	if negative {
+		max.wrapping_neg()
+	} else {
+		max
+	}
 }
 
 fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnBuffer, i: usize) -> RoutineError {
@@ -145,9 +245,17 @@ fn execute_arith<Op: ArithOp>(
 			actual: ValueType::Any,
 		});
 	}
-	let a_cast = coerce_column(ctx, a_col, promoted.clone(), coerce_mode)?;
-	let b_cast = coerce_column(ctx, b_col, promoted.clone(), coerce_mode)?;
-	let d_cast = fallback_col.map(|d| coerce_column(ctx, d, promoted.clone(), CoerceMode::Error)).transpose()?;
+	let a_operand = family_operand(&a_data.get_type(), &promoted);
+	let b_operand = family_operand(&b_data.get_type(), &promoted);
+	let d_operand = fallback_col.map(|d| family_operand(&unwrap_option(d.get_type()), &promoted));
+	let target = family_target::<Op>(&promoted, &a_operand, &b_operand, d_operand.as_ref());
+
+	let a_cast = coerce_column(ctx, a_col, a_operand.coerce_to.clone(), coerce_mode)?;
+	let b_cast = coerce_column(ctx, b_col, b_operand.coerce_to.clone(), coerce_mode)?;
+	let d_cast = match (fallback_col, &d_operand) {
+		(Some(d), Some(operand)) => Some(coerce_column(ctx, d, operand.coerce_to.clone(), CoerceMode::Error)?),
+		_ => None,
+	};
 
 	let (a_inner, a_bv) = (&a_cast, a_cast.nulls().map(NullBuffer::inner));
 	let (b_inner, b_bv) = (&b_cast, b_cast.nulls().map(NullBuffer::inner));
@@ -168,51 +276,43 @@ fn execute_arith<Op: ArithOp>(
 			});
 			compute_rows::<_, Op>(
 				ctx,
-				&promoted,
+				&target,
 				(l.values(), a_bv),
 				(r.values(), b_bv),
 				&mode,
 				d,
 				strict_msg,
+				Some,
+				identity,
 			)?
 		}};
-		($container_variant:ident { .. }, $decode:ident) => {{
-			let (
-				ColumnBuffer::$container_variant {
-					container: l,
-					..
-				},
-				ColumnBuffer::$container_variant {
-					container: r,
-					..
-				},
-			) = (a_inner, b_inner)
+		($container_variant:ident(..), $decode:ident, $fit:expr, $clamp:expr) => {{
+			let (ColumnBuffer::$container_variant(l), ColumnBuffer::$container_variant(r)) =
+				(a_inner, b_inner)
 			else {
 				unreachable!()
 			};
 			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ColumnBuffer::$container_variant {
-					container: c,
-					..
-				} = inner
-				else {
+				let ColumnBuffer::$container_variant(c) = inner else {
 					unreachable!()
 				};
 				($decode(c), *bv)
 			});
 			compute_rows::<_, Op>(
 				ctx,
-				&promoted,
+				&target,
 				(&$decode(l), a_bv),
 				(&$decode(r), b_bv),
 				&mode,
 				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
 				strict_msg,
+				$fit,
+				$clamp,
 			)?
 		}};
 	}
 
-	let result = match promoted {
+	let result = match target {
 		ValueType::Int1 => {
 			let (values, bits) = run!(Int1);
 			ColumnBuffer::int1_with_bitvec(values, bits)
@@ -261,12 +361,14 @@ fn execute_arith<Op: ArithOp>(
 			});
 			let (values, bits) = compute_rows::<_, Op>(
 				ctx,
-				&promoted,
+				&target,
 				(&u128s(l), a_bv),
 				(&u128s(r), b_bv),
 				&mode,
 				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
 				strict_msg,
+				Some,
+				identity,
 			)?;
 			ColumnBuffer::uint16_with_bitvec(values, bits)
 		}
@@ -278,17 +380,63 @@ fn execute_arith<Op: ArithOp>(
 			let (values, bits) = run!(Float8);
 			ColumnBuffer::float8_with_bitvec(values, bits)
 		}
-		ValueType::Int => {
-			let (values, bits) = run!(Int { .. }, ints);
-			ColumnBuffer::int_with_bitvec(values, bits)
+		ValueType::Int {
+			precision,
+		} => {
+			let (values, bits) = run!(
+				Int(..),
+				ints,
+				|value: Int| (value.digits() <= precision.value()).then_some(value),
+				|value: Int| {
+					if value.digits() <= precision.value() {
+						value
+					} else {
+						Int::from_i256(family_bound(precision, value.is_negative()))
+							.expect("a precision bound is in range")
+					}
+				}
+			);
+			ColumnBuffer::int_with_bitvec(precision, values, bits)
 		}
-		ValueType::Uint => {
-			let (values, bits) = run!(Uint { .. }, uints);
-			ColumnBuffer::uint_with_bitvec(values, bits)
+		ValueType::Uint {
+			precision,
+		} => {
+			let (values, bits) = run!(
+				Uint(..),
+				uints,
+				|value: Uint| (value.digits() <= precision.value()).then_some(value),
+				|value: Uint| {
+					if value.digits() <= precision.value() {
+						value
+					} else {
+						Uint::from_i256(family_bound(precision, false))
+							.expect("a precision bound is in range")
+					}
+				}
+			);
+			ColumnBuffer::uint_with_bitvec(precision, values, bits)
 		}
-		ValueType::Decimal => {
-			let (values, bits) = run!(Decimal { .. }, decimals);
-			ColumnBuffer::decimal_with_bitvec(values, bits)
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => {
+			let (values, bits) = run!(
+				Decimal(..),
+				decimals,
+				|value: Decimal| value.fits(precision.value(), scale.value()),
+				|value: Decimal| {
+					value.round_to_scale(scale.value())
+						.and_then(|value| value.fits(precision.value(), scale.value()))
+						.unwrap_or_else(|| {
+							Decimal::from_parts(
+								family_bound(precision, value.is_negative()),
+								scale.value(),
+							)
+							.expect("a precision bound is in range")
+						})
+				}
+			);
+			ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits)
 		}
 		other => {
 			return Err(RoutineError::FunctionInvalidArgumentType {
@@ -303,14 +451,17 @@ fn execute_arith<Op: ArithOp>(
 	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_rows<T: SafeNum, Op: ArithOp>(
 	ctx: &FunctionContext,
-	promoted: &ValueType,
+	target: &ValueType,
 	l: (&[T], Option<&BooleanBuffer>),
 	r: (&[T], Option<&BooleanBuffer>),
 	mode: &RowMode,
 	fallback: Option<(&[T], Option<&BooleanBuffer>)>,
 	strict_msg: Option<&ColumnBuffer>,
+	fit: impl Fn(T) -> Option<T>,
+	clamp: impl Fn(T) -> T,
 ) -> Result<(Vec<T>, Vec<bool>), RoutineError> {
 	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
 		i < c.len() && bv.is_none_or(|b| b.value(i))
@@ -331,28 +482,26 @@ fn compute_rows<T: SafeNum, Op: ArithOp>(
 		let lv = l.get(i).expect("defined row has a value");
 		let rv = r.get(i).expect("defined row has a value");
 
+		let out_of_range = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: target.clone(),
+				fragment: ctx.fragment.clone(),
+				descriptor: None,
+			}
+			.into()
+		};
 		let value = match mode {
 			RowMode::Default => {
 				if Op::DIVISIVE && SafeDiv::is_zero(rv) {
 					return Err(TypeError::DivisionByZero {
-						target: promoted.clone(),
+						target: target.clone(),
 						fragment: ctx.fragment.clone(),
 					}
 					.into());
 				}
-				match Op::checked(lv, rv) {
-					Some(v) => v,
-					None => {
-						return Err(TypeError::NumberOutOfRange {
-							target: promoted.clone(),
-							fragment: ctx.fragment.clone(),
-							descriptor: None,
-						}
-						.into());
-					}
-				}
+				Op::checked(lv, rv).and_then(&fit).ok_or_else(out_of_range)?
 			}
-			RowMode::Strict => match Op::checked(lv, rv) {
+			RowMode::Strict => match Op::checked(lv, rv).and_then(&fit) {
 				Some(v) => v,
 				None => {
 					return Err(make_strict_error(
@@ -362,10 +511,10 @@ fn compute_rows<T: SafeNum, Op: ArithOp>(
 					));
 				}
 			},
-			RowMode::Saturate => Op::saturating(lv, rv),
-			RowMode::Wrap => Op::wrapping(lv, rv),
-			RowMode::Zero => Op::checked(lv, rv).unwrap_or_default(),
-			RowMode::None => match Op::checked(lv, rv) {
+			RowMode::Saturate => clamp(Op::saturating(lv, rv)),
+			RowMode::Wrap => clamp(Op::wrapping(lv, rv)),
+			RowMode::Zero => Op::checked(lv, rv).and_then(&fit).unwrap_or_default(),
+			RowMode::None => match Op::checked(lv, rv).and_then(&fit) {
 				Some(v) => v,
 				None => {
 					values.push(T::default());
@@ -373,12 +522,13 @@ fn compute_rows<T: SafeNum, Op: ArithOp>(
 					continue;
 				}
 			},
-			RowMode::Fallback => match Op::checked(lv, rv) {
+			RowMode::Fallback => match Op::checked(lv, rv).and_then(&fit) {
 				Some(v) => v,
 				None => {
 					let (d, d_bv) = fallback.expect("fallback mode carries a fallback column");
 					if defined(d, d_bv, i) {
-						d.get(i).expect("defined row has a value").clone()
+						fit(d.get(i).expect("defined row has a value").clone())
+							.ok_or_else(out_of_range)?
 					} else {
 						values.push(T::default());
 						bits.push(false);

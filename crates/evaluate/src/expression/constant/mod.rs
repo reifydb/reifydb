@@ -6,9 +6,11 @@ pub mod temporal;
 use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_rql::expression::ConstantExpression;
 use reifydb_value::{
+	fragment::Fragment,
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
+		constraint::{precision::Precision, scale::Scale},
 		decimal::parse::parse_decimal,
 		int::Int,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
@@ -32,52 +34,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		},
 		ConstantExpression::Number {
 			fragment,
-		} => {
-			if fragment.text().contains(".") || fragment.text().contains("e") {
-				return match parse_decimal(fragment.clone()) {
-					Ok(v) => Ok(ColumnBuffer::decimal(vec![v; row_count])),
-					Err(err) => return_error!(err.diagnostic()),
-				};
-			}
-
-			if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
-				return Ok(ColumnBuffer::int1(vec![v; row_count]));
-			}
-
-			if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
-				return Ok(ColumnBuffer::int2(vec![v; row_count]));
-			}
-
-			if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
-				return Ok(ColumnBuffer::int4(vec![v; row_count]));
-			}
-
-			if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
-				return Ok(ColumnBuffer::int8(vec![v; row_count]));
-			}
-
-			match parse_primitive_int::<i128>(fragment.clone()) {
-				Ok(v) => {
-					return Ok(ColumnBuffer::int16(vec![v; row_count]));
-				}
-				Err(err) => {
-					if fragment.text().starts_with("-") {
-						return Err(err);
-					}
-				}
-			}
-
-			if let Ok(v) = parse_primitive_uint::<u128>(fragment.clone()) {
-				return Ok(ColumnBuffer::uint16(vec![v; row_count]));
-			}
-
-			return match parse_primitive_int::<Int>(fragment.clone()) {
-				Ok(v) => Ok(ColumnBuffer::int(vec![v; row_count])),
-				Err(err) => {
-					return_error!(err.diagnostic());
-				}
-			};
-		}
+		} => number_value(fragment, row_count)?,
 		ConstantExpression::Text {
 			fragment,
 		} => ColumnBuffer::utf8_repeated(fragment.text(), row_count),
@@ -91,4 +48,34 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 			..
 		} => ColumnBuffer::none_typed(ValueType::Any, row_count),
 	})
+}
+
+fn number_value(fragment: &Fragment, row_count: usize) -> Result<ColumnBuffer> {
+	let text = fragment.text();
+	if text.contains(['.', 'e', 'E']) {
+		let value = parse_decimal(fragment.clone())?;
+		let precision = Precision::new(value.digits().max(value.scale()));
+		let scale = Scale::new(value.scale());
+		return Ok(ColumnBuffer::decimal(precision, scale, vec![value; row_count]));
+	}
+	if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
+		return Ok(ColumnBuffer::int1(vec![v; row_count]));
+	}
+	if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
+		return Ok(ColumnBuffer::int2(vec![v; row_count]));
+	}
+	if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
+		return Ok(ColumnBuffer::int4(vec![v; row_count]));
+	}
+	if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
+		return Ok(ColumnBuffer::int8(vec![v; row_count]));
+	}
+	if let Ok(v) = parse_primitive_int::<i128>(fragment.clone()) {
+		return Ok(ColumnBuffer::int16(vec![v; row_count]));
+	}
+	if let Ok(v) = parse_primitive_uint::<u128>(fragment.clone()) {
+		return Ok(ColumnBuffer::uint16(vec![v; row_count]));
+	}
+	let value = parse_primitive_int::<Int>(fragment.clone())?;
+	Ok(ColumnBuffer::int(Precision::MAX, vec![value; row_count]))
 }

@@ -3,20 +3,20 @@
 
 import { type TypeName } from "../format";
 import {
-    readF32, readF64, readI16, readI32, readI64, readI128,
+    readF32, readF64, readI16, readI32, readI64, readI128, readI256,
     readU16, readU32, readU64, readU128,
 } from "../reader";
 import {
-    formatDate, formatDateTime, formatF32, formatF64, formatTime, signedBigIntFromLeBytes,
+    formatDate, formatDateTime, formatF32, formatF64, formatTime,
 } from "../values";
 
-function decodeRleFixed(
+function decodeRleFixed<T>(
     data: Uint8Array,
     rowCount: number,
     elemSize: number,
-    decodeValue: (buf: Uint8Array, pos: number) => string
-): string[] {
-    const out: string[] = [];
+    decodeValue: (buf: Uint8Array, pos: number) => T
+): T[] {
+    const out: T[] = [];
     let pos = 0;
     const runSize = elemSize + 4;
     while (pos + runSize <= data.length && out.length < rowCount) {
@@ -28,25 +28,6 @@ function decodeRleFixed(
     }
     if (out.length !== rowCount) {
         throw new Error(`RBCF: RLE decoded ${out.length} values, expected ${rowCount}`);
-    }
-    return out;
-}
-
-function decodeRleVarlen(data: Uint8Array, rowCount: number): Uint8Array[] {
-    const out: Uint8Array[] = [];
-    let pos = 0;
-    while (out.length < rowCount && pos + 4 <= data.length) {
-        const valueLen = readU32(data, pos);
-        pos += 4;
-        if (pos + valueLen + 4 > data.length) throw new Error("RBCF: varlen RLE truncated");
-        const value = data.subarray(pos, pos + valueLen);
-        pos += valueLen;
-        const count = readU32(data, pos);
-        pos += 4;
-        for (let k = 0; k < count && out.length < rowCount; k++) out.push(value);
-    }
-    if (out.length !== rowCount) {
-        throw new Error(`RBCF: varlen RLE decoded ${out.length} values, expected ${rowCount}`);
     }
     return out;
 }
@@ -86,12 +67,11 @@ export function decodeRle(typeName: TypeName, rowCount: number, data: Uint8Array
             return decodeRleFixed(data, rowCount, 8, (b, p) => formatDateTime(readU64(b, p)));
         case "Time":
             return decodeRleFixed(data, rowCount, 8, (b, p) => formatTime(readU64(b, p)));
-        case "Int":
-        case "Uint":
-            return decodeRleVarlen(data, rowCount).map((bytes) => signedBigIntFromLeBytes(bytes).toString());
-        case "Decimal":
-            return decodeRleVarlen(data, rowCount).map((bytes) => new TextDecoder("utf-8").decode(bytes));
         default:
             throw new Error(`RBCF: RLE not supported for type ${typeName}`);
     }
+}
+
+export function decodeRleFixedPoint(rowCount: number, data: Uint8Array, width: 16 | 32): bigint[] {
+    return decodeRleFixed(data, rowCount, width, width === 16 ? readI128 : readI256);
 }

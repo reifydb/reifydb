@@ -141,11 +141,11 @@ fn a_wrapped_digest_input_type_is_rejected() {
 
 #[test]
 fn a_constrained_digest_input_type_is_rejected() {
-	// Accepting int(8) as the input would silently drop its byte limit from the column type.
-	let err = create_table_err("digest(int(8), 0.01)");
+	// Accepting utf8(8) as the input would silently drop its byte limit from the column type.
+	let err = create_table_err("digest(utf8(8), 0.01)");
 
 	assert_eq!(err.code, "AST_012", "{err:?}");
-	assert_eq!(err.fragment.text(), "int");
+	assert_eq!(err.fragment.text(), "utf8");
 }
 
 #[test]

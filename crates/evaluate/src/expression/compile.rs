@@ -18,7 +18,11 @@ use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	return_error,
-	value::{Value, value_type::ValueType},
+	value::{
+		Value,
+		constraint::{precision::Precision, scale::Scale},
+		value_type::ValueType,
+	},
 };
 
 use super::{
@@ -34,7 +38,7 @@ use crate::{
 		call::call_builtin,
 		compare::{
 			Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns,
-			length_mismatch,
+			is_family, length_mismatch,
 		},
 		constant::constant_value,
 		context::EvalContext,
@@ -977,7 +981,7 @@ fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
 	}
 
 	macro_rules! collect {
-		($variant:ident, $constructor:ident, |$x:ident| $convert:expr) => {{
+		($variant:ident, $constructor:ident $([$($arg:expr),*])?, |$x:ident| $convert:expr) => {{
 			let data: Vec<_> = items
 				.iter()
 				.map(|v| match v {
@@ -985,7 +989,7 @@ fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
 					_ => unreachable!("homogeneous check guarantees variant"),
 				})
 				.collect();
-			Some(ColumnBuffer::$constructor(data))
+			Some(ColumnBuffer::$constructor($($($arg,)*)? data))
 		}};
 	}
 
@@ -1012,9 +1016,21 @@ fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
 		Value::Uuid7(_) => collect!(Uuid7, uuid7, |x| *x),
 		Value::IdentityId(_) => collect!(IdentityId, identity_id, |x| *x),
 		Value::Blob(_) => collect!(Blob, blob, |x| x.clone()),
-		Value::Int(_) => collect!(Int, int, |x| x.clone()),
-		Value::Uint(_) => collect!(Uint, uint, |x| x.clone()),
-		Value::Decimal(_) => collect!(Decimal, decimal, |x| x.clone()),
+		Value::Int(_) => collect!(Int, int[Precision::MAX], |x| x.clone()),
+		Value::Uint(_) => collect!(Uint, uint[Precision::MAX], |x| x.clone()),
+		Value::Decimal(_) => {
+			let scale = items
+				.iter()
+				.filter_map(|v| match v {
+					Value::Decimal(d) => Some(d.scale()),
+					_ => None,
+				})
+				.max()?;
+			if !items.iter().all(|v| matches!(v, Value::Decimal(d) if d.rescale(scale).is_some())) {
+				return None;
+			}
+			collect!(Decimal, decimal[Precision::MAX, Scale::new(scale)], |x| x.clone())
+		}
 		Value::DictionaryId(_) => collect!(DictionaryId, dictionary_id, |x| *x),
 
 		_ => None,
@@ -1161,6 +1177,15 @@ fn execute_if_multi(
 			continue;
 		};
 		expected.admit(named_types, _fragment)?;
+	}
+	if let Some(layout) = &layout {
+		for columns in evaluated.iter_mut().flatten() {
+			for (column, target) in columns.iter_mut().zip(layout.types()) {
+				if is_family(target) && column.data().get_type().inner_type() != target {
+					column.data = apply_cast(ctx, column.data(), target, _fragment)?;
+				}
+			}
+		}
 	}
 
 	let mut result_data: Option<Vec<ColumnBuilder>> = None;

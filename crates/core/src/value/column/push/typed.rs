@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	Result,
-	value::{Value, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
 use crate::{internal_err, value::column::builder::ColumnBuilder};
@@ -51,8 +51,9 @@ impl ColumnBuilder {
 				bitvec.append(false);
 			}
 			value => {
+				let value = coerced(value, inner_type)?;
 				let value_type = value.get_type();
-				if value_type != *inner_type {
+				if !same_family(&value, inner_type) && value_type != *inner_type {
 					return internal_err!(
 						"column declares Option({:?}) but received a value of type {:?}",
 						inner_type,
@@ -71,8 +72,9 @@ impl ColumnBuilder {
 		if buffer_type != *declared {
 			return internal_err!("column declares {:?} but its buffer is {:?}", declared, buffer_type);
 		}
+		let value = coerced(value, declared)?;
 		let value_type = value.get_type();
-		if value_type != *declared {
+		if !same_family(&value, declared) && value_type != *declared {
 			return internal_err!(
 				"column declares {:?} but received a value of type {:?}; a required column can hold neither a none nor another type",
 				declared,
@@ -82,6 +84,22 @@ impl ColumnBuilder {
 		self.push_value(value);
 		Ok(())
 	}
+}
+
+fn same_family(value: &Value, declared: &ValueType) -> bool {
+	matches!(
+		(value, declared),
+		(Value::Int(_), ValueType::Int { .. })
+			| (Value::Uint(_), ValueType::Uint { .. })
+			| (Value::Decimal(_), ValueType::Decimal { .. })
+	)
+}
+
+fn coerced(mut value: Value, declared: &ValueType) -> Result<Value> {
+	if same_family(&value, declared) {
+		TypeConstraint::unconstrained(declared.clone()).coerce(&mut value)?;
+	}
+	Ok(value)
 }
 
 #[cfg(test)]

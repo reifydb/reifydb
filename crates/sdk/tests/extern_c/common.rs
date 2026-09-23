@@ -109,7 +109,7 @@ fn byte_clone_columns(
 	for col in cols.columns() {
 		let type_code = col.type_code();
 		let data_bytes = col.data_bytes();
-		let active = builder.acquire(type_code, row_count.max(1))?;
+		let active = builder.acquire_with_params(type_code, col.precision(), col.scale(), row_count.max(1))?;
 		active.grow(data_bytes.len().max(row_count))?;
 		let dst = active.data_ptr();
 		if !dst.is_null() && !data_bytes.is_empty() {
@@ -119,13 +119,7 @@ fn byte_clone_columns(
 				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
 			}
 		}
-		if matches!(
-			type_code,
-			ValueKind::Utf8
-				| ValueKind::Blob | ValueKind::Int
-				| ValueKind::Uint | ValueKind::Decimal
-				| ValueKind::Any | ValueKind::DictionaryId
-		) {
+		if matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId) {
 			let off = col.offsets();
 			let dst_off = active.offsets_ptr();
 			if !dst_off.is_null() && !off.is_empty() {
@@ -155,6 +149,10 @@ fn byte_clone_columns(
 }
 
 pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
+	round_trip_column_through::<PassthroughOperator>(name, input)
+}
+
+pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	let n = input.len();
 	let row_numbers: Vec<RowNumber> = (1..=(n as u64).max(1)).map(RowNumber).take(n).collect();
 	let now = DateTime::default();
@@ -176,10 +174,8 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	diffs.push(Diff::insert(columns));
 	let change = Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, now);
 
-	let mut harness = ExternCOperatorHarnessBuilder::<PassthroughOperator>::new()
-		.with_node_id(OperatorId(1))
-		.build()
-		.expect("build harness");
+	let mut harness =
+		ExternCOperatorHarnessBuilder::<O>::new().with_node_id(OperatorId(1)).build().expect("build harness");
 	let output = harness.apply(change).expect("apply");
 
 	assert_eq!(output.diffs.len(), 1, "expected exactly one output diff");

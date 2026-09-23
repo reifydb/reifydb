@@ -8,10 +8,11 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
-			any_array,
-			bignum_array::{decimal_at, decimal_get_value, int_at, int_get_value, uint_at, uint_get_value},
-			bool_array,
-			decimal_array::{u128_at, uint16_get_value},
+			any_array, bool_array,
+			decimal_array::{
+				decimal_at, decimal_get_value, int_at, int_get_value, u128_at, uint_at, uint_get_value,
+				uint16_get_value,
+			},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{self, dates, datetimes, durations, times},
 			uuid_array::{self, identity_ids, uuid4s, uuid7s},
@@ -65,18 +66,9 @@ impl ColumnBuffer {
 				container,
 				..
 			} => dictionary_array::get_value(container, index),
-			ColumnBuffer::Int {
-				container,
-				..
-			} => int_get_value(container, index),
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => uint_get_value(container, index),
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => decimal_get_value(container, index),
+			ColumnBuffer::Int(a) => int_get_value(a, index),
+			ColumnBuffer::Uint(a) => uint_get_value(a, index),
+			ColumnBuffer::Decimal(a) => decimal_get_value(a, index),
 			ColumnBuffer::Any {
 				container,
 				declared_type,
@@ -171,8 +163,8 @@ macro_rules! impl_from_column_data_numeric {
 					ColumnBuffer::Uint16(c) => u128_at(c, index).and_then(NumCast::from),
 					ColumnBuffer::Float4(c) => c.values().get(index).and_then(|v| NumCast::from(*v)),
 					ColumnBuffer::Float8(c) => c.values().get(index).and_then(|v| NumCast::from(*v)),
-					ColumnBuffer::Int { container, .. } => int_at(container, index).and_then(|v| NumCast::from(v.0)),
-					ColumnBuffer::Uint { container, .. } => uint_at(container, index).and_then(|v| NumCast::from(v.0)),
+					ColumnBuffer::Int(a) => int_at(a, index).and_then(|v| v.to_i128()).and_then(NumCast::from),
+					ColumnBuffer::Uint(a) => uint_at(a, index).and_then(|v| v.to_u128()).and_then(NumCast::from),
 					_ => None,
 				}
 			}
@@ -272,10 +264,7 @@ impl FromColumnBuffer for Uuid7 {
 impl FromColumnBuffer for Int {
 	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Option<Self> {
 		match data {
-			ColumnBuffer::Int {
-				container,
-				..
-			} => int_at(container, index),
+			ColumnBuffer::Int(a) => int_at(a, index),
 			_ => None,
 		}
 	}
@@ -284,10 +273,7 @@ impl FromColumnBuffer for Int {
 impl FromColumnBuffer for Uint {
 	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Option<Self> {
 		match data {
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => uint_at(container, index),
+			ColumnBuffer::Uint(a) => uint_at(a, index),
 			_ => None,
 		}
 	}
@@ -296,10 +282,7 @@ impl FromColumnBuffer for Uint {
 impl FromColumnBuffer for Decimal {
 	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Option<Self> {
 		match data {
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => decimal_at(container, index),
+			ColumnBuffer::Decimal(a) => decimal_at(a, index),
 			_ => None,
 		}
 	}

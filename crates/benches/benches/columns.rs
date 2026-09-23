@@ -149,8 +149,8 @@ fn value_sets(rows: usize) -> Vec<(&'static str, ValueType, Vec<Value>)> {
 		("datetime", ValueType::DateTime, values(|i| Value::DateTime(DateTime::from_nanos(mix(i) >> 2)))),
 		("uuid7", ValueType::Uuid7, values(|i| Value::Uuid7(uuid7(i)))),
 		("utf8", ValueType::Utf8, values(|i| Value::Utf8(name(i)))),
-		("int", ValueType::Int, values(|i| Value::Int(Int::from(mix(i) as i64)))),
-		("decimal", ValueType::Decimal, values(|i| Value::Decimal(Decimal::from((mix(i) % 1_000_000) as i64)))),
+		("int", ValueType::INT, values(|i| Value::Int(Int::from(mix(i) as i64)))),
+		("decimal", ValueType::DECIMAL, values(|i| Value::Decimal(Decimal::from((mix(i) % 1_000_000) as i64)))),
 		(
 			"option_int4",
 			ValueType::Option(Box::new(ValueType::Int4)),

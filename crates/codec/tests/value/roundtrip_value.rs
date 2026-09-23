@@ -7,11 +7,11 @@
 
 use std::str::FromStr;
 
-use num_bigint::BigInt;
 use reifydb_codec::value::{decode_value, encode_value};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -65,9 +65,14 @@ fn sample_values() -> Vec<Value> {
 		Value::Uuid7(Uuid7(uuid::Uuid::from_u128(0x0123_4567_89ab_cdef))),
 		Value::Blob(Blob::new(vec![])),
 		Value::Blob(Blob::new(vec![0x00, 0xff, 0x7f])),
-		Value::Int(Int(BigInt::parse_bytes(b"-123456789012345678901234567890", 10).unwrap())),
-		Value::Uint(Uint(BigInt::parse_bytes(b"987654321098765432109876543210", 10).unwrap())),
+		Value::Int(Int::from_str("-123456789012345678901234567890").unwrap()),
+		Value::Uint(Uint::from_str("987654321098765432109876543210").unwrap()),
 		Value::Decimal(Decimal::from_str("-3.14159265358979").unwrap()),
+		Value::Int(Int::MIN),
+		Value::Int(Int::MAX),
+		Value::Uint(Uint::MAX),
+		Value::Decimal(Decimal::from_str("0.00").unwrap()),
+		Value::Decimal(Decimal::from_parts(Int::MIN.to_i256(), 76).unwrap()),
 		Value::Any(Box::new(Value::Int4(5))),
 		Value::Any(Box::new(Value::Any(Box::new(Value::Utf8("nested".to_string()))))),
 		Value::Any(Box::new(Value::none_of(ValueType::Duration))),
@@ -100,6 +105,10 @@ fn assert_value_eq(expected: &Value, actual: &Value) {
 			},
 		) => {
 			assert_eq!(l, r, "none inner type must round-trip exactly");
+		}
+		(Value::Decimal(l), Value::Decimal(r)) => {
+			assert_eq!(l, r);
+			assert_eq!(l.scale(), r.scale(), "decimal scale must round-trip exactly");
 		}
 		_ => assert_eq!(expected, actual),
 	}
@@ -139,9 +148,13 @@ fn none_inner_matrix_round_trips() {
 		ValueType::Uuid4,
 		ValueType::Uuid7,
 		ValueType::Blob,
-		ValueType::Int,
-		ValueType::Uint,
-		ValueType::Decimal,
+		ValueType::INT,
+		ValueType::UINT,
+		ValueType::DECIMAL,
+		ValueType::int(Precision::new(20)),
+		ValueType::uint(Precision::new(38)),
+		ValueType::decimal(Precision::new(10), Scale::new(2)),
+		ValueType::decimal(Precision::new(76), Scale::new(0)),
 		ValueType::Any,
 		ValueType::DictionaryId,
 	];
@@ -207,4 +220,23 @@ fn trailing_bytes_are_rejected() {
 	let mut encoded = encode_value(&Value::Boolean(true)).unwrap();
 	encoded.push(0x00);
 	assert!(decode_value(&encoded).is_err());
+}
+
+#[test]
+fn a_family_payload_outside_its_type_is_rejected() {
+	// The 32 byte slot can hold values the type cannot, so decode must refuse them instead of building an invalid
+	// value.
+	let past_76_digits = arrow_buffer::i256::MAX.to_le_bytes();
+	let mut int = vec![encode_value(&Value::Int(Int::zero())).unwrap()[0]];
+	int.extend_from_slice(&past_76_digits);
+	assert!(decode_value(&int).is_err(), "int past 76 digits");
+
+	let mut uint = vec![encode_value(&Value::Uint(Uint::zero())).unwrap()[0]];
+	uint.extend_from_slice(&arrow_buffer::i256::MINUS_ONE.to_le_bytes());
+	assert!(decode_value(&uint).is_err(), "negative uint");
+
+	let mut decimal = encode_value(&Value::Decimal(Decimal::zero())).unwrap()[..1].to_vec();
+	decimal.push(77);
+	decimal.extend_from_slice(&arrow_buffer::i256::ONE.to_le_bytes());
+	assert!(decode_value(&decimal).is_err(), "decimal scale past 76");
 }

@@ -17,7 +17,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::volcano::{
-		key_rows::key_rows,
+		key_rows::{key_rows, key_types},
 		query::{QueryContext, QueryNode, charge_query_memory},
 	},
 };
@@ -85,7 +85,7 @@ impl DistinctNode {
 			return Ok((0..row_count).take(1).collect());
 		}
 
-		let (converter, arrays) = key_rows(&key_columns)?;
+		let (converter, arrays) = key_rows(&key_columns, &key_types(&key_columns))?;
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use bigdecimal::BigDecimal as BigDecimalInner;
-use num_bigint::{BigInt, Sign};
+use arrow_buffer::i256;
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	value::{
 		Value,
 		blob::Blob,
+		constraint::precision::Precision,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -28,11 +28,13 @@ use uuid::Uuid;
 
 use super::{
 	CONTAINER_END, decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32,
-	decode_i64, decode_i128, decode_u8, decode_u16, decode_u32, decode_u64, decode_u128, decode_u128_varint,
+	decode_i64, decode_i128, decode_i256, decode_u8, decode_u16, decode_u32, decode_u64, decode_u128,
+	decode_u128_varint,
 };
 use crate::{
-	key::serializer::{DECIMAL_END_NEGATIVE, DECIMAL_END_POSITIVE},
+	error::DecodeError,
 	tag::{TypeTag, ValueKind},
+	unscaled::{NARROW, check_unscaled, decode_params, width},
 };
 
 pub struct KeyDeserializer<'a> {
@@ -289,60 +291,39 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_int(&mut self) -> Result<Int> {
-		if decode_u8(self.read_exact(1)?[0]) == 0 {
-			let len = u32::from_be_bytes(self.read_exact(4)?.try_into()?) as usize;
-			let bytes = self.read_exact(len)?;
-			return Ok(Int(BigInt::from_bytes_be(Sign::Minus, bytes)));
-		}
-		let len = self.read_u32()? as usize;
-		let bytes: Vec<u8> = self.read_exact(len)?.iter().map(|byte| decode_u8(*byte)).collect();
-		Ok(Int(BigInt::from_bytes_be(Sign::Plus, &bytes)))
+		let precision = self.read_u8()?;
+		let unscaled = self.read_unscaled(ValueKind::Int, precision, 0)?;
+		Ok(Int::from_i256(unscaled).expect("a checked unscaled value is within 76 digits"))
 	}
 
 	pub fn read_uint(&mut self) -> Result<Uint> {
-		let len = self.read_u32()? as usize;
-		let bytes: Vec<u8> = self.read_exact(len)?.iter().map(|byte| decode_u8(*byte)).collect();
-		Ok(Uint(BigInt::from_bytes_be(Sign::Plus, &bytes)))
+		let precision = self.read_u8()?;
+		let unscaled = self.read_unscaled(ValueKind::Uint, precision, 0)?;
+		Ok(Uint::from_i256(unscaled).expect("a checked unscaled value is non-negative and within 76 digits"))
 	}
 
 	pub fn read_decimal(&mut self) -> Result<Decimal> {
-		let negative = decode_u8(self.read_exact(1)?[0]) == 0;
-		self.read_exact(4)?;
+		let precision = self.read_u8()?;
+		let scale = self.read_u8()?;
+		let unscaled = self.read_unscaled(ValueKind::Decimal, precision, scale)?;
+		Ok(Decimal::from_parts(unscaled, scale).expect("a checked unscaled value is within 76 digits"))
+	}
 
-		let terminator = if negative {
-			DECIMAL_END_NEGATIVE
+	fn read_unscaled(&mut self, kind: ValueKind, precision: u8, scale: u8) -> Result<i256> {
+		let position = self.position;
+		let (precision, _) =
+			decode_params(precision, scale).map_err(|error| unscaled_error(position, error))?;
+		let unscaled = self.read_payload(precision)?;
+		check_unscaled(kind, unscaled, precision).map_err(|error| unscaled_error(position, error))
+	}
+
+	fn read_payload(&mut self, precision: Precision) -> Result<i256> {
+		if width(precision) == NARROW {
+			Ok(i256::from_i128(self.read_i128()?))
 		} else {
-			DECIMAL_END_POSITIVE
-		};
-		let mut digits = Vec::new();
-		loop {
-			let byte = self.read_exact(1)?[0];
-			if byte == terminator {
-				break;
-			}
-			digits.push(if negative {
-				byte
-			} else {
-				decode_u8(byte)
-			});
+			let bytes = self.read_exact(32)?;
+			Ok(decode_i256(bytes.try_into()?))
 		}
-		let scale = self.read_i64()?;
-
-		let mantissa = if digits.is_empty() {
-			BigInt::from(0)
-		} else {
-			let magnitude = BigInt::parse_bytes(&digits, 10).ok_or_else(|| {
-				Error::from(TypeError::SerdeKeycode {
-					message: format!("invalid Decimal digits at position {}", self.position),
-				})
-			})?;
-			if negative {
-				-magnitude
-			} else {
-				magnitude
-			}
-		};
-		Ok(Decimal(BigDecimalInner::new(mantissa, scale)))
 	}
 
 	fn at_container_end(&mut self) -> Result<bool> {
@@ -506,4 +487,10 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_raw(&mut self, count: usize) -> Result<&'a [u8]> {
 		self.read_exact(count)
 	}
+}
+
+fn unscaled_error(position: usize, error: DecodeError) -> Error {
+	Error::from(TypeError::SerdeKeycode {
+		message: format!("invalid fixed-width number at position {position}: {error}"),
+	})
 }

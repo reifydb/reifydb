@@ -4,10 +4,16 @@
 use core::{ffi::c_void, ptr};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{decimal::Decimal, int::Int, row_number::RowNumber, uint::Uint},
+};
 
 use crate::{
-	common::extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
+	common::{
+		extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
+		family::{FamilyValue, family_params},
+	},
 	error::SdkError,
 };
 
@@ -15,6 +21,8 @@ pub struct ColumnBuilder<'a> {
 	callbacks: BuilderCallbacks,
 	handle: *mut ColumnBufferHandle,
 	type_code: ValueKind,
+	precision: u8,
+	scale: u8,
 	committed: bool,
 	_phantom: core::marker::PhantomData<&'a ()>,
 }
@@ -71,6 +79,14 @@ impl<'a> ColumnBuilder<'a> {
 
 	pub fn type_code(&self) -> ValueKind {
 		self.type_code
+	}
+
+	pub fn precision(&self) -> u8 {
+		self.precision
+	}
+
+	pub fn scale(&self) -> u8 {
+		self.scale
 	}
 
 	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, SdkError> {
@@ -231,6 +247,18 @@ impl<'a> ColumnBuilder<'a> {
 		write_var_len(self, values.iter().map(|b| b.as_ref()))
 	}
 
+	pub fn write_int(self, values: &[Int]) -> Result<CommittedColumn, SdkError> {
+		write_family(self, values)
+	}
+
+	pub fn write_uint(self, values: &[Uint]) -> Result<CommittedColumn, SdkError> {
+		write_family(self, values)
+	}
+
+	pub fn write_decimal(self, values: &[Decimal]) -> Result<CommittedColumn, SdkError> {
+		write_family(self, values)
+	}
+
 	pub fn set_defined(&self, defined: &[bool]) {
 		let bytes = defined.len().div_ceil(8);
 		if bytes == 0 {
@@ -265,6 +293,35 @@ unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<
 		// copied as untyped bytes so neither needs alignment for `T`.
 		unsafe {
 			core::ptr::copy_nonoverlapping(values.as_ptr() as *const u8, col.data_ptr(), bytes);
+		}
+	}
+	col.commit(values.len())
+}
+
+fn write_family<T: FamilyValue>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, SdkError> {
+	if col.type_code != T::KIND {
+		return Err(SdkError::InvalidInput(format!(
+			"{:?} values written to a {:?} ColumnBuilder",
+			T::KIND,
+			col.type_code
+		)));
+	}
+	let (precision, scale) = family_params(col.type_code, col.precision, col.scale).ok_or_else(|| {
+		SdkError::InvalidInput(format!(
+			"{:?} ColumnBuilder has invalid precision {} and scale {}",
+			col.type_code, col.precision, col.scale
+		))
+	})?;
+	let mut cells = Vec::new();
+	for value in values {
+		value.encode_cell(precision, scale, &mut cells)?;
+	}
+	if !cells.is_empty() {
+		// SAFETY: a family builder's host buffer holds one fixed-width cell per acquired element, so the
+		// `values.len()` cells in the separate `cells` allocation fit as long as the caller acquired
+		// capacity for at least `values.len()` elements.
+		unsafe {
+			core::ptr::copy_nonoverlapping(cells.as_ptr(), col.data_ptr(), cells.len());
 		}
 	}
 	col.commit(values.len())
@@ -330,20 +387,32 @@ impl<'a> ColumnsBuilder<'a> {
 	}
 
 	pub fn acquire(&mut self, type_code: ValueKind, capacity: usize) -> Result<ColumnBuilder<'_>, SdkError> {
+		self.acquire_with_params(type_code, 0, 0, capacity)
+	}
+
+	pub fn acquire_with_params(
+		&mut self,
+		type_code: ValueKind,
+		precision: u8,
+		scale: u8,
+		capacity: usize,
+	) -> Result<ColumnBuilder<'_>, SdkError> {
 		// SAFETY: `self.callbacks` was copied out of the context borrowed for `'a`, so the table is live;
-		// `acquire` accepts any type_code and capacity and signals failure by returning null, which is
-		// checked below.
-		let handle = unsafe { (self.callbacks.acquire)(self.ctx, type_code, capacity) };
+		// `acquire` accepts any type_code, precision, scale and capacity and signals failure by returning
+		// null, which is checked below.
+		let handle = unsafe { (self.callbacks.acquire)(self.ctx, type_code, precision, scale, capacity) };
 		if handle.is_null() {
 			return Err(SdkError::Other(format!(
-				"ColumnsBuilder::acquire failed for type {:?}",
-				type_code
+				"ColumnsBuilder::acquire failed for type {:?} with precision {} and scale {}",
+				type_code, precision, scale
 			)));
 		}
 		Ok(ColumnBuilder {
 			callbacks: self.callbacks,
 			handle,
 			type_code,
+			precision,
+			scale,
 			committed: false,
 			_phantom: core::marker::PhantomData,
 		})

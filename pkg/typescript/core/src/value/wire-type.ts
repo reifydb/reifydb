@@ -3,6 +3,10 @@
 import {NONE_VALUE, ROW_NUMBER_KEY} from '../constant';
 import {BaseType, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType} from '.';
 import {digestType} from './digest';
+import {
+    DECIMAL_DEFAULT_SCALE, FIXED_POINT_MAX_PRECISION, decimalType, fixedPointKind, fixedPointPrecision,
+    fixedPointScale, fixedPointType, isFixedPointType,
+} from './fixed-point';
 
 function peelOption(type: Type): Type {
     return isOptionType(type) ? peelOption(type.Option) : type;
@@ -24,6 +28,8 @@ export interface WireType {
     id: string;
     underlying?: WireType | WireRecordField[];
     accuracy?: number;
+    precision?: number;
+    scale?: number;
 }
 
 export function typeToWire(type: Type): WireType {
@@ -32,6 +38,12 @@ export function typeToWire(type: Type): WireType {
     }
     if (isDigestType(type)) {
         return {id: 'Digest', underlying: {id: type.Digest.inner}, accuracy: type.Digest.accuracy};
+    }
+    if (isFixedPointType(type)) {
+        const kind = fixedPointKind(type);
+        const wire: WireType = {id: kind, precision: fixedPointPrecision(type)};
+        if (kind === 'Decimal') wire.scale = fixedPointScale(type);
+        return wire;
     }
     if (isListType(type)) {
         return {id: 'List', underlying: typeToWire(type.List)};
@@ -58,6 +70,12 @@ export function typeFromWire(wire: WireType): Type {
             throw new Error(`Digest type descriptor needs an underlying type and a numeric accuracy, got ${JSON.stringify(wire)}`);
         }
         return digestType(inner, wire.accuracy);
+    }
+    if (wire.id === 'Int' || wire.id === 'Uint' || wire.id === 'Decimal') {
+        const precision = wire.precision ?? FIXED_POINT_MAX_PRECISION;
+        return wire.id === 'Decimal'
+            ? decimalType(precision, wire.scale ?? DECIMAL_DEFAULT_SCALE)
+            : fixedPointType(wire.id, precision, 0);
     }
     if (wire.id === 'List') {
         if (!wire.underlying || Array.isArray(wire.underlying)) {

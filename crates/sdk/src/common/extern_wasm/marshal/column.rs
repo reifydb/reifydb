@@ -4,10 +4,8 @@
 use std::{borrow::Cow, mem, mem::size_of, ptr};
 
 use arrow_array::{GenericByteArray, types::ByteArrayType};
-use arrow_buffer::BooleanBuffer;
-use reifydb_codec::extern_c::cells::{
-	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
-};
+use arrow_buffer::{BooleanBuffer, i256};
+use reifydb_codec::extern_c::cells::{encode_any_cell, encode_dictionary_id_cell};
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
@@ -16,8 +14,7 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array,
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
+			decimal_array::{DecimalArray, u128s},
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -25,13 +22,10 @@ use reifydb_value::{
 		},
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -39,9 +33,12 @@ use tracing::instrument;
 
 use super::util::column_data_to_type_code;
 use crate::{
-	common::extern_c::wire::{
-		buffer::ExternCBuffer,
-		columns::{ExternCColumn, ExternCColumnData, ExternCColumns},
+	common::{
+		extern_c::wire::{
+			buffer::ExternCBuffer,
+			columns::{ExternCColumn, ExternCColumnData, ExternCColumns},
+		},
+		family::column_params,
 	},
 	flow::operator::extern_c::binding::arena::Arena,
 };
@@ -113,10 +110,13 @@ impl Arena {
 
 	pub(super) fn marshal_column_data(&mut self, data: &ColumnBuffer) -> ExternCColumnData {
 		let row_count = data.len();
+		let (precision, scale) = column_params(data);
 
 		if row_count == 0 {
 			return ExternCColumnData {
 				type_code: column_data_to_type_code(data),
+				precision,
+				scale,
 				row_count: 0,
 				data: ExternCBuffer::empty(),
 				defined_bitvec: ExternCBuffer::empty(),
@@ -135,6 +135,8 @@ impl Arena {
 
 		ExternCColumnData {
 			type_code,
+			precision,
+			scale,
 			row_count,
 			data: data_buffer,
 			defined_bitvec,
@@ -146,16 +148,7 @@ impl Arena {
 impl Arena {
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
 		match data {
-			ColumnBuffer::Int {
-				..
-			}
-			| ColumnBuffer::Uint {
-				..
-			}
-			| ColumnBuffer::Decimal {
-				..
-			}
-			| ColumnBuffer::Any {
+			ColumnBuffer::Any {
 				..
 			}
 			| ColumnBuffer::DictionaryId {
@@ -185,6 +178,9 @@ impl Arena {
 			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
 			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
 			ColumnBuffer::Uint16(container) => self.marshal_copied_u128s(&u128s(container)),
+			ColumnBuffer::Int(array) | ColumnBuffer::Uint(array) | ColumnBuffer::Decimal(array) => {
+				self.marshal_unscaled(array)
+			}
 
 			ColumnBuffer::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
 			ColumnBuffer::DateTime(container) => {
@@ -221,27 +217,6 @@ impl Arena {
 	#[inline]
 	pub(super) fn marshal_column_data_serialize(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
 		match data {
-			ColumnBuffer::Int {
-				container,
-				..
-			} => {
-				let values: Vec<Int> = ints(container);
-				self.marshal_encoded_cells(values.len(), |i, buf| encode_int_cell(&values[i], buf))
-			}
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => {
-				let values: Vec<Uint> = uints(container);
-				self.marshal_encoded_cells(values.len(), |i, buf| encode_uint_cell(&values[i], buf))
-			}
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => {
-				let values: Vec<Decimal> = decimals(container);
-				self.marshal_encoded_cells(values.len(), |i, buf| encode_decimal_cell(&values[i], buf))
-			}
 			ColumnBuffer::Any {
 				container,
 				..
@@ -295,6 +270,13 @@ impl Arena {
 			},
 			ExternCBuffer::empty(),
 		)
+	}
+
+	fn marshal_unscaled(&mut self, array: &DecimalArray) -> (ExternCBuffer, ExternCBuffer) {
+		match array {
+			DecimalArray::Decimal128(array) => self.marshal_numeric_slice::<i128>(array.values()),
+			DecimalArray::Decimal256(array) => self.marshal_numeric_slice::<i256>(array.values()),
+		}
 	}
 
 	fn marshal_copied_u128s(&mut self, values: &[u128]) -> (ExternCBuffer, ExternCBuffer) {

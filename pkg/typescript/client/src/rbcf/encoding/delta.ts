@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { type TypeName } from "../format";
-import { readI16, readI32, readI64, readI128, readU32, readU64, readU128 } from "../reader";
+import { readI16, readI32, readI64, readI128, readI256, readU32, readU64, readU128 } from "../reader";
 import { formatDate, formatDateTime, formatTime } from "../values";
 
 function readSignedDelta(data: Uint8Array, pos: number, width: number): bigint {
@@ -87,6 +87,11 @@ function readHeader128(data: Uint8Array, signed: boolean): DeltaHeader {
     const width = data[0];
     const baseline = signed ? readI128(data, 1) : readU128(data, 1);
     return { width, baseline, dataStart: 17 };
+}
+
+function readHeader256(data: Uint8Array): DeltaHeader {
+    if (data.length < 33) throw new Error("RBCF: delta header truncated (256)");
+    return { width: data[0], baseline: readI256(data, 1), dataStart: 33 };
 }
 
 function decodeDeltaGeneric(
@@ -238,4 +243,12 @@ function dispatchDelta(typeName: TypeName, rowCount: number, data: Uint8Array, r
         default:
             throw new Error(`RBCF: Delta not supported for type ${typeName}`);
     }
+}
+
+export function decodeDeltaFixedPoint(rowCount: number, data: Uint8Array, width: 16 | 32, rle: boolean): bigint[] {
+    if (rowCount === 0) return [];
+    const go = rle ? decodeDeltaRleGeneric : decodeDeltaGeneric;
+    return width === 16
+        ? go(data, rowCount, readHeader128(data, true), readSignedDelta128, (v) => wrapSigned(v, 128))
+        : go(data, rowCount, readHeader256(data), readSignedDelta128, (v) => wrapSigned(v, 256));
 }

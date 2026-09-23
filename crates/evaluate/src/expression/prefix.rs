@@ -11,13 +11,9 @@ use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 	value::{
-		container::{
-			bignum_array::{decimals, ints, uints},
-			decimal_array::u128s,
-		},
+		container::decimal_array::{decimals, ints, u128s, uints},
 		decimal::Decimal,
 		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -284,64 +280,12 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Int {
-			container,
-			..
-		} => {
-			let values = ints(container);
-			let mut result = Vec::with_capacity(values.len());
-			for (idx, val) in values.iter().enumerate() {
-				if idx < values.len() {
-					result.push(match operator {
-						PrefixOperator::Minus(_) => Int(-val.0.clone()),
-						PrefixOperator::Plus(_) => val.clone(),
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: fragment.clone(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(Int::zero());
-				}
-			}
-			let new_data = ColumnBuffer::int(result);
-			Ok(column.with_new_data(new_data))
-		}
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => match operator {
+		ColumnBuffer::Int(container) => match operator {
 			PrefixOperator::Minus(_) => {
-				let values = uints(container);
-				let mut result = Vec::with_capacity(values.len());
-				for (idx, val) in values.iter().enumerate() {
-					if idx < values.len() {
-						let negated = -val.0.clone();
-						result.push(Int::from(negated));
-					} else {
-						result.push(Int::zero());
-					}
-				}
-				let new_data = ColumnBuffer::int(result);
-				Ok(column.with_new_data(new_data))
+				let result = ints(container).iter().map(Int::negate).collect::<Vec<_>>();
+				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
 			}
-			PrefixOperator::Plus(_) => {
-				let values = uints(container);
-				let mut result = Vec::with_capacity(values.len());
-				for (idx, val) in values.iter().enumerate() {
-					if idx < values.len() {
-						result.push(val.clone());
-					} else {
-						result.push(Uint::zero());
-					}
-				}
-				let new_data = ColumnBuffer::uint(result);
-				Ok(column.with_new_data(new_data))
-			}
+			PrefixOperator::Plus(_) => Ok(column.clone()),
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
 				operator: LogicalOp::Not,
 				operand_category: OperandCategory::Number,
@@ -349,33 +293,47 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => {
-			let values = decimals(container);
-			let mut result = Vec::with_capacity(values.len());
-			for (idx, val) in values.iter().enumerate() {
-				if idx < values.len() {
-					result.push(match operator {
-						PrefixOperator::Minus(_) => val.clone().negate(),
-						PrefixOperator::Plus(_) => val.clone(),
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
+		ColumnBuffer::Uint(container) => match operator {
+			PrefixOperator::Minus(_) => {
+				let result = uints(container)
+					.into_iter()
+					.map(|val| {
+						Int::from_i256(val.to_i256().wrapping_neg()).ok_or_else(|| {
+							TypeError::NumberOutOfRange {
+								target: ValueType::int(container.precision()),
 								fragment: fragment.clone(),
+								descriptor: None,
 							}
-							.into());
-						}
-					});
-				} else {
-					result.push(Decimal::from(0));
-				}
+						})
+					})
+					.collect::<std::result::Result<Vec<_>, _>>()?;
+				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
 			}
-			let new_data = ColumnBuffer::decimal(result);
-			Ok(column.with_new_data(new_data))
-		}
+			PrefixOperator::Plus(_) => Ok(column.clone()),
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Number,
+				fragment: fragment.clone(),
+			}
+			.into()),
+		},
+		ColumnBuffer::Decimal(container) => match operator {
+			PrefixOperator::Minus(_) => {
+				let result = decimals(container).iter().map(Decimal::negate).collect::<Vec<_>>();
+				Ok(column.with_new_data(ColumnBuffer::decimal(
+					container.precision(),
+					container.scale(),
+					result,
+				)))
+			}
+			PrefixOperator::Plus(_) => Ok(column.clone()),
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Number,
+				fragment: fragment.clone(),
+			}
+			.into()),
+		},
 		ColumnBuffer::DictionaryId {
 			..
 		} => match operator {

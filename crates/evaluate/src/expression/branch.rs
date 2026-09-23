@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::value::column::view::group_by::common_key_type;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -24,6 +25,10 @@ impl BranchLayout {
 		}
 	}
 
+	pub fn types(&self) -> &[ValueType] {
+		&self.types
+	}
+
 	pub fn admit<'a>(
 		&mut self,
 		columns: impl IntoIterator<Item = (&'a str, ValueType)>,
@@ -37,8 +42,13 @@ impl BranchLayout {
 				if *slot == ValueType::Any {
 					*slot = ty.clone();
 				} else if *ty != ValueType::Any && ty != slot {
-					disagrees = true;
-					break;
+					match common_key_type(slot, ty) {
+						Some(common) => *slot = common,
+						None => {
+							disagrees = true;
+							break;
+						}
+					}
 				}
 			}
 		}

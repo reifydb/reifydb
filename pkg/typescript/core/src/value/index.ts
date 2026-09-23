@@ -6,6 +6,11 @@ export {DateValue} from './date';
 export {DateTimeValue} from './datetime';
 export {DecimalValue} from './decimal';
 export {DigestValue, digestType, digestTypeName} from './digest';
+export {
+    DECIMAL_DEFAULT_SCALE, FIXED_POINT_MAX_PRECISION, FIXED_POINT_NARROW_PRECISION,
+    decimalType, fixedPointKind, fixedPointPrecision, fixedPointScale, fixedPointType, fixedPointTypeName,
+    intType, isFixedPointType, uintType,
+} from './fixed-point';
 export {Float4Value} from './float4';
 export {Float8Value} from './float8';
 export {Int1Value} from './int1';
@@ -52,10 +57,15 @@ export type DigestInnerType =
     | "Int" | "Uint";
 
 export interface DigestType { Digest: { inner: DigestInnerType; accuracy: number } }
+export type FixedPointKind = "Int" | "Uint" | "Decimal";
+export interface IntType { Int: { precision: number } }
+export interface UintType { Uint: { precision: number } }
+export interface DecimalType { Decimal: { precision: number; scale: number } }
+export type FixedPointType = IntType | UintType | DecimalType;
 export interface RecordField { name: string; type: Type }
 export interface ListType { List: Type }
 export interface RecordType { Record: RecordField[] }
-export type Type = BaseType | OptionType | DigestType | ListType | RecordType;
+export type Type = BaseType | OptionType | DigestType | FixedPointType | ListType | RecordType;
 
 export function isOptionType(t: Type): t is OptionType {
     return typeof t === 'object' && t !== null && 'Option' in t;
@@ -73,7 +83,7 @@ export function isRecordType(t: Type): t is RecordType {
     return typeof t === 'object' && t !== null && 'Record' in t;
 }
 
-export function unwrapOptionType(t: Type): BaseType | DigestType | ListType | RecordType {
+export function unwrapOptionType(t: Type): BaseType | DigestType | FixedPointType | ListType | RecordType {
     if (isOptionType(t)) return unwrapOptionType(t.Option);
     return t;
 }

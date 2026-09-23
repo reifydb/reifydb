@@ -17,18 +17,18 @@ use reifydb_value::{
 	},
 };
 
-fn decode_digest_type(type_byte: u8, bytes: &[u8]) -> Option<TypeConstraint> {
-	let [5, p1_0, p1_1, p1_2, p1_3, p2_0, p2_1, p2_2, p2_3] = *bytes else {
+fn decode_parameterized_type(type_byte: u8, bytes: &[u8]) -> Option<TypeConstraint> {
+	let [constraint_type @ (2 | 5), p1_0, p1_1, p1_2, p1_3, p2_0, p2_1, p2_2, p2_3] = *bytes else {
 		return None;
 	};
 	let encoded = EncodedTypeConstraint {
 		base_type: type_byte,
-		constraint_type: 5,
+		constraint_type,
 		constraint_param1: u32::from_le_bytes([p1_0, p1_1, p1_2, p1_3]),
 		constraint_param2: u32::from_le_bytes([p2_0, p2_1, p2_2, p2_3]),
 	};
 	Some(decode_type_constraint(&encoded)
-		.unwrap_or_else(|error| panic!("invalid persisted digest column type {encoded:?}: {error}")))
+		.unwrap_or_else(|error| panic!("invalid persisted column type {encoded:?}: {error}")))
 }
 
 fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
@@ -41,11 +41,6 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 		1 if bytes.len() >= 5 => {
 			let max_bytes = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
 			Some(Constraint::MaxBytes(max_bytes.into()))
-		}
-		2 if bytes.len() >= 3 => {
-			let precision = bytes[1];
-			let scale = bytes[2];
-			Some(Constraint::PrecisionScale(precision.into(), scale.into()))
 		}
 		3 if bytes.len() >= 10 => {
 			let dict_id = u64::from_le_bytes([
@@ -97,7 +92,7 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let constraint = match decode_digest_type(type_byte, constraint_bytes.as_bytes()) {
+		let constraint = match decode_parameterized_type(type_byte, constraint_bytes.as_bytes()) {
 			Some(digest) => digest,
 			None => {
 				let base_type = value_type_from_tag_byte(type_byte);

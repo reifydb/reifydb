@@ -6,7 +6,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	util::bitmap,
 	value::{
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		constraint::bytes::MaxBytes,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	},
 };
@@ -53,18 +53,9 @@ impl From<ColumnBuffer> for FrameColumnData {
 				container,
 				..
 			} => FrameColumnData::Blob(container),
-			ColumnBuffer::Int {
-				container,
-				..
-			} => FrameColumnData::Int(container),
-			ColumnBuffer::Uint {
-				container,
-				..
-			} => FrameColumnData::Uint(container),
-			ColumnBuffer::Decimal {
-				container,
-				..
-			} => FrameColumnData::Decimal(container),
+			ColumnBuffer::Int(container) => FrameColumnData::Int(container),
+			ColumnBuffer::Uint(container) => FrameColumnData::Uint(container),
+			ColumnBuffer::Decimal(container) => FrameColumnData::Decimal(container),
 			ColumnBuffer::Any {
 				container,
 				declared_type,
@@ -151,19 +142,9 @@ impl From<FrameColumnData> for ColumnBuffer {
 				container,
 				max_bytes: MaxBytes::MAX,
 			},
-			FrameColumnData::Int(container) => ColumnBuffer::Int {
-				container,
-				max_bytes: MaxBytes::MAX,
-			},
-			FrameColumnData::Uint(container) => ColumnBuffer::Uint {
-				container,
-				max_bytes: MaxBytes::MAX,
-			},
-			FrameColumnData::Decimal(container) => ColumnBuffer::Decimal {
-				container,
-				precision: Precision::MAX,
-				scale: Scale::new(0),
-			},
+			FrameColumnData::Int(container) => ColumnBuffer::Int(container),
+			FrameColumnData::Uint(container) => ColumnBuffer::Uint(container),
+			FrameColumnData::Decimal(container) => ColumnBuffer::Decimal(container),
 			FrameColumnData::Any {
 				container,
 				declared_type,

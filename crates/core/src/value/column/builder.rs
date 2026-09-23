@@ -12,7 +12,7 @@ use arrow_array::{
 		UInt32Type, UInt64Type,
 	},
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, i256};
 use reifydb_value::{
 	Result,
 	value::{
@@ -20,17 +20,17 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::push_any,
-			bignum_array::{push_decimal, push_int, push_uint},
-			decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, with_int16_type, with_uint16_type},
+			decimal_array::{
+				self, DECIMAL128_MAX_PRECISION, DecimalArray, INT16_DATA_TYPE, UINT16_DATA_TYPE,
+				decimal_at, with_int16_type, with_uint16_type,
+			},
 			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
 			digest_array::push_none_slot,
 			uuid_array::{self, UUID_WIDTH},
 			varlen_array,
 		},
-		decimal::Decimal,
+		decimal::{Decimal, unscaled},
 		dictionary::DictionaryId,
-		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -39,6 +39,196 @@ use crate::{
 	internal_error,
 	value::column::{buffer::ColumnBuffer, push::Push},
 };
+
+#[derive(Debug)]
+pub enum DecimalBuilder {
+	Decimal128 {
+		builder: PrimitiveBuilder<Decimal128Type>,
+		precision: Precision,
+		scale: Scale,
+	},
+	Decimal256 {
+		builder: PrimitiveBuilder<Decimal256Type>,
+		precision: Precision,
+		scale: Scale,
+	},
+}
+
+impl DecimalBuilder {
+	pub fn with_capacity(precision: Precision, scale: Scale, capacity: usize) -> Self {
+		let data_type = decimal_array::data_type(precision, scale);
+		if precision.value() <= DECIMAL128_MAX_PRECISION {
+			DecimalBuilder::Decimal128 {
+				builder: PrimitiveBuilder::with_capacity(capacity).with_data_type(data_type),
+				precision,
+				scale,
+			}
+		} else {
+			DecimalBuilder::Decimal256 {
+				builder: PrimitiveBuilder::with_capacity(capacity).with_data_type(data_type),
+				precision,
+				scale,
+			}
+		}
+	}
+
+	pub(crate) fn from_array(array: DecimalArray) -> Self {
+		let (precision, scale) = (array.precision(), array.scale());
+		match array {
+			DecimalArray::Decimal128(array) => DecimalBuilder::Decimal128 {
+				builder: primitive_builder(array),
+				precision,
+				scale,
+			},
+			DecimalArray::Decimal256(array) => DecimalBuilder::Decimal256 {
+				builder: primitive_builder(array),
+				precision,
+				scale,
+			},
+		}
+	}
+
+	pub fn precision(&self) -> Precision {
+		match self {
+			DecimalBuilder::Decimal128 {
+				precision,
+				..
+			}
+			| DecimalBuilder::Decimal256 {
+				precision,
+				..
+			} => *precision,
+		}
+	}
+
+	pub fn scale(&self) -> Scale {
+		match self {
+			DecimalBuilder::Decimal128 {
+				scale,
+				..
+			}
+			| DecimalBuilder::Decimal256 {
+				scale,
+				..
+			} => *scale,
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		match self {
+			DecimalBuilder::Decimal128 {
+				builder,
+				..
+			} => builder.len(),
+			DecimalBuilder::Decimal256 {
+				builder,
+				..
+			} => builder.len(),
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn finish(&mut self) -> DecimalArray {
+		match self {
+			DecimalBuilder::Decimal128 {
+				builder,
+				..
+			} => DecimalArray::Decimal128(builder.finish()),
+			DecimalBuilder::Decimal256 {
+				builder,
+				..
+			} => DecimalArray::Decimal256(builder.finish()),
+		}
+	}
+
+	pub(crate) fn append_default(&mut self) {
+		self.append_fitting(i256::ZERO);
+	}
+
+	pub fn push(&mut self, value: &Decimal) {
+		if let Some(fitted) = value.fits(self.precision().value(), self.scale().value()) {
+			return self.append_fitting(fitted.unscaled());
+		}
+		let (precision, scale) = (self.precision(), self.scale());
+		let widened = self.widen_for(value);
+		match widened.and_then(|()| value.rescale(self.scale().value())) {
+			Some(fitted) => self.append_fitting(fitted.unscaled()),
+			None => panic!(
+				"{value} does not fit a column of precision {precision} and scale {scale} even after widening"
+			),
+		}
+	}
+
+	pub(crate) fn append_array(&mut self, array: &DecimalArray) {
+		match (self, array) {
+			(
+				DecimalBuilder::Decimal128 {
+					builder,
+					precision,
+					scale,
+				},
+				DecimalArray::Decimal128(array),
+			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => {
+				builder.append_slice(array.values())
+			}
+			(
+				DecimalBuilder::Decimal256 {
+					builder,
+					precision,
+					scale,
+				},
+				DecimalArray::Decimal256(array),
+			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => {
+				builder.append_slice(array.values())
+			}
+			(this, array) => {
+				for index in 0..array.len() {
+					let value = decimal_at(array, index).expect("index is below the array length");
+					this.push(&value);
+				}
+			}
+		}
+	}
+
+	fn append_fitting(&mut self, unscaled: i256) {
+		match self {
+			DecimalBuilder::Decimal128 {
+				builder,
+				..
+			} => builder.append_value(unscaled.to_i128().expect("a value within precision 38 fits i128")),
+			DecimalBuilder::Decimal256 {
+				builder,
+				..
+			} => builder.append_value(unscaled),
+		}
+	}
+
+	fn widen_for(&mut self, value: &Decimal) -> Option<()> {
+		let (precision, scale) = (self.precision().value(), self.scale().value());
+		let value_integer_digits = value.digits().saturating_sub(value.scale());
+		let wide_scale = scale.max(value.scale());
+		let wide_integer_digits = (precision - scale).max(value_integer_digits);
+		let wide_precision = wide_integer_digits.checked_add(wide_scale)?;
+		if wide_precision > unscaled::MAX_DIGITS {
+			return None;
+		}
+		let by = wide_scale - scale;
+		let existing = self.finish().unscaled_values();
+		let mut widened = DecimalBuilder::with_capacity(
+			Precision::new(wide_precision),
+			Scale::new(wide_scale),
+			existing.len() + 1,
+		);
+		for value in existing {
+			widened.append_fitting(unscaled::upscale(value, by)?);
+		}
+		*self = widened;
+		Some(())
+	}
+}
 
 #[derive(Debug)]
 pub enum ColumnBuilder {
@@ -74,19 +264,9 @@ pub enum ColumnBuilder {
 		builder: LargeBinaryBuilder,
 		max_bytes: MaxBytes,
 	},
-	Int {
-		builder: LargeBinaryBuilder,
-		max_bytes: MaxBytes,
-	},
-	Uint {
-		builder: LargeBinaryBuilder,
-		max_bytes: MaxBytes,
-	},
-	Decimal {
-		builder: LargeBinaryBuilder,
-		precision: Precision,
-		scale: Scale,
-	},
+	Int(DecimalBuilder),
+	Uint(DecimalBuilder),
+	Decimal(DecimalBuilder),
 	Any {
 		builder: LargeBinaryBuilder,
 		declared_type: Option<ValueType>,
@@ -145,19 +325,16 @@ impl ColumnBuilder {
 				builder: LargeBinaryBuilder::with_capacity(capacity, capacity * 32),
 				max_bytes: MaxBytes::MAX,
 			},
-			ValueType::Int => ColumnBuilder::Int {
-				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
-				max_bytes: MaxBytes::MAX,
-			},
-			ValueType::Uint => ColumnBuilder::Uint {
-				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
-				max_bytes: MaxBytes::MAX,
-			},
-			ValueType::Decimal => ColumnBuilder::Decimal {
-				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
-				precision: Precision::MAX,
-				scale: Scale::new(0),
-			},
+			ValueType::Int {
+				precision,
+			} => ColumnBuilder::Int(DecimalBuilder::with_capacity(precision, Scale::MIN, capacity)),
+			ValueType::Uint {
+				precision,
+			} => ColumnBuilder::Uint(DecimalBuilder::with_capacity(precision, Scale::MIN, capacity)),
+			ValueType::Decimal {
+				precision,
+				scale,
+			} => ColumnBuilder::Decimal(DecimalBuilder::with_capacity(precision, scale, capacity)),
 			ValueType::Any | ValueType::Tuple(_) => ColumnBuilder::Any {
 				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
 				declared_type: None,
@@ -246,18 +423,9 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.append_value(b""),
-			ColumnBuilder::Int {
-				builder,
-				..
-			} => push_int(builder, &Int::default()),
-			ColumnBuilder::Uint {
-				builder,
-				..
-			} => push_uint(builder, &Uint::default()),
-			ColumnBuilder::Decimal {
-				builder,
-				..
-			} => push_decimal(builder, &Decimal::default()),
+			ColumnBuilder::Int(b) | ColumnBuilder::Uint(b) | ColumnBuilder::Decimal(b) => {
+				b.append_default()
+			}
 			ColumnBuilder::Any {
 				builder,
 				..
@@ -361,36 +529,9 @@ impl ColumnBuilder {
 					..
 				},
 			) => append_varlen(builder, &container)?,
-			(
-				ColumnBuilder::Int {
-					builder,
-					..
-				},
-				ColumnBuffer::Int {
-					container,
-					..
-				},
-			) => append_varlen(builder, &container)?,
-			(
-				ColumnBuilder::Uint {
-					builder,
-					..
-				},
-				ColumnBuffer::Uint {
-					container,
-					..
-				},
-			) => append_varlen(builder, &container)?,
-			(
-				ColumnBuilder::Decimal {
-					builder,
-					..
-				},
-				ColumnBuffer::Decimal {
-					container,
-					..
-				},
-			) => append_varlen(builder, &container)?,
+			(ColumnBuilder::Int(l), ColumnBuffer::Int(r))
+			| (ColumnBuilder::Uint(l), ColumnBuffer::Uint(r))
+			| (ColumnBuilder::Decimal(l), ColumnBuffer::Decimal(r)) => l.append_array(&r),
 			(
 				ColumnBuilder::Any {
 					builder,
@@ -459,18 +600,7 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.len(),
-			ColumnBuilder::Int {
-				builder,
-				..
-			} => builder.len(),
-			ColumnBuilder::Uint {
-				builder,
-				..
-			} => builder.len(),
-			ColumnBuilder::Decimal {
-				builder,
-				..
-			} => builder.len(),
+			ColumnBuilder::Int(b) | ColumnBuilder::Uint(b) | ColumnBuilder::Decimal(b) => b.len(),
 			ColumnBuilder::Any {
 				builder,
 				..
@@ -521,15 +651,9 @@ impl ColumnBuilder {
 			ColumnBuilder::Blob {
 				..
 			} => ValueType::Blob,
-			ColumnBuilder::Int {
-				..
-			} => ValueType::Int,
-			ColumnBuilder::Uint {
-				..
-			} => ValueType::Uint,
-			ColumnBuilder::Decimal {
-				..
-			} => ValueType::Decimal,
+			ColumnBuilder::Int(b) => ValueType::int(b.precision()),
+			ColumnBuilder::Uint(b) => ValueType::uint(b.precision()),
+			ColumnBuilder::Decimal(b) => ValueType::decimal(b.precision(), b.scale()),
 			ColumnBuilder::Any {
 				declared_type,
 				..
@@ -592,29 +716,9 @@ impl ColumnBuilder {
 				container: builder.finish(),
 				max_bytes,
 			},
-			ColumnBuilder::Int {
-				mut builder,
-				max_bytes,
-			} => ColumnBuffer::Int {
-				container: builder.finish(),
-				max_bytes,
-			},
-			ColumnBuilder::Uint {
-				mut builder,
-				max_bytes,
-			} => ColumnBuffer::Uint {
-				container: builder.finish(),
-				max_bytes,
-			},
-			ColumnBuilder::Decimal {
-				mut builder,
-				precision,
-				scale,
-			} => ColumnBuffer::Decimal {
-				container: builder.finish(),
-				precision,
-				scale,
-			},
+			ColumnBuilder::Int(mut b) => ColumnBuffer::Int(b.finish()),
+			ColumnBuilder::Uint(mut b) => ColumnBuffer::Uint(b.finish()),
+			ColumnBuilder::Decimal(mut b) => ColumnBuffer::Decimal(b.finish()),
 			ColumnBuilder::Any {
 				mut builder,
 				declared_type,
@@ -693,29 +797,9 @@ impl ColumnBuffer {
 				builder: varlen_builder(container),
 				max_bytes,
 			},
-			ColumnBuffer::Int {
-				container,
-				max_bytes,
-			} => ColumnBuilder::Int {
-				builder: varlen_builder(container),
-				max_bytes,
-			},
-			ColumnBuffer::Uint {
-				container,
-				max_bytes,
-			} => ColumnBuilder::Uint {
-				builder: varlen_builder(container),
-				max_bytes,
-			},
-			ColumnBuffer::Decimal {
-				container,
-				precision,
-				scale,
-			} => ColumnBuilder::Decimal {
-				builder: varlen_builder(container),
-				precision,
-				scale,
-			},
+			ColumnBuffer::Int(a) => ColumnBuilder::Int(DecimalBuilder::from_array(a)),
+			ColumnBuffer::Uint(a) => ColumnBuilder::Uint(DecimalBuilder::from_array(a)),
+			ColumnBuffer::Decimal(a) => ColumnBuilder::Decimal(DecimalBuilder::from_array(a)),
 			ColumnBuffer::Any {
 				container,
 				declared_type,

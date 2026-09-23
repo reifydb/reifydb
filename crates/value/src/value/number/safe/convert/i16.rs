@@ -16,7 +16,7 @@ impl_safe_convert_to_int!(i16);
 impl SafeConvert<Uint> for i16 {
 	fn checked_convert(self) -> Option<Uint> {
 		if self >= 0 {
-			Some(Uint(BigInt::from(self)))
+			Some(Uint::from(self))
 		} else {
 			None
 		}
@@ -24,14 +24,14 @@ impl SafeConvert<Uint> for i16 {
 
 	fn saturating_convert(self) -> Uint {
 		if self >= 0 {
-			Uint(BigInt::from(self))
+			Uint::from(self)
 		} else {
 			Uint::zero()
 		}
 	}
 
 	fn wrapping_convert(self) -> Uint {
-		Uint(BigInt::from(self as u16))
+		Uint::from(self as u16)
 	}
 }
 

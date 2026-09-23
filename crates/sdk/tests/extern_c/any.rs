@@ -438,10 +438,8 @@ fn any_int_i128_extremes() {
 
 #[test]
 fn any_int_outside_i128_range() {
-	let mut big = Int::from_i128(i128::MAX);
-	big.0 += Int::from_i128(i128::MAX).0;
-	let mut neg_big = Int::from_i128(i128::MIN);
-	neg_big.0 += Int::from_i128(i128::MIN).0;
+	let big = Int::from_i128(i128::MAX).checked_add(&Int::from_i128(i128::MAX)).unwrap();
+	let neg_big = Int::from_i128(i128::MIN).checked_add(&Int::from_i128(i128::MIN)).unwrap();
 	let input = ColumnBuffer::any([Value::Int(big), Value::Int(neg_big)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int_outside_i128", &input, &output);
@@ -463,8 +461,7 @@ fn any_uint_u128_max() {
 
 #[test]
 fn any_uint_outside_u128_range() {
-	let mut big = Uint::from_u128(u128::MAX);
-	big.0 += Uint::from_u128(u128::MAX).0;
+	let big = Uint::from_u128(u128::MAX).checked_add(&Uint::from_u128(u128::MAX)).unwrap();
 	let input = one_row(Value::Uint(big));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint_outside_u128", &input, &output);

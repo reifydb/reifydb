@@ -7,15 +7,18 @@ use arrow_array::{
 	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, GenericByteArray, IntervalMonthDayNanoArray,
 	LargeBinaryArray, LargeStringArray, Time64NanosecondArray, UInt64Array, types::ByteArrayType,
 };
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, i256};
 use postcard::{from_bytes, to_allocvec};
 use reifydb_value::{
 	util::bitmap,
 	value::{
 		Value,
 		blob::Blob,
+		constraint::{precision::Precision, scale::Scale},
 		container::{
-			any_array, bignum_array, bool_array, digest_array, primitive, temporal_array, uuid_array,
+			any_array, bool_array,
+			decimal_array::{self, DecimalArray},
+			digest_array, primitive, temporal_array, uuid_array,
 			varlen_array::{self, blob_array, compact_parts, equals, get, slice},
 		},
 		date::Date,
@@ -120,35 +123,146 @@ fn digest_rows(array: &LargeBinaryArray) -> Vec<Option<Digest>> {
 	digest_array::iter(array).collect()
 }
 
-encoded_row_suite!(
-	int,
+macro_rules! decimal_suite {
+	($name:ident, $elem:ty, $gen:expr, $build:expr, $decode:path, $de:tt) => {
+		mod $name {
+			use super::*;
+
+			#[derive(Serialize, Deserialize)]
+			struct Column(
+				#[serde(serialize_with = "decimal_array::serialize_decimal_array", deserialize_with = $de)]
+				 DecimalArray,
+			);
+
+			fn values(n: usize) -> Vec<$elem> {
+				let make: fn(usize) -> $elem = $gen;
+				(0..n).map(make).collect()
+			}
+
+			fn build(values: Vec<$elem>) -> DecimalArray {
+				let build: fn(Vec<$elem>) -> DecimalArray = $build;
+				build(values)
+			}
+
+			#[test]
+			fn slice_and_take_point_into_the_parent_bytes() {
+				// A slice must start exactly at its first row's bytes and decode exactly its rows.
+				let c = build(values(ROWS));
+				let parent = decimal_bytes(&c);
+				let width = parent.len() / ROWS;
+				let s = decimal_slice(&c, 100, 350);
+				assert_eq!(s.len(), 250);
+				assert_eq!(s.data_type(), c.data_type(), "a slice must keep the precision and scale");
+				let data = decimal_bytes(&s);
+				assert_eq!(data.as_ptr(), parent.as_ptr().wrapping_add(100 * width));
+				assert!(points_into(parent, data));
+				assert_eq!(data.len(), 250 * width);
+				assert_eq!($decode(&s), &values(ROWS)[100..350]);
+
+				let t = decimal_slice(&c, 0, 10);
+				assert_eq!(decimal_bytes(&t).as_ptr(), parent.as_ptr());
+				assert_eq!($decode(&t), &values(ROWS)[..10]);
+
+				let clamped = decimal_slice(&c, 990, 5000);
+				assert_eq!($decode(&clamped), &values(ROWS)[990..], "slice must clamp to the length");
+				assert!(decimal_slice(&c, 2000, 3000).is_empty());
+			}
+
+			#[test]
+			fn serialize_of_a_slice_equals_a_fresh_array() {
+				// A slice must serialize exactly its rows, never the parent's rows.
+				let c = build(values(ROWS));
+				let s = Column(decimal_slice(&c, 100, 350));
+				let fresh = Column(build(values(ROWS)[100..350].to_vec()));
+				let encoded = to_allocvec(&s).unwrap();
+				assert_eq!(encoded, to_allocvec(&fresh).unwrap());
+				let decoded: Column = from_bytes(&encoded).unwrap();
+				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
+				assert_eq!(
+					decoded.0.data_type(),
+					c.data_type(),
+					"decoding must restore the precision and scale"
+				);
+				let json = json_to_string(&s).unwrap();
+				assert_eq!(json, json_to_string(&fresh).unwrap());
+				let decoded: Column = json_from_str(&json).unwrap();
+				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
+			}
+
+			#[test]
+			fn equality_ignores_how_the_rows_are_stored() {
+				// A slice must equal a fresh array of its rows, otherwise equality reads the parent.
+				let c = build(values(ROWS));
+				let fresh = build(values(ROWS)[20..40].to_vec());
+				assert!(decimal_slice(&c, 20, 40) == fresh);
+				assert!(decimal_slice(&c, 21, 41) != fresh);
+			}
+		}
+	};
+}
+
+fn decimal_slice(array: &DecimalArray, start: usize, end: usize) -> DecimalArray {
+	match array {
+		DecimalArray::Decimal128(array) => DecimalArray::Decimal128(primitive::slice(array, start, end)),
+		DecimalArray::Decimal256(array) => DecimalArray::Decimal256(primitive::slice(array, start, end)),
+	}
+}
+
+fn decimal_bytes(array: &DecimalArray) -> &[u8] {
+	match array {
+		DecimalArray::Decimal128(array) => array.values().inner().as_slice(),
+		DecimalArray::Decimal256(array) => array.values().inner().as_slice(),
+	}
+}
+
+decimal_suite!(
+	int128,
 	Int,
-	|i| Int::from_i64(i as i64 * 1_000_003),
-	bignum_array::int_array,
-	bignum_array::ints,
-	varlen_array::equals,
-	"bignum_array::serialize_ints",
-	"bignum_array::deserialize_ints"
+	|i| Int::from_i64(i as i64 * 1_000_003 - 7_000_000),
+	|values| decimal_array::int_array(Precision::new(38), values),
+	decimal_array::ints,
+	"decimal_array::deserialize_int_array"
 );
-encoded_row_suite!(
-	uint,
+decimal_suite!(
+	int256,
+	Int,
+	|i| Int::from_i128(i as i128 * 1_000_003 - 7_000_000).checked_mul(&Int::from_u128(u128::MAX)).unwrap(),
+	|values| decimal_array::int_array(Precision::MAX, values),
+	decimal_array::ints,
+	"decimal_array::deserialize_int_array"
+);
+decimal_suite!(
+	uint128,
 	Uint,
 	|i| Uint::from_u64(i as u64 * 7),
-	bignum_array::uint_array,
-	bignum_array::uints,
-	varlen_array::equals,
-	"bignum_array::serialize_uints",
-	"bignum_array::deserialize_uints"
+	|values| decimal_array::uint_array(Precision::new(38), values),
+	decimal_array::uints,
+	"decimal_array::deserialize_uint_array"
 );
-encoded_row_suite!(
-	decimal,
+decimal_suite!(
+	uint256,
+	Uint,
+	|i| Uint::from_u128(u128::MAX).checked_add(&Uint::from_u64(i as u64 * 7)).unwrap(),
+	|values| decimal_array::uint_array(Precision::MAX, values),
+	decimal_array::uints,
+	"decimal_array::deserialize_uint_array"
+);
+decimal_suite!(
+	decimal128,
 	Decimal,
-	|i| Decimal::from_i64(i as i64),
-	bignum_array::decimal_array,
-	bignum_array::decimals,
-	bignum_array::decimals_equal,
-	"bignum_array::serialize_decimals",
-	"bignum_array::deserialize_decimals"
+	|i| Decimal::from_parts(i256::from_i128(i as i128 * 125 - 60_000), 3).unwrap(),
+	|values| decimal_array::decimal_array(Precision::new(20), Scale::new(3), values),
+	decimal_array::decimals,
+	"decimal_array::deserialize_decimal_array"
+);
+decimal_suite!(
+	decimal256,
+	Decimal,
+	|i| Decimal::from_parts(i256::from_i128(i as i128 * 125 - 60_000).wrapping_mul(i256::from_i128(i128::MAX)), 3)
+		.unwrap(),
+	|values| decimal_array::decimal_array(Precision::MAX, Scale::new(3), values),
+	decimal_array::decimals,
+	"decimal_array::deserialize_decimal_array"
 );
 encoded_row_suite!(
 	any,

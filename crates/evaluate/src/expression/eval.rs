@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, cast::cast_column_data};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data};
 use reifydb_rql::expression::Expression;
+use reifydb_value::{
+	fragment::LazyFragment,
+	value::{
+		Value,
+		constraint::{TypeConstraint, precision::Precision},
+		value_type::ValueType,
+	},
+};
 
 use crate::{
 	Result,
@@ -21,7 +29,7 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
 		column.data().check_digest_write(&ty, expr.lazy_fragment())?;
-		let data = cast_column_data(ctx, column.data(), ty, &expr.lazy_fragment())?;
+		let data = cast_for_write(ctx, column.data(), ty, &expr.lazy_fragment())?;
 		Ok(ColumnWithName {
 			name: column.name,
 			data,
@@ -31,9 +39,48 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 	}
 }
 
+pub fn cast_for_write(
+	ctx: &EvalContext,
+	data: &ColumnBuffer,
+	target: ValueType,
+	fragment: impl LazyFragment + Clone,
+) -> Result<ColumnBuffer> {
+	refuse_lost_scale(data, &target, fragment.clone())?;
+	cast_column_data(ctx, data, target, fragment)
+}
+
+pub fn loses_scale(value: &Value, target: &ValueType) -> bool {
+	matches!(
+		(value, target.inner_type()),
+		(Value::Decimal(decimal), ValueType::Decimal { scale, .. })
+			if decimal.scale() > scale.value() && decimal.rescale(scale.value()).is_none()
+	)
+}
+
+fn refuse_lost_scale(data: &ColumnBuffer, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
+	match (data.get_type().inner_type(), target.inner_type()) {
+		(
+			ValueType::Decimal {
+				scale: from,
+				..
+			},
+			ValueType::Decimal {
+				scale: to,
+				..
+			},
+		) if from > to => data.iter().filter(|value| loses_scale(value, target)).try_for_each(|mut value| {
+			let exact = TypeConstraint::unconstrained(ValueType::decimal(Precision::MAX, *to));
+			exact.coerce(&mut value).map_err(|mut e| {
+				e.0.fragment = fragment.fragment();
+				e
+			})
+		}),
+		_ => Ok(()),
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
-	use arrow_array::Array;
 	use reifydb_core::value::column::buffer::ColumnBuffer;
 	use reifydb_rql::expression::{
 		CastExpression, ConstantExpression,
@@ -44,7 +91,7 @@ pub mod tests {
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
-			container::bignum_array::{decimal_at, decimals},
+			container::decimal_array::{decimal_at, decimals},
 			value_type::ValueType,
 		},
 	};
@@ -292,21 +339,17 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Decimal,
+					ty: ValueType::DECIMAL,
 				},
 			}),
 		)
 		.unwrap();
 
-		if let ColumnBuffer::Decimal {
-			container,
-			..
-		} = result.data()
-		{
+		if let ColumnBuffer::Decimal(container) = result.data() {
 			assert_eq!(container.len(), 1);
 			assert!(decimal_at(container, 0).is_some());
 			let value = &decimals(container)[0];
-			assert_eq!(value.to_string(), "123.456789");
+			assert_eq!(value.to_string(), "123.4567890000");
 		} else {
 			panic!("Expected Decimal column data");
 		}

@@ -16,14 +16,11 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array::push_any,
-			bignum_array::{push_decimal, push_int, push_uint},
+			decimal_array::DecimalArray,
 			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
 			uuid_array::{self, UUID_WIDTH},
 			varlen_array,
 		},
-		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 	},
 };
 
@@ -35,7 +32,10 @@ use crate::{
 			take::{as_array, wrap_array},
 			with_container,
 		},
-		builder::{append_varlen, boolean_builder, fixed_builder, primitive_builder, varlen_builder},
+		builder::{
+			DecimalBuilder, append_varlen, boolean_builder, fixed_builder, primitive_builder,
+			varlen_builder,
+		},
 	},
 };
 
@@ -83,6 +83,13 @@ where
 	appended
 }
 
+fn extend_decimal(array: &mut DecimalArray, append: impl FnOnce(&mut DecimalBuilder)) {
+	let empty = DecimalArray::from_unscaled(array.precision(), array.scale(), []);
+	let mut builder = DecimalBuilder::from_array(mem::replace(array, empty));
+	append(&mut builder);
+	*array = builder.finish();
+}
+
 fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 	match buffer {
 		ColumnBuffer::Bool(a) => extend_bool(a, |b| b.append_n(count, false)),
@@ -91,28 +98,9 @@ fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 			container,
 			..
 		} => extend_dictionary(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
-		ColumnBuffer::Int {
-			container,
-			..
-		} => extend_varlen(container, |b| {
+		ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
 			for _ in 0..count {
-				push_int(b, &Int::default());
-			}
-		}),
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => extend_varlen(container, |b| {
-			for _ in 0..count {
-				push_uint(b, &Uint::default());
-			}
-		}),
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => extend_varlen(container, |b| {
-			for _ in 0..count {
-				push_decimal(b, &Decimal::default());
+				b.append_default();
 			}
 		}),
 		ColumnBuffer::Any {
@@ -137,6 +125,15 @@ fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
 	let (mut retyped, _) = ColumnBuffer::none_typed(right.get_type(), len).split_nulls();
 	retyped.extend_bare(right)?;
 	Ok(retyped)
+}
+
+fn same_family(left: &ColumnBuffer, right: &ColumnBuffer) -> bool {
+	matches!(
+		(left, right),
+		(ColumnBuffer::Int(_), ColumnBuffer::Int(_))
+			| (ColumnBuffer::Uint(_), ColumnBuffer::Uint(_))
+			| (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_))
+	)
 }
 
 fn joinable(first: &ColumnBuffer, part: &ColumnBuffer) -> bool {
@@ -185,7 +182,7 @@ impl ColumnBuffer {
 		let (l_len, r_len) = (left.len(), right.len());
 		let l_all_none = l_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
 		let r_all_none = r_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
-		let same_type = left.get_type() == right.get_type();
+		let same_type = left.get_type() == right.get_type() || same_family(&left, &right);
 		let merged = match (l_nulls.is_some(), r_nulls.is_some()) {
 			(true, true) if !same_type && r_all_none => {
 				push_defaults(&mut left, r_len);
@@ -296,36 +293,11 @@ impl ColumnBuffer {
 					..
 				},
 			) => extend_varlen(l, |b| append_varlen(b, &r))?,
-			(
-				ColumnBuffer::Int {
-					container: l,
-					..
-				},
-				ColumnBuffer::Int {
-					container: r,
-					..
-				},
-			) => extend_varlen(l, |b| append_varlen(b, &r))?,
-			(
-				ColumnBuffer::Uint {
-					container: l,
-					..
-				},
-				ColumnBuffer::Uint {
-					container: r,
-					..
-				},
-			) => extend_varlen(l, |b| append_varlen(b, &r))?,
-			(
-				ColumnBuffer::Decimal {
-					container: l,
-					..
-				},
-				ColumnBuffer::Decimal {
-					container: r,
-					..
-				},
-			) => extend_varlen(l, |b| append_varlen(b, &r))?,
+			(ColumnBuffer::Int(l), ColumnBuffer::Int(r)) => extend_decimal(l, |b| b.append_array(&r)),
+			(ColumnBuffer::Uint(l), ColumnBuffer::Uint(r)) => extend_decimal(l, |b| b.append_array(&r)),
+			(ColumnBuffer::Decimal(l), ColumnBuffer::Decimal(r)) => {
+				extend_decimal(l, |b| b.append_array(&r))
+			}
 			(
 				ColumnBuffer::DictionaryId {
 					container: l,
@@ -413,38 +385,20 @@ mod tests {
 
 	#[test]
 	fn concat_keeps_the_decimal_precision_and_scale() {
-		// Precision and scale live beside the array, so joining chunks must not reset them to the constructor
+		// Precision and scale ride in the arrow data type, so joining chunks must not reset them to the
 		// defaults.
-		let first = with_digits(ColumnBuffer::decimal([Decimal::from_str("1.25").unwrap()]), 9, 2);
-		let second = with_digits(ColumnBuffer::decimal([Decimal::from_str("2.50").unwrap()]), 9, 2);
+		let first =
+			ColumnBuffer::decimal(Precision::new(9), Scale::new(2), [Decimal::from_str("1.25").unwrap()]);
+		let second =
+			ColumnBuffer::decimal(Precision::new(9), Scale::new(2), [Decimal::from_str("2.50").unwrap()]);
 
 		let joined = ColumnBuffer::concat(&[first, second]).unwrap();
 
-		let ColumnBuffer::Decimal {
-			precision,
-			scale,
-			..
-		} = &joined
-		else {
+		let ColumnBuffer::Decimal(array) = &joined else {
 			panic!("expected a decimal column");
 		};
-		assert_eq!(*precision, Precision::new(9));
-		assert_eq!(*scale, Scale::new(2));
+		assert_eq!(array.precision(), Precision::new(9));
+		assert_eq!(array.scale(), Scale::new(2));
 		assert_eq!(joined.len(), 2);
-	}
-
-	fn with_digits(buffer: ColumnBuffer, precision: u8, scale: u8) -> ColumnBuffer {
-		let ColumnBuffer::Decimal {
-			container,
-			..
-		} = buffer
-		else {
-			panic!("expected a decimal column");
-		};
-		ColumnBuffer::Decimal {
-			container,
-			precision: Precision::new(precision),
-			scale: Scale::new(scale),
-		}
 	}
 }

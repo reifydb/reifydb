@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_buffer::i256;
+
 use crate::error::DecodeError;
 
 pub fn try_delta_i32(slice: &[i32]) -> Option<Vec<u8>> {
@@ -434,6 +436,113 @@ macro_rules! impl_delta_int128 {
 
 impl_delta_int128!(i128, try_delta_i128, try_delta_rle_i128, decode_delta_i128, decode_delta_rle_i128, 16);
 impl_delta_int128!(u128, try_delta_u128, try_delta_rle_u128, decode_delta_u128, decode_delta_rle_u128, 16);
+
+const I256_WIDTH: usize = 32;
+
+fn deltas_i256(slice: &[i256]) -> Option<Vec<i128>> {
+	slice.windows(2).map(|w| w[1].checked_sub(w[0])?.to_i128()).collect()
+}
+
+pub fn try_delta_i256(slice: &[i256]) -> Option<Vec<u8>> {
+	if slice.len() < 2 {
+		return None;
+	}
+	let deltas = deltas_i256(slice)?;
+	let width = delta_width_i128(&deltas);
+	let delta_size = 1 + I256_WIDTH + (slice.len() - 1) * width;
+	if delta_size >= slice.len() * I256_WIDTH {
+		return None;
+	}
+	let mut buf = Vec::with_capacity(delta_size);
+	buf.push(width as u8);
+	buf.extend_from_slice(&slice[0].to_le_bytes());
+	encode_deltas_i128(&deltas, width, &mut buf);
+	Some(buf)
+}
+
+pub fn try_delta_rle_i256(slice: &[i256]) -> Option<Vec<u8>> {
+	if slice.len() < 2 {
+		return None;
+	}
+	let deltas = deltas_i256(slice)?;
+	let width = delta_width_i128(&deltas);
+	let runs = rle_runs_i128(&deltas);
+	let drle_size = 1 + I256_WIDTH + runs.len() * (width + 4);
+	if drle_size >= slice.len() * I256_WIDTH {
+		return None;
+	}
+	let mut buf = Vec::with_capacity(drle_size);
+	buf.push(width as u8);
+	buf.extend_from_slice(&slice[0].to_le_bytes());
+	encode_delta_rle_runs_i128(&runs, width, &mut buf);
+	Some(buf)
+}
+
+fn i256_delta_header(data: &[u8]) -> Result<(usize, i256), DecodeError> {
+	if data.len() < 1 + I256_WIDTH {
+		return Err(DecodeError::InvalidData("delta data too short".into()));
+	}
+	let width = data[0] as usize;
+	if !matches!(width, 1 | 2 | 4 | 8 | 16) {
+		return Err(DecodeError::InvalidData(format!("invalid delta width {width}")));
+	}
+	let mut baseline = [0u8; I256_WIDTH];
+	baseline.copy_from_slice(&data[1..1 + I256_WIDTH]);
+	Ok((width, i256::from_le_bytes(baseline)))
+}
+
+pub fn decode_delta_i256(data: &[u8], row_count: usize) -> Result<Vec<i256>, DecodeError> {
+	if row_count == 0 {
+		return Ok(vec![]);
+	}
+	let (width, baseline) = i256_delta_header(data)?;
+	let needed = 1 + I256_WIDTH + (row_count - 1) * width;
+	if data.len() < needed {
+		return Err(DecodeError::UnexpectedEof {
+			expected: needed,
+			available: data.len(),
+		});
+	}
+	let mut values = Vec::with_capacity(row_count);
+	values.push(baseline);
+	let mut pos = 1 + I256_WIDTH;
+	for _ in 1..row_count {
+		let delta = read_signed_delta_i128(&data[pos..], width);
+		pos += width;
+		let prev = *values.last().expect("the baseline is pushed first");
+		values.push(prev.wrapping_add(i256::from_i128(delta)));
+	}
+	Ok(values)
+}
+
+pub fn decode_delta_rle_i256(data: &[u8], row_count: usize) -> Result<Vec<i256>, DecodeError> {
+	if row_count == 0 {
+		return Ok(vec![]);
+	}
+	let (width, baseline) = i256_delta_header(data)?;
+	let mut values = Vec::with_capacity(row_count);
+	values.push(baseline);
+	let mut pos = 1 + I256_WIDTH;
+	while values.len() < row_count && pos + width + 4 <= data.len() {
+		let delta = i256::from_i128(read_signed_delta_i128(&data[pos..], width));
+		pos += width;
+		let mut count_arr = [0u8; 4];
+		count_arr.copy_from_slice(&data[pos..pos + 4]);
+		let count = u32::from_le_bytes(count_arr) as usize;
+		pos += 4;
+		for _ in 0..count {
+			if values.len() >= row_count {
+				break;
+			}
+			let prev = *values.last().expect("the baseline is pushed first");
+			values.push(prev.wrapping_add(delta));
+		}
+	}
+	if values.len() != row_count {
+		return Err(DecodeError::InvalidData("delta rle count mismatch".into()));
+	}
+	Ok(values)
+}
 
 fn delta_width(deltas: &[i64]) -> usize {
 	let min = deltas.iter().copied().min().unwrap_or(0);

@@ -6,9 +6,7 @@ use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
 use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use reifydb_codec::{
-	extern_c::cells::{
-		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
-	},
+	extern_c::cells::{decode_any_cell, decode_dictionary_id_cell},
 	tag::ValueKind,
 };
 use reifydb_core::{
@@ -16,7 +14,10 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_sdk::common::extern_c::wire::callbacks::builder::{ColumnBufferHandle, EmitDiffKind};
+use reifydb_sdk::common::{
+	extern_c::wire::callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
+	family::{cell_width, decode_family_column, family_params, is_family},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -24,21 +25,17 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::any_array,
-			bignum_array::{decimal_array, int_array, uint_array},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -60,6 +57,8 @@ enum Slot {
 
 pub struct Active {
 	pub type_code: ValueKind,
+	pub family: Option<(Precision, Scale)>,
+	pub elem_size: usize,
 	pub data: Vec<u8>,
 	pub offsets: Option<Vec<u64>>,
 	pub bitvec: Option<Vec<u8>>,
@@ -156,8 +155,11 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 		| ValueKind::Uuid7
 		| ValueKind::DictionaryId => 16,
 		ValueKind::Utf8 | ValueKind::Blob => 1,
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal | ValueKind::Any => 1,
-		ValueKind::None
+		ValueKind::Any => 1,
+		ValueKind::Int
+		| ValueKind::Uint
+		| ValueKind::Decimal
+		| ValueKind::None
 		| ValueKind::Type
 		| ValueKind::List
 		| ValueKind::Record
@@ -167,13 +169,7 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 }
 
 fn is_var_len(type_code: ValueKind) -> bool {
-	matches!(
-		type_code,
-		ValueKind::Utf8
-			| ValueKind::Blob | ValueKind::Int
-			| ValueKind::Uint | ValueKind::Decimal
-			| ValueKind::Any | ValueKind::DictionaryId
-	)
+	matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId)
 }
 
 /// # Safety
@@ -183,18 +179,33 @@ fn is_var_len(type_code: ValueKind) -> bool {
 pub(crate) unsafe extern "C" fn test_acquire(
 	_ctx: *mut c_void,
 	type_code: ValueKind,
+	precision: u8,
+	scale: u8,
 	capacity: usize,
 ) -> *mut ColumnBufferHandle {
 	let Some(registry) = current() else {
 		return ptr::null_mut();
 	};
+	let family = if is_family(type_code) {
+		match family_params(type_code, precision, scale) {
+			Some(params) => Some(params),
+			None => return ptr::null_mut(),
+		}
+	} else {
+		None
+	};
+	let elem = match family {
+		Some((precision, _)) => cell_width(precision),
+		None => elem_size_for(type_code),
+	};
 	let mut inner = registry.inner.lock();
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
-	let elem = elem_size_for(type_code);
 	let active = Active {
 		type_code,
+		family,
+		elem_size: elem,
 		data: Vec::with_capacity(capacity.saturating_mul(elem)),
 		offsets: if is_var_len(type_code) {
 			let mut o = Vec::with_capacity(capacity + 1);
@@ -262,7 +273,7 @@ pub(crate) unsafe extern "C" fn test_bitvec_ptr(handle: *mut ColumnBufferHandle)
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
 			if a.bitvec.is_none() {
-				let cap = a.data.capacity() / elem_size_for(a.type_code).max(1);
+				let cap = a.data.capacity() / a.elem_size.max(1);
 				a.bitvec = Some(vec![0u8; cap.div_ceil(8)]);
 			}
 			a.bitvec.as_mut().unwrap().as_mut_ptr()
@@ -283,7 +294,7 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
-			let elem = elem_size_for(a.type_code);
+			let elem = a.elem_size;
 			let extra_bytes = additional.saturating_mul(elem);
 			let old_cap = a.data.capacity();
 
@@ -321,7 +332,7 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		}
 	};
 
-	let elem = elem_size_for(active.type_code);
+	let elem = active.elem_size;
 
 	if let Some(offsets) = active.offsets.as_mut() {
 		let offsets_len = written_count + 1;
@@ -364,8 +375,14 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		}
 	}
 
-	let buffer = match finalize_buffer(active.type_code, active.data, active.offsets, active.bitvec, written_count)
-	{
+	let buffer = match finalize_buffer(
+		active.type_code,
+		active.family,
+		active.data,
+		active.offsets,
+		active.bitvec,
+		written_count,
+	) {
 		Some(b) => b,
 		None => return -1,
 	};
@@ -533,6 +550,7 @@ fn assemble(
 
 pub(crate) fn finalize_buffer(
 	type_code: ValueKind,
+	family: Option<(Precision, Scale)>,
 	mut data: Vec<u8>,
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
@@ -615,33 +633,9 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ValueKind::Int => {
-			let v = decode_per_element::<Int>(&data, &offsets, written_count, |bytes| {
-				Some(decode_int_cell(bytes))
-			})?;
-			ColumnBuffer::Int {
-				container: int_array(v),
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Uint => {
-			let v = decode_per_element::<Uint>(&data, &offsets, written_count, |bytes| {
-				Some(decode_uint_cell(bytes))
-			})?;
-			ColumnBuffer::Uint {
-				container: uint_array(v),
-				max_bytes: MaxBytes::MAX,
-			}
-		}
-		ValueKind::Decimal => {
-			let v = decode_per_element::<Decimal>(&data, &offsets, written_count, |bytes| {
-				decode_decimal_cell(bytes).ok()
-			})?;
-			ColumnBuffer::Decimal {
-				container: decimal_array(v),
-				precision: Precision::MAX,
-				scale: Scale::MIN,
-			}
+		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+			let (precision, scale) = family?;
+			decode_family_column(type_code, precision, scale, &data, written_count).ok()?
 		}
 		ValueKind::Any => {
 			let values: Vec<Value> =
@@ -754,7 +748,7 @@ mod tests {
 		with_registry(registry, || {
 			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
 			unsafe {
-				let handle = test_acquire(ptr::null_mut(), type_code, data.len().max(rows));
+				let handle = test_acquire(ptr::null_mut(), type_code, 0, 0, data.len().max(rows));
 				ptr::copy_nonoverlapping(data.as_ptr(), test_data_ptr(handle), data.len());
 				ptr::copy_nonoverlapping(offsets.as_ptr(), test_offsets_ptr(handle), offsets.len());
 				(test_commit(handle, rows), handle)
@@ -829,25 +823,27 @@ mod tests {
 	#[test]
 	fn utf8_last_offset_past_the_data_is_rejected() {
 		// A last offset past the data would read bytes the guest never wrote.
-		assert!(finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2).is_none());
+		assert!(finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2).is_none());
 	}
 
 	#[test]
 	fn blob_last_offset_past_the_data_is_rejected() {
 		// A last offset past the data would read bytes the guest never wrote.
-		assert!(finalize_buffer(ValueKind::Blob, vec![1, 2], Some(vec![0, 1, 5]), None, 2).is_none());
+		assert!(finalize_buffer(ValueKind::Blob, None, vec![1, 2], Some(vec![0, 1, 5]), None, 2).is_none());
 	}
 
 	#[test]
 	fn utf8_offset_beyond_i64_is_rejected() {
 		// Arrow offsets are i64, so a larger u64 offset cannot be represented and must not wrap negative.
-		assert!(finalize_buffer(ValueKind::Utf8, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1).is_none());
+		assert!(finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1)
+			.is_none());
 	}
 
 	#[test]
 	fn guest_bool_column_serializes_like_an_equal_host_column() {
 		// A guest hands over one data byte per row, yet equal Bool columns must serialize byte for byte alike.
-		let guest = finalize_buffer(ValueKind::Boolean, vec![5, 0, 0], None, None, 3).expect("a Bool column");
+		let guest =
+			finalize_buffer(ValueKind::Boolean, None, vec![5, 0, 0], None, None, 3).expect("a Bool column");
 		let host = ColumnBuffer::bool([true, false, true]);
 		assert_eq!(to_string(&guest).unwrap(), to_string(&host).unwrap());
 		assert_eq!(to_allocvec(&guest).unwrap(), to_allocvec(&host).unwrap());

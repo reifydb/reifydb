@@ -10,6 +10,10 @@ use super::buffer::ExternCBuffer;
 pub struct ExternCColumnData {
 	pub type_code: ValueKind,
 
+	pub precision: u8,
+
+	pub scale: u8,
+
 	pub row_count: usize,
 
 	pub data: ExternCBuffer,
@@ -23,6 +27,8 @@ impl ExternCColumnData {
 	pub const fn empty() -> Self {
 		Self {
 			type_code: ValueKind::None,
+			precision: 0,
+			scale: 0,
 			row_count: 0,
 			data: ExternCBuffer::empty(),
 			defined_bitvec: ExternCBuffer::empty(),

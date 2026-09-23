@@ -17,6 +17,7 @@ use reifydb_core::value::column::{
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -219,7 +220,11 @@ fn group_by_dictionary_id_width_splits_groups() {
 fn group_by_decimal_ignores_trailing_zeros() {
 	// Scale is presentation, not identity, so a key must never split rows that compare equal.
 	let decimal = |text: &str| Decimal::from_str(text).expect("a decimal literal");
-	let column = ColumnBuffer::decimal([decimal("1.0"), decimal("1.00"), decimal("1.0"), decimal("0.5")]);
+	let column = ColumnBuffer::decimal(
+		Precision::new(10),
+		Scale::new(2),
+		[decimal("1.0"), decimal("1.00"), decimal("1.0"), decimal("0.5")],
+	);
 	let columns = frame(vec![("amount", column)]);
 	let mut dict = GroupKeyDict::new();
 
@@ -228,6 +233,41 @@ fn group_by_decimal_ignores_trailing_zeros() {
 	assert_eq!(dict.len(), 2, "1.0, 1.00 and 1.0 are one key, 0.5 is the other");
 	assert_eq!(groups[0].1, vec![0, 1, 2], "1.0 and 1.00 must share one group");
 	assert_eq!(groups[1].1, vec![3]);
+}
+
+#[test]
+fn a_batch_of_another_decimal_scale_reuses_the_groups_already_interned() {
+	// Keying each batch by its own column type would split 1.5 at scale 1 from 1.50 at scale 2.
+	let mut dict = GroupKeyDict::new();
+	let first = frame(vec![(
+		"amount",
+		ColumnBuffer::decimal(Precision::new(5), Scale::new(1), [decimal("1.5"), decimal("2.0")]),
+	)]);
+	let second = frame(vec![(
+		"amount",
+		ColumnBuffer::decimal(
+			Precision::new(10),
+			Scale::new(3),
+			[decimal("2.000"), decimal("0.125"), decimal("1.500")],
+		),
+	)]);
+
+	let first_groups = group_rows(&first, &["amount"], &mut dict);
+	let second_groups = group_rows(&second, &["amount"], &mut dict);
+	let third_groups = group_rows(&first, &["amount"], &mut dict);
+
+	assert_eq!(first_groups.iter().map(|(id, _)| id.0).collect::<Vec<_>>(), vec![0, 1]);
+	assert_eq!(
+		second_groups.iter().map(|(id, _)| id.0).collect::<Vec<_>>(),
+		vec![1, 2, 0],
+		"2.000 and 1.500 must land in the groups 2.0 and 1.5 opened; only 0.125 is new"
+	);
+	assert_eq!(
+		third_groups.iter().map(|(id, _)| id.0).collect::<Vec<_>>(),
+		vec![0, 1],
+		"returning to the narrower scale must still find the groups after the dict was rekeyed"
+	);
+	assert_eq!(dict.len(), 3, "three distinct amounts across all batches");
 }
 
 fn decimal(text: &str) -> Decimal {
@@ -285,9 +325,9 @@ fn scalar_key_cases() -> Vec<(&'static str, ValueType, Value, Value)> {
 		("uuid4", ValueType::Uuid4, Value::Uuid4(Uuid4(uuid(3))), Value::Uuid4(Uuid4(uuid(4)))),
 		("uuid7", ValueType::Uuid7, Value::Uuid7(Uuid7(uuid(5))), Value::Uuid7(Uuid7(uuid(6)))),
 		("blob", ValueType::Blob, Value::Blob(Blob::new(vec![])), Value::Blob(Blob::new(vec![0, 255, 7]))),
-		("int", ValueType::Int, Value::Int(Int::from(i128::MIN)), Value::Int(Int::from(i128::MAX))),
-		("uint", ValueType::Uint, Value::Uint(Uint::from(0u64)), Value::Uint(Uint::from(u128::MAX))),
-		("decimal", ValueType::Decimal, Value::Decimal(decimal("-1.25")), Value::Decimal(decimal("1.25"))),
+		("int", ValueType::INT, Value::Int(Int::from(i128::MIN)), Value::Int(Int::from(i128::MAX))),
+		("uint", ValueType::UINT, Value::Uint(Uint::from(0u64)), Value::Uint(Uint::from(u128::MAX))),
+		("decimal", ValueType::DECIMAL, Value::Decimal(decimal("-1.25")), Value::Decimal(decimal("1.25"))),
 		(
 			"dictionary_id",
 			ValueType::DictionaryId,

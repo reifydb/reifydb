@@ -7,11 +7,7 @@ use crate::{
 	error::{ConstraintKind, Error, TypeError},
 	fragment::Fragment,
 	value::{
-		Value,
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
-		dictionary::DictionaryId,
-		sumtype::SumTypeId,
-		value_type::ValueType,
+		Value, constraint::bytes::MaxBytes, dictionary::DictionaryId, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -28,8 +24,6 @@ pub struct TypeConstraint {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
 	MaxBytes(MaxBytes),
-
-	PrecisionScale(Precision, Scale),
 
 	Dictionary(DictionaryId, ValueType),
 
@@ -82,14 +76,8 @@ impl TypeConstraint {
 
 	pub fn coerce(&self, value: &mut Value) -> Result<(), Error> {
 		let value_type = value.get_type();
-		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
-			if let ValueType::Option(inner) = &self.base_type {
-				if value_type != **inner {
-					unimplemented!()
-				}
-			} else {
-				unimplemented!()
-			}
+		if !matches!(value, Value::None { .. }) && !same_family(&value_type, self.base_type.inner_type()) {
+			unimplemented!()
 		}
 
 		if matches!(value, Value::None { .. }) {
@@ -151,72 +139,85 @@ impl TypeConstraint {
 					}
 				}
 			}
-			(ValueType::Int, Some(Constraint::MaxBytes(max))) => {
-				if let Value::Int(vi) = value {
-					let str_len = vi.to_string().len();
-					let byte_len = (str_len * 415 / 1000) + 1;
-					let max_value: usize = (*max).into();
-					if byte_len > max_value {
-						return Err(TypeError::ConstraintViolation {
-							kind: ConstraintKind::IntMaxBytes {
-								actual: byte_len,
-								max: max_value,
-							},
-							message: format!(
-								"INT value exceeds maximum byte length: {} bytes (max: {} bytes)",
-								byte_len, max_value
-							),
-							fragment: Fragment::None,
-						}
-						.into());
-					}
+			(
+				ValueType::Int {
+					precision,
+				},
+				_,
+			) => {
+				if let Value::Int(int) = value
+					&& int.digits() > precision.value()
+				{
+					return Err(precision_violation(
+						ConstraintKind::IntPrecision {
+							actual: int.digits(),
+							max: precision.value(),
+						},
+						"INT",
+						int.digits(),
+						precision.value(),
+					));
 				}
 			}
-			(ValueType::Uint, Some(Constraint::MaxBytes(max))) => {
-				if let Value::Uint(vu) = value {
-					let str_len = vu.to_string().len();
-					let byte_len = (str_len * 415 / 1000) + 1;
-					let max_value: usize = (*max).into();
-					if byte_len > max_value {
-						return Err(TypeError::ConstraintViolation {
-							kind: ConstraintKind::UintMaxBytes {
-								actual: byte_len,
-								max: max_value,
-							},
-							message: format!(
-								"UINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
-								byte_len, max_value
-							),
-							fragment: Fragment::None,
-						}
-						.into());
-					}
+			(
+				ValueType::Uint {
+					precision,
+				},
+				_,
+			) => {
+				if let Value::Uint(uint) = value
+					&& uint.digits() > precision.value()
+				{
+					return Err(precision_violation(
+						ConstraintKind::UintPrecision {
+							actual: uint.digits(),
+							max: precision.value(),
+						},
+						"UINT",
+						uint.digits(),
+						precision.value(),
+					));
 				}
 			}
-			(ValueType::Decimal, Some(Constraint::PrecisionScale(precision, scale))) => {
+			(
+				ValueType::Decimal {
+					precision,
+					scale,
+				},
+				_,
+			) => {
 				if let Value::Decimal(decimal) = value {
-					let scale_value: u8 = (*scale).into();
-					let precision_value: u8 = (*precision).into();
-
-					let rounded = decimal.round_to_scale(scale_value as i64);
-					let digits = rounded.0.digits();
-
-					if digits > precision_value as u64 {
+					if decimal.scale() > scale.value() && decimal.rescale(scale.value()).is_none() {
 						return Err(TypeError::ConstraintViolation {
-							kind: ConstraintKind::DecimalPrecision {
-								actual: digits.min(255) as u8,
-								max: precision_value,
+							kind: ConstraintKind::DecimalScale {
+								actual: decimal.scale(),
+								max: scale.value(),
 							},
 							message: format!(
-								"DECIMAL value exceeds maximum precision: {} digits (max: {} digits)",
-								digits, precision_value
+								"DECIMAL value {} has more fraction digits than the column scale {}",
+								decimal,
+								scale.value()
 							),
 							fragment: Fragment::None,
 						}
 						.into());
 					}
-
-					*decimal = rounded;
+					let digits = decimal.digits().saturating_sub(decimal.scale()) + scale.value();
+					let rescaled = match decimal.fits(precision.value(), scale.value()) {
+						Some(rescaled) => rescaled,
+						None => {
+							return Err(precision_violation(
+								ConstraintKind::DecimalPrecision {
+									actual: digits,
+									max: precision.value(),
+								},
+								"DECIMAL",
+								digits,
+								precision.value(),
+							));
+						}
+					};
+					*decimal = rescaled;
 				}
 			}
 
@@ -237,9 +238,6 @@ impl TypeConstraint {
 			Some(Constraint::MaxBytes(max)) => {
 				format!("{}({})", self.base_type, max)
 			}
-			Some(Constraint::PrecisionScale(p, s)) => {
-				format!("{}({},{})", self.base_type, p, s)
-			}
 			Some(Constraint::Dictionary(dict_id, id_type)) => {
 				format!("DictionaryId(dict={}, {})", dict_id, id_type)
 			}
@@ -250,9 +248,56 @@ impl TypeConstraint {
 	}
 }
 
+fn same_family(value_type: &ValueType, column_type: &ValueType) -> bool {
+	match (value_type, column_type) {
+		(
+			ValueType::Int {
+				..
+			},
+			ValueType::Int {
+				..
+			},
+		)
+		| (
+			ValueType::Uint {
+				..
+			},
+			ValueType::Uint {
+				..
+			},
+		)
+		| (
+			ValueType::Decimal {
+				..
+			},
+			ValueType::Decimal {
+				..
+			},
+		) => true,
+		_ => value_type == column_type,
+	}
+}
+
+fn precision_violation(kind: ConstraintKind, name: &str, actual: u8, max: u8) -> Error {
+	TypeError::ConstraintViolation {
+		kind,
+		message: format!("{} value exceeds maximum precision: {} digits (max: {} digits)", name, actual, max),
+		fragment: Fragment::None,
+	}
+	.into()
+}
+
 #[cfg(test)]
 pub mod tests {
+	use std::str::FromStr;
+
 	use super::*;
+	use crate::value::{
+		constraint::{precision::Precision, scale::Scale},
+		decimal::Decimal,
+		int::Int,
+		uint::Uint,
+	};
 
 	#[test]
 	fn test_unconstrained_type() {
@@ -272,12 +317,11 @@ pub mod tests {
 
 	#[test]
 	fn test_constrained_decimal() {
-		let tc = TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		);
-		assert_eq!(tc.base_type, ValueType::Decimal);
-		assert_eq!(tc.constraint, Some(Constraint::PrecisionScale(Precision::new(10), Scale::new(2))));
+		let tc = TypeConstraint::unconstrained(decimal_10_2());
+		assert_eq!(tc.base_type, ValueType::decimal(Precision::new(10), Scale::new(2)));
+		assert_eq!(tc.base_type.precision(), Some(Precision::new(10)));
+		assert_eq!(tc.base_type.scale(), Some(Scale::new(2)));
+		assert_eq!(tc.constraint, None);
 	}
 
 	#[test]
@@ -323,10 +367,58 @@ pub mod tests {
 		let tc2 = TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(50)));
 		assert_eq!(tc2.to_string(), "Utf8(50)");
 
-		let tc3 = TypeConstraint::with_constraint(
-			ValueType::Decimal,
-			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
-		);
-		assert_eq!(tc3.to_string(), "Decimal(10,2)");
+		let tc3 = TypeConstraint::unconstrained(decimal_10_2());
+		assert_eq!(tc3.to_string(), "Decimal(10, 2)");
+	}
+
+	fn decimal_10_2() -> ValueType {
+		ValueType::decimal(Precision::new(10), Scale::new(2))
+	}
+
+	fn coerce_decimal(column: ValueType, text: &str) -> Result<Value, Error> {
+		let mut value = Value::Decimal(Decimal::from_str(text).unwrap());
+		TypeConstraint::unconstrained(column).coerce(&mut value)?;
+		Ok(value)
+	}
+
+	#[test]
+	fn a_decimal_write_is_rescaled_to_the_column_scale_never_rounded() {
+		// Rounding on write would store 1.24 for 1.235 and silently change what the user wrote.
+		assert_eq!(coerce_decimal(decimal_10_2(), "1.2").unwrap().to_string(), "1.20");
+		assert_eq!(coerce_decimal(decimal_10_2(), "1.23").unwrap().to_string(), "1.23");
+		assert_eq!(coerce_decimal(decimal_10_2(), "1.2300").unwrap().to_string(), "1.23");
+		assert_eq!(coerce_decimal(decimal_10_2(), "1.235").unwrap_err().code, "CONSTRAINT_006");
+		assert_eq!(coerce_decimal(decimal_10_2(), "-0.001").unwrap_err().code, "CONSTRAINT_006");
+		let optional = ValueType::Option(Box::new(decimal_10_2()));
+		assert_eq!(coerce_decimal(optional.clone(), "7").unwrap().to_string(), "7.00");
+		assert_eq!(coerce_decimal(optional, "7.001").unwrap_err().code, "CONSTRAINT_006");
+	}
+
+	#[test]
+	fn a_decimal_write_counts_precision_at_the_column_scale() {
+		// 12345678.9 has 9 digits but 10 at scale 2, so a precision check on the raw value lets it through
+		// wrongly.
+		assert_eq!(coerce_decimal(decimal_10_2(), "12345678.99").unwrap().to_string(), "12345678.99");
+		assert_eq!(coerce_decimal(decimal_10_2(), "123456789.9").unwrap_err().code, "CONSTRAINT_005");
+		assert_eq!(coerce_decimal(decimal_10_2(), "123456789").unwrap_err().code, "CONSTRAINT_005");
+		let widest = ValueType::decimal(Precision::MAX, Scale::new(10));
+		assert_eq!(coerce_decimal(widest, &"9".repeat(67)).unwrap_err().code, "CONSTRAINT_005");
+	}
+
+	#[test]
+	fn int_and_uint_writes_are_bounded_by_the_declared_precision() {
+		// Precision replaces the old byte limit, so a value with one digit too many must be refused.
+		let int3 = TypeConstraint::unconstrained(ValueType::int(Precision::new(3)));
+		let mut fits = Value::Int(Int::from(-999));
+		assert!(int3.coerce(&mut fits).is_ok());
+		let mut too_wide = Value::Int(Int::from(-1000));
+		assert_eq!(int3.coerce(&mut too_wide).unwrap_err().code, "CONSTRAINT_003");
+		let uint3 = TypeConstraint::unconstrained(ValueType::uint(Precision::new(3)));
+		let mut fits = Value::Uint(Uint::from(999u16));
+		assert!(uint3.coerce(&mut fits).is_ok());
+		let mut too_wide = Value::Uint(Uint::from(1000u16));
+		assert_eq!(uint3.coerce(&mut too_wide).unwrap_err().code, "CONSTRAINT_004");
+		let mut widest = Value::Int(Int::MAX);
+		assert!(TypeConstraint::unconstrained(ValueType::INT).coerce(&mut widest).is_ok());
 	}
 }

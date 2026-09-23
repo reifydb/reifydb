@@ -16,5 +16,6 @@ pub mod reader;
 pub mod row;
 pub mod tag;
 pub mod typeinfo;
+mod unscaled;
 pub mod value;
 pub mod wire;

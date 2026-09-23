@@ -169,7 +169,7 @@ fn byte_clone_columns(
 	for col in cols.columns() {
 		let type_code = col.type_code();
 		let data_bytes = col.data_bytes();
-		let active = builder.acquire(type_code, row_count.max(1))?;
+		let active = builder.acquire_with_params(type_code, col.precision(), col.scale(), row_count.max(1))?;
 		active.grow(data_bytes.len().max(row_count))?;
 		let dst = active.data_ptr();
 		if !dst.is_null() && !data_bytes.is_empty() {
@@ -179,13 +179,7 @@ fn byte_clone_columns(
 				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
 			}
 		}
-		if matches!(
-			type_code,
-			ValueKind::Utf8
-				| ValueKind::Blob | ValueKind::Int
-				| ValueKind::Uint | ValueKind::Decimal
-				| ValueKind::Any | ValueKind::DictionaryId
-		) {
+		if matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId) {
 			let off = col.offsets();
 			let dst_off = active.offsets_ptr();
 			if !dst_off.is_null() && !off.is_empty() {

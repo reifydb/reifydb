@@ -21,6 +21,8 @@ pub struct BuilderCallbacks {
 	pub acquire: unsafe extern "C" fn(
 		ctx: *mut c_void,
 		type_code: ValueKind,
+		precision: u8,
+		scale: u8,
 		capacity: usize,
 	) -> *mut ColumnBufferHandle,
 

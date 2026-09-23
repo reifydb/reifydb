@@ -3,7 +3,7 @@
 
 import { type TypeName } from "../format";
 import { readU16, readU32 } from "../reader";
-import { formatBlob, signedBigIntFromLeBytes } from "../values";
+import { formatBlob } from "../values";
 
 function readIndex(data: Uint8Array, i: number, width: number): number {
     const off = i * width;
@@ -60,19 +60,6 @@ export function decodeDict(
             for (let i = 0; i < rowCount; i++) {
                 const idx = readIndex(data, i, indexWidth);
                 out[i] = formatBlob(table.entries[idx]);
-            }
-            return out;
-        case "Int":
-        case "Uint":
-            for (let i = 0; i < rowCount; i++) {
-                const idx = readIndex(data, i, indexWidth);
-                out[i] = signedBigIntFromLeBytes(table.entries[idx]).toString();
-            }
-            return out;
-        case "Decimal":
-            for (let i = 0; i < rowCount; i++) {
-                const idx = readIndex(data, i, indexWidth);
-                out[i] = decoder.decode(table.entries[idx]);
             }
             return out;
         default:

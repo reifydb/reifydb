@@ -51,18 +51,18 @@ fn group_by_puts_decimals_that_differ_only_in_trailing_zeros_in_one_group() {
 }
 
 #[test]
-fn insert_rounds_a_decimal_whose_scale_hides_in_exponent_form() {
+fn insert_refuses_a_decimal_whose_scale_hides_in_exponent_form() {
 	// Scale is a property of the value, so exponent display must never bypass decimal(10, 2).
 	let db = TestDb::memory();
 	db.admin("create namespace app");
 	db.admin("create table app::prices { amount: decimal(10, 2) }");
 
-	db.command("insert app::prices [{ amount: 0.0000001 }]");
+	let err = db.try_command("insert app::prices [{ amount: 0.0000001 }]").unwrap_err();
 
-	assert_eq!(
-		column_values(&db.query("from app::prices")[0], "amount"),
-		vec![decimal("0.00")],
-		"0.0000001 must round into decimal(10, 2) as 0.00 rather than keep seven places"
+	assert_eq!(err.0.code, "CONSTRAINT_006", "0.0000001 has seven places, decimal(10, 2) must refuse it: {err:?}");
+	assert!(
+		column_values(&db.query("from app::prices")[0], "amount").is_empty(),
+		"a refused row must not be stored"
 	);
 }
 

@@ -12,6 +12,7 @@ use reifydb_value::value::{
 
 pub fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 	assert_eq!(a.len(), b.len(), "column length mismatch");
+	assert_eq!(a.get_type(), b.get_type(), "column type mismatch");
 	for i in 0..a.len() {
 		let va = a.get_value(i);
 		let vb = b.get_value(i);
