@@ -51,74 +51,47 @@ pub(crate) fn decode_fixed_plain(
 	};
 
 	let result = match ty {
-		ValueType::Boolean => {
-			let bits = BooleanBuffer::collect_bool(row_count, |i| get_bit(data, i));
-			Ok(FrameColumnData::Bool(BooleanArray::from(bits)))
-		}
-		ValueType::Float4 => {
-			let values = decode_le_array::<f32>(data, row_count);
-			Ok(FrameColumnData::Float4(values.into()))
-		}
-		ValueType::Float8 => {
-			let values = decode_le_array::<f64>(data, row_count);
-			Ok(FrameColumnData::Float8(values.into()))
-		}
-		ValueType::Int1 => {
-			let values = decode_le_array::<i8>(data, row_count);
-			Ok(FrameColumnData::Int1(values.into()))
-		}
-		ValueType::Int2 => {
-			let values = decode_le_array::<i16>(data, row_count);
-			Ok(FrameColumnData::Int2(values.into()))
-		}
-		ValueType::Int4 => {
-			let values = decode_le_array::<i32>(data, row_count);
-			Ok(FrameColumnData::Int4(values.into()))
-		}
-		ValueType::Int8 => {
-			let values = decode_le_array::<i64>(data, row_count);
-			Ok(FrameColumnData::Int8(values.into()))
-		}
-		ValueType::Int16 => {
-			let values = decode_le_array::<i128>(data, row_count);
-			Ok(FrameColumnData::Int16(int16_array(values)))
-		}
-		ValueType::Uint1 => {
-			let values = decode_le_array::<u8>(data, row_count);
-			Ok(FrameColumnData::Uint1(values.into()))
-		}
-		ValueType::Uint2 => {
-			let values = decode_le_array::<u16>(data, row_count);
-			Ok(FrameColumnData::Uint2(values.into()))
-		}
-		ValueType::Uint4 => {
-			let values = decode_le_array::<u32>(data, row_count);
-			Ok(FrameColumnData::Uint4(values.into()))
-		}
-		ValueType::Uint8 => {
-			let values = decode_le_array::<u64>(data, row_count);
-			Ok(FrameColumnData::Uint8(values.into()))
-		}
-		ValueType::Uint16 => {
-			let values = decode_le_array::<u128>(data, row_count);
-			Ok(FrameColumnData::Uint16(uint16_array(values)))
-		}
+		ValueType::Boolean => match packed_bits(data, row_count) {
+			Ok(()) => {
+				let bits = BooleanBuffer::collect_bool(row_count, |i| get_bit(data, i));
+				Ok(FrameColumnData::Bool(BooleanArray::from(bits)))
+			}
+			Err(e) => Err(e),
+		},
+		ValueType::Float4 => decode_le_array::<f32>(data, row_count)
+			.map(|values| FrameColumnData::Float4(values.into())),
+		ValueType::Float8 => decode_le_array::<f64>(data, row_count)
+			.map(|values| FrameColumnData::Float8(values.into())),
+		ValueType::Int1 => decode_le_array::<i8>(data, row_count)
+			.map(|values| FrameColumnData::Int1(values.into())),
+		ValueType::Int2 => decode_le_array::<i16>(data, row_count)
+			.map(|values| FrameColumnData::Int2(values.into())),
+		ValueType::Int4 => decode_le_array::<i32>(data, row_count)
+			.map(|values| FrameColumnData::Int4(values.into())),
+		ValueType::Int8 => decode_le_array::<i64>(data, row_count)
+			.map(|values| FrameColumnData::Int8(values.into())),
+		ValueType::Int16 => decode_le_array::<i128>(data, row_count)
+			.map(|values| FrameColumnData::Int16(int16_array(values))),
+		ValueType::Uint1 => decode_le_array::<u8>(data, row_count)
+			.map(|values| FrameColumnData::Uint1(values.into())),
+		ValueType::Uint2 => decode_le_array::<u16>(data, row_count)
+			.map(|values| FrameColumnData::Uint2(values.into())),
+		ValueType::Uint4 => decode_le_array::<u32>(data, row_count)
+			.map(|values| FrameColumnData::Uint4(values.into())),
+		ValueType::Uint8 => decode_le_array::<u64>(data, row_count)
+			.map(|values| FrameColumnData::Uint8(values.into())),
+		ValueType::Uint16 => decode_le_array::<u128>(data, row_count)
+			.map(|values| FrameColumnData::Uint16(uint16_array(values))),
 		ValueType::Date => decode_date_plain(data, row_count),
 		ValueType::DateTime => decode_datetime_plain(data, row_count),
 		ValueType::Time => decode_time_plain(data, row_count),
 		ValueType::Duration => decode_duration_plain(data, row_count),
-		ValueType::IdentityId => {
-			let values = decode_le_array::<IdentityId>(data, row_count);
-			Ok(FrameColumnData::IdentityId(identity_id_array(values)))
-		}
-		ValueType::Uuid4 => {
-			let values = decode_le_array::<Uuid4>(data, row_count);
-			Ok(FrameColumnData::Uuid4(uuid4_array(values)))
-		}
-		ValueType::Uuid7 => {
-			let values = decode_le_array::<Uuid7>(data, row_count);
-			Ok(FrameColumnData::Uuid7(uuid7_array(values)))
-		}
+		ValueType::IdentityId => decode_le_array::<IdentityId>(data, row_count)
+			.map(|values| FrameColumnData::IdentityId(identity_id_array(values))),
+		ValueType::Uuid4 => decode_le_array::<Uuid4>(data, row_count)
+			.map(|values| FrameColumnData::Uuid4(uuid4_array(values))),
+		ValueType::Uuid7 => decode_le_array::<Uuid7>(data, row_count)
+			.map(|values| FrameColumnData::Uuid7(uuid7_array(values))),
 		ValueType::DictionaryId => decode_dictionary_ids(data, row_count),
 		_ => return None,
 	};
@@ -398,12 +371,23 @@ pub(crate) fn decode_delta_rle_column(
 	}
 }
 
-fn decode_le_array<T: LeBytes>(data: &[u8], row_count: usize) -> Vec<T> {
+fn decode_le_array<T: LeBytes>(data: &[u8], row_count: usize) -> Result<Vec<T>, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		values.push(T::read_le(&data[i * T::ENCODED_SIZE..]));
+		values.push(T::read_le(fixed_slot(data, i, T::ENCODED_SIZE)?));
 	}
-	values
+	Ok(values)
+}
+
+fn packed_bits(data: &[u8], row_count: usize) -> Result<(), DecodeError> {
+	let expected = row_count.div_ceil(8);
+	if data.len() < expected {
+		return Err(DecodeError::UnexpectedEof {
+			expected,
+			available: data.len(),
+		});
+	}
+	Ok(())
 }
 
 fn fixed_slot(data: &[u8], index: usize, width: usize) -> Result<&[u8], DecodeError> {
@@ -460,76 +444,33 @@ fn decode_duration_plain(data: &[u8], row_count: usize) -> Result<FrameColumnDat
 }
 
 fn decode_dictionary_ids(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
-	if row_count == 0 || data.is_empty() {
+	if row_count == 0 {
 		return Ok(FrameColumnData::DictionaryId {
 			container: dictionary_array([]),
 			dictionary_id: None,
 		});
 	}
-	let disc = data[0];
+	let disc = *data.first().ok_or(DecodeError::UnexpectedEof {
+		expected: 1,
+		available: 0,
+	})?;
+	let width = match disc {
+		1 | 2 | 4 | 8 | 16 => disc as usize,
+		_ => {
+			return Err(DecodeError::InvalidData(format!("invalid dictionary discriminator: {}", disc)));
+		}
+	};
+	let rows = &data[1..];
 	let mut values = Vec::with_capacity(row_count);
-	let mut pos = 1;
-	for _ in 0..row_count {
-		let id = match disc {
-			1 => {
-				let v = data[pos];
-				pos += 1;
-				DictionaryEntryId::U1(v)
-			}
-			2 => {
-				let v = u16::from_le_bytes([data[pos], data[pos + 1]]);
-				pos += 2;
-				DictionaryEntryId::U2(v)
-			}
-			4 => {
-				let v = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
-				pos += 4;
-				DictionaryEntryId::U4(v)
-			}
-			8 => {
-				let v = u64::from_le_bytes([
-					data[pos],
-					data[pos + 1],
-					data[pos + 2],
-					data[pos + 3],
-					data[pos + 4],
-					data[pos + 5],
-					data[pos + 6],
-					data[pos + 7],
-				]);
-				pos += 8;
-				DictionaryEntryId::U8(v)
-			}
-			16 => {
-				let v = u128::from_le_bytes([
-					data[pos],
-					data[pos + 1],
-					data[pos + 2],
-					data[pos + 3],
-					data[pos + 4],
-					data[pos + 5],
-					data[pos + 6],
-					data[pos + 7],
-					data[pos + 8],
-					data[pos + 9],
-					data[pos + 10],
-					data[pos + 11],
-					data[pos + 12],
-					data[pos + 13],
-					data[pos + 14],
-					data[pos + 15],
-				]);
-				pos += 16;
-				DictionaryEntryId::U16(v)
-			}
-			_ => {
-				return Err(DecodeError::InvalidData(format!(
-					"invalid dictionary discriminator: {}",
-					disc
-				)));
-			}
-		};
-		values.push(id);
+	for i in 0..row_count {
+		let slot = fixed_slot(rows, i, width)?;
+		values.push(match disc {
+			1 => DictionaryEntryId::U1(u8::read_le(slot)),
+			2 => DictionaryEntryId::U2(u16::read_le(slot)),
+			4 => DictionaryEntryId::U4(u32::read_le(slot)),
+			8 => DictionaryEntryId::U8(u64::read_le(slot)),
+			_ => DictionaryEntryId::U16(u128::read_le(slot)),
+		});
 	}
 	Ok(FrameColumnData::DictionaryId {
 		container: dictionary_array(values),
