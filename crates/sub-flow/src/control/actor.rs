@@ -216,7 +216,13 @@ impl FlowActor {
 			return;
 		}
 		state.flow_engine = flow_engine;
-		let backoff = self.retry_backoff * (1i64 << state.retry_count.min(16));
+		let backoff = match self.retry_backoff.try_mul(1i64 << state.retry_count.min(16)) {
+			Ok(backoff) => backoff,
+			Err(e) => {
+				self.poison(state, format!("retry backoff overflowed: {e} (original: {reason})"));
+				return;
+			}
+		};
 		warn!(
 			flow_id = self.flow_id.0,
 			attempt = state.retry_count,
