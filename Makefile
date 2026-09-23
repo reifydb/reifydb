@@ -165,6 +165,7 @@ all-siblings:
 	cd $(TEST_SUITE_DIR) && $(MAKE) all
 	cd $(TEST_CRATE_DIR) && $(MAKE) all
 	cd $(TEST_CHAOS_DIR) && $(MAKE) all
+	cd $(TEST_QUERY_DIR) && $(MAKE) all
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -220,7 +221,7 @@ test: test-full
 test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-query test-chaos test-external test-pkg-typescript test-projects fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
-test-full-local: test-workspace test-dst test-pkg-rust test-examples test-query test-external test-pkg-typescript test-projects fuzz-regression
+test-full-local: test-workspace test-dst test-pkg-rust test-examples test-external test-pkg-typescript test-projects fuzz-regression
 
 test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev test-query-dev
 	@echo "🚀 Development tests completed!"
