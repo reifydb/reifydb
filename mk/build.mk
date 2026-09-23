@@ -34,7 +34,7 @@ check:
 
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."
-	@MAKEFLAGS= cargo test --release -p reifydb-value --no-run $(CARGO_OFFLINE)
+	@MAKEFLAGS= cargo check --release -p reifydb-value --tests $(CARGO_OFFLINE)
 
 # Build pkg/typescript packages
 build-pkg-typescript:
