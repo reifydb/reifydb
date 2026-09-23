@@ -31,7 +31,6 @@ serde = { workspace = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-xxhash-rust = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd = { workspace = true }

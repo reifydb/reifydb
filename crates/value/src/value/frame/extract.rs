@@ -7,7 +7,7 @@ use std::{
 };
 
 use super::{column::FrameColumn, frame::Frame};
-use crate::value::try_from::{FromValueError, TryFromValue, TryFromValueCoerce};
+use crate::value::try_from::{FromValueError, TryFromValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameError {
@@ -91,65 +91,6 @@ impl Frame {
 			error: e,
 		})
 	}
-
-	pub fn get_coerce<T: TryFromValueCoerce>(&self, column: &str, row: usize) -> Result<Option<T>, FrameError> {
-		let col = self.try_column(column)?;
-		let len = col.data.len();
-
-		if row >= len {
-			return Err(FrameError::RowOutOfBounds {
-				row,
-				len,
-			});
-		}
-
-		if !col.data.is_defined(row) {
-			return Ok(None);
-		}
-
-		let value = col.data.get_value(row);
-		T::try_from_value_coerce(&value).map(Some).map_err(|e| FrameError::ValueError {
-			column: column.to_string(),
-			row,
-			error: e,
-		})
-	}
-
-	pub fn column_values<T: TryFromValue>(&self, name: &str) -> Result<Vec<Option<T>>, FrameError> {
-		let col = self.try_column(name)?;
-		(0..col.data.len())
-			.map(|row| {
-				if !col.data.is_defined(row) {
-					Ok(None)
-				} else {
-					let value = col.data.get_value(row);
-					T::try_from_value(&value).map(Some).map_err(|e| FrameError::ValueError {
-						column: name.to_string(),
-						row,
-						error: e,
-					})
-				}
-			})
-			.collect()
-	}
-
-	pub fn column_values_coerce<T: TryFromValueCoerce>(&self, name: &str) -> Result<Vec<Option<T>>, FrameError> {
-		let col = self.try_column(name)?;
-		(0..col.data.len())
-			.map(|row| {
-				if !col.data.is_defined(row) {
-					Ok(None)
-				} else {
-					let value = col.data.get_value(row);
-					T::try_from_value_coerce(&value).map(Some).map_err(|e| FrameError::ValueError {
-						column: name.to_string(),
-						row,
-						error: e,
-					})
-				}
-			})
-			.collect()
-	}
 }
 
 #[cfg(test)]
@@ -216,42 +157,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_coerce() {
-		let frame = make_test_frame();
-
-		// get_coerce widens across the stored type, which the strict get in test_errors rejects.
-		let score: Option<i64> = frame.get_coerce("score", 0).unwrap();
-		assert_eq!(score, Some(100i64));
-
-		let score_f64: Option<f64> = frame.get_coerce("score", 1).unwrap();
-		assert_eq!(score_f64, Some(85.0f64));
-	}
-
-	#[test]
-	fn test_column_values() {
-		let frame = make_test_frame();
-
-		let ids: Vec<Option<i64>> = frame.column_values("id").unwrap();
-		assert_eq!(ids, vec![Some(1), Some(2), Some(3)]);
-
-		let names: Vec<Option<String>> = frame.column_values("name").unwrap();
-		assert_eq!(names, vec![Some("Alice".to_string()), Some("Bob".to_string()), Some(String::new())]);
-	}
-
-	#[test]
-	fn test_column_values_coerce() {
-		let frame = make_test_frame();
-
-		let scores: Vec<Option<i64>> = frame.column_values_coerce("score").unwrap();
-		assert_eq!(scores, vec![Some(100), Some(85), Some(92)]);
-	}
-
-	#[test]
 	fn test_errors() {
 		let frame = make_test_frame();
 
 		// Each failure keeps its own variant, so a caller can tell a typo from a bad index from
-		// a type mismatch; the last one is why strict get exists alongside get_coerce.
+		// a type mismatch.
 		let err = frame.get::<i64>("nonexistent", 0).unwrap_err();
 		assert!(matches!(err, FrameError::ColumnNotFound { .. }));
 

@@ -31,7 +31,6 @@ bigdecimal = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-array = { workspace = true }
-arrow-data = { workspace = true }
 arrow-schema = { workspace = true }
 arrow-select = { workspace = true }
 libm = { workspace = true }

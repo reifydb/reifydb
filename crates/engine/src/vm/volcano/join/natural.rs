@@ -6,19 +6,16 @@ use std::collections::{HashMap, HashSet};
 use reifydb_core::{
 	common::JoinType,
 	error::diagnostic::operation,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	error,
-	fragment::Fragment,
-	reifydb_assertions,
-	util::hash::Hash128,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_value::{error, fragment::Fragment, reifydb_assertions, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
-use super::common::{JoinContext, compute_join_hash, ensure_join_keyable, load_and_merge_all, resolve_column_names};
+use super::common::{
+	JoinContext, JoinSlot, NO_MATCH, compute_join_hash, ensure_join_keyable, load_and_merge_all, materialize_join,
+	resolve_column_names,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -124,21 +121,37 @@ impl QueryNode for NaturalJoinNode {
 		let mut hash_buf = Vec::with_capacity(256);
 		let hash_table = Self::build(&right_columns, &right_col_indices, &mut hash_buf)?;
 
-		let (result_rows, result_row_numbers) = self.probe(
+		let (left_picks, right_picks, result_row_numbers) = self.probe(
 			&left_columns,
 			&right_columns,
 			&hash_table,
 			&common_columns,
-			&excluded_right_cols,
 			&left_col_indices,
 			&left_row_numbers,
 			left_rows,
 			&mut hash_buf,
 		)?;
 
+		let kept_right: Vec<ColumnBuffer> = right_columns
+			.columns
+			.iter()
+			.enumerate()
+			.filter(|(idx, _)| !excluded_right_cols.contains(idx))
+			.map(|(_, column)| column.clone())
+			.collect();
+
 		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
-		let columns =
-			Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers, left_rownum);
+		let columns = materialize_join(
+			&resolved.qualified_names,
+			&[JoinSlot {
+				columns: &left_columns.columns,
+				picks: &left_picks,
+			}],
+			&kept_right,
+			&right_picks,
+			result_row_numbers,
+			left_rownum,
+		)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))
@@ -174,13 +187,13 @@ impl NaturalJoinNode {
 		right_columns: &Columns,
 		hash_table: &HashMap<Hash128, Vec<usize>>,
 		common_columns: &[(String, usize, usize)],
-		excluded_right_cols: &HashSet<usize>,
 		left_col_indices: &[usize],
 		left_row_numbers: &[RowNumber],
 		left_rows: usize,
 		hash_buf: &mut Vec<u8>,
-	) -> Result<(Vec<Vec<Value>>, Vec<RowNumber>)> {
-		let mut result_rows = Vec::new();
+	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
+		let mut left_picks: Vec<usize> = Vec::new();
+		let mut right_picks: Vec<usize> = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..left_rows {
@@ -199,13 +212,8 @@ impl NaturalJoinNode {
 					});
 
 					if all_match {
-						let mut combined = left_row.clone();
-						for (idx, value) in right_row.iter().enumerate() {
-							if !excluded_right_cols.contains(&idx) {
-								combined.push(value.clone());
-							}
-						}
-						result_rows.push(combined);
+						left_picks.push(i);
+						right_picks.push(j);
 						matched = true;
 						if !left_row_numbers.is_empty() {
 							result_row_numbers.push(left_row_numbers[i]);
@@ -215,36 +223,14 @@ impl NaturalJoinNode {
 			}
 
 			if !matched && matches!(self.join_type, JoinType::Left) {
-				let mut combined = left_row.clone();
-
-				let undefined_count = right_columns.len() - excluded_right_cols.len();
-				combined.extend(vec![Value::none(); undefined_count]);
-				result_rows.push(combined);
+				left_picks.push(i);
+				right_picks.push(NO_MATCH);
 				if !left_row_numbers.is_empty() {
 					result_row_numbers.push(left_row_numbers[i]);
 				}
 			}
 		}
 
-		Ok((result_rows, result_row_numbers))
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::materialize")]
-	fn materialize(
-		qualified_names: &[String],
-		result_rows: Vec<Vec<Value>>,
-		result_row_numbers: Vec<RowNumber>,
-		has_row_numbers: bool,
-	) -> Columns {
-		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = if result_row_numbers.is_empty() {
-			Columns::from_rows(&names_refs, &result_rows)
-		} else {
-			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
-		};
-		if has_row_numbers {
-			columns.system.mark_row_numbers();
-		}
-		columns
+		Ok((left_picks, right_picks, result_row_numbers))
 	}
 }

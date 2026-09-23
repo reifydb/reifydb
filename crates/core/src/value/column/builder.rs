@@ -468,10 +468,6 @@ impl ColumnBuilder {
 		}
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.len() == 0
-	}
-
 	pub fn get_type(&self) -> ValueType {
 		match self {
 			ColumnBuilder::Bool(_) => ValueType::Boolean,

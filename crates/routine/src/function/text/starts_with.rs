@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_string::like::starts_with;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -38,8 +39,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
 		let str_data = &args[0];
 		let prefix_data = &args[1];
 
-		let row_count = str_data.len();
-
 		match (str_data, prefix_data) {
 			(
 				ColumnBuffer::Utf8 {
@@ -51,15 +50,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
 					..
 				},
 			) => {
-				let mut result_data = Vec::with_capacity(row_count);
-
-				for i in 0..row_count {
-					let s = str_container.value(i);
-					let prefix = prefix_container.value(i);
-					result_data.push(s.starts_with(prefix));
-				}
-
-				let result_col_data = ColumnBuffer::bool(result_data);
+				let result_col_data =
+					ColumnBuffer::Bool(starts_with(str_container, prefix_container).map_err(
+						|err| RoutineError::FunctionExecutionFailed {
+							function: ctx.fragment.clone(),
+							reason: err.to_string(),
+						},
+					)?);
 
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
 			}

@@ -8,7 +8,6 @@ use reifydb_core::value::column::{
 	builder::ColumnBuilder,
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
-	stats::StatsSet,
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -31,7 +30,6 @@ pub struct AllNoneData {
 	ty: ValueType,
 	len: usize,
 	nones: NullBuffer,
-	stats: StatsSet,
 }
 
 impl AllNoneData {
@@ -40,16 +38,11 @@ impl AllNoneData {
 			ty,
 			len,
 			nones: NullBuffer::new_null(len),
-			stats: StatsSet::new(),
 		}
 	}
 }
 
 impl ColumnData for AllNoneData {
-	fn ty(&self) -> ValueType {
-		self.ty.clone()
-	}
-
 	fn len(&self) -> usize {
 		self.len
 	}
@@ -60,10 +53,6 @@ impl ColumnData for AllNoneData {
 
 	fn nones(&self) -> Option<&NullBuffer> {
 		Some(&self.nones)
-	}
-
-	fn stats(&self) -> &StatsSet {
-		&self.stats
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
@@ -87,10 +76,6 @@ impl ColumnData for AllNoneData {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 
@@ -118,11 +103,6 @@ impl Encoding for AllNoneEncoding {
 			}
 			_ => Ok(None),
 		}
-	}
-
-	fn canonicalize(&self, array: &Column) -> Result<Canonical> {
-		let arc = array.to_canonical()?;
-		Ok((*arc).clone())
 	}
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {

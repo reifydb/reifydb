@@ -94,7 +94,10 @@ impl Duration {
 	}
 
 	pub fn from_microseconds(microseconds: i64) -> Result<Self, Box<TypeError>> {
-		Self::normalized(0, 0, microseconds * 1_000)
+		let nanos = microseconds.checked_mul(1_000).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("{} microseconds overflows Duration range", microseconds)))
+		})?;
+		Self::normalized(0, 0, nanos)
 	}
 
 	pub fn from_micros_infallible(microseconds: u64) -> Self {

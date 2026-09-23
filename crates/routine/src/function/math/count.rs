@@ -55,9 +55,20 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 		let mut counts = vec![0i64; row_count];
 
 		for col in args.iter() {
-			for (i, count) in counts.iter_mut().enumerate().take(row_count) {
-				if col.data().is_defined(i) {
-					*count += 1;
+			let data = col.data();
+			match data.nulls() {
+				None => {
+					for count in counts.iter_mut().take(data.len().min(row_count)) {
+						*count += 1;
+					}
+				}
+				Some(nulls) => {
+					let bound = data.len().min(nulls.len()).min(row_count);
+					for (i, count) in counts.iter_mut().enumerate().take(bound) {
+						if nulls.is_valid(i) {
+							*count += 1;
+						}
+					}
 				}
 			}
 		}

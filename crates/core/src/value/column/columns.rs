@@ -31,7 +31,7 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,
-	value::column::{ColumnBuffer, ColumnWithName, builder::ColumnBuilder, data::Column},
+	value::column::{ColumnBuffer, ColumnWithName, builder::ColumnBuilder},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,14 +131,6 @@ impl<'a> ColumnRef<'a> {
 
 	pub fn get_type(&self) -> ValueType {
 		self.data.get_type()
-	}
-
-	pub fn column(&self) -> Column {
-		Column::from_column_buffer(self.data.clone())
-	}
-
-	pub fn with_new_data(&self, data: ColumnBuffer) -> ColumnWithName {
-		ColumnWithName::new(self.name.clone(), data)
 	}
 }
 
@@ -281,24 +273,6 @@ impl Columns {
 }
 
 impl Columns {
-	pub fn number(&self) -> RowNumber {
-		assert_eq!(self.row_count(), 1, "number() requires exactly 1 row, got {}", self.row_count());
-		if self.row_numbers().is_empty() {
-			RowNumber(0)
-		} else {
-			self.row_numbers()[0]
-		}
-	}
-
-	pub fn shape(&self) -> (usize, usize) {
-		let row_count = if !self.row_numbers().is_empty() {
-			self.row_numbers().len()
-		} else {
-			self.columns.first().map(|c| c.len()).unwrap_or(0)
-		};
-		(row_count, self.len())
-	}
-
 	pub fn heap_size(&self) -> usize {
 		let data: usize = self.columns.iter().map(|c| c.heap_size()).sum();
 		let names: usize = self.names.iter().map(|n| n.text().len()).sum();
@@ -319,15 +293,6 @@ impl Columns {
 
 	pub fn first(&self) -> Option<ColumnRef<'_>> {
 		self.get(0)
-	}
-
-	pub fn last(&self) -> Option<ColumnRef<'_>> {
-		let n = self.len();
-		if n == 0 {
-			None
-		} else {
-			self.get(n - 1)
-		}
 	}
 
 	pub fn get(&self, index: usize) -> Option<ColumnRef<'_>> {
@@ -529,11 +494,7 @@ impl Columns {
 
 		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
 		for col in self.columns.iter() {
-			let mut builder = ColumnBuilder::like(col, indices.len());
-			for &idx in indices {
-				builder.push_keeping_option(col.get_value(idx));
-			}
-			new_buffers.push(builder.finish());
+			new_buffers.push(col.extract_rows(indices));
 		}
 
 		Columns {
@@ -677,6 +638,7 @@ impl Columns {
 pub mod tests {
 	use std::str::FromStr;
 
+	use arrow_buffer::{BooleanBuffer, NullBuffer};
 	use reifydb_value::value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -1208,7 +1170,7 @@ pub mod tests {
 		]);
 
 		assert_eq!(columns.len(), 4);
-		assert_eq!(columns.shape(), (1, 4));
+		assert_eq!((columns.row_count(), columns.len()), (1, 4));
 
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("datetime_col").unwrap().data().get_value(0), Value::DateTime(datetime));
@@ -1231,7 +1193,7 @@ pub mod tests {
 		]);
 
 		assert_eq!(columns.len(), 6);
-		assert_eq!(columns.shape(), (1, 6));
+		assert_eq!((columns.row_count(), columns.len()), (1, 6));
 
 		assert_eq!(columns.column("bool_col").unwrap().data().get_value(0), Value::Boolean(true));
 		assert_eq!(columns.column("int_col").unwrap().data().get_value(0), Value::Int4(42));
@@ -1359,5 +1321,65 @@ pub mod tests {
 		);
 
 		let _ = columns.with_row_numbers(vec![RowNumber(1), RowNumber(2)]);
+	}
+	#[test]
+	fn extract_by_indices_keeps_an_all_valid_column_nullable() {
+		// Every arrow kernel drops a null buffer whose bits are all valid, which would silently turn an Option
+		// column into a bare one.
+		let columns = Columns::new(vec![ColumnWithName::new(
+			"c",
+			ColumnBuffer::int4([1, 2, 3]).replace_nulls(Some(NullBuffer::new_valid(3))),
+		)]);
+
+		let extracted = columns.extract_by_indices(&[2, 0]);
+
+		assert!(extracted.data_at(0).nulls().is_some());
+		assert_eq!(extracted.data_at(0).get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+	}
+
+	#[test]
+	fn extract_by_indices_writes_the_type_default_under_a_none_row() {
+		// A none row must carry the type default underneath it, not the bytes that happened to sit at the
+		// source row.
+		let columns = Columns::new(vec![ColumnWithName::new(
+			"c",
+			ColumnBuffer::utf8_with_bitvec(["keep", "hidden"], BooleanBuffer::from(vec![true, false])),
+		)]);
+
+		let extracted = columns.extract_by_indices(&[1, 0]);
+
+		let ColumnBuffer::Utf8 {
+			container,
+			..
+		} = extracted.data_at(0)
+		else {
+			panic!("expected a utf8 column");
+		};
+		assert_eq!(container.value(0), "");
+		assert_eq!(extracted.data_at(0).get_value(0), Value::none_of(ValueType::Utf8));
+		assert_eq!(extracted.data_at(0).get_value(1), Value::Utf8("keep".to_string()));
+	}
+
+	#[test]
+	fn extract_by_indices_out_of_range_index_reads_as_none() {
+		// An index past the end is a miss, not a panic and not a wrapped read.
+		let columns = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::int4([1, 2]))]);
+
+		let extracted = columns.extract_by_indices(&[1, 7]);
+
+		assert_eq!(extracted.row_count(), 2);
+		assert_eq!(extracted.data_at(0).get_value(0), Value::Int4(2));
+		assert_eq!(extracted.data_at(0).get_value(1), Value::none_of(ValueType::Int4));
+	}
+
+	#[test]
+	fn extract_by_indices_with_no_indices_gives_no_columns() {
+		// An empty index list drops the columns entirely instead of returning empty ones.
+		let columns = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::int4([1, 2]))]);
+
+		let extracted = columns.extract_by_indices(&[]);
+
+		assert_eq!(extracted.len(), 0);
+		assert_eq!(extracted.row_count(), 0);
 	}
 }

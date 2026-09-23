@@ -75,6 +75,7 @@ pub mod map;
 pub mod merge;
 pub mod patch;
 pub mod query;
+pub(crate) mod rank;
 pub mod row_lookup;
 pub mod run_tests;
 pub mod scalarize;

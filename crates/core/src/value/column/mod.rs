@@ -3,16 +3,9 @@
 
 use std::fmt;
 
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		dictionary::DictionaryEntryId,
-		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
-	},
-};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-use crate::value::column::{buffer::ColumnBuffer, data::Column};
+use crate::value::column::buffer::ColumnBuffer;
 
 pub mod buffer;
 pub mod builder;
@@ -23,9 +16,7 @@ pub mod encoding;
 pub mod frame;
 pub mod headers;
 pub mod push;
-pub mod row;
 pub mod row_ref;
-pub mod stats;
 pub mod transform;
 pub mod view;
 
@@ -64,17 +55,6 @@ impl ColumnWithName {
 		}
 	}
 
-	pub fn from_column(name: impl Into<Fragment>, column: Column) -> Self {
-		let buffer = column
-			.to_canonical()
-			.map(|c| c.to_buffer())
-			.unwrap_or_else(|_| panic!("ColumnWithName::from_column: to_canonical failed"));
-		Self {
-			name: name.into(),
-			data: buffer,
-		}
-	}
-
 	pub fn get_type(&self) -> ValueType {
 		self.data.get_type()
 	}
@@ -97,10 +77,6 @@ impl ColumnWithName {
 	pub fn data(&self) -> &ColumnBuffer {
 		&self.data
 	}
-
-	pub fn column(&self) -> Column {
-		Column::from_column_buffer(self.data.clone())
-	}
 }
 
 impl ColumnWithName {
@@ -111,80 +87,10 @@ impl ColumnWithName {
 		}
 	}
 
-	pub fn int2(name: impl Into<Fragment>, data: impl IntoIterator<Item = i16>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::int2(data),
-		}
-	}
-
 	pub fn int4(name: impl Into<Fragment>, data: impl IntoIterator<Item = i32>) -> Self {
 		ColumnWithName {
 			name: name.into(),
 			data: ColumnBuffer::int4(data),
-		}
-	}
-
-	pub fn int8(name: impl Into<Fragment>, data: impl IntoIterator<Item = i64>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::int8(data),
-		}
-	}
-
-	pub fn int16(name: impl Into<Fragment>, data: impl IntoIterator<Item = i128>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::int16(data),
-		}
-	}
-
-	pub fn uint1(name: impl Into<Fragment>, data: impl IntoIterator<Item = u8>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uint1(data),
-		}
-	}
-
-	pub fn uint2(name: impl Into<Fragment>, data: impl IntoIterator<Item = u16>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uint2(data),
-		}
-	}
-
-	pub fn uint4(name: impl Into<Fragment>, data: impl IntoIterator<Item = u32>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uint4(data),
-		}
-	}
-
-	pub fn uint8(name: impl Into<Fragment>, data: impl IntoIterator<Item = u64>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uint8(data),
-		}
-	}
-
-	pub fn uint16(name: impl Into<Fragment>, data: impl IntoIterator<Item = u128>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uint16(data),
-		}
-	}
-
-	pub fn float4(name: impl Into<Fragment>, data: impl IntoIterator<Item = f32>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::float4(data),
-		}
-	}
-
-	pub fn float8(name: impl Into<Fragment>, data: impl IntoIterator<Item = f64>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::float8(data),
 		}
 	}
 
@@ -199,27 +105,6 @@ impl ColumnWithName {
 		ColumnWithName {
 			name: name.into(),
 			data: ColumnBuffer::utf8(data),
-		}
-	}
-
-	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid4>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uuid4(data),
-		}
-	}
-
-	pub fn uuid7(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid7>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::uuid7(data),
-		}
-	}
-
-	pub fn dictionary_id(name: impl Into<Fragment>, data: impl IntoIterator<Item = DictionaryEntryId>) -> Self {
-		ColumnWithName {
-			name: name.into(),
-			data: ColumnBuffer::dictionary_id(data),
 		}
 	}
 

@@ -179,7 +179,7 @@ mod tests {
 				let mut out = Vec::new();
 				for chunk in &column.chunks {
 					for i in 0..chunk.len() {
-						out.push(chunk.get_value(i));
+						out.push(chunk.data().get_value(i));
 					}
 				}
 				out

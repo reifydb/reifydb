@@ -247,12 +247,12 @@ fn advance_window(state: &mut DomainState) {
 
 fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
 	match state.spec.shape {
-		DomainShape::Long => Ok(build_long(state, now, surface)),
+		DomainShape::Long => build_long(state, now, surface),
 		DomainShape::Wide => build_wide(state, now, surface),
 	}
 }
 
-fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
+fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
 	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, 0);
 	let mut scope = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 	let mut metric = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
@@ -278,7 +278,7 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 						baseline,
 					},
 					Surface::Current,
-				) => Some((delta_reading(total, *baseline), MetricKind::Delta)),
+				) => Some((delta_reading(total, *baseline)?, MetricKind::Delta)),
 				(
 					MeasureState::Counter {
 						total,
@@ -339,14 +339,14 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 		}
 	}
 
-	Columns::new(vec![
+	Ok(Columns::new(vec![
 		ColumnWithName::new(Fragment::internal("ts"), ts.finish()),
 		ColumnWithName::new(Fragment::internal("scope"), scope.finish()),
 		ColumnWithName::new(Fragment::internal("metric"), metric.finish()),
 		ColumnWithName::new(Fragment::internal("value"), value.finish()),
 		ColumnWithName::new(Fragment::internal("unit"), unit.finish()),
 		ColumnWithName::new(Fragment::internal("kind"), kind.finish()),
-	])
+	]))
 }
 
 fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
@@ -373,7 +373,7 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Co
 			})?;
 		}
 		for (buffer, measure) in measure_buffers.iter_mut().zip(&measures) {
-			let value = wide_value(row.measures.get(measure.name), measure, surface);
+			let value = wide_value(row.measures.get(measure.name), measure, surface)?;
 			buffer.push_typed(value, &measure.buffer_type())
 				.map_err(|cause| column_error(spec.domain, surface, "measure", measure.name, cause))?;
 		}
@@ -399,7 +399,7 @@ fn column_error(
 	internal_error!("metrics {:?} {:?} {} column {}: {}", domain, surface, role, name, cause)
 }
 
-fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface) -> Value {
+fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface) -> Result<Value> {
 	let reading = match (state, surface) {
 		(
 			Some(MeasureState::Level {
@@ -413,7 +413,7 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 				baseline,
 			}),
 			Surface::Current,
-		) => Some(delta_reading(total, *baseline)),
+		) => Some(delta_reading(total, *baseline)?),
 		(
 			Some(MeasureState::Counter {
 				total,
@@ -447,26 +447,24 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 		Some(reading) => reading_value(&reading, &spec.data_type),
 		None => {
 			if spec.optional {
-				Value::none_of(spec.data_type.clone())
+				Ok(Value::none_of(spec.data_type.clone()))
 			} else {
-				zero_value(&spec.data_type)
+				Ok(zero_value(&spec.data_type))
 			}
 		}
 	}
 }
 
-fn reading_value(reading: &Reading, target: &ValueType) -> Value {
+fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
 	match target {
-		ValueType::Uint2 => Value::Uint2(reading.as_f64() as u16),
-		ValueType::Uint4 => Value::Uint4(reading.as_f64() as u32),
-		ValueType::Uint8 => Value::Uint8(reading.as_f64() as u64),
+		ValueType::Uint2 => Ok(Value::Uint2(reading.as_f64() as u16)),
+		ValueType::Uint4 => Ok(Value::Uint4(reading.as_f64() as u32)),
+		ValueType::Uint8 => Ok(Value::Uint8(reading.as_f64() as u64)),
 		ValueType::Duration => match reading {
-			Reading::Duration(duration) => Value::Duration(*duration),
-			other => Value::Duration(
-				Duration::from_microseconds(other.as_f64().min(9.0e15) as i64).unwrap_or_default(),
-			),
+			Reading::Duration(duration) => Ok(Value::Duration(*duration)),
+			other => Ok(Value::Duration(Duration::from_microseconds(other.as_f64().min(9.0e15) as i64)?)),
 		},
-		_ => Value::float8(reading.as_f64()),
+		_ => Ok(Value::float8(reading.as_f64())),
 	}
 }
 
@@ -481,18 +479,16 @@ fn zero_value(target: &ValueType) -> Value {
 	}
 }
 
-fn delta_reading(total: &Reading, baseline: Option<f64>) -> Reading {
+fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
 	let delta = (total.as_f64() - baseline.unwrap_or(0.0)).max(0.0);
-	match total {
+	Ok(match total {
 		Reading::Heap(_) => Reading::Heap(ByteSize::from_bytes(delta as u64)),
 		Reading::Bytes(_) => Reading::Bytes(ByteSize::from_bytes(delta as u64)),
 		Reading::Count(_) => Reading::Count(Count::new(delta as u64)),
 		Reading::Ratio(_) => Reading::Ratio(delta),
 		Reading::Version(_) => Reading::Version(delta as u64),
-		Reading::Duration(_) => {
-			Reading::Duration(Duration::from_microseconds(delta.min(9.0e15) as i64).unwrap_or_default())
-		}
-	}
+		Reading::Duration(_) => Reading::Duration(Duration::from_microseconds(delta.min(9.0e15) as i64)?),
+	})
 }
 
 #[cfg(test)]

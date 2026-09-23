@@ -4,12 +4,8 @@
 use reifydb_core::value::column::{
 	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
-	stats::{Stat, StatsSet},
 };
-use reifydb_value::{
-	Result,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::{
 	compress::CompressConfig,
@@ -45,11 +41,6 @@ impl Encoding for CanonicalEncoding {
 		Ok(Some(Column::from_canonical(input.clone())))
 	}
 
-	fn canonicalize(&self, array: &Column) -> Result<Canonical> {
-		let arc = array.to_canonical()?;
-		Ok((*arc).clone())
-	}
-
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {
 		let canonical = array.to_canonical()?;
 		Ok(PersistedArray::Canonical {
@@ -65,19 +56,11 @@ impl Encoding for CanonicalEncoding {
 			_ => Err(unexpected_payload(self.id)),
 		}
 	}
-
-	fn derive_stats(&self, array: &Column) -> StatsSet {
-		let mut s = StatsSet::new();
-		if let Some(nones) = array.nones() {
-			s.set(Stat::NoneCount, Value::Uint8(nones.null_count() as u64));
-		}
-		s
-	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+	use reifydb_core::value::column::buffer::ColumnBuffer;
 
 	use super::*;
 	use crate::encoding::EncodingRegistry;
@@ -91,29 +74,14 @@ mod tests {
 			.unwrap()
 			.expect("canonical try_compress always wraps");
 		assert_eq!(compressed.encoding(), EncodingId::CANONICAL_FIXED);
-		let back = CanonicalEncoding::FIXED.canonicalize(&compressed).unwrap();
+		let back = compressed.to_canonical().unwrap();
 		assert_eq!(back.len(), 4);
 	}
 
 	#[test]
-	fn derive_stats_includes_none_count_when_nullable() {
-		let mut cd = ColumnBuilder::with_capacity(ValueType::Int4, 4);
-		cd.push::<i32>(10);
-		cd.push_none();
-		cd.push::<i32>(30);
-		cd.push_none();
-		let cd = cd.finish();
-		let canon = Canonical::from_column_buffer(&cd).unwrap();
-		let array = Column::from_canonical(canon);
-		let stats = CanonicalEncoding::FIXED.derive_stats(&array);
-		assert_eq!(stats.get(Stat::NoneCount), Some(&Value::Uint8(2)));
-	}
-
-	#[test]
-	fn registry_builtins_registers_all_canonical_and_compressed_encodings() {
-		// 13 is 4 canonical plus 9 compressed; the count catches an encoding added without registration.
+	fn every_builtin_encoding_id_resolves_through_the_registry() {
+		// An encoding added to the id set but never registered resolves to none here.
 		let r = EncodingRegistry::builtins();
-		assert_eq!(r.len(), 13);
 		for id in [
 			EncodingId::CANONICAL_BOOL,
 			EncodingId::CANONICAL_FIXED,

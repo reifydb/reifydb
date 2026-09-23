@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_arith::aggregate::{max, min};
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_value::{
 	Result,
@@ -15,6 +16,15 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 	}
 
 	let skip = |row: usize| -> bool { array.buffer.nulls().map(|n| n.is_null(row)).unwrap_or(false) };
+
+	macro_rules! reduce_arrow {
+		($array:expr, $variant:ident) => {{
+			match (min($array), max($array)) {
+				(Some(low), Some(high)) => Ok((Value::$variant(low), Value::$variant(high))),
+				_ => Err(ColumnError::MinMaxAllNone.into()),
+			}
+		}};
+	}
 
 	macro_rules! reduce_int {
 		($slice:expr, $variant:ident) => {{
@@ -47,15 +57,15 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 	}
 
 	match &array.buffer {
-		ColumnBuffer::Int1(_) => reduce_int!(array.buffer.as_slice::<i8>(), Int1),
-		ColumnBuffer::Int2(_) => reduce_int!(array.buffer.as_slice::<i16>(), Int2),
-		ColumnBuffer::Int4(_) => reduce_int!(array.buffer.as_slice::<i32>(), Int4),
-		ColumnBuffer::Int8(_) => reduce_int!(array.buffer.as_slice::<i64>(), Int8),
+		ColumnBuffer::Int1(c) => reduce_arrow!(c, Int1),
+		ColumnBuffer::Int2(c) => reduce_arrow!(c, Int2),
+		ColumnBuffer::Int4(c) => reduce_arrow!(c, Int4),
+		ColumnBuffer::Int8(c) => reduce_arrow!(c, Int8),
 		ColumnBuffer::Int16(_) => reduce_int!(array.buffer.as_slice::<i128>(), Int16),
-		ColumnBuffer::Uint1(_) => reduce_int!(array.buffer.as_slice::<u8>(), Uint1),
-		ColumnBuffer::Uint2(_) => reduce_int!(array.buffer.as_slice::<u16>(), Uint2),
-		ColumnBuffer::Uint4(_) => reduce_int!(array.buffer.as_slice::<u32>(), Uint4),
-		ColumnBuffer::Uint8(_) => reduce_int!(array.buffer.as_slice::<u64>(), Uint8),
+		ColumnBuffer::Uint1(c) => reduce_arrow!(c, Uint1),
+		ColumnBuffer::Uint2(c) => reduce_arrow!(c, Uint2),
+		ColumnBuffer::Uint4(c) => reduce_arrow!(c, Uint4),
+		ColumnBuffer::Uint8(c) => reduce_arrow!(c, Uint8),
 		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
 		ColumnBuffer::Any {
 			..

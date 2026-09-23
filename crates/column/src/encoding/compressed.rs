@@ -26,10 +26,6 @@ macro_rules! declare_compressed {
 				Ok(None)
 			}
 
-			fn canonicalize(&self, _array: &Column) -> Result<Canonical> {
-				todo!(concat!(stringify!($ty), "::canonicalize not yet implemented"))
-			}
-
 			fn persist(&self, _array: &Column) -> Result<PersistedArray> {
 				todo!(concat!(stringify!($ty), "::persist not yet implemented"))
 			}

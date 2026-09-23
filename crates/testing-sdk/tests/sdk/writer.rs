@@ -16,7 +16,8 @@ use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorH
 use reifydb_value::{
 	config::Config,
 	value::{
-		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+		Value, blob::Blob, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration,
+		row_number::RowNumber, time::Time,
 	},
 };
 
@@ -240,9 +241,9 @@ fn scalar_i8_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").i8("v"), Some(i8::MIN));
-	assert_eq!(post.row_ref(1).expect("r1").i8("v"), Some(0));
-	assert_eq!(post.row_ref(2).expect("r2").i8("v"), Some(i8::MAX));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int1(i8::MIN)));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int1(0)));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int1(i8::MAX)));
 }
 
 struct I16Row {
@@ -285,9 +286,9 @@ fn scalar_i16_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").i16("v"), Some(i16::MIN));
-	assert_eq!(post.row_ref(1).expect("r1").i16("v"), Some(0));
-	assert_eq!(post.row_ref(2).expect("r2").i16("v"), Some(i16::MAX));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int2(i16::MIN)));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int2(0)));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int2(i16::MAX)));
 }
 
 struct I32Row {
@@ -330,9 +331,9 @@ fn scalar_i32_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").i32("v"), Some(i32::MIN));
-	assert_eq!(post.row_ref(1).expect("r1").i32("v"), Some(0));
-	assert_eq!(post.row_ref(2).expect("r2").i32("v"), Some(i32::MAX));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int4(i32::MIN)));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int4(0)));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int4(i32::MAX)));
 }
 
 struct I64Row {
@@ -375,9 +376,9 @@ fn scalar_i64_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").i64("v"), Some(i64::MIN));
-	assert_eq!(post.row_ref(1).expect("r1").i64("v"), Some(0));
-	assert_eq!(post.row_ref(2).expect("r2").i64("v"), Some(i64::MAX));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int8(i64::MIN)));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int8(0)));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int8(i64::MAX)));
 }
 
 struct F32Row {
@@ -646,9 +647,9 @@ fn blob_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").blob("b"), Some(vec![]));
-	assert_eq!(post.row_ref(1).expect("r1").blob("b"), Some(vec![0u8, 1, 127, 255]));
-	assert_eq!(post.row_ref(2).expect("r2").blob("b"), Some(vec![42u8; 1000]));
+	assert_eq!(post.row_ref(0).expect("r0").value("b"), Some(Value::Blob(Blob::new(vec![]))));
+	assert_eq!(post.row_ref(1).expect("r1").value("b"), Some(Value::Blob(Blob::new(vec![0u8, 1, 127, 255]))));
+	assert_eq!(post.row_ref(2).expect("r2").value("b"), Some(Value::Blob(Blob::new(vec![42u8; 1000]))));
 }
 
 struct DecimalRow {
@@ -701,9 +702,9 @@ fn decimal_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").decimal("d"), Some(Decimal::zero()));
-	assert_eq!(post.row_ref(1).expect("r1").decimal("d"), Some(Decimal::from_i64(1234)));
-	assert_eq!(post.row_ref(2).expect("r2").decimal("d"), Some(Decimal::from_i64(-5678)));
+	assert_eq!(post.row_ref(0).expect("r0").value("d"), Some(Value::Decimal(Decimal::zero())));
+	assert_eq!(post.row_ref(1).expect("r1").value("d"), Some(Value::Decimal(Decimal::from_i64(1234))));
+	assert_eq!(post.row_ref(2).expect("r2").value("d"), Some(Value::Decimal(Decimal::from_i64(-5678))));
 }
 
 struct WideRow {
@@ -747,8 +748,8 @@ fn wide_integers_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 1);
-	assert_eq!(post.row_ref(0).expect("r0").u128("a"), Some(u128::MAX));
-	assert_eq!(post.row_ref(0).expect("r0").i128("b"), Some(i128::MIN));
+	assert_eq!(post.row_ref(0).expect("r0").value("a"), Some(Value::Uint16(u128::MAX)));
+	assert_eq!(post.row_ref(0).expect("r0").value("b"), Some(Value::Int16(i128::MIN)));
 }
 
 struct DateRow {
@@ -793,9 +794,9 @@ fn scalar_date_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").date("v"), Some(Date::default()));
-	assert_eq!(post.row_ref(1).expect("r1").date("v"), Date::new(2024, 3, 15));
-	assert_eq!(post.row_ref(2).expect("r2").date("v"), Date::new(2554, 1, 1));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Date(Date::default())));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Date::new(2024, 3, 15).map(Value::Date));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Date::new(2554, 1, 1).map(Value::Date));
 }
 
 struct DateTimeRow {
@@ -893,9 +894,9 @@ fn scalar_time_roundtrip() {
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").time("v"), Some(Time::default()));
-	assert_eq!(post.row_ref(1).expect("r1").time("v"), Time::new(14, 30, 45, 123_456_789));
-	assert_eq!(post.row_ref(2).expect("r2").time("v"), Time::new(23, 59, 59, 999_999_999));
+	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Time(Time::default())));
+	assert_eq!(post.row_ref(1).expect("r1").value("v"), Time::new(14, 30, 45, 123_456_789).map(Value::Time));
+	assert_eq!(post.row_ref(2).expect("r2").value("v"), Time::new(23, 59, 59, 999_999_999).map(Value::Time));
 }
 
 struct DurationRow {

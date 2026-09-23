@@ -5,64 +5,24 @@ pub mod canonical;
 
 use std::{any::Any, sync::Arc};
 
-use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_buffer::NullBuffer;
 use canonical::Canonical;
-use reifydb_value::{
-	Result,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{Result, value::Value};
 
-use crate::value::column::{buffer::ColumnBuffer, encoding::EncodingId, stats::StatsSet};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CompareOp {
-	Eq,
-	Ne,
-	Lt,
-	LtEq,
-	Gt,
-	GtEq,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SearchResult {
-	Found(usize),
-	NotFound(usize),
-}
+use crate::value::column::encoding::EncodingId;
 
 pub trait ColumnData: Send + Sync + 'static {
-	fn ty(&self) -> ValueType;
 	fn len(&self) -> usize;
-	fn is_empty(&self) -> bool {
-		self.len() == 0
-	}
 	fn encoding(&self) -> EncodingId;
 
 	fn nones(&self) -> Option<&NullBuffer>;
 
-	fn stats(&self) -> &StatsSet;
-
 	fn get_value(&self, idx: usize) -> Value;
-	fn iter(&self) -> Box<dyn Iterator<Item = Value> + '_> {
-		Box::new((0..self.len()).map(move |i| self.get_value(i)))
-	}
 	fn as_string(&self, idx: usize) -> String;
 
 	fn as_any(&self) -> &dyn Any;
-	fn as_any_mut(&mut self) -> &mut dyn Any;
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>>;
-
-	fn filter(&self, mask: &BooleanBuffer) -> Result<Column> {
-		let canon = self.to_canonical()?;
-		Ok(Column::from_canonical(canonical_filter(&canon, mask)?))
-	}
-
-	fn take(&self, indices: &Column) -> Result<Column> {
-		let canon = self.to_canonical()?;
-		let idx = canon_indices(indices)?;
-		Ok(Column::from_canonical(canonical_take(&canon, &idx)?))
-	}
 
 	fn slice(&self, start: usize, end: usize) -> Result<Column> {
 		let canon = self.to_canonical()?;
@@ -82,89 +42,29 @@ impl Column {
 		Self(Arc::new(canon))
 	}
 
-	pub fn from_column_buffer(buffer: ColumnBuffer) -> Self {
-		Self::from_canonical(Canonical::from_buffer(buffer))
-	}
-
 	pub fn data(&self) -> &dyn ColumnData {
 		&*self.0
-	}
-
-	pub fn ty(&self) -> ValueType {
-		self.0.ty()
 	}
 
 	pub fn len(&self) -> usize {
 		self.0.len()
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-
 	pub fn encoding(&self) -> EncodingId {
 		self.0.encoding()
-	}
-
-	pub fn stats(&self) -> &StatsSet {
-		self.0.stats()
 	}
 
 	pub fn nones(&self) -> Option<&NullBuffer> {
 		self.0.nones()
 	}
 
-	pub fn get_value(&self, idx: usize) -> Value {
-		self.0.get_value(idx)
-	}
-
-	pub fn iter(&self) -> Box<dyn Iterator<Item = Value> + '_> {
-		self.0.iter()
-	}
-
-	pub fn as_string(&self, idx: usize) -> String {
-		self.0.as_string(idx)
-	}
-
 	pub fn to_canonical(&self) -> Result<Arc<Canonical>> {
 		self.0.to_canonical()
-	}
-
-	pub fn filter(&self, mask: &BooleanBuffer) -> Result<Column> {
-		self.0.filter(mask)
-	}
-
-	pub fn take(&self, indices: &Column) -> Result<Column> {
-		self.0.take(indices)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Result<Column> {
 		self.0.slice(start, end)
 	}
-
-	pub fn materialize(&mut self) -> Result<&mut Canonical> {
-		if Arc::get_mut(&mut self.0).map(|d| d.as_any().is::<Canonical>()).unwrap_or(false) {
-			let d = Arc::get_mut(&mut self.0).unwrap();
-			return Ok(d.as_any_mut().downcast_mut::<Canonical>().unwrap());
-		}
-		let canonical_arc = self.0.to_canonical()?;
-		let owned = Arc::try_unwrap(canonical_arc).unwrap_or_else(|arc| (*arc).clone());
-		self.0 = Arc::new(owned);
-		let d = Arc::get_mut(&mut self.0).unwrap();
-		Ok(d.as_any_mut().downcast_mut::<Canonical>().unwrap())
-	}
-}
-
-fn canonical_filter(canon: &Canonical, mask: &BooleanBuffer) -> Result<Canonical> {
-	assert_eq!(canon.len(), mask.len(), "filter: length mismatch");
-	let mut new_buffer = canon.buffer.clone();
-	new_buffer.filter(mask)?;
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
-}
-
-fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
-	let new_buffer = canon.buffer.gather(indices);
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
 }
 
 fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canonical> {
@@ -172,24 +72,4 @@ fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canoni
 	assert!(end <= canon.len());
 	let new_buffer = canon.buffer.slice(start, end);
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
-}
-
-fn canon_indices(indices: &Column) -> Result<Vec<usize>> {
-	let canon = indices.to_canonical()?;
-	let len = canon.len();
-	let mut out = Vec::with_capacity(len);
-	for i in 0..len {
-		let v = canon.buffer.get_value(i);
-		let n: usize = match v {
-			Value::Uint1(n) => n as usize,
-			Value::Uint2(n) => n as usize,
-			Value::Uint4(n) => n as usize,
-			Value::Uint8(n) => n as usize,
-			Value::Int4(n) => n as usize,
-			Value::Int8(n) => n as usize,
-			_ => panic!("take: indices must be fixed-width unsigned/signed int"),
-		};
-		out.push(n);
-	}
-	Ok(out)
 }

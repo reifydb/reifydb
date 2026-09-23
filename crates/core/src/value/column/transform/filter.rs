@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_buffer::BooleanBuffer;
-use reifydb_value::Result;
+use arrow_select::filter::FilterPredicate;
+use reifydb_value::{Result, util::kernel};
 
 use crate::value::column::columns::Columns;
 
@@ -11,8 +12,14 @@ impl Columns {
 		self.system.filter(mask);
 
 		let columns = &mut self.columns;
+		let mut shared: Option<(usize, FilterPredicate)> = None;
 		for column in columns.iter_mut() {
-			column.filter(mask)?;
+			let len = column.len();
+			let predicate = match &shared {
+				Some((cached_len, predicate)) if *cached_len == len => predicate,
+				_ => &shared.insert((len, kernel::shared_predicate(mask, len))).1,
+			};
+			column.filter_with(predicate)?;
 		}
 		Ok(())
 	}

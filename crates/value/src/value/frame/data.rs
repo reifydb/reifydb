@@ -349,41 +349,8 @@ impl FrameColumnData {
 		}
 	}
 
-	pub fn is_bool(&self) -> bool {
-		self.get_type() == ValueType::Boolean
-	}
-
-	pub fn is_float(&self) -> bool {
-		self.get_type() == ValueType::Float4 || self.get_type() == ValueType::Float8
-	}
-
 	pub fn is_utf8(&self) -> bool {
 		self.get_type() == ValueType::Utf8
-	}
-
-	pub fn is_number(&self) -> bool {
-		matches!(
-			self.get_type(),
-			ValueType::Float4
-				| ValueType::Float8 | ValueType::Int1
-				| ValueType::Int2 | ValueType::Int4
-				| ValueType::Int8 | ValueType::Int16
-				| ValueType::Uint1 | ValueType::Uint2
-				| ValueType::Uint4 | ValueType::Uint8
-				| ValueType::Uint16
-		)
-	}
-
-	pub fn is_text(&self) -> bool {
-		self.get_type() == ValueType::Utf8
-	}
-
-	pub fn is_temporal(&self) -> bool {
-		matches!(self.get_type(), ValueType::Date | ValueType::DateTime | ValueType::Time | ValueType::Duration)
-	}
-
-	pub fn is_uuid(&self) -> bool {
-		matches!(self.get_type(), ValueType::Uuid4 | ValueType::Uuid7)
 	}
 
 	pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {

@@ -2,34 +2,34 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_buffer::BooleanBuffer;
+use arrow_select::filter::FilterPredicate;
 use reifydb_value::{
 	Result,
+	util::kernel,
 	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
 };
 
-use crate::value::column::{ColumnBuffer, ColumnWithName, buffer::with_container};
-
-impl ColumnWithName {
-	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
-		self.data.filter(mask)
-	}
-}
+use crate::value::column::{ColumnBuffer, buffer::with_container};
 
 impl ColumnBuffer {
 	pub fn filter(&mut self, mask: &BooleanBuffer) -> Result<()> {
+		self.filter_with(&kernel::predicate(mask, self.len()))
+	}
+
+	pub fn filter_with(&mut self, predicate: &FilterPredicate) -> Result<()> {
 		match self {
-			ColumnBuffer::Bool(a) => *a = bool_array::filter(a, mask),
-			ColumnBuffer::Uint16(a) => *a = primitive::filter(a, mask),
+			ColumnBuffer::Bool(a) => *a = bool_array::filter_with(a, predicate),
+			ColumnBuffer::Uint16(a) => *a = primitive::filter_with(a, predicate),
 			ColumnBuffer::DictionaryId {
 				container,
 				..
-			} => *container = dictionary_array::filter(container, mask),
+			} => *container = dictionary_array::filter_with(container, predicate),
 			_ => with_container!(
 				self,
-				|a| *a = primitive::filter(a, mask),
-				|t| *t = primitive::filter(t, mask),
-				|u| *u = uuid_array::filter(u, mask),
-				|v| *v = varlen_array::filter(v, mask)
+				|a| *a = primitive::filter_with(a, predicate),
+				|t| *t = primitive::filter_with(t, predicate),
+				|u| *u = uuid_array::filter_with(u, predicate),
+				|v| *v = varlen_array::filter_with(v, predicate)
 			),
 		}
 		Ok(())
@@ -38,7 +38,7 @@ impl ColumnBuffer {
 
 #[cfg(test)]
 pub mod tests {
-	use arrow_buffer::BooleanBuffer;
+	use arrow_buffer::{BooleanBuffer, NullBuffer};
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
@@ -200,5 +200,77 @@ pub mod tests {
 		assert!(!col.is_defined(1));
 		assert!(!col.is_defined(2));
 		assert_eq!(col.get_value(0), Value::DictionaryId(e1));
+	}
+	#[test]
+	fn filter_with_a_mask_longer_than_the_column_ignores_the_extra_bits() {
+		// A mask is sized for the batch, not for the column, so the bits past the end must select nothing
+		// instead of failing the kernel.
+		let mut col = ColumnBuffer::int4([1, 2, 3]);
+		let mask = BooleanBuffer::from(vec![true, false, true, true, true]);
+
+		col.filter(&mask).unwrap();
+
+		assert_eq!(col.len(), 2);
+		assert_eq!(col.get_value(0), Value::Int4(1));
+		assert_eq!(col.get_value(1), Value::Int4(3));
+	}
+
+	#[test]
+	fn filter_with_a_mask_shorter_than_the_column_drops_the_tail() {
+		// The rows past the end of the mask are unselected, never kept by default.
+		let mut col = ColumnBuffer::int4([1, 2, 3, 4]);
+		let mask = BooleanBuffer::from(vec![true, true]);
+
+		col.filter(&mask).unwrap();
+
+		assert_eq!(col.len(), 2);
+		assert_eq!(col.get_value(0), Value::Int4(1));
+		assert_eq!(col.get_value(1), Value::Int4(2));
+	}
+
+	#[test]
+	fn filter_keeps_an_all_valid_column_nullable() {
+		// Arrow drops a null buffer whose bits are all valid; without putting it back the column type flips
+		// from Option to bare.
+		let mut col = ColumnBuffer::int4([1, 2, 3]).replace_nulls(Some(NullBuffer::new_valid(3)));
+		assert_eq!(col.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+
+		col.filter(&BooleanBuffer::from(vec![true, false, true])).unwrap();
+
+		assert!(col.nulls().is_some());
+		assert_eq!(col.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+	}
+
+	#[test]
+	fn filter_with_an_all_false_mask_keeps_the_type_and_nullability() {
+		// An all-false mask makes arrow return a fresh empty array that carries neither the null buffer nor
+		// anything else of the source.
+		let mut col = ColumnBuffer::utf8_with_bitvec(["a", "b"], BooleanBuffer::from(vec![true, false]));
+
+		col.filter(&BooleanBuffer::from(vec![false, false])).unwrap();
+
+		assert_eq!(col.len(), 0);
+		assert!(col.nulls().is_some());
+		assert_eq!(col.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+	}
+
+	#[test]
+	fn filter_keeps_the_placeholder_bytes_under_a_none_row() {
+		// Serde bytes and equality see what is stored under a none row, so the filter must move those bytes
+		// across unchanged.
+		let mut col =
+			ColumnBuffer::utf8_with_bitvec(["keep", "hidden"], BooleanBuffer::from(vec![true, false]));
+
+		col.filter(&BooleanBuffer::from(vec![true, true])).unwrap();
+
+		let ColumnBuffer::Utf8 {
+			container,
+			..
+		} = &col
+		else {
+			panic!("expected a utf8 column");
+		};
+		assert_eq!(container.value(1), "hidden");
+		assert_eq!(col.get_value(1), Value::none_of(ValueType::Utf8));
 	}
 }

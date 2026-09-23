@@ -9,20 +9,3 @@ pub enum Selection {
 	None_,
 	Mask(BooleanBuffer),
 }
-
-impl Selection {
-	pub fn is_all(&self) -> bool {
-		matches!(self, Self::All)
-	}
-
-	pub fn is_none(&self) -> bool {
-		matches!(self, Self::None_)
-	}
-
-	pub fn as_mask(&self) -> Option<&BooleanBuffer> {
-		match self {
-			Self::Mask(m) => Some(m),
-			_ => None,
-		}
-	}
-}

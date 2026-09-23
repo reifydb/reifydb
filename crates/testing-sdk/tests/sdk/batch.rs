@@ -18,7 +18,7 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::{
 	config::Config,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{Value, blob::Blob, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
 struct Bar {
@@ -353,13 +353,13 @@ fn optional_scalar_some_and_none() {
 	let r1 = post.row_ref(1).expect("r1");
 	let r2 = post.row_ref(2).expect("r2");
 	let r3 = post.row_ref(3).expect("r3");
-	assert!(!r0.is_defined("v"));
+	assert!(matches!(r0.value("v"), Some(Value::None { .. })));
 	assert_eq!(r0.u64("v"), None);
-	assert!(r1.is_defined("v"));
+	assert!(!matches!(r1.value("v"), Some(Value::None { .. })));
 	assert_eq!(r1.u64("v"), Some(42));
-	assert!(!r2.is_defined("v"));
+	assert!(matches!(r2.value("v"), Some(Value::None { .. })));
 	assert_eq!(r2.u64("v"), None);
-	assert!(r3.is_defined("v"));
+	assert!(!matches!(r3.value("v"), Some(Value::None { .. })));
 	assert_eq!(r3.u64("v"), Some(u64::MAX));
 }
 
@@ -421,13 +421,13 @@ fn optional_string_some_and_none() {
 	let r1 = post.row_ref(1).expect("r1");
 	let r2 = post.row_ref(2).expect("r2");
 	let r3 = post.row_ref(3).expect("r3");
-	assert!(!r0.is_defined("s"));
+	assert!(matches!(r0.value("s"), Some(Value::None { .. })));
 	assert_eq!(r0.utf8("s"), None);
-	assert!(r1.is_defined("s"));
+	assert!(!matches!(r1.value("s"), Some(Value::None { .. })));
 	assert_eq!(r1.utf8("s").as_deref(), Some("hi"));
-	assert!(!r2.is_defined("s"));
+	assert!(matches!(r2.value("s"), Some(Value::None { .. })));
 	assert_eq!(r2.utf8("s"), None);
-	assert!(r3.is_defined("s"));
+	assert!(!matches!(r3.value("s"), Some(Value::None { .. })));
 	assert_eq!(r3.utf8("s").as_deref(), Some(""));
 }
 
@@ -482,10 +482,20 @@ fn optional_blob_some_and_none() {
 	let r0 = post.row_ref(0).expect("r0");
 	let r1 = post.row_ref(1).expect("r1");
 	let r2 = post.row_ref(2).expect("r2");
-	assert!(!r0.is_defined("b"));
-	assert_eq!(r0.blob("b"), None);
-	assert!(r1.is_defined("b"));
-	assert_eq!(r1.blob("b"), Some(vec![1u8, 2, 3]));
-	assert!(!r2.is_defined("b"));
-	assert_eq!(r2.blob("b"), None);
+	assert!(matches!(r0.value("b"), Some(Value::None { .. })));
+	assert_eq!(
+		r0.value("b"),
+		Some(Value::None {
+			inner: ValueType::Blob
+		})
+	);
+	assert!(!matches!(r1.value("b"), Some(Value::None { .. })));
+	assert_eq!(r1.value("b"), Some(Value::Blob(Blob::new(vec![1u8, 2, 3]))));
+	assert!(matches!(r2.value("b"), Some(Value::None { .. })));
+	assert_eq!(
+		r2.value("b"),
+		Some(Value::None {
+			inner: ValueType::Blob
+		})
+	);
 }

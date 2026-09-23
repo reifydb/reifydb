@@ -4,15 +4,24 @@
 use std::{
 	iter::{Enumerate, FilterMap},
 	mem,
+	sync::Arc,
 	vec::IntoIter as VecIntoIter,
 };
 
+use arrow_array::{Array, ArrayRef};
+use arrow_row::{RowConverter, Rows, SortField};
+use arrow_schema::ArrowError;
 use indexmap::IndexMap;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_value::{Result, error::Error, value::Value};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::{
 	error::CoreError,
+	internal_error,
 	metrics::heap::HeapSize,
 	value::column::{ColumnBuffer, columns::Columns},
 };
@@ -55,10 +64,6 @@ impl<T> GroupSlots<T> {
 		self.occupied
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.occupied == 0
-	}
-
 	pub fn get(&self, group: GroupId) -> Option<&T> {
 		self.slots.get(group.index()).and_then(Option::as_ref)
 	}
@@ -88,21 +93,6 @@ impl<T> GroupSlots<T> {
 			self.occupied -= 1;
 		}
 		removed
-	}
-
-	pub fn iter(&self) -> impl Iterator<Item = (GroupId, &T)> {
-		self.slots
-			.iter()
-			.enumerate()
-			.filter_map(|(index, slot)| slot.as_ref().map(|value| (GroupId(index as u32), value)))
-	}
-
-	pub fn drain(&mut self) -> impl Iterator<Item = (GroupId, T)> + '_ {
-		self.occupied = 0;
-		self.slots
-			.drain(..)
-			.enumerate()
-			.filter_map(|(index, slot)| slot.map(|value| (GroupId(index as u32), value)))
 	}
 
 	fn reserve_for(&mut self, group: GroupId) {
@@ -137,21 +127,19 @@ impl<T> IntoIterator for GroupSlots<T> {
 #[derive(Debug, Default, Clone)]
 pub struct GroupKeyDict {
 	entries: IndexMap<EncodedKey, GroupKey>,
+	converter: Option<Arc<RowConverter>>,
 }
 
 impl GroupKeyDict {
 	pub fn new() -> Self {
 		Self {
 			entries: IndexMap::new(),
+			converter: None,
 		}
 	}
 
 	pub fn len(&self) -> usize {
 		self.entries.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.entries.is_empty()
 	}
 
 	pub fn values(&self, group: GroupId) -> Option<&GroupKey> {
@@ -169,6 +157,29 @@ impl GroupKeyDict {
 		let (index, _) = self.entries.insert_full(encoded.clone(), materialize());
 		GroupId(index as u32)
 	}
+
+	fn row_keys(&mut self, arrays: &[ArrayRef]) -> Result<Rows> {
+		let converter = match &self.converter {
+			Some(converter) => converter.clone(),
+			None => {
+				let fields =
+					arrays.iter().map(|array| SortField::new(array.data_type().clone())).collect();
+				let converter = Arc::new(RowConverter::new(fields).map_err(group_key_error)?);
+				self.converter = Some(converter.clone());
+				converter
+			}
+		};
+		converter.convert_columns(arrays).map_err(group_key_error)
+	}
+}
+
+fn group_key_error(error: ArrowError) -> Error {
+	internal_error!("Failed to build group keys: {}", error)
+}
+
+fn row_format_matches_value_key(column: &ColumnBuffer) -> bool {
+	let ty = column.get_type();
+	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8)
 }
 
 impl HeapSize for GroupKeyDict {
@@ -184,17 +195,38 @@ impl Columns {
 		let row_count = self.columns.first().map_or(0, |c| c.len());
 		let key_columns = self.key_columns(keys)?;
 
+		let arrays: Vec<ArrayRef> = key_columns
+			.iter()
+			.copied()
+			.filter(|column| row_format_matches_value_key(column))
+			.map(ColumnBuffer::to_array_ref)
+			.collect();
+		let value_columns: Vec<&ColumnBuffer> =
+			key_columns.iter().copied().filter(|column| !row_format_matches_value_key(column)).collect();
+		let row_keys = match arrays.is_empty() {
+			true => None,
+			false => Some(dict.row_keys(&arrays)?),
+		};
+
 		let mut rows_by_group: IndexMap<GroupId, Vec<usize>> = IndexMap::new();
+		let mut bytes: Vec<u8> = Vec::new();
 
 		for row in 0..row_count {
-			let mut serializer = KeySerializer::new();
-			for column in &key_columns {
-				column.extend_key(row, &mut serializer)?;
+			bytes.clear();
+			if let Some(row_keys) = &row_keys {
+				bytes.extend_from_slice(row_keys.row(row).as_ref());
 			}
-			let encoded = serializer.to_encoded_key();
+			if !value_columns.is_empty() {
+				let mut serializer = KeySerializer::new();
+				for column in &value_columns {
+					column.extend_key(row, &mut serializer)?;
+				}
+				bytes.extend_from_slice(serializer.to_encoded_key().as_bytes());
+			}
 
-			let group = dict
-				.intern(&encoded, || key_columns.iter().map(|column| column.get_value(row)).collect());
+			let group = dict.intern(&EncodedKey::new(&bytes), || {
+				key_columns.iter().map(|column| column.get_value(row)).collect()
+			});
 			rows_by_group.entry(group).or_default().push(row);
 		}
 

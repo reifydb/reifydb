@@ -9,14 +9,13 @@ use reifydb_value::{
 	value::{Value, value_type::ValueType},
 };
 
-use crate::value::column::{buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId, stats::StatsSet};
+use crate::value::column::{buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId};
 
 #[derive(Clone, Debug)]
 pub struct Canonical {
 	pub ty: ValueType,
 	pub nullable: bool,
 	pub buffer: ColumnBuffer,
-	stats: StatsSet,
 }
 
 impl Canonical {
@@ -26,7 +25,6 @@ impl Canonical {
 			ty,
 			nullable,
 			buffer,
-			stats: StatsSet::new(),
 		}
 	}
 
@@ -36,7 +34,6 @@ impl Canonical {
 			ty: buffer.base_type(),
 			nullable: buffer.nulls().is_some(),
 			buffer,
-			stats: StatsSet::new(),
 		}
 	}
 
@@ -59,10 +56,6 @@ impl Canonical {
 	pub fn is_empty(&self) -> bool {
 		self.len() == 0
 	}
-
-	pub fn stats(&self) -> &StatsSet {
-		&self.stats
-	}
 }
 
 pub fn encoding_for_type(ty: &ValueType) -> EncodingId {
@@ -79,20 +72,12 @@ pub fn encoding_for_type(ty: &ValueType) -> EncodingId {
 }
 
 impl ColumnData for Canonical {
-	fn ty(&self) -> ValueType {
-		self.ty.clone()
-	}
-
 	fn len(&self) -> usize {
 		self.buffer.len()
 	}
 
 	fn encoding(&self) -> EncodingId {
 		encoding_for_type(&self.ty)
-	}
-
-	fn stats(&self) -> &StatsSet {
-		&self.stats
 	}
 
 	fn nones(&self) -> Option<&NullBuffer> {
@@ -108,10 +93,6 @@ impl ColumnData for Canonical {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 

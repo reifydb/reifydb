@@ -20,12 +20,6 @@ pub enum ColumnError {
 		operation: &'static str,
 	},
 
-	#[error("take: indices must be a fixed-width integer array")]
-	TakeIndicesNotFixed,
-
-	#[error("take: indices must be U8/U16/U32/U64 or I32/I64")]
-	TakeIndicesWrongWidth,
-
 	#[error("Canonical::from_column_buffer: {variant} not yet supported")]
 	FromColumnDataUnsupported {
 		variant: &'static str,
@@ -57,9 +51,6 @@ pub enum ColumnError {
 
 	#[error("predicate::evaluate: compare did not return a bool array")]
 	PredicateCompareNotBool,
-
-	#[error("search_sorted: storage/needle type mismatch or unsupported")]
-	SearchSortedTypeMismatch,
 
 	#[error("min_max: empty array has no min/max")]
 	MinMaxEmpty,
@@ -114,32 +105,6 @@ impl IntoDiagnostic for ColumnError {
 				code: "COL_004".to_string(),
 				rql: None,
 				message: format!("{operation}: only FixedArray storage supported in v1"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::TakeIndicesNotFixed => Diagnostic {
-				code: "COL_005".to_string(),
-				rql: None,
-				message: "take: indices must be a fixed-width integer array".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::TakeIndicesWrongWidth => Diagnostic {
-				code: "COL_006".to_string(),
-				rql: None,
-				message: "take: indices must be U8/U16/U32/U64 or I32/I64".to_string(),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
@@ -242,19 +207,6 @@ impl IntoDiagnostic for ColumnError {
 				code: "COL_013".to_string(),
 				rql: None,
 				message: "predicate::evaluate: compare did not return a bool array".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::SearchSortedTypeMismatch => Diagnostic {
-				code: "COL_014".to_string(),
-				rql: None,
-				message: "search_sorted: storage/needle type mismatch or unsupported".to_string(),
 				column: None,
 				fragment: Fragment::None,
 				label: None,

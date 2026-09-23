@@ -6,13 +6,30 @@
 //! The dict interns each distinct group once: the encoded byte key decides identity, and the `Vec<Value>` the caller
 //! needs for output is materialized only on the first row of a group rather than on every row.
 
+use std::str::FromStr;
+
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
 	view::group_by::{GroupId, GroupKeyDict},
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	dictionary::DictionaryEntryId,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	time::Time,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
+};
+use uuid::Uuid;
 
 fn frame(spec: Vec<(&str, ColumnBuffer)>) -> Columns {
 	Columns::new(spec.into_iter().map(|(name, data)| ColumnWithName::new(name, data)).collect())
@@ -140,7 +157,7 @@ fn an_empty_column_set_produces_no_groups() {
 	let groups = group_rows(&columns, &["name"], &mut dict);
 
 	assert!(groups.is_empty());
-	assert!(dict.is_empty());
+	assert_eq!(dict.len(), 0);
 }
 
 #[test]
@@ -175,5 +192,210 @@ fn every_row_is_attributed_to_the_group_its_values_name() {
 		assert_eq!(group.0 as usize, index, "ids must be dense in first-appearance order");
 		assert_eq!(rows, expected_rows, "row membership for {expected_key:?} must match");
 		assert_eq!(dict.values(*group), Some(expected_key), "the dict must retain the key values verbatim");
+	}
+}
+
+#[test]
+fn group_by_dictionary_id_width_splits_groups() {
+	// Entry ids of different widths are different keys, so a narrower id must never merge into a wider one.
+	let column = ColumnBuffer::dictionary_id([
+		DictionaryEntryId::U1(5),
+		DictionaryEntryId::U2(5),
+		DictionaryEntryId::U1(5),
+		DictionaryEntryId::U2(256),
+	]);
+	let columns = frame(vec![("entry", column)]);
+	let mut dict = GroupKeyDict::new();
+
+	let groups = group_rows(&columns, &["entry"], &mut dict);
+
+	assert_eq!(dict.len(), 3, "u1(5), u2(5) and u2(256) are three distinct keys");
+	assert_eq!(groups[0].1, vec![0, 2], "both u1(5) rows must share one group");
+	assert_eq!(groups[1].1, vec![1]);
+	assert_eq!(groups[2].1, vec![3]);
+}
+
+#[test]
+fn group_by_decimal_scale_splits_groups() {
+	// The key carries the scale, so numerically equal decimals of different scale must not collapse into one group.
+	let decimal = |text: &str| Decimal::from_str(text).expect("a decimal literal");
+	let column = ColumnBuffer::decimal([decimal("1.0"), decimal("1.00"), decimal("1.0"), decimal("0.5")]);
+	let columns = frame(vec![("amount", column)]);
+	let mut dict = GroupKeyDict::new();
+
+	let groups = group_rows(&columns, &["amount"], &mut dict);
+
+	assert_eq!(dict.len(), 3, "1.0, 1.00 and 0.5 are three distinct keys");
+	assert_eq!(groups[0].1, vec![0, 2], "both 1.0 rows must share one group");
+	assert_eq!(groups[1].1, vec![1]);
+	assert_eq!(groups[2].1, vec![3]);
+}
+
+fn decimal(text: &str) -> Decimal {
+	Decimal::from_str(text).expect("a decimal literal")
+}
+
+fn uuid(bits: u128) -> Uuid {
+	Uuid::from_u128(bits)
+}
+
+fn scalar_key_cases() -> Vec<(&'static str, ValueType, Value, Value)> {
+	vec![
+		("boolean", ValueType::Boolean, Value::Boolean(true), Value::Boolean(false)),
+		("int1", ValueType::Int1, Value::Int1(-1), Value::Int1(127)),
+		("int2", ValueType::Int2, Value::Int2(-300), Value::Int2(300)),
+		("int4", ValueType::Int4, Value::Int4(-70_000), Value::Int4(70_000)),
+		("int8", ValueType::Int8, Value::Int8(i64::MIN), Value::Int8(i64::MAX)),
+		("int16", ValueType::Int16, Value::Int16(i128::MIN), Value::Int16(i128::MAX)),
+		("uint1", ValueType::Uint1, Value::Uint1(0), Value::Uint1(255)),
+		("uint2", ValueType::Uint2, Value::Uint2(1), Value::Uint2(u16::MAX)),
+		("uint4", ValueType::Uint4, Value::Uint4(1), Value::Uint4(u32::MAX)),
+		("uint8", ValueType::Uint8, Value::Uint8(1), Value::Uint8(u64::MAX)),
+		("uint16", ValueType::Uint16, Value::Uint16(1), Value::Uint16(u128::MAX)),
+		("utf8", ValueType::Utf8, Value::Utf8("a".to_string()), Value::Utf8(String::new())),
+		(
+			"date",
+			ValueType::Date,
+			Value::Date(Date::from_ymd(1970, 1, 1).unwrap()),
+			Value::Date(Date::from_ymd(2026, 9, 23).unwrap()),
+		),
+		(
+			"datetime",
+			ValueType::DateTime,
+			Value::DateTime(DateTime::from_nanos(0)),
+			Value::DateTime(DateTime::from_nanos(1_758_500_000_123_456_789)),
+		),
+		(
+			"time",
+			ValueType::Time,
+			Value::Time(Time::from_hms_nano(0, 0, 0, 0).unwrap()),
+			Value::Time(Time::from_hms_nano(23, 59, 59, 999_999_999).unwrap()),
+		),
+		(
+			"duration",
+			ValueType::Duration,
+			Value::Duration(Duration::new(1, 0, 0).unwrap()),
+			Value::Duration(Duration::new(0, 30, 0).unwrap()),
+		),
+		(
+			"identity_id",
+			ValueType::IdentityId,
+			Value::IdentityId(IdentityId(Uuid7(uuid(1)))),
+			Value::IdentityId(IdentityId(Uuid7(uuid(2)))),
+		),
+		("uuid4", ValueType::Uuid4, Value::Uuid4(Uuid4(uuid(3))), Value::Uuid4(Uuid4(uuid(4)))),
+		("uuid7", ValueType::Uuid7, Value::Uuid7(Uuid7(uuid(5))), Value::Uuid7(Uuid7(uuid(6)))),
+		("blob", ValueType::Blob, Value::Blob(Blob::new(vec![])), Value::Blob(Blob::new(vec![0, 255, 7]))),
+		("int", ValueType::Int, Value::Int(Int::from(i128::MIN)), Value::Int(Int::from(i128::MAX))),
+		("uint", ValueType::Uint, Value::Uint(Uint::from(0u64)), Value::Uint(Uint::from(u128::MAX))),
+		("decimal", ValueType::Decimal, Value::Decimal(decimal("-1.25")), Value::Decimal(decimal("1.25"))),
+		(
+			"dictionary_id",
+			ValueType::DictionaryId,
+			Value::DictionaryId(DictionaryEntryId::U1(7)),
+			Value::DictionaryId(DictionaryEntryId::U8(7)),
+		),
+	]
+}
+
+#[test]
+fn every_scalar_key_type_groups_by_the_values_it_holds() {
+	// A key encoding that dropped a type's payload would merge two distinct keys into one group, and one
+	// that dropped the none marker would split the none rows apart or fold them into a value group.
+	for (name, ty, first, second) in scalar_key_cases() {
+		let none = Value::None {
+			inner: ty.clone(),
+		};
+		let column =
+			column_of(ty.clone(), vec![first.clone(), second.clone(), none.clone(), first.clone(), none]);
+		let columns = frame(vec![("key", column)]);
+		let mut dict = GroupKeyDict::new();
+
+		let groups = group_rows(&columns, &["key"], &mut dict);
+
+		assert_eq!(dict.len(), 3, "{name}: two values and the none rows are three distinct keys");
+		assert_eq!(groups.len(), 3, "{name}: three keys must produce three groups");
+		assert_eq!(groups[0].1, vec![0, 3], "{name}: both rows holding the first value must share a group");
+		assert_eq!(groups[1].1, vec![1], "{name}: the second value must keep a group of its own");
+		assert_eq!(groups[2].1, vec![2, 4], "{name}: the none rows must group with each other");
+		assert_eq!(
+			dict.values(GroupId(0)),
+			Some(&vec![first]),
+			"{name}: the dict must retain the key value for output projection"
+		);
+		assert_eq!(dict.values(GroupId(1)), Some(&vec![second]), "{name}: the second key value must survive");
+		assert!(
+			matches!(dict.values(GroupId(2)).map(Vec::as_slice), Some([Value::None { .. }])),
+			"{name}: the none group must materialize a none key value"
+		);
+	}
+}
+
+#[test]
+fn positive_and_negative_zero_share_one_float_group() {
+	// The value key normalizes -0.0 to 0.0, so a key path comparing raw float bits would split one group in two.
+	let columns = frame(vec![("amount", ColumnBuffer::float8([0.0, -0.0, 0.0, 1.5]))]);
+	let mut dict = GroupKeyDict::new();
+
+	let groups = group_rows(&columns, &["amount"], &mut dict);
+
+	assert_eq!(dict.len(), 2, "0.0 and -0.0 are one key");
+	assert_eq!(groups[0].1, vec![0, 1, 2]);
+	assert_eq!(groups[1].1, vec![3]);
+}
+
+#[test]
+fn duration_months_days_and_nanos_are_separate_parts_of_the_group_key() {
+	// A month, thirty days and an hour carry different components, so folding a duration onto a single
+	// nanosecond count would merge three keys into one.
+	let column = ColumnBuffer::duration([
+		Duration::new(1, 0, 0).unwrap(),
+		Duration::new(0, 30, 0).unwrap(),
+		Duration::new(0, 0, 3_600_000_000_000).unwrap(),
+		Duration::new(1, 0, 0).unwrap(),
+	]);
+	let columns = frame(vec![("span", column)]);
+	let mut dict = GroupKeyDict::new();
+
+	let groups = group_rows(&columns, &["span"], &mut dict);
+
+	assert_eq!(dict.len(), 3, "a month, thirty days and an hour are three distinct keys");
+	assert_eq!(groups[0].1, vec![0, 3], "both one-month rows must share a group");
+	assert_eq!(groups[1].1, vec![1]);
+	assert_eq!(groups[2].1, vec![2]);
+}
+
+#[test]
+fn a_composite_scalar_key_keeps_its_ids_across_batches() {
+	// Group identity spans batches, so a key encoding rebuilt per batch must yield the same bytes or the
+	// second batch mints fresh ids for keys already interned.
+	let mut dict = GroupKeyDict::new();
+
+	let first = frame(vec![("region", utf8_column(&["eu", "us"])), ("tier", int4_column(&[1, 2]))]);
+	let first_groups = group_rows(&first, &["region", "tier"], &mut dict);
+	assert_eq!(first_groups.iter().map(|(id, _)| id.0).collect::<Vec<_>>(), vec![0, 1]);
+
+	let second = frame(vec![("region", utf8_column(&["us", "eu", "ap"])), ("tier", int4_column(&[2, 1, 1]))]);
+	let second_groups = group_rows(&second, &["region", "tier"], &mut dict);
+
+	assert_eq!(
+		second_groups.iter().map(|(id, _)| id.0).collect::<Vec<_>>(),
+		vec![1, 0, 2],
+		"(us,2) and (eu,1) must keep the ids the first batch gave them"
+	);
+	assert_eq!(dict.len(), 3, "only (ap,1) is new");
+}
+
+#[test]
+fn a_key_column_with_no_rows_produces_no_groups_for_any_scalar_type() {
+	// An empty batch must not intern anything, whatever the key type, or a later batch inherits a phantom group.
+	for (name, ty, _, _) in scalar_key_cases() {
+		let columns = frame(vec![("key", column_of(ty, vec![]))]);
+		let mut dict = GroupKeyDict::new();
+
+		let groups = group_rows(&columns, &["key"], &mut dict);
+
+		assert!(groups.is_empty(), "{name}: an empty column must produce no groups");
+		assert_eq!(dict.len(), 0, "{name}: an empty column must intern nothing");
 	}
 }

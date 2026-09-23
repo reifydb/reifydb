@@ -5,11 +5,12 @@ use std::{mem::ManuallyDrop, ops::Deref, result::Result as StdResult, slice};
 
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_buffer::{BooleanBuffer, Buffer, MutableBuffer, NullBuffer};
+use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
 use crate::{
-	util::bitmap,
+	util::{bitmap, kernel},
 	value::{
 		Value,
 		identity::IdentityId,
@@ -112,14 +113,13 @@ pub fn take(array: &FixedSizeBinaryArray, num: usize) -> FixedSizeBinaryArray {
 }
 
 pub fn filter(array: &FixedSizeBinaryArray, mask: &BooleanBuffer) -> FixedSizeBinaryArray {
-	let bytes = rows(array);
-	let mut kept = MutableBuffer::with_capacity(mask.count_set_bits() * UUID_WIDTH);
-	for (i, keep) in mask.iter().enumerate() {
-		if keep && i < array.len() {
-			kept.extend_from_slice(&bytes[i * UUID_WIDTH..(i + 1) * UUID_WIDTH]);
-		}
-	}
-	attach_nulls(from_buffer(kept), bitmap::filter_nulls(array.nulls(), mask))
+	filter_with(array, &kernel::predicate(mask, array.len()))
+}
+
+pub fn filter_with(array: &FixedSizeBinaryArray, predicate: &FilterPredicate) -> FixedSizeBinaryArray {
+	let selected = kernel::filtered(array, predicate);
+	let nulls = kernel::kept_nulls(array, &selected);
+	attach_nulls(selected, nulls)
 }
 
 pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBinaryArray {

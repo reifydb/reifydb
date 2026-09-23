@@ -15,7 +15,7 @@ use reifydb_value::{
 	error,
 	fragment::Fragment,
 	util::hash::{Hash128, xxh3_128},
-	value::{Value, value_type::ValueType},
+	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
 use crate::{
@@ -44,6 +44,47 @@ pub(crate) fn load_and_merge_all<'a>(
 	}
 	let result = result.unwrap_or_else(Columns::empty);
 	Ok(result)
+}
+
+pub(crate) const NO_MATCH: usize = usize::MAX;
+
+pub(crate) struct JoinSlot<'a> {
+	pub columns: &'a [ColumnBuffer],
+	pub picks: &'a [usize],
+}
+
+pub(crate) fn materialize_join(
+	qualified_names: &[String],
+	left_slots: &[JoinSlot<'_>],
+	right_columns: &[ColumnBuffer],
+	right_picks: &[usize],
+	row_numbers: Vec<RowNumber>,
+	has_row_numbers: bool,
+) -> Result<Columns> {
+	let left_width = left_slots.first().map_or(0, |slot| slot.columns.len());
+	let mut picked: Vec<ColumnWithName> = Vec::with_capacity(left_width + right_columns.len());
+
+	for index in 0..left_width {
+		let parts: Vec<ColumnBuffer> =
+			left_slots.iter().map(|slot| slot.columns[index].extract_rows(slot.picks)).collect();
+		let name = Fragment::internal(&qualified_names[picked.len()]);
+		picked.push(ColumnWithName::new(name, ColumnBuffer::concat(&parts)?));
+	}
+
+	for column in right_columns {
+		let name = Fragment::internal(&qualified_names[picked.len()]);
+		picked.push(ColumnWithName::new(name, column.extract_rows(right_picks)));
+	}
+
+	let mut columns = if row_numbers.is_empty() {
+		Columns::new(picked)
+	} else {
+		Columns::new(picked).with_row_numbers(row_numbers)
+	};
+	if has_row_numbers {
+		columns.system.mark_row_numbers();
+	}
+	Ok(columns)
 }
 
 pub struct ResolvedColumnNames {

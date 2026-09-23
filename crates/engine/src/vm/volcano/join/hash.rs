@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
 	interface::identifier::ColumnObject,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -14,18 +14,12 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_rql::expression::{AccessObjectExpression, Expression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	error,
-	fragment::Fragment,
-	reifydb_assertions,
-	util::hash::Hash128,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_value::{error, fragment::Fragment, reifydb_assertions, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, compute_join_hash, ensure_join_keyable, eval_join_condition, keys_equal_by_index,
-	load_and_merge_all, resolve_column_names,
+	JoinContext, JoinSlot, NO_MATCH, compute_join_hash, ensure_join_keyable, eval_join_condition,
+	keys_equal_by_index, load_and_merge_all, materialize_join, resolve_column_names,
 };
 use crate::{
 	Result,
@@ -144,7 +138,7 @@ struct HashJoinState {
 	build_columns: Columns,
 	hash_table: HashMap<Hash128, Vec<usize>>,
 	resolved_names: Vec<String>,
-	right_width: usize,
+	probe_shells: Vec<ColumnBuffer>,
 	right_key_indices: Vec<usize>,
 	left_key_indices: Vec<usize>,
 
@@ -221,27 +215,47 @@ impl HashJoinNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::materialize")]
 	fn materialize(
-		resolved_names: &[String],
-		result_rows: Vec<Vec<Value>>,
+		state: &HashJoinState,
+		probe_slots: &[ProbeSlot],
+		build_picks: &[usize],
 		result_row_numbers: Vec<RowNumber>,
 		has_row_numbers: bool,
-	) -> Columns {
-		let names_refs: Vec<&str> = resolved_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = if result_row_numbers.is_empty() {
-			Columns::from_rows(&names_refs, &result_rows)
+	) -> Result<Columns> {
+		let slots: Vec<JoinSlot<'_>> = if probe_slots.is_empty() {
+			vec![JoinSlot {
+				columns: &state.probe_shells,
+				picks: &[],
+			}]
 		} else {
-			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
+			probe_slots
+				.iter()
+				.map(|slot| JoinSlot {
+					columns: &slot.columns,
+					picks: &slot.picks,
+				})
+				.collect()
 		};
-		if has_row_numbers {
-			columns.system.mark_row_numbers();
+		materialize_join(
+			&state.resolved_names,
+			&slots,
+			&state.build_columns.columns,
+			build_picks,
+			result_row_numbers,
+			has_row_numbers,
+		)
+	}
+
+	fn resolve_without_probe(alias: &Option<Fragment>, state: &mut HashJoinState) {
+		if state.resolved_names.is_empty() {
+			let empty_left = Columns::empty();
+			let resolved = resolve_column_names(&empty_left, &state.build_columns, alias, None);
+			state.resolved_names = resolved.qualified_names;
 		}
-		columns
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::build")]
 	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
-		let right_width = build_columns.len();
 
 		let right_key_indices: Vec<usize> = if build_columns.is_empty() {
 			Vec::new()
@@ -269,7 +283,7 @@ impl HashJoinNode {
 			build_columns,
 			hash_table,
 			resolved_names: Vec::new(),
-			right_width,
+			probe_shells: Vec::new(),
 			right_key_indices,
 			left_key_indices: Vec::new(),
 			probe_batch: None,
@@ -284,6 +298,15 @@ impl HashJoinNode {
 
 		Ok(())
 	}
+}
+
+struct ProbeSlot {
+	columns: Vec<ColumnBuffer>,
+	picks: Vec<usize>,
+}
+
+fn picked(slots: &mut [ProbeSlot]) -> &mut Vec<usize> {
+	&mut slots.last_mut().expect("the probe batch owning this row is registered before the row is picked").picks
 }
 
 type KeyNamePairs = Vec<(String, Fragment)>;
@@ -355,21 +378,24 @@ impl QueryNode for HashJoinNode {
 				self.state = Some(state);
 				return Ok(None);
 			}
-			if state.resolved_names.is_empty() {
-				let empty_left = Columns::empty();
-				let resolved =
-					resolve_column_names(&empty_left, &state.build_columns, &self.alias, None);
-				state.resolved_names = resolved.qualified_names;
-			}
+			Self::resolve_without_probe(&self.alias, &mut state);
 			let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
-			let columns = Self::materialize(&state.resolved_names, Vec::new(), Vec::new(), left_rownum);
+			let columns = Self::materialize(&state, &[], &[], Vec::new(), left_rownum)?;
 			self.headers = Some(ColumnHeaders::from_columns(&columns));
 			self.state = Some(state);
 			return Ok(Some(columns));
 		}
 
-		let mut result_rows: Vec<Vec<Value>> = Vec::new();
+		let mut probe_slots: Vec<ProbeSlot> = Vec::new();
+		let mut build_picks: Vec<usize> = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
+
+		if let Some(batch) = state.probe_batch.as_ref() {
+			probe_slots.push(ProbeSlot {
+				columns: batch.columns.clone(),
+				picks: Vec::new(),
+			});
+		}
 
 		let resolve_names_and_indices = |state: &mut HashJoinState,
 		                                 probe: &Columns,
@@ -378,6 +404,8 @@ impl QueryNode for HashJoinNode {
 			if state.resolved_names.is_empty() {
 				let resolved = resolve_column_names(probe, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
+				state.probe_shells =
+					probe.columns.iter().map(|column| column.extract_rows(&[])).collect();
 			}
 			if state.left_key_indices.is_empty() {
 				state.left_key_indices =
@@ -386,7 +414,7 @@ impl QueryNode for HashJoinNode {
 			Ok(())
 		};
 
-		while result_rows.len() < batch_size {
+		while build_picks.len() < batch_size {
 			if state.probe_batch.is_none() {
 				if state.probe_exhausted {
 					break;
@@ -403,6 +431,10 @@ impl QueryNode for HashJoinNode {
 							state.probe_batch = None;
 							continue;
 						}
+						probe_slots.push(ProbeSlot {
+							columns: probe.columns.clone(),
+							picks: Vec::new(),
+						});
 						state.current_matches = compute_matches_for_probe_row(
 							&state.hash_table,
 							&state.build_columns,
@@ -427,10 +459,8 @@ impl QueryNode for HashJoinNode {
 
 			if state.current_match_idx >= state.current_matches.len() {
 				if self.mode == HashJoinMode::Left && !state.current_row_matched {
-					let left_row = probe.get_row(state.probe_row_idx);
-					let mut combined = left_row;
-					combined.extend(vec![Value::none(); state.right_width]);
-					result_rows.push(combined);
+					picked(&mut probe_slots).push(state.probe_row_idx);
+					build_picks.push(NO_MATCH);
 					if !probe.row_numbers().is_empty() {
 						result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
 					}
@@ -459,11 +489,10 @@ impl QueryNode for HashJoinNode {
 			let build_idx = state.current_matches[state.current_match_idx];
 			state.current_match_idx += 1;
 
-			let left_row = probe.get_row(state.probe_row_idx);
-			let right_row = state.build_columns.get_row(build_idx);
-
-			if !state.compiled_residual.is_empty()
-				&& !eval_join_condition(
+			if !state.compiled_residual.is_empty() {
+				let left_row = probe.get_row(state.probe_row_idx);
+				let right_row = state.build_columns.get_row(build_idx);
+				if !eval_join_condition(
 					&state.compiled_residual,
 					probe,
 					&state.build_columns,
@@ -472,13 +501,13 @@ impl QueryNode for HashJoinNode {
 					&self.alias,
 					&stored_ctx,
 				)? {
-				continue;
+					continue;
+				}
 			}
 
 			state.current_row_matched = true;
-			let mut combined = left_row;
-			combined.extend(right_row);
-			result_rows.push(combined);
+			picked(&mut probe_slots).push(state.probe_row_idx);
+			build_picks.push(build_idx);
 			if !probe.row_numbers().is_empty() {
 				result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
 			}
@@ -487,35 +516,22 @@ impl QueryNode for HashJoinNode {
 		self.state = Some(state);
 		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 
-		if result_rows.is_empty() {
+		if build_picks.is_empty() {
 			if self.headers.is_some() {
 				return Ok(None);
 			}
-			if let Some(ref mut state) = self.state {
-				if state.resolved_names.is_empty() {
-					let empty_left = Columns::empty();
-					let resolved = resolve_column_names(
-						&empty_left,
-						&state.build_columns,
-						&self.alias,
-						None,
-					);
-					state.resolved_names = resolved.qualified_names;
-				}
-				let columns = Self::materialize(
-					&state.resolved_names,
-					result_rows,
-					result_row_numbers,
-					left_rownum,
-				);
-				self.headers = Some(ColumnHeaders::from_columns(&columns));
-				return Ok(Some(columns));
-			}
-			return Ok(None);
+			let Some(state) = self.state.as_mut() else {
+				return Ok(None);
+			};
+			Self::resolve_without_probe(&self.alias, state);
+			let columns =
+				Self::materialize(state, &probe_slots, &build_picks, result_row_numbers, left_rownum)?;
+			self.headers = Some(ColumnHeaders::from_columns(&columns));
+			return Ok(Some(columns));
 		}
 
 		let state = self.state.as_ref().unwrap();
-		let columns = Self::materialize(&state.resolved_names, result_rows, result_row_numbers, left_rownum);
+		let columns = Self::materialize(state, &probe_slots, &build_picks, result_row_numbers, left_rownum)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))

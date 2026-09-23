@@ -4,9 +4,7 @@
 use std::collections::HashMap;
 
 use arrow_buffer::BooleanBuffer;
-use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
-};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
 use reifydb_evaluate::{expression::branch::BranchLayout, stack::Variable};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
@@ -87,16 +85,7 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &Bool
 		.zip(new_value.columns.iter())
 		.enumerate()
 		.map(|(idx, (old_col, new_col))| {
-			let result_type = old_col.get_type();
-			let mut data = ColumnBuilder::with_capacity(result_type, len);
-			for i in 0..len {
-				if mask.value(i) {
-					data.push_value(new_col.get_value(i));
-				} else {
-					data.push_value(old_col.get_value(i));
-				}
-			}
-			ColumnWithName::new(existing.name_at(idx).clone(), data.finish())
+			ColumnWithName::new(existing.name_at(idx).clone(), old_col.merge_rows(new_col, mask, len))
 		})
 		.collect();
 
@@ -672,7 +661,7 @@ impl<'a> Vm<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{ColumnWithName, columns::Columns};
+	use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{Value, value_type::ValueType},

@@ -120,6 +120,8 @@ mod interceptor;
 mod join_digest_key;
 #[path = "join_natural.rs"]
 mod join_natural;
+#[path = "join_output_columns.rs"]
+mod join_output_columns;
 #[path = "join_retention_ddl.rs"]
 mod join_retention_ddl;
 #[path = "join_using_condition_fragment.rs"]
@@ -190,6 +192,8 @@ mod series_update_tag;
 mod series_write_coercion;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "sort_key_order.rs"]
+mod sort_key_order;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
 #[path = "system_reserved_ids.rs"]

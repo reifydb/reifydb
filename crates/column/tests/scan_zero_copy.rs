@@ -7,7 +7,11 @@ use reifydb_column::{
 	reader::SnapshotReader,
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
-use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::Column};
+use reifydb_core::value::column::{
+	buffer::ColumnBuffer,
+	columns::Columns,
+	data::{Column, canonical::Canonical},
+};
 use reifydb_value::value::{
 	Value, container::varlen_array::compact_parts, datetime::DateTime, row_number::RowNumber, value_type::ValueType,
 };
@@ -128,7 +132,7 @@ fn fixture(bounds: &[usize]) -> Fixture {
 			ColumnBuffer::uint8(rows.clone().map(commit_version)),
 		];
 		for (column, buffer) in per_column.iter_mut().zip(buffers) {
-			column.push(Column::from_column_buffer(buffer));
+			column.push(Column::from_canonical(Canonical::from_buffer(buffer)));
 		}
 	}
 	let columns = schema

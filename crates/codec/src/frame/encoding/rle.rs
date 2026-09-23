@@ -170,10 +170,6 @@ pub fn try_rle_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	try_rle_encode(slice, 4, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))
 }
 
-pub fn try_rle_i64(slice: &[i64]) -> Option<Vec<u8>> {
-	try_rle_encode(slice, 8, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))
-}
-
 pub fn try_rle_u64(slice: &[u64]) -> Option<Vec<u8>> {
 	try_rle_encode(slice, 8, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))
 }

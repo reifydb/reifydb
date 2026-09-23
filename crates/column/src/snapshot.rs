@@ -85,14 +85,6 @@ impl ColumnChunks {
 		self.chunks.iter().map(|c| c.len()).sum()
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.len() == 0
-	}
-
-	pub fn chunk_count(&self) -> usize {
-		self.chunks.len()
-	}
-
 	pub fn iter_range_chunks(&self, start: usize, end: usize) -> Vec<(usize, usize, usize)> {
 		reifydb_assertions! {
 			assert!(start <= end, "iter_range_chunks: start {start} > end {end}");
@@ -140,10 +132,6 @@ impl ColumnBlock {
 
 	pub fn len(&self) -> usize {
 		self.columns.first().map(|c| c.len()).unwrap_or(0)
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.len() == 0
 	}
 
 	pub fn column_by_name(&self, name: &str) -> Option<(usize, &ColumnChunks)> {
@@ -258,7 +246,7 @@ mod tests {
 		fn chunks_value_at(&self, mut idx: usize) -> Value {
 			for chunk in &self.chunks {
 				if idx < chunk.len() {
-					return chunk.get_value(idx);
+					return chunk.data().get_value(idx);
 				}
 				idx -= chunk.len();
 			}

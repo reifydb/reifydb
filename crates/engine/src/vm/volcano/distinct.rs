@@ -3,10 +3,12 @@
 
 use std::collections::HashSet;
 
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use arrow_array::ArrayRef;
+use arrow_row::{Row, RowConverter, SortField};
 use reifydb_core::{
 	error::diagnostic::operation,
 	interface::resolved::ResolvedColumn,
+	internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -26,12 +28,12 @@ fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
 	Ok(())
 }
 
-fn row_key(key_columns: &[&ColumnBuffer], row_idx: usize) -> Result<EncodedKey> {
-	let mut serializer = KeySerializer::new();
-	for column in key_columns {
-		column.extend_key(row_idx, &mut serializer)?;
-	}
-	Ok(serializer.to_encoded_key())
+fn key_rows(key_columns: &[&ColumnBuffer]) -> Result<(RowConverter, Vec<ArrayRef>)> {
+	let arrays: Vec<ArrayRef> = key_columns.iter().map(|column| column.to_array_ref()).collect();
+	let fields = arrays.iter().map(|array| SortField::new(array.data_type().clone())).collect();
+	let converter =
+		RowConverter::new(fields).map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;
+	Ok((converter, arrays))
 }
 
 pub(crate) struct DistinctNode {
@@ -84,11 +86,20 @@ impl DistinctNode {
 			}
 		}
 
-		let mut seen = HashSet::<EncodedKey>::new();
+		let row_count = all_columns.row_count();
+		if key_columns.is_empty() {
+			return Ok((0..row_count).take(1).collect());
+		}
+
+		let (converter, arrays) = key_rows(&key_columns)?;
+		let rows = converter
+			.convert_columns(&arrays)
+			.map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;
+
+		let mut seen = HashSet::<Row>::with_capacity(row_count);
 		let mut kept_indices = Vec::new();
-		for row_idx in 0..all_columns.row_count() {
-			let key = row_key(&key_columns, row_idx)?;
-			if seen.insert(key) {
+		for row_idx in 0..row_count {
+			if seen.insert(rows.row(row_idx)) {
 				kept_indices.push(row_idx);
 			}
 		}

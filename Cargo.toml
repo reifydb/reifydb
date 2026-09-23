@@ -318,6 +318,10 @@ arrow-array = { version = "60.0.0" }
 arrow-data = { version = "60.0.0" }
 arrow-schema = { version = "60.0.0" }
 arrow-select = { version = "60.0.0" }
+arrow-arith = { version = "60.0.0" }
+arrow-string = { version = "60.0.0" }
+arrow-ord = { version = "60.0.0" }
+arrow-row = { version = "60.0.0" }
 rand = { version = "0.10" }
 argon2 = { version = "0.6.0-rc.8" }
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }

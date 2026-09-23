@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, Int64Array, types::Int32Type};
+use arrow_string::length::length;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -36,21 +38,28 @@ impl<'a> Routine<FunctionContext<'a>> for TextLength {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let data = &args[0];
-		let row_count = data.len();
 
 		match data {
 			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
-				let mut result = Vec::with_capacity(row_count);
+				let byte_lengths =
+					length(container).map_err(|err| RoutineError::FunctionExecutionFailed {
+						function: ctx.fragment.clone(),
+						reason: err.to_string(),
+					})?;
+				let byte_lengths =
+					byte_lengths.as_any().downcast_ref::<Int64Array>().ok_or_else(|| {
+						RoutineError::FunctionExecutionFailed {
+							function: ctx.fragment.clone(),
+							reason: "byte length of a text column is not a 64 bit integer"
+								.to_string(),
+						}
+					})?;
 
-				for i in 0..row_count {
-					let text = container.value(i);
-					result.push(text.len() as i32);
-				}
-
-				let result_data = ColumnBuffer::int4(result);
+				let result_data =
+					ColumnBuffer::Int4(byte_lengths.unary::<_, Int32Type>(|len| len as i32));
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {

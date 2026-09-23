@@ -18,18 +18,6 @@ impl Bucket {
 	pub fn id(&self) -> BucketId {
 		BucketId(self.start)
 	}
-
-	pub fn contains(&self, key: u64) -> bool {
-		key >= self.start && key < self.end
-	}
-
-	pub fn len(&self) -> u64 {
-		self.end - self.start
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.end == self.start
-	}
 }
 
 pub fn bucket_for(key: u64, width: u64) -> Bucket {
@@ -91,8 +79,8 @@ mod tests {
 		assert_eq!(b.start, 100);
 		assert_eq!(b.end, 200);
 		assert_eq!(b.width, 100);
-		assert!(b.contains(137));
-		assert!(!b.contains(200));
+		assert!(137 >= b.start && 137 < b.end);
+		assert!(!(200 >= b.start && 200 < b.end));
 		assert_eq!(b.id(), BucketId(100));
 	}
 

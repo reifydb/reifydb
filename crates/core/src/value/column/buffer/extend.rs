@@ -4,13 +4,14 @@
 use std::mem;
 
 use arrow_array::{
-	ArrowPrimitiveType, BooleanArray, FixedSizeBinaryArray, GenericByteArray, PrimitiveArray,
+	Array, ArrowPrimitiveType, BooleanArray, FixedSizeBinaryArray, GenericByteArray, PrimitiveArray,
 	builder::{GenericByteBuilder, PrimitiveBuilder},
 	types::ByteArrayType,
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::{
 	Result,
+	util::kernel,
 	value::{
 		Value,
 		container::{
@@ -30,7 +31,10 @@ use crate::{
 	internal_err, return_internal_error,
 	value::column::{
 		ColumnBuffer,
-		buffer::with_container,
+		buffer::{
+			take::{as_array, wrap_array},
+			with_container,
+		},
 		builder::{append_varlen, boolean_builder, fixed_builder, primitive_builder, varlen_builder},
 	},
 };
@@ -135,6 +139,10 @@ fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
 	Ok(retyped)
 }
 
+fn joinable(first: &ColumnBuffer, part: &ColumnBuffer) -> bool {
+	as_array(part).data_type() == as_array(first).data_type() && part.base_type() == first.base_type()
+}
+
 fn append_empty<T>(builder: &mut GenericByteBuilder<T>, count: usize)
 where
 	T: ByteArrayType<Offset = i64>,
@@ -146,6 +154,28 @@ where
 }
 
 impl ColumnBuffer {
+	pub fn concat(parts: &[ColumnBuffer]) -> Result<ColumnBuffer> {
+		let (first, rest) = parts.split_first().expect("concat needs at least one column");
+		if rest.is_empty() {
+			return Ok(first.clone());
+		}
+		if rest.iter().any(|part| !joinable(first, part)) {
+			let mut out = first.clone();
+			for part in rest {
+				out.extend(part.clone())?;
+			}
+			return Ok(out);
+		}
+
+		let arrays: Vec<&dyn Array> = parts.iter().map(as_array).collect();
+		let joined = wrap_array(first, kernel::joined(&arrays).as_ref());
+		if parts.iter().any(|part| part.nulls().is_some()) && joined.nulls().is_none() {
+			let len = joined.len();
+			return Ok(joined.replace_nulls(Some(NullBuffer::new_valid(len))));
+		}
+		Ok(joined)
+	}
+
 	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
 		if self.nulls().is_none() && other.nulls().is_none() {
 			return self.extend_bare(other);
@@ -335,5 +365,86 @@ impl ColumnBuffer {
 		}
 
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::str::FromStr;
+
+	use arrow_buffer::{BooleanBuffer, NullBuffer};
+	use reifydb_value::value::{
+		Value,
+		constraint::{precision::Precision, scale::Scale},
+		decimal::Decimal,
+		value_type::ValueType,
+	};
+
+	use crate::value::column::ColumnBuffer;
+
+	#[test]
+	fn concat_keeps_a_nullable_column_nullable_across_chunks() {
+		// A chunk whose bits are all valid still declares the column Option, and joining it with a bare chunk
+		// must not drop that.
+		let first = ColumnBuffer::int4([1, 2]).replace_nulls(Some(NullBuffer::new_valid(2)));
+		let second = ColumnBuffer::int4([3, 4]);
+
+		let joined = ColumnBuffer::concat(&[first, second]).unwrap();
+
+		assert_eq!(joined.len(), 4);
+		assert!(joined.nulls().is_some());
+		assert_eq!(joined.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+		assert_eq!(joined.get_value(3), Value::Int4(4));
+	}
+
+	#[test]
+	fn concat_carries_the_none_rows_of_every_chunk() {
+		// The null bits of each chunk have to land at that chunk's offset, never be rebuilt as all valid.
+		let first = ColumnBuffer::int4_with_bitvec([1, 0], BooleanBuffer::from(vec![true, false]));
+		let second = ColumnBuffer::int4_with_bitvec([0, 4], BooleanBuffer::from(vec![false, true]));
+
+		let joined = ColumnBuffer::concat(&[first, second]).unwrap();
+
+		assert_eq!(joined.get_value(0), Value::Int4(1));
+		assert_eq!(joined.get_value(1), Value::none_of(ValueType::Int4));
+		assert_eq!(joined.get_value(2), Value::none_of(ValueType::Int4));
+		assert_eq!(joined.get_value(3), Value::Int4(4));
+	}
+
+	#[test]
+	fn concat_keeps_the_decimal_precision_and_scale() {
+		// Precision and scale live beside the array, so joining chunks must not reset them to the constructor
+		// defaults.
+		let first = with_digits(ColumnBuffer::decimal([Decimal::from_str("1.25").unwrap()]), 9, 2);
+		let second = with_digits(ColumnBuffer::decimal([Decimal::from_str("2.50").unwrap()]), 9, 2);
+
+		let joined = ColumnBuffer::concat(&[first, second]).unwrap();
+
+		let ColumnBuffer::Decimal {
+			precision,
+			scale,
+			..
+		} = &joined
+		else {
+			panic!("expected a decimal column");
+		};
+		assert_eq!(*precision, Precision::new(9));
+		assert_eq!(*scale, Scale::new(2));
+		assert_eq!(joined.len(), 2);
+	}
+
+	fn with_digits(buffer: ColumnBuffer, precision: u8, scale: u8) -> ColumnBuffer {
+		let ColumnBuffer::Decimal {
+			container,
+			..
+		} = buffer
+		else {
+			panic!("expected a decimal column");
+		};
+		ColumnBuffer::Decimal {
+			container,
+			precision: Precision::new(precision),
+			scale: Scale::new(scale),
+		}
 	}
 }

@@ -45,10 +45,6 @@ impl SnapshotReader {
 		self
 	}
 
-	pub fn row_count(&self) -> usize {
-		self.row_count
-	}
-
 	fn read_next_batch(&mut self) -> Result<Option<Columns>> {
 		let (start, end) = self.advance_batch_window();
 		let block = self.block.as_ref();
@@ -174,7 +170,7 @@ fn extract_datetimes(data: &ColumnBuffer) -> Vec<DateTime> {
 
 fn filter_view_column(view_chunks: &ColumnChunks, mask: &BooleanBuffer) -> Result<ColumnBuffer> {
 	let mut chunk_offset = 0usize;
-	let mut out: Option<ColumnBuffer> = None;
+	let mut out: Vec<ColumnBuffer> = Vec::with_capacity(view_chunks.chunks.len());
 	for chunk in &view_chunks.chunks {
 		let chunk_len = chunk.len();
 		let chunk_end = chunk_offset + chunk_len;
@@ -185,37 +181,29 @@ fn filter_view_column(view_chunks: &ColumnChunks, mask: &BooleanBuffer) -> Resul
 			continue;
 		}
 		let filtered: Column = compute::filter(chunk, &chunk_mask)?;
-		let buf = filtered.to_canonical()?.to_column_buffer()?;
-		match &mut out {
-			None => out = Some(buf),
-			Some(o) => o.extend(buf)?,
-		}
+		out.push(filtered.to_canonical()?.to_column_buffer()?);
 	}
-	Ok(out.expect("Selection::Mask guarantees at least one row survives"))
+	assert!(!out.is_empty(), "Selection::Mask guarantees at least one row survives");
+	ColumnBuffer::concat(&out)
 }
 
 fn concat_view_chunks(view_chunks: &ColumnChunks) -> Result<ColumnBuffer> {
-	let mut iter = view_chunks.chunks.iter();
-	let first =
-		iter.next().expect("concat_view_chunks called with empty chunks").to_canonical()?.to_column_buffer()?;
-	let mut out = first;
-	for chunk in iter {
-		out.extend(chunk.to_canonical()?.to_column_buffer()?)?;
+	assert!(!view_chunks.chunks.is_empty(), "concat_view_chunks called with empty chunks");
+	let mut out: Vec<ColumnBuffer> = Vec::with_capacity(view_chunks.chunks.len());
+	for chunk in &view_chunks.chunks {
+		out.push(chunk.to_canonical()?.to_column_buffer()?);
 	}
-	Ok(out)
+	ColumnBuffer::concat(&out)
 }
 
 fn read_range(column_chunks: &ColumnChunks, start: usize, end: usize) -> Result<ColumnBuffer> {
 	let ranges = column_chunks.iter_range_chunks(start, end);
-	let mut iter = ranges.into_iter();
-	let (first_idx, first_s, first_e) = iter.next().expect("read_range called with empty range");
-	let first = column_chunks.chunks[first_idx].slice(first_s, first_e)?.to_canonical()?.to_column_buffer()?;
-	let mut out = first;
-	for (idx, s, e) in iter {
-		let buf = column_chunks.chunks[idx].slice(s, e)?.to_canonical()?.to_column_buffer()?;
-		out.extend(buf)?;
+	assert!(!ranges.is_empty(), "read_range called with empty range");
+	let mut out: Vec<ColumnBuffer> = Vec::with_capacity(ranges.len());
+	for (idx, s, e) in ranges {
+		out.push(column_chunks.chunks[idx].slice(s, e)?.to_canonical()?.to_column_buffer()?);
 	}
-	Ok(out)
+	ColumnBuffer::concat(&out)
 }
 
 impl Iterator for SnapshotReader {
@@ -338,8 +326,8 @@ mod tests {
 	#[test]
 	fn reader_handles_multi_chunk_column() {
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
+		assert_eq!(snap.len(), 9);
 		let mut reader = SnapshotReader::new(snap, 100);
-		assert_eq!(reader.row_count(), 9);
 
 		let batch = reader.next().unwrap().unwrap();
 		assert_eq!(batch.row_count(), 9);

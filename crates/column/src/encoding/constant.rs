@@ -9,7 +9,6 @@ use reifydb_core::value::column::{
 	builder::ColumnBuilder,
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
-	stats::StatsSet,
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -32,7 +31,6 @@ pub struct ConstantData {
 	ty: ValueType,
 	value: Value,
 	len: usize,
-	stats: StatsSet,
 }
 
 impl ConstantData {
@@ -41,12 +39,7 @@ impl ConstantData {
 			ty,
 			value,
 			len,
-			stats: StatsSet::new(),
 		}
-	}
-
-	pub fn value(&self) -> &Value {
-		&self.value
 	}
 
 	fn repeated(&self, count: usize) -> ColumnBuffer {
@@ -59,10 +52,6 @@ impl ConstantData {
 }
 
 impl ColumnData for ConstantData {
-	fn ty(&self) -> ValueType {
-		self.ty.clone()
-	}
-
 	fn len(&self) -> usize {
 		self.len
 	}
@@ -73,10 +62,6 @@ impl ColumnData for ConstantData {
 
 	fn nones(&self) -> Option<&NullBuffer> {
 		None
-	}
-
-	fn stats(&self) -> &StatsSet {
-		&self.stats
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
@@ -103,10 +88,6 @@ impl ColumnData for ConstantData {
 		self
 	}
 
-	fn as_any_mut(&mut self) -> &mut dyn Any {
-		self
-	}
-
 	fn to_canonical(&self) -> Result<Arc<Canonical>> {
 		Ok(Arc::new(Canonical::from_buffer(self.repeated(self.len))))
 	}
@@ -128,11 +109,6 @@ impl Encoding for ConstantEncoding {
 			}
 		}
 		Ok(Some(Column::from_data(Arc::new(ConstantData::new(input.ty.clone(), first, input.len())))))
-	}
-
-	fn canonicalize(&self, array: &Column) -> Result<Canonical> {
-		let arc = array.to_canonical()?;
-		Ok((*arc).clone())
 	}
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {

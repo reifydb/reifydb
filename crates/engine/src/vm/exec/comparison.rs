@@ -38,12 +38,12 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	fn exec_columnar_logic(&mut self, op: LogicalOp, bool_fn: fn(bool, bool) -> bool) -> Result<()> {
+	fn exec_columnar_logic(&mut self, op: LogicalOp) -> Result<()> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
 		let (left, right) = broadcast_to_match(left, right);
 		let frag = Fragment::internal("vm_logic");
-		let result = execute_logical_op(&left, &right, &frag, op, bool_fn)?;
+		let result = execute_logical_op(&left, &right, &frag, op)?;
 		self.stack.push(Variable::columns(Columns::new(vec![result])));
 		Ok(())
 	}
@@ -73,14 +73,14 @@ impl<'a> Vm<'a> {
 	}
 
 	pub(crate) fn exec_logic_and(&mut self) -> Result<()> {
-		self.exec_columnar_logic(LogicalOp::And, |a, b| a && b)
+		self.exec_columnar_logic(LogicalOp::And)
 	}
 
 	pub(crate) fn exec_logic_or(&mut self) -> Result<()> {
-		self.exec_columnar_logic(LogicalOp::Or, |a, b| a || b)
+		self.exec_columnar_logic(LogicalOp::Or)
 	}
 
 	pub(crate) fn exec_logic_xor(&mut self) -> Result<()> {
-		self.exec_columnar_logic(LogicalOp::Xor, |a, b| a != b)
+		self.exec_columnar_logic(LogicalOp::Xor)
 	}
 }

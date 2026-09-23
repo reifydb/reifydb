@@ -50,7 +50,7 @@ impl<'a> Vm<'a> {
 			}
 			.into_diagnostic()
 		})?;
-		let result = execute_logical_op(&ge, &le, &frag, LogicalOp::And, |a, b| a && b)?;
+		let result = execute_logical_op(&ge, &le, &frag, LogicalOp::And)?;
 		self.stack.push(Variable::columns(Columns::new(vec![result])));
 		Ok(())
 	}
@@ -85,7 +85,7 @@ impl<'a> Vm<'a> {
 			})?;
 			accumulator = Some(match accumulator {
 				None => eq,
-				Some(acc) => execute_logical_op(&acc, &eq, &frag, LogicalOp::Or, |a, b| a || b)?,
+				Some(acc) => execute_logical_op(&acc, &eq, &frag, LogicalOp::Or)?,
 			});
 		}
 

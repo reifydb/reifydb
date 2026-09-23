@@ -20,7 +20,6 @@ use constant::ConstantEncoding;
 use reifydb_core::value::column::{
 	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
-	stats::StatsSet,
 };
 use reifydb_value::{Result, value::value_type::ValueType};
 
@@ -35,18 +34,12 @@ pub trait Encoding: Send + Sync + 'static {
 
 	fn try_compress(&self, input: &Canonical, cfg: &CompressConfig) -> Result<Option<Column>>;
 
-	fn canonicalize(&self, array: &Column) -> Result<Canonical>;
-
 	fn persist(&self, array: &Column) -> Result<PersistedArray>;
 
 	fn load(&self, persisted: PersistedArray, ty: &ValueType) -> Result<Column>;
 
 	fn compute(&self) -> &dyn Compute {
 		&DefaultCompute
-	}
-
-	fn derive_stats(&self, _array: &Column) -> StatsSet {
-		StatsSet::new()
 	}
 }
 
@@ -67,14 +60,6 @@ impl EncodingRegistry {
 
 	pub fn get(&self, id: EncodingId) -> Option<&Arc<dyn Encoding>> {
 		self.encodings.get(&id)
-	}
-
-	pub fn len(&self) -> usize {
-		self.encodings.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.encodings.is_empty()
 	}
 
 	pub fn builtins() -> Self {

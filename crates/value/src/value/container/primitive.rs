@@ -5,10 +5,11 @@ use std::result::Result as StdResult;
 
 use arrow_array::{Array, ArrowPrimitiveType, PrimitiveArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
+use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-	util::bitmap,
+	util::{bitmap, kernel},
 	value::{Value, is::IsNumber, to_value::ToValue},
 };
 
@@ -86,15 +87,17 @@ pub fn filter<A>(array: &PrimitiveArray<A>, mask: &BooleanBuffer) -> PrimitiveAr
 where
 	A: ArrowPrimitiveType,
 {
-	let values = array.values();
-	let mut kept = Vec::with_capacity(mask.count_set_bits());
-	for (i, keep) in mask.iter().enumerate() {
-		if keep && i < values.len() {
-			kept.push(values[i]);
-		}
-	}
-	PrimitiveArray::new(ScalarBuffer::from(kept), bitmap::filter_nulls(array.nulls(), mask))
-		.with_data_type(array.data_type().clone())
+	filter_with(array, &kernel::predicate(mask, array.len()))
+}
+
+pub fn filter_with<A>(array: &PrimitiveArray<A>, predicate: &FilterPredicate) -> PrimitiveArray<A>
+where
+	A: ArrowPrimitiveType,
+{
+	let selected = kernel::filtered(array, predicate);
+	let nulls = kernel::kept_nulls(array, &selected);
+	let (data_type, values, _) = selected.into_parts();
+	PrimitiveArray::new(values, nulls).with_data_type(data_type)
 }
 
 pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> PrimitiveArray<A>

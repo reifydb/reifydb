@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::NullBuffer;
 use reifydb_core::{interface::catalog::column_snapshot::ColumnStats, value::column::data::Column};
 use reifydb_value::{
 	Result,
@@ -64,12 +63,8 @@ fn none_count(chunks: &ColumnChunks) -> usize {
 fn chunk_none_count(chunk: &Column) -> usize {
 	match chunk.nones() {
 		None => 0,
-		Some(nones) => count_nones(nones, chunk.len()),
+		Some(nones) => nones.null_count(),
 	}
-}
-
-fn count_nones(nones: &NullBuffer, len: usize) -> usize {
-	(0..len).filter(|&row| nones.is_null(row)).count()
 }
 
 #[cfg(test)]

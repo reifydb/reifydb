@@ -22,7 +22,11 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
 use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, data::Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	builder::ColumnBuilder,
+	columns::Columns,
+	data::{Column, canonical::Canonical},
 };
 use reifydb_value::value::{Value, datetime::DateTime, decimal::Decimal, int::Int, uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
@@ -188,7 +192,7 @@ fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 			ColumnBuffer::int4_optional(chunk.map(maybe)),
 		];
 		for (column, buffer) in per_column.iter_mut().zip(buffers) {
-			column.push(Column::from_column_buffer(buffer));
+			column.push(Column::from_canonical(Canonical::from_buffer(buffer)));
 		}
 	}
 	let columns = schema

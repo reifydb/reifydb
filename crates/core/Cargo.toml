@@ -24,13 +24,14 @@ reifydb-macro = { workspace = true }
 reifydb-value = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-row = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
 thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 serde = { workspace = true }
-serde_bytes = { workspace = true }
 uuid = { workspace = true }
 num-bigint = { workspace = true }
-bigdecimal = { workspace = true }
 num-traits = { workspace = true }
 indexmap = { workspace = true }
 paste = { workspace = true }

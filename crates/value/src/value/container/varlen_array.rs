@@ -9,11 +9,12 @@ use arrow_array::{
 	types::ByteArrayType,
 };
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer};
+use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serializer, de::Error as DeError, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
 use crate::{
-	util::bitmap,
+	util::{bitmap, kernel},
 	value::{Value, blob::Blob, value_type::ValueType},
 };
 
@@ -97,13 +98,16 @@ pub fn filter<T>(array: &GenericByteArray<T>, mask: &BooleanBuffer) -> GenericBy
 where
 	T: ByteArrayType<Offset = i64>,
 {
-	let mut builder = GenericByteBuilder::<T>::with_capacity(array.len(), data_byte_len(array));
-	for (i, keep) in mask.iter().enumerate() {
-		if keep && i < array.len() {
-			builder.append_value(array.value(i));
-		}
-	}
-	attach_nulls(builder.finish(), bitmap::filter_nulls(array.nulls(), mask))
+	filter_with(array, &kernel::predicate(mask, array.len()))
+}
+
+pub fn filter_with<T>(array: &GenericByteArray<T>, predicate: &FilterPredicate) -> GenericByteArray<T>
+where
+	T: ByteArrayType<Offset = i64>,
+{
+	let selected = kernel::filtered(array, predicate);
+	let nulls = kernel::kept_nulls(array, &selected);
+	attach_nulls(selected, nulls)
 }
 
 pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> GenericByteArray<T>

@@ -15,7 +15,9 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
+use super::common::{
+	JoinContext, JoinSlot, NO_MATCH, build_eval_columns, load_and_merge_all, materialize_join, resolve_column_names,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
@@ -103,25 +105,26 @@ impl QueryNode for NestedLoopJoinNode {
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
-		let right_width = right_columns.len();
 		let left_row_numbers = left_columns.row_numbers().to_vec();
 
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
 		let session = eval_context_from_query(ctx);
-		let (result_rows, result_row_numbers) = self.probe(
-			&session,
-			&left_columns,
-			&right_columns,
-			&left_row_numbers,
-			left_rows,
-			right_rows,
-			right_width,
-		)?;
+		let (left_picks, right_picks, result_row_numbers) =
+			self.probe(&session, &left_columns, &right_columns, &left_row_numbers, left_rows, right_rows)?;
 
 		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
-		let columns =
-			Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers, left_rownum);
+		let columns = materialize_join(
+			&resolved.qualified_names,
+			&[JoinSlot {
+				columns: &left_columns.columns,
+				picks: &left_picks,
+			}],
+			&right_columns.columns,
+			&right_picks,
+			result_row_numbers,
+			left_rownum,
+		)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))
@@ -143,9 +146,9 @@ impl NestedLoopJoinNode {
 		left_row_numbers: &[RowNumber],
 		left_rows: usize,
 		right_rows: usize,
-		right_width: usize,
-	) -> Result<(Vec<Vec<Value>>, Vec<RowNumber>)> {
-		let mut result_rows = Vec::new();
+	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
+		let mut left_picks: Vec<usize> = Vec::new();
+		let mut right_picks: Vec<usize> = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..left_rows {
@@ -172,9 +175,8 @@ impl NestedLoopJoinNode {
 				}
 
 				if all_true {
-					let mut combined = left_row.clone();
-					combined.extend(right_row.clone());
-					result_rows.push(combined);
+					left_picks.push(i);
+					right_picks.push(j);
 					matched = true;
 					if !left_row_numbers.is_empty() {
 						result_row_numbers.push(left_row_numbers[i]);
@@ -183,34 +185,14 @@ impl NestedLoopJoinNode {
 			}
 
 			if self.mode == NestedLoopMode::Left && !matched {
-				let mut combined = left_row.clone();
-				combined.extend(vec![Value::none(); right_width]);
-				result_rows.push(combined);
+				left_picks.push(i);
+				right_picks.push(NO_MATCH);
 				if !left_row_numbers.is_empty() {
 					result_row_numbers.push(left_row_numbers[i]);
 				}
 			}
 		}
 
-		Ok((result_rows, result_row_numbers))
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::materialize")]
-	fn materialize(
-		qualified_names: &[String],
-		result_rows: Vec<Vec<Value>>,
-		result_row_numbers: Vec<RowNumber>,
-		has_row_numbers: bool,
-	) -> Columns {
-		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = if result_row_numbers.is_empty() {
-			Columns::from_rows(&names_refs, &result_rows)
-		} else {
-			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
-		};
-		if has_row_numbers {
-			columns.system.mark_row_numbers();
-		}
-		columns
+		Ok((left_picks, right_picks, result_row_numbers))
 	}
 }

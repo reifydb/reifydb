@@ -705,7 +705,8 @@ pub mod tests {
 
 		#[test]
 		fn test_float4() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::float4("id", [1.0f32, 2.0])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::float4([1.0f32, 2.0]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -725,7 +726,8 @@ pub mod tests {
 
 		#[test]
 		fn test_float8() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::float8("id", [1.0f64, 2.0])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::float8([1.0f64, 2.0]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -762,7 +764,8 @@ pub mod tests {
 
 		#[test]
 		fn test_int2() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int2("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int2([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -796,7 +799,8 @@ pub mod tests {
 
 		#[test]
 		fn test_int8() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int8("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int8([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -813,7 +817,8 @@ pub mod tests {
 
 		#[test]
 		fn test_int16() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int16("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int16([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -859,7 +864,8 @@ pub mod tests {
 
 		#[test]
 		fn test_uint1() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint1("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uint1([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -876,7 +882,8 @@ pub mod tests {
 
 		#[test]
 		fn test_uint2() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint2("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uint2([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -893,7 +900,8 @@ pub mod tests {
 
 		#[test]
 		fn test_uint4() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint4("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uint4([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -910,7 +918,8 @@ pub mod tests {
 
 		#[test]
 		fn test_uint8() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint8("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uint8([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -927,7 +936,8 @@ pub mod tests {
 
 		#[test]
 		fn test_uint16() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uint16("id", [1, 2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uint16([1, 2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -949,7 +959,8 @@ pub mod tests {
 			let uuid3 = Uuid4::from(Uuid::new_v4());
 			let uuid4 = Uuid4::from(Uuid::new_v4());
 
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uuid4("id", [uuid1, uuid2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uuid4([uuid1, uuid2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -974,7 +985,8 @@ pub mod tests {
 			let uuid3 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(2, 1)));
 			let uuid4 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(2, 2)));
 
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::uuid7("id", [uuid1, uuid2])]);
+			let mut test_instance1 =
+				Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::uuid7([uuid1, uuid2]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"id",
@@ -1030,10 +1042,10 @@ pub mod tests {
 
 		#[test]
 		fn test_fails_on_column_count_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int2([1]))]);
 
 			let test_instance2 = Columns::new(vec![
-				ColumnWithName::int2("id", [2]),
+				ColumnWithName::new("id", ColumnBuffer::int2([2])),
 				ColumnWithName::utf8("name", vec!["Bob".to_string()]),
 			]);
 
@@ -1043,9 +1055,9 @@ pub mod tests {
 
 		#[test]
 		fn test_fails_on_column_name_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int2([1]))]);
 
-			let test_instance2 = Columns::new(vec![ColumnWithName::int2("wrong", [2])]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new("wrong", ColumnBuffer::int2([2]))]);
 
 			let result = test_instance1.append_columns(test_instance2);
 			assert!(result.is_err());
@@ -1053,7 +1065,7 @@ pub mod tests {
 
 		#[test]
 		fn test_fails_on_type_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnWithName::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::int2([1]))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::utf8("id", vec!["A".to_string()])]);
 
@@ -1381,8 +1393,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_float4() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::float4("test_col", Vec::<f32>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::float4(Vec::<f32>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4]);
 			let mut row_one = shape.allocate_table();
@@ -1397,8 +1411,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_float8() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::float8("test_col", Vec::<f64>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::float8(Vec::<f64>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8]);
 			let mut row_one = shape.allocate_table();
@@ -1428,7 +1444,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_int2() {
-			let mut test_instance = Columns::new(vec![ColumnWithName::int2("test_col", Vec::<i16>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::int2(Vec::<i16>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
 			let mut row_one = shape.allocate_table();
@@ -1458,7 +1477,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_int8() {
-			let mut test_instance = Columns::new(vec![ColumnWithName::int8("test_col", Vec::<i64>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::int8(Vec::<i64>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8]);
 			let mut row_one = shape.allocate_table();
@@ -1473,8 +1495,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_int16() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::int16("test_col", Vec::<i128>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::int16(Vec::<i128>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16]);
 			let mut row_one = shape.allocate_table();
@@ -1505,7 +1529,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_uint1() {
-			let mut test_instance = Columns::new(vec![ColumnWithName::uint1("test_col", Vec::<u8>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::uint1(Vec::<u8>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1]);
 			let mut row_one = shape.allocate_table();
@@ -1520,8 +1547,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_uint2() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::uint2("test_col", Vec::<u16>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::uint2(Vec::<u16>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2]);
 			let mut row_one = shape.allocate_table();
@@ -1536,8 +1565,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_uint4() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::uint4("test_col", Vec::<u32>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::uint4(Vec::<u32>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4]);
 			let mut row_one = shape.allocate_table();
@@ -1552,8 +1583,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_uint8() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::uint8("test_col", Vec::<u64>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::uint8(Vec::<u64>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8]);
 			let mut row_one = shape.allocate_table();
@@ -1568,8 +1601,10 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_uint16() {
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::uint16("test_col", Vec::<u128>::new())]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				"test_col",
+				ColumnBuffer::uint16(Vec::<u128>::new()),
+			)]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16]);
 			let mut row_one = shape.allocate_table();
@@ -1644,8 +1679,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_float4() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::float4("test_col", Vec::<f32>::new()),
-				ColumnWithName::float4("none", Vec::<f32>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::float4(Vec::<f32>::new())),
+				ColumnWithName::new("none", ColumnBuffer::float4(Vec::<f32>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4, ValueType::Float4]);
@@ -1662,8 +1697,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_float8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::float8("test_col", Vec::<f64>::new()),
-				ColumnWithName::float8("none", Vec::<f64>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::float8(Vec::<f64>::new())),
+				ColumnWithName::new("none", ColumnBuffer::float8(Vec::<f64>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8, ValueType::Float8]);
@@ -1698,8 +1733,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_int2() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::int2("test_col", Vec::<i16>::new()),
-				ColumnWithName::int2("none", Vec::<i16>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::int2(Vec::<i16>::new())),
+				ColumnWithName::new("none", ColumnBuffer::int2(Vec::<i16>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Int2]);
@@ -1734,8 +1769,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_int8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::int8("test_col", Vec::<i64>::new()),
-				ColumnWithName::int8("none", Vec::<i64>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::int8(Vec::<i64>::new())),
+				ColumnWithName::new("none", ColumnBuffer::int8(Vec::<i64>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8, ValueType::Int8]);
@@ -1752,8 +1787,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_int16() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::int16("test_col", Vec::<i128>::new()),
-				ColumnWithName::int16("none", Vec::<i128>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::int16(Vec::<i128>::new())),
+				ColumnWithName::new("none", ColumnBuffer::int16(Vec::<i128>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16, ValueType::Int16]);
@@ -1794,8 +1829,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_uint1() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::uint1("test_col", Vec::<u8>::new()),
-				ColumnWithName::uint1("none", Vec::<u8>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::uint1(Vec::<u8>::new())),
+				ColumnWithName::new("none", ColumnBuffer::uint1(Vec::<u8>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1, ValueType::Uint1]);
@@ -1812,8 +1847,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_uint2() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::uint2("test_col", Vec::<u16>::new()),
-				ColumnWithName::uint2("none", Vec::<u16>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::uint2(Vec::<u16>::new())),
+				ColumnWithName::new("none", ColumnBuffer::uint2(Vec::<u16>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2, ValueType::Uint2]);
@@ -1830,8 +1865,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_uint4() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::uint4("test_col", Vec::<u32>::new()),
-				ColumnWithName::uint4("none", Vec::<u32>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::uint4(Vec::<u32>::new())),
+				ColumnWithName::new("none", ColumnBuffer::uint4(Vec::<u32>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4, ValueType::Uint4]);
@@ -1848,8 +1883,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_uint8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::uint8("test_col", Vec::<u64>::new()),
-				ColumnWithName::uint8("none", Vec::<u64>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::uint8(Vec::<u64>::new())),
+				ColumnWithName::new("none", ColumnBuffer::uint8(Vec::<u64>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8, ValueType::Uint8]);
@@ -1869,8 +1904,8 @@ pub mod tests {
 		#[test]
 		fn test_fallback_uint16() {
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::uint16("test_col", Vec::<u128>::new()),
-				ColumnWithName::uint16("none", Vec::<u128>::new()),
+				ColumnWithName::new("test_col", ColumnBuffer::uint16(Vec::<u128>::new())),
+				ColumnWithName::new("none", ColumnBuffer::uint16(Vec::<u128>::new())),
 			]);
 
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16, ValueType::Uint16]);
@@ -1895,9 +1930,9 @@ pub mod tests {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 			let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("status", constraint)]);
 
-			let mut test_instance = Columns::new(vec![ColumnWithName::dictionary_id(
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
 				"status",
-				Vec::<DictionaryEntryId>::new(),
+				ColumnBuffer::dictionary_id(Vec::<DictionaryEntryId>::new()),
 			)]);
 
 			let mut row_one = shape.allocate_table();
@@ -1923,7 +1958,10 @@ pub mod tests {
 			);
 
 			let mut test_instance = Columns::new(vec![
-				ColumnWithName::dictionary_id("dict_col", Vec::<DictionaryEntryId>::new()),
+				ColumnWithName::new(
+					"dict_col",
+					ColumnBuffer::dictionary_id(Vec::<DictionaryEntryId>::new()),
+				),
 				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
 			]);
 

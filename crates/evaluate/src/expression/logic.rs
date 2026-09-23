@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_arith::boolean::{and_kleene, or_kleene};
+use arrow_array::{Array, BooleanArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::{
+	error::CoreError,
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
+};
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
@@ -60,7 +65,6 @@ pub fn execute_logical_op(
 	right: &ColumnWithName,
 	fragment: &Fragment,
 	logical_op: LogicalOp,
-	bool_fn: fn(bool, bool) -> bool,
 ) -> Result<ColumnWithName> {
 	let (left_data, left_nulls) = left.data().clone().split_nulls();
 	let (right_data, right_nulls) = right.data().clone().split_nulls();
@@ -81,18 +85,38 @@ pub fn execute_logical_op(
 		_ => return type_error(&logical_op, fragment, &left_data, &right_data),
 	};
 
-	let value_data: Vec<bool> =
-		l_v_bits.iter().zip(r_v_bits.iter()).map(|(l_val, r_val)| bool_fn(l_val, r_val)).collect();
-	let value_buffer = ColumnBuffer::bool(value_data);
+	let l = BooleanArray::new(l_v_bits.clone(), l_valid_bv.map(|bv| NullBuffer::new(bv.clone())));
+	let r = BooleanArray::new(r_v_bits.clone(), r_valid_bv.map(|bv| NullBuffer::new(bv.clone())));
 
-	let result_bv = compute_kleene_validity(&logical_op, l_valid_bv, r_valid_bv, l_v_bits, r_v_bits, len);
-
-	let final_buffer = match result_bv {
-		Some(bv) => value_buffer.with_nulls(NullBuffer::new(bv)),
-		None => value_buffer,
+	let result = match logical_op {
+		LogicalOp::And => and_kleene(&l, &r).map_err(|err| CoreError::FrameError {
+			message: err.to_string(),
+		})?,
+		LogicalOp::Or => or_kleene(&l, &r).map_err(|err| CoreError::FrameError {
+			message: err.to_string(),
+		})?,
+		LogicalOp::Xor => {
+			if l.len() != r.len() {
+				return Err(CoreError::FrameError {
+					message: format!(
+						"Cannot perform bitwise operation on arrays of different length: {} != {}",
+						l.len(),
+						r.len()
+					),
+				}
+				.into());
+			}
+			let nulls = match (l.nulls(), r.nulls()) {
+				(None, None) => None,
+				(Some(n), None) | (None, Some(n)) => Some(n.clone()),
+				(Some(a), Some(b)) => Some(NullBuffer::new(a.inner() & b.inner())),
+			};
+			BooleanArray::new(l.values() ^ r.values(), nulls)
+		}
+		LogicalOp::Not => unreachable!("NOT is unary; not handled by execute_logical_op"),
 	};
 
-	Ok(ColumnWithName::new(fragment.clone(), final_buffer))
+	Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::Bool(result)))
 }
 
 fn type_error(
@@ -118,35 +142,4 @@ fn type_error(
 		fragment: fragment.clone(),
 	}
 	.into())
-}
-
-fn compute_kleene_validity(
-	logical_op: &LogicalOp,
-	left_bv: Option<&BooleanBuffer>,
-	right_bv: Option<&BooleanBuffer>,
-	l_data: &BooleanBuffer,
-	r_data: &BooleanBuffer,
-	len: usize,
-) -> Option<BooleanBuffer> {
-	if left_bv.is_none() && right_bv.is_none() {
-		return None;
-	}
-	let bv = BooleanBuffer::collect_bool(len, |i| {
-		let l_valid = left_bv.is_none_or(|bv| bv.value(i));
-		let r_valid = right_bv.is_none_or(|bv| bv.value(i));
-		let l_v = l_data.value(i);
-		let r_v = r_data.value(i);
-		let both_valid = l_valid && r_valid;
-		let l_false = l_valid && !l_v;
-		let r_false = r_valid && !r_v;
-		let l_true = l_valid && l_v;
-		let r_true = r_valid && r_v;
-		match logical_op {
-			LogicalOp::And => both_valid || l_false || r_false,
-			LogicalOp::Or => both_valid || l_true || r_true,
-			LogicalOp::Xor => both_valid,
-			LogicalOp::Not => unreachable!("NOT is unary; not handled by execute_logical_op"),
-		}
-	});
-	Some(bv)
 }

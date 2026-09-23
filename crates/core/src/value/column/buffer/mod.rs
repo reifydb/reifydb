@@ -1080,10 +1080,6 @@ impl ColumnBuffer {
 		self.get_type() == ValueType::Boolean
 	}
 
-	pub fn is_float(&self) -> bool {
-		self.get_type() == ValueType::Float4 || self.get_type() == ValueType::Float8
-	}
-
 	pub fn is_utf8(&self) -> bool {
 		self.get_type() == ValueType::Utf8
 	}
@@ -1136,24 +1132,6 @@ impl ColumnBuffer {
 
 	pub fn is_empty(&self) -> bool {
 		self.len() == 0
-	}
-
-	pub fn capacity(&self) -> usize {
-		match self {
-			ColumnBuffer::Bool(a) => bool_array::capacity(a),
-			ColumnBuffer::Uint16(a) => primitive::capacity(a),
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => dictionary_array::capacity(container),
-			_ => with_container!(
-				self,
-				|a| primitive::capacity(a),
-				|t| primitive::capacity(t),
-				|u| uuid_array::capacity(u),
-				|v| varlen_array::capacity(v)
-			),
-		}
 	}
 
 	pub fn heap_size(&self) -> usize {

@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::cmp::Ordering::Equal;
-
 use reifydb_core::{
 	error::diagnostic::query,
-	sort::{
-		SortDirection,
-		SortDirection::{Asc, Desc},
-		SortKey,
-	},
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	sort::SortKey,
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -19,7 +13,10 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory, ensure_sort_key_orderable},
+	vm::volcano::{
+		query::{QueryContext, QueryNode, charge_query_memory, ensure_sort_key_orderable},
+		rank::rank_rows,
+	},
 };
 
 pub(crate) struct SortNode {
@@ -114,7 +111,7 @@ impl Transform for SortNode {
 				})
 				.collect::<Result<Vec<_>>>()?;
 
-		let indices = Self::rank_rows(&key_refs, columns.row_count());
+		let indices = rank_rows(&key_refs, columns.row_count(), None)?;
 		Self::permute(&mut columns, &indices);
 
 		Ok(columns)
@@ -122,29 +119,6 @@ impl Transform for SortNode {
 }
 
 impl SortNode {
-	#[instrument(level = "trace", skip_all, name = "volcano::sort::rank")]
-	fn rank_rows(key_refs: &[(ColumnBuffer, SortDirection)], row_count: usize) -> Vec<usize> {
-		let mut indices: Vec<usize> = (0..row_count).collect();
-
-		indices.sort_unstable_by(|&l, &r| {
-			for (col, dir) in key_refs {
-				let vl = col.get_value(l);
-				let vr = col.get_value(r);
-				let ord = vl.partial_cmp(&vr).unwrap_or(Equal);
-				let ord = match dir {
-					Asc => ord,
-					Desc => ord.reverse(),
-				};
-				if ord != Equal {
-					return ord;
-				}
-			}
-			Equal
-		});
-
-		indices
-	}
-
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
 	fn permute(columns: &mut Columns, indices: &[usize]) {
 		columns.system.permute_in_place(indices);

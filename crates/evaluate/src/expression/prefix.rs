@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_arith::boolean::not;
 use reifydb_core::{
 	error::CoreError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
@@ -118,16 +119,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 	unary_op_unwrap_option(column, |column| match column.data() {
 		ColumnBuffer::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
-				let mut result = Vec::with_capacity(container.len());
-				for (idx, val) in container.values().iter().enumerate() {
-					if idx < container.len() {
-						result.push(!val);
-					} else {
-						result.push(false);
-					}
-				}
-
-				let new_data = ColumnBuffer::bool(result);
+				let new_data =
+					ColumnBuffer::Bool(not(container).map_err(|err| CoreError::FrameError {
+						message: err.to_string(),
+					})?);
 				Ok(column.with_new_data(new_data))
 			}
 			_ => Err(CoreError::FrameError {

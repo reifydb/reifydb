@@ -241,7 +241,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, host: &mut dyn Ho
 				if let ColumnBuffer::DictionaryId {
 					dictionary_id,
 					..
-				} = col.data() && col.data().nulls().is_none()
+				} = col.data()
 				{
 					Some((pos, (*dictionary_id)?))
 				} else {

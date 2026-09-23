@@ -40,11 +40,11 @@ fn ctx(name: &str) -> FunctionContext<'static> {
 }
 
 fn int16(value: i128) -> ColumnWithName {
-	ColumnWithName::int16("x", [value])
+	ColumnWithName::new("x", ColumnBuffer::int16([value]))
 }
 
 fn uint16(value: u128) -> ColumnWithName {
-	ColumnWithName::uint16("x", [value])
+	ColumnWithName::new("x", ColumnBuffer::uint16([value]))
 }
 
 fn durations(value: Duration) -> ColumnWithName {

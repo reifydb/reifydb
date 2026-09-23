@@ -37,7 +37,7 @@ fn nullable_block(ty: ValueType, canonical: Canonical) -> ColumnBlock {
 }
 
 fn values(block: &ColumnBlock) -> Vec<Value> {
-	block.columns[0].chunks.iter().flat_map(|chunk| (0..chunk.len()).map(|i| chunk.get_value(i))).collect()
+	block.columns[0].chunks.iter().flat_map(|chunk| (0..chunk.len()).map(|i| chunk.data().get_value(i))).collect()
 }
 
 fn assert_block_pinned(block: ColumnBlock, pinned: &str) {

@@ -300,7 +300,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					return Ok(short);
 				}
 				let r = right.execute(ctx)?;
-				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)?;
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::And)?;
 				col.name = label.clone();
 				Ok(col)
 			})
@@ -318,7 +318,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					return Ok(short);
 				}
 				let r = right.execute(ctx)?;
-				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)?;
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Or)?;
 				col.name = label.clone();
 				Ok(col)
 			})
@@ -332,7 +332,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)?;
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Xor)?;
 				col.name = label.clone();
 				Ok(col)
 			})

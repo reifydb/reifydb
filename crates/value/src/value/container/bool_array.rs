@@ -5,10 +5,11 @@ use std::result::Result as StdResult;
 
 use arrow_array::{Array, BooleanArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-	util::bitmap,
+	util::{bitmap, kernel},
 	value::{Value, value_type::ValueType},
 };
 
@@ -37,7 +38,13 @@ pub fn take(array: &BooleanArray, num: usize) -> BooleanArray {
 }
 
 pub fn filter(array: &BooleanArray, mask: &BooleanBuffer) -> BooleanArray {
-	BooleanArray::new(bitmap::filter(array.values(), mask), bitmap::filter_nulls(array.nulls(), mask))
+	filter_with(array, &kernel::predicate(mask, array.len()))
+}
+
+pub fn filter_with(array: &BooleanArray, predicate: &FilterPredicate) -> BooleanArray {
+	let selected = kernel::filtered(array, predicate);
+	let nulls = kernel::kept_nulls(array, &selected);
+	BooleanArray::new(selected.into_parts().0, nulls)
 }
 
 pub fn reorder(array: &BooleanArray, indices: &[usize]) -> BooleanArray {

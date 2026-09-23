@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::BooleanArray;
+use arrow_buffer::BooleanBuffer;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -40,10 +42,15 @@ impl<'a> Routine<FunctionContext<'a>> for IsNone {
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		let column = &args[0];
-		let row_count = column.len();
-		let data: Vec<bool> = (0..row_count).map(|i| !column.is_defined(i)).collect();
+		let values = match column.nulls() {
+			None => BooleanBuffer::new_unset(column.len()),
+			Some(nulls) => !nulls.inner(),
+		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(
+			ctx.fragment.clone(),
+			ColumnBuffer::Bool(BooleanArray::new(values, None)),
+		)]))
 	}
 }
 

@@ -234,7 +234,7 @@ fn column_from_column_buffer_and_slice_share_the_rows() {
 	// A column and its slices must keep aliasing the rows of the buffer they were built from.
 	let buffer = ColumnBuffer::int8(ints(ROWS));
 	let base = buffer.as_slice::<i64>().as_ptr();
-	let column = Column::from_column_buffer(buffer);
+	let column = Column::from_canonical(Canonical::from_buffer(buffer));
 	assert_eq!(column.len(), ROWS);
 	assert_eq!(column.to_canonical().unwrap().buffer.as_slice::<i64>().as_ptr(), base);
 	let slice = column.slice(100, 350).unwrap();
@@ -245,14 +245,17 @@ fn column_from_column_buffer_and_slice_share_the_rows() {
 	assert_eq!(out.as_slice::<i64>().as_ptr(), base.wrapping_add(100));
 	assert_eq!(out.as_slice::<i64>(), &ints(ROWS)[100..350]);
 	for row in 0..slice.len() {
-		assert_eq!(slice.get_value(row), Value::Int8(ints(ROWS)[100 + row]), "row {row}");
+		assert_eq!(slice.data().get_value(row), Value::Int8(ints(ROWS)[100 + row]), "row {row}");
 	}
 }
 
 #[test]
 fn column_slice_of_an_option_column_keeps_nones_aligned() {
 	// An optional column slice must read none on exactly the rows the parent reads none, at every offset.
-	let column = Column::from_column_buffer(ColumnBuffer::int8_with_bitvec(ints(ROWS), defined(ROWS)));
+	let column = Column::from_canonical(Canonical::from_buffer(ColumnBuffer::int8_with_bitvec(
+		ints(ROWS),
+		defined(ROWS),
+	)));
 	let base = column.to_canonical().unwrap().buffer.as_slice::<i64>().as_ptr();
 	for (start, end) in [(0usize, 100usize), (13, 413), (63, 65), (500, 1000)] {
 		let slice = column.slice(start, end).unwrap();
@@ -261,8 +264,8 @@ fn column_slice_of_an_option_column_keeps_nones_aligned() {
 		for row in 0..slice.len() {
 			assert_eq!(nones.is_null(row), !defined(ROWS)[start + row], "slice {start}..{end} row {row}");
 			assert_eq!(
-				slice.get_value(row),
-				column.get_value(start + row),
+				slice.data().get_value(row),
+				column.data().get_value(start + row),
 				"slice {start}..{end} row {row}"
 			);
 		}
@@ -274,23 +277,27 @@ fn column_slice_of_an_option_column_keeps_nones_aligned() {
 #[test]
 fn none_bitmap_filter_and_gather_match_the_model() {
 	// Filtering and gathering must keep each row's none flag with that row, never shift it.
-	let column = Column::from_column_buffer(ColumnBuffer::int8_with_bitvec(ints(ROWS), defined(ROWS)));
-	let nones = column.nones().expect("an optional column must carry a none bitmap");
+	let column = ColumnBuffer::int8_with_bitvec(ints(ROWS), defined(ROWS));
+	let nones = column.nulls().expect("an optional column must carry a none bitmap");
 	let keep: Vec<bool> = (0..ROWS).map(|i| i % 3 != 1).collect();
-	let filtered = column.filter(&BooleanBuffer::from(keep.clone())).unwrap();
-	let filtered_nones = filtered.nones().expect("a filtered optional column must keep its none bitmap");
+	let mut filtered = column.clone();
+	filtered.filter(&BooleanBuffer::from(keep.clone())).unwrap();
+	let filtered_nones = filtered.nulls().expect("a filtered optional column must keep its none bitmap");
 	let expected: Vec<bool> = (0..ROWS).filter(|r| keep[*r]).map(|r| !defined(ROWS)[r]).collect();
 	assert_eq!(filtered_nones.len(), expected.len());
 	for (row, none) in expected.iter().enumerate() {
 		assert_eq!(filtered_nones.is_null(row), *none, "filtered row {row}");
 	}
-	assert_eq!(column.filter(&BooleanBuffer::new_set(ROWS)).unwrap().nones(), Some(nones));
-	assert_eq!(column.filter(&BooleanBuffer::new_unset(ROWS)).unwrap().nones().map(|n| n.len()), Some(0));
+	let mut kept_all = column.clone();
+	kept_all.filter(&BooleanBuffer::new_set(ROWS)).unwrap();
+	assert_eq!(kept_all.nulls(), Some(nones));
+	let mut kept_none = column.clone();
+	kept_none.filter(&BooleanBuffer::new_unset(ROWS)).unwrap();
+	assert_eq!(kept_none.nulls().map(|n| n.len()), Some(0));
 
 	let indices = [999usize, 0, 7, 7, 13, 500];
-	let positions = Column::from_column_buffer(ColumnBuffer::uint8(indices.iter().map(|i| *i as u64)));
-	let gathered = column.take(&positions).unwrap();
-	let gathered_nones = gathered.nones().expect("a gathered optional column must keep its none bitmap");
+	let gathered = column.gather(&indices);
+	let gathered_nones = gathered.nulls().expect("a gathered optional column must keep its none bitmap");
 	for (row, index) in indices.iter().enumerate() {
 		assert_eq!(gathered_nones.is_null(row), !defined(ROWS)[*index], "gathered row {row}");
 	}
