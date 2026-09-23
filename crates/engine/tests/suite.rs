@@ -44,6 +44,8 @@ mod closure;
 mod closure_parameter_type_arguments;
 #[path = "closure_value_as_rows.rs"]
 mod closure_value_as_rows;
+#[path = "column_property_invalid_values.rs"]
+mod column_property_invalid_values;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
 #[path = "dictionary_insert_value_type.rs"]
