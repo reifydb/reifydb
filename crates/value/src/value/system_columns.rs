@@ -76,11 +76,11 @@ pub enum SystemColumnsError {
 }
 
 #[inline]
-fn gather<T: Copy + PartialEq>(src: &[T], indices: &[usize]) -> Vec<T> {
+fn gather<T: Copy + PartialEq + Default>(src: &[T], indices: &[usize]) -> Vec<T> {
 	if src.is_empty() {
 		return Vec::new();
 	}
-	indices.iter().map(|&i| src[i]).collect()
+	indices.iter().map(|&i| src.get(i).copied().unwrap_or_default()).collect()
 }
 
 #[inline]

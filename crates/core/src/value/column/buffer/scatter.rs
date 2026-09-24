@@ -154,6 +154,7 @@ fn scatter_merge_by_value(
 }
 
 fn merge_rows_by_value(old: &ColumnBuffer, new: &ColumnBuffer, mask: &BooleanBuffer, len: usize) -> ColumnBuffer {
+	let mask = bitmap::resize(mask, len);
 	let mut builder = ColumnBuilder::with_capacity(old.get_type(), len);
 	for row in 0..len {
 		match mask.value(row) {
