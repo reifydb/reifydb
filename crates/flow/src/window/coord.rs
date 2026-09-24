@@ -176,6 +176,13 @@ impl SealDomain for OrdinalCoord {
 		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
 	}
 
+	fn throttle_of(with: &ApplyWith) -> Result<Option<RowSpan>> {
+		match with.throttle {
+			Some(_) => Err(CoreError::OperatorWithThrottleWindow.into()),
+			None => Ok(None),
+		}
+	}
+
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
@@ -328,6 +335,22 @@ mod tests {
 		};
 
 		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
+	}
+
+	#[test]
+	fn the_slot_domain_refuses_a_throttle() {
+		// a row window has no time span to throttle by, so accepting one would silently never throttle
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(64),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+			throttle: Some(secs(5)),
+		};
+
+		assert!(OrdinalCoord::throttle_of(&with).is_err());
 	}
 
 	#[test]

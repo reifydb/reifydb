@@ -10,13 +10,13 @@ use reifydb_codec::{
 #[cfg(feature = "runtime")]
 use reifydb_core::{
 	internal_err,
-	key::operator::keyspace::expiry::{CustomManagedDue, CustomManagedLatest},
+	key::operator::keyspace::expiry::{CustomManagedDue, CustomManagedLatest, CustomManagedLatestKey},
 };
 use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{
-				CustomManagedDueKey, CustomManagedLatestKey, Expiry, ExpiryKey, TumblingExpiry,
+				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry,
 				TumblingExpirySuffix,
 			},
 			state::{
@@ -147,6 +147,7 @@ pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Re
 	store.state_remove(key)
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<Option<E>> {
 	match store.state_get(key)? {
 		Some(payload) => Ok(Some(decode::<E>(&payload)?)),

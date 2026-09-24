@@ -34,6 +34,8 @@ pub trait SealDomain: Coord {
 
 	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
 
+	fn throttle_of(with: &ApplyWith) -> Result<Option<Self::Span>>;
+
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
@@ -74,6 +76,10 @@ impl SealDomain for DateTime {
 		}
 		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
 		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
+	}
+
+	fn throttle_of(with: &ApplyWith) -> Result<Option<Duration>> {
+		Ok(with.throttle)
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {

@@ -11,6 +11,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
+	state::timer::TimerKind,
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
@@ -40,7 +41,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	harness::{ExternCOperatorHarness, ExternCOperatorHarnessBuilder},
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -707,4 +708,148 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		panic!("create must refuse an unsupported window kind");
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
+}
+
+fn throttled_harness() -> ExternCOperatorHarness<ExternCOperatorAdapter<PlainDriver<TestVolume>>> {
+	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+		.with(ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(millis(60_000)),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+			throttle: Some(millis(10_000)),
+		})
+		.build()
+		.expect("harness")
+}
+
+fn only_update(out: &reifydb_core::interface::change::Change) -> (f64, f64) {
+	let updates: Vec<_> = out.diffs.iter().filter(|d| d.kind() == DiffType::Update).collect();
+	assert_eq!(updates.len(), 1, "exactly one update diff");
+	assert_eq!(updates[0].post().expect("post").row_count(), 1, "exactly one updated row");
+	let pre = updates[0].pre().expect("pre").row_ref(0).expect("r0").f64("volume").expect("pre volume");
+	let post = updates[0].post().expect("post").row_ref(0).expect("r0").f64("volume").expect("post volume");
+	(pre, post)
+}
+
+#[test]
+fn a_new_throttled_window_publishes_its_first_row_at_once() {
+	// A new window held back by the throttle would stay invisible downstream for a whole throttle.
+	let mut h = throttled_harness();
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1);
+	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 1_000, 7.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1, "a second new window inside the throttle still publishes at once");
+	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
+	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(7.0));
+}
+
+#[test]
+fn an_update_inside_the_throttle_publishes_nothing() {
+	// Publishing every batch is the cost the throttle exists to remove.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 0);
+}
+
+#[test]
+fn an_update_past_the_throttle_publishes_every_entry() {
+	// The throttle boundary is inclusive: at exactly last publish + throttle the window is due.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 10_000, 5.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1);
+	assert_eq!(only_update(&out), (10.0, 15.0));
+}
+
+#[test]
+fn a_late_fix_is_timed_by_the_frontier() {
+	// Timing a late row by its own coordinate would hold a due window back until newer rows arrive.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 5_000, 5.0)).build()).expect("apply");
+	assert_eq!(only_update(&out), (10.0, 15.0));
+}
+
+#[test]
+fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
+	// A held-back removal leaves a row downstream for a window that no longer exists.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	let out = h
+		.apply(TestChangeBuilder::new()
+			.remove(input_row(1, "BTC", 0, 10.0))
+			.remove(input_row(2, "BTC", 1_000, 5.0))
+			.build())
+		.expect("apply");
+	assert_eq!(out.diffs.len(), 1);
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
+	let pre = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
+	assert_eq!(pre.f64("volume"), Some(10.0), "the removal retracts the row downstream holds");
+}
+
+#[test]
+fn a_dirty_window_publishes_once_more_when_it_closes() {
+	// A window closing with unpublished changes would leave its final value unseen forever.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 120_000, 1.0)).build()).expect("apply");
+	assert_eq!(only_update(&out), (10.0, 15.0));
+}
+
+#[test]
+fn a_window_published_when_due_is_not_republished_on_close() {
+	// A due publish that leaves the window dirty makes the close emit the same row a second time.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 10_000, 1.0)).build()).expect("apply");
+	assert_eq!(only_update(&out), (10.0, 16.0));
+	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(4, "ETH", 120_000, 1.0)).build()).expect("apply");
+	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
+}
+
+#[test]
+fn a_clean_window_is_not_republished_on_close() {
+	// Republishing an unchanged window on close doubles the output rows for nothing.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 120_000, 1.0)).build()).expect("apply");
+	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
+}
+
+#[test]
+fn a_timer_close_publishes_the_dirty_window() {
+	// A flow that goes quiet closes windows only on the timer, so the timer must publish too.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	let out = h
+		.on_timer(DateTime::from_millis(120_000), TimerKind::Seal, b"")
+		.expect("timer")
+		.expect("the close publishes");
+	assert_eq!(only_update(&out), (10.0, 15.0));
+}
+
+#[test]
+fn a_throttled_update_carries_the_last_published_row_not_the_skipped_one() {
+	// Downstream never saw the skipped row, so retracting it would corrupt every consumer.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 10_000, 1.0)).build()).expect("apply");
+	assert_eq!(only_update(&out), (10.0, 16.0));
 }

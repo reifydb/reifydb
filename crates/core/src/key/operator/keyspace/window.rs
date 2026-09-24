@@ -94,6 +94,12 @@ pub struct GuestRunningKey {
 	pub slot: Asc<[u8; 16]>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct GuestWindowPublishKey {
+	pub group: Desc<GroupId>,
+	pub slot: Asc<[u8; 16]>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Accumulator;
 
@@ -385,6 +391,29 @@ impl Keyspace for GuestRunning {
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestRunningKey {
+			group: Desc(group),
+			slot: suffix,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GuestWindowPublish;
+
+impl Keyspace for GuestWindowPublish {
+	const ID: KeyspaceId = KeyspaceId::GUEST_WINDOW_PUBLISH;
+	const NAME: &'static str = "GUEST_WINDOW_PUBLISH";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = GuestWindowPublishKey;
+	type Suffix = Asc<[u8; 16]>;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(key.group.0, key.slot)
+	}
+
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		GuestWindowPublishKey {
 			group: Desc(group),
 			slot: suffix,
 		}
