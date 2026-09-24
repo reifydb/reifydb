@@ -4,7 +4,7 @@
 use arrow_array::{Array, ArrayRef, UInt64Array};
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::{
-	util::kernel,
+	util::{bitmap, kernel},
 	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
 };
 
@@ -163,8 +163,7 @@ impl ColumnBuffer {
 		match self.clone().split_nulls() {
 			(inner, Some(nulls)) => {
 				let inner = inner.gather(indices);
-				let bits =
-					BooleanBuffer::collect_bool(indices.len(), |row| nulls.is_valid(indices[row]));
+				let bits = bitmap::reorder(nulls.inner(), indices);
 				inner.replace_nulls(Some(NullBuffer::new(bits)))
 			}
 			(mut inner, None) => {

@@ -193,7 +193,8 @@ pub unsafe extern "C" fn host_builder_acquire(
 }
 
 /// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
+/// `handle` must be a value returned by `host_builder_acquire`, or null. The returned pointer is
+/// invalidated by the next call to `host_builder_grow` on the same handle; the caller must re-fetch it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -208,7 +209,8 @@ pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) 
 }
 
 /// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
+/// `handle` must be a value returned by `host_builder_acquire`, or null. The returned pointer is
+/// invalidated by the next call to `host_builder_grow` on the same handle; the caller must re-fetch it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandle) -> *mut u64 {
 	let Some(registry) = current_registry() else {
@@ -226,7 +228,8 @@ pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandl
 }
 
 /// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
+/// `handle` must be a value returned by `host_builder_acquire`, or null. The returned pointer is
+/// invalidated by the next call to `host_builder_grow` on the same handle; the caller must re-fetch it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -247,7 +250,9 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 }
 
 /// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
+/// `handle` must be a value returned by `host_builder_acquire`, or null. A successful grow may
+/// reallocate the builder's buffers, invalidating any pointer obtained before this call from
+/// `host_builder_data_ptr`, `host_builder_offsets_ptr`, or `host_builder_bitvec_ptr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, additional: usize) -> i32 {
 	let Some(registry) = current_registry() else {
