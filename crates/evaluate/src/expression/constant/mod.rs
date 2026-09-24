@@ -56,6 +56,9 @@ fn number_value(fragment: &Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		let value = match parse_decimal(fragment.clone()) {
 			Ok(value) => value,
 			Err(err) => {
+				if !text.contains(['e', 'E']) {
+					return Err(err.into());
+				}
 				return parse_float::<f64>(fragment.clone())
 					.map(|v| ColumnBuffer::float8(vec![v; row_count]))
 					.map_err(|_| err.into());
