@@ -169,23 +169,33 @@ macro_rules! sum_arm {
 }
 
 macro_rules! sub_arm {
-	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {{
+		let function = $self.function.clone();
+		let overflow = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: ValueType::$variant,
+				fragment: function.clone(),
+				descriptor: None,
+			}
+			.into()
+		};
 		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
 				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
-						delta += val;
+						delta = delta.checked_add(val).ok_or_else(overflow)?;
 						has_value = true;
 					}
 				}
 			}
 			if has_value && let Some(Value::$variant(prev)) = $self.sums.remove(group) {
-				$self.sums.insert(group, Value::$variant(prev - delta));
+				let remaining = prev.checked_sub(delta).ok_or_else(overflow)?;
+				$self.sums.insert(group, Value::$variant(remaining));
 			}
 		}
-	};
+	}};
 }
 
 macro_rules! sum_arm_float {
