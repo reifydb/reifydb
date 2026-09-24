@@ -81,7 +81,7 @@ checksum = "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
 dependencies = [
  "bytes",
  "half",
- "num-bigint 0.5.1",
+ "num-bigint",
  "num-traits",
 ]
 
@@ -157,20 +157,6 @@ name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
-
-[[package]]
-name = "bigdecimal"
-version = "0.4.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d6867f1565b3aad85681f1015055b087fcfd840d6aeee6eee7f2da317603695"
-dependencies = [
- "autocfg",
- "libm",
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "serde",
-]
 
 [[package]]
 name = "bitflags"
@@ -794,17 +780,6 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
-dependencies = [
- "num-integer",
- "num-traits",
- "serde",
-]
-
-[[package]]
-name = "num-bigint"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
@@ -1043,10 +1018,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
- "bigdecimal",
  "crc32fast",
- "num-bigint 0.4.6",
- "num-traits",
  "postcard",
  "reifydb-build",
  "reifydb-value",
@@ -1069,7 +1041,6 @@ dependencies = [
  "arrow-select",
  "crossbeam-skiplist",
  "indexmap",
- "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "reifydb-build",
@@ -1288,9 +1259,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-schema",
  "arrow-select",
- "bigdecimal",
  "libm",
- "num-bigint 0.4.6",
  "num-traits",
  "postcard",
  "reifydb-build",

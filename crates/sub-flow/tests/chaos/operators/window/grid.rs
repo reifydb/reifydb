@@ -57,7 +57,7 @@ impl Fold {
 /// tumbling and sliding: both anchor their seal horizon on the window start, both close at
 /// `start + size + lateness`, and both accumulate the same way.
 pub trait Grid {
-	fn windows_of(&self, coord_ms: u64) -> Vec<u64>;
+	fn windows_of(&self, coord_ms: u64) -> Vec<i64>;
 }
 
 pub struct GridOracle<G: Grid> {
@@ -67,13 +67,13 @@ pub struct GridOracle<G: Grid> {
 	contributions: Vec<Contribution>,
 	fold: Fold,
 	immutable_ms: Option<u64>,
-	seals: BTreeMap<(i32, u64), Seal>,
+	seals: BTreeMap<(i32, i64), Seal>,
 }
 
 struct Contribution {
 	row: RowNumber,
 	group: i32,
-	window: u64,
+	window: i64,
 	value: i64,
 	live: bool,
 }
@@ -108,12 +108,12 @@ impl<G: Grid> GridOracle<G> {
 		self
 	}
 
-	fn is_closed(&self, window: u64) -> bool {
-		window.saturating_add(self.cutoff_ms).saturating_add(1) <= self.ledger
+	fn is_closed(&self, window: i64) -> bool {
+		window.saturating_add(self.cutoff_ms as i64).saturating_add(1) <= self.ledger as i64
 	}
 
-	fn grouped(&self) -> BTreeMap<(i32, u64), Vec<i64>> {
-		let mut grouped: BTreeMap<(i32, u64), Vec<i64>> = BTreeMap::new();
+	fn grouped(&self) -> BTreeMap<(i32, i64), Vec<i64>> {
+		let mut grouped: BTreeMap<(i32, i64), Vec<i64>> = BTreeMap::new();
 		for c in self.contributions.iter().filter(|c| c.live) {
 			grouped.entry((c.group, c.window)).or_default().push(c.value);
 		}

@@ -2118,7 +2118,7 @@ fn totals_and_mins(change: &Change) -> Vec<(Value, Value)> {
 	rows
 }
 
-fn window_row(number: u64, value: i64, at_ms: u64) -> Row {
+fn window_row(number: u64, value: i64, at_ms: i64) -> Row {
 	generator::row(RowNumber(number), 1, value, DateTime::from_epoch_millis(at_ms).unwrap())
 }
 

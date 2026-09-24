@@ -90,7 +90,7 @@ impl Config {
 		self.oracle.reopen();
 	}
 
-	pub fn summaries(&self) -> Vec<(u64, u64, u64, u64, u64)> {
+	pub fn summaries(&self) -> Vec<(u64, u64, u64, i64, i64)> {
 		self.persistent
 			.summaries_from(CommitVersion(0), SUMMARY_LIMIT)
 			.expect("a healthy persistent tier must answer for its block layout")
@@ -255,7 +255,7 @@ pub enum ChangeKind {
 
 /// Builds one record and its model row; changes carry real row keys so a drop's eviction rollup resolves per table
 /// instead of one bucket.
-pub fn record(version: u64, timestamp: u64, changes: &[(u64, u64, usize, ChangeKind)]) -> (Cdc, Record) {
+pub fn record(version: u64, timestamp: i64, changes: &[(u64, u64, usize, ChangeKind)]) -> (Cdc, Record) {
 	let mut list = Vec::new();
 	let mut key_bytes = 0u64;
 	let mut value_bytes = 0u64;

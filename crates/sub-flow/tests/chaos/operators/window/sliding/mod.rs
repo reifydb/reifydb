@@ -43,14 +43,17 @@ struct SlidingGrid {
 }
 
 impl Grid for SlidingGrid {
-	fn windows_of(&self, coord_ms: u64) -> Vec<u64> {
+	fn windows_of(&self, coord_ms: u64) -> Vec<i64> {
 		// The containment filter is the authority; the bounds only keep the range finite and are
 		// deliberately loose so a wrong bound cannot silently drop a window.
-		let lowest = coord_ms.saturating_sub(self.size_ms.saturating_sub(1)) / self.slide_ms;
-		let highest = coord_ms / self.slide_ms;
+		let coord = coord_ms as i64;
+		let size = self.size_ms as i64;
+		let slide = self.slide_ms as i64;
+		let lowest = (coord - (size - 1)).div_euclid(slide);
+		let highest = coord.div_euclid(slide);
 		(lowest..=highest)
-			.map(|wid| wid * self.slide_ms)
-			.filter(|start| coord_ms >= *start && coord_ms < start + self.size_ms)
+			.map(|wid| wid * slide)
+			.filter(|start| coord >= *start && coord < start + size)
 			.collect()
 	}
 }

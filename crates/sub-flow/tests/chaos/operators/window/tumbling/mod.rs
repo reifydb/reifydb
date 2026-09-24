@@ -39,8 +39,8 @@ struct TumblingGrid {
 }
 
 impl Grid for TumblingGrid {
-	fn windows_of(&self, coord_ms: u64) -> Vec<u64> {
-		vec![(coord_ms / self.size_ms) * self.size_ms]
+	fn windows_of(&self, coord_ms: u64) -> Vec<i64> {
+		vec![((coord_ms / self.size_ms) * self.size_ms) as i64]
 	}
 }
 

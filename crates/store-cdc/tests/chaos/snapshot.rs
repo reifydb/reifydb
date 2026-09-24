@@ -103,7 +103,8 @@ fn interleave(rng: &mut StdRng, harness: &mut Harness, p: &Params, mut next: u64
 }
 
 fn write(harness: &mut Harness, version: u64) {
-	let (cdc, row) = record(version, TIMESTAMP_BASE + version, &[(1, version % 16 + 1, 8, ChangeKind::Insert)]);
+	let (cdc, row) =
+		record(version, TIMESTAMP_BASE + version as i64, &[(1, version % 16 + 1, 8, ChangeKind::Insert)]);
 	for config in &mut harness.configs {
 		if !config.oracle.write(version, row.clone()) {
 			continue;

@@ -17,7 +17,7 @@ impl ChaosContext {
 	pub fn new(seed: u64) -> Self {
 		Self {
 			seed,
-			clock: Clock::Mock(MockClock::new(seed)),
+			clock: Clock::Mock(MockClock::new(seed & i64::MAX as u64)),
 			drain_at_ms: 0,
 		}
 	}

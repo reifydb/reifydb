@@ -50,11 +50,11 @@ pub struct Params {
 	pub rows: u64,
 	pub max_batch: u64,
 	pub max_limit: usize,
-	pub timestamp_span: u64,
+	pub timestamp_span: i64,
 	pub version_base: u64,
 }
 
-pub const TIMESTAMP_BASE: u64 = 1_700_000_000_000_000_000;
+pub const TIMESTAMP_BASE: i64 = 1_700_000_000_000_000_000;
 
 /// Versions only ever move up and no two records share a timestamp, so the earliest block at or after a ttl cutoff is
 /// unambiguous.
@@ -62,7 +62,7 @@ pub struct Generator {
 	base: u64,
 	next_version: u64,
 	written: Vec<u64>,
-	used: BTreeSet<u64>,
+	used: BTreeSet<i64>,
 }
 
 impl Generator {
@@ -90,7 +90,7 @@ impl Generator {
 		self.base
 	}
 
-	pub fn timestamp(&mut self, rng: &mut StdRng, p: &Params) -> u64 {
+	pub fn timestamp(&mut self, rng: &mut StdRng, p: &Params) -> i64 {
 		loop {
 			let candidate = TIMESTAMP_BASE + rng.random_range(0..p.timestamp_span);
 			if self.used.insert(candidate) {
@@ -201,7 +201,7 @@ pub fn verify(config: &Config, p: &Params, step: u32) {
 	check_drain(config, Bound::Unbounded, Bound::Unbounded, p.max_batch.max(2), step);
 	check_range(config, Bound::Unbounded, Bound::Unbounded, u64::from(u32::MAX), step);
 	check_range(config, Bound::Unbounded, Bound::Unbounded, 0, step);
-	for offset in 0..4u64 {
+	for offset in 0..4i64 {
 		let cutoff = TIMESTAMP_BASE + offset * (p.timestamp_span / 4).max(1);
 		check_ttl(config, cutoff, step);
 	}
@@ -209,7 +209,7 @@ pub fn verify(config: &Config, p: &Params, step: u32) {
 	check_truncation_reads(config, step);
 	check_ttl(config, 0, step);
 	// A cutoff at or above 2^63 wraps negative in the sqlite tier's i64 comparison, so the probe stops below it.
-	check_ttl(config, i64::MAX as u64, step);
+	check_ttl(config, i64::MAX, step);
 }
 
 fn write_step(rng: &mut StdRng, harness: &mut Harness, generator: &mut Generator, p: &Params, step: u32) {
@@ -554,7 +554,7 @@ pub fn check_drain(config: &Config, start: Bound<CommitVersion>, end: Bound<Comm
 	);
 }
 
-pub fn check_ttl(config: &Config, cutoff: u64, step: u32) {
+pub fn check_ttl(config: &Config, cutoff: i64, step: u32) {
 	let expected = config.oracle.find_ttl_cutoff(cutoff);
 	let got = config.store.find_ttl_cutoff(nanos(cutoff)).unwrap().map(|reach| match reach {
 		Cutoff::Version(version) => TtlCutoff::Version(version.0),
@@ -604,7 +604,7 @@ pub fn check_bounds(config: &Config, step: u32) {
 /// model cut.
 pub fn check_blocks(config: &Config, step: u32) {
 	let got = config.summaries();
-	let expected: Vec<(u64, u64, u64, u64, u64)> = config
+	let expected: Vec<(u64, u64, u64, i64, i64)> = config
 		.oracle
 		.blocks()
 		.iter()
@@ -953,7 +953,7 @@ pub fn build_record(rng: &mut StdRng, generator: &mut Generator, p: &Params) -> 
 	Some((version, cdc, row))
 }
 
-fn build(rng: &mut StdRng, p: &Params, version: u64, timestamp: u64) -> (Cdc, Record) {
+fn build(rng: &mut StdRng, p: &Params, version: u64, timestamp: i64) -> (Cdc, Record) {
 	let count = rng.random_range(1..=p.max_changes as u32) as usize;
 	let changes: Vec<(u64, u64, usize, ChangeKind)> = (0..count)
 		.map(|_| {
@@ -994,7 +994,7 @@ fn fingerprint(config: &Config) -> (Option<u64>, Option<u64>, u64, u64, u64) {
 	)
 }
 
-fn nanos(value: u64) -> DateTime {
+fn nanos(value: i64) -> DateTime {
 	DateTime::from_nanos(value)
 }
 
@@ -1067,7 +1067,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		rows: rng.random_range(1..=16u64),
 		max_batch: pick(&mut rng, &[1u64, 2, 5, 16]),
 		max_limit: pick(&mut rng, &[0usize, 1, 3, 8]),
-		timestamp_span: pick(&mut rng, &[1_000u64, 1_000_000]),
+		timestamp_span: pick(&mut rng, &[1_000i64, 1_000_000]),
 		version_base: pick(&mut rng, &[0u64, u64::MAX - 40]),
 	};
 	(sequence_seed, params)

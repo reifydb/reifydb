@@ -15,7 +15,7 @@ pub type Version = u64;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
 	pub changes: Vec<CdcChange>,
-	pub timestamp: u64,
+	pub timestamp: i64,
 	pub bytes: u64,
 	pub key_bytes: u64,
 	pub value_bytes: u64,
@@ -28,8 +28,8 @@ pub struct BlockModel {
 	pub versions: Vec<Version>,
 	pub min: Version,
 	pub max: Version,
-	pub min_timestamp: u64,
-	pub max_timestamp: u64,
+	pub min_timestamp: i64,
+	pub max_timestamp: i64,
 	pub count: u64,
 	pub bytes: u64,
 }
@@ -268,7 +268,7 @@ impl Oracle {
 	/// in version order. Picking the block with the smallest `max_timestamp` instead answers the same only while
 	/// timestamps rise with version; a lower-versioned block with a newer record would be dropped under it, and a
 	/// sweep must never delete a record above its own cutoff.
-	pub fn find_ttl_cutoff(&self, cutoff: u64) -> Option<TtlCutoff> {
+	pub fn find_ttl_cutoff(&self, cutoff: i64) -> Option<TtlCutoff> {
 		let hit = self.blocks.iter().find(|block| block.max_timestamp >= cutoff).map(|block| block.min);
 		match hit {
 			Some(version) => Some(TtlCutoff::Version(version)),
