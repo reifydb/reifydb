@@ -66,7 +66,7 @@ impl ExtensionType for Bool8 {
     }
 
     fn try_new(data_type: &DataType, _metadata: Self::Metadata) -> Result<Self, ArrowError> {
-        Self.supports_data_type(data_type).map(|()| Self)
+        Self.supports_data_type(data_type).map(|_| Self)
     }
 
     fn validate(data_type: &DataType, _metadata: Self::Metadata) -> Result<(), ArrowError> {
@@ -102,8 +102,11 @@ mod tests {
     #[test]
     #[should_panic(expected = "Extension type name missing")]
     fn missing_name() {
-        let field = Field::new("", DataType::Int8, false)
-            .with_metadata([(EXTENSION_TYPE_METADATA_KEY, "")]);
+        let field = Field::new("", DataType::Int8, false).with_metadata(
+            [(EXTENSION_TYPE_METADATA_KEY.to_owned(), "".to_owned())]
+                .into_iter()
+                .collect(),
+        );
         field.extension_type::<Bool8>();
     }
 
@@ -116,18 +119,28 @@ mod tests {
     #[test]
     #[should_panic(expected = "Bool8 extension type expects an empty string as metadata")]
     fn missing_metadata() {
-        let field = Field::new("", DataType::Int8, false)
-            .with_metadata([(EXTENSION_TYPE_NAME_KEY, Bool8::NAME)]);
+        let field = Field::new("", DataType::Int8, false).with_metadata(
+            [(EXTENSION_TYPE_NAME_KEY.to_owned(), Bool8::NAME.to_owned())]
+                .into_iter()
+                .collect(),
+        );
         field.extension_type::<Bool8>();
     }
 
     #[test]
     #[should_panic(expected = "Bool8 extension type expects an empty string as metadata")]
     fn invalid_metadata() {
-        let field = Field::new("", DataType::Int8, false).with_metadata([
-            (EXTENSION_TYPE_NAME_KEY, Bool8::NAME),
-            (EXTENSION_TYPE_METADATA_KEY, "non-empty"),
-        ]);
+        let field = Field::new("", DataType::Int8, false).with_metadata(
+            [
+                (EXTENSION_TYPE_NAME_KEY.to_owned(), Bool8::NAME.to_owned()),
+                (
+                    EXTENSION_TYPE_METADATA_KEY.to_owned(),
+                    "non-empty".to_owned(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
         field.extension_type::<Bool8>();
     }
 }

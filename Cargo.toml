@@ -183,7 +183,7 @@ readme = "readme.md"
 license = "Apache-2.0"
 
 version = "0.9.3"
-rust-version = "1.92.0"
+rust-version = "1.95.0"
 edition = "2024"
 
 [profile.dev]
@@ -315,15 +315,15 @@ libm = { version = "0.2.16" }
 once_cell = { version = "1.21.4" }
 uuid = { version = "1.23.2", default-features = false, features = ["serde", "std"] }
 num-traits = { version = "0.2.19" }
-arrow-buffer = { version = "60.0.0" }
-arrow-array = { version = "60.0.0" }
-arrow-data = { version = "60.0.0" }
-arrow-schema = { version = "60.0.0" }
-arrow-select = { version = "60.0.0" }
-arrow-arith = { version = "60.0.0" }
-arrow-string = { version = "60.0.0" }
-arrow-ord = { version = "60.0.0" }
-arrow-row = { version = "60.0.0" }
+arrow-buffer = { version = "59.2" }
+arrow-array = { version = "59.2" }
+arrow-data = { version = "59.2" }
+arrow-schema = { version = "59.2" }
+arrow-select = { version = "59.2" }
+arrow-arith = { version = "59.2" }
+arrow-string = { version = "59.2" }
+arrow-ord = { version = "59.2" }
+arrow-row = { version = "59.2" }
 rand = { version = "0.10" }
 argon2 = { version = "0.6.0-rc.8" }
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }

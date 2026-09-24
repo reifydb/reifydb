@@ -58,9 +58,6 @@ impl NullArray {
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and length.
-    ///
-    /// # Panics
-    /// Panics if `offset + len > self.len()`
     pub fn slice(&self, offset: usize, len: usize) -> Self {
         assert!(
             offset.saturating_add(len) <= self.len,
@@ -237,6 +234,6 @@ mod tests {
         let data = mutable.freeze();
 
         let struct_array = Arc::new(StructArray::from(data.clone()));
-        assert_eq!(&make_array(data), &(struct_array as ArrayRef));
+        assert!(make_array(data) == struct_array);
     }
 }

@@ -443,10 +443,10 @@ impl RecordBatch {
     /// // Initially, the metadata is empty
     /// assert!(batch.schema().metadata().get("key").is_none());
     /// // Insert a key-value pair into the metadata
-    /// batch.schema_metadata_mut().insert("key", "value");
+    /// batch.schema_metadata_mut().insert("key".into(), "value".into());
     /// assert_eq!(batch.schema().metadata().get("key"), Some(&String::from("value")));
     /// ```
-    pub fn schema_metadata_mut(&mut self) -> &mut arrow_schema::Metadata {
+    pub fn schema_metadata_mut(&mut self) -> &mut std::collections::HashMap<String, String> {
         let schema = Arc::make_mut(&mut self.schema);
         &mut schema.metadata
     }
@@ -644,7 +644,7 @@ impl RecordBatch {
     ///
     /// # Panics
     ///
-    /// Panics if `index` is out of bounds.
+    /// Panics if `index`` out of bounds.
     ///
     /// # Example
     ///
@@ -1709,7 +1709,9 @@ mod tests {
         batch.clone().with_schema(required_schema).unwrap_err();
 
         // Can add metadata
-        let metadata = arrow_schema::Metadata::from([("foo", "bar")]);
+        let metadata = vec![("foo".to_string(), "bar".to_string())]
+            .into_iter()
+            .collect();
         let metadata_schema = nullable_schema.as_ref().clone().with_metadata(metadata);
         let batch = batch.with_schema(Arc::new(metadata_schema)).unwrap();
 

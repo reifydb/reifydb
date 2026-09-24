@@ -19,7 +19,7 @@ use arrow_buffer::Buffer;
 use criterion::*;
 use rand::distr::Alphanumeric;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
+use rand::{Rng, SeedableRng};
 use std::hint;
 
 fn criterion_benchmark(c: &mut Criterion) {

@@ -61,6 +61,3 @@ postcard = { version = "1.0.10", default-features = false, features = ["use-std"
 name = "ffi"
 harness = false
 required-features = ["ffi"]
-
-[lints]
-workspace = true

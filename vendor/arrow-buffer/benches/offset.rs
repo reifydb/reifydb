@@ -18,7 +18,7 @@
 use arrow_buffer::{OffsetBuffer, OffsetBufferBuilder};
 use criterion::*;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
+use rand::{Rng, SeedableRng};
 use std::hint;
 
 const SIZE: usize = 1024;
