@@ -60,9 +60,12 @@ impl ReadingKind {
 			ReadingKind::Bytes => Reading::Bytes(ByteSize::from_bytes(value as u64)),
 			ReadingKind::Count => Reading::Count(Count::new(value as u64)),
 			ReadingKind::Ratio => Reading::Ratio(value),
-			ReadingKind::Duration => Reading::Duration(
-				Duration::from_microseconds(value.min(9.0e15) as i64).unwrap_or_default(),
-			),
+			ReadingKind::Duration => {
+				if !(0.0..=u64::MAX as f64).contains(&value) {
+					panic!("a duration reading of {value} microseconds is not representable");
+				}
+				Reading::Duration(Duration::from_micros_infallible(value as u64))
+			}
 		}
 	}
 }

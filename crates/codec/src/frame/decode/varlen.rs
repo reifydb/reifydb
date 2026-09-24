@@ -52,28 +52,8 @@ pub(crate) fn decode_varlen_plain(
 				Err(e) => Err(e),
 			}
 		}
-		ValueType::Int => {
-			let mut values = Vec::with_capacity(row_count);
-			let offset_arr = decode_u32_offsets(offsets, row_count);
-			for i in 0..row_count {
-				let start = offset_arr[i] as usize;
-				let end = offset_arr[i + 1] as usize;
-				let big = BigInt::from_signed_bytes_le(&data[start..end]);
-				values.push(Int(big));
-			}
-			Ok(FrameColumnData::Int(int_array(values)))
-		}
-		ValueType::Uint => {
-			let mut values = Vec::with_capacity(row_count);
-			let offset_arr = decode_u32_offsets(offsets, row_count);
-			for i in 0..row_count {
-				let start = offset_arr[i] as usize;
-				let end = offset_arr[i + 1] as usize;
-				let big = BigInt::from_signed_bytes_le(&data[start..end]);
-				values.push(Uint(big));
-			}
-			Ok(FrameColumnData::Uint(uint_array(values)))
-		}
+		ValueType::Int => decode_int(data, offsets, row_count),
+		ValueType::Uint => decode_uint(data, offsets, row_count),
 		ValueType::Decimal => decode_decimal(data, offsets, row_count),
 		_ => return None,
 	};
@@ -137,22 +117,16 @@ pub(crate) fn decode_digest_plain(
 			offsets.len()
 		)));
 	}
-	let offset_arr = decode_u32_offsets(offsets, row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
 	let mut builder = LargeBinaryBuilder::with_capacity(row_count, data.len());
 	for i in 0..row_count {
-		let start = offset_arr[i] as usize;
-		let end = offset_arr[i + 1] as usize;
-		if start > end || end > data.len() {
-			return Err(DecodeError::InvalidData(format!(
-				"digest row {i} spans {start}..{end} outside {} data bytes",
-				data.len()
-			)));
-		}
+		let start = offset_arr[i];
+		let end = offset_arr[i + 1];
 		if start == end {
 			push_none_slot(&mut builder);
 			continue;
 		}
-		let digest = Digest::decode(&data[start..end])
+		let digest = Digest::decode(checked_span(data, start, end)?)
 			.map_err(|error| DecodeError::InvalidData(format!("invalid digest in row {i}: {error}")))?;
 		if *digest.inner() != inner || digest.accuracy() != accuracy {
 			return Err(DecodeError::InvalidData(format!(
@@ -170,13 +144,32 @@ pub(crate) fn decode_digest_plain(
 	})
 }
 
+fn decode_int(data: &[u8], offsets: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
+	let mut values = Vec::with_capacity(row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
+	for i in 0..row_count {
+		let bytes = checked_span(data, offset_arr[i], offset_arr[i + 1])?;
+		values.push(Int(BigInt::from_signed_bytes_le(bytes)));
+	}
+	Ok(FrameColumnData::Int(int_array(values)))
+}
+
+fn decode_uint(data: &[u8], offsets: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
+	let mut values = Vec::with_capacity(row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
+	for i in 0..row_count {
+		let bytes = checked_span(data, offset_arr[i], offset_arr[i + 1])?;
+		values.push(Uint(BigInt::from_signed_bytes_le(bytes)));
+	}
+	Ok(FrameColumnData::Uint(uint_array(values)))
+}
+
 fn decode_decimal(data: &[u8], offsets: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
-	let offset_arr = decode_u32_offsets(offsets, row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
 	for i in 0..row_count {
-		let start = offset_arr[i] as usize;
-		let end = offset_arr[i + 1] as usize;
-		let s = str::from_utf8(&data[start..end])
+		let bytes = checked_span(data, offset_arr[i], offset_arr[i + 1])?;
+		let s = str::from_utf8(bytes)
 			.map_err(|e| DecodeError::InvalidData(format!("invalid decimal string: {}", e)))?;
 		let dec: BigDecimal =
 			s.parse().map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {}", e)))?;
@@ -185,8 +178,15 @@ fn decode_decimal(data: &[u8], offsets: &[u8], row_count: usize) -> Result<Frame
 	Ok(FrameColumnData::Decimal(decimal_array(values)))
 }
 
-fn decode_u32_offsets(offsets: &[u8], row_count: usize) -> Vec<u32> {
+fn decode_u32_offsets(offsets: &[u8], row_count: usize) -> Result<Vec<u32>, DecodeError> {
 	let count = row_count + 1;
+	let expected = count * 4;
+	if offsets.len() < expected {
+		return Err(DecodeError::UnexpectedEof {
+			expected,
+			available: offsets.len(),
+		});
+	}
 	let mut result = Vec::with_capacity(count);
 	for i in 0..count {
 		result.push(u32::from_le_bytes([
@@ -196,29 +196,33 @@ fn decode_u32_offsets(offsets: &[u8], row_count: usize) -> Vec<u32> {
 			offsets[i * 4 + 3],
 		]));
 	}
-	result
+	Ok(result)
+}
+
+fn checked_span(data: &[u8], start: u32, end: u32) -> Result<&[u8], DecodeError> {
+	data.get(start as usize..end as usize).ok_or(DecodeError::UnexpectedEof {
+		expected: end as usize,
+		available: data.len(),
+	})
 }
 
 fn decode_varlen_strings(data: &[u8], offsets: &[u8], row_count: usize) -> Result<Vec<String>, DecodeError> {
-	let offset_arr = decode_u32_offsets(offsets, row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
 	let mut strings = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let start = offset_arr[i] as usize;
-		let end = offset_arr[i + 1] as usize;
-		let s = str::from_utf8(&data[start..end])
-			.map_err(|e| DecodeError::InvalidData(format!("invalid UTF-8: {}", e)))?;
+		let bytes = checked_span(data, offset_arr[i], offset_arr[i + 1])?;
+		let s = str::from_utf8(bytes).map_err(|e| DecodeError::InvalidData(format!("invalid UTF-8: {}", e)))?;
 		strings.push(s.to_string());
 	}
 	Ok(strings)
 }
 
 fn decode_varlen_blobs(data: &[u8], offsets: &[u8], row_count: usize) -> Result<Vec<Blob>, DecodeError> {
-	let offset_arr = decode_u32_offsets(offsets, row_count);
+	let offset_arr = decode_u32_offsets(offsets, row_count)?;
 	let mut blobs = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let start = offset_arr[i] as usize;
-		let end = offset_arr[i + 1] as usize;
-		blobs.push(Blob::new(data[start..end].to_vec()));
+		let bytes = checked_span(data, offset_arr[i], offset_arr[i + 1])?;
+		blobs.push(Blob::new(bytes.to_vec()));
 	}
 	Ok(blobs)
 }
