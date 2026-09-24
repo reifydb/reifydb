@@ -31,7 +31,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationGetMonths {
 	}
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
-		ValueType::Int8
+		ValueType::Int4
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {

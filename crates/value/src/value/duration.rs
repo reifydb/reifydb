@@ -19,11 +19,28 @@ use crate::{
 };
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Duration {
 	months: i32,
 	days: i32,
 	nanos: i64,
+}
+
+impl<'de> Deserialize<'de> for Duration {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		struct RawDuration {
+			months: i32,
+			days: i32,
+			nanos: i64,
+		}
+
+		let raw = RawDuration::deserialize(deserializer)?;
+		Duration::normalized(raw.months, raw.days, raw.nanos).map_err(serde::de::Error::custom)
+	}
 }
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
@@ -346,12 +363,21 @@ impl Duration {
 			&& (self.months < 0 || self.days < 0 || self.nanos < 0)
 	}
 
-	pub fn abs(&self) -> Self {
-		Self {
-			months: self.months.abs(),
-			days: self.days.abs(),
-			nanos: self.nanos.abs(),
-		}
+	pub fn abs(&self) -> Result<Self, Box<TypeError>> {
+		let absed = self
+			.months
+			.checked_abs()
+			.zip(self.days.checked_abs())
+			.zip(self.nanos.checked_abs())
+			.ok_or_else(|| {
+				Box::new(Self::overflow_err("taking the absolute value of the Duration overflows its range".to_string()))
+			})?;
+		let ((months, days), nanos) = absed;
+		Ok(Self {
+			months,
+			days,
+			nanos,
+		})
 	}
 
 	pub fn negate(&self) -> Result<Self, Box<TypeError>> {
@@ -603,8 +629,8 @@ impl Duration {
 	}
 
 	pub fn from_std(duration: StdDuration) -> Self {
-		let nanos = i64::try_from(duration.as_nanos()).expect("std Duration exceeds i64 nanoseconds");
-		Self::from_nanoseconds(nanos).expect("std Duration nanoseconds within range")
+		let nanos = u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX);
+		Self::from_nanos_infallible(nanos)
 	}
 }
 
@@ -1096,7 +1122,7 @@ pub mod tests {
 	#[test]
 	fn test_duration_display_abs_and_negate() {
 		let d = Duration::from_seconds(-30).unwrap();
-		assert_eq!(format!("{}", d.abs()), "30s");
+		assert_eq!(format!("{}", d.abs().unwrap()), "30s");
 
 		let d = Duration::from_seconds(30).unwrap();
 		assert_eq!(format!("{}", d.negate().unwrap()), "-30s");

@@ -68,6 +68,14 @@ reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-test-harness = { workspace = true, optional = true }
 
 arrow-array = { workspace = true }
+arrow-arith = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-data = { workspace = true }
+arrow-ord = { workspace = true }
+arrow-row = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+arrow-string = { workspace = true }
 rayon = { workspace = true }
 tokio = { workspace = true }
 num_cpus = { workspace = true }
