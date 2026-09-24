@@ -259,7 +259,7 @@ impl IntoDiagnostic for RoutineError {
 			} => {
 				let name = function.text().to_string();
 				let expected_types =
-					expected.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
+					expected.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				Diagnostic {
 					code: "FUNCTION_004".to_string(),
 					rql: None,
@@ -348,7 +348,7 @@ impl IntoDiagnostic for RoutineError {
 			} => {
 				let name = procedure.text().to_string();
 				let expected_types =
-					expected.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
+					expected.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				Diagnostic {
 					code: "PROCEDURE_002".to_string(),
 					rql: None,

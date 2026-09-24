@@ -1240,7 +1240,7 @@ impl IntoDiagnostic for TypeError {
 					),
 					FunctionErrorKind::InvalidArgumentType { expected, .. } => {
 						let expected_types =
-							expected.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
+							expected.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 						(
 							"FUNCTION_004",
 							Some("invalid argument type".to_string()),
