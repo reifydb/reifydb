@@ -379,7 +379,17 @@ fn handle_accept_result(
 	let (stream, addr) = accept;
 	let peer = Some(addr);
 	configure_stream(&stream, peer);
-	spawn_connection(stream, peer, state, registry, semaphore, active_connections, shutdown_rx, runtime, Access::Admin);
+	spawn_connection(
+		stream,
+		peer,
+		state,
+		registry,
+		semaphore,
+		active_connections,
+		shutdown_rx,
+		runtime,
+		Access::Admin,
+	);
 }
 
 #[allow(clippy::too_many_arguments)]

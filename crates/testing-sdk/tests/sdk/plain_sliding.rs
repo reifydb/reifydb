@@ -76,7 +76,11 @@ fn an_update_carries_each_window_s_published_row_as_its_pre() {
 		for i in 0..posts.row_count() {
 			let pre = pres.row_ref(i).expect("pre row");
 			let post = posts.row_ref(i).expect("post row");
-			pre_post.push((pre.f64("sum").expect("sum"), post.f64("sum").expect("sum"), post.u64("start").expect("start")));
+			pre_post.push((
+				pre.f64("sum").expect("sum"),
+				post.f64("sum").expect("sum"),
+				post.u64("start").expect("start"),
+			));
 		}
 	}
 	pre_post.sort_by_key(|(_, _, start)| *start);

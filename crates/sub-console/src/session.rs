@@ -90,7 +90,10 @@ pub(crate) async fn run(
 				info!(fingerprint = %minted, "registered with the tunnel server");
 				fingerprint = Some(minted);
 				backoff.reset();
-				if let Served::Shutdown = serve(tcp, &acceptor, stream_access(config.external_access), &mut shutdown).await {
+				if let Served::Shutdown =
+					serve(tcp, &acceptor, stream_access(config.external_access), &mut shutdown)
+						.await
+				{
 					return Ok(());
 				}
 			}

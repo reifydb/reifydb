@@ -4,7 +4,8 @@
 use std::io::ErrorKind;
 
 use reifydb_console_protocol::{
-	ExternalAccess, MAX_FRAME, PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message, write_message,
+	ExternalAccess, MAX_FRAME, PROTOCOL_VERSION, ProtocolError, Refusal, Register, Reply, read_message,
+	write_message,
 };
 use tokio::io::{AsyncWriteExt, duplex};
 

@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-pub use reifydb_console_protocol::ExternalAccess;
+use reifydb_console_protocol::ExternalAccess;
 
 #[derive(Default)]
 pub struct ConsoleConfigurator {

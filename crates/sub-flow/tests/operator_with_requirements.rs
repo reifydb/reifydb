@@ -687,7 +687,10 @@ fn a_throttle_on_a_plain_tumbling_time_window_creates() {
 	event_time_source(&db);
 
 	for (name, apply) in [
-		("throttled_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, throttle: 10s }"),
+		(
+			"throttled_v",
+			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, throttle: 10s }",
+		),
 		("no_lateness_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, throttle: 10s }"),
 	] {
 		let statement = view(name, apply);

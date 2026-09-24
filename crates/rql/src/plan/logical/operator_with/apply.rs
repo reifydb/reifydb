@@ -653,7 +653,9 @@ mod tests {
 	fn throttle_parses_as_a_duration() {
 		// A throttle dropped by the compiler would publish every batch while the view declares a rate.
 		assert_eq!(
-			apply_with("apply op { } with { window: tumbling, duration: 1m, throttle: 10s }").unwrap().throttle,
+			apply_with("apply op { } with { window: tumbling, duration: 1m, throttle: 10s }")
+				.unwrap()
+				.throttle,
 			Some(Duration::from_seconds(10).unwrap())
 		);
 		assert_eq!(apply_with("apply op { } with { window: tumbling, duration: 1m }").unwrap().throttle, None);

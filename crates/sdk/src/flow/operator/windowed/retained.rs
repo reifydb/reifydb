@@ -61,7 +61,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Emit, WindowedOperator},
-			publish::{Emitted, load_publish_states, publish_row},
+			publish::{Emitted, UpdateRow, load_publish_states, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -72,8 +72,7 @@ const SEAL_REAP_BATCH: usize = 256;
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
 type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
-type Engine<A, K, V> =
-	RetainedTumblingEngine<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, K, V>;
+type Engine<A, K, V> = RetainedTumblingEngine<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, K, V>;
 
 pub struct RetainedDriver<A, K, V>
 where
@@ -388,7 +387,7 @@ where
 		&self,
 		ctx: &mut impl GuestContext,
 		inserts: &[(RowNumber, A::Output)],
-		updates: &[(RowNumber, Option<A::Output>, A::Output)],
+		updates: &[UpdateRow<A>],
 		removes: &[(RowNumber, A::Output)],
 	) -> Result<()> {
 		if !inserts.is_empty() {
@@ -597,7 +596,12 @@ mod tests {
 			impl Emit for $name {
 				type Kinds = crate::flow::operator::windowed::operator::NoRolling;
 
-				fn build_output(&self, _: &u64, _: WindowSpan<$coord>, _: &BTreeMap<u64, i64>) -> Option<Out> {
+				fn build_output(
+					&self,
+					_: &u64,
+					_: WindowSpan<$coord>,
+					_: &BTreeMap<u64, i64>,
+				) -> Option<Out> {
 					None
 				}
 			}
@@ -613,7 +617,8 @@ mod tests {
 
 	#[test]
 	fn create_refuses_a_window_that_is_not_tumbling() {
-		// Only the tumbling path reads entries; a sliding window accepted here would publish from the wrong spans.
+		// Only the tumbling path reads entries; a sliding window accepted here would publish from the wrong
+		// spans.
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),

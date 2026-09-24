@@ -63,7 +63,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator},
-			publish::{Emitted, Rows, UpdateRows, load_publish_states, publish_row},
+			publish::{Emitted, Rows, UpdateRow, UpdateRows, load_publish_states, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -322,7 +322,11 @@ where
 			);
 		}
 		let out = accumulator.and_then(|accumulator| accumulator.finalize()).and_then(|value| {
-			aggregator.build_output(group, WindowSpan::for_coord(window_start, settings.fixed_size()), &value)
+			aggregator.build_output(
+				group,
+				WindowSpan::for_coord(window_start, settings.fixed_size()),
+				&value,
+			)
 		});
 		let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
 		#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
@@ -1020,7 +1024,7 @@ where
 		&self,
 		ctx: &mut impl GuestContext,
 		inserts: &[(RowNumber, A::Output)],
-		updates: &[(RowNumber, Option<A::Output>, A::Output)],
+		updates: &[UpdateRow<A>],
 		removes: &[(RowNumber, A::Output)],
 	) -> Result<()> {
 		if !inserts.is_empty() {

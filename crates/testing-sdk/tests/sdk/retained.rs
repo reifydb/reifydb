@@ -259,8 +259,7 @@ fn a_dirty_window_publishes_once_more_when_it_closes() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1, 0, 10)).build()).expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2, 1_000, 5)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out =
-		h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
 	assert_eq!(only_update(&out), (10.0, 15.0));
 }
 
@@ -274,8 +273,7 @@ fn a_window_published_when_due_is_not_republished_on_close() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 3, 10_000, 1)).build()).expect("apply");
 	assert_eq!(only_update(&out), (10.0, 16.0));
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out =
-		h.apply(TestChangeBuilder::new().insert(input_row(4, "ETH", 1, 120_000, 1)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(4, "ETH", 1, 120_000, 1)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
 }
 
@@ -285,8 +283,7 @@ fn a_clean_window_is_not_republished_on_close() {
 	let mut h = throttled_harness();
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1, 0, 10)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out =
-		h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 1, 120_000, 1)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 1, 120_000, 1)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
 }
 
@@ -342,7 +339,6 @@ fn an_emptied_dirty_window_is_not_removed_again_on_close() {
 		.expect("apply");
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out =
-		h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
 }

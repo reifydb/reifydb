@@ -16,8 +16,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{
-				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry,
-				TumblingExpirySuffix,
+				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix,
 			},
 			state::{
 				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,

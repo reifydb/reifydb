@@ -12,6 +12,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{from_slice, to_vec};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -117,7 +118,7 @@ where
 	W: AsyncWrite + Unpin,
 	T: Serialize,
 {
-	let body = serde_json::to_vec(message).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
+	let body = to_vec(message).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
 	if body.len() > MAX_FRAME {
 		return Err(ProtocolError::TooLarge(body.len()));
 	}
@@ -138,5 +139,5 @@ where
 	}
 	let mut body = vec![0u8; len];
 	reader.read_exact(&mut body).await?;
-	serde_json::from_slice(&body).map_err(|e| ProtocolError::Malformed(e.to_string()))
+	from_slice(&body).map_err(|e| ProtocolError::Malformed(e.to_string()))
 }

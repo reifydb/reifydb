@@ -313,5 +313,9 @@ fn an_emptied_session_publishes_nothing_on_seal() {
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 4.0)).build()).expect("apply");
 
-	assert_eq!(render(&out), vec![(DiffType::Insert, 4.0, at(10_000), at(10_010))], "only the new session publishes");
+	assert_eq!(
+		render(&out),
+		vec![(DiffType::Insert, 4.0, at(10_000), at(10_010))],
+		"only the new session publishes"
+	);
 }

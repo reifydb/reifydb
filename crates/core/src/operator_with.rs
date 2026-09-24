@@ -1083,7 +1083,8 @@ mod tests {
 
 	#[test]
 	fn throttle_round_trips_through_the_create_buffer() {
-		// A throttle dropped on the way to the guest would publish every batch while the view declares otherwise.
+		// A throttle dropped on the way to the guest would publish every batch while the view declares
+		// otherwise.
 		let declared = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
@@ -1115,7 +1116,8 @@ mod tests {
 
 	#[test]
 	fn check_throttle_refuses_a_driver_that_cannot_throttle() {
-		// A throttle silently ignored by a driver that cannot hold back a publish is a rate the author believes holds.
+		// A throttle silently ignored by a driver that cannot hold back a publish is a rate the author believes
+		// holds.
 		let throttled = tumbling(WindowSize::Duration(secs(60)), Some(10));
 		let err = throttled.check_throttle(false).unwrap_err();
 		assert!(err.to_string().contains("takes no 'throttle'"), "{err}");
@@ -1160,7 +1162,10 @@ mod tests {
 		];
 		for with in refused {
 			let err = with.check_throttle(true).unwrap_err();
-			assert!(err.to_string().contains("needs a tumbling window sized by a duration"), "{with:?}: {err}");
+			assert!(
+				err.to_string().contains("needs a tumbling window sized by a duration"),
+				"{with:?}: {err}"
+			);
 		}
 	}
 }

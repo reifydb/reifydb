@@ -10,8 +10,10 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb::{Database, server, sub::subsystem::Subsystem};
-use reifydb_console_protocol::{PROTOCOL_VERSION, Refusal, Register, Reply, read_message, write_message};
-use reifydb_sub_console::{config::ExternalAccess, subsystem::ConsoleSubsystem};
+use reifydb_console_protocol::{
+	ExternalAccess, PROTOCOL_VERSION, Refusal, Register, Reply, read_message, write_message,
+};
+use reifydb_sub_console::subsystem::ConsoleSubsystem;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_value::{params::Params, value::duration::Duration};
 use serde_json::{Value, from_str};
@@ -331,7 +333,8 @@ async fn tunneled(fake: &mut FakeTunnel, access: ExternalAccess) -> WebSocketStr
 
 #[test]
 fn a_query_level_stream_reads_and_refuses_every_write() {
-	// The tunnel server cannot see requests, so the instance is the only place a write through the console is stopped.
+	// The tunnel server cannot see requests, so the instance is the only place a write through the console is
+	// stopped.
 	let runtime = Runtime::new().expect("test runtime");
 	let mut fake = runtime.block_on(FakeTunnel::start());
 	let db = database_at(&fake.address, None, ExternalAccess::Query);
@@ -348,7 +351,10 @@ fn a_query_level_stream_reads_and_refuses_every_write() {
 		}
 
 		let after = request(&mut ws, QUERY).await;
-		assert!(!after["payload"]["body"].to_string().contains("second"), "a refused write must not land: {after}");
+		assert!(
+			!after["payload"]["body"].to_string().contains("second"),
+			"a refused write must not land: {after}"
+		);
 	});
 }
 
@@ -384,7 +390,11 @@ fn an_admin_level_stream_is_not_refused_by_the_level() {
 
 		for sent in [COMMAND, CALL, CLAIM, ADMIN] {
 			let answered = request(&mut ws, sent).await;
-			assert_ne!(code(&answered), "FORBIDDEN", "{sent} must pass the level check at admin: {answered}");
+			assert_ne!(
+				code(&answered),
+				"FORBIDDEN",
+				"{sent} must pass the level check at admin: {answered}"
+			);
 		}
 	});
 }

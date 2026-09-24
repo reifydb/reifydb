@@ -205,7 +205,7 @@ where
 	}
 
 	fn entry_key(&self, group: GroupId, key: &K) -> Result<RetainedEntryKey> {
-		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body().to_vec())))
+		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
 	}
 
 	fn load_meta(
@@ -274,7 +274,8 @@ where
 				match event {
 					AccumulatorEvent::Add((k, v)) => {
 						let entry_key = self.entry_key(id, &k)?;
-						let old: Option<RetainedEntry<K, V>> = get_classified(store, &entry_key)?;
+						let old: Option<RetainedEntry<K, V>> =
+							get_classified(store, &entry_key)?;
 						put(
 							store,
 							&entry_key,
@@ -293,7 +294,8 @@ where
 							continue;
 						}
 						let entry_key = self.entry_key(id, &k)?;
-						let old: Option<RetainedEntry<K, V>> = get_classified(store, &entry_key)?;
+						let old: Option<RetainedEntry<K, V>> =
+							get_classified(store, &entry_key)?;
 						if let Some(entry) = old
 							&& entry.value == v
 						{
@@ -481,7 +483,8 @@ mod tests {
 
 	#[test]
 	fn parity_with_blob_engine_over_adds_updates_removes() {
-		// The per-entry engine replaces the blob engine, so any drift in row number, emit kind or entries is a wrong row downstream.
+		// The per-entry engine replaces the blob engine, so any drift in row number, emit kind or entries is a
+		// wrong row downstream.
 		let batches: Vec<fn() -> Vec<Event>> = vec![
 			|| vec![Add((1, 10)), Add((2, 20))],
 			|| vec![Add((1, 11)), Remove((2, 20))],
@@ -502,7 +505,11 @@ mod tests {
 				EmitKind::Remove => BTreeMap::new(),
 				_ => theirs[0].value.clone(),
 			};
-			assert_eq!(engine.load_entries(&mut entries_store, window_group()).unwrap(), expected, "step {step}");
+			assert_eq!(
+				engine.load_entries(&mut entries_store, window_group()).unwrap(),
+				expected,
+				"step {step}"
+			);
 		}
 	}
 
@@ -544,7 +551,11 @@ mod tests {
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20)), Add((3, 30))]);
-		assert_eq!(engine.load_entries(&mut store, window_group()).unwrap().len(), 3, "precondition: entries exist");
+		assert_eq!(
+			engine.load_entries(&mut store, window_group()).unwrap().len(),
+			3,
+			"precondition: entries exist"
+		);
 		let visited = store.rows_visited();
 		apply(&mut engine, &mut store, vec![Add((4, 40)), Remove((1, 10))]);
 		assert_eq!(store.rows_visited(), visited, "apply must touch entries by point reads only");

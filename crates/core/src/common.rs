@@ -511,7 +511,8 @@ mod tests {
 
 	#[test]
 	fn check_refuses_a_throttle_only_where_the_requirements_do_not_throttle() {
-		// An in-process create that skipped the throttle check would run a view whose declared rate nothing enforces.
+		// An in-process create that skipped the throttle check would run a view whose declared rate nothing
+		// enforces.
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),

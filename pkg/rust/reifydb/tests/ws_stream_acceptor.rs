@@ -3,7 +3,10 @@
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb::{
-	Database, WithSubsystem, runtime::shutdown::Shutdown, server, sub_server_ws::acceptor::{Access, WsStreamAcceptor},
+	Database, WithSubsystem,
+	runtime::shutdown::Shutdown,
+	server,
+	sub_server_ws::acceptor::{Access, WsStreamAcceptor},
 };
 use reifydb_value::{params::Params, value::duration::Duration};
 use serde_json::{Value, from_str};

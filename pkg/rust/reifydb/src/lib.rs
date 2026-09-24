@@ -87,6 +87,8 @@ pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_single as single_storage;
 pub use reifydb_sub_api as sub;
+#[cfg(feature = "sub_console")]
+pub use reifydb_sub_console as sub_console;
 pub use reifydb_sub_core as sub_core;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
@@ -105,8 +107,6 @@ pub use reifydb_sub_server_grpc as sub_server_grpc;
 pub use reifydb_sub_server_http as sub_server_http;
 #[cfg(feature = "sub_server_otel")]
 pub use reifydb_sub_server_otel as sub_server_otel;
-#[cfg(feature = "sub_console")]
-pub use reifydb_sub_console as sub_console;
 #[cfg(feature = "sub_server_ws")]
 pub use reifydb_sub_server_ws as sub_server_ws;
 #[cfg(feature = "column")]

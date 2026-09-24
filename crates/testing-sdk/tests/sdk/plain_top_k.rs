@@ -554,7 +554,8 @@ fn an_emptied_group_publishes_nothing_on_seal() {
 	assert_eq!(render(&out), vec![(DiffType::Remove, 1, 100, 5.0)], "precondition: the emptied group withdraws");
 	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 200, 9.0)).build()).expect("apply");
+	let out =
+		h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 200, 9.0)).build()).expect("apply");
 
 	assert_eq!(render(&out), vec![(DiffType::Insert, 1, 200, 9.0)], "only the new group publishes");
 }

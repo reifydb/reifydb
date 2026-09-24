@@ -29,8 +29,8 @@ use crate::{
 };
 
 pub(super) type Rows<A> = Vec<(RowNumber, <A as WindowedOperator>::Output)>;
-pub(super) type UpdateRows<A> =
-	Vec<(RowNumber, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output)>;
+pub(super) type UpdateRow<A> = (RowNumber, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output);
+pub(super) type UpdateRows<A> = Vec<UpdateRow<A>>;
 pub(super) type Emitted<A> = (Rows<A>, UpdateRows<A>, Rows<A>);
 
 pub fn row_to_values<R: Row>(row: &R) -> Result<Vec<Value>> {
@@ -134,7 +134,8 @@ mod tests {
 
 	#[test]
 	fn a_row_round_trips_through_its_stored_values() {
-		// A published row that does not come back intact makes the next update retract a value downstream never saw.
+		// A published row that does not come back intact makes the next update retract a value downstream never
+		// saw.
 		for row in [
 			Published {
 				group: "BTC".to_string(),
@@ -161,7 +162,8 @@ mod tests {
 
 	#[test]
 	fn values_of_the_wrong_width_fail_to_decode() {
-		// A stored row from another output shape decoded by position would publish columns under the wrong names.
+		// A stored row from another output shape decoded by position would publish columns under the wrong
+		// names.
 		assert!(values_to_row::<Published>(&[Value::Uint8(1)]).is_err());
 	}
 }

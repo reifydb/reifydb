@@ -367,7 +367,10 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 		return Ok(Some(WsResponse::Text(build_error(
 			&request.id,
 			"FORBIDDEN",
-			&format!("this connection allows {:?} requests at most, this request needs {:?}", conn.access, required),
+			&format!(
+				"this connection allows {:?} requests at most, this request needs {:?}",
+				conn.access, required
+			),
 		))));
 	}
 

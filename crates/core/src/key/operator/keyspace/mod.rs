@@ -38,7 +38,8 @@ use crate::{
 				timer::{TimerIndex, TimerWheel},
 				window::{
 					Accumulator, Buffer, Count, Emit, EngineMeta, GuestAccumulator, GuestBuffer,
-					GuestRetainedEntry, GuestRunning, GuestWindowPublish, RollingMeta, RowIndex, Running, Session, WindowMeta,
+					GuestRetainedEntry, GuestRunning, GuestWindowPublish, RollingMeta, RowIndex,
+					Running, Session, WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
