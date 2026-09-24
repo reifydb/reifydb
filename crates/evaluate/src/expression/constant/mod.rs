@@ -13,7 +13,7 @@ use reifydb_value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::parse::parse_decimal,
 		int::Int,
-		number::parse::{parse_primitive_int, parse_primitive_uint},
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
 		temporal::parse::duration::parse_duration,
 		value_type::ValueType,
 	},
@@ -53,7 +53,14 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 fn number_value(fragment: &Fragment, row_count: usize) -> Result<ColumnBuffer> {
 	let text = fragment.text();
 	if text.contains(['.', 'e', 'E']) {
-		let value = parse_decimal(fragment.clone())?;
+		let value = match parse_decimal(fragment.clone()) {
+			Ok(value) => value,
+			Err(err) => {
+				return parse_float::<f64>(fragment.clone())
+					.map(|v| ColumnBuffer::float8(vec![v; row_count]))
+					.map_err(|_| err.into());
+			}
+		};
 		let precision = Precision::new(value.digits().max(value.scale()));
 		let scale = Scale::new(value.scale());
 		return Ok(ColumnBuffer::decimal(precision, scale, vec![value; row_count]));
