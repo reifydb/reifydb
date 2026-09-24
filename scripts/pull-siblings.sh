@@ -17,64 +17,77 @@
 
 set -e
 
-status=0
-listed=10
-origin=$(git remote get-url origin)
-base=${origin%/*}
+{
+    status=0
+    listed=10
+    origin=$(git remote get-url origin)
+    base=${origin%/*}
 
-echo "Rebasing repositories..."
-echo ""
+    echo "Rebasing repositories..."
+    echo ""
 
-for dir in "$@"; do
-    name=$(basename "$(realpath -m "$dir")")
+    for dir in "$@"; do
+        name=$(basename "$(realpath -m "$dir")")
 
-    if [ ! -e "$dir" ]; then
-        if git clone --quiet "$base/$name.git" "$dir"; then
-            echo "  $name was cloned from $base/$name.git"
+        if [ ! -e "$dir" ]; then
+            if git clone --quiet "$base/$name.git" "$dir"; then
+                echo "  $name was cloned from $base/$name.git"
+            else
+                echo "Error: $name could not be cloned from $base/$name.git"
+                status=1
+            fi
+            continue
+        fi
+
+        if [ ! -d "$dir/.git" ]; then
+            echo "Error: $name is not a git repository ($dir)"
+            status=1
+            continue
+        fi
+
+        changes=$(git -C "$dir" status --porcelain)
+        if [ -n "$changes" ]; then
+            total=$(echo "$changes" | wc -l)
+            echo "Error: $name has $total local changes, commit or stash them first"
+            echo "$changes" | head -n "$listed" | sed 's/^/    /'
+            if [ "$total" -gt "$listed" ]; then
+                echo "    ... and $((total - listed)) more"
+            fi
+            status=1
+            continue
+        fi
+
+        if ! git -C "$dir" fetch --quiet; then
+            echo "Error: $name could not be fetched from its upstream"
+            status=1
+            continue
+        fi
+
+        if git -C "$dir" merge-base --is-ancestor '@{u}' HEAD; then
+            echo "  $name is up to date"
+            continue
+        fi
+
+        if git -C "$dir" pull --rebase --quiet; then
+            echo "  $name is up to date"
         else
-            echo "Error: $name could not be cloned from $base/$name.git"
+            conflicts=$(git -C "$dir" diff --name-only --diff-filter=U || true)
+            git -C "$dir" rebase --abort >/dev/null 2>&1 || true
+            echo "Error: $name could not be rebased onto its upstream, the rebase was aborted"
+            if [ -n "$conflicts" ]; then
+                echo "  conflicted paths:"
+                echo "$conflicts" | sed 's/^/    /'
+            fi
             status=1
         fi
-        continue
-    fi
+    done
 
-    if [ ! -d "$dir/.git" ]; then
-        echo "Error: $name is not a git repository ($dir)"
-        status=1
-        continue
-    fi
-
-    changes=$(git -C "$dir" status --porcelain)
-    if [ -n "$changes" ]; then
-        total=$(echo "$changes" | wc -l)
-        echo "Error: $name has $total local changes, commit or stash them first"
-        echo "$changes" | head -n "$listed" | sed 's/^/    /'
-        if [ "$total" -gt "$listed" ]; then
-            echo "    ... and $((total - listed)) more"
-        fi
-        status=1
-        continue
-    fi
-
-    if git -C "$dir" pull --rebase --quiet; then
-        echo "  $name is up to date"
+    echo ""
+    if [ $status -eq 0 ]; then
+        echo "All repositories are up to date."
     else
-        conflicts=$(git -C "$dir" diff --name-only --diff-filter=U || true)
-        git -C "$dir" rebase --abort >/dev/null 2>&1 || true
-        echo "Error: $name could not be rebased onto its upstream, the rebase was aborted"
-        if [ -n "$conflicts" ]; then
-            echo "  conflicted paths:"
-            echo "$conflicts" | sed 's/^/    /'
-        fi
-        status=1
+        echo "Repositories are not ready, see the errors above."
     fi
-done
 
-echo ""
-if [ $status -eq 0 ]; then
-    echo "All repositories are up to date."
-else
-    echo "Repositories are not ready, see the errors above."
-fi
-
-exit $status
+    exit $status
+}

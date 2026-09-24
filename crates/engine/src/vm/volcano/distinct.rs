@@ -3,13 +3,12 @@
 
 use std::collections::HashSet;
 
-use arrow_array::ArrayRef;
-use arrow_row::{Row, RowConverter, SortField};
+use arrow_row::Row;
 use reifydb_core::{
 	error::diagnostic::operation,
 	interface::resolved::ResolvedColumn,
 	internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders, view::group_by::key_column},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error, fragment::Fragment};
@@ -17,7 +16,10 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
+	vm::volcano::{
+		key_rows::key_rows,
+		query::{QueryContext, QueryNode, charge_query_memory},
+	},
 };
 
 fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
@@ -26,14 +28,6 @@ fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
 		return Err(error!(operation::distinct_key_unkeyable(name.clone(), ty)));
 	}
 	Ok(())
-}
-
-fn key_rows(key_columns: &[&ColumnBuffer]) -> Result<(RowConverter, Vec<ArrayRef>)> {
-	let arrays: Vec<ArrayRef> = key_columns.iter().map(|column| key_column(column).to_array_ref()).collect();
-	let fields = arrays.iter().map(|array| SortField::new(array.data_type().clone())).collect();
-	let converter =
-		RowConverter::new(fields).map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;
-	Ok((converter, arrays))
 }
 
 pub(crate) struct DistinctNode {

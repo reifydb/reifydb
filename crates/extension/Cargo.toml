@@ -31,6 +31,7 @@ reifydb-value = { workspace = true }
 reifydb-wasm = { workspace = true, optional = true }
 
 libloading = { workspace = true }
+object = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

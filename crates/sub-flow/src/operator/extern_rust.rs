@@ -95,9 +95,10 @@ impl ExternRustOperatorLoader {
 	fn load_library(&mut self, path: &Path) -> Result<bool> {
 		self.cache
 			.check_magic(path, b"reifydb_extern_rust_operator_magic\0", EXTERN_RUST_OPERATOR_MAGIC)
-			.map_err(|_e| {
-				Error::from(ExternOperatorError::LibraryNotLoaded {
+			.map_err(|e| {
+				Error::from(ExternOperatorError::LibraryLoadFailed {
 					path: path.display().to_string(),
+					cause: e.to_string(),
 				})
 			})
 	}

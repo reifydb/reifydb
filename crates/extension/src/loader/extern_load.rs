@@ -3,10 +3,13 @@
 
 use std::{
 	collections::HashMap,
+	fmt::Display,
+	fs::File,
 	path::{Path, PathBuf},
 };
 
 use libloading::{Library, Symbol};
+use object::{File as ObjectFile, Object, read::ReadCache};
 
 use crate::error::ExtensionError;
 
@@ -54,6 +57,10 @@ impl ExternLoad {
 	}
 
 	pub fn check_magic(&mut self, path: &Path, symbol_name: &[u8], expected: u32) -> Result<bool, ExtensionError> {
+		if !self.libraries.contains_key(path) && !exports_symbol(path, symbol_name)? {
+			return Ok(false);
+		}
+
 		let library = self.library(path)?;
 
 		// SAFETY: the ABI declares the magic symbol with this signature; Symbol borrows the library.
@@ -70,6 +77,23 @@ impl ExternLoad {
 			}
 		}
 	}
+}
+
+fn exports_symbol(path: &Path, symbol_name: &[u8]) -> Result<bool, ExtensionError> {
+	let name = symbol_name.strip_suffix(b"\0").unwrap_or(symbol_name);
+	let read_error = |e: &dyn Display| {
+		ExtensionError::ExternError(format!("Failed to read symbols of {}: {}", path.display(), e))
+	};
+
+	let file = File::open(path).map_err(|e| read_error(&e))?;
+	let cache = ReadCache::new(file);
+	let object = ObjectFile::parse(&cache).map_err(|e| read_error(&e))?;
+	let exports = object.exports().map_err(|e| read_error(&e))?;
+
+	Ok(exports.iter().any(|export| {
+		let exported = export.name();
+		exported == name || exported.strip_prefix(b"_") == Some(name)
+	}))
 }
 
 impl Default for ExternLoad {

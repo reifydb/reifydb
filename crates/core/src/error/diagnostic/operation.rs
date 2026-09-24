@@ -300,6 +300,21 @@ pub fn join_pick_column_not_found(fragment: Fragment, right: &str) -> Diagnostic
 	}
 }
 
+pub fn join_key_type_mismatch(fragment: Fragment, left: ValueType, right: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "JOIN_004".to_string(),
+		rql: None,
+		message: format!("JOIN key types differ: {} on the left, {} on the right", left, right),
+		column: None,
+		fragment,
+		label: Some("key types differ".to_string()),
+		help: Some("Cast one side so both keys have the same type".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),

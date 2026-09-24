@@ -855,3 +855,12 @@ pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
 		"Arm a Seal, Grace, RowTtl or Maintenance timer instead.",
 	)
 }
+
+pub fn extern_library_load_failed(path: &str, cause: String) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_082",
+		format!("extern operator library failed to load: {}: {}", path, cause),
+		"The shared library exports the operator magic symbol but the dynamic loader rejected it. Check its \
+		 dependencies and that it was built for this platform.",
+	)
+}
