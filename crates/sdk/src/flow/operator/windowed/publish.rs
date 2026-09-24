@@ -1,16 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use std::collections::HashMap;
+
+use reifydb_codec::row::operator::state::decode;
+use reifydb_core::{
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	state::timer::StateStore,
+	value::column::columns::Columns,
+};
+use reifydb_flow::{
+	operator::state::seal::coord::Coord,
+	window::engine::{PublishKey, publish::PublishState},
+};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
+		context::GuestContext,
 		view::in_process::InProcessRowView,
+		windowed::{
+			guest_as_host::GuestAsHost,
+			operator::{Emit, WindowedOperator},
+		},
 	},
 };
+
+pub(super) type Rows<A> = Vec<(RowNumber, <A as WindowedOperator>::Output)>;
+pub(super) type UpdateRows<A> =
+	Vec<(RowNumber, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output)>;
+pub(super) type Emitted<A> = (Rows<A>, UpdateRows<A>, Rows<A>);
 
 pub fn row_to_values<R: Row>(row: &R) -> Result<Vec<Value>> {
 	let mut sink = InProcessRowSink::new(R::COLUMNS)?;
@@ -31,6 +52,60 @@ pub fn values_to_row<R: Row>(values: &[Value]) -> Result<R> {
 	let columns = Columns::from_rows(&names, &[values.to_vec()]);
 	R::decode_from(&InProcessRowView::new(&columns, 0))
 		.ok_or_else(|| SdkError::Other("a published row does not decode as the output row".to_string()))
+}
+
+pub(super) fn publish_row<A>(
+	row_number: RowNumber,
+	out: Option<A::Output>,
+	state: &mut PublishState,
+	watermark: Option<A::Coord>,
+	emitted: &mut Emitted<A>,
+) -> Result<()>
+where
+	A: Emit,
+	A::Output: Row,
+{
+	let stored = match state.row.take() {
+		Some(values) => Some(values_to_row::<A::Output>(&values)?),
+		None => None,
+	};
+	match (out, stored) {
+		(Some(out), None) => {
+			state.row = Some(row_to_values(&out)?);
+			emitted.0.push((row_number, out));
+		}
+		(Some(out), Some(pre)) => {
+			state.row = Some(row_to_values(&out)?);
+			emitted.1.push((row_number, Some(pre), out));
+		}
+		(None, Some(pre)) => emitted.2.push((row_number, pre)),
+		(None, None) => {}
+	}
+	state.last_publish = watermark.map(|watermark| watermark.to_order());
+	state.dirty = false;
+	Ok(())
+}
+
+pub(super) fn load_publish_states<C: GuestContext>(
+	store: &mut GuestAsHost<'_, C>,
+	keys: &[PublishKey],
+) -> Result<HashMap<GroupId, PublishState>> {
+	let by_key: HashMap<GroupStateKey, GroupId> =
+		keys.iter().map(|key| (key.into_group_state_key(), key.group)).collect();
+	let encoded: Vec<GroupStateKey> = by_key.keys().cloned().collect();
+	let mut states: HashMap<GroupId, PublishState> = HashMap::with_capacity(keys.len());
+	let mut sizes = HashMap::new();
+	store.state_get_many_visit(&encoded, &mut |key, bytes| {
+		if let Some(group) = by_key.get(&key) {
+			sizes.insert(key, bytes.byte_size());
+			states.insert(*group, decode::<PublishState>(&bytes)?);
+		}
+		Ok(())
+	})?;
+	for key in &encoded {
+		store.state_classify(key, sizes.get(key).copied());
+	}
+	Ok(states)
 }
 
 #[cfg(test)]

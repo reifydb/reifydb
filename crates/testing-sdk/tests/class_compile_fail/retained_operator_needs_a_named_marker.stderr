@@ -1,19 +1,17 @@
 error[E0283]: type annotations needed
-  --> tests/class_compile_fail/two_emit_impls_are_ambiguous.rs:98:23
+  --> tests/class_compile_fail/retained_operator_needs_a_named_marker.rs:78:23
    |
-98 |     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
-   |                          ^^^^ cannot infer type
+78 |     let _driver: Option<<Retained as WindowDriver<_>>::Driver> = None;
+   |                          ^^^^^^^^ cannot infer type
    |
-   = note: multiple `impl`s satisfying `Both: WindowDriver<_>` found in the `reifydb_sdk` crate:
+   = note: multiple `impl`s satisfying `Retained: WindowDriver<_>` found in the `reifydb_sdk` crate:
            - impl<T, K, V> WindowDriver<RetainedMarker> for T
              where <T as WindowedOperator>::Accumulator == RetainedAccumulator<K, V>, T: reifydb_sdk::flow::operator::windowed::operator::Emit, <T as WindowedOperator>::Output: reifydb_sdk::flow::operator::column::row::Row, K: Ord, for<'a> &'a <T as WindowedOperator>::GroupKey: IntoEncodedKey, <T as WindowedOperator>::Output: ?Sized, &'a <T as WindowedOperator>::GroupKey: ?Sized;
-           - impl<T> WindowDriver<CarryMarker> for T
-             where T: CarryEmit, <T as WindowedOperator>::Output: reifydb_sdk::flow::operator::column::row::Row, for<'a> &'a <T as WindowedOperator>::GroupKey: IntoEncodedKey, <T as WindowedOperator>::Output: ?Sized, &'a <T as WindowedOperator>::GroupKey: ?Sized;
            - impl<T> WindowDriver<PlainMarker> for T
              where T: reifydb_sdk::flow::operator::windowed::operator::Emit, <T as WindowedOperator>::Output: reifydb_sdk::flow::operator::column::row::Row, for<'a> &'a <T as WindowedOperator>::GroupKey: IntoEncodedKey, <T as WindowedOperator>::Output: ?Sized, &'a <T as WindowedOperator>::GroupKey: ?Sized;
    = note: associated types cannot be accessed directly on a `trait`, they can only be accessed through a specific `impl`
 help: use the fully qualified path to an implementation
    |
-98 -     let _driver: Option<<Both as WindowDriver<_>>::Driver> = None;
-98 +     let _driver: Option<<<Type as WindowDriver>::Driver as WindowDriver<_>>::Driver> = None;
+78 -     let _driver: Option<<Retained as WindowDriver<_>>::Driver> = None;
+78 +     let _driver: Option<<<Type as WindowDriver>::Driver as WindowDriver<_>>::Driver> = None;
    |

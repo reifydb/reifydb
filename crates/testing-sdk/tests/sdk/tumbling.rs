@@ -853,3 +853,35 @@ fn a_throttled_update_carries_the_last_published_row_not_the_skipped_one() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 10_000, 1.0)).build()).expect("apply");
 	assert_eq!(only_update(&out), (10.0, 16.0));
 }
+
+#[test]
+fn a_refilled_window_publishes_an_insert() {
+	// Downstream already dropped the removed row, so an update retracting it corrupts every consumer.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1, "precondition: the emptied window publishes its removal");
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1, "a refilled window publishes at once, like any new window");
+	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
+	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(5.0));
+}
+
+#[test]
+fn an_emptied_dirty_window_is_not_removed_again_on_close() {
+	// A second removal of a row downstream already dropped is a retraction of nothing.
+	let mut h = throttled_harness();
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
+	let out = h
+		.apply(TestChangeBuilder::new()
+			.remove(input_row(1, "BTC", 0, 10.0))
+			.remove(input_row(2, "BTC", 1_000, 5.0))
+			.build())
+		.expect("apply");
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
+	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 120_000, 1.0)).build()).expect("apply");
+	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
+}

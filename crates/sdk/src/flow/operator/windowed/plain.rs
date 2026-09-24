@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::decode,
-};
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
 	common::{WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 	state::timer::StateStore,
@@ -66,7 +63,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator},
-			publish::{row_to_values, values_to_row},
+			publish::{Emitted, Rows, UpdateRows, load_publish_states, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -77,9 +74,6 @@ const SEAL_REAP_BATCH: usize = 256;
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
 type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
-type Rows<A> = Vec<(RowNumber, <A as WindowedOperator>::Output)>;
-type UpdateRows<A> = Vec<(RowNumber, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output)>;
-type Emitted<A> = (Rows<A>, UpdateRows<A>, Rows<A>);
 type Trackers<A> = BTreeMap<
 	<A as WindowedOperator>::GroupKey,
 	(GuestSession<<A as WindowedOperator>::Coord>, GuestSession<<A as WindowedOperator>::Coord>),
@@ -320,10 +314,18 @@ where
 		}
 		let accumulator: Option<A::Accumulator> =
 			get_classified(store, &WindowStateKey::new(KeyspaceFamily::Guest, group_id, slot))?;
+		reifydb_assertions! {
+			assert!(
+				accumulator.is_some(),
+				"a dirty window closed with no accumulator; emptying a window must store a clean publish \
+				 state, otherwise the close retracts a row downstream already dropped (group={group_id:?})"
+			);
+		}
 		let out = accumulator.and_then(|accumulator| accumulator.finalize()).and_then(|value| {
 			aggregator.build_output(group, WindowSpan::for_coord(window_start, settings.fixed_size()), &value)
 		});
 		let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
+		#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
 		let (row_number, is_new) = rows[0];
 		reifydb_assertions! {
 			assert!(
@@ -332,59 +334,9 @@ where
 				 here publishes the closing row under a number no sink has seen (group={group_id:?})"
 			);
 		}
-		Self::publish_row(row_number, out, &mut state, Some(frontier), emitted)?;
+		publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
 		put(store, &key, state)?;
 		Ok(())
-	}
-
-	fn publish_row(
-		row_number: RowNumber,
-		out: Option<A::Output>,
-		state: &mut PublishState,
-		watermark: Option<A::Coord>,
-		emitted: &mut Emitted<A>,
-	) -> Result<()> {
-		let stored = match state.row.take() {
-			Some(values) => Some(values_to_row::<A::Output>(&values)?),
-			None => None,
-		};
-		match (out, stored) {
-			(Some(out), None) => {
-				state.row = Some(row_to_values(&out)?);
-				emitted.0.push((row_number, out));
-			}
-			(Some(out), Some(pre)) => {
-				state.row = Some(row_to_values(&out)?);
-				emitted.1.push((row_number, Some(pre), out));
-			}
-			(None, Some(pre)) => emitted.2.push((row_number, pre)),
-			(None, None) => {}
-		}
-		state.last_publish = watermark.map(|watermark| watermark.to_order());
-		state.dirty = false;
-		Ok(())
-	}
-
-	fn load_publish_states<C: GuestContext>(
-		store: &mut GuestAsHost<'_, C>,
-		keys: &[PublishKey],
-	) -> Result<HashMap<GroupId, PublishState>> {
-		let by_key: HashMap<GroupStateKey, GroupId> =
-			keys.iter().map(|key| (key.into_group_state_key(), key.group)).collect();
-		let encoded: Vec<GroupStateKey> = by_key.keys().cloned().collect();
-		let mut states: HashMap<GroupId, PublishState> = HashMap::with_capacity(keys.len());
-		let mut sizes = HashMap::new();
-		store.state_get_many_visit(&encoded, &mut |key, bytes| {
-			if let Some(group) = by_key.get(&key) {
-				sizes.insert(key, bytes.byte_size());
-				states.insert(*group, decode::<PublishState>(&bytes)?);
-			}
-			Ok(())
-		})?;
-		for key in &encoded {
-			store.state_classify(key, sizes.get(key).copied());
-		}
-		Ok(states)
 	}
 
 	fn expire_rolling<C: GuestContext>(
@@ -615,11 +567,12 @@ where
 				)
 			})
 			.collect();
-		let mut states = Self::load_publish_states(&mut store, &keys)?;
+		let mut states = load_publish_states(&mut store, &keys)?;
 		for (r, key) in results.into_iter().zip(keys) {
 			let mut state = states.remove(&key.group).unwrap_or_default();
 			if r.kind == EmitKind::Remove {
-				Self::publish_row(r.row_number, None, &mut state, frontier, &mut emitted)?;
+				publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?;
+				put(&mut store, &key, state)?;
 				continue;
 			}
 			let due = match (throttle, state.last_publish, frontier) {
@@ -634,7 +587,7 @@ where
 				continue;
 			}
 			let out = aggregator.build_output(&r.group, r.span, &r.value);
-			Self::publish_row(r.row_number, out, &mut state, frontier, &mut emitted)?;
+			publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
 			put(&mut store, &key, state)?;
 		}
 		Ok(emitted)

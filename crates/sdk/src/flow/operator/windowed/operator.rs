@@ -8,7 +8,7 @@ use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize
 use reifydb_flow::{
 	operator::state::seal::domain::SealDomain,
 	window::{
-		accumulator::{MergeAccumulator, WindowAccumulator},
+		accumulator::{MergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator},
 		engine::rolling::{RollingBuffer, merge_panes},
 		settings::WindowSettings,
 		span::{WindowAnchor, WindowSpan},
@@ -23,7 +23,7 @@ use crate::{
 		column::row::{OutputRows, Row},
 		context::{GuestContext, Windowed},
 		view::RowView,
-		windowed::{carry::CarryDriver, plain::PlainDriver, top_k::TopKDriver},
+		windowed::{carry::CarryDriver, plain::PlainDriver, retained::RetainedDriver, top_k::TopKDriver},
 	},
 };
 
@@ -108,6 +108,8 @@ pub struct PlainMarker;
 
 pub struct CarryMarker;
 
+pub struct RetainedMarker;
+
 pub struct TopKMarker;
 
 pub trait WindowDriver<M>: WindowedOperator {
@@ -128,6 +130,16 @@ where
 	for<'a> &'a T::GroupKey: IntoEncodedKey,
 {
 	type Driver = CarryDriver<T>;
+}
+
+impl<T, K, V> WindowDriver<RetainedMarker> for T
+where
+	T: Emit<Accumulator = RetainedAccumulator<K, V>>,
+	T::Output: Row,
+	K: Ord,
+	for<'a> &'a T::GroupKey: IntoEncodedKey,
+{
+	type Driver = RetainedDriver<T, K, V>;
 }
 
 impl<T, SK, R> WindowDriver<TopKMarker> for T
