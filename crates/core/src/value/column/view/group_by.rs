@@ -20,7 +20,8 @@ use indexmap::IndexMap;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::{Error, TypeError},
+	fragment::Fragment,
 	value::{
 		Value,
 		constraint::{precision::Precision, scale::Scale},
@@ -207,10 +208,7 @@ impl GroupKeyDict {
 		for (column, target) in columns.iter().zip(&self.key_types) {
 			let (cast, dropped) = cast_key(column, target);
 			if dropped > 0 {
-				return Err(internal_error!(
-					"{dropped} group key values of type {} do not fit the common key type {target}",
-					column.get_type()
-				));
+				return Err(key_out_of_range(target));
 			}
 			arrays.push(cast.to_array_ref());
 		}
@@ -228,9 +226,7 @@ impl GroupKeyDict {
 		for (array, target) in decoded.into_iter().zip(&targets) {
 			let (cast, dropped) = cast_key_array(array, target);
 			if dropped > 0 {
-				return Err(internal_error!(
-					"{dropped} group key values do not fit the common key type {target}"
-				));
+				return Err(key_out_of_range(target));
 			}
 			arrays.push(cast);
 		}
@@ -251,6 +247,15 @@ impl GroupKeyDict {
 		self.key_types = targets;
 		Ok(())
 	}
+}
+
+fn key_out_of_range(target: &ValueType) -> Error {
+	TypeError::NumberOutOfRange {
+		target: target.clone(),
+		fragment: Fragment::None,
+		descriptor: None,
+	}
+	.into()
 }
 
 pub fn common_key_type(left: &ValueType, right: &ValueType) -> Option<ValueType> {

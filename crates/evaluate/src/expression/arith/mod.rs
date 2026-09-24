@@ -177,7 +177,14 @@ pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> Va
 		[&left, &right].iter().any(|ty| ty.is_floating_point() || matches!(ty, ValueType::Decimal { .. }));
 	let (digits, scale) = match op {
 		ArithOp::Add | ArithOp::Sub => (left_digits.max(right_digits) + 1, left_scale.max(right_scale)),
-		ArithOp::Mul => (left_digits + right_digits, left_scale + right_scale),
+		ArithOp::Mul => {
+			let (digits, scale) = (left_digits + right_digits, left_scale + right_scale);
+			if digits.saturating_add(scale) > MAX_DIGITS {
+				(digits, scale.min(6).max(MAX_DIGITS.saturating_sub(digits)))
+			} else {
+				(digits, scale)
+			}
+		}
 		ArithOp::Div if decimal => (left_digits + right_scale, left_scale.max(right_scale).max(6)),
 		ArithOp::Div => (left_digits, 0),
 		ArithOp::Rem => (left_digits.min(right_digits), left_scale.max(right_scale)),

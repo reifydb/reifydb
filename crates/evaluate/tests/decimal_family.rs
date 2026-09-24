@@ -225,6 +225,24 @@ fn uint_one_minus_two_is_a_range_error_by_default() {
 }
 
 #[test]
+fn a_product_whose_scales_add_past_76_digits_keeps_six_fraction_digits() {
+	// Scale 40 + 40 leaves no whole digit, so 1.5 * 1.5 overflowed although 2.25 needs only one.
+	let wide = || decimal(76, 40, &["1.5"]);
+	let product: ColumnBuffer = arith!(mul_columns, wide(), wide()).unwrap();
+	assert_eq!(product.get_type(), ValueType::decimal(Precision::new(76), Scale::new(6)));
+	assert_eq!(decimal_strings(&product), ["2.250000"]);
+}
+
+#[test]
+fn a_product_trims_its_scale_only_down_to_what_the_whole_digits_leave() {
+	// Whole digits 30 + 10 leave 36 fraction digits, so trimming to 6 would round away digits that still fit.
+	let product: ColumnBuffer =
+		arith!(mul_columns, decimal(60, 30, &["1.5"]), decimal(30, 20, &["1.5"])).unwrap();
+	assert_eq!(product.get_type(), ValueType::decimal(Precision::new(76), Scale::new(36)));
+	assert_eq!(decimal_strings(&product), [format!("2.25{}", "0".repeat(34))]);
+}
+
+#[test]
 fn a_product_past_76_digits_is_a_range_error() {
 	// P2-Q3: two 40 digit ints multiply past 76 digits; the result must fail, not saturate or wrap.
 	let big = || ColumnBuffer::int(Precision::new(40), [Int::from_str(&"9".repeat(40)).unwrap()]);

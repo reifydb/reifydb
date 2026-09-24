@@ -438,3 +438,17 @@ fn a_key_column_with_no_rows_produces_no_groups_for_any_scalar_type() {
 		assert_eq!(dict.len(), 0, "{name}: an empty column must intern nothing");
 	}
 }
+
+#[test]
+fn keys_that_need_more_than_76_digits_together_are_an_out_of_range_error() {
+	// A 70 digit key and a 7 fraction digit key share no 76 digit type; rounding would merge distinct groups.
+	let mut dict = GroupKeyDict::new();
+	let big = decimal(&format!("1{}", "0".repeat(69)));
+	let first = frame(vec![("amount", ColumnBuffer::decimal(Precision::new(70), Scale::new(0), [big]))]);
+	let second =
+		frame(vec![("amount", ColumnBuffer::decimal(Precision::new(7), Scale::new(7), [decimal("0.0000001")]))]);
+
+	group_rows(&first, &["amount"], &mut dict);
+	let err = second.group_by_ids(&["amount"], &mut dict).unwrap_err();
+	assert_eq!(err.code, "NUMBER_002", "{err}");
+}
