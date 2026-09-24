@@ -157,8 +157,9 @@ where
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view)?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord, contribution))
 }
 
@@ -418,8 +419,9 @@ where
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view)?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord.floor_to(pane), contribution))
 }
 
@@ -653,7 +655,8 @@ where
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view)?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord, contribution))
 }

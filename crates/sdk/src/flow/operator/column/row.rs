@@ -5,17 +5,13 @@ use std::{collections::BTreeMap, iter::once};
 
 use reifydb_codec::tag::ValueKind;
 
-use crate::{
-	error::SdkError,
-	flow::operator::{column::sink::RowSink, view::RowView},
-};
+use crate::{error::SdkError, flow::operator::column::sink::RowSink};
 
 pub trait Row: Sized {
 	const COLUMNS: &'static [(&'static str, ValueKind)];
 	const AVG_VAR_BYTES: usize = 0;
 
 	fn encode_into<S: RowSink>(&self, sink: &mut S) -> Result<(), SdkError>;
-	fn decode_from<V: RowView>(view: &V) -> Option<Self>;
 }
 
 pub trait OutputRows {
@@ -61,12 +57,6 @@ macro_rules! __row_body {
 			)+
 			let _ = __col;
 			Ok(())
-		}
-
-		fn decode_from<__V: $crate::flow::operator::view::RowView>(view: &__V) -> Option<Self> {
-			Some(Self {
-				$($fname: <$fty as $crate::flow::operator::column::cell::Cell>::decode(view, stringify!($fname))?,)+
-			})
 		}
 	};
 }

@@ -39,13 +39,13 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
-	fn coord(&self, row: &impl RowView) -> Option<Self::Coord>;
+	fn coord(&self, row: &impl RowView) -> Result<Option<Self::Coord>>;
 
 	fn extract(
 		&self,
 		ctx: &mut impl GuestContext<Windowed>,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Contribution<Self>)>;
+	) -> Result<Option<(Self::GroupKey, Contribution<Self>)>>;
 
 	fn new_accumulator(&self, settings: &WindowSettings<Self::Coord>) -> Self::Accumulator;
 }

@@ -154,16 +154,21 @@ macro_rules! volume_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-				row.row_time()
+			fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+				Ok(row.row_time())
 			}
 
 			fn extract(
 				&self,
 				_: &mut impl GuestContext<Windowed>,
 				row: &impl RowView,
-			) -> Option<(String, (u64, f64))> {
-				Some((row.utf8("group")?.to_string(), (row.u64("trader")?, row.f64("volume")?)))
+			) -> Result<Option<(String, (u64, f64))>> {
+				let (Some(group), Some(trader), Some(volume)) =
+					(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
+				else {
+					return Ok(None);
+				};
+				Ok(Some((group.to_string(), (trader, volume))))
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> TraderVolumes {

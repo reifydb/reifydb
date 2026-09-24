@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::any::type_name;
+use std::{any::type_name, result::Result as StdResult};
 
-use arrow_buffer::i256;
-use num_traits::{NumCast, ToPrimitive};
 use reifydb_codec::{key::serializer::KeySerializer, tag::ValueKind};
 use reifydb_value::{
 	Result,
@@ -38,7 +36,8 @@ use reifydb_value::{
 use crate::value::column::{ColumnBuffer, buffer::with_container};
 
 pub trait FromColumnBuffer: Sized {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>>;
+	fn from_column_buffer(data: &ColumnBuffer, index: usize)
+	-> StdResult<Option<Self>, ColumnReadReason>;
 }
 
 impl ColumnBuffer {
@@ -89,7 +88,7 @@ impl ColumnBuffer {
 		if self.none_at(index) {
 			return Ok(None);
 		}
-		T::from_column_buffer(self, index)
+		T::from_column_buffer(self, index).map_err(|reason| read_error::<T>(self, reason))
 	}
 
 	pub fn extend_key(&self, index: usize, serializer: &mut KeySerializer) -> Result<()> {
@@ -159,179 +158,221 @@ fn read_error<T>(data: &ColumnBuffer, reason: ColumnReadReason) -> Error {
 	.into()
 }
 
-fn wrong_type<T>(data: &ColumnBuffer) -> Result<Option<T>> {
-	Err(read_error::<T>(data, ColumnReadReason::WrongType))
+fn wrong_type<T>() -> StdResult<Option<T>, ColumnReadReason> {
+	Err(ColumnReadReason::WrongType)
 }
 
-fn fit<T: NumCast, V: ToPrimitive>(data: &ColumnBuffer, value: Option<V>) -> Result<Option<T>> {
-	value.map(|v| <T as NumCast>::from(v).ok_or_else(|| read_error::<T>(data, ColumnReadReason::DoesNotFit)))
-		.transpose()
-}
-
-fn fit_wide<T: NumCast>(data: &ColumnBuffer, value: Option<i256>) -> Result<Option<T>> {
-	value.map(|v| wide_cast(v).ok_or_else(|| read_error::<T>(data, ColumnReadReason::DoesNotFit))).transpose()
-}
-
-fn wide_cast<T: NumCast>(value: i256) -> Option<T> {
-	if let Some(narrow) = value.to_i128() {
-		return <T as NumCast>::from(narrow);
-	}
-	let (low, high) = value.to_parts();
-	if high == 0
-		&& let Some(cast) = <T as NumCast>::from(low)
-	{
-		return Some(cast);
-	}
-	<T as NumCast>::from(ToPrimitive::to_f64(&value)?)
-}
-
-macro_rules! impl_from_column_data_numeric {
-	($($t:ty),*) => { $(
+macro_rules! impl_from_column_data_widening {
+	($($t:ty => [$($variant:ident),*]),* $(,)?) => { $(
 		impl FromColumnBuffer for $t {
-			fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+			fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 				match data {
-					ColumnBuffer::Int1(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Int2(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Int4(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Int8(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Int16(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Uint1(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Uint2(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Uint4(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Uint8(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Uint16(c) => fit(data, u128_at(c, index)),
-					ColumnBuffer::Float4(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Float8(c) => fit(data, c.values().get(index).copied()),
-					ColumnBuffer::Int(a) => fit_wide(data, int_at(a, index).map(|v| v.to_i256())),
-					ColumnBuffer::Uint(a) => fit_wide(data, uint_at(a, index).map(|v| v.to_i256())),
-					_ => wrong_type(data),
+					$(ColumnBuffer::$variant(c) => Ok(c.values().get(index).map(|&v| <$t>::from(v))),)*
+					_ => wrong_type(),
 				}
 			}
 		}
 	)* };
 }
 
-impl_from_column_data_numeric!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64);
+impl_from_column_data_widening!(
+	i8 => [Int1],
+	i16 => [Int1, Int2],
+	i32 => [Int1, Int2, Int4],
+	i64 => [Int1, Int2, Int4, Int8],
+	i128 => [Int1, Int2, Int4, Int8, Int16],
+	u8 => [Uint1],
+	u16 => [Uint1, Uint2],
+	u32 => [Uint1, Uint2, Uint4],
+	u64 => [Uint1, Uint2, Uint4, Uint8],
+	f32 => [Float4],
+	f64 => [Float4, Float8],
+);
+
+impl FromColumnBuffer for u128 {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
+		match data {
+			ColumnBuffer::Uint1(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
+			ColumnBuffer::Uint2(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
+			ColumnBuffer::Uint4(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
+			ColumnBuffer::Uint8(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
+			ColumnBuffer::Uint16(c) => Ok(u128_at(c, index)),
+			_ => wrong_type(),
+		}
+	}
+}
 
 impl FromColumnBuffer for bool {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Bool(c) => Ok((index < c.len()).then(|| c.value(index))),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for String {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => Ok(varlen_array::get(container, index).map(str::to_string)),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Vec<u8> {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Blob {
 				container,
 				..
 			} => Ok(varlen_array::get(container, index).map(<[u8]>::to_vec)),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Date {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Date(c) => Ok(dates(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for DateTime {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::DateTime(c) => Ok(datetimes(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Time {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Time(c) => Ok(times(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Duration {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Duration(c) => Ok(durations(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Uuid4 {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uuid4(c) => Ok(uuid4s(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Uuid7 {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uuid7(c) => Ok(uuid7s(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Int {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Int(a) => Ok(int_at(a, index)),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Uint {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uint(a) => Ok(uint_at(a, index)),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for Decimal {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Decimal(a) => Ok(decimal_at(a, index)),
-			_ => wrong_type(data),
+			ColumnBuffer::Float4(c) => c
+				.values()
+				.get(index)
+				.map(|&v| Decimal::from_f32(v).ok_or(ColumnReadReason::DoesNotFit))
+				.transpose(),
+			ColumnBuffer::Float8(c) => c
+				.values()
+				.get(index)
+				.map(|&v| Decimal::from_f64(v).ok_or(ColumnReadReason::DoesNotFit))
+				.transpose(),
+			_ => wrong_type(),
 		}
 	}
 }
 
 impl FromColumnBuffer for IdentityId {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Result<Option<Self>> {
+	fn from_column_buffer(
+		data: &ColumnBuffer,
+		index: usize,
+	) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::IdentityId(c) => Ok(identity_ids(c).get(index).copied()),
-			_ => wrong_type(data),
+			_ => wrong_type(),
 		}
 	}
 }

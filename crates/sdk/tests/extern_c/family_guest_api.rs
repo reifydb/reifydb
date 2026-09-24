@@ -79,7 +79,7 @@ impl ExternCOperator for FamilyEchoOperator {
 						let values = read_both_ways(
 							&view,
 							view.int_iter().expect("an int column"),
-							post.rows().map(|row| row.int(name)).collect(),
+							post.rows().map(|row| row.int(name).unwrap()).collect(),
 						);
 						let mut writer = builder.int_writer(rows.max(1), precision)?;
 						for value in &values {
@@ -94,7 +94,7 @@ impl ExternCOperator for FamilyEchoOperator {
 						let values = read_both_ways(
 							&view,
 							view.uint_iter().expect("a uint column"),
-							post.rows().map(|row| row.uint(name)).collect(),
+							post.rows().map(|row| row.uint(name).unwrap()).collect(),
 						);
 						let mut writer = builder.uint_writer(rows.max(1), precision)?;
 						for value in &values {
@@ -109,7 +109,7 @@ impl ExternCOperator for FamilyEchoOperator {
 						let values = read_both_ways(
 							&view,
 							view.decimal_iter().expect("a decimal column"),
-							post.rows().map(|row| row.decimal(name)).collect(),
+							post.rows().map(|row| row.decimal(name).unwrap()).collect(),
 						);
 						let mut writer =
 							builder.decimal_writer(rows.max(1), precision, scale)?;

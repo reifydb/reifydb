@@ -81,12 +81,12 @@ impl WindowedOperator for Unmergeable {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, _row: &impl RowView) -> Option<(String, f64)> {
-		None
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, _row: &impl RowView) -> Result<Option<(String, f64)>> {
+		Ok(None)
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> NoMerge {

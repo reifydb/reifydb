@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{
-	params::Params,
-	value::value_type::ValueType,
-};
+use reifydb_value::{params::Params, value::value_type::ValueType};
 
 #[test]
 fn clamp_of_an_int_by_a_float_bound_keeps_the_fraction() {

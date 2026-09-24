@@ -8,30 +8,32 @@ use reifydb_value::value::{
 	row_number::RowNumber, time::Time, uint::Uint,
 };
 
+use crate::error::SdkError;
+
 pub trait RowView {
 	fn is_defined(&self, name: &str) -> bool;
-	fn utf8(&self, name: &str) -> Option<&str>;
-	fn blob(&self, name: &str) -> Option<&[u8]>;
-	fn bool(&self, name: &str) -> Option<bool>;
-	fn u8(&self, name: &str) -> Option<u8>;
-	fn u16(&self, name: &str) -> Option<u16>;
-	fn u32(&self, name: &str) -> Option<u32>;
-	fn u64(&self, name: &str) -> Option<u64>;
-	fn u128(&self, name: &str) -> Option<u128>;
-	fn i8(&self, name: &str) -> Option<i8>;
-	fn i16(&self, name: &str) -> Option<i16>;
-	fn i32(&self, name: &str) -> Option<i32>;
-	fn i64(&self, name: &str) -> Option<i64>;
-	fn i128(&self, name: &str) -> Option<i128>;
-	fn f32(&self, name: &str) -> Option<f32>;
-	fn f64(&self, name: &str) -> Option<f64>;
-	fn int(&self, name: &str) -> Option<Int>;
-	fn uint(&self, name: &str) -> Option<Uint>;
-	fn decimal(&self, name: &str) -> Option<Decimal>;
-	fn date(&self, name: &str) -> Option<Date>;
-	fn datetime(&self, name: &str) -> Option<DateTime>;
-	fn time(&self, name: &str) -> Option<Time>;
-	fn duration(&self, name: &str) -> Option<Duration>;
+	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError>;
+	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError>;
+	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError>;
+	fn u8(&self, name: &str) -> Result<Option<u8>, SdkError>;
+	fn u16(&self, name: &str) -> Result<Option<u16>, SdkError>;
+	fn u32(&self, name: &str) -> Result<Option<u32>, SdkError>;
+	fn u64(&self, name: &str) -> Result<Option<u64>, SdkError>;
+	fn u128(&self, name: &str) -> Result<Option<u128>, SdkError>;
+	fn i8(&self, name: &str) -> Result<Option<i8>, SdkError>;
+	fn i16(&self, name: &str) -> Result<Option<i16>, SdkError>;
+	fn i32(&self, name: &str) -> Result<Option<i32>, SdkError>;
+	fn i64(&self, name: &str) -> Result<Option<i64>, SdkError>;
+	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError>;
+	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError>;
+	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError>;
+	fn int(&self, name: &str) -> Result<Option<Int>, SdkError>;
+	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError>;
+	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError>;
+	fn date(&self, name: &str) -> Result<Option<Date>, SdkError>;
+	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError>;
+	fn time(&self, name: &str) -> Result<Option<Time>, SdkError>;
+	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError>;
 	fn value(&self, name: &str) -> Option<Value>;
 	fn row_number(&self) -> Option<RowNumber>;
 	fn row_time(&self) -> Option<DateTime>;

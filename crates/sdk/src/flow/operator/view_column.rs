@@ -200,7 +200,7 @@ impl<'a> ColumnView<'a> {
 			return None;
 		}
 		let inner = self.inner;
-		Some((0..inner.row_count()).map(move |index| inner.family_cell_at::<T>(index)))
+		Some((0..inner.row_count()).map(move |index| inner.expect_family_cell_at::<T>(index)))
 	}
 
 	pub fn to_u64_vec(&self) -> Option<Vec<u64>> {

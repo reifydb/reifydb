@@ -4,7 +4,10 @@
 use std::{error, fmt};
 
 use reifydb_core::internal;
-use reifydb_value::error::Error;
+use reifydb_value::{
+	error::{ColumnReadReason, Error},
+	value::value_type::ValueType,
+};
 
 #[derive(Debug)]
 pub enum SdkError {
@@ -20,6 +23,13 @@ pub enum SdkError {
 	Serialization(String),
 
 	InvalidInput(String),
+
+	ColumnRead {
+		column: String,
+		column_type: ValueType,
+		target: &'static str,
+		reason: ColumnReadReason,
+	},
 
 	MemoryError(String),
 
@@ -43,6 +53,12 @@ impl fmt::Display for SdkError {
 			SdkError::OperatorError(msg) => write!(f, "State error: {}", msg),
 			SdkError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
 			SdkError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+			SdkError::ColumnRead {
+				column,
+				column_type,
+				target,
+				reason,
+			} => write!(f, "cannot read column {column} of {column_type} as {target}: {reason}"),
 			SdkError::MemoryError(msg) => write!(f, "Memory error: {}", msg),
 			SdkError::Timeout => write!(f, "Operation timeout"),
 			SdkError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),

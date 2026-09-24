@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::any::type_name;
+
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
-	ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time, uint::Uint,
-	value_type::ValueType,
+use reifydb_value::{
+	error::ColumnReadReason,
+	value::{
+		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+		int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time,
+		uint::Uint, value_type::ValueType,
+	},
 };
 
 use crate::{
-	common::family::family_params,
+	common::family::{FamilyValue, family_params},
+	error::SdkError,
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
@@ -45,6 +51,38 @@ impl<'a> ExternCRowView<'a> {
 		}
 		Some(col)
 	}
+
+	fn family<T: FamilyValue>(&self, name: &str) -> Result<Option<T>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
+		if col.type_code() != T::KIND {
+			return Err(read_error::<T>(&col, ColumnReadReason::WrongType));
+		}
+		col.family_cell_at(self.index)
+	}
+
+	fn temporal<T: Copy>(&self, name: &str, kind: ValueKind) -> Result<Option<T>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
+		if col.type_code() != kind {
+			return Err(read_error::<T>(&col, ColumnReadReason::WrongType));
+		}
+		Ok(fixed_at::<T>(&col, self.index))
+	}
+}
+
+macro_rules! widening_read {
+	($self:ident, $name:ident, $t:ty => [$($kind:ident: $source:ty),*]) => {{
+		let Some(col) = $self.column_defined($name) else {
+			return Ok(None);
+		};
+		match col.type_code() {
+			$(ValueKind::$kind => Ok(fixed_at::<$source>(&col, $self.index).map(<$t>::from)),)*
+			_ => Err(read_error::<$t>(&col, ColumnReadReason::WrongType)),
+		}
+	}};
 }
 
 impl<'a> RowView for ExternCRowView<'a> {
@@ -55,189 +93,123 @@ impl<'a> RowView for ExternCRowView<'a> {
 		}
 	}
 
-	fn utf8(&self, name: &str) -> Option<&str> {
-		let col = self.column_defined(name)?;
+	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
 		if col.type_code() != ValueKind::Utf8 {
-			return None;
+			return Err(read_error::<&str>(&col, ColumnReadReason::WrongType));
 		}
-		col.iter_str().nth(self.index)
+		Ok(col.iter_str().nth(self.index))
 	}
 
-	fn blob(&self, name: &str) -> Option<&[u8]> {
-		let col = self.column_defined(name)?;
+	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
 		if col.type_code() != ValueKind::Blob {
-			return None;
+			return Err(read_error::<&[u8]>(&col, ColumnReadReason::WrongType));
 		}
-		col.iter_bytes().nth(self.index)
+		Ok(col.iter_bytes().nth(self.index))
 	}
 
-	fn bool(&self, name: &str) -> Option<bool> {
-		let col = self.column_defined(name)?;
+	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
 		if col.type_code() != ValueKind::Boolean {
-			return None;
+			return Err(read_error::<bool>(&col, ColumnReadReason::WrongType));
 		}
-		let bytes = col.data_bytes();
-		let byte = bytes.get(self.index / 8).copied()?;
-		Some((byte >> (self.index % 8)) & 1 == 1)
+		Ok(col.data_bytes().get(self.index / 8).map(|byte| (byte >> (self.index % 8)) & 1 == 1))
 	}
 
-	fn u64(&self, name: &str) -> Option<u64> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Uint8 => fixed_at::<u64>(&col, self.index),
-			ValueKind::Uint4 => fixed_at::<u32>(&col, self.index).map(u64::from),
-			ValueKind::Uint2 => fixed_at::<u16>(&col, self.index).map(u64::from),
-			ValueKind::Uint1 => fixed_at::<u8>(&col, self.index).map(u64::from),
-			_ => None,
-		}
+	fn u8(&self, name: &str) -> Result<Option<u8>, SdkError> {
+		widening_read!(self, name, u8 => [Uint1: u8])
 	}
 
-	fn u32(&self, name: &str) -> Option<u32> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Uint4 => fixed_at::<u32>(&col, self.index),
-			ValueKind::Uint2 => fixed_at::<u16>(&col, self.index).map(u32::from),
-			ValueKind::Uint1 => fixed_at::<u8>(&col, self.index).map(u32::from),
-			_ => None,
-		}
+	fn u16(&self, name: &str) -> Result<Option<u16>, SdkError> {
+		widening_read!(self, name, u16 => [Uint1: u8, Uint2: u16])
 	}
 
-	fn u16(&self, name: &str) -> Option<u16> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Uint2 => fixed_at::<u16>(&col, self.index),
-			ValueKind::Uint1 => fixed_at::<u8>(&col, self.index).map(u16::from),
-			_ => None,
-		}
+	fn u32(&self, name: &str) -> Result<Option<u32>, SdkError> {
+		widening_read!(self, name, u32 => [Uint1: u8, Uint2: u16, Uint4: u32])
 	}
 
-	fn u8(&self, name: &str) -> Option<u8> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Uint1 {
-			return None;
-		}
-		fixed_at::<u8>(&col, self.index)
+	fn u64(&self, name: &str) -> Result<Option<u64>, SdkError> {
+		widening_read!(self, name, u64 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64])
 	}
 
-	fn i64(&self, name: &str) -> Option<i64> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Int8 => fixed_at::<i64>(&col, self.index),
-			ValueKind::Int4 => fixed_at::<i32>(&col, self.index).map(i64::from),
-			ValueKind::Int2 => fixed_at::<i16>(&col, self.index).map(i64::from),
-			ValueKind::Int1 => fixed_at::<i8>(&col, self.index).map(i64::from),
-			_ => None,
-		}
+	fn u128(&self, name: &str) -> Result<Option<u128>, SdkError> {
+		widening_read!(self, name, u128 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64, Uint16: u128])
 	}
 
-	fn i32(&self, name: &str) -> Option<i32> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Int4 => fixed_at::<i32>(&col, self.index),
-			ValueKind::Int2 => fixed_at::<i16>(&col, self.index).map(i32::from),
-			ValueKind::Int1 => fixed_at::<i8>(&col, self.index).map(i32::from),
-			_ => None,
-		}
+	fn i8(&self, name: &str) -> Result<Option<i8>, SdkError> {
+		widening_read!(self, name, i8 => [Int1: i8])
 	}
 
-	fn i16(&self, name: &str) -> Option<i16> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Int2 => fixed_at::<i16>(&col, self.index),
-			ValueKind::Int1 => fixed_at::<i8>(&col, self.index).map(i16::from),
-			_ => None,
-		}
+	fn i16(&self, name: &str) -> Result<Option<i16>, SdkError> {
+		widening_read!(self, name, i16 => [Int1: i8, Int2: i16])
 	}
 
-	fn i8(&self, name: &str) -> Option<i8> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Int1 {
-			return None;
-		}
-		fixed_at::<i8>(&col, self.index)
+	fn i32(&self, name: &str) -> Result<Option<i32>, SdkError> {
+		widening_read!(self, name, i32 => [Int1: i8, Int2: i16, Int4: i32])
 	}
 
-	fn u128(&self, name: &str) -> Option<u128> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Uint16 {
-			return None;
-		}
-		fixed_at::<u128>(&col, self.index)
+	fn i64(&self, name: &str) -> Result<Option<i64>, SdkError> {
+		widening_read!(self, name, i64 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64])
 	}
 
-	fn i128(&self, name: &str) -> Option<i128> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Int16 {
-			return None;
-		}
-		fixed_at::<i128>(&col, self.index)
+	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError> {
+		widening_read!(self, name, i128 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64, Int16: i128])
 	}
 
-	fn f64(&self, name: &str) -> Option<f64> {
-		let col = self.column_defined(name)?;
-		match col.type_code() {
-			ValueKind::Float8 => fixed_at::<f64>(&col, self.index),
-			ValueKind::Float4 => fixed_at::<f32>(&col, self.index).map(f64::from),
-			_ => None,
-		}
+	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError> {
+		widening_read!(self, name, f32 => [Float4: f32])
 	}
 
-	fn f32(&self, name: &str) -> Option<f32> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Float4 {
-			return None;
-		}
-		fixed_at::<f32>(&col, self.index)
+	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError> {
+		widening_read!(self, name, f64 => [Float4: f32, Float8: f64])
 	}
 
-	fn int(&self, name: &str) -> Option<Int> {
-		self.column_defined(name)?.family_cell_at(self.index)
+	fn int(&self, name: &str) -> Result<Option<Int>, SdkError> {
+		self.family(name)
 	}
 
-	fn uint(&self, name: &str) -> Option<Uint> {
-		self.column_defined(name)?.family_cell_at(self.index)
+	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError> {
+		self.family(name)
 	}
 
-	fn decimal(&self, name: &str) -> Option<Decimal> {
-		let col = self.column_defined(name)?;
+	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
+		let Some(col) = self.column_defined(name) else {
+			return Ok(None);
+		};
+		let does_not_fit = || read_error::<Decimal>(&col, ColumnReadReason::DoesNotFit);
 		match col.type_code() {
 			ValueKind::Decimal => col.family_cell_at(self.index),
-			ValueKind::Float8 => fixed_at::<f64>(&col, self.index).map(Decimal::from),
-			ValueKind::Float4 => fixed_at::<f32>(&col, self.index).map(|v| Decimal::from(v as f64)),
-			_ => None,
+			ValueKind::Float8 => fixed_at::<f64>(&col, self.index)
+				.map(|v| Decimal::from_f64(v).ok_or_else(does_not_fit))
+				.transpose(),
+			ValueKind::Float4 => fixed_at::<f32>(&col, self.index)
+				.map(|v| Decimal::from_f32(v).ok_or_else(does_not_fit))
+				.transpose(),
+			_ => Err(read_error::<Decimal>(&col, ColumnReadReason::WrongType)),
 		}
 	}
 
-	fn date(&self, name: &str) -> Option<Date> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Date {
-			return None;
-		}
-		fixed_at::<Date>(&col, self.index)
+	fn date(&self, name: &str) -> Result<Option<Date>, SdkError> {
+		self.temporal(name, ValueKind::Date)
 	}
 
-	fn datetime(&self, name: &str) -> Option<DateTime> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::DateTime {
-			return None;
-		}
-		fixed_at::<DateTime>(&col, self.index)
+	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError> {
+		self.temporal(name, ValueKind::DateTime)
 	}
 
-	fn time(&self, name: &str) -> Option<Time> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Time {
-			return None;
-		}
-		fixed_at::<Time>(&col, self.index)
+	fn time(&self, name: &str) -> Result<Option<Time>, SdkError> {
+		self.temporal(name, ValueKind::Time)
 	}
 
-	fn duration(&self, name: &str) -> Option<Duration> {
-		let col = self.column_defined(name)?;
-		if col.type_code() != ValueKind::Duration {
-			return None;
-		}
-		fixed_at::<Duration>(&col, self.index)
+	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError> {
+		self.temporal(name, ValueKind::Duration)
 	}
 
 	fn value(&self, name: &str) -> Option<Value> {
@@ -251,6 +223,15 @@ impl<'a> RowView for ExternCRowView<'a> {
 
 	fn row_time(&self) -> Option<DateTime> {
 		self.columns.time().get(self.index).copied().map(DateTime::from_nanos)
+	}
+}
+
+fn read_error<T: ?Sized>(col: &BorrowedColumn<'_>, reason: ColumnReadReason) -> SdkError {
+	SdkError::ColumnRead {
+		column: col.name().to_string(),
+		column_type: type_for_column(col),
+		target: type_name::<T>(),
+		reason,
 	}
 }
 
@@ -343,9 +324,11 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 		ValueKind::Utf8 => {
 			col.iter_str().nth(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
 		}
-		ValueKind::Int => col.family_cell_at(index).map(Value::Int).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint => col.family_cell_at(index).map(Value::Uint).unwrap_or_else(|| none_value(col)),
-		ValueKind::Decimal => col.family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col)),
+		ValueKind::Int => col.expect_family_cell_at(index).map(Value::Int).unwrap_or_else(|| none_value(col)),
+		ValueKind::Uint => col.expect_family_cell_at(index).map(Value::Uint).unwrap_or_else(|| none_value(col)),
+		ValueKind::Decimal => {
+			col.expect_family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col))
+		}
 		_ => none_value(col),
 	}
 }

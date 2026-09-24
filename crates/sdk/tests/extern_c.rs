@@ -93,3 +93,6 @@ mod option;
 
 #[path = "extern_c/digest.rs"]
 mod digest;
+
+#[path = "extern_c/row_view_reads.rs"]
+mod row_view_reads;

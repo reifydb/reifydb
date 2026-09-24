@@ -64,12 +64,15 @@ impl WindowedOperator for GuestTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> SdkResult<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(i32, f64)> {
-		Some((row.i32("g")?, row.i32("v")? as f64))
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> SdkResult<Option<(i32, f64)>> {
+		let (Some(g), Some(v)) = (row.i32("g")?, row.i32("v")?) else {
+			return Ok(None);
+		};
+		Ok(Some((g, v as f64)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> Moments {

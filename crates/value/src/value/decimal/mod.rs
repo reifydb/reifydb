@@ -182,7 +182,9 @@ impl Decimal {
 
 	pub fn checked_mul(&self, other: &Self) -> Option<Self> {
 		let scale = self.scale.checked_add(other.scale)?;
-		if let Some(product) = self.unscaled.checked_mul(other.unscaled).and_then(|unscaled| Self::from_parts(unscaled, scale)) {
+		if let Some(product) =
+			self.unscaled.checked_mul(other.unscaled).and_then(|unscaled| Self::from_parts(unscaled, scale))
+		{
 			return Some(product);
 		}
 		let ((left, left_scale), (right, right_scale)) = (self.normalized(), other.normalized());

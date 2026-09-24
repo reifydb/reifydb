@@ -192,10 +192,10 @@ mod procedure_param_coercion;
 mod procedure_read_policy_bypass;
 #[path = "procedure_shadowing_type_arguments.rs"]
 mod procedure_shadowing_type_arguments;
-#[path = "queue/main.rs"]
-mod queue;
 #[path = "promote_int_with_float.rs"]
 mod promote_int_with_float;
+#[path = "queue/main.rs"]
+mod queue;
 #[path = "read_only.rs"]
 mod read_only;
 #[path = "remainder_by_a_none_divisor.rs"]

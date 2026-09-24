@@ -20,6 +20,7 @@ use crate::{
 		},
 		family::{FamilyValue, cell_width, family_params},
 	},
+	error::SdkError,
 	flow::extern_c::wire::change::{ExternCChange, ExternCDiff, ExternCOrigin},
 };
 
@@ -486,7 +487,7 @@ impl<'a> BorrowedColumn<'a> {
 		if !self.is_defined_at(index) {
 			return None;
 		}
-		self.family_cell_at(index)
+		self.expect_family_cell_at(index)
 	}
 
 	#[inline]
@@ -494,7 +495,7 @@ impl<'a> BorrowedColumn<'a> {
 		if !self.is_defined_at(index) {
 			return None;
 		}
-		self.family_cell_at(index)
+		self.expect_family_cell_at(index)
 	}
 
 	#[inline]
@@ -502,18 +503,34 @@ impl<'a> BorrowedColumn<'a> {
 		if !self.is_defined_at(index) {
 			return None;
 		}
-		self.family_cell_at(index)
+		self.expect_family_cell_at(index)
 	}
 
-	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
+	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Result<Option<T>, SdkError> {
 		if self.type_code() != T::KIND {
-			return None;
+			return Ok(None);
 		}
-		let (precision, scale) = family_params(T::KIND, self.precision(), self.scale())?;
+		let (precision, scale) = family_params(T::KIND, self.precision(), self.scale()).ok_or_else(|| {
+			SdkError::InvalidInput(format!(
+				"column {} has invalid precision {} and scale {}",
+				self.name(),
+				self.precision(),
+				self.scale()
+			))
+		})?;
 		let width = cell_width(precision);
-		let start = index.checked_mul(width)?;
-		let cell = self.data_bytes().get(start..start.checked_add(width)?)?;
-		T::decode_cell(cell, scale).ok()
+		let Some(cell) = index
+			.checked_mul(width)
+			.and_then(|start| self.data_bytes().get(start..start.checked_add(width)?))
+		else {
+			return Ok(None);
+		};
+		T::decode_cell(cell, scale).map(Some)
+	}
+
+	pub(crate) fn expect_family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
+		self.family_cell_at(index)
+			.unwrap_or_else(|err| panic!("decoding column {} at row {index} failed: {err}", self.name()))
 	}
 
 	#[inline]

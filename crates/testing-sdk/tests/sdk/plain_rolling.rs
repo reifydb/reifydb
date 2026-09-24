@@ -117,16 +117,19 @@ macro_rules! sum_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-				row.row_time()
+			fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+				Ok(row.row_time())
 			}
 
 			fn extract(
 				&self,
 				_: &mut impl GuestContext<Windowed>,
 				row: &impl RowView,
-			) -> Option<(String, f64)> {
-				Some((row.utf8("group")?.to_string(), row.f64("value")?))
+			) -> Result<Option<(String, f64)>> {
+				let (Some(group), Some(value)) = (row.utf8("group")?, row.f64("value")?) else {
+					return Ok(None);
+				};
+				Ok(Some((group.to_string(), value)))
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> PaneSum {

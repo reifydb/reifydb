@@ -78,8 +78,12 @@ impl Probe {
 		})
 	}
 
-	fn contribution(row: &impl RowView) -> Option<(String, (u64, f64))> {
-		Some((row.utf8("group")?.to_string(), (row.u64("ts")?, row.f64("price")?)))
+	fn contribution(row: &impl RowView) -> Result<Option<(String, (u64, f64))>> {
+		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
+		else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), (ts, price))))
 	}
 }
 
@@ -102,11 +106,15 @@ impl WindowedOperator for Probe {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, (u64, f64))>> {
 		Probe::contribution(row)
 	}
 

@@ -70,7 +70,7 @@ impl ManagedOperator for Tally {
 				continue;
 			};
 			for r in 0..post.row_count() {
-				let g = post.row(r).expect("row").i32("g").expect("g");
+				let g = post.row(r).expect("row").i32("g").unwrap().expect("g");
 				let group = GroupId::of(&EncodedKey::new(g.to_be_bytes()));
 				ctx.state().set(
 					&managed_key_in(group, &[]).expect("an empty id fits the keyspace"),

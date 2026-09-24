@@ -223,8 +223,14 @@ impl NaturalJoinNode {
 		left_columns: &Columns,
 		probe_ctx: &ProbeContext,
 	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
-		let ProbeContext { converter, hash_table, left_col_indices, targets, left_row_numbers, left_rows } =
-			probe_ctx;
+		let ProbeContext {
+			converter,
+			hash_table,
+			left_col_indices,
+			targets,
+			left_row_numbers,
+			left_rows,
+		} = probe_ctx;
 		let key_columns: Vec<&ColumnBuffer> = left_col_indices.iter().map(|&idx| &left_columns[idx]).collect();
 		let arrays = key_arrays(&key_columns, targets);
 		let rows = converter

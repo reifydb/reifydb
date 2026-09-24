@@ -95,7 +95,7 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Buckets<A> {
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -105,23 +105,23 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						self.push_all(ctx, &cols, &mut buckets, true);
+						self.push_all(ctx, &cols, &mut buckets, true)?;
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_all(ctx, &pre, &mut buckets, false);
-						self.push_all(ctx, &post, &mut buckets, true);
+						self.push_all(ctx, &pre, &mut buckets, false)?;
+						self.push_all(ctx, &post, &mut buckets, true)?;
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						self.push_all(ctx, &cols, &mut buckets, false);
+						self.push_all(ctx, &cols, &mut buckets, false)?;
 					}
 				}
 			}
 		}
-		buckets
+		Ok(buckets)
 	}
 
 	fn push_all<C: ColumnsView>(
@@ -130,15 +130,15 @@ where
 		cols: &C,
 		buckets: &mut Buckets<A>,
 		is_add: bool,
-	) {
+	) -> Result<()> {
 		for i in 0..cols.row_count() {
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some(coord) = self.aggregator.coord(&row) else {
+			let Some(coord) = self.aggregator.coord(&row)? else {
 				continue;
 			};
-			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
+			let Some((group, contribution)) = self.aggregator.extract(ctx, &row)? else {
 				continue;
 			};
 			let span = self.window_span(coord);
@@ -149,6 +149,7 @@ where
 			};
 			buckets.entry((group, span)).or_default().push(event);
 		}
+		Ok(())
 	}
 
 	#[inline]
@@ -327,7 +328,7 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets = self.route(ctx, &change);
+		let mut buckets = self.route(ctx, &change)?;
 		if buckets.is_empty() {
 			return Ok(());
 		}

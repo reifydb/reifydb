@@ -206,13 +206,17 @@ impl DecimalBuilder {
 			.finish()
 			.unscaled_values()
 			.into_iter()
-			.map(|unscaled| Decimal::from_parts(unscaled, scale).expect("a decimal builder holds only valid decimals"))
+			.map(|unscaled| {
+				Decimal::from_parts(unscaled, scale)
+					.expect("a decimal builder holds only valid decimals")
+			})
 			.collect();
 		let integer_digits = |decimal: &Decimal| decimal.digits().saturating_sub(decimal.scale());
 		let needed = existing.iter().chain([value]).map(integer_digits).max().unwrap_or(0);
 		let wide_scale = scale.max(value.scale()).min(unscaled::MAX_DIGITS - needed);
 		let round = |decimal: &Decimal| {
-			decimal.round_to_scale(wide_scale).expect("rounding never adds a whole digit past the widest value")
+			decimal.round_to_scale(wide_scale)
+				.expect("rounding never adds a whole digit past the widest value")
 		};
 		let rounded: Vec<Decimal> = existing.iter().map(round).collect();
 		let fitted = round(value);

@@ -69,11 +69,15 @@ fn udf_rows(t: &TestEngine, prefix: &str, five: &str, ten: &str) -> Vec<(String,
 
 #[test]
 fn a_per_row_udf_returning_decimals_of_mixed_scale_keeps_every_value() {
-	// The untyped result column takes the first row's decimal type, so a finer scale in a later row does not fit and panics.
+	// The untyped result column takes the first row's decimal type, so a finer scale in a later row does not fit
+	// and panics.
 	let t = table_of_two_rows();
 	for (five, ten) in [("1.5", "1.25"), ("1.25", "1.5")] {
 		let rows = udf_rows(&t, PER_ROW, five, ten);
-		assert_eq!(rows, vec![("10".to_string(), format!("{ten:0<4}")), ("5".to_string(), format!("{five:0<4}"))]);
+		assert_eq!(
+			rows,
+			vec![("10".to_string(), format!("{ten:0<4}")), ("5".to_string(), format!("{five:0<4}"))]
+		);
 	}
 }
 
@@ -83,6 +87,9 @@ fn a_vectorized_udf_whose_branches_return_decimals_of_mixed_scale_keeps_every_va
 	let t = table_of_two_rows();
 	for (five, ten) in [("1.5", "1.25"), ("1.25", "1.5")] {
 		let rows = udf_rows(&t, "", five, ten);
-		assert_eq!(rows, vec![("10".to_string(), format!("{ten:0<4}")), ("5".to_string(), format!("{five:0<4}"))]);
+		assert_eq!(
+			rows,
+			vec![("10".to_string(), format!("{ten:0<4}")), ("5".to_string(), format!("{five:0<4}"))]
+		);
 	}
 }

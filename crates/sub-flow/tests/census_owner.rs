@@ -51,7 +51,7 @@ fn groups(change: &impl ChangeView) -> Vec<GroupId> {
 			continue;
 		};
 		for r in 0..post.row_count() {
-			let g = post.row(r).expect("row").i32("g").expect("g");
+			let g = post.row(r).expect("row").i32("g").unwrap().expect("g");
 			out.push(GroupId::of(&EncodedKey::new(g.to_be_bytes())));
 		}
 	}

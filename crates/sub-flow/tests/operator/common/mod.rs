@@ -99,7 +99,7 @@ impl UnmanagedOperator for ParityWindow {
 				let Some(row) = cols.row(i) else {
 					continue;
 				};
-				let Some(timestamp) = row.i64("timestamp") else {
+				let Some(timestamp) = row.i64("timestamp")? else {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;

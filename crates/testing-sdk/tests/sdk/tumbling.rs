@@ -142,14 +142,15 @@ impl WindowedOperator for TestVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, size))
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
+		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), size)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
@@ -194,11 +195,11 @@ impl WindowedOperator for SealedVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
 		TestVolume.extract(ctx, row)
 	}
 
@@ -283,14 +284,22 @@ impl WindowedOperator for TestMin {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, OrdF64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, OrdF64::new(size)?))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, OrdF64)>> {
+		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
+			return Ok(None);
+		};
+		let Some(size) = OrdF64::new(size) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), size)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {

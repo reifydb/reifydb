@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::any::type_name;
+
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	value::column::{
@@ -8,12 +10,16 @@ use reifydb_core::{
 		columns::Columns,
 	},
 };
-use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
-	row_number::RowNumber, time::Time, uint::Uint,
+use reifydb_value::{
+	error::ColumnReadReason,
+	value::{
+		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+		int::Int, row_number::RowNumber, time::Time, uint::Uint,
+	},
 };
 
 use super::{ChangeView, ColumnsView, DiffView, RowView};
+use crate::error::SdkError;
 
 pub struct InProcessRowView<'a> {
 	columns: &'a Columns,
@@ -32,18 +38,15 @@ impl<'a> InProcessRowView<'a> {
 		self.columns.column(name).map(|c| c.data())
 	}
 
-	fn defined_inner(&self, name: &str) -> Option<&'a ColumnBuffer> {
-		let buffer = self.buffer(name)?;
-		if !buffer.is_defined(self.index) {
-			return None;
-		}
-		Some(buffer)
+	fn defined(&self, name: &str) -> Option<&'a ColumnBuffer> {
+		self.buffer(name).filter(|buffer| buffer.is_defined(self.index))
 	}
 
-	fn typed<T: FromColumnBuffer>(&self, name: &str) -> Option<T> {
-		self.defined_inner(name)?
-			.get_as::<T>(self.index)
-			.unwrap_or_else(|err| panic!("reading column {name} failed: {err}"))
+	fn typed<T: FromColumnBuffer>(&self, name: &str) -> Result<Option<T>, SdkError> {
+		let Some(buffer) = self.defined(name) else {
+			return Ok(None);
+		};
+		T::from_column_buffer(buffer, self.index).map_err(|reason| column_read::<T>(name, buffer, reason))
 	}
 }
 
@@ -52,91 +55,103 @@ impl<'a> RowView for InProcessRowView<'a> {
 		self.buffer(name).map(|b| b.is_defined(self.index)).unwrap_or(false)
 	}
 
-	fn utf8(&self, name: &str) -> Option<&str> {
-		self.defined_inner(name)?.get_str(self.index)
+	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
+		let Some(buffer) = self.defined(name) else {
+			return Ok(None);
+		};
+		if !matches!(buffer, ColumnBuffer::Utf8 { .. }) {
+			return Err(column_read::<&str>(name, buffer, ColumnReadReason::WrongType));
+		}
+		Ok(buffer.get_str(self.index))
 	}
 
-	fn blob(&self, name: &str) -> Option<&[u8]> {
-		self.defined_inner(name)?.get_bytes(self.index)
+	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
+		let Some(buffer) = self.defined(name) else {
+			return Ok(None);
+		};
+		if !matches!(buffer, ColumnBuffer::Blob { .. }) {
+			return Err(column_read::<&[u8]>(name, buffer, ColumnReadReason::WrongType));
+		}
+		Ok(buffer.get_bytes(self.index))
 	}
 
-	fn bool(&self, name: &str) -> Option<bool> {
+	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
 		self.typed(name)
 	}
 
-	fn u8(&self, name: &str) -> Option<u8> {
+	fn u8(&self, name: &str) -> Result<Option<u8>, SdkError> {
 		self.typed(name)
 	}
 
-	fn u16(&self, name: &str) -> Option<u16> {
+	fn u16(&self, name: &str) -> Result<Option<u16>, SdkError> {
 		self.typed(name)
 	}
 
-	fn u32(&self, name: &str) -> Option<u32> {
+	fn u32(&self, name: &str) -> Result<Option<u32>, SdkError> {
 		self.typed(name)
 	}
 
-	fn u64(&self, name: &str) -> Option<u64> {
+	fn u64(&self, name: &str) -> Result<Option<u64>, SdkError> {
 		self.typed(name)
 	}
 
-	fn u128(&self, name: &str) -> Option<u128> {
+	fn u128(&self, name: &str) -> Result<Option<u128>, SdkError> {
 		self.typed(name)
 	}
 
-	fn i8(&self, name: &str) -> Option<i8> {
+	fn i8(&self, name: &str) -> Result<Option<i8>, SdkError> {
 		self.typed(name)
 	}
 
-	fn i16(&self, name: &str) -> Option<i16> {
+	fn i16(&self, name: &str) -> Result<Option<i16>, SdkError> {
 		self.typed(name)
 	}
 
-	fn i32(&self, name: &str) -> Option<i32> {
+	fn i32(&self, name: &str) -> Result<Option<i32>, SdkError> {
 		self.typed(name)
 	}
 
-	fn i64(&self, name: &str) -> Option<i64> {
+	fn i64(&self, name: &str) -> Result<Option<i64>, SdkError> {
 		self.typed(name)
 	}
 
-	fn i128(&self, name: &str) -> Option<i128> {
+	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError> {
 		self.typed(name)
 	}
 
-	fn f32(&self, name: &str) -> Option<f32> {
+	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError> {
 		self.typed(name)
 	}
 
-	fn f64(&self, name: &str) -> Option<f64> {
+	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError> {
 		self.typed(name)
 	}
 
-	fn int(&self, name: &str) -> Option<Int> {
+	fn int(&self, name: &str) -> Result<Option<Int>, SdkError> {
 		self.typed(name)
 	}
 
-	fn uint(&self, name: &str) -> Option<Uint> {
+	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError> {
 		self.typed(name)
 	}
 
-	fn decimal(&self, name: &str) -> Option<Decimal> {
+	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
 		self.typed(name)
 	}
 
-	fn date(&self, name: &str) -> Option<Date> {
+	fn date(&self, name: &str) -> Result<Option<Date>, SdkError> {
 		self.typed(name)
 	}
 
-	fn datetime(&self, name: &str) -> Option<DateTime> {
+	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError> {
 		self.typed(name)
 	}
 
-	fn time(&self, name: &str) -> Option<Time> {
+	fn time(&self, name: &str) -> Result<Option<Time>, SdkError> {
 		self.typed(name)
 	}
 
-	fn duration(&self, name: &str) -> Option<Duration> {
+	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError> {
 		self.typed(name)
 	}
 
@@ -150,6 +165,15 @@ impl<'a> RowView for InProcessRowView<'a> {
 
 	fn row_time(&self) -> Option<DateTime> {
 		self.columns.time().get(self.index).copied()
+	}
+}
+
+fn column_read<T: ?Sized>(name: &str, buffer: &ColumnBuffer, reason: ColumnReadReason) -> SdkError {
+	SdkError::ColumnRead {
+		column: name.to_string(),
+		column_type: buffer.base_type(),
+		target: type_name::<T>(),
+		reason,
 	}
 }
 

@@ -85,15 +85,20 @@ impl WindowedOperator for TestCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
-		let group = row.utf8("group")?.to_string();
-		let ts = row.u64("ts")?;
-		let price = row.f64("price")?;
-		Some((group, (ts, price)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, (u64, f64))>> {
+		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
+		else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), (ts, price))))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
@@ -308,11 +313,15 @@ impl WindowedOperator for SealedCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(
+		&self,
+		ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, (u64, f64))>> {
 		TestCarry.extract(ctx, row)
 	}
 

@@ -236,8 +236,7 @@ fn a_product_whose_scales_add_past_76_digits_keeps_six_fraction_digits() {
 #[test]
 fn a_product_trims_its_scale_only_down_to_what_the_whole_digits_leave() {
 	// Whole digits 30 + 10 leave 36 fraction digits, so trimming to 6 would round away digits that still fit.
-	let product: ColumnBuffer =
-		arith!(mul_columns, decimal(60, 30, &["1.5"]), decimal(30, 20, &["1.5"])).unwrap();
+	let product: ColumnBuffer = arith!(mul_columns, decimal(60, 30, &["1.5"]), decimal(30, 20, &["1.5"])).unwrap();
 	assert_eq!(product.get_type(), ValueType::decimal(Precision::new(76), Scale::new(36)));
 	assert_eq!(decimal_strings(&product), [format!("2.25{}", "0".repeat(34))]);
 }

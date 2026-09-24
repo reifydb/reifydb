@@ -152,7 +152,12 @@ fn extract_row_numbers(data: &ColumnBuffer) -> Vec<RowNumber> {
 
 fn extract_commit_versions(data: &ColumnBuffer) -> Vec<u64> {
 	(0..data.len())
-		.map(|i| data.get_as::<u64>(i).ok().flatten().expect("#commit_version column must be Uint8 with no nones"))
+		.map(|i| {
+			data.get_as::<u64>(i)
+				.ok()
+				.flatten()
+				.expect("#commit_version column must be Uint8 with no nones")
+		})
 		.collect()
 }
 

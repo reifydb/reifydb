@@ -103,7 +103,7 @@ impl UnmanagedOperator for Alarm {
 			};
 			for r in 0..post.row_count() {
 				let row = post.row(r).expect("row");
-				let g = row.i32("g").expect("g");
+				let g = row.i32("g").unwrap().expect("g");
 				// The row's own event time; the operator is never told "now".
 				let at = row
 					.row_time()
@@ -309,7 +309,7 @@ impl UnmanagedOperator for Snooze {
 			};
 			for r in 0..post.row_count() {
 				let row = post.row(r).expect("row");
-				let g = row.i32("g").expect("g");
+				let g = row.i32("g").unwrap().expect("g");
 				let at = row
 					.row_time()
 					.expect("the substrate must populate #time on an event-time source");

@@ -122,14 +122,15 @@ impl WindowedOperator for TestRollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
+		let (Some(group), Some(value)) = (row.utf8("group")?, row.f64("value")?) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), value)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
@@ -351,11 +352,11 @@ impl WindowedOperator for SealedRollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
 		TestRollingSum.extract(ctx, row)
 	}
 

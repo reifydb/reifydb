@@ -469,8 +469,14 @@ pub mod tests {
 
 	#[test]
 	fn promote_int_or_uint_with_a_float_gives_the_default_decimal() {
-		// INT would cast the float operand down and drop its fraction, unlike the decimal every arithmetic path gives.
-		for family in [ValueType::INT, ValueType::UINT, ValueType::int(Precision::new(5)), ValueType::uint(Precision::new(5))] {
+		// INT would cast the float operand down and drop its fraction, unlike the decimal every arithmetic path
+		// gives.
+		for family in [
+			ValueType::INT,
+			ValueType::UINT,
+			ValueType::int(Precision::new(5)),
+			ValueType::uint(Precision::new(5)),
+		] {
 			for float in [Float4, Float8] {
 				assert_eq!(ValueType::promote(family.clone(), float.clone()), ValueType::DECIMAL);
 				assert_eq!(ValueType::promote(float, family.clone()), ValueType::DECIMAL);

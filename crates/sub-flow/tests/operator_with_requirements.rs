@@ -372,12 +372,16 @@ macro_rules! window_probe {
 				Ok(Self)
 			}
 
-			fn coord(&self, _: &impl RowView) -> Option<$coord> {
-				None
+			fn coord(&self, _: &impl RowView) -> SdkResult<Option<$coord>> {
+				Ok(None)
 			}
 
-			fn extract(&self, _: &mut impl GuestContext<Windowed>, _: &impl RowView) -> Option<(u32, i64)> {
-				None
+			fn extract(
+				&self,
+				_: &mut impl GuestContext<Windowed>,
+				_: &impl RowView,
+			) -> SdkResult<Option<(u32, i64)>> {
+				Ok(None)
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<$coord>) -> LastValue<i64> {

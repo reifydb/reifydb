@@ -817,7 +817,7 @@ impl ColumnBuffer {
 		self.nulls().is_some_and(|nulls| !(index < nulls.len() && nulls.is_valid(index)))
 	}
 
-	pub(crate) fn base_type(&self) -> ValueType {
+	pub fn base_type(&self) -> ValueType {
 		match self.get_type() {
 			ValueType::Option(base) if self.nulls().is_some() => *base,
 			other => other,

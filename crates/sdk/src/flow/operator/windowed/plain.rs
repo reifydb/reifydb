@@ -152,7 +152,7 @@ where
 		WindowSpan::new(<A::Coord as Coord>::from_order(id), <A::Coord as Coord>::from_order(id + 1))
 	}
 
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Buckets<A> {
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -162,23 +162,23 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						self.push_all(ctx, &cols, &mut buckets, true);
+						self.push_all(ctx, &cols, &mut buckets, true)?;
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_all(ctx, &pre, &mut buckets, false);
-						self.push_all(ctx, &post, &mut buckets, true);
+						self.push_all(ctx, &pre, &mut buckets, false)?;
+						self.push_all(ctx, &post, &mut buckets, true)?;
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						self.push_all(ctx, &cols, &mut buckets, false);
+						self.push_all(ctx, &cols, &mut buckets, false)?;
 					}
 				}
 			}
 		}
-		buckets
+		Ok(buckets)
 	}
 
 	fn push_all<C: ColumnsView>(
@@ -187,15 +187,15 @@ where
 		cols: &C,
 		buckets: &mut Buckets<A>,
 		is_add: bool,
-	) {
+	) -> Result<()> {
 		for i in 0..cols.row_count() {
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some(coord) = self.aggregator.coord(&row) else {
+			let Some(coord) = self.aggregator.coord(&row)? else {
 				continue;
 			};
-			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
+			let Some((group, contribution)) = self.aggregator.extract(ctx, &row)? else {
 				continue;
 			};
 			match &self.sliding {
@@ -220,6 +220,7 @@ where
 				}
 			}
 		}
+		Ok(())
 	}
 }
 
@@ -674,10 +675,10 @@ where
 							batch.refused += 1;
 							continue;
 						};
-						let Some(coord) = aggregator.coord(&row) else {
+						let Some(coord) = aggregator.coord(&row)? else {
 							continue;
 						};
-						let Some((group, contribution)) = aggregator.extract(ctx, &row) else {
+						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
 							continue;
 						};
 						Self::admit_session_row(
@@ -704,7 +705,7 @@ where
 							batch.refused += 1;
 							continue;
 						};
-						let Some((group, contribution)) = aggregator.extract(ctx, &row) else {
+						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
 							continue;
 						};
 						Self::retract_session_row(
@@ -730,10 +731,10 @@ where
 							batch.refused += 2;
 							continue;
 						};
-						let pre_coord = aggregator.coord(&pre_row);
-						let post_coord = aggregator.coord(&post_row);
-						let before = aggregator.extract(ctx, &pre_row);
-						let after = aggregator.extract(ctx, &post_row);
+						let pre_coord = aggregator.coord(&pre_row)?;
+						let post_coord = aggregator.coord(&post_row)?;
+						let before = aggregator.extract(ctx, &pre_row)?;
+						let after = aggregator.extract(ctx, &post_row)?;
 						if let (
 							Some(pre_coord),
 							Some(post_coord),
@@ -1107,7 +1108,7 @@ where
 			)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
-		let buckets = self.route(ctx, &change);
+		let buckets = self.route(ctx, &change)?;
 		if buckets.is_empty() {
 			return Ok(());
 		}
@@ -1205,16 +1206,19 @@ mod tests {
 					})
 				}
 
-				fn coord(&self, _: &impl crate::flow::operator::view::RowView) -> Option<$coord> {
-					None
+				fn coord(
+					&self,
+					_: &impl crate::flow::operator::view::RowView,
+				) -> Result<Option<$coord>> {
+					Ok(None)
 				}
 
 				fn extract(
 					&self,
 					_: &mut impl GuestContext<Windowed>,
 					_: &impl crate::flow::operator::view::RowView,
-				) -> Option<($group, i64)> {
-					None
+				) -> Result<Option<($group, i64)>> {
+					Ok(None)
 				}
 
 				fn new_accumulator(&self, settings: &WindowSettings<$coord>) -> LastValue<i64> {

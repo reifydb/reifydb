@@ -65,6 +65,27 @@ fn sample_columns() -> [ColumnBuffer; 3] {
 	]
 }
 
+fn sample_columns_with_a_none() -> [ColumnBuffer; 3] {
+	[
+		ColumnBuffer::int_with_bitvec(
+			Precision::new(20),
+			[Int::from(-7i64), Int::from(2i64), Int::from(i64::MAX)],
+			vec![true, false, true],
+		),
+		ColumnBuffer::uint_with_bitvec(
+			Precision::new(39),
+			[Uint::from(7u64), Uint::from(2u64), Uint::from(u128::MAX)],
+			vec![true, false, true],
+		),
+		ColumnBuffer::decimal_with_bitvec(
+			Precision::new(12),
+			Scale::new(3),
+			[decimal("1.25"), decimal("2.5"), decimal("-0.5")],
+			vec![true, false, true],
+		),
+	]
+}
+
 #[test]
 fn precision_38_is_decimal128_for_every_family_type() {
 	// Precision 38 must stay on the 16 byte layout, otherwise every narrow column doubles its memory.
@@ -192,5 +213,56 @@ fn a_none_survives_when_a_later_value_widens_the_builder() {
 		assert_eq!(column.get_value(0), Value::Decimal(decimal("1.5")), "widening to {wide}");
 		assert!(matches!(column.get_value(1), Value::None { .. }), "widening to {wide}");
 		assert_eq!(column.get_value(2), Value::Decimal(decimal(wide)), "widening to {wide}");
+	}
+}
+
+#[test]
+fn a_none_in_a_family_column_survives_reorder() {
+	// Reorder must move the null bit with its value, otherwise a shuffled none becomes a stale number.
+	for original in sample_columns_with_a_none() {
+		let ty = original.get_type();
+		let mut column = original.clone();
+		let indices = [2, 0, 1];
+		column.reorder(&indices);
+		assert_eq!(column.len(), 3, "{ty:?}");
+		for (new_index, &old_index) in indices.iter().enumerate() {
+			assert_eq!(
+				column.is_defined(new_index),
+				original.is_defined(old_index),
+				"{ty:?} row {new_index}"
+			);
+			if original.is_defined(old_index) {
+				assert_eq!(
+					column.get_value(new_index),
+					original.get_value(old_index),
+					"{ty:?} row {new_index}"
+				);
+			}
+		}
+	}
+}
+
+#[test]
+fn a_none_in_a_family_column_survives_gather_with_a_repeated_index() {
+	// A repeated index must read the null bit on every read, otherwise a duplicated none returns a stale value.
+	for original in sample_columns_with_a_none() {
+		let ty = original.get_type();
+		let indices = [1, 1, 2, 0];
+		let gathered = original.gather(&indices);
+		assert_eq!(gathered.len(), indices.len(), "{ty:?}");
+		for (new_index, &old_index) in indices.iter().enumerate() {
+			assert_eq!(
+				gathered.is_defined(new_index),
+				original.is_defined(old_index),
+				"{ty:?} row {new_index}"
+			);
+			if original.is_defined(old_index) {
+				assert_eq!(
+					gathered.get_value(new_index),
+					original.get_value(old_index),
+					"{ty:?} row {new_index}"
+				);
+			}
+		}
 	}
 }

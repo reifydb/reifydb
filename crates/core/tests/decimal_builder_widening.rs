@@ -27,7 +27,8 @@ fn texts(buffer: &ColumnBuffer) -> Vec<String> {
 
 #[test]
 fn a_finer_scale_widens_a_column_that_declares_every_whole_digit() {
-	// decimal(76, 1) reserves 75 whole digits, so sizing from the declaration leaves no room for a second fraction digit.
+	// decimal(76, 1) reserves 75 whole digits, so sizing from the declaration leaves no room for a second fraction
+	// digit.
 	let buffer = build(ValueType::decimal(Precision::new(76), Scale::new(1)), &["1.5", "1.25"]);
 	assert_eq!(buffer.get_type(), ValueType::decimal(Precision::new(76), Scale::new(2)));
 	assert_eq!(texts(&buffer), vec!["1.50", "1.25"]);

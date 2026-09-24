@@ -190,14 +190,15 @@ impl WindowedOperator for VolumeTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, size))
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
+		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), size)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
@@ -278,14 +279,22 @@ impl WindowedOperator for MinTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, OrdF64)> {
-		let group = row.utf8("group")?.to_string();
-		let size = row.f64("size")?;
-		Some((group, OrdF64::new(size)?))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, OrdF64)>> {
+		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
+			return Ok(None);
+		};
+		let Some(size) = OrdF64::new(size) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), size)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {
@@ -406,19 +415,23 @@ impl WindowedOperator for OhlcvSealingTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
 		row: &impl RowView,
-	) -> Option<(String, (DateTime, OrdF64))> {
-		let group = row.utf8("group")?.to_string();
-		let slot = row.u64("slot")?;
-		let price = OrdF64::new(row.f64("price")?)?;
-		Some((group, (at_millis(slot), price)))
+	) -> Result<Option<(String, (DateTime, OrdF64))>> {
+		let (Some(group), Some(slot), Some(price)) = (row.utf8("group")?, row.u64("slot")?, row.f64("price")?)
+		else {
+			return Ok(None);
+		};
+		let Some(price) = OrdF64::new(price) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), (at_millis(slot), price))))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> OhlcvAcc {
@@ -521,14 +534,15 @@ impl WindowedOperator for RollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
+		let (Some(group), Some(value)) = (row.utf8("group")?, row.f64("value")?) else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), value)))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
@@ -585,15 +599,21 @@ impl WindowedOperator for TopVolumeRollingTopK {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
-		let group = row.utf8("group")?.to_string();
-		let trader = row.u64("trader")?;
-		let volume = row.f64("volume")?;
-		Some((group, (trader, volume)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, (u64, f64))>> {
+		let (Some(group), Some(trader), Some(volume)) =
+			(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
+		else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), (trader, volume))))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
@@ -671,15 +691,20 @@ impl WindowedOperator for TwapCarry {
 		Ok(TwapCarry)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
+	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
+		Ok(row.row_time())
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
-		let group = row.utf8("group")?.to_string();
-		let ts = row.u64("ts")?;
-		let price = row.f64("price")?;
-		Some((group, (ts, price)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		row: &impl RowView,
+	) -> Result<Option<(String, (u64, f64))>> {
+		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
+		else {
+			return Ok(None);
+		};
+		Ok(Some((group.to_string(), (ts, price))))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {

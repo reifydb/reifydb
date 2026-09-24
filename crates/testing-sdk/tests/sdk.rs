@@ -42,3 +42,6 @@ mod plain_sliding;
 
 #[path = "sdk/plain_session.rs"]
 mod plain_session;
+
+#[path = "sdk/windowed_read_error.rs"]
+mod windowed_read_error;
