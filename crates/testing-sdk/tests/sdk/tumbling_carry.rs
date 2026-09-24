@@ -472,3 +472,55 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
 }
+
+#[test]
+fn a_refilled_carry_window_publishes_an_insert() {
+	// Downstream already dropped the removed row, so an update retracting it corrupts every consumer.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+		.with(window_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1, "precondition: the emptied window publishes its removal");
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
+	assert_eq!(out.diffs.len(), 1, "a refilled window publishes once");
+	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
+	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("sum"), Some(5.0));
+}
+
+#[test]
+fn an_emptied_carry_window_publishes_nothing_when_folded() {
+	// A second removal of a row downstream already dropped is a retraction of nothing.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+		.with(sealed_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 1.0)).build()).expect("apply");
+	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
+	assert_eq!(out.diffs.iter().map(|d| d.post().expect("post").row_count()).sum::<usize>(), 1);
+}
+
+#[test]
+fn an_emptied_carry_window_carries_nothing_into_the_next_window() {
+	// A carry taken from a withdrawn window seeds the next window with a close that no longer exists.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+		.with(window_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 70, 5.0)).build()).expect("apply");
+
+	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+	assert_eq!(r.u64("window_start"), Some(window_order(60)));
+	assert_eq!(r.bool("has_carry"), Some(false), "the only prior window was withdrawn");
+	assert_eq!(r.f64("carry_in"), Some(0.0));
+}

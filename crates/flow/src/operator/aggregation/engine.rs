@@ -130,7 +130,7 @@ pub(crate) fn finish_tumbling_engine(
 	engine_config: WindowEngineConfig,
 	immutable: Option<Duration>,
 	anchor: ExpiryAnchor,
-	indexed_retractions: bool,
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] indexed_retractions: bool,
 	stamp: Stamp<'_>,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
@@ -144,7 +144,6 @@ pub(crate) fn finish_tumbling_engine(
 		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), store::empty_key()),
 		|| RowAccumulator::new(kinds, immutable),
 	)?;
-	let _ = indexed_retractions;
 	reifydb_assertions! {
 		let dropped = engine.dropped_retractions();
 		assert!(

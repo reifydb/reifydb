@@ -3,7 +3,7 @@
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb::{
-	Database, WithSubsystem, runtime::shutdown::Shutdown, server, sub_server_ws::acceptor::WsStreamAcceptor,
+	Database, WithSubsystem, runtime::shutdown::Shutdown, server, sub_server_ws::acceptor::{Access, WsStreamAcceptor},
 };
 use reifydb_value::{params::Params, value::duration::Duration};
 use serde_json::{Value, from_str};
@@ -36,7 +36,7 @@ fn database(max_connections: usize) -> Database {
 
 async fn over_duplex(acceptor: &WsStreamAcceptor) -> WebSocketStream<DuplexStream> {
 	let (client, server) = duplex(64 * 1024);
-	acceptor.accept(server, None);
+	acceptor.accept(server, None, Access::Admin);
 	let (ws, _) = client_async(PROJECT_URL, client).await.expect("upgrade over duplex");
 	ws
 }
@@ -49,7 +49,7 @@ async fn over_tcp(port: u16) -> WebSocketStream<TcpStream> {
 
 async fn refused_upgrade(acceptor: &WsStreamAcceptor) -> bool {
 	let (client, server) = duplex(64 * 1024);
-	acceptor.accept(server, None);
+	acceptor.accept(server, None, Access::Admin);
 	timeout(Duration::from_seconds(10).expect("ten seconds").to_std(), client_async(PROJECT_URL, client))
 		.await
 		.expect("a dropped stream must fail the upgrade, not hang it")

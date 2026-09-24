@@ -531,3 +531,30 @@ fn a_ranked_row_is_keyed_by_the_group_bytes_then_the_rank_bytes() {
 		"no row-number mapping is keyed by the hash of group bytes followed by rank bytes"
 	);
 }
+
+#[test]
+fn a_refilled_rank_publishes_an_insert() {
+	// Downstream already dropped the removed rank, so an update retracting it corrupts every consumer.
+	let mut h = harness!(TopVolume, rolling(3, Some(1), 3_600_000)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
+	assert_eq!(render(&out), vec![(DiffType::Remove, 1, 100, 5.0)], "precondition: the emptied group withdraws");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 200, 9.0)).build()).expect("apply");
+
+	assert_eq!(render(&out), vec![(DiffType::Insert, 1, 200, 9.0)]);
+}
+
+#[test]
+fn an_emptied_group_publishes_nothing_on_seal() {
+	// A second removal of a rank downstream already dropped is a retraction of nothing.
+	let mut h = harness!(TopVolume, rolling(3, Some(1), 117)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
+	assert_eq!(render(&out), vec![(DiffType::Remove, 1, 100, 5.0)], "precondition: the emptied group withdraws");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 200, 9.0)).build()).expect("apply");
+
+	assert_eq!(render(&out), vec![(DiffType::Insert, 1, 200, 9.0)], "only the new group publishes");
+}

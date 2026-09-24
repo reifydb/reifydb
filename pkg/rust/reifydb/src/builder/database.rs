@@ -67,6 +67,7 @@ use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
+#[cfg(feature = "column")]
 use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;
