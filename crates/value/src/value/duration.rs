@@ -9,7 +9,7 @@ use std::{
 	time::Duration as StdDuration,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as DeserializeError};
 
 use crate::{
 	error::{Error, TemporalKind, TypeError},
@@ -29,7 +29,7 @@ pub struct Duration {
 impl<'de> Deserialize<'de> for Duration {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
-		D: serde::Deserializer<'de>,
+		D: Deserializer<'de>,
 	{
 		#[derive(Deserialize)]
 		struct RawDuration {
@@ -39,7 +39,7 @@ impl<'de> Deserialize<'de> for Duration {
 		}
 
 		let raw = RawDuration::deserialize(deserializer)?;
-		Duration::normalized(raw.months, raw.days, raw.nanos).map_err(serde::de::Error::custom)
+		Duration::normalized(raw.months, raw.days, raw.nanos).map_err(DeserializeError::custom)
 	}
 }
 
@@ -370,7 +370,9 @@ impl Duration {
 			.zip(self.days.checked_abs())
 			.zip(self.nanos.checked_abs())
 			.ok_or_else(|| {
-				Box::new(Self::overflow_err("taking the absolute value of the Duration overflows its range".to_string()))
+				Box::new(Self::overflow_err(
+					"taking the absolute value of the Duration overflows its range".to_string(),
+				))
 			})?;
 		let ((months, days), nanos) = absed;
 		Ok(Self {

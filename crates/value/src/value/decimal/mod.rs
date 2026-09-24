@@ -328,7 +328,8 @@ impl Serialize for Decimal {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_str(&self.0.to_string())
+		let (mantissa, scale) = self.0.as_bigint_and_exponent();
+		serializer.serialize_str(&format!("{mantissa}E{}", -scale))
 	}
 }
 
@@ -398,7 +399,7 @@ pub mod tests {
 	fn test_serde_json() {
 		let decimal = Decimal::from_str("123.456789").unwrap();
 		let json = to_string(&decimal).unwrap();
-		assert_eq!(json, "\"123.456789\"");
+		assert_eq!(json, "\"123456789E-6\"");
 
 		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
@@ -408,7 +409,7 @@ pub mod tests {
 	fn test_serde_json_negative() {
 		let decimal = Decimal::from_str("-987.654321").unwrap();
 		let json = to_string(&decimal).unwrap();
-		assert_eq!(json, "\"-987.654321\"");
+		assert_eq!(json, "\"-987654321E-6\"");
 
 		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
@@ -418,10 +419,21 @@ pub mod tests {
 	fn test_serde_json_zero() {
 		let decimal = Decimal::zero();
 		let json = to_string(&decimal).unwrap();
-		assert_eq!(json, "\"0\"");
+		assert_eq!(json, "\"0E0\"");
 
 		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
+	}
+
+	#[test]
+	fn test_serde_json_zero_with_scale() {
+		let decimal = Decimal::from_str("0.00").unwrap();
+		let json = to_string(&decimal).unwrap();
+		assert_eq!(json, "\"0E-2\"");
+
+		let deserialized: Decimal = from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+		assert_eq!(deserialized.to_string(), "0.00");
 	}
 
 	#[test]

@@ -205,14 +205,15 @@ fn decimal_mixed_scales_keep_every_byte() {
 		"100",
 	]));
 	let pin = Pin {
-		column_postcard: "180a03312e3504312e353005312e3530300130013001300431452d370431303030092d3132332e3435303003313030ff00",
-		column_json: "{\"Decimal\":{\"container\":{\"data\":[\"1.5\",\"1.50\",\"1.500\",\"0\",\"0\",\"0\",\"1E-7\",\"1000\",\"-123.4500\",\"100\"]},\"precision\":255,\"scale\":0}}",
-		frame_postcard: "180a03312e3504312e353005312e3530300130013001300431452d370431303030092d3132332e3435303003313030",
-		frame_json: "{\"Decimal\":{\"data\":[\"1.5\",\"1.50\",\"1.500\",\"0\",\"0\",\"0\",\"1E-7\",\"1000\",\"-123.4500\",\"100\"]}}",
+		column_postcard: "180a053135452d3106313530452d320731353030452d33033045300430452d320430452d310431452d37033145330b2d31323334353030452d34053130304530ff00",
+		column_json: "{\"Decimal\":{\"container\":{\"data\":[\"15E-1\",\"150E-2\",\"1500E-3\",\"0E0\",\"0E-2\",\"0E-1\",\"1E-7\",\"1E3\",\"-1234500E-4\",\"100E0\"]},\"precision\":255,\"scale\":0}}",
+		frame_postcard: "180a053135452d3106313530452d320731353030452d33033045300430452d320430452d310431452d37033145330b2d31323334353030452d34053130304530",
+		frame_json: "{\"Decimal\":{\"data\":[\"15E-1\",\"150E-2\",\"1500E-3\",\"0E0\",\"0E-2\",\"0E-1\",\"1E-7\",\"1E3\",\"-1234500E-4\",\"100E0\"]}}",
 	};
 	assert_pinned(buffer, &pin);
-	let expected =
-		["1.5", "1.50", "1.500", "0", "0", "0", "1E-7", "1000", "-123.4500", "100"].map(String::from).to_vec();
+	let expected = ["1.5", "1.50", "1.500", "0", "0.00", "0.0", "1E-7", "1000", "-123.4500", "100"]
+		.map(String::from)
+		.to_vec();
 	for (label, rows) in decoded_rows(&pin) {
 		assert_eq!(rows, expected, "{label} rows after decode");
 	}
@@ -225,10 +226,10 @@ fn decimal_declared_precision_and_scale_are_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "180204312e3235042d302e350a02",
-			column_json: "{\"Decimal\":{\"container\":{\"data\":[\"1.25\",\"-0.5\"]},\"precision\":10,\"scale\":2}}",
-			frame_postcard: "180204312e3235042d302e35",
-			frame_json: "{\"Decimal\":{\"data\":[\"1.25\",\"-0.5\"]}}",
+			column_postcard: "180206313235452d32052d35452d310a02",
+			column_json: "{\"Decimal\":{\"container\":{\"data\":[\"125E-2\",\"-5E-1\"]},\"precision\":10,\"scale\":2}}",
+			frame_postcard: "180206313235452d32052d35452d31",
+			frame_json: "{\"Decimal\":{\"data\":[\"125E-2\",\"-5E-1\"]}}",
 		},
 	);
 }
@@ -340,10 +341,10 @@ fn option_decimal_with_none_row_keeps_scale() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1b180204312e35300130ff00010102",
-			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"container\":{\"data\":[\"1.50\",\"0\"]},\"precision\":255,\"scale\":0}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "1b180204312e35300130010102",
-			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"data\":[\"1.50\",\"0\"]}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+			column_postcard: "1b180206313530452d3203304530ff00010102",
+			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"container\":{\"data\":[\"150E-2\",\"0E0\"]},\"precision\":255,\"scale\":0}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+			frame_postcard: "1b180206313530452d3203304530010102",
+			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"data\":[\"150E-2\",\"0E0\"]}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 		},
 	);
 }
@@ -400,10 +401,10 @@ fn sliced_decimal_keeps_trailing_zeros() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "180205322e353030042d332e30ff00",
-			column_json: "{\"Decimal\":{\"container\":{\"data\":[\"2.500\",\"-3.0\"]},\"precision\":255,\"scale\":0}}",
-			frame_postcard: "180205322e353030042d332e30",
-			frame_json: "{\"Decimal\":{\"data\":[\"2.500\",\"-3.0\"]}}",
+			column_postcard: "18020732353030452d33062d3330452d31ff00",
+			column_json: "{\"Decimal\":{\"container\":{\"data\":[\"2500E-3\",\"-30E-1\"]},\"precision\":255,\"scale\":0}}",
+			frame_postcard: "18020732353030452d33062d3330452d31",
+			frame_json: "{\"Decimal\":{\"data\":[\"2500E-3\",\"-30E-1\"]}}",
 		},
 	);
 }
@@ -417,10 +418,10 @@ fn sliced_any_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "19020901621904312e353000",
-			column_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
-			frame_postcard: "19020901621904312e353000",
-			frame_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
+			column_postcard: "19020901621906313530452d3200",
+			column_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"150E-2\"}],\"declared_type\":null}}",
+			frame_postcard: "19020901621906313530452d3200",
+			frame_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"150E-2\"}],\"declared_type\":null}}",
 		},
 	);
 }
@@ -521,10 +522,10 @@ fn any_with_nested_and_typed_none_values_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "190600051d02060200051904312e35301c0520100103904e000000018c01010200012e011e01016b180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1100",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]}]]}],\"declared_type\":null}}",
-			frame_postcard: "190600051d02060200051904312e35301c0520100103904e000000018c01010200012e011e01016b180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1100",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]}]]}],\"declared_type\":null}}",
+			column_postcard: "190600051d02060200051906313530452d321c0520100103904e000000018c01010200012e011e01016b180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1100",
+			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"150E-2\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]}]]}],\"declared_type\":null}}",
+			frame_postcard: "190600051d02060200051906313530452d321c0520100103904e000000018c01010200012e011e01016b180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1100",
+			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"150E-2\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]}]]}],\"declared_type\":null}}",
 		},
 	);
 }
@@ -563,10 +564,10 @@ fn none_typed_decimal_is_pinned() {
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::Decimal, 2),
 		&Pin {
-			column_postcard: "1b180201300130ff00010002",
-			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"container\":{\"data\":[\"0\",\"0\"]},\"precision\":255,\"scale\":0}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
-			frame_postcard: "1b180201300130010002",
-			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"data\":[\"0\",\"0\"]}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
+			column_postcard: "1b18020330453003304530ff00010002",
+			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"container\":{\"data\":[\"0E0\",\"0E0\"]},\"precision\":255,\"scale\":0}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
+			frame_postcard: "1b18020330453003304530010002",
+			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"data\":[\"0E0\",\"0E0\"]}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
 		},
 	);
 }
@@ -626,10 +627,10 @@ fn any_with_every_value_variant_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210959a88a7eecddcb31811ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1c180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1119092d3132332e343530301a060a1b02031c181d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":[-1,[2789360843,3218433301,1529874786,296143865,3628]]},{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":\"Decimal\"},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
-			frame_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210959a88a7eecddcb31811ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1c180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db1119092d3132332e343530301a060a1b02031c181d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":[-1,[2789360843,3218433301,1529874786,296143865,3628]]},{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":\"Decimal\"},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			column_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210959a88a7eecddcb31811ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1c180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db11190b2d31323334353030452d341a060a1b02031c181d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
+			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":[-1,[2789360843,3218433301,1529874786,296143865,3628]]},{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]},{\"Decimal\":\"-1234500E-4\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":\"Decimal\"},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			frame_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210959a88a7eecddcb31811ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717ff05cb8989b20a95cad5fe0be292c0d905f9979b8d01ac1c180105b4f6f6cd05ead59e8a04adb5bcc208d9a6b4a608c5db11190b2d31323334353030452d341a060a1b02031c181d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
+			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":[-1,[2789360843,3218433301,1529874786,296143865,3628]]},{\"Uint\":[1,[1505606452,1095215850,2286885549,2228032345,290245]]},{\"Decimal\":\"-1234500E-4\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":\"Decimal\"},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
 		},
 	);
 }

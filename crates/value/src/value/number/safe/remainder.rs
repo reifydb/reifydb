@@ -179,15 +179,10 @@ impl SafeRemainder for Decimal {
 
 impl SafeRemainder for f32 {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		if *r == 0.0 || r.is_nan() || self.is_nan() {
+		if *r == 0.0 {
 			None
 		} else {
-			let result = *self % *r;
-			if result.is_finite() {
-				Some(result)
-			} else {
-				None
-			}
+			Some(*self % *r)
 		}
 	}
 
@@ -224,15 +219,10 @@ impl SafeRemainder for f32 {
 
 impl SafeRemainder for f64 {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		if *r == 0.0 || r.is_nan() || self.is_nan() {
+		if *r == 0.0 {
 			None
 		} else {
-			let result = *self % *r;
-			if result.is_finite() {
-				Some(result)
-			} else {
-				None
-			}
+			Some(*self % *r)
 		}
 	}
 
@@ -384,13 +374,15 @@ pub mod tests {
 
 		#[test]
 		fn checked_rem_nan() {
+			// postgres treats NaN as an ordinary float8 value, so a NaN operand propagates rather than
+			// erroring.
 			let x: f32 = f32::NAN;
 			let y: f32 = 3.0;
-			assert_eq!(SafeRemainder::checked_rem(&x, &y), None);
+			assert!(SafeRemainder::checked_rem(&x, &y).unwrap().is_nan());
 
 			let x: f32 = 10.0;
 			let y: f32 = f32::NAN;
-			assert_eq!(SafeRemainder::checked_rem(&x, &y), None);
+			assert!(SafeRemainder::checked_rem(&x, &y).unwrap().is_nan());
 		}
 
 		#[test]
@@ -456,13 +448,15 @@ pub mod tests {
 
 		#[test]
 		fn checked_rem_nan() {
+			// postgres treats NaN as an ordinary float8 value, so a NaN operand propagates rather than
+			// erroring.
 			let x: f64 = f64::NAN;
 			let y: f64 = 3.0;
-			assert_eq!(SafeRemainder::checked_rem(&x, &y), None);
+			assert!(SafeRemainder::checked_rem(&x, &y).unwrap().is_nan());
 
 			let x: f64 = 10.0;
 			let y: f64 = f64::NAN;
-			assert_eq!(SafeRemainder::checked_rem(&x, &y), None);
+			assert!(SafeRemainder::checked_rem(&x, &y).unwrap().is_nan());
 		}
 
 		#[test]

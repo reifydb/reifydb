@@ -90,10 +90,11 @@ macro_rules! process_decimal_column {
 			if let Some(value) = decimal_at($container, i) {
 				let s = value.to_string();
 				let int_part = s.split('.').next().unwrap_or("0");
-				let bytes = int_part.parse::<i64>().map_err(|_| RoutineError::FunctionExecutionFailed {
-					function: $fragment.clone(),
-					reason: format!("decimal value {s} is too large to format as bytes"),
-				})?;
+				let bytes =
+					int_part.parse::<i64>().map_err(|_| RoutineError::FunctionExecutionFailed {
+						function: $fragment.clone(),
+						reason: format!("decimal value {s} is too large to format as bytes"),
+					})?;
 				result_data.push(format_bytes_internal(bytes, $base, $units));
 			} else {
 				result_data.push(String::new());

@@ -797,7 +797,10 @@ mod tests {
 					let Some(Slot::Active(active)) = inner.slots.get(&id) else {
 						panic!("handle must be active before grow");
 					};
-					(active.bitvec.as_ref().unwrap().capacity(), active.offsets.as_ref().unwrap().capacity())
+					(
+						active.bitvec.as_ref().unwrap().capacity(),
+						active.offsets.as_ref().unwrap().capacity(),
+					)
 				};
 
 				test_grow(handle, 16);
