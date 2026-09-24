@@ -618,6 +618,7 @@ impl Resident {
 		self.mark_pending(&mut inner);
 	}
 
+	#[instrument(name = "store::operator::resident::evict_to_capacity", level = "debug", skip_all)]
 	pub fn evict_to_capacity(&self) -> (usize, ByteSize) {
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
@@ -705,6 +706,7 @@ impl Resident {
 		staged || !self.pending_groups().is_empty()
 	}
 
+	#[instrument(name = "store::operator::resident::flush_all", level = "debug", skip_all)]
 	pub fn flush_all(&self) {
 		let _flusher = self.shared.flusher.lock();
 		if self.device_absent() {
