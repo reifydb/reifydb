@@ -150,6 +150,7 @@ fn a_read_error_in_extract_fails_the_apply_instead_of_skipping_the_row() {
 			lateness: Some(WithSpan::Duration(millis(3_600_000))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		})
 		.build()
 		.expect("harness");

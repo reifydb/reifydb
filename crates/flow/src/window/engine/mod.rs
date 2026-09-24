@@ -2,12 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod config;
+pub mod publish;
 pub mod rolling;
 pub mod rolling_top_k;
 pub mod session;
 pub mod sliding;
 pub mod tumbling;
 pub mod tumbling_carry;
+pub mod tumbling_retained;
 
 use std::{collections::HashMap, ops::Bound};
 
@@ -381,6 +383,68 @@ impl IntoGroupStateKey for &BufferKey {
 			self.group,
 			self.family.keyspace(KeyspaceId::BUFFER, KeyspaceId::GUEST_BUFFER),
 			self.family.suffix(&self.slot),
+		)
+	}
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct RetainedEntryKey {
+	pub group: GroupId,
+	pub slot: EncodedKey,
+}
+
+impl RetainedEntryKey {
+	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+		Self {
+			group,
+			slot,
+		}
+	}
+}
+
+impl HeapSize for RetainedEntryKey {
+	fn heap_size(&self) -> usize {
+		self.slot.heap_size()
+	}
+}
+
+impl IntoGroupStateKey for &RetainedEntryKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(
+			self.group,
+			KeyspaceId::GUEST_RETAINED_ENTRY,
+			KeyspaceFamily::Guest.suffix(&self.slot),
+		)
+	}
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct PublishKey {
+	pub group: GroupId,
+	pub slot: EncodedKey,
+}
+
+impl PublishKey {
+	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+		Self {
+			group,
+			slot,
+		}
+	}
+}
+
+impl HeapSize for PublishKey {
+	fn heap_size(&self) -> usize {
+		self.slot.heap_size()
+	}
+}
+
+impl IntoGroupStateKey for &PublishKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(
+			self.group,
+			KeyspaceId::GUEST_WINDOW_PUBLISH,
+			KeyspaceFamily::Guest.suffix(&self.slot),
 		)
 	}
 }

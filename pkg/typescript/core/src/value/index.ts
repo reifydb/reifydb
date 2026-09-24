@@ -33,7 +33,8 @@ export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';
 export {ListValue} from './list';
 export {RecordValue} from './record';
-export {WireType, typeToWire, typeFromWire, columnsFromWire, framesFromWire, envelopeToColumns, envelopesToFrames} from './wire-type';
+export type {WireType} from './wire-type';
+export {typeToWire, typeFromWire, columnsFromWire, framesFromWire, envelopeToColumns, envelopesToFrames} from './wire-type';
 
 export type BaseType =
     | "Blob"

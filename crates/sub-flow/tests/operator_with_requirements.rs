@@ -102,6 +102,7 @@ impl UnmanagedOperator for UnmanagedProbe {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
@@ -131,6 +132,7 @@ impl UnmanagedOperator for UnmanagedWindowProbe {
 		kinds: &["tumbling"],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
@@ -314,6 +316,7 @@ fn nostate_managed_and_unmanaged_probes_each_publish_takes_window_false() {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 	assert_eq!(<NostateMount<NostateProbe> as MountedOperator>::WINDOW, no_window);
 	assert_eq!(<ManagedMount<ManagedProbe> as MountedOperator>::WINDOW, no_window);
@@ -665,6 +668,70 @@ fn a_retention_on_an_unmanaged_or_windowed_apply_fails_the_create() {
 		),
 		"FLOW_080"
 	);
+}
+
+#[test]
+fn a_throttle_on_a_driver_that_cannot_throttle_fails_the_create() {
+	// A throttle ignored by a driver that cannot hold back a publish is a rate the author believes holds.
+	let db = memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "unmanaged_window_probe{} WITH { window: tumbling, duration: 1m, throttle: 10s }"),
+		"FLOW_082"
+	);
+	assert_eq!(flow_rows(&db, "v"), 0, "a refused create must register no flow");
+	assert_eq!(poisoned(&db), None, "a refused create must poison nothing");
+}
+
+#[test]
+fn a_throttle_on_a_plain_tumbling_time_window_creates() {
+	// The throttle checks must not refuse the one view shape that can throttle.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	for (name, apply) in [
+		(
+			"throttled_v",
+			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, throttle: 10s }",
+		),
+		("no_lateness_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, throttle: 10s }"),
+	] {
+		let statement = view(name, apply);
+		if let Err(err) = db.try_admin(&statement) {
+			panic!("a throttled tumbling time window must create: {statement}: {:?}", err.diagnostic());
+		}
+	}
+}
+
+#[test]
+fn a_throttle_off_a_tumbling_time_window_fails_the_create() {
+	// A throttle on a window with no event-time close would hold its last change back forever.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	for apply in [
+		"slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2, throttle: 10s }",
+		"time_window_probe{} WITH { window: sliding, duration: 1m, slide: 30s, throttle: 10s }",
+		"time_window_probe{} WITH { window: session, gap: 10s, throttle: 10s }",
+		"rolling_probe{} WITH { window: rolling, duration: 1h, pane: 1s, throttle: 10s }",
+	] {
+		let err = {
+			let statement = view("v", apply);
+			let Err(err) = db.try_admin(&statement) else {
+				panic!("the create must be refused: {statement}");
+			};
+			err.diagnostic()
+		};
+		assert_eq!(err.code, "AST_005", "{apply}");
+		assert!(
+			err.message.contains("expected a tumbling window sized by a duration for throttle"),
+			"{apply}: {}",
+			err.message
+		);
+		assert_eq!(flow_rows(&db, "v"), 0, "{apply}: a refused create must register no flow");
+		assert_eq!(poisoned(&db), None, "{apply}: a refused create must poison nothing");
+	}
 }
 
 #[test]

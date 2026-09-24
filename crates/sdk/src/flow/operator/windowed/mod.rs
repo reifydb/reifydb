@@ -5,6 +5,8 @@ pub mod carry;
 pub mod guest_as_host;
 pub mod operator;
 pub mod plain;
+pub mod publish;
+pub mod retained;
 pub mod top_k;
 
 use std::{collections::HashMap, hash::Hash};

@@ -3,6 +3,7 @@
 
 pub mod blob;
 pub mod clock;
+pub mod crypto;
 pub mod date;
 pub mod datetime;
 pub mod duration;
@@ -198,6 +199,7 @@ pub fn default_in_process_functions(builder: RoutinesConfigurator) -> RoutinesCo
 		.register_builtin_function(Arc::new(text::trim_end::TextTrimEnd::new()))
 		.register_builtin_function(Arc::new(text::trim_start::TextTrimStart::new()))
 		.register_builtin_function(Arc::new(text::upper::TextUpper::new()))
+		.register_builtin_function(Arc::new(crypto::sha256::CryptoSha256::new()))
 		.register_builtin_function(Arc::new(text::lower::TextLower::new()))
 		.register_builtin_function(Arc::new(text::substring::TextSubstring::new()))
 		.register_builtin_function(Arc::new(text::format_bytes::FormatBytes::new()))

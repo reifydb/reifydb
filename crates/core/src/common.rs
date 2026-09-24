@@ -219,6 +219,7 @@ pub struct WindowRequirements {
 	pub kinds: &'static [&'static str],
 	pub domain: WindowSizeDomain,
 	pub needs_pane: bool,
+	pub throttles: bool,
 }
 
 impl OperatorClass {
@@ -292,6 +293,7 @@ impl WindowRequirements {
 	}
 
 	pub fn check(&self, with: &ApplyWith) -> ValueResult<()> {
+		with.check_throttle(self.throttles)?;
 		let kind = match (&with.window, self.takes_window) {
 			(Some(kind), true) => kind,
 			(Some(kind), false) => {
@@ -467,6 +469,7 @@ mod tests {
 			kinds,
 			domain: WindowSizeDomain::Time,
 			needs_pane: false,
+			throttles: false,
 		}
 	}
 
@@ -504,5 +507,25 @@ mod tests {
 		assert_eq!(requirements(&["tumbling", "hopping"]).kinds_bitmask(), None);
 		assert_eq!(WindowRequirements::kinds_from_bitmask(16), None);
 		assert_eq!(WindowRequirements::kinds_from_bitmask(u32::MAX), None);
+	}
+
+	#[test]
+	fn check_refuses_a_throttle_only_where_the_requirements_do_not_throttle() {
+		// An in-process create that skipped the throttle check would run a view whose declared rate nothing
+		// enforces.
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+			}),
+			throttle: Some(Duration::from_seconds(10).unwrap()),
+			..ApplyWith::default()
+		};
+		let err = requirements(&["tumbling"]).check(&with).unwrap_err();
+		assert!(err.to_string().contains("takes no 'throttle'"), "{err}");
+		let throttling = WindowRequirements {
+			throttles: true,
+			..requirements(&["tumbling"])
+		};
+		assert!(throttling.check(&with).is_ok());
 	}
 }

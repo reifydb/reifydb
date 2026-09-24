@@ -14,6 +14,7 @@ clean: clean-siblings clean-workspace clean-cargo clean-pkg-typescript
 clean-siblings:
 	cd $(TEST_SUITE_DIR) && $(MAKE) clean
 	cd $(TEST_CRATE_DIR) && $(MAKE) clean
+	cd $(TEST_REGRESSION_DIR) && $(MAKE) clean
 	cd $(TEST_CHAOS_DIR) && $(MAKE) clean
 	cd $(TEST_QUERY_DIR) && $(MAKE) clean
 

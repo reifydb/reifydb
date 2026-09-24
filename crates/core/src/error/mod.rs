@@ -130,6 +130,12 @@ pub enum CoreError {
 	#[error("this operator takes no 'retention'")]
 	OperatorWithRetentionNotSupported,
 
+	#[error("this operator takes no 'throttle'")]
+	OperatorWithThrottleNotSupported,
+
+	#[error("'throttle' needs a tumbling window sized by a duration")]
+	OperatorWithThrottleWindow,
+
 	#[error("retention {retention} must not be below lateness {lateness}")]
 	OperatorWithRetentionBelowLateness {
 		retention: Duration,

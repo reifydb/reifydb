@@ -34,6 +34,7 @@ fn window_with(retention: Option<u64>) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: retention.map(|span| WithSpan::Duration(millis(span))),
 		retention: None,
+		throttle: None,
 	}
 }
 

@@ -87,6 +87,8 @@ pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_single as single_storage;
 pub use reifydb_sub_api as sub;
+#[cfg(feature = "sub_console")]
+pub use reifydb_sub_console as sub_console;
 pub use reifydb_sub_core as sub_core;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;

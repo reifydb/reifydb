@@ -465,7 +465,7 @@ impl FrameColumnData {
 				inner,
 				bitvec,
 			} => {
-				if bitvec.value(index) {
+				if index < bitvec.len() && bitvec.value(index) {
 					inner.as_string(index)
 				} else {
 					"none".to_string()
@@ -521,7 +521,7 @@ impl FrameColumnData {
 				inner,
 				bitvec,
 			} => {
-				if bitvec.value(index) {
+				if index < bitvec.len() && bitvec.value(index) {
 					inner.get_value(index)
 				} else {
 					Value::none_of(inner.get_type())

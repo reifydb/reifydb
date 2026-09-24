@@ -44,6 +44,7 @@ pub struct ApplyWith {
 	pub lateness: Option<WithSpan>,
 	pub immutable: Option<WithSpan>,
 	pub retention: Option<Duration>,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,6 +200,21 @@ impl ApplyWith {
 		}
 	}
 
+	pub fn check_throttle(&self, throttles: bool) -> Result<()> {
+		if self.throttle.is_none() {
+			return Ok(());
+		}
+		if !throttles {
+			return Err(CoreError::OperatorWithThrottleNotSupported.into());
+		}
+		match &self.window {
+			Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(_),
+			}) => Ok(()),
+			_ => Err(CoreError::OperatorWithThrottleWindow.into()),
+		}
+	}
+
 	pub fn reject_window(&self) -> Result<()> {
 		match &self.window {
 			None => Ok(()),
@@ -304,6 +320,9 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 	if let Some(retention) = with.retention {
 		values.insert("retention".to_string(), Value::Duration(retention));
 	}
+	if let Some(throttle) = with.throttle {
+		values.insert("throttle".to_string(), Value::Duration(throttle));
+	}
 	encode_params(&Params::Named(Arc::new(values)))
 		.map_err(|e| internal_error!("failed to encode apply with: {}", e))
 }
@@ -335,6 +354,7 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 			("lateness", value) => with.lateness = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
 			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
+			("throttle", Value::Duration(throttle)) => with.throttle = Some(*throttle),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
@@ -485,6 +505,7 @@ mod tests {
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
 			retention: None,
+			throttle: None,
 		}
 	}
 
@@ -606,6 +627,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(150)),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let err = WindowSealing::from_operator_with(&with).unwrap_err();
 		assert!(err.to_string().contains("lateness"), "{err}");
@@ -622,6 +644,7 @@ mod tests {
 				lateness: Some(WithSpan::Count(150)),
 				immutable: Some(WithSpan::Count(0)),
 				retention: None,
+				throttle: None,
 			},
 		] {
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
@@ -688,6 +711,7 @@ mod tests {
 				lateness,
 				immutable: None,
 				retention: None,
+				throttle: None,
 			};
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 		}
@@ -712,6 +736,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(count.window_duration().is_err());
 
@@ -722,6 +747,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(session.window_duration().is_err());
 	}
@@ -737,6 +763,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(duration.window_slots().is_err());
 	}
@@ -753,6 +780,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let by_slots = ApplyWith {
 			window: Some(WindowKind::Sliding {
@@ -762,6 +790,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -770,6 +799,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(by_time.window_slide_duration().unwrap(), Some(secs(15)));
@@ -791,6 +821,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let others = [
 			WindowKind::Tumbling {
@@ -816,6 +847,7 @@ mod tests {
 				lateness: None,
 				immutable: None,
 				retention: None,
+				throttle: None,
 			};
 			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
 		}
@@ -831,6 +863,7 @@ mod tests {
 			lateness,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let code = |with: ApplyWith| with.check_session_window().unwrap_err().0.code;
 
@@ -856,6 +889,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(secs(1))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(tumbling.check_session_window().is_ok());
 		assert!(ApplyWith::default().check_session_window().is_ok());
@@ -872,6 +906,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(windowed.reject_window().is_err());
 	}
@@ -889,6 +924,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert!(rolling.require_window("tumbling").is_err());
 		assert!(rolling.require_window("rolling").is_ok());
@@ -905,6 +941,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert_eq!(duration.lateness_duration().unwrap(), Some(secs(30)));
 		assert!(duration.lateness_count().is_err());
@@ -914,6 +951,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(5)),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert_eq!(count.lateness_count().unwrap(), Some(5));
 		assert!(count.lateness_duration().is_err());
@@ -931,6 +969,7 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 	}
@@ -974,6 +1013,7 @@ mod tests {
 			lateness: None,
 			immutable: Some(WithSpan::Count(4)),
 			retention: None,
+			throttle: None,
 		};
 		assert_eq!(count.immutable_count().unwrap(), Some(4));
 
@@ -982,6 +1022,7 @@ mod tests {
 			lateness: None,
 			immutable: Some(WithSpan::Duration(secs(4))),
 			retention: None,
+			throttle: None,
 		};
 		assert!(duration.immutable_count().is_err());
 	}
@@ -1038,5 +1079,93 @@ mod tests {
 		};
 		let err = declared.reject_retention().unwrap_err();
 		assert!(err.to_string().contains("takes no 'retention'"), "{err}");
+	}
+
+	#[test]
+	fn throttle_round_trips_through_the_create_buffer() {
+		// A throttle dropped on the way to the guest would publish every batch while the view declares
+		// otherwise.
+		let declared = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			throttle: Some(secs(10)),
+			..with(Some(20), None)
+		};
+		let bytes = encode_apply_with(&declared).unwrap();
+		assert_eq!(decode_apply_with(&bytes).unwrap(), declared);
+	}
+
+	#[test]
+	fn a_count_throttle_fails_to_decode() {
+		// A throttle read as a count would publish on a unit the view never declared.
+		let values = HashMap::from([("throttle".to_string(), Value::Uint8(5))]);
+		let bytes = encode_params(&Params::Named(Arc::new(values))).unwrap();
+		assert!(decode_apply_with(&bytes).is_err());
+	}
+
+	fn tumbling(size: WindowSize, throttle: Option<i64>) -> ApplyWith {
+		ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size,
+			}),
+			throttle: throttle.map(secs),
+			..with(None, None)
+		}
+	}
+
+	#[test]
+	fn check_throttle_refuses_a_driver_that_cannot_throttle() {
+		// A throttle silently ignored by a driver that cannot hold back a publish is a rate the author believes
+		// holds.
+		let throttled = tumbling(WindowSize::Duration(secs(60)), Some(10));
+		let err = throttled.check_throttle(false).unwrap_err();
+		assert!(err.to_string().contains("takes no 'throttle'"), "{err}");
+		assert!(throttled.check_throttle(true).is_ok());
+		assert!(tumbling(WindowSize::Duration(secs(60)), None).check_throttle(false).is_ok());
+		assert!(with(None, None).check_throttle(false).is_ok());
+	}
+
+	#[test]
+	fn check_throttle_refuses_every_window_but_a_tumbling_one_sized_by_a_duration() {
+		// A throttle on a window with no event-time close would hold its last change back forever.
+		let refused = [
+			tumbling(WindowSize::Count(10), Some(10)),
+			ApplyWith {
+				window: Some(WindowKind::Sliding {
+					size: WindowSize::Duration(secs(60)),
+					slide: WindowSize::Duration(secs(30)),
+				}),
+				throttle: Some(secs(10)),
+				..with(None, None)
+			},
+			ApplyWith {
+				window: Some(WindowKind::Session {
+					gap: secs(60),
+				}),
+				throttle: Some(secs(10)),
+				..with(None, None)
+			},
+			ApplyWith {
+				window: Some(WindowKind::Rolling {
+					size: WindowSize::Duration(secs(60)),
+					lag: None,
+					pane: Some(secs(10)),
+				}),
+				throttle: Some(secs(10)),
+				..with(None, None)
+			},
+			ApplyWith {
+				throttle: Some(secs(10)),
+				..with(None, None)
+			},
+		];
+		for with in refused {
+			let err = with.check_throttle(true).unwrap_err();
+			assert!(
+				err.to_string().contains("needs a tumbling window sized by a duration"),
+				"{with:?}: {err}"
+			);
+		}
 	}
 }

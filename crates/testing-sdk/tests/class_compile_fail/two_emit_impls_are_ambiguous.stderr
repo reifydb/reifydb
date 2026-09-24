@@ -5,6 +5,8 @@ error[E0283]: type annotations needed
    |                          ^^^^ cannot infer type
    |
    = note: multiple `impl`s satisfying `Both: WindowDriver<_>` found in the `reifydb_sdk` crate:
+           - impl<T, K, V> WindowDriver<RetainedMarker> for T
+             where <T as WindowedOperator>::Accumulator == RetainedAccumulator<K, V>, T: reifydb_sdk::flow::operator::windowed::operator::Emit, <T as WindowedOperator>::Output: reifydb_sdk::flow::operator::column::row::Row, K: Ord, for<'a> &'a <T as WindowedOperator>::GroupKey: IntoEncodedKey, <T as WindowedOperator>::Output: ?Sized, &'a <T as WindowedOperator>::GroupKey: ?Sized;
            - impl<T> WindowDriver<CarryMarker> for T
              where T: CarryEmit, <T as WindowedOperator>::Output: reifydb_sdk::flow::operator::column::row::Row, for<'a> &'a <T as WindowedOperator>::GroupKey: IntoEncodedKey, <T as WindowedOperator>::Output: ?Sized, &'a <T as WindowedOperator>::GroupKey: ?Sized;
            - impl<T> WindowDriver<PlainMarker> for T

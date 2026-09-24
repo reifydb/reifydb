@@ -7,12 +7,6 @@ mod accumulator;
 mod concurrency;
 #[path = "drain.rs"]
 mod drain;
-#[path = "duration_counter_past_nanosecond_range.rs"]
-mod duration_counter_past_nanosecond_range;
-#[path = "duration_measure_cap.rs"]
-mod duration_measure_cap;
-#[path = "duration_readings.rs"]
-mod duration_readings;
 #[path = "enforcement.rs"]
 mod enforcement;
 #[path = "epoch_domain.rs"]

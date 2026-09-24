@@ -263,7 +263,10 @@ impl fmt::Debug for ColumnBuffer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(nulls) = self.nulls() {
 			let (inner, _) = self.clone().split_nulls();
-			return f.debug_struct("Option").field("inner", &inner).field("bitvec", nulls.inner()).finish();
+			return f.debug_struct("Option")
+				.field("inner", &inner)
+				.field("bitvec", &nulls.iter().collect::<Vec<bool>>())
+				.finish();
 		}
 		match self {
 			ColumnBuffer::Bool(c) => f.debug_tuple("Bool").field(c).finish(),

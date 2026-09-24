@@ -29,6 +29,8 @@ use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 use reifydb_store_operator::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_sub_api::subsystem::SubsystemFactory;
+#[cfg(all(feature = "sub_console", not(reifydb_single_threaded)))]
+use reifydb_sub_console::{config::ConsoleConfigurator, factory::ConsoleSubsystemFactory};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
@@ -129,6 +131,8 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
+	#[cfg(all(feature = "sub_console", not(reifydb_single_threaded)))]
+	console_factory: Option<Box<dyn SubsystemFactory>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -158,6 +162,8 @@ impl ServerBuilder {
 			#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
+			#[cfg(all(feature = "sub_console", not(reifydb_single_threaded)))]
+			console_factory: None,
 			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -275,6 +281,15 @@ impl ServerBuilder {
 	{
 		let factory = WsSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
+		self
+	}
+
+	#[cfg(all(feature = "sub_console", not(reifydb_single_threaded)))]
+	pub fn with_console<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ConsoleConfigurator) -> ConsoleConfigurator + Send + 'static,
+	{
+		self.console_factory = Some(Box::new(ConsoleSubsystemFactory::new(configurator)));
 		self
 	}
 
@@ -547,6 +562,11 @@ impl ServerBuilder {
 		}
 
 		for factory in self.subsystem_factories {
+			database_builder = database_builder.add_subsystem_factory(factory);
+		}
+
+		#[cfg(all(feature = "sub_console", not(reifydb_single_threaded)))]
+		if let Some(factory) = self.console_factory {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
 

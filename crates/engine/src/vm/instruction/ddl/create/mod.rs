@@ -297,6 +297,7 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 }
 
 fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith) -> Result<()> {
+	with.check_throttle(requirements.throttles)?;
 	let kind = match (&with.window, requirements.takes_window) {
 		(Some(kind), true) => kind,
 		(Some(kind), false) => return Err(error!(flow_operator_with_window_not_supported(kind.name()))),

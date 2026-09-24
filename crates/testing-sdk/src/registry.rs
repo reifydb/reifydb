@@ -304,6 +304,19 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 			unsafe { a.data.set_len(old_cap) };
 			a.data.reserve(extra_bytes);
 			unsafe { a.data.set_len(0) };
+
+			if let Some(offsets) = a.offsets.as_mut() {
+				let target_cap = offsets.capacity().saturating_add(additional);
+				let needed = target_cap.saturating_sub(offsets.len());
+				offsets.reserve(needed);
+			}
+			if let Some(bitvec) = a.bitvec.as_mut() {
+				let elem_count = old_cap / elem.max(1);
+				let needed_bytes = (additional + elem_count).div_ceil(8);
+				if bitvec.len() < needed_bytes {
+					bitvec.resize(needed_bytes, 0);
+				}
+			}
 			0
 		}
 		_ => -1,
@@ -733,8 +746,8 @@ mod tests {
 	use serde_json::to_string;
 
 	use super::{
-		Handle, Slot, TestBuilderRegistry, bytes_to_vec, finalize_buffer, test_acquire, test_commit,
-		test_data_ptr, test_offsets_ptr, with_registry,
+		Handle, Slot, TestBuilderRegistry, bytes_to_vec, finalize_buffer, test_acquire, test_bitvec_ptr,
+		test_commit, test_data_ptr, test_grow, test_offsets_ptr, with_registry,
 	};
 
 	fn commit_varlen(
@@ -761,6 +774,47 @@ mod tests {
 			Some(Slot::Committed(committed)) => committed.buffer,
 			_ => panic!("a successful commit must leave a committed column behind"),
 		}
+	}
+
+	#[test]
+	fn growing_a_builder_also_grows_its_bitvec_and_offsets_capacity() {
+		let registry = TestBuilderRegistry::new();
+		with_registry(&registry, || {
+			// SAFETY: a registry is installed and the handle stays valid for the whole call.
+			unsafe {
+				let handle = test_acquire(ptr::null_mut(), ValueKind::Utf8, 0, 0, 2);
+				test_bitvec_ptr(handle);
+				let id = Handle::decode(handle).id;
+
+				let (bitvec_cap_before, offsets_cap_before) = {
+					let inner = registry.inner.lock();
+					let Some(Slot::Active(active)) = inner.slots.get(&id) else {
+						panic!("handle must be active before grow");
+					};
+					(
+						active.bitvec.as_ref().unwrap().capacity(),
+						active.offsets.as_ref().unwrap().capacity(),
+					)
+				};
+
+				test_grow(handle, 16);
+
+				let inner = registry.inner.lock();
+				let Some(Slot::Active(active)) = inner.slots.get(&id) else {
+					panic!("handle must still be active after grow");
+				};
+				let bitvec_cap_after = active.bitvec.as_ref().unwrap().capacity();
+				let offsets_cap_after = active.offsets.as_ref().unwrap().capacity();
+				assert!(
+					bitvec_cap_after * 8 >= bitvec_cap_before * 8 + 16,
+					"bitvec must cover the grown rows: before={bitvec_cap_before} after={bitvec_cap_after}"
+				);
+				assert!(
+					offsets_cap_after >= offsets_cap_before + 16,
+					"offsets must cover the grown rows: before={offsets_cap_before} after={offsets_cap_after}"
+				);
+			}
+		});
 	}
 
 	#[test]

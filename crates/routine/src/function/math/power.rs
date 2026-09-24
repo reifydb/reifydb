@@ -183,7 +183,11 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				Decimal(..),
 				decimals,
 				|values, bits| ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits),
-				|b: &Decimal, e: &Decimal| Decimal::from_f64(b.to_f64().powf(e.to_f64()))
+				|b: &Decimal, e: &Decimal| e
+					.rescale(0)
+					.and_then(|e| family_exponent(e.unscaled()))
+					.and_then(|exp| b.checked_pow(exp))
+					.or_else(|| Decimal::from_f64(b.to_f64().powf(e.to_f64())))
 					.and_then(|value| value.round_to_scale(scale.value()))
 					.and_then(|value| value.fits(precision.value(), scale.value()))
 			),

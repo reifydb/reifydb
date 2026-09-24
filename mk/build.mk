@@ -29,6 +29,7 @@ check:
 	@MAKEFLAGS= cargo check --release --workspace --all-features --all-targets
 	cd $(TEST_SUITE_DIR) && $(MAKE) check
 	cd $(TEST_CRATE_DIR) && $(MAKE) check
+	cd $(TEST_REGRESSION_DIR) && $(MAKE) check
 	cd $(TEST_CHAOS_DIR) && $(MAKE) check
 	cd $(TEST_QUERY_DIR) && $(MAKE) check
 

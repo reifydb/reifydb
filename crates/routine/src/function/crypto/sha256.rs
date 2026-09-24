@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use arrow_array::{Array, LargeStringArray};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
+use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use sha2::{Digest, Sha256};
+
+pub struct CryptoSha256 {
+	info: RoutineInfo,
+}
+
+impl Default for CryptoSha256 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl CryptoSha256 {
+	pub fn new() -> Self {
+		Self {
+			info: RoutineInfo::new("crypto::sha256"),
+		}
+	}
+}
+
+impl<'a> Routine<FunctionContext<'a>> for CryptoSha256 {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		let data = &args[0];
+		let row_count = data.len();
+
+		match data {
+			ColumnBuffer::Utf8 {
+				container,
+				..
+			} => {
+				let mut result_data = Vec::with_capacity(container.len());
+
+				for i in 0..row_count {
+					if i < container.len() {
+						let original_str = container.value(i);
+						let digest = Sha256::digest(original_str.as_bytes());
+						let hex = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
+						result_data.push(hex);
+					} else {
+						result_data.push(String::new());
+					}
+				}
+
+				let result_col_data = ColumnBuffer::Utf8 {
+					container: LargeStringArray::from(result_data),
+					max_bytes: MaxBytes::MAX,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+			}
+			other => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![ValueType::Utf8],
+				actual: other.get_type(),
+			}),
+		}
+	}
+}
+
+impl Function for CryptoSha256 {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
+	}
+}

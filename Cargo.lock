@@ -3009,7 +3009,16 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 name = "reifydb"
 version = "0.9.3"
 dependencies = [
+ "arrow-arith",
  "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-ord",
+ "arrow-row",
+ "arrow-schema",
+ "arrow-select",
+ "arrow-string",
+ "futures-util",
  "libc",
  "num_cpus",
  "opentelemetry",
@@ -3022,6 +3031,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-codec",
  "reifydb-column",
+ "reifydb-console-protocol",
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
@@ -3045,6 +3055,7 @@ dependencies = [
  "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
+ "reifydb-sub-console",
  "reifydb-sub-core",
  "reifydb-sub-flow",
  "reifydb-sub-lifecycle",
@@ -3067,11 +3078,15 @@ dependencies = [
  "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
+ "serde_json",
  "test_each_file",
  "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "yamux",
 ]
 
 [[package]]
@@ -3269,6 +3284,16 @@ dependencies = [
  "reifydb-value",
  "serde",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "reifydb-console-protocol"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -3547,6 +3572,7 @@ dependencies = [
  "reifydb-value",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "tracing",
  "uuid",
@@ -3821,6 +3847,16 @@ name = "reifydb-sub-console"
 version = "0.9.3"
 dependencies = [
  "reifydb-build",
+ "reifydb-console-protocol",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-sub-server-ws",
+ "reifydb-value",
+ "socket2",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "yamux",
 ]
 
@@ -5385,6 +5421,7 @@ checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

@@ -177,10 +177,14 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<Columns> {
 	}
 
 	let row_numbers: Vec<RowNumber> = if header.row_numbers_offset > 0 && header.row_numbers_len > 0 {
-		region(bytes, header.row_numbers_offset, header.row_numbers_len, "row numbers")?
-			.chunks_exact(8)
-			.map(|chunk| RowNumber(u64::from_le_bytes(chunk.try_into().unwrap())))
-			.collect()
+		let region = region(bytes, header.row_numbers_offset, header.row_numbers_len, "row numbers")?;
+		if region.len() % 8 != 0 {
+			return Err(malformed(format!(
+				"guest sent {} bytes of row numbers, not a multiple of the 8 byte row number width",
+				region.len()
+			)));
+		}
+		region.chunks_exact(8).map(|chunk| RowNumber(u64::from_le_bytes(chunk.try_into().unwrap()))).collect()
 	} else {
 		Vec::new()
 	};

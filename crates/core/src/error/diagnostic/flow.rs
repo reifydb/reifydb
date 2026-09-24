@@ -798,6 +798,22 @@ pub fn flow_operator_with_retention_below_lateness(retention: Duration, lateness
 	)
 }
 
+pub fn flow_operator_with_throttle_not_supported() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_082",
+		"this operator takes no 'throttle'".to_string(),
+		"Only a plain windowed operator publishes on a throttle. Remove throttle from the with block.",
+	)
+}
+
+pub fn flow_operator_with_throttle_window() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_083",
+		"'throttle' needs a tumbling window sized by a duration".to_string(),
+		"Use window: tumbling with duration: <d>, or remove throttle.",
+	)
+}
+
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_070",

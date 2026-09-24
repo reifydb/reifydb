@@ -80,6 +80,7 @@ fn window_to_extern_c(operator: &str, window: WindowRequirements) -> ExternCWind
 		kinds,
 		domain: window.domain.to_u8(),
 		needs_pane: u8::from(window.needs_pane),
+		throttles: u8::from(window.throttles),
 	}
 }
 
@@ -183,6 +184,7 @@ mod tests {
 				kinds: &["rolling"],
 				domain: WindowSizeDomain::Slots,
 				needs_pane: true,
+				throttles: false,
 			},
 		);
 		assert_eq!((window.takes_window, window.kinds, window.needs_pane), (1, 0b1000, 1));
@@ -200,7 +202,22 @@ mod tests {
 				kinds: &["hopping"],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
+				throttles: false,
 			},
 		);
+	}
+
+	#[test]
+	fn a_throttling_driver_says_so_through_the_c_descriptor() {
+		// A throttle flag lost on the way out makes the host refuse every throttled view of an extern-C driver.
+		let requirements = |throttles| WindowRequirements {
+			takes_window: true,
+			kinds: &["tumbling"],
+			domain: WindowSizeDomain::Time,
+			needs_pane: false,
+			throttles,
+		};
+		assert_eq!(window_to_extern_c("probe", requirements(true)).throttles, 1);
+		assert_eq!(window_to_extern_c("probe", requirements(false)).throttles, 0);
 	}
 }

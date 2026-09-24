@@ -80,6 +80,7 @@ impl UnmanagedOperator for UnmanagedProbe {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
@@ -109,6 +110,7 @@ impl UnmanagedOperator for UnmanagedWindowProbe {
 		kinds: &["tumbling"],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
+		throttles: false,
 	};
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {

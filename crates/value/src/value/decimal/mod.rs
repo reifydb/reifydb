@@ -137,6 +137,24 @@ impl Decimal {
 		}
 	}
 
+	pub fn ceil(&self) -> i256 {
+		match unscaled::pow10(self.scale) {
+			Some(divisor) if self.unscaled.wrapping_rem(divisor) > i256::ZERO => {
+				self.trunc().wrapping_add(i256::ONE)
+			}
+			_ => self.trunc(),
+		}
+	}
+
+	pub fn floor(&self) -> i256 {
+		match unscaled::pow10(self.scale) {
+			Some(divisor) if self.unscaled.wrapping_rem(divisor) < i256::ZERO => {
+				self.trunc().wrapping_sub(i256::ONE)
+			}
+			_ => self.trunc(),
+		}
+	}
+
 	pub fn to_f64(&self) -> f64 {
 		self.exponent_text().parse().expect("a decimal exponent text always parses as f64")
 	}
@@ -189,6 +207,12 @@ impl Decimal {
 		}
 		let ((left, left_scale), (right, right_scale)) = (self.normalized(), other.normalized());
 		Self::from_parts(left.checked_mul(right)?, left_scale + right_scale)
+	}
+
+	pub fn checked_pow(&self, exp: u32) -> Option<Self> {
+		let (unscaled, scale) = self.normalized();
+		let scale = u8::try_from(u32::from(scale).checked_mul(exp)?).ok()?;
+		Self::from_parts(unscaled.checked_pow(exp)?, scale)
 	}
 
 	pub fn checked_div(&self, other: &Self) -> Option<Self> {
@@ -588,6 +612,18 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_serde_json_zero_with_scale() {
+		// Equality ignores scale, so only the text shows 0.00 did not come back as 0.
+		let decimal = Decimal::from_str("0.00").unwrap();
+		let json = to_string(&decimal).unwrap();
+		assert_eq!(json, "\"0.00\"");
+
+		let deserialized: Decimal = from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+		assert_eq!(deserialized.to_string(), "0.00");
+	}
+
+	#[test]
 	fn test_serde_json_high_precision() {
 		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
 		let json = to_string(&decimal).unwrap();
@@ -814,6 +850,48 @@ pub mod tests {
 		assert_eq!(dec("3.7").trunc(), i256::from_i128(3));
 		assert_eq!(dec("-3.7").trunc(), i256::from_i128(-3));
 		assert_eq!(dec("0.999").trunc(), i256::ZERO);
+	}
+
+	#[test]
+	fn ceil_rounds_toward_positive_infinity_exactly() {
+		// A trip through f64 would turn the 29 digit value into 12345678901234568227576610816.
+		assert_eq!(dec("3.2").ceil(), i256::from_i128(4));
+		assert_eq!(dec("-3.7").ceil(), i256::from_i128(-3));
+		assert_eq!(dec("5.000").ceil(), i256::from_i128(5));
+		assert_eq!(dec("0.001").ceil(), i256::ONE);
+		assert_eq!(dec("-0.001").ceil(), i256::ZERO);
+		assert_eq!(
+			dec("12345678901234567890123456789.5").ceil(),
+			dec("12345678901234567890123456790").unscaled()
+		);
+	}
+
+	#[test]
+	fn floor_rounds_toward_negative_infinity_exactly() {
+		// Truncating instead of flooring would leave -3.2 at -3 and -0.001 at 0.
+		assert_eq!(dec("3.7").floor(), i256::from_i128(3));
+		assert_eq!(dec("-3.2").floor(), i256::from_i128(-4));
+		assert_eq!(dec("-5.00").floor(), i256::from_i128(-5));
+		assert_eq!(dec("-0.001").floor(), i256::MINUS_ONE);
+		assert_eq!(dec("0.001").floor(), i256::ZERO);
+		assert_eq!(
+			dec("-12345678901234567890123456789.5").floor(),
+			dec("-12345678901234567890123456790").unscaled()
+		);
+	}
+
+	#[test]
+	fn checked_pow_is_exact_and_refuses_what_does_not_fit() {
+		// f64 would give 1.5241578753238835e36 and drop the last 20 digits of the square.
+		assert_eq!(
+			dec("1234567890123456789.25").checked_pow(2),
+			Some(dec("1524157875323883675636335943811918915.5625"))
+		);
+		assert_eq!(dec("2.50").checked_pow(3), Some(dec("15.625")));
+		assert_eq!(dec("-1.5").checked_pow(3), Some(dec("-3.375")));
+		assert_eq!(dec("7.25").checked_pow(0), Some(Decimal::one()));
+		assert_eq!(dec("10").checked_pow(80), None);
+		assert_eq!(dec("0.5").checked_pow(200), None);
 	}
 
 	#[test]

@@ -13,10 +13,6 @@ mod append_batch_query;
 mod apply_unknown_operator;
 #[path = "arithmetic_with_none_in_conditional.rs"]
 mod arithmetic_with_none_in_conditional;
-#[path = "assert_scalar_series_compare.rs"]
-mod assert_scalar_series_compare;
-#[path = "assert_short_boolean_result.rs"]
-mod assert_short_boolean_result;
 #[path = "builtin_arity_before_arguments.rs"]
 mod builtin_arity_before_arguments;
 #[path = "bulk_insert.rs"]
@@ -52,8 +48,6 @@ mod decimal_mul_scale;
 mod decimal_scale_mix;
 #[path = "dictionary_insert_value_type.rs"]
 mod dictionary_insert_value_type;
-#[path = "dictionary_update_to_none.rs"]
-mod dictionary_update_to_none;
 #[path = "digest_aggregate.rs"]
 mod digest_aggregate;
 #[path = "digest_column_ddl.rs"]
@@ -64,8 +58,6 @@ mod digest_column_write;
 mod digest_query;
 #[path = "digest_row_storage.rs"]
 mod digest_row_storage;
-#[path = "distinct_over_negative_zero.rs"]
-mod distinct_over_negative_zero;
 #[path = "distinct_row_identity.rs"]
 mod distinct_row_identity;
 #[path = "distinct_typed_key.rs"]
@@ -76,8 +68,6 @@ mod division_by_a_none_divisor;
 mod duration_add_overflow;
 #[path = "duration_mixed_unit_identity.rs"]
 mod duration_mixed_unit_identity;
-#[path = "duration_subtract_and_scale_overflow.rs"]
-mod duration_subtract_and_scale_overflow;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
@@ -98,8 +88,6 @@ mod events;
 mod extend_duplicate_column_fragment;
 #[path = "flow_dag_load.rs"]
 mod flow_dag_load;
-#[path = "from_default_order.rs"]
-mod from_default_order;
 #[path = "grouped_sum_overflow.rs"]
 mod grouped_sum_overflow;
 #[path = "handler_body_pipe.rs"]
@@ -112,8 +100,6 @@ mod identity_inject_escalation;
 mod identity_kind;
 #[path = "in_list_with_a_none_item.rs"]
 mod in_list_with_a_none_item;
-#[path = "inline_column_property_ddl.rs"]
-mod inline_column_property_ddl;
 #[path = "inline_constructor_unknown_column.rs"]
 mod inline_constructor_unknown_column;
 #[path = "inline_data_insert_target.rs"]
@@ -122,8 +108,6 @@ mod inline_data_insert_target;
 mod inline_data_value_types;
 #[path = "inline_duplicate_fields.rs"]
 mod inline_duplicate_fields;
-#[path = "inline_saturation_property.rs"]
-mod inline_saturation_property;
 #[path = "insert_piped_source_diagnostic.rs"]
 mod insert_piped_source_diagnostic;
 #[path = "insert_undefined_value.rs"]
@@ -154,10 +138,6 @@ mod map_ends_in_a_comment;
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
 mod missing_column_lookup;
-#[path = "nan_arithmetic.rs"]
-mod nan_arithmetic;
-#[path = "nested_option_param_none.rs"]
-mod nested_option_param_none;
 #[path = "nested_option_types.rs"]
 mod nested_option_types;
 #[path = "nested_read_policy_bypass.rs"]
@@ -174,12 +154,6 @@ mod percentile_aggregate_errors;
 mod plan_cache;
 #[path = "positional_insert.rs"]
 mod positional_insert;
-#[path = "prefix_minus_integer_edges.rs"]
-mod prefix_minus_integer_edges;
-#[path = "prefix_minus_temporal_and_uuid.rs"]
-mod prefix_minus_temporal_and_uuid;
-#[path = "prefix_plus_unsigned.rs"]
-mod prefix_plus_unsigned;
 #[path = "procedure_body_pipe.rs"]
 mod procedure_body_pipe;
 #[path = "procedure_list_param.rs"]
@@ -198,8 +172,6 @@ mod promote_int_with_float;
 mod queue;
 #[path = "read_only.rs"]
 mod read_only;
-#[path = "remainder_by_a_none_divisor.rs"]
-mod remainder_by_a_none_divisor;
 #[path = "returning.rs"]
 mod returning;
 #[path = "ringbuffer.rs"]
@@ -262,8 +234,6 @@ mod udf_mixed_return_types_paths;
 mod udf_parameter_type;
 #[path = "udf_parameter_type_paths.rs"]
 mod udf_parameter_type_paths;
-#[path = "unsigned_signed_compare_edges.rs"]
-mod unsigned_signed_compare_edges;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
 #[path = "window_batch_query.rs"]

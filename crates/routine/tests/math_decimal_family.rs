@@ -11,11 +11,13 @@ use reifydb_routine::function::math::{
 	ceil::Ceil,
 	clamp::Clamp,
 	div::{basic::Div, saturate::DivSaturate},
+	floor::Floor,
 	mul::basic::Mul,
 	power::Power,
 	round::Round,
 	sub::none::SubNone,
 	sum::Sum,
+	truncate::Truncate,
 };
 use reifydb_routine_abi::{Function, context::FunctionContext, error::RoutineError};
 use reifydb_runtime::context::RuntimeContext;
@@ -160,7 +162,7 @@ fn avg_of_integers_has_six_fraction_digits() {
 
 #[test]
 fn ceil_keeps_precision_and_scale() {
-	// Going through f64 must still hand back the input decimal(5,2), not a scale 0 decimal.
+	// Rounding must still hand back the input decimal(5,2), not a scale 0 decimal.
 	let out = call(Ceil::new(), vec![decimal(5, 2, &["1.21", "-1.21"])]).unwrap();
 	assert_eq!(out.get_type(), decimal_type(5, 2));
 	assert_eq!(out.as_string(0), "2.00");
@@ -171,6 +173,21 @@ fn ceil_keeps_precision_and_scale() {
 fn ceil_that_outgrows_the_precision_is_an_error() {
 	// ceil(9.99) is 10.00, four digits; decimal(3,2) cannot hold it and must not silently widen.
 	assert!(call(Ceil::new(), vec![decimal(3, 2, &["9.99"])]).is_err());
+}
+
+#[test]
+fn ceil_floor_and_truncate_keep_every_digit_of_a_wide_decimal() {
+	// Through f64 the 29 integer digits would come back as 12345678901234568227576610816.0.
+	let wide = || decimal(38, 1, &["12345678901234567890123456789.5", "-12345678901234567890123456789.5"]);
+	let ceil = call(Ceil::new(), vec![wide()]).unwrap();
+	assert_eq!(ceil.as_string(0), "12345678901234567890123456790.0");
+	assert_eq!(ceil.as_string(1), "-12345678901234567890123456789.0");
+	let floor = call(Floor::new(), vec![wide()]).unwrap();
+	assert_eq!(floor.as_string(0), "12345678901234567890123456789.0");
+	assert_eq!(floor.as_string(1), "-12345678901234567890123456790.0");
+	let truncate = call(Truncate::new(), vec![wide()]).unwrap();
+	assert_eq!(truncate.as_string(0), "12345678901234567890123456789.0");
+	assert_eq!(truncate.as_string(1), "-12345678901234567890123456789.0");
 }
 
 #[test]
@@ -212,4 +229,19 @@ fn power_past_seventy_six_digits_is_an_error() {
 	// 10^76 has 77 digits; the i256 result must be range checked, not stored.
 	let err = call(Power::new(), vec![int(2, &[10]), int(2, &[76])]).unwrap_err();
 	assert_eq!(error_code(err), "NUMBER_002");
+}
+
+#[test]
+fn power_with_an_integral_decimal_exponent_is_exact() {
+	// f64 gives 1.5241578753238836e34, losing the last 19 digits of the square.
+	let out =
+		call(Power::new(), vec![decimal(76, 1, &["123456789012345678.5"]), decimal(76, 1, &["2.0"])]).unwrap();
+	assert_eq!(out.as_string(0), "15241578753238836651425088777625362.3");
+}
+
+#[test]
+fn power_whose_exact_scale_overflows_falls_back_to_f64() {
+	// 0.5^200 needs scale 200; refusing it would turn a value that rounds to zero into an error.
+	let out = call(Power::new(), vec![decimal(76, 1, &["0.5"]), decimal(76, 1, &["200.0"])]).unwrap();
+	assert_eq!(out.as_string(0), "0.0");
 }

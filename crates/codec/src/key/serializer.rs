@@ -433,7 +433,9 @@ impl KeySerializer {
 				self.buffer.push(CONTAINER_END);
 			}
 			Value::Any(_) | Value::Type(_) => {
-				unreachable!("Any/ValueType values cannot be serialized in keys");
+				return Err(Error::from(TypeError::SerdeKeycode {
+					message: format!("a {} value cannot be serialized in a key", value.get_type()),
+				}));
 			}
 			Value::Digest(_) => {
 				return Err(Error::from(TypeError::SerdeKeycode {

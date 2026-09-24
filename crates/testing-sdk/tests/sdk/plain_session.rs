@@ -24,6 +24,7 @@ fn session(gap: u64, lateness: Option<u64>) -> ApplyWith {
 		lateness: lateness.map(|n| WithSpan::Duration(millis(n))),
 		immutable: None,
 		retention: None,
+		throttle: None,
 	}
 }
 
@@ -284,5 +285,37 @@ fn an_update_that_changes_the_group_moves_the_row_between_groups() {
 	assert_eq!(
 		render(&out),
 		vec![(DiffType::Update, 3.0, at(100), at(110)), (DiffType::Remove, 1.0, at(100), at(110))]
+	);
+}
+
+#[test]
+fn a_refilled_session_publishes_an_insert() {
+	// Downstream already dropped the removed session, so an update retracting it corrupts every consumer.
+	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	assert_eq!(render(&out), vec![(DiffType::Remove, 1.0, at(100), at(110))], "precondition");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");
+
+	let kinds: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
+	assert_eq!(kinds, vec![(DiffType::Insert, 2.0)]);
+}
+
+#[test]
+fn an_emptied_session_publishes_nothing_on_seal() {
+	// A second removal of a session downstream already dropped is a retraction of nothing.
+	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	assert_eq!(render(&out), vec![(DiffType::Remove, 1.0, at(100), at(110))], "precondition");
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("watermark");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 4.0)).build()).expect("apply");
+
+	assert_eq!(
+		render(&out),
+		vec![(DiffType::Insert, 4.0, at(10_000), at(10_010))],
+		"only the new session publishes"
 	);
 }

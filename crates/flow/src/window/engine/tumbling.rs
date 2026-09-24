@@ -73,10 +73,10 @@ pub struct ExpiredWindow<G, S> {
 #[operator_state]
 #[derive(Clone)]
 pub struct TumblingIndexEntry<G, S> {
-	group: G,
-	window_start: S,
-	group_id: GroupId,
-	slot_key: Vec<u8>,
+	pub(crate) group: G,
+	pub(crate) window_start: S,
+	pub(crate) group_id: GroupId,
+	pub(crate) slot_key: Vec<u8>,
 }
 
 impl<G, S, Accumulator> Reaper for TumblingEngine<G, S, Accumulator>

@@ -47,3 +47,6 @@ mod view_read_after_upstream_write;
 
 #[path = "regression/window_membership_cleanup.rs"]
 mod window_membership_cleanup;
+
+#[path = "regression/window_refill.rs"]
+mod window_refill;

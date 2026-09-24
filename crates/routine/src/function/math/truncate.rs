@@ -76,7 +76,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				let scale = container.scale();
 				let mut data = Vec::with_capacity(row_count);
 				for value in decimals(container) {
-					let rounded = Decimal::from_f64(value.to_f64().trunc())
+					let rounded = Decimal::from_parts(value.trunc(), 0)
 						.and_then(|rounded| rounded.fits(precision.value(), scale.value()))
 						.ok_or_else(|| RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),

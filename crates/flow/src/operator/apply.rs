@@ -190,6 +190,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(90)));
@@ -203,6 +204,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(30)));
@@ -226,6 +228,7 @@ mod tests {
 			lateness: Some(WithSpan::Count(2)),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
@@ -243,6 +246,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(5))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(135)));
@@ -256,6 +260,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(Duration::zero())),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
@@ -269,6 +274,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
 			retention: Some(seconds(120)),
+			throttle: None,
 		};
 		let operator = operator(with);
 
@@ -284,6 +290,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 
 		assert_eq!(operator(with).retention(), Some(seconds(30)));
@@ -297,6 +304,7 @@ mod tests {
 			lateness: Some(WithSpan::Duration(Duration::zero())),
 			immutable: None,
 			retention: None,
+			throttle: None,
 		};
 		let operator = operator(with);
 

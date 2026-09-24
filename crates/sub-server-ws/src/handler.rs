@@ -42,6 +42,7 @@ use reifydb_value::{
 };
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
+	io::{AsyncRead, AsyncWrite},
 	net::TcpStream,
 	select, spawn,
 	sync::{mpsc, watch},
@@ -53,6 +54,7 @@ use tracing::{debug, error, warn};
 use uuid::Builder;
 
 use crate::{
+	acceptor::Access,
 	protocol::{
 		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, QueueClaimRequest, Request,
 		RequestPayload, UnsubscribeRequest,
@@ -69,15 +71,17 @@ pub(crate) enum WsResponse {
 	Binary(Vec<u8>),
 }
 
-pub async fn handle_connection(
-	stream: TcpStream,
+pub async fn handle_connection<S>(
+	stream: S,
+	peer: Option<SocketAddr>,
 	state: AppState,
 	registry: Arc<SubscriptionRegistry>,
 	mut shutdown: watch::Receiver<bool>,
-) {
-	let peer = stream.peer_addr().ok();
+	access: Access,
+) where
+	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
 	let connection_id = generate_connection_id(&state);
-	configure_stream(&stream, peer);
 
 	let Some(ws_stream) = accept_ws_with_timeout(stream).await else {
 		return;
@@ -206,6 +210,7 @@ pub async fn handle_connection(
 								claim_tasks: &mut claim_tasks,
 								deferred_tx: deferred_tx.clone(),
 								shutdown: shutdown.clone(),
+								access,
 							},
 						).await.unwrap_or_else(|error| panic!("websocket connection {connection_id} failed: {error}"));
 						if let Some(resp) = response {
@@ -275,14 +280,14 @@ fn generate_connection_id(state: &AppState) -> Uuid7 {
 }
 
 #[inline]
-fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
+pub(crate) fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
 	if let Err(e) = stream.set_nodelay(true) {
 		warn!("Failed to set TCP_NODELAY for {:?}: {}", peer, e);
 	}
 }
 
 #[inline]
-async fn accept_ws_with_timeout(stream: TcpStream) -> Option<WebSocketStream<TcpStream>> {
+async fn accept_ws_with_timeout<S: AsyncRead + AsyncWrite + Unpin>(stream: S) -> Option<WebSocketStream<S>> {
 	match timeout(Duration::from_seconds(30).unwrap().to_std(), accept_async(stream)).await {
 		Ok(Ok(ws)) => Some(ws),
 		_ => None,
@@ -343,6 +348,7 @@ pub(crate) struct ConnectionContext<'a> {
 	pub claim_tasks: &'a mut Vec<JoinHandle<()>>,
 	pub deferred_tx: mpsc::UnboundedSender<WsResponse>,
 	pub shutdown: watch::Receiver<bool>,
+	pub access: Access,
 }
 
 async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result<Option<WsResponse>, Error> {
@@ -356,6 +362,18 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 			))));
 		}
 	};
+
+	let required = required_access(&request.payload);
+	if required > conn.access {
+		return Ok(Some(WsResponse::Text(build_error(
+			&request.id,
+			"FORBIDDEN",
+			&format!(
+				"this connection allows {:?} requests at most, this request needs {:?}",
+				conn.access, required
+			),
+		))));
+	}
 
 	Ok(match request.payload {
 		RequestPayload::Auth(auth) => handle_auth(&request.id, auth, conn).await,
@@ -383,6 +401,20 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 		RequestPayload::Logout => handle_logout(&request.id, conn).await,
 		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await?,
 	})
+}
+
+fn required_access(payload: &RequestPayload) -> Access {
+	match payload {
+		RequestPayload::Admin(_) => Access::Admin,
+		RequestPayload::Command(_) | RequestPayload::Call(_) | RequestPayload::QueueClaim(_) => Access::Command,
+		RequestPayload::Auth(_)
+		| RequestPayload::Query(_)
+		| RequestPayload::Subscribe(_)
+		| RequestPayload::BatchSubscribe(_)
+		| RequestPayload::BatchUnsubscribe(_)
+		| RequestPayload::Unsubscribe(_)
+		| RequestPayload::Logout => Access::Query,
+	}
 }
 
 #[inline]
