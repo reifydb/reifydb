@@ -146,7 +146,15 @@ fn value_sets(rows: usize) -> Vec<(&'static str, ValueType, Vec<Value>)> {
 		("int4", ValueType::Int4, values(|i| Value::Int4(mix(i) as i32))),
 		("int8", ValueType::Int8, values(|i| Value::Int8(mix(i) as i64))),
 		("float8", ValueType::Float8, values(|i| Value::float8(unit(i)))),
-		("datetime", ValueType::DateTime, values(|i| Value::DateTime(DateTime::from_nanos(mix(i) >> 2)))),
+		(
+			"datetime",
+			ValueType::DateTime,
+			values(|i| {
+				Value::DateTime(DateTime::from_nanos(
+					i64::try_from(mix(i) >> 2).expect("bench datetime fits in i64 nanos"),
+				))
+			}),
+		),
 		("uuid7", ValueType::Uuid7, values(|i| Value::Uuid7(uuid7(i)))),
 		("utf8", ValueType::Utf8, values(|i| Value::Utf8(name(i)))),
 		("int", ValueType::INT, values(|i| Value::Int(Int::from(mix(i) as i64)))),

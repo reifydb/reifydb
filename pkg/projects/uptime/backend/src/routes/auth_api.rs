@@ -42,7 +42,7 @@ pub async fn guest_session(State(st): State<AppState>) -> Result<Json<GuestSessi
 	Ok(Json(GuestSessionResponse {
 		token: token.token,
 		identity: identity.to_string(),
-		expires_at: token.expires_at.map(|at| (at.to_nanos() / 1_000_000_000) as i64).unwrap_or_default(),
+		expires_at: token.expires_at.map(|at| at.to_nanos() / 1_000_000_000).unwrap_or_default(),
 	}))
 }
 

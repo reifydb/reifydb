@@ -12,7 +12,7 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Published {
-	frontier_ms: u64,
+	frontier_ms: i64,
 	at: CommitVersion,
 	clamped: bool,
 }

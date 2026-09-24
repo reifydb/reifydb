@@ -15,8 +15,8 @@ crate::nones_tests! {
 		DateTime::from_nanos(0),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		DateTime::from_nanos(1_000_000),
-		DateTime::from_nanos(u64::MAX / 2),
-		DateTime::from_nanos(u64::MAX),
+		DateTime::from_nanos(i64::MAX / 2),
+		DateTime::from_nanos(i64::MAX),
 	],
 	inner_type: ValueType::DateTime,
 }

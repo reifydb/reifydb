@@ -1141,8 +1141,12 @@ mod tests {
 		WindowEngineConfig::builder().build()
 	}
 
+	fn window_at(millis: u64) -> DateTime {
+		at_millis(i64::try_from(millis).expect("test window offset fits in i64 milliseconds"))
+	}
+
 	fn order(millis: u64) -> u64 {
-		<DateTime as Coord>::to_order(at_millis(millis))
+		<DateTime as Coord>::to_order(window_at(millis))
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
@@ -1536,7 +1540,7 @@ mod tests {
 					} else {
 						AccumulatorEvent::Remove(value)
 					};
-					buckets.entry((group, at_millis(slot))).or_default().push(event);
+					buckets.entry((group, window_at(slot))).or_default().push(event);
 				}
 				buckets
 			};
@@ -1544,7 +1548,7 @@ mod tests {
 				.apply_evicting(
 					&mut recombine_store,
 					build(&plan),
-					RollingEviction::Before(at_millis(cutoff)),
+					RollingEviction::Before(window_at(cutoff)),
 					row_key,
 					SumAccumulator::default,
 					sum_combine,
@@ -1554,7 +1558,7 @@ mod tests {
 				.apply_running(
 					&mut runnable_store,
 					build(&plan),
-					RollingEviction::Before(at_millis(cutoff)),
+					RollingEviction::Before(window_at(cutoff)),
 					row_key,
 					SumAccumulator::default,
 				)
@@ -1568,10 +1572,10 @@ mod tests {
 			if round % 5 == 4 {
 				cutoff = slot_base.saturating_sub(30);
 				let recombine_exp = recombine
-					.expire_before(&mut recombine_store, at_millis(cutoff), sum_combine)
+					.expire_before(&mut recombine_store, window_at(cutoff), sum_combine)
 					.unwrap();
 				let runnable_exp =
-					runnable.expire_before_running(&mut runnable_store, at_millis(cutoff)).unwrap();
+					runnable.expire_before_running(&mut runnable_store, window_at(cutoff)).unwrap();
 				assert_eq!(
 					describe_expiries(&recombine_exp),
 					describe_expiries(&runnable_exp),
@@ -1802,13 +1806,13 @@ mod tests {
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((group, at_millis(slot))).or_default().push(event);
+				buckets.entry((group, window_at(slot))).or_default().push(event);
 			}
 			let out = engine
 				.apply_running(
 					&mut store,
 					buckets,
-					RollingEviction::Before(at_millis(cutoff)),
+					RollingEviction::Before(window_at(cutoff)),
 					row_key,
 					SumAccumulator::default,
 				)
@@ -1835,7 +1839,7 @@ mod tests {
 
 			if round % 5 == 4 {
 				cutoff = slot_base.saturating_sub(60);
-				let expiries = engine.expire_before_running(&mut store, at_millis(cutoff)).unwrap();
+				let expiries = engine.expire_before_running(&mut store, window_at(cutoff)).unwrap();
 				let dead: Vec<(u32, u64)> = live
 					.iter()
 					.filter(|&(&(_, slot), _)| slot <= cutoff)
@@ -1918,11 +1922,11 @@ mod tests {
 			} else {
 				AccumulatorEvent::Remove(value)
 			};
-			buckets.insert((1u32, at_millis(slot)), vec![event]);
+			buckets.insert((1u32, window_at(slot)), vec![event]);
 			engine.apply_running(
 				store,
 				buckets,
-				RollingEviction::Before(at_millis(cutoff)),
+				RollingEviction::Before(window_at(cutoff)),
 				row_key,
 				SumAccumulator::default,
 			)

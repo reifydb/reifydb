@@ -464,7 +464,7 @@ mod tests {
 		SinkTableViewOperator::new(OperatorId(1), resolved, vec![])
 	}
 
-	fn one_row(v: f64, ts_nanos: u64) -> Columns {
+	fn one_row(v: f64, ts_nanos: i64) -> Columns {
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::float8([v]))],
 			SystemColumns::new(

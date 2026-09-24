@@ -227,7 +227,7 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_datetime(&mut self) -> Result<DateTime> {
-		let nanos = self.read_u64()?;
+		let nanos = self.read_i64()?;
 		Ok(DateTime::from_nanos(nanos))
 	}
 

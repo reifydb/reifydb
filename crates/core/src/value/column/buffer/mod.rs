@@ -17,8 +17,8 @@ use std::fmt;
 use arrow_array::{
 	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
 	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
-	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
-	builder::LargeBinaryBuilder,
+	LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array,
+	UInt64Array, builder::LargeBinaryBuilder,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_value::{
@@ -73,7 +73,7 @@ pub enum ColumnBuffer {
 		max_bytes: MaxBytes,
 	},
 	Date(Date32Array),
-	DateTime(UInt64Array),
+	DateTime(TimestampNanosecondArray),
 	Time(Time64NanosecondArray),
 	Duration(IntervalMonthDayNanoArray),
 	IdentityId(FixedSizeBinaryArray),
@@ -347,7 +347,7 @@ impl Serialize for ColumnBuffer {
 				max_bytes: MaxBytes,
 			},
 			Date(#[serde(serialize_with = "serialize_dates")] &'a Date32Array),
-			DateTime(#[serde(serialize_with = "serialize_datetimes")] &'a UInt64Array),
+			DateTime(#[serde(serialize_with = "serialize_datetimes")] &'a TimestampNanosecondArray),
 			Time(#[serde(serialize_with = "serialize_times")] &'a Time64NanosecondArray),
 			Duration(#[serde(serialize_with = "serialize_durations")] &'a IntervalMonthDayNanoArray),
 			IdentityId(#[serde(serialize_with = "serialize_identity_ids")] &'a FixedSizeBinaryArray),
@@ -487,7 +487,7 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				max_bytes: MaxBytes,
 			},
 			Date(#[serde(deserialize_with = "deserialize_dates")] Date32Array),
-			DateTime(#[serde(deserialize_with = "deserialize_datetimes")] UInt64Array),
+			DateTime(#[serde(deserialize_with = "deserialize_datetimes")] TimestampNanosecondArray),
 			Time(#[serde(deserialize_with = "deserialize_times")] Time64NanosecondArray),
 			Duration(#[serde(deserialize_with = "deserialize_durations")] IntervalMonthDayNanoArray),
 			IdentityId(#[serde(deserialize_with = "deserialize_identity_ids")] FixedSizeBinaryArray),

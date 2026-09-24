@@ -870,16 +870,16 @@ impl IntoDiagnostic for TypeError {
 					TemporalKind::DateTimeOutOfRange => (
 						"TEMPORAL_023",
 						Some("datetime value is outside the representable range".to_string()),
-						Some("use a datetime between 1970-01-01T00:00:00Z and 2554-07-21T23:34:33Z".to_string()),
-						vec!["DateTime is stored as nanoseconds since Unix epoch (u64)".to_string()],
+						Some("use a datetime between 1677-09-21T00:12:43.145224192Z and 2262-04-11T23:47:16.854775807Z".to_string()),
+						vec!["DateTime is stored as nanoseconds since Unix epoch (i64)".to_string()],
 					),
 					TemporalKind::DateTimeOverflow { message: msg } => (
 						"TEMPORAL_026",
 						Some(msg.clone()),
 						Some("ensure datetime values are within representable range".to_string()),
 						vec![
-							"DateTime is stored as nanoseconds since Unix epoch (u64)".to_string(),
-							"valid range: 1970-01-01T00:00:00Z to 2554-07-21T23:34:33Z".to_string(),
+							"DateTime is stored as nanoseconds since Unix epoch (i64)".to_string(),
+							"valid range: 1677-09-21T00:12:43.145224192Z to 2262-04-11T23:47:16.854775807Z".to_string(),
 						],
 					),
 					TemporalKind::DurationOverflow { message: msg } => (

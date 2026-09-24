@@ -35,7 +35,7 @@ fn blob(bytes: &[u8]) -> Value {
 fn date_days(days: i32) -> Value {
 	Value::Date(Date::from_days_since_epoch(days).expect("valid"))
 }
-fn datetime_nanos(nanos: u64) -> Value {
+fn datetime_nanos(nanos: i64) -> Value {
 	Value::DateTime(DateTime::from_nanos(nanos))
 }
 fn time_nanos(nanos: u64) -> Value {
@@ -309,8 +309,8 @@ fn any_datetime_one_nano() {
 }
 
 #[test]
-fn any_datetime_max_u64() {
-	let input = one_row(datetime_nanos(u64::MAX));
+fn any_datetime_max_i64() {
+	let input = one_row(datetime_nanos(i64::MAX));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_datetime_max", &input, &output);
 }

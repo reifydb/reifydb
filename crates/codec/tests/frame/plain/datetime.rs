@@ -17,7 +17,7 @@ crate::plain_tests! {
 	],
 	boundary: vec![
 		DateTime::from_nanos(0),
-		DateTime::from_nanos(u64::MAX),
+		DateTime::from_nanos(i64::MAX),
 	],
 	single: DateTime::from_nanos(0),
 }

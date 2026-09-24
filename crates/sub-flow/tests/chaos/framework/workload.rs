@@ -20,7 +20,7 @@ pub struct WindowRow {
 
 impl WindowRow {
 	pub fn at(&self) -> DateTime {
-		DateTime::from_epoch_millis(self.coord_ms).unwrap()
+		DateTime::from_epoch_millis(i64::try_from(self.coord_ms).expect("coord_ms fits in i64 millis")).unwrap()
 	}
 }
 

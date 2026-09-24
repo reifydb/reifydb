@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
-		encode_u64_asc, encode_u128_asc,
+		encode_i64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 	row::{
@@ -126,7 +126,7 @@ fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
 	(!partition_values.is_empty()).then(|| Partition::of(partition_values))
 }
 
-fn decode_expiry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<(u64, u64)> {
+fn decode_expiry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<(i64, u64)> {
 	let suffix = OperatorStateKey::decode_inner(key.as_slice()).map(|(_, _, suffix)| suffix.to_vec()).ok_or_else(
 		|| {
 			Error::from(FlowStateError::Decode {
@@ -379,7 +379,7 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> GroupStateKey {
+	fn expiry_key(&self, partition: Option<Partition>, expires_at: i64, storage_rn: RowNumber) -> GroupStateKey {
 		match partition {
 			Some(partition) => typed_key::<PartitionedRingbufferExpiry>(
 				GroupId::ROOT,
@@ -411,10 +411,10 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn expires_at(&self, time: Option<DateTime>) -> Option<u64> {
+	fn expires_at(&self, time: Option<DateTime>) -> Option<i64> {
 		let ttl = self.ttl?;
 		let time = time?;
-		let ttl_ms = u64::try_from(ttl.milliseconds().ok()?).ok()?;
+		let ttl_ms = ttl.milliseconds().ok()?;
 		Some(time.to_millis().saturating_add(ttl_ms))
 	}
 
@@ -525,6 +525,24 @@ fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
 }
 
 fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
+	decode(row).map_err(|e| {
+		Error::from(FlowStateError::Decode {
+			state,
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow> {
+	encode(&value).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state,
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 	decode(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state,
@@ -657,11 +675,11 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
-		at: u64,
+		at: i64,
 	) -> Result<Vec<u64>> {
 		let prefix = expiry_scan_prefix(partition);
 		let mut end = prefix.clone();
-		end.extend_from_slice(&encode_u64_asc(at.saturating_add(1)));
+		end.extend_from_slice(&encode_i64_asc(at.saturating_add(1)));
 		let range = EncodedKeyRange::new(
 			Bound::Included(EncodedKey::new(prefix)),
 			Bound::Excluded(EncodedKey::new(end)),
@@ -689,7 +707,7 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn earliest_expiry(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+	fn earliest_expiry(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<i64>> {
 		let range = EncodedKeyRange::prefix(&expiry_scan_prefix(partition));
 		match self.state_range(txn, range).next() {
 			Some(result) => {
@@ -716,9 +734,9 @@ impl SinkRingBufferViewOperator {
 		})
 	}
 
-	fn read_armed(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+	fn read_armed(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<i64>> {
 		match self.state_get(txn, &self.arm_key(partition))? {
-			Some(row) => Ok(Some(decode_u64(&row, "RingBufferTtlArm")?)),
+			Some(row) => Ok(Some(decode_i64(&row, "RingBufferTtlArm")?)),
 			None => Ok(None),
 		}
 	}
@@ -755,7 +773,7 @@ impl SinkRingBufferViewOperator {
 						key,
 					},
 				)?;
-				self.state_set(txn, &arm_key, encode_u64(at, "RingBufferTtlArm")?)
+				self.state_set(txn, &arm_key, encode_i64(at, "RingBufferTtlArm")?)
 			}
 			None => self.state_remove(txn, &arm_key),
 		}
@@ -766,7 +784,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		object_id: StorageId,
 		partition_values: &[Value],
-		at: u64,
+		at: i64,
 	) -> Result<bool> {
 		let partition = partition_of_values(partition_values);
 
@@ -1167,9 +1185,9 @@ mod tests {
 	use crate::transaction::{mock::FlowTxn, substrate::apply_operator_state};
 
 	const RB: StorageId = StorageId::View(ViewId(1));
-	const T0: u64 = 1_000_000_000_000;
-	const HOUR: u64 = 3_600 * 1_000_000_000;
-	const AFTER: u64 = T0 + HOUR + 1_000_000_000;
+	const T0: i64 = 1_000_000_000_000;
+	const HOUR: i64 = 3_600 * 1_000_000_000;
+	const AFTER: i64 = T0 + HOUR + 1_000_000_000;
 
 	fn hour_ttl() -> Duration {
 		Duration::from_hours(1).expect("one hour is representable")
@@ -1263,7 +1281,7 @@ mod tests {
 		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
-	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: u64) -> Columns {
+	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: i64) -> Columns {
 		let ns: Vec<i32> = rows.iter().map(|(_, n)| *n).collect();
 		let rns: Vec<RowNumber> = (0..rows.len() as u64).map(|i| RowNumber(first_source_rn + i)).collect();
 		let ts: Vec<DateTime> = rows.iter().map(|_| DateTime::from_nanos(time)).collect();
@@ -1292,7 +1310,7 @@ mod tests {
 		partitioned: bool,
 		rows: &[(&str, i32)],
 		first_source_rn: u64,
-		time: u64,
+		time: i64,
 	) -> CommitVersion {
 		let mut txn = deferred_txn(engine);
 		op.apply(
@@ -1313,7 +1331,7 @@ mod tests {
 		engine: &TestEngine,
 		op: &mut SinkRingBufferViewOperator,
 		partition_values: &[Value],
-		at: u64,
+		at: i64,
 	) -> Option<Change> {
 		// Stands in for the dispatcher. Eviction is decided by the timer's own instant, so
 		// neither the operator nor the test needs a clock.

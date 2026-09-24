@@ -68,7 +68,7 @@ export function decodePlain(
             for (let i = 0; i < rowCount; i++) out[i] = formatDate(readI32(data, i * 4));
             return out;
         case "DateTime":
-            for (let i = 0; i < rowCount; i++) out[i] = formatDateTime(readU64(data, i * 8));
+            for (let i = 0; i < rowCount; i++) out[i] = formatDateTime(readI64(data, i * 8));
             return out;
         case "Time":
             for (let i = 0; i < rowCount; i++) out[i] = formatTime(readU64(data, i * 8));
@@ -214,7 +214,7 @@ export function decodeAnyValue(data: Uint8Array, pos: number): { value: string; 
         case TYPE_CODE.Date:
             return { value: formatDate(readI32(data, pos)), nextPos: pos + 4 };
         case TYPE_CODE.DateTime:
-            return { value: formatDateTime(readU64(data, pos)), nextPos: pos + 8 };
+            return { value: formatDateTime(readI64(data, pos)), nextPos: pos + 8 };
         case TYPE_CODE.Time:
             return { value: formatTime(readU64(data, pos)), nextPos: pos + 8 };
         case TYPE_CODE.Duration: {

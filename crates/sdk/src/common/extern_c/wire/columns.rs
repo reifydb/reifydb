@@ -65,7 +65,7 @@ pub struct ExternCColumns {
 
 	pub columns: *const ExternCColumn,
 
-	pub time: *const u64,
+	pub time: *const i64,
 }
 
 impl ExternCColumns {

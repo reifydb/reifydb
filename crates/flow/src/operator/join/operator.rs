@@ -1169,7 +1169,9 @@ mod seal_tests {
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(coordinate)),
+			at: Some(DateTime::from_nanos(
+				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
+			)),
 		});
 		txn
 	}
@@ -1396,7 +1398,7 @@ mod seal_tests {
 			self.inner.set_flow_watermark(watermark)
 		}
 
-		fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64> {
+		fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, i64> {
 			self.inner.source_watermark_cache()
 		}
 

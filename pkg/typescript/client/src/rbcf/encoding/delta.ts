@@ -231,8 +231,8 @@ function dispatchDelta(typeName: TypeName, rowCount: number, data: Uint8Array, r
             return vs.map((v) => formatDate(Number(v)));
         }
         case "DateTime": {
-            const h = readHeader64(data, false);
-            const vs = go(data, rowCount, h, readSignedDelta, (v) => wrapUnsigned(v, 64));
+            const h = readHeader64(data, true);
+            const vs = go(data, rowCount, h, readSignedDelta, (v) => wrapSigned(v, 64));
             return vs.map((v) => formatDateTime(v));
         }
         case "Time": {

@@ -414,7 +414,7 @@ pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 /// entries, and the row-number array must hold `row_count`. The handles are consumed: each
 /// must name a committed buffer and must not be used again after this returns.
 pub(crate) unsafe extern "C" fn test_emit_diff(
-	_written_at_nanos: u64,
+	_written_at_nanos: i64,
 	kind: EmitDiffKind,
 	pre_handles_ptr: *const *mut ColumnBufferHandle,
 	pre_name_ptrs: *const *const u8,

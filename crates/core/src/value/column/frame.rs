@@ -210,7 +210,7 @@ mod tests {
 	use super::*;
 	use crate::value::column::{ColumnWithName, buffer::ColumnBuffer};
 
-	fn columns(time_nanos: [u64; 2]) -> Columns {
+	fn columns(time_nanos: [i64; 2]) -> Columns {
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::int4(vec![10, 20]))],
 			SystemColumns::new(

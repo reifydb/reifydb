@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use arrow_buffer::i256;
-use reifydb_value::value::datetime::DateTime;
 
 pub mod buf;
 pub mod deserializer;
@@ -210,12 +209,12 @@ pub fn decode_u64_asc(bytes: [u8; 8]) -> u64 {
 	u64::from_be_bytes(bytes)
 }
 
-pub fn encode_datetime_asc(value: DateTime) -> [u8; 8] {
-	encode_u64_asc(value.to_bits())
+pub fn encode_i64_asc(value: i64) -> [u8; 8] {
+	(value as u64 ^ 0x8000000000000000).to_be_bytes()
 }
 
-pub fn decode_datetime_asc(bytes: [u8; 8]) -> DateTime {
-	DateTime::from_bits(decode_u64_asc(bytes))
+pub fn decode_i64_asc(bytes: [u8; 8]) -> i64 {
+	(u64::from_be_bytes(bytes) ^ 0x8000000000000000) as i64
 }
 
 pub fn encode_u128_asc(value: u128) -> [u8; 16] {

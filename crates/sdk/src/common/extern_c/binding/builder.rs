@@ -371,12 +371,12 @@ impl<'a> Drop for ColumnBuilder<'a> {
 pub struct ColumnsBuilder<'a> {
 	ctx: *mut c_void,
 	callbacks: BuilderCallbacks,
-	written_at_nanos: u64,
+	written_at_nanos: i64,
 	_phantom: core::marker::PhantomData<&'a mut ()>,
 }
 
 impl<'a> ColumnsBuilder<'a> {
-	pub fn new(ctx: *mut c_void, callbacks: BuilderCallbacks, written_at_nanos: u64) -> Self {
+	pub fn new(ctx: *mut c_void, callbacks: BuilderCallbacks, written_at_nanos: i64) -> Self {
 		assert!(!ctx.is_null(), "context pointer must not be null");
 		Self {
 			ctx,

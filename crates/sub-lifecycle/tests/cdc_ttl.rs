@@ -75,7 +75,7 @@ fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
 
 /// Ttl drops whole blocks, so each entry is sealed on its own; sharing a block would keep a live entry alive past its
 /// own expiry and read as a ttl bug rather than a fixture artefact.
-fn write_cdc(storage: &CdcStore, version: u64, timestamp_nanos: u64) {
+fn write_cdc(storage: &CdcStore, version: u64, timestamp_nanos: i64) {
 	let cdc = Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(timestamp_nanos),

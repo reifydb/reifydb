@@ -181,7 +181,7 @@ impl AuthService {
 	pub(super) fn expires_at(&self) -> Result<Option<DateTime>, Error> {
 		match self.session_ttl {
 			Some(ttl) => {
-				let ttl_nanos = ttl.as_nanos()? as u64;
+				let ttl_nanos = ttl.as_nanos()?;
 				let nanos = self.clock.now().to_nanos().saturating_add(ttl_nanos);
 				Ok(Some(DateTime::from_nanos(nanos)))
 			}
@@ -218,7 +218,7 @@ impl AuthService {
 	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, Error> {
 		let expires_at = match ttl {
 			Some(ttl) => {
-				let nanos = self.clock.now().to_nanos().saturating_add(ttl.as_nanos()? as u64);
+				let nanos = self.clock.now().to_nanos().saturating_add(ttl.as_nanos()?);
 				Some(DateTime::from_nanos(nanos))
 			}
 			None => self.expires_at()?,

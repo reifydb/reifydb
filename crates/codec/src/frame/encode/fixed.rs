@@ -113,7 +113,7 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 			})
 		}
 		FrameColumnData::DateTime(c) => {
-			let raw: Vec<u64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
+			let raw: Vec<u64> = datetimes(c).iter().map(|d| d.to_nanos() as u64).collect();
 			let encoded = try_rle_u64(&raw)?;
 			Some(EncodedColumn {
 				type_code: ValueKind::DateTime.byte(),
@@ -324,8 +324,8 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			})
 		}
 		FrameColumnData::DateTime(c) => {
-			let raw: Vec<u64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
-			let encoded = try_delta_u64(&raw)?;
+			let raw: Vec<i64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
+			let encoded = try_delta_i64(&raw)?;
 			Some(EncodedColumn {
 				type_code: ValueKind::DateTime.byte(),
 				encoding: Encoding::Delta,
@@ -521,8 +521,8 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 			})
 		}
 		FrameColumnData::DateTime(c) => {
-			let raw: Vec<u64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
-			let encoded = try_delta_rle_u64(&raw)?;
+			let raw: Vec<i64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
+			let encoded = try_delta_rle_i64(&raw)?;
 			Some(EncodedColumn {
 				type_code: ValueKind::DateTime.byte(),
 				encoding: Encoding::DeltaRle,

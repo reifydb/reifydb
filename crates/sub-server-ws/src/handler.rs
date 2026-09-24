@@ -268,7 +268,8 @@ pub async fn handle_connection(
 
 #[inline]
 fn generate_connection_id(state: &AppState) -> Uuid7 {
-	let millis = state.clock().now().to_millis();
+	let millis =
+		u64::try_from(state.clock().now().to_millis()).expect("system clock is never before the Unix epoch");
 	let random_bytes = state.rng().infra_bytes_10();
 	Uuid7::from(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
 }

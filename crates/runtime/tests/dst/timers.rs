@@ -208,7 +208,7 @@ fn large_time_advance() {
 #[test]
 fn schedule_tick_uses_mock_clock() {
 	let system = test_system();
-	let timestamps = Arc::new(Mutex::new(Vec::<u64>::new()));
+	let timestamps = Arc::new(Mutex::new(Vec::<i64>::new()));
 	let handle = system.spawn_coordination(
 		"tick",
 		TickActor {

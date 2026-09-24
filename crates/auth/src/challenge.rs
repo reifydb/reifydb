@@ -50,7 +50,8 @@ impl ChallengeStore {
 		clock: &Clock,
 		rng: &Rng,
 	) -> String {
-		let millis = clock.now().to_millis();
+		let millis =
+			u64::try_from(clock.now().to_millis()).expect("system clock is never before the Unix epoch");
 		let random_bytes = rng.infra_bytes_10();
 		let challenge_id = Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid().to_string();
 		let entry = ChallengeEntry {

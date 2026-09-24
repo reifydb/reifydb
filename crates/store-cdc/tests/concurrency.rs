@@ -67,7 +67,9 @@ const MIN_ROUNDS: usize = 24;
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
-		DateTime::from_nanos(BASE_TIMESTAMP + version),
+		DateTime::from_nanos(
+			i64::try_from(BASE_TIMESTAMP + version).expect("test timestamp fits in i64 nanos"),
+		),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(version.to_be_bytes().to_vec()),
 			post: EncodedBytes(CowVec::new(version.to_be_bytes().to_vec())),

@@ -3,11 +3,15 @@
 
 use std::{result::Result as StdResult, slice};
 
-use arrow_array::{Date32Array, IntervalMonthDayNanoArray, PrimitiveArray, Time64NanosecondArray, UInt64Array};
+use arrow_array::{
+	Date32Array, IntervalMonthDayNanoArray, PrimitiveArray, Time64NanosecondArray, TimestampNanosecondArray,
+};
 use arrow_buffer::{IntervalMonthDayNano, ScalarBuffer};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time};
+
+pub const DATETIME_TIMEZONE: &str = "+00:00";
 
 pub fn dates(array: &Date32Array) -> &[Date] {
 	let values: &[i32] = array.values();
@@ -15,9 +19,9 @@ pub fn dates(array: &Date32Array) -> &[Date] {
 	unsafe { slice::from_raw_parts(values.as_ptr().cast::<Date>(), values.len()) }
 }
 
-pub fn datetimes(array: &UInt64Array) -> &[DateTime] {
-	let values: &[u64] = array.values();
-	// SAFETY: DateTime is repr(transparent) over u64 with no niche, so the cast keeps the bounds and lifetime.
+pub fn datetimes(array: &TimestampNanosecondArray) -> &[DateTime] {
+	let values: &[i64] = array.values();
+	// SAFETY: DateTime is repr(transparent) over i64 with no niche, so the cast keeps the bounds and lifetime.
 	unsafe { slice::from_raw_parts(values.as_ptr().cast::<DateTime>(), values.len()) }
 }
 
@@ -37,7 +41,7 @@ pub fn date_to_native(value: Date) -> i32 {
 	value.to_days_since_epoch()
 }
 
-pub fn datetime_to_native(value: DateTime) -> u64 {
+pub fn datetime_to_native(value: DateTime) -> i64 {
 	value.to_nanos()
 }
 
@@ -54,9 +58,9 @@ pub fn date_array(values: impl IntoIterator<Item = Date>) -> Date32Array {
 	PrimitiveArray::new(ScalarBuffer::from(natives), None)
 }
 
-pub fn datetime_array(values: impl IntoIterator<Item = DateTime>) -> UInt64Array {
-	let natives: Vec<u64> = values.into_iter().map(datetime_to_native).collect();
-	PrimitiveArray::new(ScalarBuffer::from(natives), None)
+pub fn datetime_array(values: impl IntoIterator<Item = DateTime>) -> TimestampNanosecondArray {
+	let natives: Vec<i64> = values.into_iter().map(datetime_to_native).collect();
+	PrimitiveArray::new(ScalarBuffer::from(natives), None).with_timezone(DATETIME_TIMEZONE)
 }
 
 pub fn time_array(values: impl IntoIterator<Item = Time>) -> Time64NanosecondArray {
@@ -120,11 +124,16 @@ pub fn deserialize_dates<'de, D: Deserializer<'de>>(deserializer: D) -> StdResul
 	Ok(date_array(deserialize_values::<Date, D>(deserializer)?))
 }
 
-pub fn serialize_datetimes<Ser: Serializer>(array: &UInt64Array, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
+pub fn serialize_datetimes<Ser: Serializer>(
+	array: &TimestampNanosecondArray,
+	serializer: Ser,
+) -> StdResult<Ser::Ok, Ser::Error> {
 	serialize_values(datetimes(array), serializer)
 }
 
-pub fn deserialize_datetimes<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<UInt64Array, D::Error> {
+pub fn deserialize_datetimes<'de, D: Deserializer<'de>>(
+	deserializer: D,
+) -> StdResult<TimestampNanosecondArray, D::Error> {
 	Ok(datetime_array(deserialize_values::<DateTime, D>(deserializer)?))
 }
 

@@ -519,10 +519,11 @@ fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Columns
 
 fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> u64 {
 	let now = services.runtime_context.clock.now();
-	match precision {
+	let scaled = match precision {
 		TimestampPrecision::Second => now.to_secs(),
 		TimestampPrecision::Millisecond => now.to_millis(),
 		TimestampPrecision::Microsecond => now.to_micros(),
 		TimestampPrecision::Nanosecond => now.to_nanos(),
-	}
+	};
+	u64::try_from(scaled).expect("clock is never before the Unix epoch")
 }

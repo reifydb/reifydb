@@ -36,7 +36,7 @@ use reifydb_value::{
 };
 
 const SUBJECT: OperatorId = OperatorId(1);
-const BASE_MS: u64 = 1_000_000;
+const BASE_MS: i64 = 1_000_000;
 
 // One group and one window, so every row shares a single accumulator and the only thing that can
 // grow with the row count is the per-row membership record.
@@ -69,7 +69,8 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 }
 
 fn row(number: u64) -> reifydb_core::row::Row {
-	let at = DateTime::from_epoch_millis(BASE_MS + number).expect("a row stamp is representable");
+	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
+		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), GROUP, 1, at)
 }
 
@@ -152,7 +153,7 @@ fn a_session_window_keeps_no_state_per_removed_row() {
 // (12750666829617941778) is not a durable handle: it names a position in a generated corpus, so any
 // change to the workload or its parameters points it somewhere else entirely.
 
-fn valued(number: u64, value: i64, ms: u64) -> reifydb_core::row::Row {
+fn valued(number: u64, value: i64, ms: i64) -> reifydb_core::row::Row {
 	generator::row(RowNumber(number), GROUP, value, at_millis(ms))
 }
 

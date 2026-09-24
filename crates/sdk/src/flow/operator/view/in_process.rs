@@ -245,7 +245,7 @@ impl<'a> ChangeView for InProcessChangeView<'a> {
 		self.change.version.source.0
 	}
 
-	fn changed_at_nanos(&self) -> u64 {
+	fn changed_at_nanos(&self) -> i64 {
 		self.change.changed_at.to_nanos()
 	}
 

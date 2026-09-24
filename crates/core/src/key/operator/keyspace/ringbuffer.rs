@@ -30,7 +30,7 @@ pub struct RingbufferEntryKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferExpiryKey {
-	pub expires_at: Asc<u64>,
+	pub expires_at: Asc<i64>,
 	pub row: Asc<RowNumber>,
 }
 
@@ -49,7 +49,7 @@ pub struct PartitionedRingbufferEntryKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferExpiryKey {
 	pub partition: Asc<Partition>,
-	pub expires_at: Asc<u64>,
+	pub expires_at: Asc<i64>,
 	pub row: Asc<RowNumber>,
 }
 

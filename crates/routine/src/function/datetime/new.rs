@@ -43,49 +43,55 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNew {
 		let time_data = &args[1];
 		let row_count = date_data.len();
 
-		let result_data = match (date_data, time_data) {
-			(ColumnBuffer::Date(date_container), ColumnBuffer::Time(time_container)) => {
-				let mut container = Vec::with_capacity(row_count);
+		let result_data =
+			match (date_data, time_data) {
+				(ColumnBuffer::Date(date_container), ColumnBuffer::Time(time_container)) => {
+					let mut container = Vec::with_capacity(row_count);
 
-				for i in 0..row_count {
-					match (dates(date_container).get(i), times(time_container).get(i)) {
-						(Some(date), Some(time)) => {
-							match DateTime::new(
-								date.year(),
-								date.month(),
-								date.day(),
-								time.hour(),
-								time.minute(),
-								time.second(),
-								time.nanosecond(),
-							) {
-								Some(dt) => container.push(dt),
-								None => container.push(DateTime::default()),
+					for i in 0..row_count {
+						match (dates(date_container).get(i), times(time_container).get(i)) {
+							(Some(date), Some(time)) => {
+								match DateTime::new(
+									date.year(),
+									date.month(),
+									date.day(),
+									time.hour(),
+									time.minute(),
+									time.second(),
+									time.nanosecond(),
+								) {
+									Some(dt) => container.push(dt),
+									None => {
+										return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.fragment.clone(),
+										reason: "datetime out of range".to_string(),
+									});
+									}
+								}
 							}
+							_ => container.push(DateTime::default()),
 						}
-						_ => container.push(DateTime::default()),
 					}
-				}
 
-				ColumnBuffer::DateTime(datetime_array(container))
-			}
-			(ColumnBuffer::Date(_), other) => {
-				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.fragment.clone(),
-					argument_index: 1,
-					expected: vec![ValueType::Time],
-					actual: other.get_type(),
-				});
-			}
-			(other, _) => {
-				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.fragment.clone(),
-					argument_index: 0,
-					expected: vec![ValueType::Date],
-					actual: other.get_type(),
-				});
-			}
-		};
+					ColumnBuffer::DateTime(datetime_array(container))
+				}
+				(ColumnBuffer::Date(_), other) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 1,
+						expected: vec![ValueType::Time],
+						actual: other.get_type(),
+					});
+				}
+				(other, _) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 0,
+						expected: vec![ValueType::Date],
+						actual: other.get_type(),
+					});
+				}
+			};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}

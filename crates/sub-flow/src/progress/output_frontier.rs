@@ -29,7 +29,7 @@ fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
 	}
 	Some(FrontierEntry {
 		output: object,
-		frontier: DateTime::from_millis(u64::from_be_bytes(bytes[..8].try_into().ok()?)),
+		frontier: DateTime::from_millis(i64::from_be_bytes(bytes[..8].try_into().ok()?)),
 		at: CommitVersion(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
 	})
 }

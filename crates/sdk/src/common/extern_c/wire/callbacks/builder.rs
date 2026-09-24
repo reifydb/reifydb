@@ -39,7 +39,7 @@ pub struct BuilderCallbacks {
 	pub release: unsafe extern "C" fn(handle: *mut ColumnBufferHandle),
 
 	pub emit_diff: unsafe extern "C" fn(
-		written_at_nanos: u64,
+		written_at_nanos: i64,
 		kind: EmitDiffKind,
 		pre_handles_ptr: *const *mut ColumnBufferHandle,
 		pre_name_ptrs: *const *const u8,

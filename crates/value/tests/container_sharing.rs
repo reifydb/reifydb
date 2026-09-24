@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use arrow_array::{
 	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, GenericByteArray, IntervalMonthDayNanoArray,
-	LargeBinaryArray, LargeStringArray, Time64NanosecondArray, UInt64Array, types::ByteArrayType,
+	LargeBinaryArray, LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, types::ByteArrayType,
 };
 use arrow_buffer::{BooleanBuffer, i256};
 use postcard::{from_bytes, to_allocvec};
@@ -371,9 +371,9 @@ array_suite!(
 );
 array_suite!(
 	datetime,
-	UInt64Array,
+	TimestampNanosecondArray,
 	DateTime,
-	|i| DateTime::from_nanos(i as u64 * 1_000_000_007 + 7),
+	|i| DateTime::from_nanos(i as i64 * 1_000_000_007 + 7),
 	temporal_array::datetime_array,
 	temporal_array::datetimes,
 	primitive,

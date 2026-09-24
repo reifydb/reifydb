@@ -47,11 +47,15 @@ fn unit() -> ByteSize {
 	ByteSize::from_bytes(unit_bytes() as u64)
 }
 
+fn expected_nanos(version: u64) -> i64 {
+	i64::try_from(TIMESTAMP_BASE + version).expect("test timestamp fits in i64 nanos")
+}
+
 fn record(version: u64, units: usize) -> Cdc {
 	let payload = units * unit_bytes() - size_of::<Cdc>() - KEY_LEN;
 	Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
-		DateTime::from_nanos(TIMESTAMP_BASE + version),
+		DateTime::from_nanos(expected_nanos(version)),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![b'k'; KEY_LEN]),
 			post: EncodedBytes(CowVec::new(vec![0xab; payload])),
@@ -315,7 +319,7 @@ mod cases {
 			assert_eq!(cdc.version.commit, CommitVersion(version));
 			assert_eq!(
 				cdc.timestamp.to_nanos(),
-				TIMESTAMP_BASE + version,
+				expected_nanos(version),
 				"a record must keep its own payload"
 			);
 			assert_eq!(cdc.changes.len(), 1);

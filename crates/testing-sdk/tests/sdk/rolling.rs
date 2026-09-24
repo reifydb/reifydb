@@ -165,7 +165,7 @@ fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(window_start), Value::float8(value)])
 		.with_fields(input_fields())
-		.with_time(DateTime::from_millis(window_start))
+		.with_time(DateTime::from_millis(window_start as i64))
 		.build()
 }
 

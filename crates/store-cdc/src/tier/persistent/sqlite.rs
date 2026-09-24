@@ -546,8 +546,8 @@ fn summary_from_row(row: SummaryRow) -> Result<BlockSummary> {
 		id: BlockId(max_version),
 		min_version: bytes_to_version(&min_bytes)?,
 		max_version,
-		min_timestamp: DateTime::from_nanos(min_timestamp as u64),
-		max_timestamp: DateTime::from_nanos(max_timestamp as u64),
+		min_timestamp: DateTime::from_nanos(min_timestamp),
+		max_timestamp: DateTime::from_nanos(max_timestamp),
 		count: Count::new(count as u64),
 		stored_bytes: ByteSize::from_bytes(stored_bytes as u64),
 	})
@@ -571,7 +571,7 @@ fn summarize_timestamps(entries: &[Arc<Cdc>]) -> (i64, i64) {
 }
 
 fn datetime_to_nanos(value: &DateTime) -> i64 {
-	value.to_nanos() as i64
+	value.to_nanos()
 }
 
 fn version_to_bytes(version: CommitVersion) -> [u8; 8] {
@@ -609,19 +609,20 @@ mod tests {
 
 	fn block(version: u64) -> Block {
 		let commit = CommitVersion(version);
+		let nanos = i64::try_from(version).expect("test block version fits in i64 nanos");
 		Block {
 			summary: BlockSummary {
 				id: BlockId(commit),
 				min_version: commit,
 				max_version: commit,
-				min_timestamp: DateTime::from_nanos(version),
-				max_timestamp: DateTime::from_nanos(version),
+				min_timestamp: DateTime::from_nanos(nanos),
+				max_timestamp: DateTime::from_nanos(nanos),
 				count: Count::new(1),
 				stored_bytes: ByteSize::ZERO,
 			},
 			entries: vec![Arc::new(Cdc::new(
 				ChangeVersion::from(commit),
-				DateTime::from_nanos(version),
+				DateTime::from_nanos(nanos),
 				vec![],
 			))],
 		}

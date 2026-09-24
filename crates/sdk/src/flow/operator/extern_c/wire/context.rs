@@ -9,7 +9,7 @@ use crate::flow::operator::extern_c::wire::callbacks::OperatorCallbacks;
 pub struct ExternCContextRaw {
 	pub txn_ptr: *mut c_void,
 
-	pub written_at_nanos: u64,
+	pub written_at_nanos: i64,
 
 	pub operator_id: u64,
 

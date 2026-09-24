@@ -394,7 +394,7 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind
 		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			due.to_bits(),
+			due.to_order(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),
@@ -500,7 +500,7 @@ pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime
 		}
 	}
 
-	Ok((present != 0).then(|| DateTime::from_bits(bits)))
+	Ok((present != 0).then(|| DateTime::from_order(bits)))
 }
 
 pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -512,7 +512,7 @@ pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerK
 		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			due.to_bits(),
+			due.to_order(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),

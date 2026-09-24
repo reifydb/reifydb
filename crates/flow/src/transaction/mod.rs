@@ -122,7 +122,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn set_flow_watermark(&mut self, watermark: DateTime);
 
-	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64>;
+	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, i64>;
 
 	fn row_shape_cache(&mut self, operator: OperatorId) -> &mut HashMap<EncodedKey, RowShape>;
 

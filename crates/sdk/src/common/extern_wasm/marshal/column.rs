@@ -60,7 +60,7 @@ impl Arena {
 		};
 
 		let time_ptr = if !columns.time().is_empty() {
-			columns.time().as_ptr() as *const u64
+			columns.time().as_ptr() as *const i64
 		} else {
 			ptr::null()
 		};
@@ -549,12 +549,12 @@ mod tests {
 
 	#[test]
 	fn datetime_column_marshal_borrow_roundtrip() {
-		// The marshal is zero-copy raw u64 nanos, so a reader using a seconds constructor would rescale every
+		// The marshal is zero-copy raw i64 nanos, so a reader using a seconds constructor would rescale every
 		// value.
 		let values = vec![
 			DateTime::from_nanos(0),
 			DateTime::from_nanos(1_700_000_000_000_000_000),
-			DateTime::from_nanos(u64::MAX),
+			DateTime::from_nanos(i64::MAX),
 		];
 		let got = read_back(ColumnBuffer::DateTime(datetime_array(values.clone())), |column, row| {
 			column.datetime_at(row)

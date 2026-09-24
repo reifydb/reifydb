@@ -113,7 +113,7 @@ impl KeyColumn {
 			KeyColumn::Partition => u("U128", format!("self.{field}.0")),
 			KeyColumn::ProcedureId => u("U64", format!("*self.{field}")),
 			KeyColumn::EpochSeconds => u("U64", format!("self.{field}.seconds()")),
-			KeyColumn::DateTime => u("U64", format!("self.{field}.to_nanos()")),
+			KeyColumn::DateTime => u("U64", format!("self.{field}.to_order()")),
 			KeyColumn::RowShapeFingerprint | KeyColumn::IndexId => {
 				u("U64", format!("self.{field}.as_u64()"))
 			}

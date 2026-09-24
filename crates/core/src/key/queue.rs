@@ -625,7 +625,7 @@ mod queue_partition_key_tests {
 		// Epoch is the due time of every immediately-ready item, and a far-future value is
 		// what a long not_before produces; both ends must survive the varint encoding or the
 		// due index would resolve to the wrong instant.
-		for nanos in [0u64, 1, 4_102_444_800_000_000_000, u64::MAX] {
+		for nanos in [0i64, 1, 4_102_444_800_000_000_000, i64::MAX] {
 			let due = DateTime::from_nanos(nanos);
 			let encoded = QueueDueKey::encoded(QueueId(1), 2, due, RowNumber(9));
 			let decoded = QueueDueKey::decode(&encoded).unwrap();
@@ -798,6 +798,26 @@ mod queue_partition_key_tests {
 		assert_eq!(
 			legacy.to_encoded_key().as_slice(),
 			QueueKeyActiveKey::encoded(queue, partition, key_hash, row).as_slice()
+		);
+	}
+
+	#[test]
+	fn queue_due_key_derive_matches_extend_datetime_before_the_epoch() {
+		// a derive that diverges from extend_datetime for negative nanos would sort due timers differently
+		let queue = QueueId(7);
+		let partition = 3u16;
+		let row = RowNumber(42);
+		let due = DateTime::from_nanos(-1);
+
+		let mut legacy = KeySerializer::with_capacity(27);
+		legacy.extend_u8(KeyTag::QueueDue as u8)
+			.extend_u64(queue)
+			.extend_u16(partition)
+			.extend_datetime(&due)
+			.extend_u64(row.0);
+		assert_eq!(
+			legacy.to_encoded_key().as_slice(),
+			QueueDueKey::encoded(queue, partition, due, row).as_slice()
 		);
 	}
 }

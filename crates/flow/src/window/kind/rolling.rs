@@ -95,20 +95,18 @@ mod tests {
 	}
 
 	#[test]
-	fn a_ledger_younger_than_the_span_evicts_nothing_rather_than_clamping_to_the_epoch() {
-		// At startup the ledger sits near the epoch while the span is minutes. Underflowing yields a
-		// cutoff near the maximum instant and evicts everything; clamping to the epoch is wrong too,
-		// since eviction is inclusive and a row at the epoch could then never be retained.
+	fn a_ledger_younger_than_the_span_yields_a_real_pre_epoch_cutoff() {
+		// Wrapping through u64 here would put the cutoff near the maximum instant and evict everything.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at_millis(0)), None);
-		assert_eq!(rolling.eviction_cutoff(at_millis(1_000)), None);
+		assert_eq!(rolling.eviction_cutoff(at_millis(0)), Some(at_millis(-5_000)));
+		assert_eq!(rolling.eviction_cutoff(at_millis(1_000)), Some(at_millis(-4_000)));
 		assert_eq!(
 			rolling.eviction_cutoff(at_millis(5_000)),
 			Some(at_millis(0)),
-			"a span that has exactly elapsed yields a real cutoff, not another None"
+			"a span that has exactly elapsed yields a cutoff at the epoch"
 		);
-		assert_eq!(rolling.seal_horizon(at_millis(1_000), ms(200)), at_millis(0));
+		assert_eq!(rolling.seal_horizon(at_millis(1_000), ms(200)), at_millis(-4_200));
 	}
 
 	#[test]

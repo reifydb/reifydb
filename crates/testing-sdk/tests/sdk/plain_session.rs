@@ -28,7 +28,7 @@ fn session(gap: u64, lateness: Option<u64>) -> ApplyWith {
 }
 
 fn at(ms: u64) -> u64 {
-	DateTime::from_millis(ms).to_order()
+	DateTime::from_millis(ms as i64).to_order()
 }
 
 #[test]

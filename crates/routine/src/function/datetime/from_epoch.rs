@@ -80,15 +80,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpoch {
 
 		for i in 0..row_count {
 			if let Some(ts) = read_i64(&ctx.fragment, data, i)? {
-				if ts < 0 {
-					return Err(RoutineError::FunctionExecutionFailed {
-						function: ctx.fragment.clone(),
-						reason: format!(
-							"datetime::from_epoch does not support negative timestamps: {}",
-							ts
-						),
-					});
-				}
 				container.push(DateTime::from_epoch_secs(ts)?);
 			} else {
 				container.push(DateTime::default());

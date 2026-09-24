@@ -35,7 +35,7 @@ impl<'a> Routine<FunctionContext<'a>> for Now {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
-		let millis = ctx.runtime_context.clock.now().to_millis() as i64;
+		let millis = ctx.runtime_context.clock.now().to_millis();
 		let row_count = ctx.row_count.max(1);
 		let data = vec![millis; row_count];
 		let bitvec = vec![true; row_count];

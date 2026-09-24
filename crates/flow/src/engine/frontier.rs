@@ -153,14 +153,14 @@ mod tests {
 
 	type WatermarkAdvances = Vec<WatermarkAdvance>;
 
-	fn advance(source: u64, at: u64) -> WatermarkAdvance {
+	fn advance(source: u64, at: i64) -> WatermarkAdvance {
 		WatermarkAdvance {
 			source: OperatorId(source),
 			at: at_millis(at),
 		}
 	}
 
-	fn hold(view: u64, frontier: u64) -> WatermarkHold {
+	fn hold(view: u64, frontier: i64) -> WatermarkHold {
 		WatermarkHold {
 			object: ObjectId::View(ViewId(view)),
 			frontier: at_millis(frontier),
@@ -555,8 +555,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_horizon_deeper_than_the_watermark_floors_at_the_epoch_and_claims_nothing() {
-		// Subtracting past the epoch must saturate; wrapping would mark every unwritten bucket sealed.
+	fn a_seal_horizon_deeper_than_the_watermark_holds_a_real_pre_epoch_frontier() {
+		// A cutoff before 1970 is a real instant now, not a clamp, so the sink is held there.
 		let held = Harness::new()
 			.node(source(1))
 			.node(stage(2))
@@ -567,7 +567,7 @@ mod tests {
 			.registered_sink(3, FLOW)
 			.holds(vec![advance(1, 3_000)]);
 
-		assert!(held.is_empty());
+		assert_eq!(held, vec![hold(3, -2_000)]);
 	}
 
 	#[test]

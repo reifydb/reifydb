@@ -99,7 +99,7 @@ mod tests {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		DateTime::from_millis(millis).to_order()
 	}
 
@@ -141,12 +141,17 @@ mod tests {
 	}
 
 	#[test]
-	fn the_earliest_instants_do_not_produce_windows_that_start_before_zero() {
-		// The low bound saturates because an instant inside the first window would otherwise
-		// underflow to near u64::MAX and iterate a range the size of the address space. The epoch is
-		// a real coordinate here: unstamped rows sit at exactly DateTime::default().
-		assert_eq!(timed().anchors(event_coord_at_millis(0)), vec![order(0)]);
-		assert_eq!(timed().anchors(event_coord_at_millis(250)), vec![order(0), order(250)]);
+	fn the_earliest_instants_produce_windows_that_start_before_the_epoch() {
+		// Wrapping through u64 here would underflow to near u64::MAX and iterate a range the size of the
+		// address space.
+		assert_eq!(
+			timed().anchors(event_coord_at_millis(0)),
+			vec![order(-750), order(-500), order(-250), order(0)]
+		);
+		assert_eq!(
+			timed().anchors(event_coord_at_millis(250)),
+			vec![order(-500), order(-250), order(0), order(250)]
+		);
 	}
 
 	#[test]

@@ -67,11 +67,15 @@ fn changes_total(versions: impl IntoIterator<Item = u64>) -> u64 {
 	versions.into_iter().map(|v| changes_for(v) as u64).sum()
 }
 
+fn expected_nanos(version: u64) -> i64 {
+	i64::try_from(TIMESTAMP + version).expect("test timestamp fits in i64 nanos")
+}
+
 fn cdc_at(version: u64) -> Cdc {
 	// every field derives from the version, so a store that returns a neighbouring record must fail on content
 	Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
-		DateTime::from_nanos(TIMESTAMP + version),
+		DateTime::from_nanos(expected_nanos(version)),
 		(0..changes_for(version))
 			.map(|i| CdcChange::Insert {
 				key: EncodedKey::new(KEY.to_vec()),
@@ -98,7 +102,7 @@ fn seal_each(store: &CdcStore, versions: impl IntoIterator<Item = u64>) {
 fn assert_record(store: &CdcStore, version: u64) {
 	let cdc = store.read(CommitVersion(version)).unwrap().unwrap_or_else(|| panic!("v{version} must survive"));
 	assert_eq!(cdc.version.commit, CommitVersion(version));
-	assert_eq!(cdc.timestamp.to_nanos(), TIMESTAMP + version, "v{version} lost its timestamp");
+	assert_eq!(cdc.timestamp.to_nanos(), expected_nanos(version), "v{version} lost its timestamp");
 	assert_eq!(cdc.changes.len(), changes_for(version), "v{version} lost changes");
 	for (i, change) in cdc.changes.iter().enumerate() {
 		assert_eq!(change.value_bytes(), POST_BYTES as usize, "v{version} change {i} lost its payload");

@@ -67,7 +67,9 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			substrate: self.substrate.clone(),
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(self.version)),
+			at: Some(DateTime::from_millis(
+				i64::try_from(self.version).expect("test change coordinate fits in i64 millis"),
+			)),
 		});
 		txn
 	}

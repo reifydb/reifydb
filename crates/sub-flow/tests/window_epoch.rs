@@ -48,7 +48,15 @@ fn a_sliding_window_publishes_a_row_coordinated_at_the_epoch() {
 	let db = setup(r#"window sliding { total: math::sum(v) } with { duration: 2s, slide: 1s, lateness: 0s }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	insert(&db, 1, 7.0, "1970-01-01T00:00:10Z");
-	await_total(&db, 10.0, "sliding");
+	// A row at the epoch falls in two overlapping windows, so both must reach the view.
+	let rql = "FROM app::r | filter { total == 10.0 }";
+	let got = db.await_row_count(rql, 2, TIMEOUT);
+	assert_eq!(
+		got,
+		2,
+		"sliding: a row at the epoch belongs to two overlapping windows, both must reach the view; view now: {:?}",
+		db.query_as_root("FROM app::r", ())
+	);
 }
 
 #[test]

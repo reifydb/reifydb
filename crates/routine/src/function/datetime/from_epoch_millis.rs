@@ -80,16 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 
 		for i in 0..row_count {
 			if let Some(millis) = read_i64(&ctx.fragment, data, i)? {
-				if millis < 0 {
-					return Err(RoutineError::FunctionExecutionFailed {
-						function: ctx.fragment.clone(),
-						reason: format!(
-							"datetime::from_epoch_millis does not support negative timestamps: {}",
-							millis
-						),
-					});
-				}
-				container.push(DateTime::from_epoch_millis(millis as u64)?);
+				container.push(DateTime::from_epoch_millis(millis)?);
 			} else {
 				container.push(DateTime::default());
 			}

@@ -473,7 +473,7 @@ mod archived_projection_tests {
 		// Adjacent representable instants must keep distinct order keys, or a live group is swept with a dead
 		// one.
 		let next_instant = GroupMeta {
-			high_water: Some(DateTime::from_bits(instant.to_bits() + 1)),
+			high_water: Some(DateTime::from_order(instant.to_order() + 1)),
 		};
 		assert!(via_storage(&next_instant) > via_storage(&datetime_meta));
 	}

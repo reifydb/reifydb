@@ -52,7 +52,7 @@ pub trait DiffView {
 
 pub trait ChangeView {
 	fn version(&self) -> u64;
-	fn changed_at_nanos(&self) -> u64;
+	fn changed_at_nanos(&self) -> i64;
 	fn diff_count(&self) -> usize;
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_>;
 }

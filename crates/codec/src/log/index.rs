@@ -47,8 +47,8 @@ impl Header {
 		if found != checksum_bytes(&buf[8..]) {
 			return None;
 		}
-		let min = DateTime::from_bits(u64::from_le_bytes(buf[24..32].try_into().unwrap()));
-		let max = DateTime::from_bits(u64::from_le_bytes(buf[32..40].try_into().unwrap()));
+		let min = DateTime::from_order(u64::from_le_bytes(buf[24..32].try_into().unwrap()));
+		let max = DateTime::from_order(u64::from_le_bytes(buf[32..40].try_into().unwrap()));
 		Some(Self {
 			magic,
 			base_version: LogVersion::new(u64::from_le_bytes(buf[8..16].try_into().unwrap())),
@@ -63,14 +63,14 @@ impl Header {
 	pub fn encode(&self) -> [u8; HEADER_BYTES] {
 		let (min, max) = match self.timestamps {
 			Some(range) => (range.min, range.max),
-			None => (DateTime::MAX, DateTime::EPOCH),
+			None => (DateTime::MAX, DateTime::MIN),
 		};
 		let mut out = [0u8; HEADER_BYTES];
 		out[0..4].copy_from_slice(&self.magic.to_le_bytes());
 		out[8..16].copy_from_slice(&self.base_version.as_u64().to_le_bytes());
 		out[16..24].copy_from_slice(&self.base_index.as_u64().to_le_bytes());
-		out[24..32].copy_from_slice(&min.to_bits().to_le_bytes());
-		out[32..40].copy_from_slice(&max.to_bits().to_le_bytes());
+		out[24..32].copy_from_slice(&min.to_order().to_le_bytes());
+		out[32..40].copy_from_slice(&max.to_order().to_le_bytes());
 		let checksum = checksum_bytes(&out[8..]);
 		out[4..8].copy_from_slice(&checksum.to_le_bytes());
 		out

@@ -46,7 +46,8 @@ impl Deref for TransactionId {
 
 impl TransactionId {
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
-		let millis = clock.now().to_millis();
+		let millis =
+			u64::try_from(clock.now().to_millis()).expect("system clock is never before the Unix epoch");
 		let random_bytes = rng.infra_bytes_10();
 		Self(Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid()))
 	}

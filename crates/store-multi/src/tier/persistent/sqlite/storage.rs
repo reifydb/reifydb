@@ -508,9 +508,9 @@ impl SqlitePersistentStorage {
 				))));
 			}
 		};
-		let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_nanos() as i64)];
+		let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_nanos())];
 		if let Some((at, key)) = cursor {
-			params.push(Box::new(at.to_nanos() as i64));
+			params.push(Box::new(at.to_nanos()));
 			match table_sql.schema {
 				SqliteSchema::Blob => params.push(Box::new(key.to_vec())),
 				_ => {
@@ -532,7 +532,7 @@ impl SqlitePersistentStorage {
 		let rows = match stmt.query_map(params_from_iter(flat), |row| {
 			let returned = read_returned_key(table_sql.schema, row)?;
 			let nanos: i64 = row.get(key_columns)?;
-			Ok((returned, DateTime::from_nanos(nanos as u64)))
+			Ok((returned, DateTime::from_nanos(nanos)))
 		}) {
 			Ok(rows) => rows,
 			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
@@ -595,9 +595,7 @@ impl SqlitePersistentStorage {
 				push_key_params(table_sql.schema, key.as_slice(), &mut boxed)?;
 				boxed.push(Box::new(new_version_bytes.to_vec()));
 				boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
-				boxed.push(Box::new(
-					expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64),
-				));
+				boxed.push(Box::new(expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos())));
 			}
 			let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
 			let returned = chunk_stmt
@@ -622,7 +620,7 @@ impl SqlitePersistentStorage {
 			push_key_params(table_sql.schema, key.as_slice(), &mut boxed)?;
 			boxed.push(Box::new(new_version_bytes.to_vec()));
 			boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
-			boxed.push(Box::new(expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64)));
+			boxed.push(Box::new(expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos())));
 			let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
 			let affected = single_stmt
 				.execute(params_from_iter(flat))
@@ -2400,11 +2398,11 @@ mod tests {
 		CowVec::new(bytes)
 	}
 
-	fn at(nanos: u64) -> DateTime {
+	fn at(nanos: i64) -> DateTime {
 		DateTime::from_nanos(nanos)
 	}
 
-	fn expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: u64) -> Vec<u64> {
+	fn expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: i64) -> Vec<u64> {
 		s.expired_keys(kind, at(cutoff), None, 100)
 			.unwrap()
 			.into_iter()
@@ -2412,7 +2410,7 @@ mod tests {
 			.collect()
 	}
 
-	fn partitioned_expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: u64) -> Vec<u64> {
+	fn partitioned_expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: i64) -> Vec<u64> {
 		s.expired_keys(kind, at(cutoff), None, 100)
 			.unwrap()
 			.into_iter()

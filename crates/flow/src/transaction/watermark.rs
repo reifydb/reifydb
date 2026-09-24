@@ -13,7 +13,7 @@ use crate::transaction::{
 	state::{StateExtension, decode_payload, encode_payload},
 };
 
-const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;
+const IMPLAUSIBLE_JUMP_MS: i64 = 3_600_000;
 
 pub fn source_watermark_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::SOURCE_WATERMARK, vec![])
@@ -57,8 +57,8 @@ impl SourceWatermarks {
 				 to wire the flow's source list"
 			);
 		}
-		let mut merged: Option<u64> = None;
-		let mut per_source: Vec<(OperatorId, u64)> = Vec::with_capacity(sources.len());
+		let mut merged: Option<i64> = None;
+		let mut per_source: Vec<(OperatorId, i64)> = Vec::with_capacity(sources.len());
 		for source in sources {
 			let value = raw(*source, txn)?;
 			per_source.push((*source, value));
@@ -85,13 +85,13 @@ impl SourceWatermarks {
 	}
 }
 
-fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
+fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<i64> {
 	if let Some(cached) = txn.source_watermark_cache().get(&source).copied() {
 		return Ok(cached);
 	}
 	let key = source_watermark_key();
 	let (value, pre) = match txn.state_get(source, &key)? {
-		Some(row) => (decode_payload::<u64>(&row)?, Some(row.byte_size())),
+		Some(row) => (decode_payload::<i64>(&row)?, Some(row.byte_size())),
 		None => (0, None),
 	};
 	txn.state_classify(source, &key, pre);

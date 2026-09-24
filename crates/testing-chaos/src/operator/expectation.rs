@@ -264,7 +264,7 @@ mod tests {
 		);
 	}
 
-	fn windowed(rows: &[(u64, i32, i32, u64)]) -> MaterializedView {
+	fn windowed(rows: &[(u64, i32, i32, i64)]) -> MaterializedView {
 		// (row number, g, total, window start). The row number is what the view folds on; the window
 		// start rides the event position, exactly as a window operator emits it.
 		let mut v = MaterializedView::empty();

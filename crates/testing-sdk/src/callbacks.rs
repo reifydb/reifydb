@@ -498,7 +498,7 @@ extern "C" fn test_arm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.arm_timer(ArmedTimer {
-			due: DateTime::from_bits(due_bits),
+			due: DateTime::from_order(due_bits),
 			kind,
 			key,
 		});
@@ -534,7 +534,7 @@ extern "C" fn test_disarm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.disarm_timer(&ArmedTimer {
-			due: DateTime::from_bits(due_bits),
+			due: DateTime::from_order(due_bits),
 			kind,
 			key,
 		});
@@ -659,7 +659,7 @@ extern "C" fn test_flow_watermark(
 		let test_ctx = get_test_context(ctx);
 		match test_ctx.flow_watermark() {
 			Some(watermark) => {
-				*bits_out = watermark.to_bits();
+				*bits_out = watermark.to_order();
 				*present_out = 1;
 			}
 			None => {

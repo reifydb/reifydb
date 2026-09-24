@@ -4,7 +4,8 @@
 use arrow_array::{
 	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
 	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
-	LargeStringArray, Time64NanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+	LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array,
+	UInt64Array,
 };
 use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
@@ -73,7 +74,7 @@ pub enum FrameColumnData {
 	Date(#[serde(serialize_with = "serialize_dates", deserialize_with = "deserialize_dates")] Date32Array),
 	DateTime(
 		#[serde(serialize_with = "serialize_datetimes", deserialize_with = "deserialize_datetimes")]
-		UInt64Array,
+		TimestampNanosecondArray,
 	),
 	Time(
 		#[serde(serialize_with = "serialize_times", deserialize_with = "deserialize_times")]

@@ -10,7 +10,7 @@ use reifydb_value::factory::time::at_millis;
 
 const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
 
-fn entry(frontier: u64, at: u64) -> FrontierEntry {
+fn entry(frontier: i64, at: u64) -> FrontierEntry {
 	FrontierEntry {
 		output: OUTPUT,
 		frontier: at_millis(frontier),

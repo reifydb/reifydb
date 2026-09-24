@@ -192,7 +192,9 @@ mod tests {
 			LogVersion::new(BASE.as_u64() + offset),
 			LogIndex::new(offset + 1),
 			Term::new(1),
-			DateTime::from_bits(1000 + offset),
+			DateTime::from_nanos(
+				i64::try_from(1000 + offset).expect("test record timestamp fits in i64 nanos"),
+			),
 			RecordKind::new(0),
 			vec![0x10u8.wrapping_add(offset as u8); 40],
 		)

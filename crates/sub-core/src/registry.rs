@@ -57,17 +57,17 @@ struct SubscriptionState<S: WireSink> {
 }
 
 struct FlushGate {
-	throttle_millis: u64,
-	linger_millis: u64,
-	first_pending_at: Option<u64>,
-	last_sent_at: Option<u64>,
+	throttle_millis: i64,
+	linger_millis: i64,
+	first_pending_at: Option<i64>,
+	last_sent_at: Option<i64>,
 }
 
 impl FlushGate {
 	fn new(throttle: Duration, linger: Duration) -> Self {
 		Self {
-			throttle_millis: throttle.to_std().as_millis() as u64,
-			linger_millis: linger.to_std().as_millis() as u64,
+			throttle_millis: throttle.to_std().as_millis() as i64,
+			linger_millis: linger.to_std().as_millis() as i64,
 			first_pending_at: None,
 			last_sent_at: None,
 		}
@@ -77,33 +77,33 @@ impl FlushGate {
 		self.throttle_millis != 0 || self.linger_millis != 0
 	}
 
-	fn on_pending(&mut self, now: u64) {
+	fn on_pending(&mut self, now: i64) {
 		if self.first_pending_at.is_none() {
 			self.first_pending_at = Some(now);
 		}
 	}
 
-	fn throttle_ok(&self, now: u64) -> bool {
+	fn throttle_ok(&self, now: i64) -> bool {
 		match self.last_sent_at {
 			None => true,
 			Some(prev) => now.saturating_sub(prev) >= self.throttle_millis,
 		}
 	}
 
-	fn linger_ok(&self, now: u64) -> bool {
+	fn linger_ok(&self, now: i64) -> bool {
 		match self.first_pending_at {
 			None => false,
 			Some(first) => now.saturating_sub(first) >= self.linger_millis,
 		}
 	}
 
-	fn ready(&self, now: u64) -> bool {
+	fn ready(&self, now: i64) -> bool {
 		self.linger_ok(now) && self.throttle_ok(now)
 	}
 
-	fn remaining_millis(&self, now: u64) -> u64 {
+	fn remaining_millis(&self, now: i64) -> i64 {
 		let linger_left = match self.first_pending_at {
-			None => u64::MAX,
+			None => i64::MAX,
 			Some(first) => self.linger_millis.saturating_sub(now.saturating_sub(first)),
 		};
 		let throttle_left = match self.last_sent_at {
@@ -113,7 +113,7 @@ impl FlushGate {
 		linger_left.max(throttle_left)
 	}
 
-	fn on_flush(&mut self, now: u64) {
+	fn on_flush(&mut self, now: i64) {
 		self.first_pending_at = None;
 		self.last_sent_at = Some(now);
 	}
@@ -178,16 +178,16 @@ impl SubscriptionPending {
 		}
 	}
 
-	fn push(&mut self, frame: Frame, now: u64) {
+	fn push(&mut self, frame: Frame, now: i64) {
 		self.gate.on_pending(now);
 		self.frames.push(frame);
 	}
 
-	fn ready(&self, now: u64) -> bool {
+	fn ready(&self, now: i64) -> bool {
 		!self.frames.is_empty() && self.gate.ready(now)
 	}
 
-	fn remaining_millis(&self, now: u64) -> u64 {
+	fn remaining_millis(&self, now: i64) -> i64 {
 		self.gate.remaining_millis(now)
 	}
 }
@@ -361,7 +361,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				if throttle_millis != 0 {
 					throttles.insert(
 						*subscription_id,
-						Duration::from_milliseconds(throttle_millis as i64).unwrap(),
+						Duration::from_milliseconds(throttle_millis).unwrap(),
 					);
 				}
 			}
@@ -647,7 +647,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		columns: Columns,
 		format: S::Format,
 		sink: S,
-		now: u64,
+		now: i64,
 	) -> DeliveryResult {
 		match sink.send_change(*subscription_id, op, columns, format) {
 			DeliveryResult::Delivered => {
@@ -672,7 +672,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn flush_ready_throttled(&self, now: u64, next_deadline: &mut Option<u64>) {
+	fn flush_ready_throttled(&self, now: i64, next_deadline: &mut Option<i64>) {
 		if self.throttle_pending.load(Ordering::Acquire) == 0 {
 			return;
 		}
@@ -727,7 +727,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn flush_due_batches(&self, now: u64, next_deadline: &mut Option<u64>) {
+	fn flush_due_batches(&self, now: i64, next_deadline: &mut Option<i64>) {
 		let mut dead_batches: Vec<BatchId> = Vec::new();
 		for entry in self.batches.iter() {
 			let batch_id = *entry.key();
@@ -827,16 +827,16 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 	#[instrument(name = "server::flush", level = "debug", skip_all)]
 	fn flush(&self) -> Option<Duration> {
 		let now = self.clock.now().to_millis();
-		let mut next_deadline: Option<u64> = None;
+		let mut next_deadline: Option<i64> = None;
 
 		self.flush_ready_throttled(now, &mut next_deadline);
 
 		if self.batches.is_empty() {
-			return next_deadline.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+			return next_deadline.map(|ms| Duration::from_milliseconds(ms).unwrap());
 		}
 
 		self.flush_due_batches(now, &mut next_deadline);
 
-		next_deadline.map(|ms| Duration::from_milliseconds(ms as i64).unwrap())
+		next_deadline.map(|ms| Duration::from_milliseconds(ms).unwrap())
 	}
 }

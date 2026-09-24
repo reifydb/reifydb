@@ -51,8 +51,8 @@ impl KeyColumn {
 			KeyColumn::EpochSeconds => "vec![EpochSeconds::new(0), EpochSeconds::new(1), \
 				EpochSeconds::new(u64::MAX - 1), EpochSeconds::new(u64::MAX)]"
 				.to_string(),
-			KeyColumn::DateTime => "vec![DateTime::from_nanos(0), DateTime::from_nanos(1), \
-				DateTime::from_nanos(u64::MAX - 1), DateTime::from_nanos(u64::MAX)]"
+			KeyColumn::DateTime => "vec![DateTime::MIN, DateTime::from_nanos(-1), DateTime::EPOCH, \
+				DateTime::from_nanos(1), DateTime::MAX]"
 				.to_string(),
 			KeyColumn::RowShapeFingerprint => {
 				"vec![RowShapeFingerprint::new(0), RowShapeFingerprint::new(1), \

@@ -218,7 +218,7 @@ fn input_row(rn: u64, group: &str, ts: u64, trader: u64, volume: f64) -> CoreRow
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(trader), Value::float8(volume)])
 		.with_fields(input_fields())
-		.with_time(DateTime::from_millis(ts))
+		.with_time(DateTime::from_millis(ts as i64))
 		.build()
 }
 

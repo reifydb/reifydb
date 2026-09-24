@@ -826,7 +826,7 @@ impl ExternCOperator for OpDateTime {
 		let values = [
 			DateTime::from_nanos(0),
 			DateTime::from_nanos(1_700_000_000_000_000_000),
-			DateTime::from_nanos(u64::MAX),
+			DateTime::from_nanos(i64::MAX),
 		];
 		let mut batch = InsertBatch::<DateTimeRow, _>::new(ctx, values.len())?;
 		for (i, &v) in values.iter().enumerate() {
@@ -849,7 +849,7 @@ fn scalar_datetime_roundtrip() {
 	assert_eq!(post.row_count(), 3);
 	assert_eq!(post.row_ref(0).expect("r0").datetime("v"), Some(DateTime::from_nanos(0)));
 	assert_eq!(post.row_ref(1).expect("r1").datetime("v"), Some(DateTime::from_nanos(1_700_000_000_000_000_000)));
-	assert_eq!(post.row_ref(2).expect("r2").datetime("v"), Some(DateTime::from_nanos(u64::MAX)));
+	assert_eq!(post.row_ref(2).expect("r2").datetime("v"), Some(DateTime::from_nanos(i64::MAX)));
 }
 
 struct TimeRow {

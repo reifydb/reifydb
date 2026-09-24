@@ -101,11 +101,11 @@ mod tests {
 		SealRule::tumbling(ms(1_000), ms(200))
 	}
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		at_millis(millis).to_order()
 	}
 
-	fn sealed_through(millis: u64) -> SealedThrough {
+	fn sealed_through(millis: i64) -> SealedThrough {
 		SealedThrough::from_order(order(millis))
 	}
 

@@ -18,7 +18,7 @@ pub struct RetentionStartupGate {
 
 struct Inner {
 	clock: Clock,
-	armed_at_nanos: u64,
+	armed_at_nanos: i64,
 	grace: Duration,
 	skipped_slices: AtomicU64,
 }

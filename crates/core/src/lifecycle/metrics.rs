@@ -234,11 +234,11 @@ mod tests {
 		lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	};
 
-	const HOUR_NANOS: u64 = 3_600 * 1_000_000_000;
+	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
 
-	const BASE: u64 = 10 * HOUR_NANOS;
+	const BASE: i64 = 10 * HOUR_NANOS;
 
-	fn expiry_floor(nanos: u64) -> Option<(Floor, FloorTerm)> {
+	fn expiry_floor(nanos: i64) -> Option<(Floor, FloorTerm)> {
 		// Every clock-driven floor in the ledger is `now - ttl` rendered as an instant, so a test
 		// exercising that path has to hand the same shape over: a version floor would take the pinned
 		// branch and prove nothing about the branch under test.
@@ -255,7 +255,7 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtl;
 
-		for step in 0..20u64 {
+		for step in 0..20i64 {
 			let floor = match step % 2 {
 				0 => BASE,
 				_ => BASE - HOUR_NANOS,
@@ -277,9 +277,9 @@ mod tests {
 		// second.
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtl;
-		let step = STARVATION_WINDOW_NANOS / 100;
+		let step = STARVATION_WINDOW_NANOS as i64 / 100;
 
-		for slice in 0..50u64 {
+		for slice in 0..50i64 {
 			let onset = metrics.record_reclamation(class, expiry_floor(BASE + slice * step), 0, 2);
 
 			assert_eq!(onset, StuckOnset::Quiet, "slice {slice} alarmed inside the starvation window");
@@ -296,7 +296,7 @@ mod tests {
 
 		assert_eq!(metrics.record_reclamation(class, expiry_floor(BASE), 0, 7), StuckOnset::Quiet);
 		assert_eq!(
-			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS), 0, 7),
+			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS as i64), 0, 7),
 			StuckOnset::Starved {
 				binding: FloorTerm::RowExpiry,
 				backlog_hint: 7,
@@ -304,7 +304,12 @@ mod tests {
 			"a backlog held across the whole window with nothing reclaimed must alarm"
 		);
 		assert_eq!(
-			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS + 1), 0, 7),
+			metrics.record_reclamation(
+				class,
+				expiry_floor(BASE + STARVATION_WINDOW_NANOS as i64 + 1),
+				0,
+				7
+			),
 			StuckOnset::Quiet,
 			"the very next slice must not alarm again, or the window has bought nothing"
 		);
@@ -319,20 +324,35 @@ mod tests {
 		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, expiry_floor(BASE), 0, 4);
-		metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS), 12, 4);
+		metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS as i64), 12, 4);
 
 		assert_eq!(
-			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS + 1), 0, 4),
+			metrics.record_reclamation(
+				class,
+				expiry_floor(BASE + STARVATION_WINDOW_NANOS as i64 + 1),
+				0,
+				4
+			),
 			StuckOnset::Quiet,
 			"the slice after progress opens a fresh window rather than inheriting the old one"
 		);
 		assert_eq!(
-			metrics.record_reclamation(class, expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS), 0, 4),
+			metrics.record_reclamation(
+				class,
+				expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS as i64),
+				0,
+				4
+			),
 			StuckOnset::Quiet,
 			"and the fresh window must run its full length from the slice that opened it"
 		);
 		assert_eq!(
-			metrics.record_reclamation(class, expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS + 2), 0, 4),
+			metrics.record_reclamation(
+				class,
+				expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS as i64 + 2),
+				0,
+				4
+			),
 			StuckOnset::Starved {
 				binding: FloorTerm::RowExpiry,
 				backlog_hint: 4,

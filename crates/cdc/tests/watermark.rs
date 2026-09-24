@@ -26,7 +26,7 @@ use reifydb_value::{
 fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
-		DateTime::from_nanos(12345 + version),
+		DateTime::from_nanos(i64::try_from(12345u64 + version).expect("test cdc timestamp fits in i64 nanos")),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
 			post: EncodedBytes(CowVec::new(vec![version as u8])),

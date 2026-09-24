@@ -485,13 +485,13 @@ mod tests {
 		)
 	}
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		at_millis(millis).to_order()
 	}
 
 	fn seed_window(
 		store: &mut MockStore,
-		window_start: u64,
+		window_start: i64,
 		contribution: i64,
 	) -> WindowResult<u32, DateTime, i64> {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
@@ -504,7 +504,7 @@ mod tests {
 		results.pop().expect("one window")
 	}
 
-	fn apply_event(store: &mut MockStore, window_start: u64, event: AccumulatorEvent<i64>) {
+	fn apply_event(store: &mut MockStore, window_start: i64, event: AccumulatorEvent<i64>) {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert(
@@ -530,7 +530,7 @@ mod tests {
 		out
 	}
 
-	fn one_bucket(group: u32, window_start: u64, contribution: i64) -> TumblingBuckets<u32, DateTime, i64> {
+	fn one_bucket(group: u32, window_start: i64, contribution: i64) -> TumblingBuckets<u32, DateTime, i64> {
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert(
 			(group, WindowSpan::new(at_millis(window_start), at_millis(window_start + 1))),
@@ -768,8 +768,8 @@ mod tests {
 		assert_eq!(store.meta_entry_count(), 1, "applying a window persisted the group's meta");
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let dropped = engine.expire_meta(&mut store, 100).unwrap();
-		assert_eq!(dropped, 1, "the group's high water (0) is below the threshold (100)");
+		let dropped = engine.expire_meta(&mut store, order(100)).unwrap();
+		assert_eq!(dropped, 1, "the group's high water (0ms) is below the threshold (100ms)");
 		assert_eq!(store.meta_entry_count(), 0, "a stale group must not leak its GroupMeta");
 	}
 
@@ -797,7 +797,7 @@ mod tests {
 		assert_eq!(store.mapping_entry_count(), 1);
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		engine.expire_meta(&mut store, 100).unwrap();
+		engine.expire_meta(&mut store, order(100)).unwrap();
 		assert_eq!(store.meta_entry_count(), 0, "the stale group's meta is swept");
 		assert_eq!(store.mapping_entry_count(), 1, "the sweep must not touch row-number mapping keys");
 	}
@@ -844,7 +844,7 @@ mod tests {
 		// bloated operator stall the whole actor pass. The cap bounds one tick and the remainder
 		// stays in the due index, which sorts by inverted expiry so the oldest backlog defers.
 		let mut store = MockStore::default();
-		for (start, due) in [(0u64, 10u64), (100, 20), (200, 30)] {
+		for (start, due) in [(0i64, 10u64), (100, 20), (200, 30)] {
 			let w = seed_window(&mut store, start, 1);
 			reindex_window(&mut store, &w.group, w.span.start, None, Some(due)).unwrap();
 		}

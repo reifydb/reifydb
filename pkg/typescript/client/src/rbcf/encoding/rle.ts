@@ -64,7 +64,7 @@ export function decodeRle(typeName: TypeName, rowCount: number, data: Uint8Array
         case "Date":
             return decodeRleFixed(data, rowCount, 4, (b, p) => formatDate(readI32(b, p)));
         case "DateTime":
-            return decodeRleFixed(data, rowCount, 8, (b, p) => formatDateTime(readU64(b, p)));
+            return decodeRleFixed(data, rowCount, 8, (b, p) => formatDateTime(readI64(b, p)));
         case "Time":
             return decodeRleFixed(data, rowCount, 8, (b, p) => formatTime(readU64(b, p)));
         default:

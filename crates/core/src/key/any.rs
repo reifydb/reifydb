@@ -1639,13 +1639,13 @@ mod tests {
 			probe(QueueDueKey {
 				queue: QueueId(1),
 				partition: 0,
-				due: DateTime::from_bits(1),
+				due: DateTime::from_order(1),
 				row: RowNumber(1),
 			}),
 			probe(QueueDueKey {
 				queue: QueueId(1),
 				partition: 0,
-				due: DateTime::from_bits(2),
+				due: DateTime::from_order(2),
 				row: RowNumber(1),
 			}),
 			probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8])),
@@ -2302,7 +2302,7 @@ mod tests {
 			probe(QueueDueKey {
 				queue: QueueId(118),
 				partition: 119,
-				due: DateTime::from_bits(120),
+				due: DateTime::from_order(120),
 				row: RowNumber(121),
 			}),
 			probe(QueueAttemptKey {

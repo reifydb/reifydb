@@ -9,7 +9,7 @@ use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, datetime::DateTime, value_type::ValueType},
+	value::{Value, value_type::ValueType},
 };
 
 use super::set::extract_millis;
@@ -67,7 +67,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 							if nanos >= 0 {
 								mock.advance_nanos(nanos as u64);
 							} else {
-								let current = mock.now().to_nanos();
+								let current = u64::try_from(mock.now().to_nanos())
+									.expect(
+										"mock clock is never before the Unix epoch",
+									);
 								let abs_nanos = nanos.unsigned_abs();
 								if abs_nanos > current {
 									return Err(RoutineError::ProcedureExecutionFailed {
@@ -78,10 +81,17 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 								mock.set_nanos(current - abs_nanos);
 							}
 						} else {
-							let current_nanos = mock.now().to_nanos();
-							let current_dt = DateTime::from_nanos(current_nanos);
+							let current_dt = mock.now();
 							let new_dt = current_dt.add_duration(dur)?;
-							mock.set_nanos(new_dt.to_nanos());
+							mock.set_nanos(u64::try_from(new_dt.to_nanos()).map_err(
+								|_| {
+									RoutineError::ProcedureExecutionFailed {
+									procedure: Fragment::internal("clock::advance"),
+									reason: "clock cannot be set before Unix epoch"
+										.to_string(),
+								}
+								},
+							)?);
 						}
 					}
 					other => {
@@ -96,8 +106,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 						mock.advance_millis(millis);
 					}
 				}
-				let current_nanos = mock.now().to_nanos();
-				let dt = DateTime::from_nanos(current_nanos);
+				let dt = mock.now();
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(RoutineError::ProcedureExecutionFailed {

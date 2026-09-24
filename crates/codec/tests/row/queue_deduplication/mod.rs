@@ -60,10 +60,10 @@ fn the_row_number_and_the_expiry_occupy_disjoint_slots() {
 	assert_eq!(row.expires_at(), DateTime::from_nanos(0));
 
 	row.set_row_number(RowNumber(0));
-	row.set_expires_at(DateTime::from_nanos(i64::MAX as u64));
+	row.set_expires_at(DateTime::from_nanos(i64::MAX));
 
 	assert_eq!(row.row_number(), RowNumber(0));
-	assert_eq!(row.expires_at(), DateTime::from_nanos(i64::MAX as u64));
+	assert_eq!(row.expires_at(), DateTime::from_nanos(i64::MAX));
 }
 
 #[test]

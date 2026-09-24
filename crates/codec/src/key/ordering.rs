@@ -3,15 +3,14 @@
 
 use std::fmt::Debug;
 
-use reifydb_value::value::{Value, datetime::DateTime};
+use reifydb_value::value::Value;
 
 use crate::key::{
-	decode_bool, decode_datetime_asc, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32,
-	decode_i64, decode_i128, decode_u8, decode_u16, decode_u32, decode_u64, decode_u64_asc, decode_u128,
-	decode_u128_asc, decode_u128_varint, encode_bool, encode_bytes, encode_datetime_asc, encode_f32, encode_f64,
-	encode_fixed, encode_i8, encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32,
-	encode_u64, encode_u64_asc, encode_u128, encode_u128_asc, encode_u128_varint, serializer::KeySerializer,
-	sort::SortOrder,
+	decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32, decode_i64, decode_i128,
+	decode_u8, decode_u16, decode_u32, decode_u64, decode_u64_asc, decode_u128, decode_u128_asc,
+	decode_u128_varint, encode_bool, encode_bytes, encode_f32, encode_f64, encode_fixed, encode_i8, encode_i16,
+	encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u64_asc,
+	encode_u128, encode_u128_asc, encode_u128_varint, serializer::KeySerializer, sort::SortOrder,
 };
 
 fn assert_descending<T, F>(label: &str, ascending: &[T], encode: F)
@@ -228,19 +227,6 @@ fn the_asc_variants_round_trip() {
 	for value in [0u128, 1, 1u128 << 100, u128::MAX] {
 		assert_eq!(decode_u128_asc(encode_u128_asc(value)), value);
 	}
-}
-
-#[test]
-fn datetime_asc_is_u64_asc_over_the_bit_pattern_and_round_trips() {
-	let samples = [0u64, 1, 1_000_000_000, u64::MAX / 2, u64::MAX];
-	for bits in samples {
-		let datetime = DateTime::from_bits(bits);
-		assert_eq!(encode_datetime_asc(datetime).to_vec(), encode_u64_asc(bits).to_vec());
-		assert_eq!(decode_datetime_asc(encode_datetime_asc(datetime)).to_bits(), bits);
-	}
-	assert_ascending("encode_datetime_asc", &samples, |bits| {
-		encode_datetime_asc(DateTime::from_bits(bits)).to_vec()
-	});
 }
 
 #[test]

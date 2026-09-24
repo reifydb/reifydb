@@ -5,7 +5,7 @@ use reifydb_value::factory::time::at_millis;
 
 use crate::window::coord::EventCoord;
 
-pub fn event_coord_at_millis(value: u64) -> EventCoord {
+pub fn event_coord_at_millis(value: i64) -> EventCoord {
 	EventCoord::of(&at_millis(value))
 }
 

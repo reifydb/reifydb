@@ -153,7 +153,7 @@ fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
 		.with_fields(input_fields())
-		.with_time(DateTime::from_millis(ts))
+		.with_time(DateTime::from_millis(ts as i64))
 		.build()
 }
 

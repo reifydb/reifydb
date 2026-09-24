@@ -29,7 +29,7 @@ fn f32o(v: f32) -> OrderedF32 {
 fn f64o(v: f64) -> OrderedF64 {
 	OrderedF64::try_from(v).expect("rejected")
 }
-fn dt(nanos: u64) -> DateTime {
+fn dt(nanos: i64) -> DateTime {
 	DateTime::from_nanos(nanos)
 }
 fn date_d(days: i32) -> Date {
@@ -392,7 +392,7 @@ fn option_date_all_undefined() {
 #[test]
 fn option_datetime_alternating() {
 	let input = ColumnBuffer::datetime_with_bitvec(
-		[dt(0), DateTime::default(), dt(1), DateTime::default(), dt(u64::MAX)],
+		[dt(0), DateTime::default(), dt(1), DateTime::default(), dt(i64::MAX)],
 		vec![true, false, true, false, true],
 	);
 	let output = round_trip_column("o", input.clone());

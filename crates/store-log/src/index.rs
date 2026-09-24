@@ -352,7 +352,7 @@ mod tests {
 			BASE,
 			BASE_INDEX,
 			Term::new(1),
-			DateTime::from_bits(1),
+			DateTime::from_nanos(1),
 			RecordKind::new(0),
 			b"a".to_vec(),
 		))

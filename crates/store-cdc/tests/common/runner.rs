@@ -16,7 +16,7 @@ use reifydb_store_cdc::{
 use reifydb_testing::testscript::{command::Command, runner::Runner as TsRunner};
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
-const DEFAULT_TIMESTAMP: u64 = 1_700_000_000_000_000_000;
+const DEFAULT_TIMESTAMP: i64 = 1_700_000_000_000_000_000;
 
 const DEFAULT_KEY: &str = "k";
 
@@ -104,7 +104,7 @@ impl TsRunner for Runner {
 			"write" => {
 				let mut args = command.consume_args();
 				let version: u64 = args.next_pos().ok_or("version not given")?.parse()?;
-				let timestamp: u64 = args.lookup_parse("ts")?.unwrap_or(DEFAULT_TIMESTAMP);
+				let timestamp: i64 = args.lookup_parse("ts")?.unwrap_or(DEFAULT_TIMESTAMP);
 				let changes: usize = args.lookup_parse("changes")?.unwrap_or(1);
 				let key =
 					args.lookup("key").map(|a| a.value.clone()).unwrap_or(DEFAULT_KEY.to_string());
@@ -222,7 +222,7 @@ impl TsRunner for Runner {
 
 			"ttl_cutoff" => {
 				let mut args = command.consume_args();
-				let nanos: u64 = args.next_pos().ok_or("timestamp not given")?.parse()?;
+				let nanos: i64 = args.next_pos().ok_or("timestamp not given")?.parse()?;
 				args.reject_rest()?;
 
 				writeln!(

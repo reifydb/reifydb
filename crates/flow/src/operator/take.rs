@@ -452,7 +452,7 @@ mod tests {
 		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
-	fn row(n: i32, rn: u64, born_nanos: u64) -> Columns {
+	fn row(n: i32, rn: u64, born_nanos: i64) -> Columns {
 		// created_at is the age the operator must sort on, so every fixture sets it apart from arrival order.
 		let at = DateTime::from_nanos(born_nanos);
 		Columns::with_system(
@@ -461,7 +461,7 @@ mod tests {
 		)
 	}
 
-	fn stamped_row(rn: u64, created: u64, updated: u64, time: Option<u64>) -> Columns {
+	fn stamped_row(rn: u64, created: i64, updated: i64, time: Option<i64>) -> Columns {
 		// the round trip is only lossless if each stamp lands in its own slot, so every fixture value differs.
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(vec![rn as i32]))],

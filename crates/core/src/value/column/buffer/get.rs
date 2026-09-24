@@ -36,8 +36,7 @@ use reifydb_value::{
 use crate::value::column::{ColumnBuffer, buffer::with_container};
 
 pub trait FromColumnBuffer: Sized {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize)
-	-> StdResult<Option<Self>, ColumnReadReason>;
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason>;
 }
 
 impl ColumnBuffer {
@@ -190,10 +189,7 @@ impl_from_column_data_widening!(
 );
 
 impl FromColumnBuffer for u128 {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uint1(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
 			ColumnBuffer::Uint2(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
@@ -206,10 +202,7 @@ impl FromColumnBuffer for u128 {
 }
 
 impl FromColumnBuffer for bool {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Bool(c) => Ok((index < c.len()).then(|| c.value(index))),
 			_ => wrong_type(),
@@ -218,10 +211,7 @@ impl FromColumnBuffer for bool {
 }
 
 impl FromColumnBuffer for String {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Utf8 {
 				container,
@@ -233,10 +223,7 @@ impl FromColumnBuffer for String {
 }
 
 impl FromColumnBuffer for Vec<u8> {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Blob {
 				container,
@@ -248,10 +235,7 @@ impl FromColumnBuffer for Vec<u8> {
 }
 
 impl FromColumnBuffer for Date {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Date(c) => Ok(dates(c).get(index).copied()),
 			_ => wrong_type(),
@@ -260,10 +244,7 @@ impl FromColumnBuffer for Date {
 }
 
 impl FromColumnBuffer for DateTime {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::DateTime(c) => Ok(datetimes(c).get(index).copied()),
 			_ => wrong_type(),
@@ -272,10 +253,7 @@ impl FromColumnBuffer for DateTime {
 }
 
 impl FromColumnBuffer for Time {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Time(c) => Ok(times(c).get(index).copied()),
 			_ => wrong_type(),
@@ -284,10 +262,7 @@ impl FromColumnBuffer for Time {
 }
 
 impl FromColumnBuffer for Duration {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Duration(c) => Ok(durations(c).get(index).copied()),
 			_ => wrong_type(),
@@ -296,10 +271,7 @@ impl FromColumnBuffer for Duration {
 }
 
 impl FromColumnBuffer for Uuid4 {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uuid4(c) => Ok(uuid4s(c).get(index).copied()),
 			_ => wrong_type(),
@@ -308,10 +280,7 @@ impl FromColumnBuffer for Uuid4 {
 }
 
 impl FromColumnBuffer for Uuid7 {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uuid7(c) => Ok(uuid7s(c).get(index).copied()),
 			_ => wrong_type(),
@@ -320,10 +289,7 @@ impl FromColumnBuffer for Uuid7 {
 }
 
 impl FromColumnBuffer for Int {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Int(a) => Ok(int_at(a, index)),
 			_ => wrong_type(),
@@ -332,10 +298,7 @@ impl FromColumnBuffer for Int {
 }
 
 impl FromColumnBuffer for Uint {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uint(a) => Ok(uint_at(a, index)),
 			_ => wrong_type(),
@@ -344,10 +307,7 @@ impl FromColumnBuffer for Uint {
 }
 
 impl FromColumnBuffer for Decimal {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Decimal(a) => Ok(decimal_at(a, index)),
 			ColumnBuffer::Float4(c) => c
@@ -366,10 +326,7 @@ impl FromColumnBuffer for Decimal {
 }
 
 impl FromColumnBuffer for IdentityId {
-	fn from_column_buffer(
-		data: &ColumnBuffer,
-		index: usize,
-	) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::IdentityId(c) => Ok(identity_ids(c).get(index).copied()),
 			_ => wrong_type(),

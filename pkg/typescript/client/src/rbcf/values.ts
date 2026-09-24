@@ -30,9 +30,13 @@ export function formatDate(daysSinceEpoch: number): string {
 }
 
 export function formatDateTime(nanos: bigint): string {
-    const days = Number(nanos / NANOS_PER_DAY_BIGINT);
-    const nanosOfDay = nanos % NANOS_PER_DAY_BIGINT;
-    return `${formatDate(days)}T${formatTime(nanosOfDay)}Z`;
+    let days = nanos / NANOS_PER_DAY_BIGINT;
+    let nanosOfDay = nanos % NANOS_PER_DAY_BIGINT;
+    if (nanosOfDay < 0n) {
+        nanosOfDay += NANOS_PER_DAY_BIGINT;
+        days -= 1n;
+    }
+    return `${formatDate(Number(days))}T${formatTime(nanosOfDay)}Z`;
 }
 
 export function formatTime(nanos: bigint): string {

@@ -11,11 +11,11 @@ pub fn secs(value: u64) -> Duration {
 	Duration::from_seconds_const(value as i64)
 }
 
-pub fn at_millis(value: u64) -> DateTime {
+pub fn at_millis(value: i64) -> DateTime {
 	DateTime::from_millis(value)
 }
 
-pub fn at_nanos(value: u64) -> DateTime {
+pub fn at_nanos(value: i64) -> DateTime {
 	DateTime::from_nanos(value)
 }
 

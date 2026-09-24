@@ -8,7 +8,7 @@ pub const META_BYTES: usize = 48;
 
 pub const MAGIC: u32 = u32::from_le_bytes(*b"RMET");
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 pub const DEFAULT_PARTITIONS: u32 = 4;
 

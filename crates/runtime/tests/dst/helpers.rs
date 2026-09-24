@@ -224,11 +224,11 @@ impl Actor for InitSenderActor {
 }
 
 pub struct TickActor {
-	pub timestamps: Arc<Mutex<Vec<u64>>>,
+	pub timestamps: Arc<Mutex<Vec<i64>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TickMessage(pub u64);
+pub struct TickMessage(pub i64);
 
 impl Actor for TickActor {
 	type State = ();

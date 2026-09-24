@@ -11,7 +11,7 @@ pub struct ExternCContextRaw {
 
 	pub executor_ptr: *const c_void,
 
-	pub written_at_nanos: u64,
+	pub written_at_nanos: i64,
 
 	pub callbacks: TransformCallbacks,
 }

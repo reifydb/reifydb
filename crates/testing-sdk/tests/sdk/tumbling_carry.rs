@@ -139,7 +139,7 @@ fn input_fields() -> Vec<RowShapeField> {
 }
 
 fn window_order(millis: u64) -> u64 {
-	DateTime::from_millis(millis).to_order()
+	DateTime::from_millis(millis as i64).to_order()
 }
 
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
@@ -150,7 +150,7 @@ fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
 		.with_fields(input_fields())
-		.with_time(DateTime::from_millis(ts))
+		.with_time(DateTime::from_millis(ts as i64))
 		.build()
 }
 
@@ -402,7 +402,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 			 own feed must never seal the window it is currently filling"
 		);
 		published += 1;
-		h.advance_watermark(DateTime::from_millis(ts)).expect("advance watermark");
+		h.advance_watermark(DateTime::from_millis(ts as i64)).expect("advance watermark");
 	}
 
 	assert_eq!(published, 5, "every window in the ladder must publish, not just the first");

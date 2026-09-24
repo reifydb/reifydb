@@ -62,7 +62,7 @@ impl Record {
 		out.extend_from_slice(&self.version.as_u64().to_le_bytes());
 		out.extend_from_slice(&self.index.as_u64().to_le_bytes());
 		out.extend_from_slice(&self.term.as_u64().to_le_bytes());
-		out.extend_from_slice(&self.timestamp.to_bits().to_le_bytes());
+		out.extend_from_slice(&self.timestamp.to_order().to_le_bytes());
 		out.extend_from_slice(&self.kind.as_u32().to_le_bytes());
 		out.extend_from_slice(&RESERVED.to_le_bytes());
 		out.extend_from_slice(&self.payload);
@@ -92,7 +92,7 @@ impl Header {
 			version: LogVersion::new(u64::from_le_bytes(buf[8..16].try_into().unwrap())),
 			index: LogIndex::new(u64::from_le_bytes(buf[16..24].try_into().unwrap())),
 			term: Term::new(u64::from_le_bytes(buf[24..32].try_into().unwrap())),
-			timestamp: DateTime::from_bits(u64::from_le_bytes(buf[32..40].try_into().unwrap())),
+			timestamp: DateTime::from_order(u64::from_le_bytes(buf[32..40].try_into().unwrap())),
 			kind: RecordKind::new(u32::from_le_bytes(buf[40..44].try_into().unwrap())),
 			reserved: u32::from_le_bytes(buf[44..48].try_into().unwrap()),
 		}
@@ -114,7 +114,7 @@ impl Header {
 		hasher.update(&self.version.as_u64().to_le_bytes());
 		hasher.update(&self.index.as_u64().to_le_bytes());
 		hasher.update(&self.term.as_u64().to_le_bytes());
-		hasher.update(&self.timestamp.to_bits().to_le_bytes());
+		hasher.update(&self.timestamp.to_order().to_le_bytes());
 		hasher.update(&self.kind.as_u32().to_le_bytes());
 		hasher.update(&self.reserved.to_le_bytes());
 		hasher.update(payload);
@@ -152,7 +152,7 @@ mod tests {
 			LogVersion::new(version),
 			LogIndex::new(index),
 			Term::new(term),
-			DateTime::from_bits(timestamp),
+			DateTime::from_order(timestamp),
 			RecordKind::new(kind),
 			payload,
 		)
@@ -215,7 +215,7 @@ mod tests {
 		assert_eq!(header.version, LogVersion::new(500));
 		assert_eq!(header.index, LogIndex::new(7));
 		assert_eq!(header.term, Term::new(3));
-		assert_eq!(header.timestamp, DateTime::from_bits(1234));
+		assert_eq!(header.timestamp, DateTime::from_order(1234));
 		assert_eq!(header.kind, RecordKind::new(1));
 		assert_eq!(header.reserved, RESERVED);
 	}

@@ -144,7 +144,9 @@ impl TestDbBuilder {
 	pub fn memory(self) -> TestDb {
 		let mut config = RuntimeConfig::default().fatal(FatalConfig::disarmed());
 		if let Some(at) = self.mock_at {
-			config = config.clock(Clock::Mock(MockClock::new(at.to_nanos())));
+			config = config.clock(Clock::Mock(MockClock::new(
+				u64::try_from(at.to_nanos()).expect("mock clock cannot start before the Unix epoch"),
+			)));
 		}
 		TestDb::wrap(embedded::memory().with_runtime_config(config).build().unwrap(), None)
 	}
@@ -153,7 +155,10 @@ impl TestDbBuilder {
 		let mut builder = embedded::sqlite(config);
 		if let Some(at) = self.mock_at {
 			builder = builder.with_runtime_config(
-				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(at.to_nanos()))),
+				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(
+					u64::try_from(at.to_nanos())
+						.expect("mock clock cannot start before the Unix epoch"),
+				))),
 			);
 		}
 		TestDb::wrap(builder.build().unwrap(), None)
@@ -168,7 +173,10 @@ impl TestDbBuilder {
 		let mut builder = embedded::sqlite(config);
 		if let Some(at) = self.mock_at {
 			builder = builder.with_runtime_config(
-				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(at.to_nanos()))),
+				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(
+					u64::try_from(at.to_nanos())
+						.expect("mock clock cannot start before the Unix epoch"),
+				))),
 			);
 		}
 		TestDb::wrap(builder.build().unwrap(), Some(guard))

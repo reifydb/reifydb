@@ -83,7 +83,7 @@ impl LeBytes for DateTime {
 
 	#[inline]
 	fn from_le_bytes(bytes: Self::Bytes) -> Self {
-		DateTime::from_nanos(u64::from_le_bytes(bytes))
+		DateTime::from_nanos(i64::from_le_bytes(bytes))
 	}
 }
 

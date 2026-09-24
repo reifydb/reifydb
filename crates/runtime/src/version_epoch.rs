@@ -54,7 +54,7 @@ impl EpochSeconds {
 	}
 
 	pub fn to_datetime(self) -> DateTime {
-		DateTime::from_nanos(self.0.saturating_mul(1_000_000_000))
+		DateTime::from_nanos(i64::try_from(self.0.saturating_mul(1_000_000_000)).unwrap_or(i64::MAX))
 	}
 
 	pub const fn from_nanos(nanos: u64) -> Self {

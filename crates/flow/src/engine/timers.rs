@@ -109,7 +109,7 @@ impl FlowEngineInner {
 					watermark.to_millis(),
 					due.len(),
 					oldest,
-					oldest.map(|at| watermark.to_millis() as i64 - at as i64)
+					oldest.map(|at| watermark.to_millis() - at)
 				);
 			}
 
@@ -211,8 +211,8 @@ mod tests {
 
 	const FLOW: FlowId = FlowId(1);
 	const OPERATOR: OperatorId = OperatorId(1);
-	const DUE_MS: u64 = 5_000;
-	const WATERMARK_MS: u64 = 10_000;
+	const DUE_MS: i64 = 5_000;
+	const WATERMARK_MS: i64 = 10_000;
 
 	struct TimerProbe {
 		fails: bool,

@@ -18,7 +18,7 @@ use reifydb_value::value::{
 		},
 		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH, dictionary_array},
 		digest_array::digest_array,
-		temporal_array::{date_array, datetime_array, duration_array, time_array},
+		temporal_array::{DATETIME_TIMEZONE, date_array, datetime_array, duration_array, time_array},
 		uuid_array::{self, UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
 		varlen_array::blob_array,
 	},
@@ -258,14 +258,34 @@ impl ColumnBuffer {
 	}
 
 	impl_temporal_factory!(date, date_with_capacity, date_with_bitvec, Date, Date, date_array);
-	impl_temporal_factory!(
-		datetime,
-		datetime_with_capacity,
-		datetime_with_bitvec,
-		DateTime,
-		DateTime,
-		datetime_array
-	);
+
+	pub fn datetime(data: impl IntoIterator<Item = DateTime>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnBuffer::DateTime(datetime_array(data))
+	}
+
+	pub(crate) fn datetime_with_capacity(capacity: usize) -> Self {
+		ColumnBuffer::DateTime(
+			PrimitiveArray::new(ScalarBuffer::from(Vec::with_capacity(capacity)), None)
+				.with_timezone(DATETIME_TIMEZONE),
+		)
+	}
+
+	pub fn datetime_with_bitvec(
+		data: impl IntoIterator<Item = DateTime>,
+		bitvec: impl Into<BooleanBuffer>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		let inner = ColumnBuffer::DateTime(datetime_array(data));
+		if !bitvec.has_false() {
+			inner
+		} else {
+			inner.with_nulls(NullBuffer::new(bitvec))
+		}
+	}
+
 	impl_temporal_factory!(time, time_with_capacity, time_with_bitvec, Time, Time, time_array);
 	impl_temporal_factory!(
 		duration,
@@ -562,5 +582,47 @@ impl ColumnBuffer {
 			},
 		};
 		inner.with_nulls(NullBuffer::new(bitvec))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use arrow_schema::{DataType, TimeUnit};
+	use reifydb_value::{
+		util::kernel,
+		value::{datetime::DateTime, value_type::ValueType},
+	};
+
+	use super::*;
+	use crate::value::column::{buffer::take::as_array, builder::ColumnBuilder};
+
+	fn expected_datetime_type() -> DataType {
+		DataType::Timestamp(TimeUnit::Nanosecond, Some(DATETIME_TIMEZONE.into()))
+	}
+
+	#[test]
+	fn every_datetime_construction_path_agrees_on_the_arrow_data_type() {
+		// A path that drops the "+00:00" timezone cannot interleave with the others, which require exact
+		// DataType equality.
+		let via_data = ColumnBuffer::datetime(vec![DateTime::from_nanos(0)]);
+		let via_capacity = ColumnBuffer::datetime_with_capacity(1);
+		let via_builder = ColumnBuilder::with_capacity(ValueType::DateTime, 1).finish();
+
+		assert_eq!(as_array(&via_data).data_type(), &expected_datetime_type());
+		assert_eq!(as_array(&via_capacity).data_type(), &expected_datetime_type());
+		assert_eq!(as_array(&via_builder).data_type(), &expected_datetime_type());
+	}
+
+	#[test]
+	fn interleaving_datetime_buffers_from_different_construction_paths_does_not_panic() {
+		let source = ColumnBuffer::datetime(vec![DateTime::from_nanos(1), DateTime::from_nanos(2)]);
+		let filler = ColumnBuffer::datetime(vec![DateTime::from_nanos(0)]);
+
+		let ColumnBuffer::DateTime(source_array) = &source else {
+			panic!("expected a DateTime buffer");
+		};
+		let interleaved = kernel::interleaved(source_array, as_array(&filler), &[(0, 1), (1, 0)]);
+
+		assert_eq!(interleaved.len(), 2);
 	}
 }

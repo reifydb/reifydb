@@ -12,8 +12,8 @@ fn make(v: Vec<DateTime>) -> FrameColumnData {
 crate::rle_tests! {
 	repeated: {
 		let mut v = Vec::new();
-		let base = 1_700_000_000_000_000_000u64;
-		for offset in [0u64, 1_000_000_000, 2_000_000_000, 3_000_000_000, 4_000_000_000] {
+		let base = 1_700_000_000_000_000_000i64;
+		for offset in [0i64, 1_000_000_000, 2_000_000_000, 3_000_000_000, 4_000_000_000] {
 			let dt = DateTime::from_nanos(base + offset);
 			v.extend(std::iter::repeat(dt).take(100));
 		}

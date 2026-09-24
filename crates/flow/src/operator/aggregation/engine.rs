@@ -334,7 +334,7 @@ mod tests {
 mod bucket_start_tests {
 	use super::*;
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		DateTime::from_epoch_millis(millis).unwrap().to_order()
 	}
 
@@ -375,8 +375,8 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	fn the_zero_bucket_maps_to_the_epoch() {
+	fn the_zero_bucket_maps_to_the_earliest_instant() {
 		// An unset window_start must not be mistakeable for a real time far from zero.
-		assert_eq!(<DateTime as Coord>::from_order(0), DateTime::EPOCH);
+		assert_eq!(<DateTime as Coord>::from_order(0), DateTime::MIN);
 	}
 }

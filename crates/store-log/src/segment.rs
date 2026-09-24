@@ -330,7 +330,9 @@ mod tests {
 			LogVersion::new(version),
 			LogIndex::new(version),
 			Term::new(1),
-			DateTime::from_bits(1000 + version),
+			DateTime::from_nanos(
+				i64::try_from(1000 + version).expect("test record timestamp fits in i64 nanos"),
+			),
 			RecordKind::new(0),
 			payload.to_vec(),
 		)

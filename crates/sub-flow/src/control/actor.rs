@@ -2311,8 +2311,8 @@ mod tick_failures {
 	const FLOW: FlowId = FlowId(9_000);
 	const SOURCE: OperatorId = OperatorId(9_001);
 	const TIMED: OperatorId = OperatorId(9_002);
-	const DUE_MS: u64 = 5_000;
-	const WATERMARK_MS: u64 = 10_000;
+	const DUE_MS: i64 = 5_000;
+	const WATERMARK_MS: i64 = 10_000;
 	const RETRY_LIMIT: u32 = 3;
 
 	struct Boom {

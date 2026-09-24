@@ -236,9 +236,9 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "option_datetime",
-		column_postcard: "1b0f030100959a88a7eecddcb318010503",
+		column_postcard: "1b0f030200aab490cedc9bb9e730010503",
 		column_json: "{\"Option\":{\"inner\":{\"DateTime\":{\"data\":[1,0,1758500000123456789]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
-		frame_postcard: "1b0f030100959a88a7eecddcb318010503",
+		frame_postcard: "1b0f030200aab490cedc9bb9e730010503",
 		frame_json: "{\"Option\":{\"inner\":{\"DateTime\":{\"data\":[1,0,1758500000123456789]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
 	},
 	Pin {

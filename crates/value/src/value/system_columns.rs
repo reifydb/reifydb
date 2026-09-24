@@ -458,7 +458,7 @@ impl SystemColumns {
 mod tests {
 	use super::*;
 
-	fn dt(n: u64) -> DateTime {
+	fn dt(n: i64) -> DateTime {
 		DateTime::from_nanos(n)
 	}
 

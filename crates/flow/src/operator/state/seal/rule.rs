@@ -198,13 +198,12 @@ mod tests {
 	}
 
 	#[test]
-	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
-		// Early in a operator's life the ledger sits below its own span. Wrapping through u64 would put
-		// the horizon near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
+	fn a_ledger_short_of_one_admissible_span_has_a_real_pre_epoch_horizon() {
+		// Wrapping through u64 would put the horizon near u64::MAX and report every window sealed
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(rule.horizon_at(at_millis(0)), None);
-		assert_eq!(rule.horizon_at(at_millis(75_000)), None, "the horizon would be 0 - 1, not 0");
+		assert_eq!(rule.horizon_at(at_millis(0)), Some(at_millis(-75_001)));
+		assert_eq!(rule.horizon_at(at_millis(75_000)), Some(at_millis(-1)), "the horizon is 0 - 1, not 0");
 		assert_eq!(rule.horizon_at(at_millis(75_001)), Some(at_millis(0)));
 	}
 

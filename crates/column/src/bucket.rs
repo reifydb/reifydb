@@ -61,7 +61,7 @@ fn to_datetime(key: u64, precision: TimestampPrecision) -> DateTime {
 		TimestampPrecision::Microsecond => (key as u128) * 1_000,
 		TimestampPrecision::Nanosecond => key as u128,
 	};
-	DateTime::from_nanos(nanos as u64)
+	DateTime::from_nanos(i64::try_from(nanos).expect("series key past the datetime range"))
 }
 
 #[cfg(test)]

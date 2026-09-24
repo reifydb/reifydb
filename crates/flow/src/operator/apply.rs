@@ -392,7 +392,7 @@ mod reclaim_tests {
 
 	fn write_at(
 		txn: &mut DeferredTransaction,
-		millis: u64,
+		millis: i64,
 		retention: Option<Duration>,
 		key: &GroupStateKey,
 	) -> Result<()> {
@@ -417,8 +417,8 @@ mod reclaim_tests {
 		keys(txn, GroupId::ROOT, KeyspaceId::CUSTOM_MANAGED_LATEST)
 	}
 
-	fn reclaim_timers(txn: &mut DeferredTransaction) -> Vec<u64> {
-		let mut dues: Vec<u64> = txn
+	fn reclaim_timers(txn: &mut DeferredTransaction) -> Vec<i64> {
+		let mut dues: Vec<i64> = txn
 			.state_range(
 				OP,
 				StateRange::forward(
@@ -446,7 +446,7 @@ mod reclaim_tests {
 		operator: &mut ApplyOperator,
 		txn: &mut DeferredTransaction,
 		kind: TimerKind,
-		millis: u64,
+		millis: i64,
 	) -> Option<Change> {
 		let mut host = TxnHostContext::with_retention(txn, OP, operator.retention());
 		operator.on_timer(

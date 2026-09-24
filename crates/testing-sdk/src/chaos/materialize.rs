@@ -114,7 +114,7 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 			ValueType::DateTime => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
-				Value::datetime(DateTime::from_nanos(u64::from_le_bytes(b)))
+				Value::datetime(DateTime::from_nanos(i64::from_le_bytes(b)))
 			}
 			ValueType::Duration => {
 				let mut months_b = [0u8; 4];

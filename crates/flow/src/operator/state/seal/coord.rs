@@ -54,11 +54,11 @@ impl Coord for DateTime {
 	}
 
 	fn to_order(self) -> u64 {
-		self.to_bits()
+		DateTime::to_order(&self)
 	}
 
 	fn from_order(order: u64) -> Self {
-		DateTime::from_bits(order)
+		DateTime::from_order(order)
 	}
 
 	fn extend_key(self, builder: EncodedKeyBuilder) -> EncodedKeyBuilder {
@@ -108,9 +108,16 @@ impl IsZero for Time {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::Coord;
+
+	#[test]
+	fn floor_to_rounds_a_pre_epoch_instant_down_not_toward_zero() {
+		// A truncating remainder would floor -1ns to 0 instead of the second below it.
+		let span = Duration::from_seconds(1).unwrap();
+		assert_eq!(DateTime::from_nanos(-1).floor_to(span), DateTime::from_nanos(-1_000_000_000));
+	}
 
 	#[test]
 	fn datetime_extend_key_matches_the_datetime_key_encoding() {

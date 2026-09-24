@@ -78,8 +78,8 @@ mod tests {
 
 	use super::*;
 
-	const ARRIVAL: u64 = 1_900_000_000_000_000_000;
-	const BLOCK_TIME: u64 = 1_700_000_000_000_000_000;
+	const ARRIVAL: i64 = 1_900_000_000_000_000_000;
+	const BLOCK_TIME: i64 = 1_700_000_000_000_000_000;
 
 	fn column(name: &str, ty: ValueType, index: u8) -> Column {
 		Column {
@@ -107,7 +107,7 @@ mod tests {
 		)
 	}
 
-	fn encoded_bytes(shape: &RowShape, block_time_nanos: u64) -> EncodedBytes {
+	fn encoded_bytes(shape: &RowShape, block_time_nanos: i64) -> EncodedBytes {
 		let mut row = shape.allocate_table();
 		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_value(&mut row, 1, &Value::DateTime(DateTime::from_nanos(block_time_nanos)));
@@ -126,8 +126,8 @@ mod tests {
 		time: &TimeSource,
 		shape: &RowShape,
 		row: &[u8],
-		arrival_nanos: u64,
-	) -> u64 {
+		arrival_nanos: i64,
+	) -> i64 {
 		resolve_time(object, columns, time, shape, row, at_nanos(arrival_nanos))
 			.expect("resolution must succeed")
 			.expect("a timed object must produce a #time")
@@ -292,7 +292,7 @@ mod tests {
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
 
-	const CORRECTED_TIME: u64 = 1_650_000_000_000_000_000;
+	const CORRECTED_TIME: i64 = 1_650_000_000_000_000_000;
 
 	fn unwrapped_update(
 		object: &str,
@@ -300,8 +300,8 @@ mod tests {
 		time: &TimeSource,
 		shape: &RowShape,
 		row: &[u8],
-		previous_time_nanos: u64,
-	) -> u64 {
+		previous_time_nanos: i64,
+	) -> i64 {
 		resolve_time_for_update(object, columns, time, shape, row, Some(at_nanos(previous_time_nanos)))
 			.expect("resolution must succeed")
 			.expect("a timed object must keep a #time across an update")

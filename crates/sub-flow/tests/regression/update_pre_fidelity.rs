@@ -48,7 +48,7 @@ use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_nu
 const SUBJECT: OperatorId = OperatorId(1);
 
 // Past the epoch, so a row that lost its stamp is visibly different from one that kept it.
-const BASE_MS: u64 = 1_000_000;
+const BASE_MS: i64 = 1_000_000;
 
 fn routines() -> Routines {
 	let b = Routines::builder();
@@ -62,7 +62,8 @@ fn source() -> Option<Columns> {
 }
 
 fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
-	let at = DateTime::from_epoch_millis(BASE_MS + number).expect("a row stamp is representable");
+	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
+		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), group, value, at)
 }
 
@@ -374,7 +375,9 @@ mod join {
 			.zip(buffers)
 			.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 			.collect();
-		let at = DateTime::from_millis(1_000_000 + number);
+		let at = DateTime::from_millis(
+			1_000_000 + i64::try_from(number).expect("row number fits in i64 millis"),
+		);
 		Columns::with_system(
 			columns,
 			SystemColumns::new(

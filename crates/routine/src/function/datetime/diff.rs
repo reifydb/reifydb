@@ -50,7 +50,15 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeDiff {
 				for i in 0..row_count {
 					match (datetimes(container1).get(i), datetimes(container2).get(i)) {
 						(Some(dt1), Some(dt2)) => {
-							let diff_nanos = dt1.to_nanos() as i64 - dt2.to_nanos() as i64;
+							let diff_nanos = dt1
+								.to_nanos()
+								.checked_sub(dt2.to_nanos())
+								.ok_or_else(|| {
+									RoutineError::FunctionExecutionFailed {
+									function: ctx.fragment.clone(),
+									reason: "datetime difference out of range".to_string(),
+								}
+								})?;
 							container.push(Duration::from_nanoseconds(diff_nanos)?);
 						}
 						_ => container.push(Duration::default()),

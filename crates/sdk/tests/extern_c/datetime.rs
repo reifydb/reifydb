@@ -23,21 +23,21 @@ fn datetime_one_nanosecond() {
 #[test]
 fn datetime_far_future() {
 	// Roughly year 2200: far enough out that a 32-bit or seconds-based intermediate would overflow.
-	let input = ColumnBuffer::datetime([DateTime::from_nanos(7_257_600_000_000_000_000u64)]);
+	let input = ColumnBuffer::datetime([DateTime::from_nanos(7_257_600_000_000_000_000i64)]);
 	let output = round_trip_column("dt", input.clone());
 	assert_column_eq("datetime_far_future", &input, &output);
 }
 
 #[test]
-fn datetime_max_u64() {
-	let input = ColumnBuffer::datetime([DateTime::from_nanos(u64::MAX)]);
+fn datetime_max_i64() {
+	let input = ColumnBuffer::datetime([DateTime::from_nanos(i64::MAX)]);
 	let output = round_trip_column("dt", input.clone());
 	assert_column_eq("datetime_max", &input, &output);
 }
 
 #[test]
 fn datetime_thirty_two_rows() {
-	let values: Vec<DateTime> = (0..32u64).map(|i| DateTime::from_nanos(i * 1_000_000_000)).collect();
+	let values: Vec<DateTime> = (0..32i64).map(|i| DateTime::from_nanos(i * 1_000_000_000)).collect();
 	let input = ColumnBuffer::datetime(values);
 	let output = round_trip_column("dt", input.clone());
 	assert_column_eq("datetime_thirty_two_rows", &input, &output);

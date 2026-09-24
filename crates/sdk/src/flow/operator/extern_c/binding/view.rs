@@ -385,7 +385,7 @@ impl<'a> ChangeView for BorrowedChange<'a> {
 		BorrowedChange::version(self)
 	}
 
-	fn changed_at_nanos(&self) -> u64 {
+	fn changed_at_nanos(&self) -> i64 {
 		BorrowedChange::changed_at_nanos(self)
 	}
 

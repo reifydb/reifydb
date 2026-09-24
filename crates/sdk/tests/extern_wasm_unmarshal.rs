@@ -9,7 +9,10 @@ use reifydb_sdk::common::extern_wasm::{
 	layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
 	marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes},
 };
-use reifydb_value::{fragment::Fragment, value::dictionary::DictionaryEntryId};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{datetime::DateTime, dictionary::DictionaryEntryId},
+};
 
 trait Unmarshalled {
 	// Must accept a bare Columns and a Result alike, otherwise a fallible unmarshal stops these tests compiling.
@@ -107,9 +110,13 @@ fn guest_time_past_the_end_of_the_day_is_an_error_not_the_default() {
 }
 
 #[test]
-fn guest_datetime_before_the_epoch_is_an_error_not_the_default() {
-	// A timestamp DateTime cannot represent must fail the call, never read back as the epoch.
-	assert_rejected(&guest_bytes(ValueKind::DateTime, 1, &(-1i64).to_le_bytes(), &[]));
+fn guest_datetime_before_the_epoch_round_trips() {
+	// A nanos DateTime is signed, so a timestamp one nanosecond before the epoch is a real instant, never the epoch
+	// itself.
+	let columns = unmarshal_columns_from_bytes(&guest_bytes(ValueKind::DateTime, 1, &(-1i64).to_le_bytes(), &[]))
+		.outcome()
+		.expect("a negative nanos timestamp unmarshals");
+	assert_eq!(only_column(&columns), ColumnBuffer::datetime([DateTime::from_nanos(-1)]));
 }
 
 #[test]

@@ -8,8 +8,8 @@ use arrow_array::{
 	builder::{ArrayBuilder, GenericByteBuilder, LargeBinaryBuilder, LargeStringBuilder, PrimitiveBuilder},
 	types::{
 		ByteArrayType, Date32Type, Decimal128Type, Decimal256Type, Float32Type, Float64Type, Int8Type,
-		Int16Type, Int32Type, Int64Type, IntervalMonthDayNanoType, Time64NanosecondType, UInt8Type, UInt16Type,
-		UInt32Type, UInt64Type,
+		Int16Type, Int32Type, Int64Type, IntervalMonthDayNanoType, Time64NanosecondType,
+		TimestampNanosecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 	},
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, i256};
@@ -26,6 +26,7 @@ use reifydb_value::{
 			},
 			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
 			digest_array::push_none_slot,
+			temporal_array::DATETIME_TIMEZONE,
 			uuid_array::{self, UUID_WIDTH},
 			varlen_array,
 		},
@@ -250,7 +251,7 @@ pub enum ColumnBuilder {
 	Float4(PrimitiveBuilder<Float32Type>),
 	Float8(PrimitiveBuilder<Float64Type>),
 	Date(PrimitiveBuilder<Date32Type>),
-	DateTime(PrimitiveBuilder<UInt64Type>),
+	DateTime(PrimitiveBuilder<TimestampNanosecondType>),
 	Time(PrimitiveBuilder<Time64NanosecondType>),
 	Duration(PrimitiveBuilder<IntervalMonthDayNanoType>),
 	IdentityId(MutableBuffer),
@@ -309,7 +310,10 @@ impl ColumnBuilder {
 			ValueType::Float4 => ColumnBuilder::Float4(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Float8 => ColumnBuilder::Float8(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Date => ColumnBuilder::Date(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::DateTime => ColumnBuilder::DateTime(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::DateTime => ColumnBuilder::DateTime(
+				PrimitiveBuilder::<TimestampNanosecondType>::with_capacity(capacity)
+					.with_timezone(DATETIME_TIMEZONE),
+			),
 			ValueType::Time => ColumnBuilder::Time(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Duration => ColumnBuilder::Duration(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::IdentityId => {

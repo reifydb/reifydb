@@ -625,7 +625,7 @@ mod tests {
 		OrdinalCoord::from_arrival_counter(value)
 	}
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		DateTime::from_millis(millis).to_order()
 	}
 
@@ -1148,17 +1148,22 @@ mod tests {
 
 			let mut buckets: RollingEngineBuckets<DateTime> = TestBTreeMap::new();
 			for (group, (ms, seq), value, is_add) in &plan {
-				let contribution =
-					(WindowSlotKey::new(DateTime::from_millis(*ms), *seq), inputs(kinds, *value));
+				let ms_nanos = i64::try_from(*ms).expect("test slot millis fits in i64");
+				let contribution = (
+					WindowSlotKey::new(DateTime::from_millis(ms_nanos), *seq),
+					inputs(kinds, *value),
+				);
 				let event = if *is_add {
 					AccumulatorEvent::Add(contribution)
 				} else {
 					AccumulatorEvent::Remove(contribution)
 				};
-				buckets.entry((*group, DateTime::from_millis(*ms))).or_default().push(event);
+				buckets.entry((*group, DateTime::from_millis(ms_nanos))).or_default().push(event);
 			}
 			let eviction = match cutoff {
-				Some(cutoff) => RollingEviction::Before(DateTime::from_millis(cutoff)),
+				Some(cutoff) => RollingEviction::Before(DateTime::from_millis(
+					i64::try_from(cutoff).expect("test cutoff fits in i64 milliseconds"),
+				)),
 				None => RollingEviction::Nothing,
 			};
 			let results = if runnable {
@@ -1195,7 +1200,9 @@ mod tests {
 			if round % 5 == 4 {
 				let next = base.saturating_sub(20);
 				cutoff = Some(next);
-				let at = DateTime::from_millis(next);
+				let at = DateTime::from_millis(
+					i64::try_from(next).expect("test expiry bound fits in i64 milliseconds"),
+				);
 				let expiries = if runnable {
 					engine.expire_before_running(&mut store, at).unwrap()
 				} else {
@@ -1233,7 +1240,9 @@ mod tests {
 			base += rng.below(4) + 1;
 		}
 
-		let past_every_slot = DateTime::from_millis(base + 1_000_000);
+		let past_every_slot = DateTime::from_millis(
+			i64::try_from(base + 1_000_000).expect("test drain bound fits in i64 milliseconds"),
+		);
 		let drained = if runnable {
 			engine.expire_before_running(&mut store, past_every_slot).unwrap()
 		} else {

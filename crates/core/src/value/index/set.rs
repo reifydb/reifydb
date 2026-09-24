@@ -386,10 +386,10 @@ impl IndexShape {
 		}
 		key.set_valid(index, true);
 
-		let nanos = value.to_nanos();
+		let order = value.to_order();
 		let bytes = match field.direction {
-			SortDirection::Asc => nanos.to_be_bytes(),
-			SortDirection::Desc => (!nanos).to_be_bytes(),
+			SortDirection::Asc => order.to_be_bytes(),
+			SortDirection::Desc => (!order).to_be_bytes(),
 		};
 
 		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.

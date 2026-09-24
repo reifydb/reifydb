@@ -69,7 +69,7 @@ fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Colu
 		.zip(buffers)
 		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 		.collect();
-	let at = DateTime::from_millis(1_000_000 + number);
+	let at = DateTime::from_millis(1_000_000 + i64::try_from(number).expect("row number fits in i64 millis"));
 	Columns::with_system(
 		columns,
 		SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),

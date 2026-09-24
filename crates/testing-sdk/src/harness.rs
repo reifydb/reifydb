@@ -791,7 +791,7 @@ pub mod tests {
 		assert_eq!(state.len(), 3);
 	}
 
-	const MILLI: u64 = 1_000_000;
+	const MILLI: i64 = 1_000_000;
 
 	const REARM_LIMIT: i64 = 3;
 
@@ -820,7 +820,7 @@ pub mod tests {
 				}
 				for &row_number in diff.post().row_numbers() {
 					ctx.arm_timer(
-						DateTime::from_nanos(row_number * MILLI),
+						DateTime::from_nanos(row_number as i64 * MILLI),
 						TimerKind::Seal,
 						&encode_key(format!("row_{row_number}")),
 					)?;
@@ -832,7 +832,7 @@ pub mod tests {
 		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			// State is what proves on_timer reached the operator; a fired count alone would
 			// still pass if the harness popped the wheel and dropped the callback.
-			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos()), &1i64)
+			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos() as u64), &1i64)
 		}
 	}
 
@@ -936,7 +936,7 @@ pub mod tests {
 				}
 				for &row_number in diff.post().row_numbers() {
 					ctx.arm_timer(
-						DateTime::from_nanos(row_number * MILLI),
+						DateTime::from_nanos(row_number as i64 * MILLI),
 						TimerKind::Seal,
 						&encode_key("rearm"),
 					)?;
@@ -949,7 +949,7 @@ pub mod tests {
 			// Re-arms one millisecond out, still at or below the watermark the test advances
 			// to; the limit is what keeps this off advance_watermark's runaway panic.
 			self.fires += 1;
-			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos()), &self.fires)?;
+			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos() as u64), &self.fires)?;
 			if self.fires < REARM_LIMIT {
 				ctx.arm_timer(
 					DateTime::from_nanos(timer.due.to_nanos() + MILLI),
@@ -985,7 +985,7 @@ pub mod tests {
 		assert_eq!(still_armed[0].due, DateTime::from_nanos(3 * MILLI));
 
 		let state = harness.state();
-		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
+		state.assert_typed_value::<i64>(probe_row_key(MILLI as u64).as_encoded(), &1i64);
 		assert_eq!(state.len(), 1, "the 3ms timer must not have reached the operator");
 	}
 
@@ -1025,9 +1025,9 @@ pub mod tests {
 		assert!(harness.armed_timers().is_empty(), "the operator stopped re-arming at the limit");
 
 		let state = harness.state();
-		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
-		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI).as_encoded(), &2i64);
-		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
+		state.assert_typed_value::<i64>(probe_row_key(MILLI as u64).as_encoded(), &1i64);
+		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI as u64).as_encoded(), &2i64);
+		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI as u64).as_encoded(), &3i64);
 	}
 
 	fn group_state_key(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> OperatorStateKey {
@@ -1090,7 +1090,10 @@ impl<T: ExternCOperator> Subject for ExternCOperatorHarness<T> {
 	}
 
 	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
-		let at = DateTime::from_epoch_millis(at_ms).unwrap();
+		let at = DateTime::from_epoch_millis(
+			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
+		)
+		.unwrap();
 		self.advance_watermark(at)?;
 		let diffs = into_diffs(self.builder_registry.drain_diffs());
 		if diffs.is_empty() {

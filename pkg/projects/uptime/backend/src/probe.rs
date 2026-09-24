@@ -19,7 +19,7 @@ use crate::{
 	store::{self, JobRow, ProbeBackend},
 };
 
-const HEARTBEAT_INTERVAL_NANOS: u64 = 10_000_000_000;
+const HEARTBEAT_INTERVAL_NANOS: i64 = 10_000_000_000;
 
 pub async fn run(
 	backend: ProbeBackend,
@@ -32,7 +32,7 @@ pub async fn run(
 	#[allow(clippy::disallowed_types)]
 	let mut tick = interval(Duration::from_seconds(1).unwrap().to_std());
 	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
-	let mut last_heartbeat: u64 = 0;
+	let mut last_heartbeat: i64 = 0;
 
 	loop {
 		select! {

@@ -34,7 +34,7 @@ mod tests {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn order(millis: u64) -> u64 {
+	fn order(millis: i64) -> u64 {
 		DateTime::from_millis(millis).to_order()
 	}
 
@@ -61,14 +61,16 @@ mod tests {
 	}
 
 	#[test]
-	fn a_timer_that_fires_before_its_own_span_has_elapsed_sweeps_nothing() {
-		// A cold-restart wheel can present an instant earlier than the admissible span. Wrapping
-		// through u64 there yields a horizon near u64::MAX and seals every window the operator owns in
-		// one tick.
+	fn a_timer_that_fires_before_its_own_span_has_elapsed_yields_a_pre_epoch_horizon() {
+		// Wrapping through u64 there would yield a horizon near u64::MAX and seal every window in one tick
 		let sweep = SealSweep::new(SealRule::tumbling(ms(1_000), ms(200)));
 
-		assert!(sweep.horizon(fired(order(0))).is_none());
-		assert!(sweep.horizon(fired(order(1_200))).is_none(), "the horizon would be 0 - 1, not 0");
+		assert_eq!(sweep.horizon(fired(order(0))), Some(DateTime::from_millis(-1_201)));
+		assert_eq!(
+			sweep.horizon(fired(order(1_200))),
+			Some(DateTime::from_millis(-1)),
+			"the horizon is 0 - 1, not 0"
+		);
 		assert_eq!(sweep.horizon(fired(order(1_201))), Some(DateTime::from_millis(0)));
 	}
 

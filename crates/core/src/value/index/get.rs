@@ -389,12 +389,12 @@ impl IndexShape {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
-		let nanos = match field.direction {
+		let order = match field.direction {
 			SortDirection::Asc => u64::from_be_bytes(bytes),
 			SortDirection::Desc => !u64::from_be_bytes(bytes),
 		};
 
-		DateTime::from_nanos(nanos)
+		DateTime::from_order(order)
 	}
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {
@@ -956,6 +956,51 @@ pub mod tests {
 			assert_eq!(layout.get_date(&key1, 0), date1);
 			assert_eq!(layout.get_date(&key2, 0), date2);
 			assert_eq!(layout.get_date(&key3, 0), date3);
+		}
+	}
+
+	mod datetime {
+		use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
+
+		use crate::{sort::SortDirection, value::index::shape::IndexShape};
+
+		#[test]
+		fn test_asc() {
+			let layout = IndexShape::new(&[ValueType::DateTime], &[SortDirection::Asc]).unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+			let mut key3 = layout.allocate_key();
+
+			let before_epoch = DateTime::from_nanos(-1);
+			let min = DateTime::MIN;
+			let epoch = DateTime::from_nanos(0);
+
+			layout.set_datetime(&mut key1, 0, min);
+			layout.set_datetime(&mut key2, 0, before_epoch);
+			layout.set_datetime(&mut key3, 0, epoch);
+
+			assert!(key1.as_slice() < key2.as_slice());
+			assert!(key2.as_slice() < key3.as_slice());
+			assert_eq!(layout.get_datetime(&key1, 0), min);
+			assert_eq!(layout.get_datetime(&key2, 0), before_epoch);
+			assert_eq!(layout.get_datetime(&key3, 0), epoch);
+		}
+
+		#[test]
+		fn test_desc() {
+			let layout = IndexShape::new(&[ValueType::DateTime], &[SortDirection::Desc]).unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let before_epoch = DateTime::from_nanos(-1);
+			let min = DateTime::MIN;
+
+			layout.set_datetime(&mut key1, 0, min);
+			layout.set_datetime(&mut key2, 0, before_epoch);
+
+			assert!(key1.as_slice() > key2.as_slice());
+			assert_eq!(layout.get_datetime(&key1, 0), min);
+			assert_eq!(layout.get_datetime(&key2, 0), before_epoch);
 		}
 	}
 

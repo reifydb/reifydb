@@ -153,7 +153,7 @@ mod tests {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn timer(millis: u64) -> Timer {
+	fn timer(millis: i64) -> Timer {
 		Timer {
 			due: DateTime::from_millis(millis),
 			kind: TimerKind::Seal,
@@ -188,19 +188,19 @@ mod tests {
 	}
 
 	#[test]
-	fn an_untouched_wall_clock_operator_has_its_frontier_at_the_epoch() {
+	fn an_untouched_wall_clock_operator_has_its_frontier_at_datetime_min() {
 		// neither input may default to "now", or a operator that never fired a timer drops every row
 		let mut store = MockStore::default();
 
-		assert_eq!(DateTime::frontier(&mut store).unwrap(), DateTime::default());
+		assert_eq!(DateTime::frontier(&mut store).unwrap(), DateTime::MIN);
 		assert!(store.state_get(&seal_ledger_key()).unwrap().is_none());
 	}
 
 	#[test]
-	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_never_wraps() {
-		// a horizon below the epoch must clamp, or it wraps high and reports every window sealed
+	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_may_go_pre_epoch() {
+		// wrapping high instead of going negative would report every window sealed
 		assert_eq!(DateTime::horizon(at_millis(6_060_000), ms(60_000)), at_millis(6_000_000));
-		assert_eq!(DateTime::horizon(at_millis(1_000), ms(60_000)), DateTime::default());
+		assert_eq!(DateTime::horizon(at_millis(1_000), ms(60_000)), at_millis(-59_000));
 	}
 
 	#[test]

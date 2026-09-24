@@ -22,18 +22,18 @@ pub(crate) mod testing {
 
 	#[derive(Clone)]
 	pub struct TestClock {
-		nanos: Rc<Cell<u64>>,
+		nanos: Rc<Cell<i64>>,
 	}
 
 	impl TestClock {
 		pub fn from_millis(millis: u64) -> Self {
 			Self {
-				nanos: Rc::new(Cell::new(millis * 1_000_000)),
+				nanos: Rc::new(Cell::new(millis as i64 * 1_000_000)),
 			}
 		}
 
 		pub fn advance_millis(&self, millis: u64) {
-			self.nanos.set(self.nanos.get() + millis * 1_000_000);
+			self.nanos.set(self.nanos.get() + millis as i64 * 1_000_000);
 		}
 	}
 

@@ -18,10 +18,11 @@ use crate::{
 	value::{date::Date, duration::Duration, temporal::parse::datetime::parse_datetime, time::Time},
 };
 
-const NANOS_PER_SECOND: u64 = 1_000_000_000;
-const NANOS_PER_MILLI: u64 = 1_000_000;
-const NANOS_PER_MICRO: u64 = 1_000;
-const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
+const NANOS_PER_SECOND: i64 = 1_000_000_000;
+const NANOS_PER_MILLI: i64 = 1_000_000;
+const NANOS_PER_MICRO: i64 = 1_000;
+const NANOS_PER_DAY: i64 = 86_400 * NANOS_PER_SECOND;
+const ORDER_SIGN_BIT: u64 = 1 << 63;
 
 pub static CREATED_AT_COLUMN_NAME: &str = "created_at";
 pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
@@ -30,7 +31,7 @@ pub static TIME_COLUMN_NAME: &str = "time";
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
-	bits: u64,
+	nanos: i64,
 }
 
 impl DateTime {
@@ -39,13 +40,9 @@ impl DateTime {
 		let time = Time::new(hour, min, sec, nano)?;
 
 		let days = date.to_days_since_epoch();
-		if days < 0 {
-			return None;
-		}
-
-		let nanos = (days as u64).checked_mul(NANOS_PER_DAY)?.checked_add(time.to_nanos_since_midnight())?;
+		let nanos = days as i128 * NANOS_PER_DAY as i128 + time.to_nanos_since_midnight() as i128;
 		Some(Self {
-			bits: nanos,
+			nanos: i64::try_from(nanos).ok()?,
 		})
 	}
 
@@ -75,79 +72,55 @@ impl DateTime {
 		}
 	}
 
-	pub fn from_bits(bits: u64) -> Self {
-		Self {
-			bits,
-		}
-	}
-
-	pub fn to_bits(&self) -> u64 {
-		self.bits
-	}
-
 	pub fn to_order(&self) -> u64 {
-		self.bits
+		(self.nanos as u64) ^ ORDER_SIGN_BIT
 	}
 
-	pub fn from_nanos(nanos: u64) -> Self {
+	pub fn from_order(order: u64) -> Self {
 		Self {
-			bits: nanos,
+			nanos: (order ^ ORDER_SIGN_BIT) as i64,
 		}
 	}
 
-	pub fn to_nanos(&self) -> u64 {
-		self.bits
+	pub fn from_nanos(nanos: i64) -> Self {
+		Self {
+			nanos,
+		}
+	}
+
+	pub fn to_nanos(&self) -> i64 {
+		self.nanos
 	}
 
 	pub fn from_epoch_secs(secs: i64) -> Result<Self, Box<TypeError>> {
-		if secs < 0 {
-			return Err(Box::new(Self::overflow_err(format!(
-				"{} seconds is before the Unix epoch, which DateTime cannot represent",
-				secs
-			))));
-		}
-		let nanos = (secs as u64).checked_mul(NANOS_PER_SECOND).ok_or_else(|| {
+		let nanos = secs.checked_mul(NANOS_PER_SECOND).ok_or_else(|| {
 			Box::new(Self::overflow_err(format!("{} seconds overflows DateTime range", secs)))
 		})?;
 		Ok(Self {
-			bits: nanos,
+			nanos,
 		})
 	}
 
-	pub fn from_epoch_millis(millis: u64) -> Result<Self, Box<TypeError>> {
+	pub fn from_epoch_millis(millis: i64) -> Result<Self, Box<TypeError>> {
 		let nanos = millis.checked_mul(NANOS_PER_MILLI).ok_or_else(|| {
 			Box::new(Self::overflow_err(format!("{} milliseconds overflows DateTime range", millis)))
 		})?;
 		Ok(Self {
-			bits: nanos,
-		})
-	}
-
-	pub fn from_epoch_nanos(nanos: u128) -> Result<Self, Box<TypeError>> {
-		let nanos = u64::try_from(nanos).map_err(|_| {
-			Box::new(Self::overflow_err(format!("{} nanoseconds overflows DateTime range", nanos)))
-		})?;
-		Ok(Self {
-			bits: nanos,
+			nanos,
 		})
 	}
 
 	pub fn to_epoch_secs(&self) -> i64 {
-		(self.bits / NANOS_PER_SECOND) as i64
+		self.nanos.div_euclid(NANOS_PER_SECOND)
 	}
 
 	pub fn to_epoch_millis(&self) -> i64 {
-		(self.bits / NANOS_PER_MILLI) as i64
-	}
-
-	pub fn to_epoch_nanos(&self) -> Result<i64, Box<TypeError>> {
-		i64::try_from(self.bits)
-			.map_err(|_| Box::new(Self::overflow_err("DateTime overflows nanosecond range")))
+		self.nanos.div_euclid(NANOS_PER_MILLI)
 	}
 
 	pub fn try_date(&self) -> Result<Date, Box<TypeError>> {
-		let days_u64 = self.bits / NANOS_PER_DAY;
-		let days = i32::try_from(days_u64)
+		let days = self.nanos.div_euclid(NANOS_PER_DAY);
+		let days = i32::try_from(days)
 			.map_err(|_| Box::new(Self::overflow_err("DateTime overflows Date range")))?;
 		Date::from_days_since_epoch(days)
 			.ok_or_else(|| Box::new(Self::overflow_err("DateTime overflows Date range")))
@@ -158,12 +131,7 @@ impl DateTime {
 	}
 
 	pub fn time(&self) -> Time {
-		let nanos_in_day = self.bits % NANOS_PER_DAY;
-		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
-	}
-
-	pub fn to_nanos_since_epoch_u128(&self) -> u128 {
-		self.bits as u128
+		Time::from_nanos_since_midnight(self.nanos.rem_euclid(NANOS_PER_DAY) as u64).unwrap()
 	}
 
 	pub fn year(&self) -> i32 {
@@ -221,16 +189,10 @@ impl DateTime {
 
 		let total_nanos = base_days as i128 * 86_400_000_000_000i128 + time_nanos as i128;
 
-		if total_nanos < 0 {
-			return Err(Box::new(Self::overflow_err(
-				"the result is before the Unix epoch, which DateTime cannot represent",
-			)));
-		}
-
-		let nanos = u64::try_from(total_nanos)
+		let nanos = i64::try_from(total_nanos)
 			.map_err(|_| Box::new(Self::overflow_err("the result overflows DateTime range")))?;
 		Ok(Self {
-			bits: nanos,
+			nanos,
 		})
 	}
 }
@@ -242,8 +204,8 @@ impl DateTime {
 		} else {
 			i64::MAX
 		});
-		let nanos = (self.to_nanos() as i128 + total as i128).clamp(0, u64::MAX as i128);
-		DateTime::from_nanos(nanos as u64)
+		let nanos = (self.to_nanos() as i128 + total as i128).clamp(i64::MIN as i128, i64::MAX as i128);
+		DateTime::from_nanos(nanos as i64)
 	}
 
 	pub fn saturating_sub(self, rhs: Duration) -> DateTime {
@@ -252,28 +214,20 @@ impl DateTime {
 		} else {
 			i64::MAX
 		});
-		let nanos = (self.to_nanos() as i128 - total as i128).clamp(0, u64::MAX as i128);
-		DateTime::from_nanos(nanos as u64)
+		let nanos = (self.to_nanos() as i128 - total as i128).clamp(i64::MIN as i128, i64::MAX as i128);
+		DateTime::from_nanos(nanos as i64)
 	}
 
 	pub fn checked_add(self, rhs: Duration) -> Option<DateTime> {
 		let total = rhs.as_nanos().ok()?;
 		let nanos = self.to_nanos() as i128 + total as i128;
-		if nanos < 0 || nanos > u64::MAX as i128 {
-			None
-		} else {
-			Some(DateTime::from_nanos(nanos as u64))
-		}
+		i64::try_from(nanos).ok().map(DateTime::from_nanos)
 	}
 
 	pub fn checked_sub(self, rhs: Duration) -> Option<DateTime> {
 		let total = rhs.as_nanos().ok()?;
 		let nanos = self.to_nanos() as i128 - total as i128;
-		if nanos < 0 || nanos > u64::MAX as i128 {
-			None
-		} else {
-			Some(DateTime::from_nanos(nanos as u64))
-		}
+		i64::try_from(nanos).ok().map(DateTime::from_nanos)
 	}
 
 	pub fn saturating_duration_since(self, earlier: DateTime) -> Duration {
@@ -287,49 +241,55 @@ impl DateTime {
 	pub const ALIGNMENT: usize = 8;
 
 	pub const EPOCH: DateTime = DateTime {
-		bits: 0,
+		nanos: 0,
+	};
+
+	pub const MIN: DateTime = DateTime {
+		nanos: i64::MIN,
 	};
 
 	pub const MAX: DateTime = DateTime {
-		bits: u64::MAX,
+		nanos: i64::MAX,
 	};
 
 	pub fn is_epoch(&self) -> bool {
-		self.bits == 0
+		self.nanos == 0
 	}
 
-	pub fn from_millis(millis: u64) -> Self {
+	pub fn from_millis(millis: i64) -> Self {
 		Self {
-			bits: millis.saturating_mul(NANOS_PER_MILLI),
+			nanos: millis.saturating_mul(NANOS_PER_MILLI),
 		}
 	}
 
-	pub fn to_millis(&self) -> u64 {
-		self.bits / NANOS_PER_MILLI
+	pub fn to_millis(&self) -> i64 {
+		self.nanos.div_euclid(NANOS_PER_MILLI)
 	}
 
-	pub fn to_micros(&self) -> u64 {
-		self.bits / NANOS_PER_MICRO
+	pub fn to_micros(&self) -> i64 {
+		self.nanos.div_euclid(NANOS_PER_MICRO)
 	}
 
-	pub fn to_secs(&self) -> u64 {
-		self.bits / NANOS_PER_SECOND
+	pub fn to_secs(&self) -> i64 {
+		self.nanos.div_euclid(NANOS_PER_SECOND)
 	}
 
 	pub fn saturating_add_millis(self, millis: u64) -> DateTime {
-		DateTime::from_nanos(self.bits.saturating_add(millis.saturating_mul(NANOS_PER_MILLI)))
+		let delta = i64::try_from(millis).unwrap_or(i64::MAX).saturating_mul(NANOS_PER_MILLI);
+		DateTime::from_nanos(self.nanos.saturating_add(delta))
 	}
 
 	pub fn saturating_sub_millis(self, millis: u64) -> DateTime {
-		DateTime::from_nanos(self.bits.saturating_sub(millis.saturating_mul(NANOS_PER_MILLI)))
+		let delta = i64::try_from(millis).unwrap_or(i64::MAX).saturating_mul(NANOS_PER_MILLI);
+		DateTime::from_nanos(self.nanos.saturating_sub(delta))
 	}
 
 	pub fn floor_to_millis(self, millis: u64) -> DateTime {
-		let width = millis.saturating_mul(NANOS_PER_MILLI);
+		let width = i64::try_from(millis).unwrap_or(i64::MAX).saturating_mul(NANOS_PER_MILLI);
 		if width == 0 {
 			return self;
 		}
-		DateTime::from_nanos(self.bits - self.bits % width)
+		DateTime::from_nanos(self.nanos.saturating_sub(self.nanos.rem_euclid(width)))
 	}
 }
 
@@ -340,7 +300,7 @@ impl Add<Duration> for DateTime {
 	fn add(self, rhs: Duration) -> DateTime {
 		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
 		let nanos = self.to_nanos() as i128 + total as i128;
-		DateTime::from_nanos(u64::try_from(nanos).expect("datetime addition out of range"))
+		DateTime::from_nanos(i64::try_from(nanos).expect("datetime addition out of range"))
 	}
 }
 
@@ -351,7 +311,7 @@ impl Sub<Duration> for DateTime {
 	fn sub(self, rhs: Duration) -> DateTime {
 		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
 		let nanos = self.to_nanos() as i128 - total as i128;
-		DateTime::from_nanos(u64::try_from(nanos).expect("datetime subtraction out of range"))
+		DateTime::from_nanos(i64::try_from(nanos).expect("datetime subtraction out of range"))
 	}
 }
 
@@ -373,7 +333,7 @@ impl Rem<Duration> for DateTime {
 	fn rem(self, rhs: Duration) -> Duration {
 		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
 		let total = u64::try_from(total).expect("duration must be positive for windowing");
-		Duration::from_nanoseconds((self.to_nanos() % total) as i64)
+		Duration::from_nanoseconds(self.nanos.rem_euclid(total as i64))
 			.expect("datetime remainder out of duration range")
 	}
 }
@@ -392,7 +352,7 @@ impl Serialize for DateTime {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_u64(self.to_bits())
+		serializer.serialize_i64(self.nanos)
 	}
 }
 
@@ -402,14 +362,21 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 	type Value = DateTime;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("a datetime as its bit representation since the Unix epoch (u64)")
+		formatter.write_str("a datetime as signed nanoseconds since the Unix epoch (i64)")
+	}
+
+	fn visit_i64<E>(self, value: i64) -> Result<DateTime, E>
+	where
+		E: de::Error,
+	{
+		Ok(DateTime::from_nanos(value))
 	}
 
 	fn visit_u64<E>(self, value: u64) -> Result<DateTime, E>
 	where
 		E: de::Error,
 	{
-		Ok(DateTime::from_bits(value))
+		i64::try_from(value).map(DateTime::from_nanos).map_err(|_| E::custom("datetime out of range"))
 	}
 }
 
@@ -418,7 +385,7 @@ impl<'de> Deserialize<'de> for DateTime {
 	where
 		D: Deserializer<'de>,
 	{
-		deserializer.deserialize_u64(DateTimeVisitor)
+		deserializer.deserialize_i64(DateTimeVisitor)
 	}
 }
 
@@ -537,23 +504,24 @@ pub mod tests {
 		let datetime = DateTime::new(2100, 1, 1, 0, 0, 0, 0).unwrap();
 		assert_eq!(format!("{}", datetime), "2100-01-01T00:00:00.000000000Z");
 
-		// u64 nanos since the epoch runs out around year 2554.
-		let datetime = DateTime::new(2554, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(format!("{}", datetime), "2554-01-01T00:00:00.000000000Z");
+		let datetime = DateTime::new(2262, 4, 11, 23, 47, 16, 854775807).unwrap();
+		assert_eq!(format!("{}", datetime), "2262-04-11T23:47:16.854775807Z");
+		assert_eq!(datetime, DateTime::MAX);
 
+		assert!(DateTime::new(2262, 4, 11, 23, 47, 16, 854775808).is_none());
 		assert!(DateTime::new(9999, 12, 31, 23, 59, 59, 999999999).is_none());
 	}
 
 	#[test]
-	fn test_datetime_rejects_pre_epoch() {
-		// u64 nanos cannot represent anything before 1970.
-		assert!(DateTime::new(1, 1, 1, 0, 0, 0, 0).is_none());
+	fn test_datetime_accepts_pre_epoch_down_to_min() {
+		assert_eq!(DateTime::new(1969, 12, 31, 23, 59, 59, 999999999), Some(DateTime::from_nanos(-1)));
 
-		assert!(DateTime::new(1900, 1, 1, 0, 0, 0, 0).is_none());
+		assert!(DateTime::new(1900, 1, 1, 0, 0, 0, 0).is_some());
 
-		assert!(DateTime::new(1969, 12, 31, 23, 59, 59, 999999999).is_none());
+		assert_eq!(DateTime::new(1677, 9, 21, 0, 12, 43, 145224192), Some(DateTime::MIN));
+		assert!(DateTime::new(1677, 9, 21, 0, 12, 43, 145224191).is_none());
 
-		assert!(DateTime::from_epoch_secs(-1).is_err());
+		assert_eq!(DateTime::from_epoch_secs(-1).unwrap().to_nanos(), -1_000_000_000);
 	}
 
 	#[test]
@@ -609,16 +577,19 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_bits_roundtrip_preserves_every_component() {
-		// every key encoding and the serde impl go through to_bits, so a lossy leg moves stored instants unseen
+		// every key encoding and the serde impl go through to_order, so a lossy leg moves stored instants
+		// unseen
 		let cases = [
 			DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(),
 			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap(),
 			DateTime::new(2000, 2, 29, 23, 59, 59, 999999999).unwrap(),
 			DateTime::MAX,
+			DateTime::MIN,
+			DateTime::from_nanos(-1),
 		];
 
 		for datetime in cases {
-			let recovered = DateTime::from_bits(datetime.to_bits());
+			let recovered = DateTime::from_order(datetime.to_order());
 
 			assert_eq!(datetime, recovered);
 			assert_eq!(datetime.nanosecond(), recovered.nanosecond(), "sub-second precision must survive");
@@ -629,6 +600,8 @@ pub mod tests {
 	fn test_datetime_bits_are_monotonic_in_instant_order() {
 		// key encodings sort on the raw bits, so a disagreeing order would fire timers out of sequence
 		let ordered = [
+			DateTime::MIN,
+			DateTime::from_nanos(-1),
 			DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(),
 			DateTime::new(1970, 1, 1, 0, 0, 0, 1).unwrap(),
 			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap(),
@@ -639,7 +612,7 @@ pub mod tests {
 		for pair in ordered.windows(2) {
 			let (lo, hi) = (pair[0], pair[1]);
 			assert!(lo < hi, "fixture must be ordered");
-			assert!(lo.to_bits() < hi.to_bits(), "bit order must follow instant order");
+			assert!(lo.to_order() < hi.to_order(), "bit order must follow instant order");
 		}
 	}
 
@@ -696,6 +669,13 @@ pub mod tests {
 
 		let recovered: DateTime = from_str(&json).unwrap();
 		assert_eq!(datetime, recovered);
+
+		let pre_epoch = DateTime::new(1900, 6, 15, 12, 34, 56, 789000000).unwrap();
+		let json = to_string(&pre_epoch).unwrap();
+		assert_eq!(json, pre_epoch.to_nanos().to_string());
+
+		let recovered: DateTime = from_str(&json).unwrap();
+		assert_eq!(pre_epoch, recovered);
 	}
 
 	#[test]
@@ -707,6 +687,7 @@ pub mod tests {
 			(2024, 3, 15, 14, 30, 45, 123456789),
 			(1999, 12, 31, 23, 59, 59, 999999999),
 			(2024, 3, 15, 14, 30, 45, 1),
+			(1900, 6, 15, 12, 34, 56, 789000000),
 		] {
 			let dt = DateTime::new(y, mo, d, h, mi, s, n).unwrap();
 			let bytes = to_allocvec(&dt).unwrap();
@@ -736,30 +717,19 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_from_epoch_nanos_overflow() {
-		let huge: u128 = u64::MAX as u128 + 1;
-		assert_datetime_overflow(DateTime::from_epoch_nanos(huge));
-	}
-
-	#[test]
-	fn test_from_epoch_nanos_max_u64_ok() {
-		let dt = DateTime::from_epoch_nanos(u64::MAX as u128).unwrap();
-		assert_eq!(dt.to_nanos(), u64::MAX);
-	}
-
-	#[test]
 	fn test_from_epoch_secs_large_value_overflow() {
 		assert_datetime_overflow(DateTime::from_epoch_secs(i64::MAX));
 	}
 
 	#[test]
 	fn test_from_epoch_secs_negative_overflow() {
-		assert_datetime_overflow(DateTime::from_epoch_secs(-1));
+		assert!(DateTime::from_epoch_secs(-1).is_ok());
+		assert_datetime_overflow(DateTime::from_epoch_secs(i64::MIN));
 	}
 
 	#[test]
 	fn test_from_epoch_millis_overflow() {
-		assert_datetime_overflow(DateTime::from_epoch_millis(u64::MAX));
+		assert_datetime_overflow(DateTime::from_epoch_millis(i64::MAX));
 	}
 
 	#[test]
@@ -769,37 +739,28 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_to_epoch_nanos_large_value_returns_err() {
-		let dt = DateTime::from_nanos(i64::MAX as u64 + 1);
-		assert_datetime_overflow(dt.to_epoch_nanos());
-	}
-
-	#[test]
-	fn test_to_epoch_nanos_within_range_ok() {
-		let dt = DateTime::from_nanos(i64::MAX as u64);
-		assert_eq!(dt.to_epoch_nanos().unwrap(), i64::MAX);
-	}
-
-	#[test]
 	fn test_try_date_max_nanos_ok() {
-		// u64::MAX nanos / NANOS_PER_DAY = 213_503 which fits in i32
-		let dt = DateTime::from_nanos(u64::MAX);
-		let date = dt.try_date().unwrap();
-		assert!(date.year() > 2500);
+		let date = DateTime::MAX.try_date().unwrap();
+		assert_eq!(date.year(), 2262);
+
+		let date = DateTime::MIN.try_date().unwrap();
+		assert_eq!(date.year(), 1677);
 	}
 
 	#[test]
 	fn test_add_duration_overflow() {
-		let dt = DateTime::from_nanos(u64::MAX - 1);
+		let dt = DateTime::from_nanos(i64::MAX - 1);
 		let dur = Duration::from_days(1).unwrap();
 		assert_datetime_overflow(dt.add_duration(&dur));
 	}
 
 	#[test]
 	fn test_add_duration_before_epoch() {
-		let dt = DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap();
+		let epoch = DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap();
 		let dur = Duration::from_seconds(-1).unwrap();
-		assert_datetime_overflow(dt.add_duration(&dur));
+		assert_eq!(epoch.add_duration(&dur).unwrap(), DateTime::from_nanos(-1_000_000_000));
+
+		assert_datetime_overflow(DateTime::MIN.add_duration(&dur));
 	}
 
 	#[test]
@@ -856,23 +817,26 @@ pub mod tests {
 	}
 
 	#[test]
-	fn saturating_sub_below_epoch_clamps_to_epoch() {
-		// A cutoff falling before 1970 must clamp to the epoch, not panic the u64-nanos
-		// conversion.
+	fn saturating_sub_clamps_at_min() {
+		// A cutoff below DateTime::MIN must clamp to MIN, not overflow.
 		let epoch = DateTime::from_nanos(0);
-		assert_eq!(epoch.saturating_sub(Duration::from_seconds(1).unwrap()), epoch);
+		assert_eq!(
+			epoch.saturating_sub(Duration::from_seconds(1).unwrap()),
+			DateTime::from_nanos(-1_000_000_000)
+		);
 
-		let early = DateTime::from_epoch_secs(5).unwrap();
-		assert_eq!(early.saturating_sub(Duration::from_seconds(10_000).unwrap()), epoch);
+		assert_eq!(DateTime::MIN.saturating_sub(Duration::from_seconds(1).unwrap()), DateTime::MIN);
 	}
 
 	#[test]
-	fn checked_sub_returns_none_when_window_has_not_elapsed() {
-		// When now < ttl the cutoff must be None so the GC scan skips eviction; clamping to
-		// the epoch would evict rows still inside their TTL.
-		let now = DateTime::from_epoch_millis(1_000).unwrap();
-		assert_eq!(now.checked_sub(Duration::from_seconds(3).unwrap()), None);
-		assert_eq!(DateTime::from_nanos(0).checked_sub(Duration::from_seconds(1).unwrap()), None);
+	fn checked_sub_gives_a_pre_epoch_cutoff_and_none_only_below_min() {
+		// now=1s, ttl=3s gives a pre-epoch cutoff, not None; only DateTime::MIN has no representable cutoff.
+		let now = DateTime::from_epoch_secs(1).unwrap();
+		assert_eq!(
+			now.checked_sub(Duration::from_seconds(3).unwrap()),
+			Some(DateTime::from_nanos(-2_000_000_000))
+		);
+		assert_eq!(DateTime::MIN.checked_sub(Duration::from_seconds(1).unwrap()), None);
 	}
 
 	#[test]
@@ -884,9 +848,9 @@ pub mod tests {
 
 	#[test]
 	fn saturating_add_above_max_clamps_to_max() {
-		// Overflow past the representable u64-nanos range clamps to the max instant.
-		let near_max = DateTime::from_nanos(u64::MAX - 1);
-		assert_eq!(near_max.saturating_add(Duration::from_days(1).unwrap()), DateTime::from_nanos(u64::MAX));
+		// Overflow past the representable range clamps to the max instant.
+		let near_max = DateTime::from_nanos(i64::MAX - 1);
+		assert_eq!(near_max.saturating_add(Duration::from_days(1).unwrap()), DateTime::from_nanos(i64::MAX));
 	}
 
 	#[test]
@@ -906,7 +870,7 @@ pub mod tests {
 		let b = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
 		assert_eq!(a.saturating_duration_since(b), Duration::from_seconds(60).unwrap());
 		assert_eq!(b.saturating_duration_since(a), Duration::from_seconds(-60).unwrap());
-		let clamped = DateTime::from_nanos(u64::MAX).saturating_duration_since(DateTime::from_nanos(0));
+		let clamped = DateTime::MAX.saturating_duration_since(DateTime::MIN);
 		assert_eq!(clamped.as_nanos().unwrap(), i64::MAX);
 	}
 
@@ -921,7 +885,7 @@ pub mod tests {
 	fn checked_add_returns_none_past_the_representable_range() {
 		// An expiry past the end of the range must be None; wrapping yields a small instant
 		// that reads as already expired.
-		let near_max = DateTime::from_nanos(u64::MAX - 1);
+		let near_max = DateTime::from_nanos(i64::MAX - 1);
 		assert_eq!(near_max.checked_add(Duration::from_days(1).unwrap()), None);
 	}
 
@@ -929,7 +893,7 @@ pub mod tests {
 	fn checked_sub_of_a_negative_duration_cannot_wrap_past_the_range() {
 		// Subtracting a negative duration moves forward, so checked_sub must check the upper
 		// bound too.
-		let near_max = DateTime::from_nanos(u64::MAX - 1);
+		let near_max = DateTime::from_nanos(i64::MAX - 1);
 		assert_eq!(near_max.checked_sub(Duration::from_days(-1).unwrap()), None);
 	}
 
@@ -943,11 +907,11 @@ pub mod tests {
 		// would diverge if the flooring were done in the wrong order.
 		// Mutation: round instead of floor, or truncate the instant to millis first, and the two
 		// paths disagree.
-		let nanos = 1_700_000_123_456_789u64;
+		let nanos = 1_700_000_123_456_789i64;
 		let window_ms = 1_000u64;
 
 		let ts_ms = nanos / 1_000_000;
-		let legacy_bucket_start_nanos = (ts_ms - ts_ms % window_ms) * 1_000_000;
+		let legacy_bucket_start_nanos = (ts_ms - ts_ms % window_ms as i64) * 1_000_000;
 
 		assert_eq!(
 			DateTime::from_nanos(nanos).floor_to_millis(window_ms),
@@ -989,11 +953,10 @@ pub mod tests {
 	}
 
 	#[test]
-	fn saturating_sub_millis_clamps_at_the_epoch() {
-		// Cold start: an unadvanced watermark minus a TTL must mean "nothing is due", not an
-		// underflowed instant near u64::MAX that would evict everything.
-		assert_eq!(DateTime::EPOCH.saturating_sub_millis(30_000), DateTime::EPOCH);
-		assert_eq!(DateTime::from_nanos(1_000_000).saturating_sub_millis(30_000), DateTime::EPOCH);
+	fn saturating_sub_millis_clamps_at_min() {
+		// A cutoff below DateTime::MIN must clamp to MIN, not wrap.
+		assert_eq!(DateTime::EPOCH.saturating_sub_millis(30_000), DateTime::from_nanos(-30_000_000_000));
+		assert_eq!(DateTime::MIN.saturating_sub_millis(1), DateTime::MIN);
 	}
 
 	#[test]
@@ -1017,10 +980,9 @@ pub mod tests {
 	}
 
 	#[test]
-	fn coarser_unit_accessors_truncate_toward_the_epoch() {
-		// These replace hand-written `to_nanos() / 1_000_000_000` divisions, where a wrong count
-		// of zeros reads as plausible. They must match that division including its truncation;
-		// rounding would shift a boundary instant into the next unit and retire state a tick early.
+	fn coarser_unit_accessors_floor() {
+		// Must match `to_nanos() / N` truncation exactly; rounding shifts a boundary instant into the next
+		// unit.
 		let dt = DateTime::from_nanos(1_700_000_123_456_789);
 
 		assert_eq!(dt.to_secs(), 1_700_000);
@@ -1034,6 +996,10 @@ pub mod tests {
 		assert_eq!(DateTime::from_nanos(1_999).to_micros(), 1);
 		assert_eq!(DateTime::EPOCH.to_secs(), 0);
 		assert_eq!(DateTime::EPOCH.to_micros(), 0);
+
+		assert_eq!(DateTime::from_nanos(-1).to_secs(), -1);
+		assert_eq!(DateTime::from_nanos(-1).to_millis(), -1);
+		assert_eq!(DateTime::from_nanos(-1).to_micros(), -1);
 	}
 
 	#[test]
@@ -1041,8 +1007,9 @@ pub mod tests {
 		// from_millis is the infallible form callers want; an input large enough to overflow is
 		// roughly 584 million years, so clamping is safe and saves an unwrap at every call site.
 		assert_eq!(DateTime::from_millis(1_500), DateTime::from_epoch_millis(1_500).unwrap());
-		assert!(DateTime::from_epoch_millis(u64::MAX).is_err());
-		assert_eq!(DateTime::from_millis(u64::MAX), DateTime::MAX);
+		assert!(DateTime::from_epoch_millis(i64::MAX).is_err());
+		assert_eq!(DateTime::from_millis(i64::MAX), DateTime::MAX);
+		assert_eq!(DateTime::from_millis(i64::MIN), DateTime::MIN);
 	}
 
 	#[test]
@@ -1063,6 +1030,37 @@ pub mod tests {
 		assert_eq!(DateTime::EPOCH, DateTime::default());
 		assert!(DateTime::EPOCH.is_epoch());
 		assert!(!DateTime::from_nanos(1).is_epoch());
+	}
+
+	#[test]
+	fn a_pre_epoch_instant_round_trips_every_component() {
+		// A negative nanos value must decompose back to its own date/time, not wrap to a bogus post-epoch one.
+		let datetime = DateTime::new(1900, 6, 15, 12, 34, 56, 789000001).unwrap();
+		assert!(datetime.to_nanos() < 0);
+		assert_eq!(datetime.year(), 1900);
+		assert_eq!(datetime.month(), 6);
+		assert_eq!(datetime.day(), 15);
+		assert_eq!(datetime.hour(), 12);
+		assert_eq!(datetime.minute(), 34);
+		assert_eq!(datetime.second(), 56);
+		assert_eq!(datetime.nanosecond(), 789000001);
+	}
+
+	#[test]
+	fn min_and_max_display_the_representable_range_boundaries() {
+		// The Display impl must agree with the range DateTime::new accepts, or an error message quoting MIN/MAX
+		// lies.
+		assert_eq!(format!("{}", DateTime::MIN), "1677-09-21T00:12:43.145224192Z");
+		assert_eq!(format!("{}", DateTime::MAX), "2262-04-11T23:47:16.854775807Z");
+	}
+
+	#[test]
+	fn a_pre_epoch_instant_floors_and_remainders_toward_the_earlier_boundary() {
+		// rem_euclid/div_euclid give floor semantics; truncating toward zero would put -1ns in the wrong
+		// second.
+		let dt = DateTime::from_nanos(-1);
+		assert_eq!(dt % Duration::from_seconds(1).unwrap(), Duration::from_nanoseconds(999_999_999).unwrap());
+		assert_eq!(dt.floor_to_millis(1_000), DateTime::from_nanos(-1_000_000_000));
 	}
 }
 

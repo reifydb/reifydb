@@ -35,7 +35,7 @@ use reifydb_value::{
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
 // How long after a row's own event time the operator asks to be woken.
-const DELAY_MS: u64 = 1_000;
+const DELAY_MS: i64 = 1_000;
 
 struct AlarmRow {
 	g: i32,
@@ -266,7 +266,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 }
 
 struct Snooze {
-	disarm_offset_ms: u64,
+	disarm_offset_ms: i64,
 }
 
 impl OperatorMetadata for Snooze {
@@ -290,7 +290,7 @@ impl UnmanagedOperator for Snooze {
 
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Snooze {
-			disarm_offset_ms: params.u64_or("disarm_offset", 0),
+			disarm_offset_ms: params.i64_or("disarm_offset", 0),
 		})
 	}
 
@@ -322,7 +322,7 @@ impl UnmanagedOperator for Snooze {
 					// Zero in the honest case; non-zero aims the disarm past what
 					// was armed, which is how the control test proves the wheel
 					// matches on the exact instant.
-					let target = prior as u64 + self.disarm_offset_ms;
+					let target = prior + self.disarm_offset_ms;
 					ctx.disarm_timer(DateTime::from_millis(target), TimerKind::Seal, &key)?;
 				}
 

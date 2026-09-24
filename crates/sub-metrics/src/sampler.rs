@@ -119,7 +119,8 @@ impl MetricsSamplerActor {
 		match state.last_snapshot {
 			None => true,
 			Some(last) => {
-				now.to_nanos().saturating_sub(last.to_nanos()) >= interval.to_std().as_nanos() as u64
+				now.to_nanos().saturating_sub(last.to_nanos())
+					>= i64::try_from(interval.to_std().as_nanos()).unwrap_or(i64::MAX)
 			}
 		}
 	}

@@ -101,7 +101,8 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
 	let early_version = engine.current_version().expect("head version");
 	task.run_slice();
-	let early_instant = engine.clock().now().to_secs();
+	let early_instant =
+		u64::try_from(engine.clock().now().to_secs()).expect("mock clock is never before the Unix epoch");
 
 	clock.advance_hours(6);
 	commit_a_version(&engine, "ingest", 2);
@@ -140,14 +141,16 @@ fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
 	let early_version = engine.current_version().expect("head version");
 	task.run_slice();
-	let early_instant = engine.clock().now().to_secs();
+	let early_instant =
+		u64::try_from(engine.clock().now().to_secs()).expect("mock clock is never before the Unix epoch");
 
 	clock.advance_hours(6);
 	commit_a_version(&engine, "ingest", 2);
 	task.run_slice();
 
 	let restored_epoch = VersionEpoch::new();
-	let boot_instant = engine.clock().now().to_secs();
+	let boot_instant =
+		u64::try_from(engine.clock().now().to_secs()).expect("mock clock is never before the Unix epoch");
 	let boot_version = engine.current_version().expect("head version");
 	restored_epoch.record(EpochSeconds::new(boot_instant), boot_version.0);
 
@@ -211,7 +214,7 @@ fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() 
 	task.run_slice();
 
 	let (bucket, at, version) = durable_samples(&engine)[0];
-	let now = engine.clock().now().to_secs();
+	let now = u64::try_from(engine.clock().now().to_secs()).expect("mock clock is never before the Unix epoch");
 
 	// A horizon that lands between the bucket start and the sample instant: the bucket is outside, the sample
 	// is not.
@@ -390,7 +393,7 @@ fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
 
 	assert_eq!(restored, 0, "a cold database has nothing to hydrate");
 	assert_eq!(
-		VersionEpoch::new().floor_version_at(EpochSeconds::new(engine.clock().now().to_secs())),
+		VersionEpoch::new().floor_version_at(EpochSeconds::from_datetime(engine.clock().now())),
 		None,
 		"a cold epoch must yield no cutoff, so gc deletes nothing"
 	);

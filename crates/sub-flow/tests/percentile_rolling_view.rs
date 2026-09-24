@@ -37,8 +37,8 @@ use reifydb_value::value::{
 };
 
 const PPM: u32 = 10_000;
-const BASE_MS: u64 = 1_000_000;
-const SIZE_MS: u64 = 10_000;
+const BASE_MS: i64 = 1_000_000;
+const SIZE_MS: i64 = 10_000;
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(60);
 const SEED: u64 = 0xD16E_5744_0E2E;
@@ -63,7 +63,7 @@ fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static 
 			parent_schema: Some(Columns::empty()),
 			operator: OperatorId(1),
 			kind: WindowKind::Rolling {
-				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS as i64).unwrap()),
+				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS).unwrap()),
 				lag: None,
 				pane: None,
 			},
@@ -82,12 +82,12 @@ fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static 
 	})
 }
 
-fn row(number: u64, slot_ms: u64, value: i64) -> Row {
+fn row(number: u64, slot_ms: i64, value: i64) -> Row {
 	let at = DateTime::from_epoch_millis(BASE_MS + slot_ms).expect("a row stamp is representable");
 	generator::row(RowNumber(number), 1, value, at)
 }
 
-fn frame_percentile(frame: &BTreeMap<u64, (u64, i64)>, p: f64) -> Value {
+fn frame_percentile(frame: &BTreeMap<u64, (i64, i64)>, p: f64) -> Value {
 	let mut digest = Digest::new(ValueType::Int8, PPM).unwrap();
 	for (_, value) in frame.values() {
 		digest.add_value(&Value::Int8(*value)).unwrap();
@@ -95,8 +95,8 @@ fn frame_percentile(frame: &BTreeMap<u64, (u64, i64)>, p: f64) -> Value {
 	digest.percentile_value(p).unwrap()
 }
 
-fn median_of_slot_medians(frame: &BTreeMap<u64, (u64, i64)>) -> Value {
-	let mut slots: BTreeMap<u64, Digest> = BTreeMap::new();
+fn median_of_slot_medians(frame: &BTreeMap<u64, (i64, i64)>) -> Value {
+	let mut slots: BTreeMap<i64, Digest> = BTreeMap::new();
 	for (slot, value) in frame.values() {
 		slots.entry(*slot)
 			.or_insert_with(|| Digest::new(ValueType::Int8, PPM).unwrap())
@@ -122,7 +122,7 @@ fn published(changes: &[Change], name: &str) -> Value {
 		.get_value(0)
 }
 
-fn assert_reads_the_frame(changes: &[Change], frame: &BTreeMap<u64, (u64, i64)>, with_min: bool, step: &str) {
+fn assert_reads_the_frame(changes: &[Change], frame: &BTreeMap<u64, (i64, i64)>, with_min: bool, step: &str) {
 	let answer = frame_percentile(frame, 0.5);
 	assert_ne!(
 		median_of_slot_medians(frame),
@@ -139,8 +139,8 @@ fn assert_reads_the_frame(changes: &[Change], frame: &BTreeMap<u64, (u64, i64)>,
 
 fn insert_rows(
 	harness: &mut Harness<WindowOperator>,
-	frame: &mut BTreeMap<u64, (u64, i64)>,
-	rows: &[(u64, u64, i64)],
+	frame: &mut BTreeMap<u64, (i64, i64)>,
+	rows: &[(u64, i64, i64)],
 ) -> Change {
 	frame.extend(rows.iter().map(|(number, slot, value)| (*number, (*slot, *value))));
 	harness.apply(generator::insert(rows.iter().map(|(number, slot, value)| row(*number, *slot, *value)).collect()))
@@ -166,7 +166,7 @@ fn a_rolling_percentile_is_read_from_one_frame_digest_never_from_per_slot_percen
 			"running"
 		};
 		let mut harness = rolling_window(immutable, aggregations);
-		let mut frame: BTreeMap<u64, (u64, i64)> = BTreeMap::new();
+		let mut frame: BTreeMap<u64, (i64, i64)> = BTreeMap::new();
 
 		let first = [
 			(1, 0, 1),

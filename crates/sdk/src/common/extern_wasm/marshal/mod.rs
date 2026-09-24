@@ -8,7 +8,7 @@ use std::{mem, mem::size_of, ptr, slice, str};
 
 use arrow_array::{
 	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, IntervalMonthDayNanoArray, LargeBinaryArray,
-	LargeStringArray, Time64NanosecondArray, UInt64Array,
+	LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_codec::{
@@ -331,7 +331,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::DateTime(container) => {
-			let encoded: Vec<i64> = datetimes(container).iter().map(|dt| dt.to_nanos() as i64).collect();
+			let encoded: Vec<i64> = datetimes(container).iter().map(|dt| dt.to_nanos()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::Time(container) => {
@@ -687,18 +687,12 @@ fn unmarshal_date(data: &[u8], row_count: usize) -> SdkResult<Date32Array> {
 	Ok(date_array(dates))
 }
 
-fn unmarshal_datetime(data: &[u8], row_count: usize) -> SdkResult<UInt64Array> {
+fn unmarshal_datetime(data: &[u8], row_count: usize) -> SdkResult<TimestampNanosecondArray> {
 	if data.is_empty() {
 		return Ok(datetime_array(vec![DateTime::default(); row_count]));
 	}
-	let datetimes = unmarshal_raw::<i64>(data, row_count, "datetime")?
-		.into_iter()
-		.map(|nanos| {
-			u64::try_from(nanos).map(DateTime::from_nanos).map_err(|_| {
-				malformed(format!("guest datetime {nanos} nanoseconds lies before the epoch"))
-			})
-		})
-		.collect::<SdkResult<Vec<DateTime>>>()?;
+	let datetimes: Vec<DateTime> =
+		unmarshal_raw::<i64>(data, row_count, "datetime")?.into_iter().map(DateTime::from_nanos).collect();
 	Ok(datetime_array(datetimes))
 }
 

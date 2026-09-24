@@ -76,21 +76,21 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
 									* 86_400_000_000_000i128 + time_nanos
 									as i128;
 
-								if total_nanos >= 0 && total_nanos <= u64::MAX as i128 {
-									container.push(DateTime::from_nanos(
-										total_nanos as u64,
-									));
-								} else {
-									return Err(RoutineError::FunctionExecutionFailed {
-										function: ctx.fragment.clone(),
-										reason: "datetime cannot be before Unix epoch".to_string(),
-									});
+								match i64::try_from(total_nanos) {
+									Ok(n) => {
+										container.push(DateTime::from_nanos(n))
+									}
+									Err(_) => {
+										return Err(RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason: "datetime out of range".to_string(),
+										});
+									}
 								}
 							} else {
 								return Err(RoutineError::FunctionExecutionFailed {
 									function: ctx.fragment.clone(),
-									reason: "datetime cannot be before Unix epoch"
-										.to_string(),
+									reason: "datetime out of range".to_string(),
 								});
 							}
 						}

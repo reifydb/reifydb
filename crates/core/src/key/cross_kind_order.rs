@@ -456,7 +456,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::QueueDue => QueueDueKey {
 			queue: QueueId(1),
 			partition: 0,
-			due: DateTime::from_bits(1),
+			due: DateTime::from_order(1),
 			row: RowNumber(1),
 		}
 		.encode(),

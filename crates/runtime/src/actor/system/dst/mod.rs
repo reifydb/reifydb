@@ -181,7 +181,10 @@ impl ActorSystem {
 	}
 
 	pub fn scope(&self) -> Self {
-		let child_mock_clock = MockClock::new(self.inner.mock_clock.now().to_nanos());
+		let child_mock_clock = MockClock::new(
+			u64::try_from(self.inner.mock_clock.now().to_nanos())
+				.expect("mock clock is never before the Unix epoch"),
+		);
 		let child = Self {
 			inner: Rc::new(DstActorSystemInner {
 				cancel: self.inner.cancel.child_token(),
@@ -403,7 +406,9 @@ impl ActorSystem {
 	}
 
 	pub fn advance_time(&self, delta: Duration) {
-		let target_nanos = self.inner.mock_clock.now().to_nanos() + delta.to_std().as_nanos() as u64;
+		let target_nanos = u64::try_from(self.inner.mock_clock.now().to_nanos())
+			.expect("mock clock is never before the Unix epoch")
+			+ delta.to_std().as_nanos() as u64;
 
 		loop {
 			let next_deadline = self.inner.timer_heap.borrow().peek().map(|e| e.deadline_nanos);

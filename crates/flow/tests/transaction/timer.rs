@@ -53,7 +53,7 @@ fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 
 fn timer(millis: u64, kind: TimerKind, key: &str) -> Timer {
 	Timer {
-		due: at_millis(millis),
+		due: at_millis(i64::try_from(millis).expect("test timer millis fits in i64")),
 		kind,
 		key: EncodedKey::new(key.as_bytes()),
 	}
@@ -371,7 +371,7 @@ fn a_restart_still_fires_persisted_timers() {
 	);
 }
 
-fn due(millis: u64) -> TimerDue {
+fn due(millis: i64) -> TimerDue {
 	TimerDue {
 		operator_id: NODE,
 		due: at_millis(millis),
@@ -526,7 +526,7 @@ fn an_uncapped_take_still_bounds_what_it_pulls_and_leaves_the_rest_armed() {
 	);
 	assert_eq!(
 		next,
-		Some(at_millis(1_000 + first.len() as u64)),
+		Some(at_millis(1_000 + first.len() as i64)),
 		"the bound must report the earliest instant it left behind, not none"
 	);
 

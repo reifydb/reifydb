@@ -328,7 +328,7 @@ fn input_fields() -> Vec<RowShapeField> {
 }
 
 fn window_order(millis: u64) -> u64 {
-	DateTime::from_millis(millis).to_order()
+	DateTime::from_millis(millis as i64).to_order()
 }
 
 fn input_row(rn: u64, group: &str, slot: u64, size: f64) -> CoreRow {
@@ -338,7 +338,7 @@ fn input_row(rn: u64, group: &str, slot: u64, size: f64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(slot), Value::float8(size)])
 		.with_fields(input_fields())
-		.with_time(DateTime::from_millis(slot))
+		.with_time(DateTime::from_millis(slot as i64))
 		.build()
 }
 

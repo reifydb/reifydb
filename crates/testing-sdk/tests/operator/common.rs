@@ -431,7 +431,7 @@ impl WindowedOperator for OhlcvSealingTumbling {
 		let Some(price) = OrdF64::new(price) else {
 			return Ok(None);
 		};
-		Ok(Some((group.to_string(), (at_millis(slot), price))))
+		Ok(Some((group.to_string(), (at_millis(slot as i64), price))))
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> OhlcvAcc {

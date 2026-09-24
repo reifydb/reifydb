@@ -758,7 +758,7 @@ mod tests {
 	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::value::{duration::Duration as ValueDuration, row_number::RowNumber};
 
 	use super::*;
 
@@ -1109,7 +1109,7 @@ mod tests {
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
+		let now = DateTime::MIN.checked_add(ValueDuration::from_milliseconds(1).unwrap()).unwrap();
 		assert!(
 			now.checked_sub(HOUR.to_duration()).is_none(),
 			"precondition: the cutoff must be unresolvable, or this asserts nothing"
@@ -1436,7 +1436,7 @@ mod tests {
 		);
 		assert_eq!(
 			evictor.plane().snapshot(RetentionClass::RowTtl).floor_version,
-			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_nanos(),
+			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_order(),
 			"the floor must come from the 4h object this tick never visited, because that is the \
 			 oldest cutoff the class is still bound by"
 		);
@@ -1481,7 +1481,7 @@ mod tests {
 
 		assert_eq!(
 			snapshot.floor_version,
-			second.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_nanos(),
+			second.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_order(),
 			"the second tick starts at the 4h object, and the class floor must still be measured from \
 			 the longest declared ttl rather than from whatever the rotation happened to reach"
 		);
@@ -1504,7 +1504,7 @@ mod tests {
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
+		let now = DateTime::MIN.checked_add(ValueDuration::from_milliseconds(1).unwrap()).unwrap();
 		assert!(
 			now.checked_sub(HOUR.to_duration()).is_none(),
 			"precondition: the cutoff must be unresolvable, or this asserts nothing"

@@ -827,7 +827,12 @@ mod tests {
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((1u32, at_millis(slot))).or_default().push(ev);
+				buckets.entry((
+					1u32,
+					at_millis(i64::try_from(slot).expect("test slot fits in i64 milliseconds")),
+				))
+				.or_default()
+				.push(ev);
 			}
 			let emits = engine
 				.apply(

@@ -8,8 +8,19 @@ mod encoded;
 mod family_order;
 mod serializer;
 
-use reifydb_codec::key::{serializer::KeySerializer, *};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer, *};
 use reifydb_value::value::datetime::DateTime;
+
+fn encode_datetime(datetime: DateTime) -> EncodedKey {
+	let mut ser = KeySerializer::new();
+	ser.extend_datetime(&datetime);
+	ser.finish()
+}
+
+fn decode_datetime(key: &EncodedKey) -> DateTime {
+	let mut de = KeyDeserializer::from_bytes(key.as_slice());
+	de.read_datetime().unwrap()
+}
 
 #[test]
 fn test_u128_varint_roundtrip_and_descending_order() {
@@ -133,41 +144,39 @@ fn every_fixed_width_key_encoding_round_trips() {
 
 #[test]
 fn a_datetime_key_round_trips_through_its_encoding() {
-	// the encoding is the only path an instant takes into a key, so a lossy leg silently moves every timer armed at
-	// it
-	for bits in [0u64, 1, 999_999, 1_000_000, 1_700_000_000_123_456_789, u64::MAX - 1, u64::MAX] {
-		let instant = DateTime::from_bits(bits);
-		assert_eq!(decode_datetime_asc(encode_datetime_asc(instant)), instant, "datetime key round trip");
+	// a lossy leg here silently moves every timer armed at the affected instant
+	for nanos in [0i64, 1, 999_999, 1_000_000, 1_700_000_000_123_456_789, i64::MAX - 1, i64::MAX] {
+		let instant = DateTime::from_nanos(nanos);
+		assert_eq!(decode_datetime(&encode_datetime(instant)), instant, "datetime key round trip");
 	}
 }
 
 #[test]
-fn datetime_keys_sort_in_instant_order() {
-	// a range scan reads firing order straight off these bytes, so an encoding that reorders fires timers out of
-	// order
+fn datetime_keys_sort_in_reverse_instant_order() {
+	// extend_datetime encodes descending like every other integer field, never ascending
 	let ordered = [
-		DateTime::from_bits(0),
-		DateTime::from_bits(1),
-		DateTime::from_bits(999_999),
-		DateTime::from_bits(1_000_000),
-		DateTime::from_bits(1_000_001),
-		DateTime::from_bits(u64::MAX),
+		DateTime::from_nanos(0),
+		DateTime::from_nanos(1),
+		DateTime::from_nanos(999_999),
+		DateTime::from_nanos(1_000_000),
+		DateTime::from_nanos(1_000_001),
+		DateTime::from_nanos(i64::MAX),
 	];
 
 	for pair in ordered.windows(2) {
 		let (lo, hi) = (pair[0], pair[1]);
 		assert!(lo < hi, "fixture must be ordered");
-		assert!(encode_datetime_asc(lo) < encode_datetime_asc(hi), "encoding must keep {lo:?} below {hi:?}");
+		assert!(encode_datetime(lo) > encode_datetime(hi), "encoding must keep {lo:?} above {hi:?}");
 	}
 }
 
 #[test]
 fn two_instants_inside_one_millisecond_encode_to_distinct_keys() {
 	// a millisecond-resolution key collapses these to one row, so the second arm silently overwrites the first
-	let earlier = DateTime::from_bits(1_700_000_000_000_000_000);
-	let later = DateTime::from_bits(1_700_000_000_000_500_000);
+	let earlier = DateTime::from_nanos(1_700_000_000_000_000_000);
+	let later = DateTime::from_nanos(1_700_000_000_000_500_000);
 
 	assert_eq!(earlier.to_epoch_millis(), later.to_epoch_millis(), "fixture must share a millisecond");
-	assert_ne!(encode_datetime_asc(earlier), encode_datetime_asc(later));
-	assert_eq!(decode_datetime_asc(encode_datetime_asc(later)), later);
+	assert_ne!(encode_datetime(earlier), encode_datetime(later));
+	assert_eq!(decode_datetime(&encode_datetime(later)), later);
 }

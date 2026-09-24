@@ -142,7 +142,7 @@ mod distinct {
 					RowNumber(i as u64 + 1),
 					1,
 					v,
-					at_millis(1_000 * (i as u64 + 1)),
+					at_millis(1_000 * (i as i64 + 1)),
 				))
 			})
 			.collect();
@@ -246,7 +246,7 @@ mod count_window {
 	fn events() -> Vec<Event> {
 		// Two groups filling count-2 tumbling buckets at staggered rates, with a leftover row
 		// per group so unsealed buffer state is compared too.
-		let rows: [(u64, i32, i64, u64); 9] = [
+		let rows: [(u64, i32, i64, i64); 9] = [
 			(1, 1, 5, 1_000),
 			(2, 2, 7, 1_500),
 			(3, 1, 9, 2_000),
@@ -320,7 +320,7 @@ mod time_window {
 	fn events() -> Vec<Event> {
 		// Two groups spread over five 2s buckets, with one late-but-in-seal row (rn 8 lands at
 		// 2.5s after rows reached 6s) so the seal path participates in the comparison.
-		let rows: [(u64, i32, i64, u64); 10] = [
+		let rows: [(u64, i32, i64, i64); 10] = [
 			(1, 1, 5, 500),
 			(2, 2, 7, 1_000),
 			(3, 1, 9, 2_500),
@@ -442,7 +442,7 @@ mod join {
 		rn: u64,
 		k: i32,
 		v: i64,
-		ms: u64,
+		ms: i64,
 	}
 
 	#[derive(Clone, Copy)]

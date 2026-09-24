@@ -136,7 +136,7 @@ mod tests {
 		FlowId(id)
 	}
 
-	fn armed(operator_id: u64, millis: u64) -> TimerDue {
+	fn armed(operator_id: u64, millis: i64) -> TimerDue {
 		TimerDue {
 			operator_id: operator(operator_id),
 			due: DateTime::from_millis(millis),
@@ -158,7 +158,7 @@ mod tests {
 		held
 	}
 
-	fn due_before(registry: &mut TimerRegistry, armed: Vec<TimerDue>, flow: FlowId, millis: u64) -> Vec<TimerDue> {
+	fn due_before(registry: &mut TimerRegistry, armed: Vec<TimerDue>, flow: FlowId, millis: i64) -> Vec<TimerDue> {
 		let mut found = registry.due_before(armed, flow, DateTime::from_millis(millis));
 		found.sort();
 		found

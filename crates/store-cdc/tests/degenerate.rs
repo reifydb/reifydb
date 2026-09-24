@@ -22,13 +22,13 @@ mod common;
 
 use common::Fixture;
 
-const DEFAULT_TIMESTAMP: u64 = 1_700_000_000_000_000_000;
+const DEFAULT_TIMESTAMP: i64 = 1_700_000_000_000_000_000;
 
 const HALF_MAX: u64 = u64::MAX / 2;
 
 const MANY_CHANGES: usize = 50_000;
 
-fn cdc_at(version: u64, timestamp: u64, changes: usize) -> Cdc {
+fn cdc_at(version: u64, timestamp: i64, changes: usize) -> Cdc {
 	Cdc::new(
 		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(timestamp),

@@ -17,7 +17,7 @@ pub mod horizon {
 		}
 
 		pub fn raw(&self) -> u64 {
-			self.0.to_nanos()
+			self.0.to_order()
 		}
 	}
 }

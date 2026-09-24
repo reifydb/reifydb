@@ -60,12 +60,24 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::DateTime(dt) => {
-						mock.set_nanos(dt.to_nanos());
+						mock.set_nanos(u64::try_from(dt.to_nanos()).map_err(|_| {
+							RoutineError::ProcedureExecutionFailed {
+								procedure: Fragment::internal("clock::set"),
+								reason: "clock cannot be set before Unix epoch"
+									.to_string(),
+							}
+						})?);
 					}
 					Value::Duration(dur) => {
 						let epoch = DateTime::default();
 						let target = epoch.add_duration(dur)?;
-						mock.set_nanos(target.to_nanos());
+						mock.set_nanos(u64::try_from(target.to_nanos()).map_err(|_| {
+							RoutineError::ProcedureExecutionFailed {
+								procedure: Fragment::internal("clock::set"),
+								reason: "clock cannot be set before Unix epoch"
+									.to_string(),
+							}
+						})?);
 					}
 					other => {
 						let millis = extract_millis(other).ok_or_else(|| {
@@ -79,8 +91,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 						mock.set_millis(millis);
 					}
 				}
-				let current_nanos = mock.now().to_nanos();
-				let dt = DateTime::from_nanos(current_nanos);
+				let dt = mock.now();
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(RoutineError::ProcedureExecutionFailed {

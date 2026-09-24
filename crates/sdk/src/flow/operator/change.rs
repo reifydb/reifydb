@@ -53,7 +53,7 @@ impl<'a> BorrowedChange<'a> {
 		self.extern_c.version
 	}
 
-	pub fn changed_at_nanos(&self) -> u64 {
+	pub fn changed_at_nanos(&self) -> i64 {
 		self.extern_c.changed_at
 	}
 
@@ -140,13 +140,13 @@ impl<'a> BorrowedColumns<'a> {
 		}
 	}
 
-	pub fn time(&self) -> &'a [u64] {
+	pub fn time(&self) -> &'a [i64] {
 		if self.extern_c.time.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
 			// SAFETY: `time` is non-null here and a non-empty system sidecar holds exactly `row_count`
 			// entries (`Columns::with_system` asserts it); `DateTime` is `repr(transparent)` over
-			// `u64`.
+			// `i64`.
 			unsafe { slice::from_raw_parts(self.extern_c.time, self.extern_c.row_count) }
 		}
 	}
@@ -572,7 +572,7 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		// SAFETY: the DateTime check above means the buffer is a marshalled &[DateTime]; `DateTime` is
-		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
+		// `repr(transparent)` over `i64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<DateTime>()?.get(index).copied() }
 	}
 

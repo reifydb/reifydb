@@ -181,11 +181,13 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	}
 }
 
-const NANOS_PER_SECOND: u64 = 1_000_000_000;
+const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
 fn reclaim_due(written_at: DateTime, retention: Duration) -> DateTime {
 	let free = written_at.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
-	DateTime::from_nanos(free.to_nanos().div_ceil(NANOS_PER_SECOND).saturating_mul(NANOS_PER_SECOND))
+	let nanos = free.to_nanos();
+	let ceil = nanos.div_euclid(NANOS_PER_SECOND) + i64::from(nanos.rem_euclid(NANOS_PER_SECOND) != 0);
+	DateTime::from_nanos(ceil.saturating_mul(NANOS_PER_SECOND))
 }
 
 impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {

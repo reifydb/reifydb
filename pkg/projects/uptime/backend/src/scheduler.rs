@@ -34,7 +34,7 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 	let mut tick = interval(Duration::from_seconds(2).unwrap().to_std());
 	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-	let mut in_flight: HashMap<(Uuid7, Uuid7), u64> = HashMap::new();
+	let mut in_flight: HashMap<(Uuid7, Uuid7), i64> = HashMap::new();
 
 	loop {
 		select! {
@@ -74,8 +74,8 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 fn schedule_due<'a>(
 	assignments: &'a [MonitorRegionRow],
 	monitors: &'a HashMap<Uuid7, MonitorRow>,
-	in_flight: &mut HashMap<(Uuid7, Uuid7), u64>,
-	now_nanos: u64,
+	in_flight: &mut HashMap<(Uuid7, Uuid7), i64>,
+	now_nanos: i64,
 ) -> Vec<(&'a MonitorRegionRow, &'a MonitorRow)> {
 	let active: HashSet<(Uuid7, Uuid7)> = assignments.iter().map(|a| (a.monitor_id, a.region_id)).collect();
 	in_flight.retain(|key, _| active.contains(key));
@@ -87,14 +87,14 @@ fn schedule_due<'a>(
 		};
 		let key = (assignment.monitor_id, assignment.region_id);
 		let interval = bounded_interval(monitor.interval);
-		let interval_nanos = interval.as_nanos().unwrap_or(i64::MAX) as u64;
+		let interval_nanos = interval.as_nanos().unwrap_or(i64::MAX);
 
 		if let Some(&enqueued_at) = in_flight.get(&key) {
 			let reported = assignment
 				.last_checked_at
 				.as_ref()
-				.and_then(|d| d.to_epoch_nanos().ok())
-				.is_some_and(|last| last as u64 >= enqueued_at);
+				.map(|d| d.to_nanos())
+				.is_some_and(|last| last >= enqueued_at);
 			let stale = now_nanos.saturating_sub(enqueued_at) > interval_nanos;
 			if reported || stale {
 				in_flight.remove(&key);
@@ -112,15 +112,13 @@ fn schedule_due<'a>(
 	scheduled
 }
 
-fn due(last_checked_at: Option<&DateTime>, interval: &Duration, now_nanos: u64) -> bool {
+fn due(last_checked_at: Option<&DateTime>, interval: &Duration, now_nanos: i64) -> bool {
 	let Some(last) = last_checked_at else {
 		return true;
 	};
-	let Ok(last_nanos) = last.to_epoch_nanos() else {
-		return true;
-	};
+	let last_nanos = last.to_nanos();
 	let interval_nanos = interval.as_nanos().unwrap_or(i64::MAX);
-	(now_nanos as i64).saturating_sub(last_nanos) >= interval_nanos
+	now_nanos.saturating_sub(last_nanos) >= interval_nanos
 }
 
 #[cfg(test)]
@@ -136,7 +134,7 @@ mod tests {
 	use super::{bounded_timeout, due, schedule_due};
 	use crate::store::{MonitorRegionRow, MonitorRow};
 
-	fn monitor(interval_seconds: i64, last_checked_nanos: Option<u64>) -> MonitorRow {
+	fn monitor(interval_seconds: i64, last_checked_nanos: Option<i64>) -> MonitorRow {
 		MonitorRow {
 			id: Uuid7::generate(&Clock::testing(), &Rng::seeded(42)),
 			owner: IdentityId::root(),
@@ -155,7 +153,7 @@ mod tests {
 		}
 	}
 
-	const SECOND: u64 = 1_000_000_000;
+	const SECOND: i64 = 1_000_000_000;
 
 	#[test]
 	fn never_checked_monitor_is_due() {
@@ -179,7 +177,7 @@ mod tests {
 		monitor: &MonitorRow,
 		owner: IdentityId,
 		seed: u64,
-		last_checked_nanos: Option<u64>,
+		last_checked_nanos: Option<i64>,
 	) -> MonitorRegionRow {
 		MonitorRegionRow {
 			monitor_id: monitor.id,

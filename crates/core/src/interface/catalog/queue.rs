@@ -617,7 +617,7 @@ mod tests {
 		// Both facts are fixed-width header slots, so a sign or width bug surfaces only at the extremes and
 		// would expire every live claim at once.
 		for row_number in [RowNumber(0), RowNumber(1), RowNumber(u64::MAX)] {
-			for expires_at in [DateTime::from_nanos(0), DateTime::from_nanos(i64::MAX as u64)] {
+			for expires_at in [DateTime::from_nanos(0), DateTime::from_nanos(i64::MAX)] {
 				let encoded = encode_queue_deduplication(row_number, expires_at);
 
 				assert_eq!(decode_queue_deduplication(&encoded).unwrap(), (row_number, expires_at));

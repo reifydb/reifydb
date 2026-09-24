@@ -60,12 +60,12 @@ function decodeFrame(r: BinaryReader): WireFrame {
     }
     if (metaFlags & META_HAS_CREATED_AT) {
         const cr = new Array<string>(rowCount);
-        for (let i = 0; i < rowCount; i++) cr[i] = formatDateTime(r.u64());
+        for (let i = 0; i < rowCount; i++) cr[i] = formatDateTime(r.i64());
         frame.created_at = cr;
     }
     if (metaFlags & META_HAS_UPDATED_AT) {
         const up = new Array<string>(rowCount);
-        for (let i = 0; i < rowCount; i++) up[i] = formatDateTime(r.u64());
+        for (let i = 0; i < rowCount; i++) up[i] = formatDateTime(r.i64());
         frame.updated_at = up;
     }
 

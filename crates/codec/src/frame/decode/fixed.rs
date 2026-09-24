@@ -183,7 +183,7 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 		}
 		ValueType::DateTime => {
 			let raw = decode_rle_u64(data, row_count)?;
-			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
+			let values: Vec<_> = raw.into_iter().map(|n| DateTime::from_nanos(n as i64)).collect();
 			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}
 		ValueType::Time => {
@@ -270,7 +270,7 @@ pub(crate) fn decode_delta_column(
 			Ok(FrameColumnData::Date(date_array(values?)))
 		}
 		ValueType::DateTime => {
-			let raw = decode_delta_u64(data, row_count)?;
+			let raw = decode_delta_i64(data, row_count)?;
 			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
 			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}
@@ -358,7 +358,7 @@ pub(crate) fn decode_delta_rle_column(
 			Ok(FrameColumnData::Date(date_array(values?)))
 		}
 		ValueType::DateTime => {
-			let raw = decode_delta_rle_u64(data, row_count)?;
+			let raw = decode_delta_rle_i64(data, row_count)?;
 			let values: Vec<_> = raw.into_iter().map(DateTime::from_nanos).collect();
 			Ok(FrameColumnData::DateTime(datetime_array(values)))
 		}

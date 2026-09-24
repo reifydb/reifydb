@@ -145,9 +145,9 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "datetime",
-		column_postcard: "0f0200959a88a7eecddcb318",
+		column_postcard: "0f0200aab490cedc9bb9e730",
 		column_json: "{\"DateTime\":{\"data\":[0,1758500000123456789]}}",
-		frame_postcard: "0f0200959a88a7eecddcb318",
+		frame_postcard: "0f0200aab490cedc9bb9e730",
 		frame_json: "{\"DateTime\":{\"data\":[0,1758500000123456789]}}",
 	},
 	Pin {
@@ -299,9 +299,9 @@ const PINS: &[Pin] = &[
 	},
 ];
 
-const COLUMNS_POSTCARD: &str = "020102010200ffffffffffffffffffffffffffffffffffff03020a14021e2802323c02070802050202041b0d02017800ffffffff0f010102020202696402046e616d65";
+const COLUMNS_POSTCARD: &str = "020102010200ffffffffffffffffffffffffffffffffffff03021428023c5002647802070802050202041b0d02017800ffffffff0f010102020202696402046e616d65";
 const COLUMNS_JSON: &str = "{\"system\":{\"row_numbers\":[1,2],\"has_row_numbers\":true,\"partitions\":[0,340282366920938463463374607431768211455],\"created_at\":[10,20],\"updated_at\":[30,40],\"time\":[50,60],\"commit_versions\":[7,8]},\"columns\":[{\"Int4\":{\"data\":[1,2]}},{\"Option\":{\"inner\":{\"Utf8\":{\"container\":[[120],[]],\"max_bytes\":4294967295}},\"bitvec\":{\"bits\":[1],\"len\":2}}}],\"names\":[{\"Internal\":{\"text\":\"id\"}},{\"Internal\":{\"text\":\"name\"}}]}";
-const FRAME_POSTCARD: &str = "020102010200ffffffffffffffffffffffffffffffffffff03020a14021e2802323c0207080202696405020204046e616d651b0d0201780001010200";
+const FRAME_POSTCARD: &str = "020102010200ffffffffffffffffffffffffffffffffffff03021428023c500264780207080202696405020204046e616d651b0d0201780001010200";
 const FRAME_JSON: &str = "{\"system\":{\"row_numbers\":[1,2],\"has_row_numbers\":true,\"partitions\":[0,340282366920938463463374607431768211455],\"created_at\":[10,20],\"updated_at\":[30,40],\"time\":[50,60],\"commit_versions\":[7,8]},\"columns\":[{\"name\":\"id\",\"data\":{\"Int4\":{\"data\":[1,2]}}},{\"name\":\"name\",\"data\":{\"Option\":{\"inner\":{\"Utf8\":[[120],[]]},\"bitvec\":{\"bits\":[1],\"len\":2}}}}],\"op\":null}";
 
 fn uuid7_bits(i: u128) -> Uuid {

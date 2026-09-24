@@ -17,7 +17,7 @@ impl Floor {
 	pub fn monotonic_key(&self) -> u64 {
 		match self {
 			Self::Version(version) => version.0,
-			Self::Instant(instant) => instant.to_nanos(),
+			Self::Instant(instant) => instant.to_order(),
 		}
 	}
 

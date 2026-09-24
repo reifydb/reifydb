@@ -554,6 +554,25 @@ fn test_datetime() {
 }
 
 #[test]
+fn test_datetime_matches_extend_i64_and_sorts_descending() {
+	// extend_datetime must key like every other integer field, never ascending, or range scans invert.
+	let nanos = [i64::MIN, -1, 0, 1, i64::MAX];
+	let mut encoded = Vec::new();
+	for n in nanos {
+		let mut datetime_ser = KeySerializer::new();
+		datetime_ser.extend_datetime(&DateTime::from_nanos(n));
+		let datetime_bytes = datetime_ser.finish();
+		let mut i64_ser = KeySerializer::new();
+		i64_ser.extend_i64(n);
+		assert_eq!(datetime_bytes, i64_ser.finish());
+		encoded.push(datetime_bytes);
+	}
+	for pair in encoded.windows(2) {
+		assert!(pair[0] > pair[1]);
+	}
+}
+
+#[test]
 fn test_time() {
 	let mut serializer = KeySerializer::new();
 	let time = Time::from_hms(12, 30, 45).unwrap();

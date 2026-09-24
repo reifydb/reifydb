@@ -162,7 +162,7 @@ fn test_oldest_due_at_reports_the_earliest_instant_not_the_latest() {
 	t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { not_before: datetime::from_epoch_millis(20000) }"#);
 	t.command(r#"INSERT test::jobs [{ id: 3 }] WITH { not_before: datetime::from_epoch_millis(90000) }"#);
 
-	let expected_nanos = |millis: u64| Value::DateTime(DateTime::from_nanos(millis * 1_000_000));
+	let expected_nanos = |millis: i64| Value::DateTime(DateTime::from_nanos(millis * 1_000_000));
 
 	assert_eq!(
 		column(&queue_row(&t, "jobs"), "oldest_due_at")[0],

@@ -5,7 +5,7 @@ use std::{
 	collections::{BTreeMap, HashMap, HashSet, VecDeque},
 	sync::{
 		Arc,
-		atomic::{AtomicBool, AtomicU64, Ordering},
+		atomic::{AtomicBool, AtomicI64, Ordering},
 	},
 };
 
@@ -68,14 +68,14 @@ struct Completion {
 
 const COMPLETION_HISTORY: usize = 65_536;
 
-const FLOW_WAKE_COALESCE_NANOS: u64 = 20_000_000;
+const FLOW_WAKE_COALESCE_NANOS: i64 = 20_000_000;
 
 #[derive(Clone)]
 pub struct FlowWaker {
 	actor: ActorRef<FlowActorMessage>,
 	pending: Arc<AtomicBool>,
 	clock: Clock,
-	next_wake_nanos: Arc<AtomicU64>,
+	next_wake_nanos: Arc<AtomicI64>,
 }
 
 impl FlowWaker {
@@ -84,7 +84,7 @@ impl FlowWaker {
 			actor,
 			pending,
 			clock,
-			next_wake_nanos: Arc::new(AtomicU64::new(0)),
+			next_wake_nanos: Arc::new(AtomicI64::new(0)),
 		}
 	}
 

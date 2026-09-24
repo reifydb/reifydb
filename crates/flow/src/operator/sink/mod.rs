@@ -347,7 +347,7 @@ mod tests {
 		RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)])
 	}
 
-	fn columns_with_stamps(created_at: u64, updated_at: u64, time: u64) -> Columns {
+	fn columns_with_stamps(created_at: i64, updated_at: i64, time: i64) -> Columns {
 		let mut builder = ColumnBuilder::with_capacity(ValueType::Int4, 1);
 		builder.push_value(Value::Int4(7));
 		let buffer = builder.finish();

@@ -207,7 +207,7 @@ fn a_family_cell_past_76_digits_is_an_error_not_none() {
 	cell[31] = 0x7F;
 	let name = b"c";
 	let row_numbers = [1u64];
-	let time = [0u64];
+	let time = [0i64];
 	let column = ExternCColumn {
 		name: ExternCBuffer::from_slice(name),
 		data: ExternCColumnData {

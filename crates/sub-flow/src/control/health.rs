@@ -176,14 +176,14 @@ mod tests {
 		assert_eq!(b.poisoned().len(), 1);
 	}
 
-	const STALL_MS: u64 = 1_000;
+	const STALL_MS: i64 = 1_000;
 
-	fn at(millis: u64) -> DateTime {
+	fn at(millis: i64) -> DateTime {
 		DateTime::from_millis(millis)
 	}
 
 	fn watch() -> StallWatch {
-		StallWatch::new(FlowId(1), CommitVersion(0), Duration::from_milliseconds(STALL_MS as i64).unwrap())
+		StallWatch::new(FlowId(1), CommitVersion(0), Duration::from_milliseconds(STALL_MS).unwrap())
 	}
 
 	#[test]

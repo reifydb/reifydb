@@ -70,7 +70,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		}
 
 		FrameColumnData::Date(c) => try_numeric_heuristic_i32(c.values()),
-		FrameColumnData::DateTime(c) => try_numeric_heuristic_u64(c.values()),
+		FrameColumnData::DateTime(c) => try_numeric_heuristic_i64(c.values()),
 		FrameColumnData::Time(c) => {
 			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			try_numeric_heuristic_u64(&raw)
@@ -455,7 +455,7 @@ mod tests {
 		assert_eq!(choose_encoding(&dates, CompressionLevel::Fast), Encoding::DeltaRle);
 
 		let datetimes = FrameColumnData::DateTime(datetime_array(
-			(0..100).map(|i| DateTime::from_nanos(i as u64 * 1_000)),
+			(0..100).map(|i| DateTime::from_nanos(i as i64 * 1_000)),
 		));
 		assert_eq!(choose_encoding(&datetimes, CompressionLevel::Fast), Encoding::DeltaRle);
 

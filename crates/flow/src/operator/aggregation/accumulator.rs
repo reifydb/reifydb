@@ -904,7 +904,7 @@ mod tests {
 		// one logical window shatters into one window per event - each with its own accumulator
 		// and its own emitted row, silently rather than as a failure.
 		let duration = Duration::from_seconds(60).expect("representable span");
-		let base = 1_700_000_040_000u64;
+		let base = 1_700_000_040_000i64;
 
 		let early = WindowSlotKey::new(DateTime::from_epoch_millis(base).expect("representable"), 0);
 		let late = WindowSlotKey::new(

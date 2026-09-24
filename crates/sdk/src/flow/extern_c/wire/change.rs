@@ -33,7 +33,7 @@ pub struct ExternCChange {
 
 	pub version: u64,
 
-	pub changed_at: u64,
+	pub changed_at: i64,
 }
 
 impl ExternCChange {

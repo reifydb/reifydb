@@ -1222,7 +1222,9 @@ mod tests {
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let rule = SealRule::tumbling(cutoff, Duration::from_milliseconds_const(0));
 		let last = 10u64;
-		let order = |millis: u64| at_millis(millis).to_order();
+		let order = |millis: u64| {
+			at_millis(i64::try_from(millis).expect("test order offset fits in i64 milliseconds")).to_order()
+		};
 		let sealed = |wm: u64| rule.seal_instant_from_order(order(last)).at().to_order() <= order(wm);
 		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff_ms;
 
@@ -1238,18 +1240,18 @@ mod tests {
 	}
 
 	#[test]
-	fn seal_horizon_saturates_for_young_watermarks() {
-		// The epoch is the domain floor; wrapping past it declares every window sealed.
+	fn seal_horizon_goes_pre_epoch_for_young_watermarks() {
+		// Wrapping past the epoch instead of going negative would seal every window early
 		let lateness = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
 			seal_horizon(at_millis(3), lateness),
-			at_millis(0),
-			"young watermark saturates to the epoch"
+			at_millis(-7),
+			"young watermark minus lateness is a real pre-epoch instant"
 		);
 		assert!(
 			!is_sealed(at_millis(0), seal_horizon(at_millis(3), lateness)),
-			"the epoch is not below itself"
+			"the epoch is still after a pre-epoch horizon"
 		);
 		assert!(
 			is_sealed(at_millis(4), seal_horizon(at_millis(20), lateness)),
@@ -1309,7 +1311,9 @@ mod reap_tests {
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(coordinate)),
+			at: Some(DateTime::from_nanos(
+				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
+			)),
 		});
 		txn
 	}
@@ -1430,7 +1434,9 @@ mod seal_arm_tests {
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(coordinate)),
+			at: Some(DateTime::from_nanos(
+				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
+			)),
 		});
 		txn
 	}
@@ -1461,7 +1467,9 @@ mod seal_arm_tests {
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
 		for (n, start_ms) in starts.iter().enumerate() {
-			let start = at_millis(*start_ms);
+			let start = at_millis(
+				i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
+			);
 			engine.reindex_window(
 				host,
 				&Hash128::from(n as u128),
@@ -1477,7 +1485,15 @@ mod seal_arm_tests {
 	}
 
 	fn take_one_due(txn: &mut DeferredTransaction, operator: OperatorId, watermark: u64) -> Timer {
-		let mut timers = TimerWheel::take_due(operator, txn, at_millis(watermark), 16, None).unwrap().timers;
+		let mut timers = TimerWheel::take_due(
+			operator,
+			txn,
+			at_millis(i64::try_from(watermark).expect("test watermark fits in i64 milliseconds")),
+			16,
+			None,
+		)
+		.unwrap()
+		.timers;
 		assert_eq!(timers.len(), 1, "exactly one timer may stand for the whole operator");
 		timers.remove(0)
 	}
@@ -1498,7 +1514,9 @@ mod seal_arm_tests {
 
 		assert_eq!(
 			seal_timers(&mut txn, id),
-			vec![at_millis(SIZE_MS + 1)],
+			vec![at_millis(
+				i64::try_from(SIZE_MS + 1).expect("test window bound fits in i64 milliseconds")
+			)],
 			"64 indexed windows must leave one seal timer, armed at the earliest window's seal instant"
 		);
 	}
@@ -1523,7 +1541,9 @@ mod seal_arm_tests {
 
 		assert_eq!(
 			seal_timers(&mut txn, id),
-			vec![at_millis(2 * SIZE_MS + 1)],
+			vec![at_millis(
+				i64::try_from(2 * SIZE_MS + 1).expect("test window bound fits in i64 milliseconds"),
+			)],
 			"the sweep took the window at 0 and must leave the window at one span armed, not nothing"
 		);
 	}

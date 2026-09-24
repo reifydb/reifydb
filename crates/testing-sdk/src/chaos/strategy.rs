@@ -180,7 +180,9 @@ fn row_time(schema: &ChaosSchema, content: &RowContent, column: &str) -> DateTim
 		.find_field(column)
 		.unwrap_or_else(|| panic!("time column `{column}` is absent from the scenario's input shape"));
 	match content.get(&field.name) {
-		Some(Value::Uint8(millis)) => DateTime::from_millis(*millis),
+		Some(Value::Uint8(millis)) => DateTime::from_millis(
+			i64::try_from(*millis).expect("sampled Uint8 time column fits in i64 milliseconds"),
+		),
 		Some(Value::DateTime(at)) => *at,
 		other => panic!(
 			"time column `{column}` must sample to Uint8 milliseconds or DateTime, but yielded {other:?}"

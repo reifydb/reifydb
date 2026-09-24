@@ -243,7 +243,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
-	pub fn settle_timers(&mut self, watermark_ms: u64) -> Result<Vec<Change>> {
+	pub fn settle_timers(&mut self, watermark_ms: i64) -> Result<Vec<Change>> {
 		const MAX_ROUNDS: u32 = 4_096;
 		let watermark = DateTime::from_epoch_millis(watermark_ms).expect("a settle watermark is representable");
 		let operator = self.operator.id();
@@ -348,7 +348,10 @@ impl<O: HostOperator> Subject for Harness<O> {
 		Harness::on_timer(
 			self,
 			Timer {
-				due: DateTime::from_epoch_millis(at_ms).unwrap(),
+				due: DateTime::from_epoch_millis(
+					i64::try_from(at_ms).expect("chaos tick time fits in i64 milliseconds"),
+				)
+				.unwrap(),
 				kind: TimerKind::Seal,
 				key: EncodedKey::new(Vec::new()),
 			},

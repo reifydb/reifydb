@@ -14,7 +14,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime},
 };
 
-const SUB_SECOND_NANOS: u64 = 1_700_000_000_123_456_789;
+const SUB_SECOND_NANOS: i64 = 1_700_000_000_123_456_789;
 
 trait Unmarshalled {
 	// Must accept a bare Columns and a Result alike, otherwise a fallible unmarshal stops these tests compiling.

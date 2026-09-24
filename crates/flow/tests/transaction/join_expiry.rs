@@ -67,7 +67,14 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn arm_in(txn: &mut DeferredTransaction, group: GroupId, side: u8, row_number: u64, millis: u64) {
-	txn.join_expiry_arm(NODE, group, side, RowNumber(row_number), at_millis(millis)).unwrap();
+	txn.join_expiry_arm(
+		NODE,
+		group,
+		side,
+		RowNumber(row_number),
+		at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
+	)
+	.unwrap();
 }
 
 fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
@@ -80,7 +87,7 @@ fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
 
 fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry {
 	JoinDueEntry {
-		at: at_millis(millis),
+		at: at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
 		group,
 		side,
 		row_number: RowNumber(row_number),
@@ -585,13 +592,27 @@ fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_
 	commit(&engine, &mut txn);
 
 	assert_eq!(
-		txn.join_due_page(NODE, at_millis(BELOW_HIGH_BIT), 16, &DueStart::Bottom).unwrap().due,
+		txn.join_due_page(
+			NODE,
+			at_millis(i64::try_from(BELOW_HIGH_BIT).expect("test expiry millis fits in i64")),
+			16,
+			&DueStart::Bottom
+		)
+		.unwrap()
+		.due,
 		vec![entry(group(), LEFT, 1, BELOW_HIGH_BIT)],
 		"the instant above the high bit is later than the fire and must stay out of the page"
 	);
 
 	assert_eq!(
-		txn.join_due_page(NODE, at_millis(ABOVE_HIGH_BIT), 16, &DueStart::Bottom).unwrap().due,
+		txn.join_due_page(
+			NODE,
+			at_millis(i64::try_from(ABOVE_HIGH_BIT).expect("test expiry millis fits in i64")),
+			16,
+			&DueStart::Bottom
+		)
+		.unwrap()
+		.due,
 		vec![entry(group(), LEFT, 1, BELOW_HIGH_BIT), entry(group(), LEFT, 2, ABOVE_HIGH_BIT)],
 		"raising the fire past the high bit must order the two the way their instants run"
 	);

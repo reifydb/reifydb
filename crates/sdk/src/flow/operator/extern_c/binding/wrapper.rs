@@ -251,7 +251,7 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 			return -2;
 		};
 		let timer = Timer {
-			due: DateTime::from_bits(due_bits),
+			due: DateTime::from_order(due_bits),
 			kind,
 			key: if key.is_null() || key_len == 0 {
 				&[]

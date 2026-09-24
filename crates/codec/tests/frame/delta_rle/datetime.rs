@@ -12,11 +12,11 @@ fn make(v: Vec<DateTime>) -> FrameColumnData {
 
 crate::delta_rle_tests! {
 	constant_stride: {
-		let base = 1_700_000_000_000_000_000u64;
+		let base = 1_700_000_000_000_000_000i64;
 		(0..500).map(|i| DateTime::from_nanos(base + i * 1_000_000_000)).collect::<Vec<_>>()
 	},
 	descending_stride: {
-		let base = 1_700_000_000_000_000_000u64;
+		let base = 1_700_000_000_000_000_000i64;
 		(0..500).rev().map(|i| DateTime::from_nanos(base + i * 1_000_000_000)).collect::<Vec<_>>()
 	},
 }
@@ -26,7 +26,7 @@ fn ascending_across_the_i64_sign_boundary_wraps() {
 	// nanos stepping up across 2^63 must wrap to a one byte delta run, never overflow or fall back to plain
 	crate::common::assert_forced_round_trip_beats_plain(
 		"test",
-		make(vec![DateTime::from_nanos(i64::MAX as u64), DateTime::from_nanos(i64::MIN as u64)]),
+		make(vec![DateTime::from_nanos(i64::MAX), DateTime::from_nanos(i64::MIN)]),
 		Encoding::DeltaRle,
 	);
 }
@@ -36,7 +36,7 @@ fn descending_across_the_i64_sign_boundary_wraps() {
 	// nanos stepping down across 2^63 must wrap to a one byte delta run, never overflow or fall back to plain
 	crate::common::assert_forced_round_trip_beats_plain(
 		"test",
-		make(vec![DateTime::from_nanos(i64::MIN as u64), DateTime::from_nanos(i64::MAX as u64)]),
+		make(vec![DateTime::from_nanos(i64::MIN), DateTime::from_nanos(i64::MAX)]),
 		Encoding::DeltaRle,
 	);
 }

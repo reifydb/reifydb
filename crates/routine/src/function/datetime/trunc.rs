@@ -121,7 +121,15 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeTrunc {
 							};
 							match truncated {
 								Some(val) => container.push(val),
-								None => container.push(DateTime::default()),
+								None => {
+									return Err(
+										RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason: "datetime out of range"
+												.to_string(),
+										},
+									);
+								}
 							}
 						}
 						_ => container.push(DateTime::default()),

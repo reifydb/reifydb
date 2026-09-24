@@ -194,7 +194,7 @@ impl<M: Send + 'static> Context<M> {
 		)
 	}
 
-	pub fn schedule_tick<F: Fn(u64) -> M + Send + Sync + 'static>(
+	pub fn schedule_tick<F: Fn(i64) -> M + Send + Sync + 'static>(
 		&self,
 		interval: impl Into<Duration>,
 		factory: F,

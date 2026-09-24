@@ -733,7 +733,9 @@ mod tests {
 			LogVersion::new(version),
 			LogIndex::new(version - BASE.as_u64() + BASE_INDEX.as_u64()),
 			Term::new(1),
-			DateTime::from_bits(1000 + version),
+			DateTime::from_nanos(
+				i64::try_from(1000 + version).expect("test record timestamp fits in i64 nanos"),
+			),
 			RecordKind::new(0),
 			payload.to_vec(),
 		)
@@ -807,8 +809,8 @@ mod tests {
 		assert_eq!(
 			partition.timestamps(),
 			Some(TimestampRange {
-				min: DateTime::from_bits(1502),
-				max: DateTime::from_bits(1502),
+				min: DateTime::from_nanos(1502),
+				max: DateTime::from_nanos(1502),
 			})
 		);
 	}
@@ -887,8 +889,8 @@ mod tests {
 		assert_eq!(
 			reopened.timestamps(),
 			Some(TimestampRange {
-				min: DateTime::from_bits(1502),
-				max: DateTime::from_bits(1502),
+				min: DateTime::from_nanos(1502),
+				max: DateTime::from_nanos(1502),
 			})
 		);
 	}

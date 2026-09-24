@@ -462,7 +462,13 @@ where
 		}
 		timing.record_micros(clock_start, "clock_next_us");
 
-		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
+		self.version_epoch.record(
+			EpochSeconds::new(
+				u64::try_from(self.metrics_clock.now().to_secs())
+					.expect("system clock is never before the Unix epoch"),
+			),
+			commit_version.0,
+		);
 
 		Ok(commit_version)
 	}

@@ -209,7 +209,7 @@ fn column_type(inner: &[TokenTree]) -> Option<&'static str> {
 
 	match head.as_str() {
 		"u8" | "TimerKind" => Some("U8"),
-		"u64" | "RowNumber" | "DateTime" | "RowShapeFingerprint" | "ContentVersion" => Some("U64"),
+		"u64" | "i64" | "RowNumber" | "DateTime" | "RowShapeFingerprint" | "ContentVersion" => Some("U64"),
 		"Hash128" | "Partition" => Some("Blob16"),
 		"GroupId" => Some("Blob24"),
 		_ => None,

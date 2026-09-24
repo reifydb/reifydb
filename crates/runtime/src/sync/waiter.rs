@@ -105,7 +105,9 @@ impl WaiterHandle {
 
 	#[cfg(not(reifydb_single_threaded))]
 	fn wait_until_virtual_deadline(&self, mock: &MockClock, timeout: Duration) -> bool {
-		let deadline = mock.now().to_nanos().saturating_add(nanos_of(timeout));
+		let deadline = u64::try_from(mock.now().to_nanos())
+			.expect("mock clock is never before the Unix epoch")
+			.saturating_add(nanos_of(timeout));
 		let _timer = TimerGuard::register(mock, deadline, self.signal.clone());
 
 		let mut guard = self.signal.notified.lock();
@@ -113,7 +115,9 @@ impl WaiterHandle {
 			if *guard {
 				return true;
 			}
-			if mock.now().to_nanos() >= deadline {
+			if u64::try_from(mock.now().to_nanos()).expect("mock clock is never before the Unix epoch")
+				>= deadline
+			{
 				return false;
 			}
 			if self.signal.condvar.wait_for(&mut guard, MOCK_PARK_BACKSTOP).timed_out() {

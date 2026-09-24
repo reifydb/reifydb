@@ -107,6 +107,30 @@ impl KeyScalar for u8 {
 	}
 }
 
+impl KeyScalar for i64 {
+	const MIN: Self = i64::MIN;
+	const MAX: Self = i64::MAX;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
+
+	fn successor(&self) -> Option<Self> {
+		((*self as u64) ^ (1u64 << 63)).checked_add(1).map(|order| (order ^ (1u64 << 63)) as i64)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		((*self as u64) ^ (1u64 << 63)).checked_sub(1).map(|order| (order ^ (1u64 << 63)) as i64)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64((*self as u64) ^ (1u64 << 63))
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some((v ^ (1u64 << 63)) as i64),
+			_ => None,
+		}
+	}
+}
+
 impl KeyScalar for u64 {
 	const MIN: Self = u64::MIN;
 	const MAX: Self = u64::MAX;
@@ -320,24 +344,24 @@ impl KeyScalar for Partition {
 }
 
 impl KeyScalar for DateTime {
-	const MIN: Self = DateTime::EPOCH;
+	const MIN: Self = DateTime::MIN;
 	const MAX: Self = DateTime::MAX;
 	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
-		self.to_bits().checked_add(1).map(DateTime::from_bits)
+		self.to_order().checked_add(1).map(DateTime::from_order)
 	}
 
 	fn predecessor(&self) -> Option<Self> {
-		self.to_bits().checked_sub(1).map(DateTime::from_bits)
+		self.to_order().checked_sub(1).map(DateTime::from_order)
 	}
 	fn to_key_value(&self) -> KeyValue {
-		KeyValue::U64(self.to_bits())
+		KeyValue::U64(self.to_order())
 	}
 
 	fn from_key_value(value: KeyValue) -> Option<Self> {
 		match value {
-			KeyValue::U64(v) => Some(DateTime::from_bits(v)),
+			KeyValue::U64(v) => Some(DateTime::from_order(v)),
 			_ => None,
 		}
 	}
@@ -485,7 +509,7 @@ mod tests {
 
 	#[test]
 	fn datetime_walks_its_whole_domain() {
-		walks_its_whole_domain(DateTime::from_bits(7), DateTime::from_bits(9));
+		walks_its_whole_domain(DateTime::from_order(7), DateTime::from_order(9));
 	}
 
 	#[test]
@@ -520,11 +544,11 @@ mod tests {
 
 	#[test]
 	fn datetime_orders_by_the_bits_the_key_column_stores() {
-		// the column is written as to_bits(), so Ord disagreeing with bit order would make a wheel scan
+		// the column is written as to_order(), so Ord disagreeing with bit order would make a wheel scan
 		// return rows the range never contained
-		assert!(DateTime::from_bits(1) < DateTime::from_bits(2));
+		assert!(DateTime::from_order(1) < DateTime::from_order(2));
 		assert_eq!(<Desc<DateTime> as BoundedKey>::low(), Desc(DateTime::MAX));
-		assert_eq!(<Asc<DateTime> as BoundedKey>::low(), Asc(DateTime::EPOCH));
+		assert_eq!(<Asc<DateTime> as BoundedKey>::low(), Asc(DateTime::MIN));
 	}
 
 	#[test]

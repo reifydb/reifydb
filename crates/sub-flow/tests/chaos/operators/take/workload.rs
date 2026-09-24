@@ -42,7 +42,8 @@ pub struct TakeRow {
 
 impl TakeRow {
 	fn at(&self) -> DateTime {
-		DateTime::from_epoch_millis(BASE_MS + self.tick).expect("a row stamp is representable")
+		DateTime::from_epoch_millis(i64::try_from(BASE_MS + self.tick).expect("row stamp fits in i64 millis"))
+			.expect("a row stamp is representable")
 	}
 
 	/// The row number as it is carried in the identity column. i32 is wide enough: a sweep runs tens

@@ -154,7 +154,10 @@ mod tests {
 			state ^= state << 13;
 			state ^= state >> 7;
 			state ^= state << 17;
-			let slot = at_millis(step / 4 * 5 + state % 40);
+			let slot = at_millis(
+				i64::try_from(step / 4 * 5 + state % 40)
+					.expect("test slot offset fits in i64 milliseconds"),
+			);
 			let value = step as i64;
 
 			if state % 5 == 4 {

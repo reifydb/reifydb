@@ -36,7 +36,9 @@ pub enum Clock {
 impl Clock {
 	pub fn now(&self) -> DateTime {
 		match self {
-			Clock::Real => DateTime::from_nanos(platform_now_nanos()),
+			Clock::Real => DateTime::from_nanos(
+				i64::try_from(platform_now_nanos()).expect("system clock past 2262-04-11"),
+			),
 			Clock::Mock(mock) => mock.now(),
 		}
 	}
@@ -49,7 +51,8 @@ impl Clock {
 			},
 			Clock::Mock(mock) => Instant {
 				inner: InstantInner::Mock {
-					captured_nanos: mock.now().to_nanos(),
+					captured_nanos: u64::try_from(mock.now().to_nanos())
+						.expect("mock clock is never before the Unix epoch"),
 					clock: mock.clone(),
 				},
 			},
@@ -108,7 +111,10 @@ impl MockClock {
 	}
 
 	pub fn now(&self) -> DateTime {
-		DateTime::from_nanos(self.inner.time_nanos.load(Ordering::Acquire))
+		DateTime::from_nanos(
+			i64::try_from(self.inner.time_nanos.load(Ordering::Acquire))
+				.expect("mock clock past 2262-04-11"),
+		)
 	}
 
 	pub fn set_nanos(&self, nanos: u64) {
@@ -158,7 +164,8 @@ impl MockClock {
 	}
 
 	pub fn advance_nanos(&self, nanos: u64) {
-		self.set_nanos(self.now().to_nanos().saturating_add(nanos));
+		let current = u64::try_from(self.now().to_nanos()).expect("mock clock is never before the Unix epoch");
+		self.set_nanos(current.saturating_add(nanos));
 	}
 
 	pub fn advance_micros(&self, micros: u64) {
@@ -209,7 +216,8 @@ impl Instant {
 				captured_nanos,
 				clock,
 			} => {
-				let now = clock.now().to_nanos();
+				let now = u64::try_from(clock.now().to_nanos())
+					.expect("mock clock is never before the Unix epoch");
 				let elapsed_nanos = now.saturating_sub(*captured_nanos);
 				Duration::from_nanos(elapsed_nanos)
 			}

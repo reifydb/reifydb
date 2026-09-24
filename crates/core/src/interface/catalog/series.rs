@@ -79,13 +79,14 @@ impl SeriesKey {
 					SeriesKey::DateTime {
 						precision,
 						..
-					} => Some(match precision {
-						TimestampPrecision::Second => nanos / 1_000_000_000,
-						TimestampPrecision::Millisecond => nanos / 1_000_000,
-						TimestampPrecision::Microsecond => nanos / 1_000,
+					} => u64::try_from(match precision {
+						TimestampPrecision::Second => nanos.div_euclid(1_000_000_000),
+						TimestampPrecision::Millisecond => nanos.div_euclid(1_000_000),
+						TimestampPrecision::Microsecond => nanos.div_euclid(1_000),
 						TimestampPrecision::Nanosecond => nanos,
-					}),
-					_ => Some(nanos),
+					})
+					.ok(),
+					_ => u64::try_from(nanos).ok(),
 				}
 			}
 			_ => None,
@@ -105,19 +106,21 @@ impl SeriesKey {
 			Some(ValueType::Uint16) => Value::Uint16(v as u128),
 			Some(ValueType::Int16) => Value::Int16(v as i128),
 			Some(ValueType::DateTime) => {
-				let nanos: u64 = match self {
+				let nanos: i128 = match self {
 					SeriesKey::DateTime {
 						precision,
 						..
 					} => match precision {
-						TimestampPrecision::Second => v * 1_000_000_000,
-						TimestampPrecision::Millisecond => v * 1_000_000,
-						TimestampPrecision::Microsecond => v * 1_000,
-						TimestampPrecision::Nanosecond => v,
+						TimestampPrecision::Second => v as i128 * 1_000_000_000,
+						TimestampPrecision::Millisecond => v as i128 * 1_000_000,
+						TimestampPrecision::Microsecond => v as i128 * 1_000,
+						TimestampPrecision::Nanosecond => v as i128,
 					},
-					_ => v,
+					_ => v as i128,
 				};
-				Value::DateTime(DateTime::from_nanos(nanos))
+				Value::DateTime(DateTime::from_nanos(
+					i64::try_from(nanos).expect("series key past the datetime range"),
+				))
 			}
 			_ => Value::Uint8(v),
 		}
@@ -234,7 +237,7 @@ pub fn encode_series_partition_metadata(metadata: &SeriesPartitionMetadata) -> E
 	bytes.extend_from_slice(&metadata.oldest_key.to_be_bytes());
 	bytes.extend_from_slice(&metadata.newest_key.to_be_bytes());
 	bytes.extend_from_slice(&metadata.sequence_counter.to_be_bytes());
-	bytes.extend_from_slice(&metadata.last_write_at.to_bits().to_be_bytes());
+	bytes.extend_from_slice(&metadata.last_write_at.to_order().to_be_bytes());
 	bytes.extend_from_slice(&metadata.dirty_from_key.to_be_bytes());
 	bytes.extend_from_slice(&metadata.dirty_to_key.to_be_bytes());
 	EncodedPodRow::new(&bytes)
@@ -254,7 +257,7 @@ pub fn decode_series_partition_metadata(row: &EncodedPodRow) -> Result<SeriesPar
 		oldest_key: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
 		newest_key: u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
 		sequence_counter: u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
-		last_write_at: DateTime::from_bits(u64::from_be_bytes(bytes[32..40].try_into().unwrap())),
+		last_write_at: DateTime::from_order(u64::from_be_bytes(bytes[32..40].try_into().unwrap())),
 		dirty_from_key: u64::from_be_bytes(bytes[40..48].try_into().unwrap()),
 		dirty_to_key: u64::from_be_bytes(bytes[48..56].try_into().unwrap()),
 	})
@@ -271,7 +274,7 @@ mod series_partition_metadata_tests {
 			oldest_key: 100,
 			newest_key: 900,
 			sequence_counter: 7,
-			last_write_at: DateTime::from_bits(1_700_000_000_000_000_000),
+			last_write_at: DateTime::from_order(1_700_000_000_000_000_000),
 			dirty_from_key: 512,
 			dirty_to_key: 1024,
 		};
@@ -316,7 +319,7 @@ mod series_partition_metadata_tests {
 			oldest_key: 0,
 			newest_key: 0,
 			sequence_counter: u64::MAX,
-			last_write_at: DateTime::from_bits(1),
+			last_write_at: DateTime::from_order(1),
 			dirty_from_key: u64::MAX,
 			dirty_to_key: 0,
 		};
@@ -324,6 +327,22 @@ mod series_partition_metadata_tests {
 		let decoded = decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
 
 		assert_eq!(decoded.sequence_counter, u64::MAX);
-		assert_eq!(decoded.last_write_at, DateTime::from_bits(1));
+		assert_eq!(decoded.last_write_at, DateTime::from_order(1));
+	}
+}
+
+#[cfg(test)]
+mod series_key_tests {
+	use super::*;
+
+	#[test]
+	fn a_negative_datetime_gives_no_series_key() {
+		// nanos before the epoch must never wrap into a huge positive u64 key
+		let key = SeriesKey::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Nanosecond,
+		};
+
+		assert_eq!(key.key_to_u64(Value::DateTime(DateTime::from_nanos(-1))), None);
 	}
 }

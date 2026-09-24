@@ -93,7 +93,7 @@ mod tests {
 	use super::*;
 	use crate::operator::state::mock::MockStore;
 
-	fn timer(millis: u64) -> Timer {
+	fn timer(millis: i64) -> Timer {
 		Timer {
 			due: DateTime::from_millis(millis),
 			kind: TimerKind::Seal,

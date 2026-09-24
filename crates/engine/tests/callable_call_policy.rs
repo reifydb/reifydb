@@ -43,7 +43,7 @@ fn code(result: ExecutionResult, what: &str) -> String {
 	diagnostic(result, what).code
 }
 
-fn clock_nanos(t: &TestEngine) -> u64 {
+fn clock_nanos(t: &TestEngine) -> i64 {
 	t.mock_clock().now().to_nanos()
 }
 

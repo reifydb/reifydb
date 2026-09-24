@@ -648,8 +648,12 @@ mod tests {
 
 	const WINDOW: u64 = 60;
 
+	fn window_at(millis: u64) -> DateTime {
+		at_millis(i64::try_from(millis).expect("test window offset fits in i64 milliseconds"))
+	}
+
 	fn order(millis: u64) -> u64 {
-		at_millis(millis).to_order()
+		window_at(millis).to_order()
 	}
 
 	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTime> {
@@ -694,7 +698,7 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 		assert!(
 			store.accumulator_count() <= 4,
@@ -711,7 +715,7 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 		assert!(
 			store.row_mapping_count() <= 4,
@@ -760,7 +764,7 @@ mod tests {
 		let mut engine = Engine::new(carry_config(None));
 		let mut emitted_windows = Vec::new();
 		for i in 0..5u64 {
-			let out = feed_group(&mut engine, &mut store, "BTC", at_millis(i * WINDOW), i as f64 + 1.0);
+			let out = feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64 + 1.0);
 			println!(
 				"[win-probe] fed window_start={} results={} kinds={:?}",
 				i * WINDOW,
@@ -813,12 +817,12 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
-			feed_group(&mut engine, &mut store, "BTC", at_millis(i * WINDOW), i as f64);
-			feed_group(&mut engine, &mut store, "ETH", at_millis(i * WINDOW), i as f64);
+			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
+			feed_group(&mut engine, &mut store, "ETH", window_at(i * WINDOW), i as f64);
 		}
 		assert_eq!((store.accumulator_count(), store.row_mapping_count()), (20, 20));
 
-		let dropped = engine.expire(&mut store, at_millis(5 * WINDOW), seal_key).unwrap();
+		let dropped = engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 0, "both groups still have windows at or past the horizon");
 		assert_eq!(store.accumulator_count(), 10, "windows 5..9 of each group must keep their accumulators");
@@ -833,10 +837,10 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..3u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, at_millis(WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.accumulator_count(), 2, "only the window below the horizon folds");
 	}
@@ -848,10 +852,10 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		let dropped = engine.expire(&mut store, at_millis(100 * WINDOW), seal_key).unwrap();
+		let dropped = engine.expire(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 1);
 		assert_eq!(store.accumulator_count(), 0, "a dead group must not leave accumulator rows behind");
@@ -866,14 +870,14 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
-			feed_carrying(&mut engine, &mut store, at_millis(i * WINDOW), i * WINDOW, i as f64);
+			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
-		engine.expire(&mut store, at_millis(9 * WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(9 * WINDOW), seal_key).unwrap();
 
-		let results = feed_carrying(&mut engine, &mut store, at_millis(9 * WINDOW), 9 * WINDOW + 1, 100.0);
+		let results = feed_carrying(&mut engine, &mut store, window_at(9 * WINDOW), 9 * WINDOW + 1, 100.0);
 
 		let window_9 =
-			results.iter().find(|r| r.span.start == at_millis(9 * WINDOW)).expect("window 9 recomputed");
+			results.iter().find(|r| r.span.start == window_at(9 * WINDOW)).expect("window 9 recomputed");
 		assert_eq!(window_9.value, 109.0 + 8.0, "window 9 must carry in window 8's close, not restart");
 	}
 
@@ -883,12 +887,12 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
-			feed_carrying(&mut engine, &mut store, at_millis(i * WINDOW), i * WINDOW, i as f64);
+			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
-		engine.expire(&mut store, at_millis(5 * WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 		let before = (store.accumulator_count(), store.row_mapping_count());
 
-		let results = feed_carrying(&mut engine, &mut store, at_millis(2 * WINDOW), 2 * WINDOW + 1, 100.0);
+		let results = feed_carrying(&mut engine, &mut store, window_at(2 * WINDOW), 2 * WINDOW + 1, 100.0);
 
 		assert!(results.is_empty(), "a folded window must not publish again");
 		assert_eq!(
@@ -905,14 +909,14 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, at_millis(3 * WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
 		assert_eq!(store.accumulator_count(), 7);
-		engine.expire(&mut store, at_millis(3 * WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
 		assert_eq!(store.accumulator_count(), 7, "a repeat at the same horizon changes nothing");
-		engine.expire(&mut store, at_millis(6 * WINDOW), seal_key).unwrap();
+		engine.expire(&mut store, window_at(6 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.accumulator_count(), 4, "a higher horizon must fold the newly sealed windows");
 	}
@@ -924,7 +928,7 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 		assert_eq!(
 			store.accumulator_count(),
@@ -946,7 +950,10 @@ mod tests {
 		let mut engine = Engine::new(carry_config(None));
 		let span = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
 		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
-		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Remove((0, 5.0))]);
+		buckets.insert(
+			("BTC".to_string(), span),
+			vec![AccumulatorEvent::Remove((at_millis(0).to_order(), 5.0))],
+		);
 		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
@@ -961,8 +968,9 @@ mod tests {
 			.expect("apply");
 
 		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
-		assert!(
-			matches!(withdrawn[0].kind, EmitKind::Remove),
+		assert_eq!(
+			withdrawn[0].kind,
+			EmitKind::Remove,
 			"the window emptied under retraction, so the last published row must be withdrawn"
 		);
 		assert_eq!(
@@ -995,7 +1003,10 @@ mod tests {
 		// engine must re-read its accumulator from the store to apply this retraction.
 		let span = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
 		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
-		buckets.insert(("G00".to_string(), span), vec![AccumulatorEvent::Remove((0, 1.0))]);
+		buckets.insert(
+			("G00".to_string(), span),
+			vec![AccumulatorEvent::Remove((at_millis(0).to_order(), 1.0))],
+		);
 		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
@@ -1010,8 +1021,9 @@ mod tests {
 			.expect("apply");
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");
-		assert!(
-			matches!(withdrawn[0].kind, EmitKind::Remove),
+		assert_eq!(
+			withdrawn[0].kind,
+			EmitKind::Remove,
 			"the evicted window emptied under retraction, so the last published row must be withdrawn"
 		);
 		assert_eq!(

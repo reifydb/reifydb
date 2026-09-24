@@ -387,12 +387,12 @@ pub async fn region_id_by_label(backend: &ProbeBackend, label: &str) -> Result<O
 
 pub const UPTIME_HISTORY_DAYS: i64 = 90;
 
-pub const DAY_NANOS: u64 = 24 * 3600 * 1_000_000_000;
+pub const DAY_NANOS: i64 = 24 * 3600 * 1_000_000_000;
 
-pub fn history_since(now_nanos: u64) -> DateTime {
+pub fn history_since(now_nanos: i64) -> DateTime {
 	let today = i64::from(DateTime::from_nanos(now_nanos).date().to_days_since_epoch());
 	let start_day = (today - (UPTIME_HISTORY_DAYS - 1)).max(0);
-	DateTime::from_nanos(start_day as u64 * DAY_NANOS)
+	DateTime::from_nanos(start_day * DAY_NANOS)
 }
 
 #[derive(FromFrame)]

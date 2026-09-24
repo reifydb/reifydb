@@ -24,15 +24,15 @@ fn row_number(i: usize) -> u64 {
 }
 
 fn created_at(i: usize) -> DateTime {
-	DateTime::from_nanos(1_700_000_000_000_000_000 + i as u64 * 1_000)
+	DateTime::from_nanos(1_700_000_000_000_000_000 + i as i64 * 1_000)
 }
 
 fn updated_at(i: usize) -> DateTime {
-	DateTime::from_nanos(1_700_000_000_000_000_000 + i as u64 * 1_000 + 500)
+	DateTime::from_nanos(1_700_000_000_000_000_000 + i as i64 * 1_000 + 500)
 }
 
 fn time(i: usize) -> DateTime {
-	DateTime::from_nanos(1_600_000_000_000_000_000 + i as u64 * 7)
+	DateTime::from_nanos(1_600_000_000_000_000_000 + i as i64 * 7)
 }
 
 fn commit_version(i: usize) -> u64 {

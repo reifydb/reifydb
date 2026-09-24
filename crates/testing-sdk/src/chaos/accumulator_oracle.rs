@@ -394,7 +394,8 @@ where
 		}
 	}
 
-	let drain = DateTime::from_epoch_millis(ctx.drain_at_ms).expect("rolling oracle drain time");
+	let drain_ms = i64::try_from(ctx.drain_at_ms).expect("chaos ledger time fits in i64 milliseconds");
+	let drain = DateTime::from_epoch_millis(drain_ms).expect("rolling oracle drain time");
 	let horizon = <DateTime as SealDomain>::horizon(drain, seal_span);
 	if horizon >= <DateTime as Coord>::from_order(0).add_span(settings.fixed_size()) {
 		let cutoff = horizon.saturating_sub_span(settings.fixed_size());

@@ -209,7 +209,7 @@ impl KeySerializer {
 	}
 
 	pub fn extend_datetime(&mut self, datetime: &DateTime) -> &mut Self {
-		self.extend_u64(datetime.to_nanos())
+		self.extend_i64(datetime.to_nanos())
 	}
 
 	pub fn extend_time(&mut self, time: &Time) -> &mut Self {

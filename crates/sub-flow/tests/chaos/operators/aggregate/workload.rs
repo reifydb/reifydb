@@ -29,7 +29,10 @@ pub struct AggregateRow {
 
 impl AggregateRow {
 	fn at(&self) -> DateTime {
-		DateTime::from_epoch_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
+		DateTime::from_epoch_millis(
+			i64::try_from(BASE_MS + self.number.0).expect("row stamp fits in i64 millis"),
+		)
+		.expect("a row stamp is representable")
 	}
 }
 

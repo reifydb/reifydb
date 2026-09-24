@@ -559,7 +559,7 @@ pub(super) extern "C" fn host_arm_timer(
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		match host.arm_timer(DateTime::from_bits(due_bits), kind, &key) {
+		match host.arm_timer(DateTime::from_order(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -644,7 +644,7 @@ pub(super) extern "C" fn host_flow_watermark(
 		let host = get_host_mut(&mut *ctx);
 		match host.flow_watermark() {
 			Ok(Some(watermark)) => {
-				*bits_out = watermark.to_bits();
+				*bits_out = watermark.to_order();
 				*present_out = 1;
 				EXTERN_C_OK
 			}
@@ -686,7 +686,7 @@ pub(super) extern "C" fn host_disarm_timer(
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		match host.disarm_timer(DateTime::from_bits(due_bits), kind, &key) {
+		match host.disarm_timer(DateTime::from_order(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}

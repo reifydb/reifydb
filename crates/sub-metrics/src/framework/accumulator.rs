@@ -513,7 +513,7 @@ mod tests {
 	use super::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface};
 	use crate::framework::spec::{MetricsDomain, Surface};
 
-	fn now(millis: u64) -> DateTime {
+	fn now(millis: i64) -> DateTime {
 		DateTime::from_epoch_millis(millis).unwrap()
 	}
 
