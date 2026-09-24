@@ -175,7 +175,7 @@ fn parse_type_parameter(s: &str) -> Result<u8> {
 }
 
 fn parse_precision(s: &str) -> Result<Precision> {
-	Ok(Precision::try_new(parse_type_parameter(s)?)?)
+	Precision::try_new(parse_type_parameter(s)?)
 }
 
 pub(crate) fn convert_procedure_param_type(ast: &AstType) -> Result<TypeConstraint> {

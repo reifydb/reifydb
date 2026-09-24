@@ -74,7 +74,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 				let key_data = &args[pair * 2];
 				let val_data = &args[pair * 2 + 1];
 
-				let key: String = key_data.get_as::<String>(row).unwrap_or_default();
+				let key: String = key_data.get_as::<String>(row)?.unwrap_or_default();
 				let value = val_data.get_value(row);
 
 				fields.push((key, value));

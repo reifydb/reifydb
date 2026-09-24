@@ -1099,6 +1099,23 @@ impl IntoDiagnostic for TypeError {
 				operator_chain: None,
 			},
 
+			TypeError::ColumnRead {
+				column_type,
+				target,
+				reason,
+			} => Diagnostic {
+				code: "CONV_004".to_string(),
+				rql: None,
+				message: format!("cannot read {} as {}: {}", column_type, target, reason),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Read the column as a type that holds its values".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 			TypeError::Network { kind, message } => {
 				let (code, help) = match &kind {
 					NetworkErrorKind::Connection { .. } => {

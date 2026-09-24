@@ -199,6 +199,21 @@ impl Display for OperandCategory {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ColumnReadReason {
+	WrongType,
+	DoesNotFit,
+}
+
+impl Display for ColumnReadReason {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			ColumnReadReason::WrongType => f.write_str("wrong type"),
+			ColumnReadReason::DoesNotFit => f.write_str("does not fit"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstraintKind {
 	Utf8MaxBytes {
@@ -608,6 +623,13 @@ pub enum TypeError {
 	#[error("Integer conversion error: {message}")]
 	IntegerConversion {
 		message: String,
+	},
+
+	#[error("cannot read {column_type} as {target}: {reason}")]
+	ColumnRead {
+		column_type: ValueType,
+		target: &'static str,
+		reason: ColumnReadReason,
 	},
 
 	#[error("{message}")]

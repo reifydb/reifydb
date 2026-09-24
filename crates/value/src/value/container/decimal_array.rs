@@ -494,6 +494,7 @@ mod tests {
 mod family {
 	use std::str::FromStr;
 
+	use postcard::{from_bytes, to_allocvec};
 	use serde::{Deserialize, Serialize};
 	use serde_json::{from_str, to_string};
 

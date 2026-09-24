@@ -41,7 +41,9 @@ impl<'a> InProcessRowView<'a> {
 	}
 
 	fn typed<T: FromColumnBuffer>(&self, name: &str) -> Option<T> {
-		self.defined_inner(name)?.get_as::<T>(self.index)
+		self.defined_inner(name)?
+			.get_as::<T>(self.index)
+			.unwrap_or_else(|err| panic!("reading column {name} failed: {err}"))
 	}
 }
 

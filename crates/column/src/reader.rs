@@ -144,7 +144,7 @@ fn extract_row_numbers(data: &ColumnBuffer) -> Vec<RowNumber> {
 	let len = data.len();
 	let mut out = Vec::with_capacity(len);
 	for i in 0..len {
-		let v = data.get_as::<u64>(i).expect("#rownum column must be Uint8 with no nones");
+		let v = data.get_as::<u64>(i).ok().flatten().expect("#rownum column must be Uint8 with no nones");
 		out.push(RowNumber(v));
 	}
 	out
@@ -152,7 +152,7 @@ fn extract_row_numbers(data: &ColumnBuffer) -> Vec<RowNumber> {
 
 fn extract_commit_versions(data: &ColumnBuffer) -> Vec<u64> {
 	(0..data.len())
-		.map(|i| data.get_as::<u64>(i).expect("#commit_version column must be Uint8 with no nones"))
+		.map(|i| data.get_as::<u64>(i).ok().flatten().expect("#commit_version column must be Uint8 with no nones"))
 		.collect()
 }
 
@@ -162,6 +162,8 @@ fn extract_datetimes(data: &ColumnBuffer) -> Vec<DateTime> {
 	for i in 0..len {
 		let v = data
 			.get_as::<DateTime>(i)
+			.ok()
+			.flatten()
 			.expect("#created_at/#updated_at column must be DateTime with no nones");
 		out.push(v);
 	}

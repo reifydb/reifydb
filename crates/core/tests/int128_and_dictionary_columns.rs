@@ -233,7 +233,7 @@ fn int16_keeps_its_values_and_data_type_through_every_op() {
 	assert_int16(&ColumnBuffer::none_typed(ValueType::Int16, 2), &[0, 0]);
 	assert_int16(&ColumnBuffer::int16_with_bitvec([4, 0], vec![true, false]), &[4, 0]);
 	assert_eq!(buffer.as_slice::<i128>(), &INTS);
-	assert_eq!(buffer.get_as::<i128>(2), Some(i128::MAX));
+	assert_eq!(buffer.get_as::<i128>(2), Ok(Some(i128::MAX)));
 	assert_eq!(buffer.get_value(0), Value::Int16(i128::MIN));
 }
 
@@ -284,8 +284,8 @@ fn uint16_keeps_values_above_i128_max_and_its_data_type() {
 	assert_uint16(&ColumnBuffer::none_typed(ValueType::Uint16, 2), &[0, 0]);
 	assert_uint16(&ColumnBuffer::uint16_with_bitvec([u128::MAX, 0], vec![true, false]), &[u128::MAX, 0]);
 	assert_eq!(buffer.get_value(3), Value::Uint16(u128::MAX));
-	assert_eq!(buffer.get_as::<u128>(3), Some(u128::MAX));
-	assert_eq!(buffer.get_as::<i128>(3), None);
-	assert_eq!(buffer.get_as::<u64>(1), None);
+	assert_eq!(buffer.get_as::<u128>(3), Ok(Some(u128::MAX)));
+	assert_eq!(buffer.get_as::<i128>(3).unwrap_err().code, "CONV_004");
+	assert_eq!(buffer.get_as::<u64>(1).unwrap_err().code, "CONV_004");
 	assert_eq!(buffer.as_string(3), u128::MAX.to_string());
 }

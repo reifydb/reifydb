@@ -137,12 +137,14 @@ impl QueryNode for NaturalJoinNode {
 
 		let (left_picks, right_picks, result_row_numbers) = self.probe(
 			&left_columns,
-			&converter,
-			&hash_table,
-			&left_col_indices,
-			&targets,
-			&left_row_numbers,
-			left_rows,
+			&ProbeContext {
+				converter: &converter,
+				hash_table: &hash_table,
+				left_col_indices: &left_col_indices,
+				targets: &targets,
+				left_row_numbers: &left_row_numbers,
+				left_rows,
+			},
 		)?;
 
 		let kept_right: Vec<ColumnBuffer> = right_columns
@@ -177,6 +179,15 @@ impl QueryNode for NaturalJoinNode {
 
 type KeyIndex = HashMap<Box<[u8]>, Vec<usize>>;
 
+struct ProbeContext<'a> {
+	converter: &'a RowConverter,
+	hash_table: &'a KeyIndex,
+	left_col_indices: &'a [usize],
+	targets: &'a [ValueType],
+	left_row_numbers: &'a [RowNumber],
+	left_rows: usize,
+}
+
 impl NaturalJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::build")]
 	fn build(
@@ -210,13 +221,10 @@ impl NaturalJoinNode {
 	fn probe(
 		&self,
 		left_columns: &Columns,
-		converter: &RowConverter,
-		hash_table: &KeyIndex,
-		left_col_indices: &[usize],
-		targets: &[ValueType],
-		left_row_numbers: &[RowNumber],
-		left_rows: usize,
+		probe_ctx: &ProbeContext,
 	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
+		let ProbeContext { converter, hash_table, left_col_indices, targets, left_row_numbers, left_rows } =
+			probe_ctx;
 		let key_columns: Vec<&ColumnBuffer> = left_col_indices.iter().map(|&idx| &left_columns[idx]).collect();
 		let arrays = key_arrays(&key_columns, targets);
 		let rows = converter
@@ -227,7 +235,7 @@ impl NaturalJoinNode {
 		let mut right_picks: Vec<usize> = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
-		for i in 0..left_rows {
+		for i in 0..*left_rows {
 			let mut matched = false;
 
 			let candidates = if arrays.iter().any(|array| array.is_null(i)) {
