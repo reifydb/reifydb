@@ -175,9 +175,14 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			}),
 			ValueType::Decimal => {
 				run!(Decimal { .. }, decimals, decimal_with_bitvec, |b: &Decimal, e: &Decimal| {
-					let base = b.0.to_f64().unwrap_or(0.0);
-					let exp = e.0.to_f64().unwrap_or(0.0);
-					Some(Decimal::from(base.powf(exp)))
+					if e.0.is_integer() {
+						e.0.to_i64().map(|exp| b.powi(exp))
+					} else {
+						let base = b.0.to_f64()?;
+						let exp = e.0.to_f64()?;
+						let result = base.powf(exp);
+						result.is_finite().then(|| Decimal::from(result))
+					}
 				})
 			}
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),

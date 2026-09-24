@@ -81,6 +81,22 @@ impl Decimal {
 	pub fn round_to_scale(&self, scale: i64) -> Self {
 		Self(self.0.with_scale_round(scale, RoundingMode::HalfUp))
 	}
+
+	pub fn ceil(&self) -> Self {
+		Self(self.0.with_scale_round(0, RoundingMode::Ceiling))
+	}
+
+	pub fn floor(&self) -> Self {
+		Self(self.0.with_scale_round(0, RoundingMode::Floor))
+	}
+
+	pub fn trunc(&self) -> Self {
+		Self(self.0.with_scale_round(0, RoundingMode::Down))
+	}
+
+	pub fn powi(&self, exp: i64) -> Self {
+		Self(self.0.powi(exp))
+	}
 }
 
 impl PartialEq for Decimal {

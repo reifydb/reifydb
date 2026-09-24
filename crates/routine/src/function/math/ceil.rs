@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -80,8 +79,7 @@ impl<'a> Routine<FunctionContext<'a>> for Ceil {
 				let mut data = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(value) = decimal_at(container, i) {
-						let f = value.0.to_f64().unwrap_or(0.0);
-						data.push(Decimal::from(f.ceil()));
+						data.push(value.ceil());
 					} else {
 						data.push(Decimal::default());
 					}

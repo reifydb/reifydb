@@ -83,24 +83,27 @@ macro_rules! process_float_column {
 
 #[macro_export]
 macro_rules! process_decimal_column {
-	($container:expr, $row_count:expr, $base:expr, $units:expr) => {{
+	($container:expr, $row_count:expr, $base:expr, $units:expr, $fragment:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
 			if let Some(value) = decimal_at($container, i) {
 				let s = value.to_string();
 				let int_part = s.split('.').next().unwrap_or("0");
-				let bytes = int_part.parse::<i64>().unwrap_or(0);
+				let bytes = int_part.parse::<i64>().map_err(|_| RoutineError::FunctionExecutionFailed {
+					function: $fragment.clone(),
+					reason: format!("decimal value {s} is too large to format as bytes"),
+				})?;
 				result_data.push(format_bytes_internal(bytes, $base, $units));
 			} else {
 				result_data.push(String::new());
 			}
 		}
 
-		ColumnBuffer::Utf8 {
+		Ok::<ColumnBuffer, RoutineError>(ColumnBuffer::Utf8 {
 			container: LargeStringArray::from(result_data),
 			max_bytes: MaxBytes::MAX,
-		}
+		})
 	}};
 }
 
@@ -153,9 +156,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytes {
 			ColumnBuffer::Decimal {
 				container,
 				..
-			} => {
-				process_decimal_column!(container, row_count, 1024.0, &IEC_UNITS)
-			}
+			} => process_decimal_column!(container, row_count, 1024.0, &IEC_UNITS, ctx.fragment)?,
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),

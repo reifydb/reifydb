@@ -63,9 +63,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 			ColumnBuffer::Decimal {
 				container,
 				..
-			} => {
-				process_decimal_column!(container, row_count, 1000.0, &SI_UNITS)
-			}
+			} => process_decimal_column!(container, row_count, 1000.0, &SI_UNITS, ctx.fragment)?,
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
