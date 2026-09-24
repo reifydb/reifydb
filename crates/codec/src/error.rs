@@ -14,6 +14,12 @@ pub enum EncodeError {
 		max: u8,
 	},
 
+	#[error("option layer bitvec holds {actual} entries but the column has {expected} rows")]
+	BitvecLengthMismatch {
+		expected: usize,
+		actual: usize,
+	},
+
 	#[error("serialization failed: {0}")]
 	Serialization(String),
 

@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	util::{bitmap, kernel},
-	value::{Value, is::IsNumber, to_value::ToValue},
+	value::{Value, is::IsNumber, to_value::ToValue, value_type::get::GetType},
 };
 
 pub fn serialize<A, Ser>(array: &PrimitiveArray<A>, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
@@ -46,12 +46,12 @@ where
 pub fn get_value<A>(array: &PrimitiveArray<A>, index: usize) -> Value
 where
 	A: ArrowPrimitiveType,
-	A::Native: IsNumber,
+	A::Native: IsNumber + GetType,
 {
 	if index < array.len() {
 		array.value(index).to_value()
 	} else {
-		Value::none()
+		Value::none_of(A::Native::get_type())
 	}
 }
 

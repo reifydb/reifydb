@@ -178,6 +178,7 @@ fn encode_column(
 }
 
 fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<EncodedColumn, EncodeError> {
+	let row_count = col_data.len();
 	let mut inner = col_data;
 	let mut nones = Vec::new();
 	let mut depth = 0u32;
@@ -186,13 +187,19 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 		bitvec,
 	} = inner
 	{
+		if bitvec.len() != row_count {
+			return Err(EncodeError::BitvecLengthMismatch {
+				expected: row_count,
+				actual: bitvec.len(),
+			});
+		}
 		nones.extend(encode_bitvec(bitvec));
 		depth += 1;
 		inner = next;
 	}
 	let has_nones = depth > 0;
 
-	let row_count = inner.len() as u32;
+	let row_count = row_count as u32;
 
 	let result = match desired {
 		Encoding::Dict => varlen::try_dict_varlen(inner),

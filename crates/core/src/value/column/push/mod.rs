@@ -92,15 +92,13 @@ macro_rules! impl_numeric_push {
 			fn push(&mut self, value: $from) {
 				match self {
 					$(
-						ColumnBuilder::$variant(builder) => match <$from as SafeConvert<$target>>::checked_convert(value) {
-							Some(v) => builder.append_value(v),
-							None => builder.append_value(<$target>::default()),
+						ColumnBuilder::$variant(builder) => {
+							builder.append_value(<$from as SafeConvert<$target>>::saturating_convert(value));
 						},
 					)*
 					$(
-						ColumnBuilder::$wide_variant(builder) => match <$from as SafeConvert<$wide_target>>::checked_convert(value) {
-							Some(v) => builder.append_value($wide_to_native(v)),
-							None => builder.append_value(Default::default()),
+						ColumnBuilder::$wide_variant(builder) => {
+							builder.append_value($wide_to_native(<$from as SafeConvert<$wide_target>>::saturating_convert(value)));
 						},
 					)*
 					ColumnBuilder::$own(builder) => {
@@ -130,15 +128,13 @@ macro_rules! impl_numeric_push {
 			fn push(&mut self, value: $from) {
 				match self {
 					$(
-						ColumnBuilder::$variant(builder) => match <$from as SafeConvert<$target>>::checked_convert(value) {
-							Some(v) => builder.append_value(v),
-							None => builder.append_value(<$target>::default()),
+						ColumnBuilder::$variant(builder) => {
+							builder.append_value(<$from as SafeConvert<$target>>::saturating_convert(value));
 						},
 					)*
 					$(
-						ColumnBuilder::$wide_variant(builder) => match <$from as SafeConvert<$wide_target>>::checked_convert(value) {
-							Some(v) => builder.append_value($wide_to_native(v)),
-							None => builder.append_value(Default::default()),
+						ColumnBuilder::$wide_variant(builder) => {
+							builder.append_value($wide_to_native(<$from as SafeConvert<$wide_target>>::saturating_convert(value)));
 						},
 					)*
 					ColumnBuilder::$own(builder) => {
