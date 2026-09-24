@@ -25,12 +25,12 @@ use reifydb::{
 	subscription::batch::BatchId,
 };
 use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
-use reifydb_sub_server::wire::{WireParams, WireValue};
+use reifydb_sub_server::wire::{WireParams, WireValue, resolve_type};
 use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, uuid::Uuid7},
 };
-use serde_json::{Value as JsonValue, from_value, json, to_string as json_to_string, to_value};
+use serde_json::{Value as JsonValue, json, to_string as json_to_string, to_value};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
@@ -157,7 +157,8 @@ fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
 }
 
 fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
-	let r#type = from_value::<WireValueType>(param.r#type)
+	let r#type = resolve_type(&param.r#type, &param.value)
+		.map(WireValueType::from)
 		.map_err(|e| NapiError::from_reason(format!("parameter {parameter}: unknown type: {e}")))?;
 	Ok(WireValue {
 		r#type,

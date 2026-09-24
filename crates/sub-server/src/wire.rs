@@ -3,19 +3,67 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::json::{from::parse_json_value, wire_type::WireValueType};
+use reifydb_codec::json::{from::parse_json_value, wire_type, wire_type::WireValueType};
 use reifydb_value::{
+	fragment::Fragment,
 	params::Params,
-	value::{Value, duration::Duration},
+	value::{
+		Value,
+		constraint::{precision::Precision, scale::Scale},
+		decimal::parse::parse_decimal,
+		duration::Duration,
+		value_type::ValueType,
+	},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as DeError};
 use serde_json::Value as JsonValue;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
 	pub r#type: WireValueType,
 	pub value: JsonValue,
+}
+
+pub fn resolve_type(r#type: &JsonValue, value: &JsonValue) -> Result<ValueType, String> {
+	let is_bare_decimal = r#type.as_object().is_some_and(|object| {
+		object.get("id").and_then(JsonValue::as_str) == Some("Decimal") && !object.contains_key("scale")
+	});
+
+	if is_bare_decimal
+		&& let Some(text) = value.as_str()
+		&& let Ok(decimal) = parse_decimal(Fragment::internal(text))
+	{
+		let precision = r#type
+			.as_object()
+			.and_then(|object| object.get("precision"))
+			.and_then(JsonValue::as_u64)
+			.and_then(|precision| u8::try_from(precision).ok())
+			.and_then(|precision| Precision::try_new(precision).ok())
+			.unwrap_or(Precision::MAX);
+		let scale =
+			Scale::try_new_with_precision(decimal.scale(), precision).map_err(|error| error.to_string())?;
+		return Ok(ValueType::decimal(precision, scale));
+	}
+
+	wire_type::from_json(r#type)
+}
+
+impl<'de> Deserialize<'de> for WireValue {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(Deserialize)]
+		struct Raw {
+			#[serde(rename = "type")]
+			r#type: JsonValue,
+			value: JsonValue,
+		}
+		let raw = Raw::deserialize(deserializer)?;
+		let ty = resolve_type(&raw.r#type, &raw.value).map_err(D::Error::custom)?;
+		Ok(WireValue {
+			r#type: WireValueType::from(ty),
+			value: raw.value,
+		})
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize)]
