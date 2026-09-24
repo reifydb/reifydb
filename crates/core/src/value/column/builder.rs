@@ -152,14 +152,8 @@ impl DecimalBuilder {
 		if let Some(fitted) = value.fits(self.precision().value(), self.scale().value()) {
 			return self.append_fitting(fitted.unscaled());
 		}
-		let (precision, scale) = (self.precision(), self.scale());
-		let widened = self.widen_for(value);
-		match widened.and_then(|()| value.rescale(self.scale().value())) {
-			Some(fitted) => self.append_fitting(fitted.unscaled()),
-			None => panic!(
-				"{value} does not fit a column of precision {precision} and scale {scale} even after widening"
-			),
-		}
+		let fitted = self.widen_for(value);
+		self.append_fitting(fitted.unscaled());
 	}
 
 	pub(crate) fn append_array(&mut self, array: &DecimalArray) {
@@ -206,27 +200,33 @@ impl DecimalBuilder {
 		}
 	}
 
-	fn widen_for(&mut self, value: &Decimal) -> Option<()> {
+	fn widen_for(&mut self, value: &Decimal) -> Decimal {
 		let (precision, scale) = (self.precision().value(), self.scale().value());
-		let value_integer_digits = value.digits().saturating_sub(value.scale());
-		let wide_scale = scale.max(value.scale());
-		let wide_integer_digits = (precision - scale).max(value_integer_digits);
-		let wide_precision = wide_integer_digits.checked_add(wide_scale)?;
-		if wide_precision > unscaled::MAX_DIGITS {
-			return None;
-		}
-		let by = wide_scale - scale;
-		let existing = self.finish().unscaled_values();
+		let existing: Vec<Decimal> = self
+			.finish()
+			.unscaled_values()
+			.into_iter()
+			.map(|unscaled| Decimal::from_parts(unscaled, scale).expect("a decimal builder holds only valid decimals"))
+			.collect();
+		let integer_digits = |decimal: &Decimal| decimal.digits().saturating_sub(decimal.scale());
+		let needed = existing.iter().chain([value]).map(integer_digits).max().unwrap_or(0);
+		let wide_scale = scale.max(value.scale()).min(unscaled::MAX_DIGITS - needed);
+		let round = |decimal: &Decimal| {
+			decimal.round_to_scale(wide_scale).expect("rounding never adds a whole digit past the widest value")
+		};
+		let rounded: Vec<Decimal> = existing.iter().map(round).collect();
+		let fitted = round(value);
+		let wide_precision = ((precision - scale).max(needed) + wide_scale).min(unscaled::MAX_DIGITS);
 		let mut widened = DecimalBuilder::with_capacity(
 			Precision::new(wide_precision),
 			Scale::new(wide_scale),
-			existing.len() + 1,
+			rounded.len() + 1,
 		);
-		for value in existing {
-			widened.append_fitting(unscaled::upscale(value, by)?);
+		for decimal in rounded {
+			widened.append_fitting(decimal.unscaled());
 		}
 		*self = widened;
-		Some(())
+		fitted
 	}
 }
 

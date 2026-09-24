@@ -46,6 +46,8 @@ mod closure_parameter_type_arguments;
 mod closure_value_as_rows;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
+#[path = "decimal_scale_mix.rs"]
+mod decimal_scale_mix;
 #[path = "dictionary_insert_value_type.rs"]
 mod dictionary_insert_value_type;
 #[path = "dictionary_update_to_none.rs"]
