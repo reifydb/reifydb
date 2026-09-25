@@ -100,6 +100,23 @@ fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
 }
 
+fn set(buffer: &Resident, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	buffer.apply_batch(&[OperatorWrite::Replace {
+		operator,
+		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+		pre_value_bytes: ByteSize::ZERO,
+		post: row,
+	}]);
+}
+
+fn remove(buffer: &Resident, operator: OperatorId, key: EncodedKey) {
+	buffer.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+		pre: LayeredPre::Absent,
+	}]);
+}
+
 fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
 	ByteSize::from_bytes((size_of::<Asc<RowNumber>>() + row(body).bytes().len()) as u64)
 }
@@ -303,7 +320,7 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqlitePersistent::in_memory();
 	let buffer = Resident::new();
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
-	buffer.record_state_set(OP_A, key(1), row("first"));
+	set(&buffer, OP_A, key(1), row("first"));
 
 	let inside = Arc::new(AtomicBool::new(false));
 	let release = Arc::new(AtomicBool::new(false));
@@ -326,7 +343,7 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 		thread::yield_now();
 	}
 
-	buffer.record_state_set(OP_A, key(2), row("second"));
+	set(&buffer, OP_A, key(2), row("second"));
 
 	let ran = Arc::new(AtomicBool::new(false));
 	let second = {
@@ -373,7 +390,7 @@ fn a_write_proceeds_while_a_flush_is_persisting() {
 	let (storage, _guard) = SqlitePersistent::in_memory();
 	let buffer = Resident::new();
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
-	buffer.record_state_set(OP_A, key(1), row("first"));
+	set(&buffer, OP_A, key(1), row("first"));
 
 	let inside = Arc::new(AtomicBool::new(false));
 	let release = Arc::new(AtomicBool::new(false));
@@ -402,7 +419,7 @@ fn a_write_proceeds_while_a_flush_is_persisting() {
 		let wrote = Arc::clone(&wrote);
 		thread::spawn(move || {
 			let _applying = buffer.flush_guard();
-			buffer.record_state_set(OP_A, key(2), row("second"));
+			set(&buffer, OP_A, key(2), row("second"));
 			wrote.store(true, Ordering::Release);
 		})
 	};
@@ -447,7 +464,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
 
-	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"));
+	set(&buffer, OP_A, key(1), row("pending-at-cancel"));
 	cancel.cancel();
 
 	let waiter = Arc::new(WaiterHandle::new());
@@ -479,7 +496,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let buffer = Resident::new();
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
 
-	buffer.record_state_set(OP_A, key(1), row("never-written"));
+	set(&buffer, OP_A, key(1), row("never-written"));
 	storage.shutdown();
 
 	flush_now(&buffer);
@@ -489,7 +506,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 #[should_panic(expected = "flushed before its sinks were attached")]
 fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
 	let buffer = Resident::new();
-	buffer.record_state_set(OP_A, key(1), row("never-written"));
+	set(&buffer, OP_A, key(1), row("never-written"));
 
 	flush_now(&buffer);
 }
@@ -550,7 +567,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let buffer = Resident::with_budget(bucket_bytes(8, "v00"));
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
 	for index in 0..67 {
-		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
+		set(&buffer, OP_A, key(index), row(&format!("v{index}")));
 	}
 
 	flush_now(&buffer);
@@ -571,16 +588,16 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 		group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")),
 	);
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
-	buffer.record_state_set(OP_A, key(1), row("early"));
-	buffer.record_state_set(OP_A, key(2), row("filler"));
-	buffer.record_state_set(OP_A, key(3), row("tail"));
+	set(&buffer, OP_A, key(1), row("early"));
+	set(&buffer, OP_A, key(2), row("filler"));
+	set(&buffer, OP_A, key(3), row("tail"));
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
 	buffer.complete_flush();
 	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
 
-	buffer.record_state_set(OP_A, key(1), row("late"));
+	set(&buffer, OP_A, key(1), row("late"));
 	flush_now(&buffer);
 
 	assert_eq!(
@@ -607,7 +624,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..41 {
-		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
+		set(&buffer, OP_A, key(index), row("at-shutdown"));
 	}
 	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
 
@@ -638,7 +655,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..37 {
-		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
+		set(&buffer, OP_A, key(index), row("at-cancel"));
 	}
 	cancel.cancel();
 	let waiter = Arc::new(WaiterHandle::new());
@@ -675,7 +692,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	buffer.attach_flusher(Waker::Spawned(actor_ref));
 
 	for index in 0..entries - 1 {
-		buffer.record_state_set(OP_A, key(index), row("under-the-budget"));
+		set(&buffer, OP_A, key(index), row("under-the-budget"));
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
@@ -684,7 +701,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 		 and a trigger that fires on it stops the buffer batching at all"
 	);
 
-	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
+	set(&buffer, OP_A, key(entries - 1), row("under-the-budget"));
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline
@@ -846,7 +863,7 @@ fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_b
 	);
 
 	for index in 0..=limit as u8 {
-		buffer.record_state_remove(OP_A, key(index));
+		remove(&buffer, OP_A, key(index));
 	}
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
@@ -879,7 +896,7 @@ fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
 	buffer.attach_flusher(Waker::Spawned(actor_ref));
 
 	for index in 0..limit as u8 {
-		buffer.record_state_remove(OP_A, key(index));
+		remove(&buffer, OP_A, key(index));
 	}
 
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
@@ -907,7 +924,7 @@ fn live_clean_entries_past_the_tombstone_ceiling_stay_resident_while_under_the_b
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
 
 	for index in 0..live as u8 {
-		buffer.record_state_set(OP_A, key(index), row("live"));
+		set(&buffer, OP_A, key(index), row("live"));
 	}
 	buffer.flush_all();
 	assert!(
@@ -924,7 +941,7 @@ fn live_clean_entries_past_the_tombstone_ceiling_stay_resident_while_under_the_b
 	);
 
 	for index in 0..=limit as u8 {
-		buffer.record_state_remove(OP_A, key(live as u8 + index));
+		remove(&buffer, OP_A, key(live as u8 + index));
 	}
 	buffer.flush_all();
 	buffer.evict_to_capacity();
@@ -956,7 +973,7 @@ fn dirty_tombstones_past_the_ceiling_do_not_count_until_they_settle_clean() {
 
 	let pending = limit as u8 * 4;
 	for index in 0..pending {
-		buffer.record_state_remove(OP_A, key(index));
+		remove(&buffer, OP_A, key(index));
 	}
 	assert_eq!(
 		buffer.resident_tombstones(),
@@ -975,7 +992,7 @@ fn dirty_tombstones_past_the_ceiling_do_not_count_until_they_settle_clean() {
 	assert!(buffer.resident_tombstones() > 0, "the ceiling must keep a graveyard of clean tombstones resident");
 
 	for index in 0..pending {
-		buffer.record_state_remove(OP_A, key(index));
+		remove(&buffer, OP_A, key(index));
 	}
 	assert_eq!(
 		buffer.resident_tombstones(),
@@ -1009,7 +1026,7 @@ fn a_key_flushed_while_the_filter_is_rebuilding_is_in_the_filter_that_rebuild_co
 		 reason"
 	);
 
-	buffer.record_state_set(OP_A, key(2), row("written-during-the-rebuild"));
+	set(&buffer, OP_A, key(2), row("written-during-the-rebuild"));
 	buffer.flush_all();
 
 	filter.commit_rebuild(handle);

@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, ops::Bound};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::sync::mutex::MutexGuard;
 use tracing::instrument;
@@ -12,21 +12,12 @@ use crate::{
 	resident::{
 		Resident,
 		bucket::write::WriteEntry,
-		record_state,
 		slot::{Slot, SlotInner},
 	},
 	types::{BufferedRange, BufferedState, DropMarker, Scan},
 };
 
 impl Resident {
-	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		self.write_slot(operator, |inner| record_state(inner, key, Some(row)));
-	}
-
-	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey) {
-		self.write_slot(operator, |inner| record_state(inner, key, None));
-	}
-
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
 		if let Some(slot) = self.shared().slot(operator) {
 			let found = slot.inner.lock().lookup(key).as_ref().map(buffered_state);

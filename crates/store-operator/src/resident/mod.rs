@@ -36,7 +36,7 @@ use reifydb_runtime::sync::{
 	mutex::{Mutex, MutexGuard},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Duration};
-use tracing::instrument;
+use tracing::{Span, field::Empty, instrument};
 
 #[cfg(reifydb_assertions)]
 use crate::persistent::Fetch;
@@ -556,38 +556,6 @@ impl Resident {
 		}
 	}
 
-	pub(crate) fn write_slot<R>(&self, operator: OperatorId, mutate: impl FnOnce(&mut SlotInner) -> R) -> R {
-		let slot = self.shared.slot_or_create(operator);
-		let out = {
-			let mut inner = slot.inner.lock();
-			let before = inner.buckets.footprint();
-			let before_entries = inner.buckets.entry_count();
-			let before_tombstones = inner.buckets.tombstone_count();
-			let before_dirty = inner.buckets.dirty_count();
-			let before_dirty_bytes = inner.buckets.dirty_footprint();
-			let out = mutate(&mut inner);
-			let after = inner.buckets.footprint();
-			let after_entries = inner.buckets.entry_count();
-			let after_tombstones = inner.buckets.tombstone_count();
-			let after_dirty = inner.buckets.dirty_count();
-			let after_dirty_bytes = inner.buckets.dirty_footprint();
-			self.shared.budget.charge(after.saturating_sub(before));
-			self.shared.budget.release(before.saturating_sub(after));
-			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
-			self.shared.release_entries(before_entries.saturating_sub(after_entries));
-			self.shared.charge_tombstones(after_tombstones.saturating_sub(before_tombstones));
-			self.shared.release_tombstones(before_tombstones.saturating_sub(after_tombstones));
-			self.shared.charge_dirty(after_dirty.saturating_sub(before_dirty));
-			self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
-			self.shared.charge_dirty_bytes(after_dirty_bytes.saturating_sub(before_dirty_bytes));
-			self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
-			self.mark_pending(&mut inner);
-			out
-		};
-		self.observe_write();
-		out
-	}
-
 	pub fn record_drop(&self, marker: DropMarker) {
 		let operator = drop_operator(&marker);
 		{
@@ -618,7 +586,7 @@ impl Resident {
 		self.mark_pending(&mut inner);
 	}
 
-	#[instrument(name = "store::operator::resident::evict_to_capacity", level = "debug", skip_all)]
+	#[instrument(name = "store::operator::resident::evict_to_capacity", level = "debug", skip_all, fields(evicted = Empty, freed = Empty))]
 	pub fn evict_to_capacity(&self) -> (usize, ByteSize) {
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
@@ -636,6 +604,9 @@ impl Resident {
 			metrics.evicted += evicted as u64;
 			metrics.reclaimed = metrics.reclaimed.saturating_add(freed.as_bytes());
 		}
+		let span = Span::current();
+		span.record("evicted", evicted);
+		span.record("freed", freed.as_bytes());
 		(evicted, freed)
 	}
 
