@@ -112,6 +112,7 @@ fn push_operator_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.push(MetricsSample::count("operator_resident", "reclaimed", metrics.reclaimed));
 	out.push(MetricsSample::count("operator_resident", "wakes", metrics.wakes));
 	out.push(MetricsSample::count("operator_resident", "tick_wakes", metrics.tick_wakes));
+	out.push(MetricsSample::count("operator_resident", "evict_wakes", metrics.evict_wakes));
 	out.push(MetricsSample::count("operator_resident", "slices", metrics.slices));
 }
 

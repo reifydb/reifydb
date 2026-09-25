@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{
+	ops::{Bound, Range},
+	sync::{Arc, atomic::Ordering},
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -24,13 +27,14 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
+	actor::Waker,
 	error::OperatorError,
 	persistent::{
 		PersistentTier,
 		testing::{ApplyOutcome, NoFaults, PersistentHooks, TestingPersistent},
 	},
 	range::{OperatorRangeTier, RangeSink, tiers::RangeKeyspaceMetrics},
-	resident::{Resident, invalidate_flushed},
+	resident::{Resident, ResidentLimits, invalidate_flushed},
 	types::{BufferedState, DropMarker, FlushBatch, LayeredPre, OperatorStateCensus, OperatorWrite, StagedWrite},
 };
 
@@ -1183,4 +1187,118 @@ fn a_refused_flush_stops_the_store_instead_of_settling_rows_it_never_wrote() {
 
 	set(&buffer, OP_A, key("k"), row("v"));
 	buffer.flush_all();
+}
+
+fn evict_fixture() -> Resident {
+	let buffer = Resident::with_limits(ResidentLimits {
+		budget: entry_bytes("", "row") * 4,
+		..ResidentLimits::default()
+	});
+	buffer.attach_evictor(Waker::Silent);
+	buffer
+}
+
+fn fill(buffer: &Resident, rows: Range<u32>) {
+	for index in rows {
+		set(buffer, OP_A, key(&format!("k{index}")), row("row"));
+	}
+}
+
+fn drain(buffer: &Resident) {
+	while buffer.take_for_flush().is_some() {
+		buffer.complete_flush();
+	}
+}
+
+#[test]
+fn a_burst_of_over_budget_commits_sends_one_evict_wake_until_the_evictor_runs() {
+	let buffer = evict_fixture();
+	fill(&buffer, 0..16);
+	assert!(resident_bytes(&buffer) > buffer.budget(), "the burst must push the buffer over its budget");
+	assert_eq!(buffer.metrics().evict_wakes, 1, "a burst of over-budget commits queued more than one evict wake");
+
+	drain(&buffer);
+	assert_eq!(buffer.metrics().evict_wakes, 1, "a settle re-sent a wake the evictor had not picked up yet");
+
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert!(evicted > 0, "the settled rows are clean, so the sweep must free some of them");
+	assert!(resident_bytes(&buffer) <= buffer.budget(), "the sweep must bring the buffer back under budget");
+
+	fill(&buffer, 16..32);
+	assert_eq!(
+		buffer.metrics().evict_wakes,
+		2,
+		"once the evictor has run, the next over-budget commit must wake it again"
+	);
+}
+
+#[test]
+fn a_sweep_that_cannot_reach_the_budget_parks_the_evictor_until_a_flush_settles() {
+	let buffer = evict_fixture();
+	fill(&buffer, 0..16);
+	assert_eq!(buffer.metrics().evict_wakes, 1, "the first over-budget commit must wake the evictor");
+
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert_eq!(evicted, 0, "an unflushed buffer holds nothing clean to evict");
+
+	fill(&buffer, 16..32);
+	assert_eq!(
+		buffer.metrics().evict_wakes,
+		1,
+		"commits after a sweep that could not reach the budget woke the evictor before a flush made anything clean"
+	);
+
+	drain(&buffer);
+	assert_eq!(
+		buffer.metrics().evict_wakes,
+		2,
+		"the settle that made rows clean must wake the parked evictor exactly once"
+	);
+
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert!(evicted > 0, "the woken sweep must free the rows the flush made clean");
+}
+
+#[test]
+fn a_sweep_that_reaches_the_budget_does_not_park_the_evictor() {
+	let buffer = evict_fixture();
+	fill(&buffer, 0..16);
+	drain(&buffer);
+	fill(&buffer, 16..19);
+
+	buffer.evict_to_capacity();
+	assert!(resident_bytes(&buffer) <= buffer.budget(), "the clean rows must be enough to reach the budget");
+	assert!(
+		dirty_entries_of(&buffer, OP_A) > 0,
+		"the dirty rows must survive the sweep, or this test proves nothing"
+	);
+
+	fill(&buffer, 19..40);
+	assert_eq!(
+		buffer.metrics().evict_wakes,
+		2,
+		"an over-budget commit after a sweep that reached the budget must wake the evictor without waiting for a flush"
+	);
+}
+
+#[test]
+fn a_settle_during_a_parked_sweep_queues_exactly_one_wake() {
+	let buffer = evict_fixture();
+	fill(&buffer, 0..16);
+	buffer.evict_to_capacity();
+
+	drain(&buffer);
+	assert_eq!(buffer.metrics().evict_wakes, 2, "the settle must queue exactly one wake for the parked evictor");
+
+	buffer.shared().evict_parked.store(true, Ordering::Release);
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert!(evicted > 0, "the queued sweep must free the rows the settle made clean");
+	assert!(resident_bytes(&buffer) <= buffer.budget(), "the queued sweep must bring the buffer back under budget");
+
+	fill(&buffer, 16..32);
+	assert_eq!(
+		buffer.metrics().evict_wakes,
+		3,
+		"the queued sweep reached the budget, so it must clear the stale park and let the next commit wake it"
+	);
 }

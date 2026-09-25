@@ -121,6 +121,7 @@ impl Default for ResidentLimits {
 pub struct OperatorResidentStateMetrics {
 	pub wakes: u64,
 	pub tick_wakes: u64,
+	pub evict_wakes: u64,
 	pub slices: u64,
 	pub persisted: u64,
 	pub reclaimed: u64,
@@ -183,6 +184,8 @@ pub struct Shared {
 	evictor: Mutex<Option<Waker<EvictMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
 	triggered: AtomicBool,
+	evict_pending: AtomicBool,
+	evict_parked: AtomicBool,
 	filter: Arc<AdaptiveKeyFilter>,
 	filter_decided: AtomicBool,
 	sweep_cursor: AtomicU64,
@@ -215,6 +218,8 @@ impl Shared {
 			evictor: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
+			evict_pending: AtomicBool::new(false),
+			evict_parked: AtomicBool::new(false),
 			filter: Arc::new(AdaptiveKeyFilter::new()),
 			filter_decided: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
@@ -588,6 +593,7 @@ impl Resident {
 
 	#[instrument(name = "store::operator::resident::evict_to_capacity", level = "debug", skip_all, fields(evicted = Empty, freed = Empty))]
 	pub fn evict_to_capacity(&self) -> (usize, ByteSize) {
+		self.shared.evict_pending.store(false, Ordering::Release);
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
 		for _ in 0..CLOCK_PASSES {
@@ -599,6 +605,8 @@ impl Resident {
 			evicted += count;
 			freed = freed.saturating_add(released);
 		}
+		let (bytes, tombstones) = self.overshoot();
+		self.shared.evict_parked.store(bytes.as_bytes() > 0 || tombstones > 0, Ordering::Release);
 		if evicted > 0 {
 			let mut metrics = self.shared.metrics.lock();
 			metrics.evicted += evicted as u64;
@@ -999,6 +1007,7 @@ impl Resident {
 
 		self.shared.global.lock().flushing = false;
 		self.shared.idle.notify_all();
+		self.shared.evict_parked.store(false, Ordering::Release);
 		self.wake_evictor();
 	}
 
@@ -1006,6 +1015,13 @@ impl Resident {
 		if !self.shared.budget.over_budget() && !self.shared.over_tombstone_limit() {
 			return;
 		}
+		if self.shared.evict_parked.load(Ordering::Acquire) {
+			return;
+		}
+		if self.shared.evict_pending.swap(true, Ordering::AcqRel) {
+			return;
+		}
+		self.shared.metrics.lock().evict_wakes += 1;
 		let evictor = self.shared.evictor.lock().clone();
 		match evictor {
 			Some(evictor) => evictor.wake(EvictMessage::Pressure),
