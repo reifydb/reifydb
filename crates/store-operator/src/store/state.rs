@@ -40,8 +40,8 @@ use crate::{
 	store::{
 		OperatorStore, StandardOperatorStore,
 		pager::{
-			ExhaustedPager, GroupKeyspacePager, GroupPager, GroupsPager, PageSource, PersistentPager,
-			PlanScan, keyspaces_of,
+			ExhaustedPager, GroupKeyspacePager, GroupPager, PageSource, PersistentPager, PlanScan,
+			keyspaces_of,
 		},
 	},
 	types::{BufferedRange, BufferedState, DropMarker, OperatorBatch, OperatorWrite, Scan},
@@ -101,6 +101,12 @@ impl StandardOperatorStore {
 		self.occupancy.forget(operator);
 		self.census.forget(operator);
 		self.range.invalidate_operator(operator);
+		Ok(())
+	}
+
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<()> {
+		let occupied = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?;
+		self.range.invalidate_group(operator, group, occupied);
 		Ok(())
 	}
 
@@ -521,17 +527,7 @@ impl StandardOperatorStore {
 		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
 		buffer.peek();
 		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?;
-		let mut source: Box<dyn PageSource + '_> = match self.range.tiers() {
-			Some(tiers) => Box::new(GroupsPager::new(
-				tiers,
-				operator,
-				&self.persistent,
-				&ordered,
-				mask,
-				buffer.dropped,
-			)),
-			None => Box::new(GroupPager::new(operator, &self.persistent, &ordered, mask, buffer.dropped)),
-		};
+		let mut source = GroupPager::new(operator, &self.persistent, &ordered, mask, buffer.dropped);
 
 		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
@@ -734,6 +730,12 @@ impl OperatorStore {
 	pub fn drop_operator(&self, operator: OperatorId) -> Result<()> {
 		match self {
 			Self::Standard(store) => store.drop_operator(operator),
+		}
+	}
+
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<()> {
+		match self {
+			Self::Standard(store) => store.invalidate_group(operator, group),
 		}
 	}
 

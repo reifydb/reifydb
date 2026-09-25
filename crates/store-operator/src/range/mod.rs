@@ -62,7 +62,7 @@ pub trait RangeSink: Send + Sync + 'static {
 
 	fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]);
 
-	fn invalidate_group(&self, operator: OperatorId, group: GroupId);
+	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64);
 
 	fn invalidate_operator(&self, operator: OperatorId);
 
@@ -88,7 +88,7 @@ impl RangeSink for NoRange {
 
 	fn retract_run(&self, _operator: OperatorId, _keys: &[&EncodedKey]) {}
 
-	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId) {}
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: u64) {}
 
 	fn invalidate_operator(&self, _operator: OperatorId) {}
 
@@ -155,9 +155,9 @@ impl RangeSink for OperatorRangeTier {
 		}
 	}
 
-	fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
+	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64) {
 		if let Self::Standard(tiers) = self {
-			tiers.invalidate_group(operator, group);
+			tiers.invalidate_group(operator, group, occupied);
 		}
 	}
 

@@ -17,7 +17,10 @@ use reifydb_core::{
 use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::range::{TypedPartition, typed::StandardRangeTier};
+use crate::{
+	range::{TypedPartition, typed::StandardRangeTier},
+	store::occupancy::occupies,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RangeKeyspaceMetrics {
@@ -128,9 +131,11 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 	}
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
-		self.invalidate_dimensions_where(|dimension| {
-			dimension.operator == operator && dimension.group == group
-		});
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		self.forget(partition, partition);
 	}
 
 	fn invalidate_operator(&self, operator: OperatorId) {
@@ -273,9 +278,11 @@ impl RangeTiers {
 		}
 	}
 
-	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
-		for tier in self.tiers.values() {
-			tier.invalidate_group(operator, group);
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64) {
+		for (keyspace, tier) in self.tiers.iter() {
+			if occupies(occupied, *keyspace) {
+				tier.invalidate_group(operator, group);
+			}
 		}
 	}
 

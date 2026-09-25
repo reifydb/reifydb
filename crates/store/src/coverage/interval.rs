@@ -218,6 +218,15 @@ impl<K: Key> CoverageSet<K> {
 		clipped
 	}
 
+	pub fn count_overlapping(&self, lo: &Edge<K>, hi: &Edge<K>) -> usize {
+		if lo >= hi {
+			return 0;
+		}
+		let at = self.upper_bound_edge(lo);
+		let straddling = usize::from(at > 0 && self.intervals[at - 1].1 > *lo);
+		straddling + self.intervals.partition_point(|(start, _)| start < hi) - at
+	}
+
 	pub fn gaps(&self, lo: &Edge<K>, hi: &Edge<K>) -> Vec<Interval<K>> {
 		let mut holes = Vec::new();
 		if lo >= hi {
@@ -529,6 +538,48 @@ mod tests {
 		set.extend(e("b"), Edge::of("c"));
 		set.extend(e("f"), Edge::Top);
 		assert_eq!(set.overlapping(&e("a"), &Edge::Top), vec![iv("b", "c"), open("f")]);
+	}
+
+	#[test]
+	fn count_overlapping_matches_overlapping_for_every_query() {
+		// A count that drifts from the clipped list misreports cached intervals to the metrics surface.
+		let mut set = CoverageSet::new();
+		set.extend(e("b"), Edge::of("d"));
+		set.extend(e("f"), Edge::of("h"));
+		set.extend(e("j"), Edge::Top);
+		let mut edges: Vec<Edge<OpaqueKey>> =
+			["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"].into_iter().map(e).collect();
+		edges.push(Edge::Top);
+		for lo in &edges {
+			for hi in &edges {
+				assert_eq!(
+					set.count_overlapping(lo, hi),
+					set.overlapping(lo, hi).len(),
+					"lo={lo:?} hi={hi:?}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn count_overlapping_excludes_intervals_touching_only_at_the_bounds() {
+		// Half-open: an interval ending at lo or starting at hi shares no key with the query.
+		let mut set = CoverageSet::new();
+		set.extend(e("b"), Edge::of("d"));
+		set.extend(e("f"), Edge::of("h"));
+		assert_eq!(set.count_overlapping(&e("d"), &Edge::of("f")), 0);
+		assert_eq!(set.count_overlapping(&e("c"), &Edge::of("g")), 2);
+	}
+
+	#[test]
+	fn count_overlapping_is_zero_on_an_empty_set_or_an_inverted_query() {
+		// An inverted query must count nothing, never underflow into a huge count.
+		let empty = CoverageSet::<OpaqueKey>::new();
+		assert_eq!(empty.count_overlapping(&e("a"), &Edge::Top), 0);
+		let mut set = CoverageSet::new();
+		set.extend(e("b"), Edge::of("z"));
+		assert_eq!(set.count_overlapping(&e("m"), &Edge::of("c")), 0);
+		assert_eq!(set.count_overlapping(&e("c"), &Edge::of("c")), 0);
 	}
 
 	#[test]

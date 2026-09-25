@@ -166,7 +166,7 @@ fn invalidate_operator_drops_only_its_own_claims() {
 	let spared = one_row_partition(&tier, OP_B, group_a(), KeyspaceId::ACCUMULATOR);
 	assert_eq!(tier.partitions(), 2, "the two operators must own separate partitions, or nothing is under test");
 
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 
 	assert_eq!(tier.lookup(OP_A, &dropped), None, "the dropped operator must keep nothing");
 	assert_eq!(tier.lookup(OP_B, &spared), Some(Some(row("v"))), "another operator's claim must survive intact");
@@ -334,7 +334,7 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition, "shrinking an entry must release the difference");
 	balanced("overwrite with a smaller row");
 
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an operator drop must release every byte it removed");
 	balanced("operator drop");
 
@@ -350,7 +350,7 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	assert!(tier.metrics().evictions > 0, "the fixture must actually evict, or this stage proves nothing");
 	balanced("evict");
 
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 	assert_eq!(
 		tier.resident_bytes(),
 		ByteSize::ZERO,
@@ -378,7 +378,7 @@ fn a_long_key_charges_its_heap_bytes() {
 		(ENTRY_OVERHEAD + long.heap_size() + 1) as u64,
 		"a heap allocated key must be charged for its allocation, or long keys are cached for free"
 	);
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
 }
 

@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-			state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
+			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 			traits::{Keyspace, group_scoped},
 		},
 		typed::{BoundedKey, Edge, range::KeyRange},
@@ -471,77 +471,6 @@ impl PageSource for GroupKeyspacePager<'_> {
 
 	fn is_exhausted(&self) -> bool {
 		self.at == self.keyspaces.len() && self.current.as_ref().is_none_or(|source| source.is_exhausted())
-	}
-}
-
-pub(crate) struct GroupsPager<'a> {
-	tiers: &'a RangeTiers,
-	operator: OperatorId,
-	persistent: &'a PersistentTier,
-	groups: Vec<(GroupId, Vec<KeyspaceId>)>,
-	at: usize,
-	current: Option<GroupKeyspacePager<'a>>,
-	exhausted: bool,
-}
-
-impl<'a> GroupsPager<'a> {
-	pub(crate) fn new(
-		tiers: &'a RangeTiers,
-		operator: OperatorId,
-		persistent: &'a PersistentTier,
-		groups: &[GroupId],
-		occupied: u64,
-		dropped: bool,
-	) -> Self {
-		let groups: Vec<(GroupId, Vec<KeyspaceId>)> = groups
-			.iter()
-			.map(|group| (*group, keyspaces_of(*group, &group_inner_range(*group), occupied)))
-			.collect();
-		let exhausted = dropped || groups.is_empty();
-		Self {
-			tiers,
-			operator,
-			persistent,
-			groups,
-			at: 0,
-			current: None,
-			exhausted,
-		}
-	}
-}
-
-impl PageSource for GroupsPager<'_> {
-	fn next_page(&mut self, limit: u64) -> Result<Page> {
-		loop {
-			if self.exhausted {
-				return Ok(Vec::new());
-			}
-			let Some(source) = self.current.as_mut() else {
-				let Some((group, keyspaces)) = self.groups.get(self.at) else {
-					self.exhausted = true;
-					return Ok(Vec::new());
-				};
-				self.at += 1;
-				self.current = Some(GroupKeyspacePager::new(
-					self.tiers,
-					self.operator,
-					*group,
-					self.persistent,
-					keyspaces.clone(),
-				));
-				continue;
-			};
-			let page = source.next_page(limit)?;
-			if page.is_empty() {
-				self.current = None;
-				continue;
-			}
-			return Ok(page);
-		}
-	}
-
-	fn is_exhausted(&self) -> bool {
-		self.exhausted
 	}
 }
 

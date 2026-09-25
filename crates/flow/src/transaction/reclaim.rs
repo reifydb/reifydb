@@ -31,7 +31,9 @@ pub trait ReclaimExtension: StateExtension {
 		if group.is_root() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		self.reclaim_identity_keyspaces(operator, group, limit)
+		let outcome = self.reclaim_identity_keyspaces(operator, group, limit)?;
+		self.operator_store().invalidate_group(operator, group)?;
+		Ok(outcome)
 	}
 
 	fn reclaim_group_identity_keys(
@@ -66,6 +68,7 @@ pub trait ReclaimExtension: StateExtension {
 			self.state_remove(operator, key)?;
 			removed += 1;
 		}
+		self.operator_store().invalidate_group(operator, group)?;
 		Ok(ReclaimOutcome {
 			removed: Count::new(removed),
 			more: false,

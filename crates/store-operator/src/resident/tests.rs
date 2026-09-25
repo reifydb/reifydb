@@ -1122,7 +1122,7 @@ impl RangeSink for RecordingRange {
 		self.calls.lock().push(RangeCall::Retract(operator, keys.iter().map(|key| (*key).clone()).collect()));
 	}
 
-	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId) {}
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: u64) {}
 
 	fn invalidate_operator(&self, _operator: OperatorId) {}
 

@@ -132,10 +132,6 @@ impl<D: PointDomain> PointTier<D> {
 		shard.remove_at(position as usize);
 	}
 
-	pub fn invalidate_operator(&self, dimension: D::Dimension) {
-		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
-	}
-
 	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();

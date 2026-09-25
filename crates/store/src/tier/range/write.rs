@@ -226,8 +226,29 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.withdraw_all();
 	}
 
-	pub fn invalidate_operator(&self, dimension: D::Dimension) {
-		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
+	pub fn forget(&self, dimension: D::Dimension, partition: D::Partition) {
+		let index = self.shard_index(&partition);
+		let claimed = {
+			let coverage = self.coverage().read();
+			coverage.set(dimension).is_some() || coverage.head(dimension).is_some()
+		};
+		if !claimed && !self.shard(index).lock().partitions.contains_key(&partition) {
+			return;
+		}
+		{
+			let mut coverage = self.coverage().write();
+			coverage.remove(dimension);
+			self.record_retraction();
+		}
+		let mut shard = self.shard(index).lock();
+		let Shard {
+			partitions,
+			budget,
+			..
+		} = &mut *shard;
+		if let Some(target) = partitions.remove(&partition) {
+			budget.release(ByteSize::from_bytes(target.bytes as u64));
+		}
 	}
 
 	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
@@ -777,7 +798,7 @@ mod tests {
 		let charged = tier.shard_for(&live).lock().budget.used();
 		let before = tier.retractions();
 
-		tier.invalidate_operator(OP_A);
+		tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 
 		assert!(intervals(&tier, OP_A).is_empty(), "a purged operator must hold no claim");
 		assert!(!has_partition(&tier, &live));

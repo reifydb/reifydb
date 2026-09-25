@@ -372,7 +372,7 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				let (start, end) = D::span(&id);
-				intervals[D::metric_bucket(&id)] += set.overlapping(&start, &end).len();
+				intervals[D::metric_bucket(&id)] += set.count_overlapping(&start, &end);
 			}
 		}
 

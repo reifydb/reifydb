@@ -141,7 +141,7 @@ fn invalidate_operator_spares_other_operators() {
 	tier.overwrite(OP_B, k.clone(), row("b"));
 	assert_eq!(tier.entries(), 2, "the same inner key under two operators must occupy two entries");
 
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 
 	assert_eq!(tier.get(OP_A, &k), None, "a dropped operator must leave no cached state behind");
 	let survivor = tier.get(OP_B, &k).expect("another operator's identical key must survive");
@@ -323,7 +323,7 @@ fn a_fill_dirtied_by_an_operator_drop_is_discarded() {
 
 	assert!(tier.begin_fill(OP_A, &k));
 	assert!(tier.begin_fill(OP_B, &neighbour));
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 
 	assert!(!tier.finish_fill(OP_A, k.clone(), Some(row("stale"))));
 	assert_eq!(tier.get(OP_A, &k), None);
@@ -757,7 +757,7 @@ fn the_index_stays_consistent_with_the_slab() {
 	assert!(tier.index_is_consistent(), "eviction must repair the index the same way an invalidate does");
 
 	tier.overwrite(OP_B, key(group_a(), CACHED, b"other"), row("b"));
-	tier.invalidate_operator(OP_A);
+	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 	assert!(tier.index_is_consistent(), "the index rebuilt after an operator drop must address the survivors");
 	assert_eq!(tier.entries(), 1, "only the other operator's entry may remain");
 }
