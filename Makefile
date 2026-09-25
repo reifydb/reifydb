@@ -179,11 +179,11 @@ test-chaos-ci:
 
 .PHONY: pull-siblings
 pull-siblings:
-	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR)
+	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR)
 
 .PHONY: rebase
 rebase:
-	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR)
+	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR)
 
 .PHONY: all-siblings
 all-siblings:
