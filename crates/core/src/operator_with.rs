@@ -373,8 +373,10 @@ fn decode_window_kind(
 ) -> Result<Option<WindowKind>> {
 	let Some(window_name) = window_name else {
 		if duration.is_some()
-			|| slots.is_some() || slide.is_some()
-			|| gap.is_some() || lag.is_some()
+			|| slots.is_some()
+			|| slide.is_some()
+			|| gap.is_some()
+			|| lag.is_some()
 			|| pane.is_some()
 		{
 			return Err(internal_error!("apply with has a window size key without 'window'"));

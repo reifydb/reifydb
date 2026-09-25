@@ -231,8 +231,8 @@ fn parse_field_attrs(attr_groups: &[Group]) -> FieldAttrs {
 			match attr_name.as_str() {
 				"column" => {
 					if let Some(TokenTree::Punct(p)) = inner_iter.next()
-						&& p.as_char() == '=' && let Some(TokenTree::Literal(lit)) =
-						inner_iter.next()
+						&& p.as_char() == '='
+						&& let Some(TokenTree::Literal(lit)) = inner_iter.next()
 					{
 						let s = lit.to_string();
 

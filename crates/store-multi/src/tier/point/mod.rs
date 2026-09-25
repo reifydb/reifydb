@@ -497,7 +497,9 @@ impl MultiPointTier {
 					used: blob.used,
 					limit: blob.limit,
 					entries: blob.entries
-						+ row.entries + partitioned.entries + series.entries
+						+ row.entries
+						+ partitioned.entries
+						+ series.entries
 						+ partitioned_series.entries,
 					counters: accumulate_point_metrics([
 						blob.counters,

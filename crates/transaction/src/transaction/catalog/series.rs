@@ -58,7 +58,8 @@ impl TransactionalSeriesChanges for AdminTransaction {
 				return Some(series);
 			}
 			if let Some(series) = &change.pre
-				&& series.id == id && change.op == Delete
+				&& series.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -76,7 +77,8 @@ impl TransactionalSeriesChanges for AdminTransaction {
 			}
 			if let Some(series) = &change.pre
 				&& series.namespace == namespace
-				&& series.name == name && change.op == Delete
+				&& series.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}

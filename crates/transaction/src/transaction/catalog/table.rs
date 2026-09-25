@@ -57,7 +57,8 @@ impl TransactionalTableChanges for AdminTransaction {
 					return Some(table);
 				}
 			} else if let Some(table) = &change.pre
-				&& table.id == id && change.op == Delete
+				&& table.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}

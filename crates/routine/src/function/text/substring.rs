@@ -57,7 +57,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 
 				for i in 0..row_count {
 					if i < text_container.len()
-						&& i < start_container.len() && i < length_container.len()
+						&& i < start_container.len()
+						&& i < length_container.len()
 					{
 						let original_str = text_container.value(i);
 						let start_pos = start_container.values().get(i).copied().unwrap_or(0);

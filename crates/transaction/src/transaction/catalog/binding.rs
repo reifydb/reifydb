@@ -43,7 +43,8 @@ impl TransactionalBindingChanges for AdminTransaction {
 					return Some(binding);
 				}
 			} else if let Some(binding) = &change.pre
-				&& binding.id == id && change.op == Delete
+				&& binding.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -59,7 +60,8 @@ impl TransactionalBindingChanges for AdminTransaction {
 				}
 			} else if let Some(binding) = &change.pre
 				&& binding.namespace == namespace
-				&& binding.name == name && change.op == Delete
+				&& binding.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}

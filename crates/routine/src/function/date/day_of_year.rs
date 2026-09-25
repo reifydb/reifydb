@@ -76,7 +76,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateDayOfYear {
 								}
 							})?;
 							let doy = date.to_days_since_epoch()
-								- jan1.to_days_since_epoch() + 1;
+								- jan1.to_days_since_epoch()
+								+ 1;
 							result.push(doy);
 							res_bitvec.push(true);
 						} else {

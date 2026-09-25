@@ -47,7 +47,8 @@ impl TransactionalTestChanges for AdminTransaction {
 					return Some(test);
 				}
 			} else if let Some(test) = &change.pre
-				&& test.id == id && change.op == Delete
+				&& test.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}

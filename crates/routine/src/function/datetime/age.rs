@@ -91,7 +91,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 								days += Date::days_in_month(
 									borrow_year,
 									borrow_month as u32,
-								) as i32;
+								)
+									as i32;
 							}
 
 							if months < 0 {

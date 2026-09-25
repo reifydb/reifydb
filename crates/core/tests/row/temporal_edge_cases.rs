@@ -66,7 +66,7 @@ fn test_interval_combinations() {
 		Duration::from_seconds(-1).unwrap(),
 		Duration::from_days(365).unwrap(),
 		Duration::from_weeks(-52).unwrap(),
-		Duration::new(12, 30, 123456789).unwrap(),    // Complex interval
+		Duration::new(12, 30, 123456789).unwrap(), // Complex interval
 		Duration::new(-12, -30, -123456789).unwrap(), // Negative complex
 		Duration::new(i32::MAX, i32::MAX, 86_399_999_999_999).unwrap(), // Large positive (nanos < 1 day)
 		Duration::new(i32::MIN, i32::MIN, -86_399_999_999_999).unwrap(), // Large negative (nanos > -1 day)

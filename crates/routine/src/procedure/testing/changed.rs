@@ -61,8 +61,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 			let type_matches = matches!(
 				(&object_id, self.object_type),
 				(ObjectId::Table(_), "tables")
-					| (ObjectId::View(_), "views") | (ObjectId::RingBuffer(_), "ringbuffers")
-					| (ObjectId::Series(_), "series") | (ObjectId::Dictionary(_), "dictionaries")
+					| (ObjectId::View(_), "views")
+					| (ObjectId::RingBuffer(_), "ringbuffers")
+					| (ObjectId::Series(_), "series")
+					| (ObjectId::Dictionary(_), "dictionaries")
 			);
 			if !type_matches {
 				continue;

@@ -152,9 +152,8 @@ impl Catalog {
 
 				for change in &admin.changes.handler {
 					if let Some(h) = &change.post
-						&& h.variant == variant && !handlers
-						.iter()
-						.any(|existing| existing.id == h.id)
+						&& h.variant == variant
+						&& !handlers.iter().any(|existing| existing.id == h.id)
 					{
 						handlers.push(h.clone());
 					}
@@ -168,9 +167,8 @@ impl Catalog {
 
 				for change in &t.inner.changes.handler {
 					if let Some(h) = &change.post
-						&& h.variant == variant && !handlers
-						.iter()
-						.any(|existing| existing.id == h.id)
+						&& h.variant == variant
+						&& !handlers.iter().any(|existing| existing.id == h.id)
 					{
 						handlers.push(h.clone());
 					}

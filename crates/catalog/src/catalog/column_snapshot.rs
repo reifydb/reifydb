@@ -124,7 +124,9 @@ impl Catalog {
 							bucket_start: bs,
 							partition: p,
 							..
-						} = snap.source && sid == series_id && bs == bucket_start
+						} = snap.source
+						&& sid == series_id
+						&& bs == bucket_start
 						&& p == partition
 					{
 						return Ok(Some(snap.clone()));
@@ -134,8 +136,11 @@ impl Catalog {
 							bucket_start: bs,
 							partition: p,
 							..
-						} = snap.source && sid == series_id && bs == bucket_start
-						&& p == partition && change.op == OperationType::Delete
+						} = snap.source
+						&& sid == series_id
+						&& bs == bucket_start
+						&& p == partition
+						&& change.op == OperationType::Delete
 					{
 						return Ok(None);
 					}

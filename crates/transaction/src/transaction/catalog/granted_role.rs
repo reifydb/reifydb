@@ -46,7 +46,8 @@ impl TransactionalGrantedRoleChanges for AdminTransaction {
 		let mut result = Vec::new();
 		for change in &self.changes.granted_role {
 			if let Some(ir) = &change.post
-				&& ir.identity == identity && change.op == Create
+				&& ir.identity == identity
+				&& change.op == Create
 			{
 				result.push(ir);
 			}

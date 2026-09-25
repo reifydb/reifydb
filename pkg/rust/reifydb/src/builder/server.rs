@@ -434,7 +434,9 @@ impl ServerBuilder {
 
 		#[cfg(feature = "sub_metric_profiler")]
 		#[allow(unused_variables)]
-		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
+		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) =
+			self.profiler_configurator.take()
+		{
 			let cfg = configurator_fn(ProfilerConfigurator::new());
 			let interner = Arc::new(DimInterner::new());
 			let instruments = Arc::new(ProfilerInstruments::new());
@@ -544,9 +546,9 @@ impl ServerBuilder {
 		{
 			let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 			#[cfg(feature = "sub_metric_profiler")]
-			let configurator: Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send> = if let Some(layer) =
-				profiler_layer
-			{
+			let configurator: Box<
+				dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send,
+			> = if let Some(layer) = profiler_layer {
 				Box::new(move |t| inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE)))
 			} else {
 				inner

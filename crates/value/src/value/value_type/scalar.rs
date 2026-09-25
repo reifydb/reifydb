@@ -8,8 +8,10 @@ impl ValueType {
 		!matches!(
 			self.inner_type(),
 			ValueType::Any
-				| ValueType::List(_) | ValueType::Record(_)
-				| ValueType::Tuple(_) | ValueType::Digest { .. }
+				| ValueType::List(_)
+				| ValueType::Record(_)
+				| ValueType::Tuple(_)
+				| ValueType::Digest { .. }
 		)
 	}
 }

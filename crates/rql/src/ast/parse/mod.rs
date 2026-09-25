@@ -238,10 +238,12 @@ impl<'bump> Parser<'bump> {
 				}
 
 				if is_ddl
-					&& !self.is_eof() && !matches!(
-					self.current()?.kind,
-					TokenKind::Separator(Separator::Semicolon) | TokenKind::Separator(NewLine)
-				) {
+					&& !self.is_eof()
+					&& !matches!(
+						self.current()?.kind,
+						TokenKind::Separator(Separator::Semicolon)
+							| TokenKind::Separator(NewLine)
+					) {
 					return Err(AstError::UnexpectedToken {
 						expected: "semicolon or end of statement after DDL command".to_string(),
 						fragment: self.current()?.fragment.to_owned(),
@@ -383,28 +385,32 @@ impl<'bump> Parser<'bump> {
 					if matches!(infix.operator, InfixOperator::AccessNamespace(_)) {
 						if !self.is_eof()
 							&& self.current()?.is_operator(Operator::OpenCurly)
-							&& infix.right.is_identifier() && match infix.left.as_ref() {
-							Ast::Infix(inner)
-								if matches!(
+							&& infix.right.is_identifier()
+							&& match infix.left.as_ref() {
+								Ast::Infix(inner)
+									if matches!(
 									inner.operator,
 									InfixOperator::AccessTable(_)
 										| InfixOperator::AccessNamespace(_)
 								) =>
-							{
-								inner.left.is_identifier()
-									&& inner.right.is_identifier()
-							}
-							other => other.is_identifier(),
-						} {
+								{
+									inner.left.is_identifier()
+										&& inner.right.is_identifier()
+								}
+								other => other.is_identifier(),
+							} {
 							left = self.parse_sumtype_constructor(infix)?;
 							continue;
 						}
 						if infix.right.is_identifier()
-							&& let Ast::Infix(inner) = infix.left.as_ref() && matches!(
-							inner.operator,
-							InfixOperator::AccessTable(_)
-								| InfixOperator::AccessNamespace(_)
-						) && inner.left.is_identifier() && inner.right.is_identifier()
+							&& let Ast::Infix(inner) = infix.left.as_ref()
+							&& matches!(
+								inner.operator,
+								InfixOperator::AccessTable(_)
+									| InfixOperator::AccessNamespace(_)
+							)
+							&& inner.left.is_identifier()
+							&& inner.right.is_identifier()
 						{
 							left = self.parse_sumtype_unit_constructor(infix)?;
 							continue;
@@ -732,7 +738,8 @@ impl<'bump> Parser<'bump> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			if let Some(kw) = break_on
-				&& !self.is_eof() && self.current()?.is_keyword(kw)
+				&& !self.is_eof()
+				&& self.current()?.is_keyword(kw)
 			{
 				break;
 			}
@@ -839,7 +846,8 @@ impl<'bump> Parser<'bump> {
 		let mut expression = self.parse_node(Precedence::None)?;
 
 		if let Ast::Identifier(ref ident) = expression
-			&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
+			&& !self.is_eof()
+			&& self.current()?.is_operator(Operator::OpenCurly)
 		{
 			let token = ident.token;
 			let variant_name = ident.token.fragment;

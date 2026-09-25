@@ -265,11 +265,13 @@ fn spawn_task(
 			(TaskWork::Sync(_), TaskExecutor::Tokio) => Err(Box::new(io::Error::new(
 				io::ErrorKind::InvalidInput,
 				"Sync work cannot be executed on Tokio executor",
-			)) as Box<dyn Error + Send>),
+			))
+				as Box<dyn Error + Send>),
 			(TaskWork::Async(_), TaskExecutor::ComputePool) => Err(Box::new(io::Error::new(
 				io::ErrorKind::InvalidInput,
 				"Async work cannot be executed on ComputePool executor",
-			)) as Box<dyn Error + Send>),
+			))
+				as Box<dyn Error + Send>),
 		};
 
 		let duration = start.elapsed();

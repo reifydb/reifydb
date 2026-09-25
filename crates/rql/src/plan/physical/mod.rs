@@ -1132,8 +1132,9 @@ impl<'bump> Compiler<'bump> {
 									&& scan.source
 										.def()
 										.partition_by()
-										.is_empty() && scan.source.def().storage_kind()
-									!= ViewStorageKind::Series =>
+										.is_empty()
+									&& scan.source.def().storage_kind()
+										!= ViewStorageKind::Series =>
 							{
 								Some(ResolvedObject::View(scan.source.clone()))
 							}
@@ -1201,10 +1202,9 @@ impl<'bump> Compiler<'bump> {
 							extract_series_predicate(&filter.condition, def.key.column())
 								.filter(|sp| {
 									def.tag.is_none()
-										|| sp.variant_tag.is_some() || (sp
-										.key_start
-										.is_none()
-										&& sp.key_end.is_none())
+										|| sp.variant_tag.is_some()
+										|| (sp.key_start.is_none()
+											&& sp.key_end.is_none())
 								})
 						};
 
@@ -1955,7 +1955,8 @@ impl<'bump> Compiler<'bump> {
 					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
+						(&left, &right)
+						&& l.address == r.address
 					{
 						let mut pushed = l.clone();
 						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
@@ -1979,7 +1980,8 @@ impl<'bump> Compiler<'bump> {
 					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
+						(&left, &right)
+						&& l.address == r.address
 					{
 						let mut pushed = l.clone();
 						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
@@ -2003,7 +2005,8 @@ impl<'bump> Compiler<'bump> {
 					let right = self.compile(rx, join.subquery)?.unwrap();
 
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
+						(&left, &right)
+						&& l.address == r.address
 					{
 						let mut pushed = l.clone();
 						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);

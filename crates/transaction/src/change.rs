@@ -1199,7 +1199,8 @@ impl TransactionalCatalogChanges {
 					return Some(table);
 				}
 			} else if let Some(table) = &change.pre
-				&& table.id == id && change.op == Delete
+				&& table.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -1214,7 +1215,8 @@ impl TransactionalCatalogChanges {
 					return Some(view);
 				}
 			} else if let Some(view) = &change.pre
-				&& view.id() == id && change.op == Delete
+				&& view.id() == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -1229,7 +1231,8 @@ impl TransactionalCatalogChanges {
 					return Some(ttl);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == storage && change.op == Delete
+				&& *s == storage
+				&& change.op == Delete
 			{
 				return None;
 			}

@@ -85,8 +85,8 @@ where
 					arrival = arrival.max(lanes.coord);
 					fingerprint = mix(mix(mix(fingerprint, 3), lanes.number), lanes.value);
 					let split = Scenario::rolls(scenario.update_as_remove_insert)
-						&& scenario.remove_pct > 0 && rng.random::<f64>()
-						< scenario.update_as_remove_insert;
+						&& scenario.remove_pct > 0
+						&& rng.random::<f64>() < scenario.update_as_remove_insert;
 					if split {
 						fingerprint = mix(fingerprint, 5);
 						let post = workload.readmit(&mut rng, &post);
@@ -166,8 +166,8 @@ where
 			arrival = arrival.max(lanes.coord);
 			fingerprint = mix(mix(mix(mix(fingerprint, 3), lanes.number), lanes.coord), lanes.value);
 			let split = Scenario::rolls(scenario.update_as_remove_insert)
-				&& scenario.remove_pct > 0 && rng.random::<f64>()
-				< scenario.update_as_remove_insert;
+				&& scenario.remove_pct > 0
+				&& rng.random::<f64>() < scenario.update_as_remove_insert;
 			if split {
 				fingerprint = mix(fingerprint, 5);
 				let post = workload.readmit(&mut rng, &post);

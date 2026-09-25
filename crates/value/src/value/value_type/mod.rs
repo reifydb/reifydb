@@ -184,11 +184,20 @@ impl ValueType {
 				matches!(
 					self,
 					ValueType::Float4
-						| ValueType::Float8 | ValueType::Int1 | ValueType::Int2
-						| ValueType::Int4 | ValueType::Int8 | ValueType::Int16
-						| ValueType::Uint1 | ValueType::Uint2 | ValueType::Uint4
-						| ValueType::Uint8 | ValueType::Uint16 | ValueType::Int { .. }
-						| ValueType::Uint { .. } | ValueType::Decimal { .. }
+						| ValueType::Float8
+						| ValueType::Int1
+						| ValueType::Int2
+						| ValueType::Int4
+						| ValueType::Int8
+						| ValueType::Int16
+						| ValueType::Uint1
+						| ValueType::Uint2
+						| ValueType::Uint4
+						| ValueType::Uint8
+						| ValueType::Uint16
+						| ValueType::Int { .. }
+						| ValueType::Uint { .. }
+						| ValueType::Decimal { .. }
 				)
 			}
 		}
@@ -207,8 +216,11 @@ impl ValueType {
 			_ => matches!(
 				self,
 				ValueType::Int1
-					| ValueType::Int2 | ValueType::Int4 | ValueType::Int8
-					| ValueType::Int16 | ValueType::Int { .. }
+					| ValueType::Int2
+					| ValueType::Int4
+					| ValueType::Int8
+					| ValueType::Int16
+					| ValueType::Int { .. }
 			),
 		}
 	}
@@ -219,8 +231,10 @@ impl ValueType {
 			_ => matches!(
 				self,
 				ValueType::Uint1
-					| ValueType::Uint2 | ValueType::Uint4
-					| ValueType::Uint8 | ValueType::Uint16
+					| ValueType::Uint2
+					| ValueType::Uint4
+					| ValueType::Uint8
+					| ValueType::Uint16
 					| ValueType::Uint { .. }
 			),
 		}

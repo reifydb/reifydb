@@ -30,7 +30,8 @@ impl<'bump> Token<'bump> {
 		matches!(
 			self.kind,
 			TokenKind::StringLiteral
-				| TokenKind::IntLiteral | TokenKind::FloatLiteral
+				| TokenKind::IntLiteral
+				| TokenKind::FloatLiteral
 				| TokenKind::BooleanLiteral
 		)
 	}

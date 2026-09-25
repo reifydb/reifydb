@@ -38,7 +38,8 @@ impl<'bump> Parser<'bump> {
 			let mut value_ast = self.parse_node(Precedence::None)?;
 
 			if let Ast::Identifier(ref ident) = value_ast
-				&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
+				&& !self.is_eof()
+				&& self.current()?.is_operator(Operator::OpenCurly)
 			{
 				let token = ident.token;
 				let variant_name = ident.token.fragment;

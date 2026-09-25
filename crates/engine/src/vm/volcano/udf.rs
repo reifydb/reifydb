@@ -300,27 +300,43 @@ pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 		matches!(
 			instr,
 			Instruction::PushConst(_)
-				| Instruction::PushNone | Instruction::Pop
-				| Instruction::Dup | Instruction::LoadVar(_)
-				| Instruction::StoreVar(_) | Instruction::DeclareVar(_)
+				| Instruction::PushNone
+				| Instruction::Pop
+				| Instruction::Dup
+				| Instruction::LoadVar(_)
+				| Instruction::StoreVar(_)
+				| Instruction::DeclareVar(_)
 				| Instruction::FieldAccess { .. }
-				| Instruction::Add | Instruction::Sub
-				| Instruction::Mul | Instruction::Div
-				| Instruction::Rem | Instruction::Negate
-				| Instruction::LogicNot | Instruction::CmpEq
-				| Instruction::CmpNe | Instruction::CmpLt
-				| Instruction::CmpLe | Instruction::CmpGt
-				| Instruction::CmpGe | Instruction::LogicAnd
-				| Instruction::LogicOr | Instruction::LogicXor
-				| Instruction::Between | Instruction::InList { .. }
-				| Instruction::Cast(_) | Instruction::Jump(_)
+				| Instruction::Add
+				| Instruction::Sub
+				| Instruction::Mul
+				| Instruction::Div
+				| Instruction::Rem
+				| Instruction::Negate
+				| Instruction::LogicNot
+				| Instruction::CmpEq
+				| Instruction::CmpNe
+				| Instruction::CmpLt
+				| Instruction::CmpLe
+				| Instruction::CmpGt
+				| Instruction::CmpGe
+				| Instruction::LogicAnd
+				| Instruction::LogicOr
+				| Instruction::LogicXor
+				| Instruction::Between
+				| Instruction::InList { .. }
+				| Instruction::Cast(_)
+				| Instruction::Jump(_)
 				| Instruction::JumpIfFalsePop(_)
 				| Instruction::JumpIfTruePop(_)
-				| Instruction::EnterScope(_) | Instruction::ExitScope
-				| Instruction::ReturnValue | Instruction::ReturnVoid
+				| Instruction::EnterScope(_)
+				| Instruction::ExitScope
+				| Instruction::ReturnValue
+				| Instruction::ReturnVoid
 				| Instruction::DefineFunction(_)
 				| Instruction::DefineClosure(_)
-				| Instruction::Call { .. } | Instruction::Nop
+				| Instruction::Call { .. }
+				| Instruction::Nop
 				| Instruction::Halt
 		)
 	})

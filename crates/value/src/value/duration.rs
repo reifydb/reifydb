@@ -353,13 +353,15 @@ impl Duration {
 
 	pub fn is_positive(&self) -> bool {
 		self.months >= 0
-			&& self.days >= 0 && self.nanos >= 0
+			&& self.days >= 0
+			&& self.nanos >= 0
 			&& (self.months > 0 || self.days > 0 || self.nanos > 0)
 	}
 
 	pub fn is_negative(&self) -> bool {
 		self.months <= 0
-			&& self.days <= 0 && self.nanos <= 0
+			&& self.days <= 0
+			&& self.nanos <= 0
 			&& (self.months < 0 || self.days < 0 || self.nanos < 0)
 	}
 
@@ -594,9 +596,12 @@ impl Display for Duration {
 
 		if ms != 0 || us != 0 || ns != 0 {
 			if remaining_nanos < 0
-				&& seconds == 0 && hours == 0
-				&& minutes == 0 && display_days == 0
-				&& years == 0 && months == 0
+				&& seconds == 0
+				&& hours == 0
+				&& minutes == 0
+				&& display_days == 0
+				&& years == 0
+				&& months == 0
 			{
 				write!(f, "-")?;
 			}

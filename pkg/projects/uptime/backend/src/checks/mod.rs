@@ -69,8 +69,10 @@ fn ip_is_public(ip: &IpAddr) -> bool {
 			let octets = v4.octets();
 			let cgnat = octets[0] == 100 && (64..128).contains(&octets[1]);
 			!(v4.is_loopback()
-				|| v4.is_private() || v4.is_link_local()
-				|| v4.is_broadcast() || v4.is_unspecified()
+				|| v4.is_private()
+				|| v4.is_link_local()
+				|| v4.is_broadcast()
+				|| v4.is_unspecified()
 				|| cgnat)
 		}
 		IpAddr::V6(v6) => {

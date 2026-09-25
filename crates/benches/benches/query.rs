@@ -258,19 +258,20 @@ fn main() {
 
 	let serve = transports.iter().any(|transport| transport.is_wire());
 
-	let cells =
-		registry::all()
-			.iter()
-			.filter(|scenario| only.as_deref().is_none_or(|only| scenario.name == only))
-			.map(|scenario| {
-				if scenario.dataset.is_manual() {
-					1
-				} else {
-					scales.len()
-				}
-			})
-			.sum::<usize>() * transports.len()
-			* identities.len() * threads.len();
+	let cells = registry::all()
+		.iter()
+		.filter(|scenario| only.as_deref().is_none_or(|only| scenario.name == only))
+		.map(|scenario| {
+			if scenario.dataset.is_manual() {
+				1
+			} else {
+				scales.len()
+			}
+		})
+		.sum::<usize>()
+		* transports.len()
+		* identities.len()
+		* threads.len();
 	println!(
 		"matrix cells={} transports={} identities={} threads={} repeats={} worst_case_minutes={}",
 		cells,

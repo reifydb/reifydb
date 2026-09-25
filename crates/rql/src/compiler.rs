@@ -647,7 +647,8 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 					name.text()
 				};
 				if !param_names.contains(stripped)
-					&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+					&& !local_vars.contains(stripped)
+					&& seen.insert(stripped.to_string())
 				{
 					free_vars.push(name.clone());
 				}
@@ -662,7 +663,8 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 					object.text()
 				};
 				if !param_names.contains(stripped)
-					&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+					&& !local_vars.contains(stripped)
+					&& seen.insert(stripped.to_string())
 				{
 					free_vars.push(object.clone());
 				}
@@ -675,7 +677,8 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 						cap.text()
 					};
 					if !param_names.contains(stripped)
-						&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+						&& !local_vars.contains(stripped)
+						&& seen.insert(stripped.to_string())
 					{
 						free_vars.push(cap.clone());
 					}
@@ -823,7 +826,8 @@ impl InstructionCompiler {
 					if let Expression::Column(col) = arg
 						&& function.as_ref().is_some_and(|function| {
 							function.type_argument_positions().contains(&index)
-						}) && let Ok(ty) = ValueType::from_str(col.0.name.text())
+						})
+						&& let Ok(ty) = ValueType::from_str(col.0.name.text())
 					{
 						self.emit(Instruction::PushConst(Value::Type(ty)));
 						type_arguments.push((index, col.0.name.clone()));

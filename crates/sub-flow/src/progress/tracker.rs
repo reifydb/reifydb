@@ -617,7 +617,8 @@ mod tests {
 
 	fn coalescing_harness(
 		source_count: usize,
-	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
+	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>)
+	{
 		let clock = Clock::Mock(MockClock::from_millis(0));
 		let actor_system = ActorSystem::testing(Clock::testing());
 		let (sender, received) = mpsc::channel();

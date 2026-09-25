@@ -230,7 +230,8 @@ impl Accumulator for DigestAccumulator {
 			inner,
 			accuracy,
 			..
-		} = column && self.seen.is_none()
+		} = column
+			&& self.seen.is_none()
 		{
 			self.seen = Some((inner.clone(), *accuracy));
 		}

@@ -172,12 +172,10 @@ impl<'bump> Parser<'bump> {
 					let token = self.advance()?;
 					if (self.consume_if(TokenKind::Keyword(Keyword::Tests))?).is_some() {
 						if self.is_eof()
-							|| self.current()?.is_separator(NewLine) || self
-							.current()?
-							.is_operator(Operator::Pipe) || matches!(
-							self.current()?.kind,
-							TokenKind::Separator(_)
-						) {
+							|| self.current()?.is_separator(NewLine)
+							|| self.current()?.is_operator(Operator::Pipe)
+							|| matches!(self.current()?.kind, TokenKind::Separator(_))
+						{
 							return Ok(Ast::RunTests(AstRunTests::All {
 								token,
 							}));

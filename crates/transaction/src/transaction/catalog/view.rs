@@ -47,7 +47,8 @@ impl TransactionalViewChanges for AdminTransaction {
 					return Some(view);
 				}
 			} else if let Some(view) = &change.pre
-				&& view.id() == id && change.op == Delete
+				&& view.id() == id
+				&& change.op == Delete
 			{
 				return None;
 			}

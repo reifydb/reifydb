@@ -47,7 +47,8 @@ impl TransactionalHandlerChanges for AdminTransaction {
 					return Some(handler);
 				}
 			} else if let Some(handler) = &change.pre
-				&& handler.id == id && change.op == Delete
+				&& handler.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}

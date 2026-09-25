@@ -73,8 +73,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
 									- dur.get_nanos();
 
 								let total_nanos = base_days as i128
-									* 86_400_000_000_000i128 + time_nanos
-									as i128;
+									* 86_400_000_000_000i128
+									+ time_nanos as i128;
 
 								match i64::try_from(total_nanos) {
 									Ok(n) => {

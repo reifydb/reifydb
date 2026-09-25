@@ -135,8 +135,10 @@ impl OperatorDef {
 			self,
 			OperatorDef::Append { .. }
 				| OperatorDef::Distinct { .. }
-				| OperatorDef::Window { .. } | OperatorDef::Apply { .. }
-				| OperatorDef::Join { .. } | OperatorDef::Aggregate { .. }
+				| OperatorDef::Window { .. }
+				| OperatorDef::Apply { .. }
+				| OperatorDef::Join { .. }
+				| OperatorDef::Aggregate { .. }
 				| OperatorDef::SinkRingBufferView { .. }
 		)
 	}

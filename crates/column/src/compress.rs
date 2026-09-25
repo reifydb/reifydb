@@ -57,7 +57,8 @@ impl Compressor {
 				!matches!(
 					*id,
 					EncodingId::CANONICAL_BOOL
-						| EncodingId::CANONICAL_FIXED | EncodingId::CANONICAL_VARLEN
+						| EncodingId::CANONICAL_FIXED
+						| EncodingId::CANONICAL_VARLEN
 				)
 			})
 			.filter_map(|id| registry.get(id).cloned())

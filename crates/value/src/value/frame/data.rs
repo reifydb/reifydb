@@ -161,7 +161,8 @@ impl<'de> Deserialize<'de> for FrameColumnData {
 		if let FrameColumnData::Option {
 			inner,
 			bitvec,
-		} = &data && bitvec.len() != inner.len()
+		} = &data
+			&& bitvec.len() != inner.len()
 		{
 			return Err(D::Error::custom(format!(
 				"Option column bitvec of {} bits does not match its {} rows",
@@ -249,7 +250,8 @@ impl PartialEq for FrameColumnData {
 				},
 			) => {
 				varlen_array::equals(a_container, b_container)
-					&& a_inner == b_inner && a_accuracy == b_accuracy
+					&& a_inner == b_inner
+					&& a_accuracy == b_accuracy
 			}
 			_ => false,
 		}

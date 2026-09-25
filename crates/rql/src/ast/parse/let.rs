@@ -103,7 +103,8 @@ impl<'bump> Parser<'bump> {
 			Ok(matches!(
 				token.kind,
 				TokenKind::Keyword(Keyword::From)
-					| TokenKind::Keyword(Keyword::Map) | TokenKind::Keyword(Keyword::Extend)
+					| TokenKind::Keyword(Keyword::Map)
+					| TokenKind::Keyword(Keyword::Extend)
 					| TokenKind::Keyword(Keyword::Assert)
 			) || (matches!(token.kind, TokenKind::Variable) && self.has_pipe_ahead()))
 		} else {

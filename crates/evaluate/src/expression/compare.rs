@@ -215,16 +215,26 @@ fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
 		return matches!(
 			left,
 			ValueType::Boolean
-				| ValueType::Float4 | ValueType::Float8
-				| ValueType::Int1 | ValueType::Int2
-				| ValueType::Int4 | ValueType::Int8
-				| ValueType::Int16 | ValueType::Uint1
-				| ValueType::Uint2 | ValueType::Uint4
-				| ValueType::Uint8 | ValueType::Uint16
-				| ValueType::Utf8 | ValueType::Blob
-				| ValueType::Date | ValueType::DateTime
-				| ValueType::Time | ValueType::Duration
-				| ValueType::Uuid4 | ValueType::Uuid7
+				| ValueType::Float4
+				| ValueType::Float8
+				| ValueType::Int1
+				| ValueType::Int2
+				| ValueType::Int4
+				| ValueType::Int8
+				| ValueType::Int16
+				| ValueType::Uint1
+				| ValueType::Uint2
+				| ValueType::Uint4
+				| ValueType::Uint8
+				| ValueType::Uint16
+				| ValueType::Utf8
+				| ValueType::Blob
+				| ValueType::Date
+				| ValueType::DateTime
+				| ValueType::Time
+				| ValueType::Duration
+				| ValueType::Uuid4
+				| ValueType::Uuid7
 				| ValueType::IdentityId
 		)
 		.then(|| left.clone());

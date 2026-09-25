@@ -280,8 +280,9 @@ impl Columns {
 						if let ColumnBuffer::DictionaryId {
 							dictionary_id,
 							..
-						} = &mut col_data && let Some(Constraint::Dictionary(dict_id, _)) =
-							field.constraint.constraint()
+						} = &mut col_data
+							&& let Some(Constraint::Dictionary(dict_id, _)) =
+								field.constraint.constraint()
 						{
 							*dictionary_id = Some(*dict_id);
 						}
@@ -309,7 +310,8 @@ impl Columns {
 			if let ColumnBuffer::DictionaryId {
 				dictionary_id,
 				..
-			} = &mut *column && dictionary_id.is_none()
+			} = &mut *column
+				&& dictionary_id.is_none()
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
 				*dictionary_id = Some(*dict_id);

@@ -31,7 +31,8 @@ fn failed_sink_writes(db: &TestDb, expected: usize) -> String {
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
 		if let HealthStatus::Degraded {
 			description,
-		} = &status && description.starts_with(&format!("{expected} deferred flow(s) poisoned"))
+		} = &status
+			&& description.starts_with(&format!("{expected} deferred flow(s) poisoned"))
 		{
 			return description.clone();
 		}

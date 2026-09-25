@@ -65,9 +65,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateSubtract {
 
 							if let Some(base) = Date::new(year, month as u32, day) {
 								let total_days = base.to_days_since_epoch()
-									- dur.get_days() - (dur.get_nanos()
-									/ 86_400_000_000_000)
-									as i32;
+									- dur.get_days()
+									- (dur.get_nanos() / 86_400_000_000_000) as i32;
 								match Date::from_days_since_epoch(total_days) {
 									Some(result) => container.push(result),
 									None => container.push(Date::default()),

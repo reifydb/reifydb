@@ -158,8 +158,10 @@ fn is_unsigned(ty: &ValueType) -> bool {
 	matches!(
 		ty,
 		ValueType::Uint { .. }
-			| ValueType::Uint1 | ValueType::Uint2
-			| ValueType::Uint4 | ValueType::Uint8
+			| ValueType::Uint1
+			| ValueType::Uint2
+			| ValueType::Uint4
+			| ValueType::Uint8
 			| ValueType::Uint16
 	)
 }

@@ -248,9 +248,8 @@ impl Catalog {
 
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post
-						&& p.event_variant() == Some(variant) && !procedures
-						.iter()
-						.any(|existing| existing.id() == p.id())
+						&& p.event_variant() == Some(variant)
+						&& !procedures.iter().any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}
@@ -269,9 +268,8 @@ impl Catalog {
 
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post
-						&& p.event_variant() == Some(variant) && !procedures
-						.iter()
-						.any(|existing| existing.id() == p.id())
+						&& p.event_variant() == Some(variant)
+						&& !procedures.iter().any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}

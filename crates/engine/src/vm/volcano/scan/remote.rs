@@ -55,7 +55,8 @@ impl QueryNode for RemoteFetchNode {
 				for var_name in &self.variable_names {
 					if let Some(Variable::Columns {
 						columns,
-					}) = _ctx.symbols.get(var_name) && columns.is_scalar()
+					}) = _ctx.symbols.get(var_name)
+						&& columns.is_scalar()
 					{
 						named_params.insert(var_name.clone(), columns.scalar_value().clone());
 					}

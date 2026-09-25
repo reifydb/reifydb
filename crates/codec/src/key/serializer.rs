@@ -39,16 +39,26 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 	matches!(
 		ty,
 		ValueType::Boolean
-			| ValueType::Float4 | ValueType::Float8
-			| ValueType::Int1 | ValueType::Int2
-			| ValueType::Int4 | ValueType::Int8
-			| ValueType::Int16 | ValueType::Uint1
-			| ValueType::Uint2 | ValueType::Uint4
-			| ValueType::Uint8 | ValueType::Uint16
-			| ValueType::Date | ValueType::DateTime
-			| ValueType::Time | ValueType::Duration
-			| ValueType::Utf8 | ValueType::Blob
-			| ValueType::Uuid4 | ValueType::Uuid7
+			| ValueType::Float4
+			| ValueType::Float8
+			| ValueType::Int1
+			| ValueType::Int2
+			| ValueType::Int4
+			| ValueType::Int8
+			| ValueType::Int16
+			| ValueType::Uint1
+			| ValueType::Uint2
+			| ValueType::Uint4
+			| ValueType::Uint8
+			| ValueType::Uint16
+			| ValueType::Date
+			| ValueType::DateTime
+			| ValueType::Time
+			| ValueType::Duration
+			| ValueType::Utf8
+			| ValueType::Blob
+			| ValueType::Uuid4
+			| ValueType::Uuid7
 			| ValueType::IdentityId
 			| ValueType::Int { .. }
 			| ValueType::Uint { .. }

@@ -51,7 +51,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateDiff {
 					match (dates(container1).get(i), dates(container2).get(i)) {
 						(Some(d1), Some(d2)) => {
 							let diff_days = (d1.to_days_since_epoch()
-								- d2.to_days_since_epoch()) as i64;
+								- d2.to_days_since_epoch())
+								as i64;
 							container.push(Duration::from_days(diff_days)?);
 						}
 						_ => container.push(Duration::default()),

@@ -48,7 +48,8 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 				return Some(ringbuffer);
 			}
 			if let Some(ringbuffer) = &change.pre
-				&& ringbuffer.id == id && change.op == Delete
+				&& ringbuffer.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -66,7 +67,8 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 			}
 			if let Some(ringbuffer) = &change.pre
 				&& ringbuffer.namespace == namespace
-				&& ringbuffer.name == name && change.op == Delete
+				&& ringbuffer.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}
