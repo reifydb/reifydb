@@ -75,9 +75,12 @@ pub const TOMBSTONE_LIMIT: u64 = if default::TESTING {
 
 const OPERATOR_LOCAL_FRACTION: u64 = 16;
 
-pub const OPERATOR_LOCAL_BUDGET_BYTES: ByteSize = ByteSize::from_bytes(FLUSH_BUDGET_BYTES.as_bytes() / OPERATOR_LOCAL_FRACTION);
+pub const OPERATOR_LOCAL_BUDGET_BYTES: ByteSize =
+	ByteSize::from_bytes(FLUSH_BUDGET_BYTES.as_bytes() / OPERATOR_LOCAL_FRACTION);
 
 pub const OPERATOR_LOCAL_TOMBSTONE_LIMIT: u64 = TOMBSTONE_LIMIT / OPERATOR_LOCAL_FRACTION;
+
+const SWEEP_STARVATION_LIMIT: u32 = 10;
 
 pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_DIRTY_BUDGET_TESTING
@@ -614,7 +617,10 @@ impl Resident {
 		let mut freed = ByteSize::ZERO;
 		for _ in 0..CLOCK_PASSES {
 			let (mut bytes, mut entries) = self.overshoot();
-			if bytes.as_bytes() == 0 && entries == 0 && !self.shared.operator_over_local_cap.load(Ordering::Acquire) {
+			if bytes.as_bytes() == 0
+				&& entries == 0
+				&& !self.shared.operator_over_local_cap.load(Ordering::Acquire)
+			{
 				break;
 			}
 			let (count, released) = self.sweep(&mut bytes, &mut entries);
@@ -659,20 +665,34 @@ impl Resident {
 			};
 			let mut inner = slot.inner.lock();
 			let before_tombstones = inner.buckets.tombstone_count();
-			let local_byte_overage =
-				inner.buckets.footprint().as_bytes().saturating_sub(OPERATOR_LOCAL_BUDGET_BYTES.as_bytes());
+			let local_byte_overage = inner
+				.buckets
+				.footprint()
+				.as_bytes()
+				.saturating_sub(OPERATOR_LOCAL_BUDGET_BYTES.as_bytes());
 			let local_tombstone_overage =
 				before_tombstones.saturating_sub(OPERATOR_LOCAL_TOMBSTONE_LIMIT as usize);
 			let global_deficit_remains = bytes.as_bytes() > 0 || *tombstones > 0;
-			if !global_deficit_remains && local_byte_overage == 0 && local_tombstone_overage == 0 {
+			let starved = inner.sweeps_since_swept >= SWEEP_STARVATION_LIMIT;
+			if !global_deficit_remains
+				&& local_byte_overage == 0
+				&& local_tombstone_overage == 0
+				&& !starved
+			{
+				inner.sweeps_since_swept += 1;
 				continue;
 			}
+			inner.sweeps_since_swept = 0;
 			let (count, released) = if global_deficit_remains {
 				inner.buckets.evict_clean(bytes, tombstones)
-			} else {
+			} else if local_byte_overage > 0 || local_tombstone_overage > 0 {
 				let mut local_bytes = ByteSize::from_bytes(local_byte_overage);
 				let mut local_tombstones = local_tombstone_overage;
 				inner.buckets.evict_clean(&mut local_bytes, &mut local_tombstones)
+			} else {
+				let mut unlimited_bytes = ByteSize::from_bytes(u64::MAX);
+				let mut unlimited_tombstones = usize::MAX;
+				inner.buckets.evict_clean(&mut unlimited_bytes, &mut unlimited_tombstones)
 			};
 			self.shared.budget.release(released);
 			self.shared.release_entries(count);

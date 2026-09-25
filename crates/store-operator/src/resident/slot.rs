@@ -65,6 +65,7 @@ pub struct SlotInner {
 	pub resident: ResidentState,
 	pub flow: Option<FlowId>,
 	pub pending_seq: Option<u64>,
+	pub sweeps_since_swept: u32,
 }
 
 impl Deref for SlotInner {
@@ -92,6 +93,7 @@ impl Slot {
 				resident: ResidentState::new(operator),
 				flow: None,
 				pending_seq: None,
+				sweeps_since_swept: 0,
 			}),
 		}
 	}
