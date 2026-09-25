@@ -38,7 +38,7 @@ fn summary_header(totals: &FlowTotals) -> String {
 
 #[inline]
 fn render_hot_rows(out: &mut String, summary: &ProfilerSummary, hot: &mut [(FlowKey, HotEntry)], top_n: usize) {
-	hot.sort_by(|a, b| b.1.apply_us.cmp(&a.1.apply_us));
+	hot.sort_by_key(|b| Reverse(b.1.apply_us));
 	out.push_str(" hot=[");
 	for (i, (key, entry)) in hot.iter().take(top_n).enumerate() {
 		if i > 0 {
@@ -191,7 +191,7 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		group_calls,
 	);
 
-	group.sort_by(|a, b| b.total_us.cmp(&a.total_us));
+	group.sort_by_key(|b| Reverse(b.total_us));
 	group.truncate(top_n);
 
 	let labels: Vec<String> = group
@@ -291,7 +291,7 @@ fn flow_aggregates(summary: &ProfilerSummary) -> (FlowTotals, Vec<(FlowKey, HotE
 
 fn render_flow_rows(out: &mut String, summary: &ProfilerSummary, top_n: usize) {
 	let (_, mut hot) = flow_aggregates(summary);
-	hot.sort_by(|a, b| b.1.apply_us.cmp(&a.1.apply_us));
+	hot.sort_by_key(|b| Reverse(b.1.apply_us));
 	hot.truncate(top_n);
 
 	if hot.is_empty() {
@@ -334,7 +334,7 @@ fn render_non_flow_rows(out: &mut String, summary: &ProfilerSummary, cat: Profil
 		entry.1 = entry.1.saturating_add(1);
 	}
 	let mut sorted: Vec<(u64, (u64, u64))> = agg.into_iter().collect();
-	sorted.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+	sorted.sort_by_key(|b| Reverse(b.1.0));
 	sorted.truncate(top_n);
 
 	if sorted.is_empty() {
