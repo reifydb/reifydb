@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::cmp::Reverse;
+
 use crate::{catalog::Catalog, cdc};
 
 fn pct(part: u64, whole: u64) -> String {
@@ -124,7 +126,7 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 
 	println!("\n## row keys by operation");
 	let mut kinds: Vec<(&&str, &cdc::Slice)> = s.row_kinds.iter().collect();
-	kinds.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes));
+	kinds.sort_by_key(|b| Reverse(b.1.bytes));
 	table(
 		&["RAW", "%", "ROWS", "OPERATION"],
 		&kinds.iter()
@@ -145,7 +147,7 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 
 	println!("\n## by object");
 	let mut objects: Vec<(&cdc::Origin, &cdc::ObjectRows)> = s.objects.iter().collect();
-	objects.sort_by(|a, b| b.1.rows.bytes.cmp(&a.1.rows.bytes));
+	objects.sort_by_key(|b| Reverse(b.1.rows.bytes));
 	let shown = if opts.all {
 		objects.len()
 	} else {
@@ -173,7 +175,7 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 
 	println!("\n## cdc changes by key kind");
 	let mut sys: Vec<(&String, &cdc::Slice)> = s.cdc_kinds.iter().collect();
-	sys.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes));
+	sys.sort_by_key(|b| Reverse(b.1.bytes));
 	let sys_shown = if opts.all {
 		sys.len()
 	} else {

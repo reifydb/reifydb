@@ -301,14 +301,15 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 					.into_iter()
 					.map(|val| {
 						Int::from_i256(val.to_i256().wrapping_neg()).ok_or_else(|| {
-							TypeError::NumberOutOfRange {
+							Box::new(TypeError::NumberOutOfRange {
 								target: ValueType::int(container.precision()),
 								fragment: fragment.clone(),
 								descriptor: None,
-							}
+							})
 						})
 					})
-					.collect::<StdResult<Vec<_>, _>>()?;
+					.collect::<StdResult<Vec<_>, Box<TypeError>>>()
+					.map_err(|e| *e)?;
 				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
 			}
 			PrefixOperator::Plus(_) => Ok(column.clone()),

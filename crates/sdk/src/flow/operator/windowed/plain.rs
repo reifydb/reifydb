@@ -706,10 +706,7 @@ where
 		horizon: A::Coord,
 	) -> Result<Option<u64>> {
 		let mut id = Self::batch_tracker(engine, batch, ctx, group)?.session_id;
-		loop {
-			let Some(session) = Self::batch_session(engine, batch, ctx, group, id)? else {
-				break;
-			};
+		while let Some(session) = Self::batch_session(engine, batch, ctx, group, id)? {
 			if engine.holds_row(&mut GuestAsHost(ctx), Self::session_group(group, id), row)? {
 				let anchor = session.before.map_or(session.last, |(_, last)| last);
 				if is_sealed(anchor, horizon) {

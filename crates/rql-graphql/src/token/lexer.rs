@@ -95,19 +95,11 @@ impl<'bump> Lexer<'bump> {
 					self.cursor.consume();
 					TokenKind::Pipe
 				}
-				'.' => {
-					if self.cursor.peek_str(3) == "..." {
-						self.cursor.consume();
-						self.cursor.consume();
-						self.cursor.consume();
-						TokenKind::Spread
-					} else {
-						return Err(LexerError::UnexpectedCharacter(
-							ch,
-							start_line,
-							start_column,
-						));
-					}
+				'.' if self.cursor.peek_str(3) == "..." => {
+					self.cursor.consume();
+					self.cursor.consume();
+					self.cursor.consume();
+					TokenKind::Spread
 				}
 				'"' => self.scan_string()?,
 				'0'..='9' | '-' => self.scan_number()?,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{cmp::Reverse, collections::HashMap, sync::Arc};
 
 use reifydb_profiler::{
 	category::ProfilerCategory,
@@ -64,7 +64,7 @@ impl ProfilerAccumulator {
 	pub fn top_n(&self, category: ProfilerCategory, n: usize) -> Vec<AggregateRecord> {
 		let mut filtered: Vec<&AggregateRecord> =
 			self.records.values().filter(|r| r.category == category).collect();
-		filtered.sort_by(|a, b| b.total_us.cmp(&a.total_us));
+		filtered.sort_by_key(|r| Reverse(r.total_us));
 		filtered.into_iter().take(n).cloned().collect()
 	}
 

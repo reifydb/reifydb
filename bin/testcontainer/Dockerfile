@@ -1,4 +1,4 @@
-FROM rust:1.92.0-slim AS builder
+FROM rust:1.95.0-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -25,7 +25,7 @@ COPY bin ./bin
 WORKDIR /build
 RUN RUSTC_WRAPPER="" cargo build --release --offline --package testcontainer
 
-FROM rust:1.92.0-slim
+FROM rust:1.95.0-slim
 
 LABEL org.opencontainers.image.title="ReifyDB Test Container"
 LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"

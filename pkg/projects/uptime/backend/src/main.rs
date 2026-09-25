@@ -54,10 +54,10 @@ fn install_probe_signal_handlers() {
 	// `handle_probe_signal` is async-signal-safe - its whole body is a single atomic
 	// store, the only class of operation permitted inside a C signal handler.
 	unsafe {
-		signal(SIGINT, handle_probe_signal as sighandler_t);
-		signal(SIGTERM, handle_probe_signal as sighandler_t);
-		signal(SIGQUIT, handle_probe_signal as sighandler_t);
-		signal(SIGHUP, handle_probe_signal as sighandler_t);
+		signal(SIGINT, handle_probe_signal as *const () as sighandler_t);
+		signal(SIGTERM, handle_probe_signal as *const () as sighandler_t);
+		signal(SIGQUIT, handle_probe_signal as *const () as sighandler_t);
+		signal(SIGHUP, handle_probe_signal as *const () as sighandler_t);
 	}
 }
 

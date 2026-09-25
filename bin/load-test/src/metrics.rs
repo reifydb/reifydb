@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	cmp::Reverse,
 	collections::HashMap,
 	sync::atomic::{AtomicU64, Ordering},
 	time::Instant,
@@ -110,7 +111,7 @@ impl Metrics {
 	fn top_errors(&self, n: usize) -> Vec<(String, u64)> {
 		let errors = self.error_counts.lock();
 		let mut sorted: Vec<_> = errors.iter().map(|(k, v)| (k.clone(), *v)).collect();
-		sorted.sort_by(|a, b| b.1.cmp(&a.1));
+		sorted.sort_by_key(|b| Reverse(b.1));
 		sorted.truncate(n);
 		sorted
 	}

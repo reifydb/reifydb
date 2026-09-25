@@ -546,10 +546,10 @@ impl Database {
 		// SAFETY: `handle_signal` is an `extern "C" fn(c_int)` matching `sighandler_t` with
 		// 'static lifetime, and touches only static atomics, so it is valid in signal context.
 		unsafe {
-			signal(SIGINT, handle_signal as sighandler_t);
-			signal(SIGTERM, handle_signal as sighandler_t);
-			signal(SIGQUIT, handle_signal as sighandler_t);
-			signal(SIGHUP, handle_signal as sighandler_t);
+			signal(SIGINT, handle_signal as *const () as sighandler_t);
+			signal(SIGTERM, handle_signal as *const () as sighandler_t);
+			signal(SIGQUIT, handle_signal as *const () as sighandler_t);
+			signal(SIGHUP, handle_signal as *const () as sighandler_t);
 		}
 
 		info!("Waiting for termination signal...");

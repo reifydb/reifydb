@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{cmp::Reverse, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::key::operator::{
@@ -72,6 +72,6 @@ pub(crate) fn span(start: Option<KeyspaceId>, end: Option<KeyspaceId>, end_open:
 	};
 	let mut ids: KeyspaceIds =
 		KEYSPACES.iter().map(|spec| spec.id).filter(|id| id.0 <= high && id.0 >= low).collect();
-	ids.sort_by(|left, right| right.0.cmp(&left.0));
+	ids.sort_by_key(|id| Reverse(id.0));
 	ids
 }

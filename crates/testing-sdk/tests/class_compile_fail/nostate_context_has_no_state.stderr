@@ -4,9 +4,14 @@ error[E0277]: the trait bound `Nostate: CustomClass` is not satisfied
 7 |     let _ = ctx.state();
   |                 ^^^^^ the trait `CustomClass` is not implemented for `Nostate`
   |
-  = help: the following other types implement trait `CustomClass`:
-            Managed
-            Unmanaged
+help: the following other types implement trait `CustomClass`
+ --> $WORKSPACE/crates/sdk/src/flow/operator/context.rs
+  |
+  | impl CustomClass for Managed {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Managed`
+...
+  | impl CustomClass for Unmanaged {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Unmanaged`
 note: required by a bound in `state`
  --> $WORKSPACE/crates/sdk/src/flow/operator/context.rs
   |

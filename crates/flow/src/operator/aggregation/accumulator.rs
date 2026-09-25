@@ -423,23 +423,21 @@ impl AggregateSlot {
 					compensation: other_compensation,
 					seen_negative: other_seen_negative,
 				},
-			) => {
-				if *on > 0 {
-					*seen_negative |= *other_seen_negative;
-					if *n == 0 {
-						*accumulator = other_accumulator.clone();
-						*compensation = *other_compensation;
-					} else {
-						*accumulator = accumulate_pair(
-							accumulator,
-							compensation,
-							other_accumulator,
-							*other_compensation,
-							false,
-						);
-					}
-					*n += *on;
+			) if *on > 0 => {
+				*seen_negative |= *other_seen_negative;
+				if *n == 0 {
+					*accumulator = other_accumulator.clone();
+					*compensation = *other_compensation;
+				} else {
+					*accumulator = accumulate_pair(
+						accumulator,
+						compensation,
+						other_accumulator,
+						*other_compensation,
+						false,
+					);
 				}
+				*n += *on;
 			}
 			(
 				AggregateSlot::Avg {
@@ -454,23 +452,15 @@ impl AggregateSlot {
 					compensation: other_compensation,
 					seen_negative: other_seen_negative,
 				},
-			) => {
-				if *on > 0 {
-					*seen_negative |= *other_seen_negative;
-					if *n == 0 {
-						*sum = osum.clone();
-						*compensation = *other_compensation;
-					} else {
-						*sum = accumulate_pair(
-							sum,
-							compensation,
-							osum,
-							*other_compensation,
-							false,
-						);
-					}
-					*n += *on;
+			) if *on > 0 => {
+				*seen_negative |= *other_seen_negative;
+				if *n == 0 {
+					*sum = osum.clone();
+					*compensation = *other_compensation;
+				} else {
+					*sum = accumulate_pair(sum, compensation, osum, *other_compensation, false);
 				}
+				*n += *on;
 			}
 			(
 				AggregateSlot::Min(set) | AggregateSlot::Max(set),

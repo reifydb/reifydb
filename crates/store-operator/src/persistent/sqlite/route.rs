@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	cmp::Reverse,
 	collections::{BTreeMap, HashMap},
 	ops::Bound,
 };
@@ -255,7 +256,7 @@ fn keyspace_end(
 
 fn every_keyspace() -> KeyspaceIds {
 	let mut ids: KeyspaceIds = KEYSPACES.iter().map(|spec| spec.id).collect();
-	ids.sort_by(|left, right| right.0.cmp(&left.0));
+	ids.sort_by_key(|id| Reverse(id.0));
 	ids
 }
 

@@ -5,7 +5,7 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use reifydb_codec::key as keycode;
+use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
 
 #[derive(Arbitrary, Debug)]
 struct RoundtripInput {
@@ -26,60 +26,88 @@ struct RoundtripInput {
 }
 
 fuzz_target!(|input: RoundtripInput| {
-    let encoded = keycode::serialize(&input.b);
-    let decoded: bool = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_bool(input.b);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_bool().unwrap();
     assert_eq!(decoded, input.b);
 
-    let encoded = keycode::serialize(&input.u1);
-    let decoded: u8 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_u8(input.u1);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_u8().unwrap();
     assert_eq!(decoded, input.u1);
 
-    let encoded = keycode::serialize(&input.u2);
-    let decoded: u16 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_u16(input.u2);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_u16().unwrap();
     assert_eq!(decoded, input.u2);
 
-    let encoded = keycode::serialize(&input.u4);
-    let decoded: u32 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_u32(input.u4);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_u32().unwrap();
     assert_eq!(decoded, input.u4);
 
-    let encoded = keycode::serialize(&input.u8_val);
-    let decoded: u64 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_u64(input.u8_val);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_u64().unwrap();
     assert_eq!(decoded, input.u8_val);
 
-    let encoded = keycode::serialize(&input.u16_val);
-    let decoded: u128 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_u128(input.u16_val);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_u128().unwrap();
     assert_eq!(decoded, input.u16_val);
 
-    let encoded = keycode::serialize(&input.i1);
-    let decoded: i8 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_i8(input.i1);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_i8().unwrap();
     assert_eq!(decoded, input.i1);
 
-    let encoded = keycode::serialize(&input.i2);
-    let decoded: i16 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_i16(input.i2);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_i16().unwrap();
     assert_eq!(decoded, input.i2);
 
-    let encoded = keycode::serialize(&input.i4);
-    let decoded: i32 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_i32(input.i4);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_i32().unwrap();
     assert_eq!(decoded, input.i4);
 
-    let encoded = keycode::serialize(&input.i8_val);
-    let decoded: i64 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_i64(input.i8_val);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_i64().unwrap();
     assert_eq!(decoded, input.i8_val);
 
-    let encoded = keycode::serialize(&input.i16_val);
-    let decoded: i128 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_i128(input.i16_val);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_i128().unwrap();
     assert_eq!(decoded, input.i16_val);
 
     // Bit patterns, because a NaN never compares equal to itself.
-    let encoded = keycode::serialize(&input.f4);
-    let decoded: f32 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_f32(input.f4);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_f32().unwrap();
     assert_eq!(decoded.to_bits(), input.f4.to_bits());
 
-    let encoded = keycode::serialize(&input.f8);
-    let decoded: f64 = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_f64(input.f8);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_f64().unwrap();
     assert_eq!(decoded.to_bits(), input.f8.to_bits());
 
-    let encoded = keycode::serialize(&input.s);
-    let decoded: String = keycode::deserialize(&encoded).unwrap();
+    let mut ser = KeySerializer::new();
+    ser.extend_str(&input.s);
+    let bytes = ser.finish();
+    let decoded = KeyDeserializer::from_bytes(&bytes).read_str().unwrap();
     assert_eq!(decoded, input.s);
 });

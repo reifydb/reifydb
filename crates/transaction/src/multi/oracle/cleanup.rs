@@ -15,10 +15,7 @@ pub(super) fn cleanup_old_windows(
 	safe_evict_below: CommitVersion,
 ) {
 	let mut removed = 0usize;
-	loop {
-		let Some((&start, window)) = time_windows.iter().next() else {
-			break;
-		};
+	while let Some((&start, window)) = time_windows.iter().next() {
 		if window.max_version() > safe_evict_below {
 			break;
 		}

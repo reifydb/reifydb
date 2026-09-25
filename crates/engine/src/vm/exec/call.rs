@@ -538,7 +538,7 @@ impl<'a> Vm<'a> {
 			self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 		}
 
-		for (param, arg_col) in parameters.iter().zip(arguments.into_iter()) {
+		for (param, arg_col) in parameters.iter().zip(arguments) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			let col_var = Variable::columns(Columns::new(vec![arg_col]));
 			self.symbols.set(param_name, col_var, true)?;
@@ -629,7 +629,7 @@ impl<'a> Vm<'a> {
 		check_arity(&callable.parameters, args.len(), name.text(), name)?;
 		let ctx = self.eval_ctx();
 		let mut arguments = Vec::with_capacity(args.len());
-		for (param, arg) in callable.parameters.iter().zip(args.into_iter()) {
+		for (param, arg) in callable.parameters.iter().zip(args) {
 			arguments.push(cast_to_parameter_type(&ctx, param, ColumnBuffer::from(arg))?.get_value(0));
 		}
 
@@ -640,7 +640,7 @@ impl<'a> Vm<'a> {
 			self.symbols.set(name.clone(), var.clone(), true)?;
 		}
 
-		for (param, arg) in callable.parameters.iter().zip(arguments.into_iter()) {
+		for (param, arg) in callable.parameters.iter().zip(arguments) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
 		}
@@ -847,7 +847,7 @@ impl<'a> Vm<'a> {
 		let saved_ip = self.ip;
 		self.symbols.enter_scope(ScopeType::Function);
 
-		for (param_def, arg) in proc_params.iter().zip(args.into_iter()) {
+		for (param_def, arg) in proc_params.iter().zip(args) {
 			let bare_name = strip_dollar_prefix(&param_def.name);
 			let arg = self.coerce_value(
 				arg,

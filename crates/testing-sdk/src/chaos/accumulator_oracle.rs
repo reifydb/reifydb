@@ -586,10 +586,7 @@ where
 			}
 
 			if let (Some(retention), Some(hw)) = (settings.immutable, meta.high_water) {
-				loop {
-					let Some((&first, carry_out)) = meta.windows.iter().next() else {
-						break;
-					};
+				while let Some((&first, carry_out)) = meta.windows.iter().next() {
 					if hw.span_since(first) <= retention {
 						break;
 					}

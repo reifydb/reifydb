@@ -4,23 +4,21 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use reifydb_codec::key as keycode;
+use reifydb_codec::key::deserializer::KeyDeserializer;
 
 fuzz_target!(|data: &[u8]| {
-    let _ = keycode::deserialize::<bool>(data);
-    let _ = keycode::deserialize::<u8>(data);
-    let _ = keycode::deserialize::<u16>(data);
-    let _ = keycode::deserialize::<u32>(data);
-    let _ = keycode::deserialize::<u64>(data);
-    let _ = keycode::deserialize::<u128>(data);
-    let _ = keycode::deserialize::<i8>(data);
-    let _ = keycode::deserialize::<i16>(data);
-    let _ = keycode::deserialize::<i32>(data);
-    let _ = keycode::deserialize::<i64>(data);
-    let _ = keycode::deserialize::<i128>(data);
-    let _ = keycode::deserialize::<f32>(data);
-    let _ = keycode::deserialize::<f64>(data);
-    let _ = keycode::deserialize::<String>(data);
-    let _ = keycode::deserialize::<Option<i64>>(data);
-    let _ = keycode::deserialize::<(bool, u64)>(data);
+    let _ = KeyDeserializer::from_bytes(data).read_bool();
+    let _ = KeyDeserializer::from_bytes(data).read_u8();
+    let _ = KeyDeserializer::from_bytes(data).read_u16();
+    let _ = KeyDeserializer::from_bytes(data).read_u32();
+    let _ = KeyDeserializer::from_bytes(data).read_u64();
+    let _ = KeyDeserializer::from_bytes(data).read_u128();
+    let _ = KeyDeserializer::from_bytes(data).read_i8();
+    let _ = KeyDeserializer::from_bytes(data).read_i16();
+    let _ = KeyDeserializer::from_bytes(data).read_i32();
+    let _ = KeyDeserializer::from_bytes(data).read_i64();
+    let _ = KeyDeserializer::from_bytes(data).read_i128();
+    let _ = KeyDeserializer::from_bytes(data).read_f32();
+    let _ = KeyDeserializer::from_bytes(data).read_f64();
+    let _ = KeyDeserializer::from_bytes(data).read_str();
 });

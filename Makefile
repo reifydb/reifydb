@@ -144,6 +144,8 @@ help:
 	@printf "  %-25s %s\n" "check-value-no-features" "Check reifydb-value tests compile with no features"
 	@printf "  %-25s %s\n" "check" "Cargo check all features, all targets, plus siblings"
 	@printf "  %-25s %s\n" "check-workspace" "Check for uncommitted changes"
+	@printf "  %-25s %s\n" "precheck" "Format, lint, and uncommitted checks (no build/test)"
+	@printf "  %-25s %s\n" "precheck-all" "Run precheck here and in every test sibling"
 	@printf "  %-25s %s\n" "push" "Push changes to git (after check-workspace)"
 	@echo ""
 	@echo "  💡 Quick Start"
@@ -158,7 +160,18 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: pull-siblings format-check check-code-quality check-workspace build build-testcontainer test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push-testcontainer push
+all: pull-siblings precheck build build-testcontainer test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push-testcontainer push
+
+.PHONY: precheck
+precheck: format-check check-code-quality check-workspace
+
+.PHONY: precheck-all
+precheck-all:
+	cd $(TEST_SUITE_DIR) && $(MAKE) precheck
+	cd $(TEST_CRATE_DIR) && $(MAKE) precheck
+	cd $(TEST_CHAOS_DIR) && $(MAKE) precheck
+	cd $(TEST_QUERY_DIR) && $(MAKE) precheck
+	cd $(TEST_REGRESSION_DIR) && $(MAKE) precheck
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
@@ -178,6 +191,7 @@ all-siblings:
 	cd $(TEST_CRATE_DIR) && $(MAKE) all
 	cd $(TEST_CHAOS_DIR) && $(MAKE) all
 	cd $(TEST_QUERY_DIR) && $(MAKE) all
+	cd $(TEST_REGRESSION_DIR) && $(MAKE) all
 
 .PHONY: check-code-quality
 check-code-quality:

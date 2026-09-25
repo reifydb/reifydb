@@ -232,7 +232,7 @@ pub(crate) fn run_tests(
 					let row_label = format_row_label(&col_names, &row_values);
 
 					let mut named_vars = HashMap::new();
-					for (name, value) in col_names.iter().zip(row_values.into_iter()) {
+					for (name, value) in col_names.iter().zip(row_values) {
 						named_vars.insert(name.clone(), value);
 					}
 

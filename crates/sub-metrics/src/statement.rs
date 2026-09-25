@@ -105,11 +105,10 @@ impl StatementMetricsAggregate {
 	#[must_use]
 	pub fn mean_duration(&self) -> Duration {
 		let calls = self.calls();
-		if calls == 0 {
-			Duration::zero()
-		} else {
-			Duration::from_micros_infallible(self.total_duration.load(Ordering::Relaxed) / calls)
-		}
+		self.total_duration
+			.load(Ordering::Relaxed)
+			.checked_div(calls)
+			.map_or(Duration::zero(), Duration::from_micros_infallible)
 	}
 }
 

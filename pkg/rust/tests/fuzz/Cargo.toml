@@ -16,6 +16,7 @@ serde_bytes = "0.11"
 
 reifydb-rql = { path = "../../../../crates/rql" }
 reifydb-codec = { path = "../../../../crates/codec" }
+reifydb-sdk = { path = "../../../../crates/sdk" }
 reifydb-value = { path = "../../../../crates/value" }
 
 [[bin]]

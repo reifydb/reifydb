@@ -57,9 +57,9 @@ dependencies = [
 
 [[package]]
 name = "arrow-array"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
+checksum = "1e5f6adeffdf587d7a31db5d2266189624b526730cd3627f9ff9fedae97ad584"
 dependencies = [
  "ahash",
  "arrow-buffer",
@@ -75,9 +75,9 @@ dependencies = [
 
 [[package]]
 name = "arrow-buffer"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
+checksum = "097d193003ce7995d5d087089069ec2a6e0187faf5a6f8c9f38af2645d987182"
 dependencies = [
  "bytes",
  "half",
@@ -86,21 +86,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-cmp"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-schema",
-]
-
-[[package]]
 name = "arrow-data"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
+checksum = "9ba2f832eaeca24b8f26143dba750e42ee4ab51cf7d65e701ca9607cfda9f358"
 dependencies = [
  "arrow-buffer",
  "arrow-schema",
@@ -111,9 +100,9 @@ dependencies = [
 
 [[package]]
 name = "arrow-row"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758b87e9648d80001e0916c083334ed93074c677a81a96144d5c84bd2d8eab2a"
+checksum = "f4c6425032e28266e3fc4ff680805e57e670d6ea92473043f3e65b7ed6ac79f2"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -124,20 +113,19 @@ dependencies = [
 
 [[package]]
 name = "arrow-schema"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
+checksum = "10fab8d4563491417ba801fab29d205104d20d4bdf37bda6cd1cf425cff598cd"
 
 [[package]]
 name = "arrow-select"
-version = "60.0.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
+checksum = "fc58569193c2525915f3cc6310edba3792f1200f65d6e9ed330aa33e691493b8"
 dependencies = [
  "ahash",
  "arrow-array",
  "arrow-buffer",
- "arrow-cmp",
  "arrow-data",
  "arrow-schema",
  "num-traits",
@@ -1067,6 +1055,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-macro",
+ "reifydb-value",
+ "rustc-hash",
+ "serde",
+ "serde_bytes",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-fuzz"
 version = "0.0.0"
 dependencies = [
@@ -1075,6 +1079,7 @@ dependencies = [
  "libfuzzer-sys",
  "reifydb-codec",
  "reifydb-rql",
+ "reifydb-sdk",
  "reifydb-value",
  "serde",
  "serde_bytes",
@@ -1154,6 +1159,27 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "xxhash-rust",
+]
+
+[[package]]
+name = "reifydb-sdk"
+version = "0.9.3"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "bumpalo",
+ "postcard",
+ "rand",
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-flow",
+ "reifydb-macro",
+ "reifydb-runtime",
+ "reifydb-value",
+ "serde",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

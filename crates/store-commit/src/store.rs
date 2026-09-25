@@ -588,7 +588,7 @@ impl CommitStore {
 			.flat_map(|found| found.iter().map(|(Reverse(v), value)| (*v, value.clone())))
 			.collect();
 
-		versions.sort_by(|a, b| b.0.cmp(&a.0));
+		versions.sort_by_key(|(version, _)| Reverse(*version));
 		versions.dedup_by_key(|(version, _)| *version);
 
 		Ok(versions)

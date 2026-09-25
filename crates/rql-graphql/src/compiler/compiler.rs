@@ -417,8 +417,9 @@ impl<'bump> Compiler<'bump> {
 		let rel = level.relation.as_ref().expect("non-root level must have a relation");
 		let parent_index = level.index - 1;
 
-		if matches!(rel.cardinality, RelationshipCardinality::ManyToMany) && rel.junction.is_some() {
-			let junction = rel.junction.as_ref().unwrap();
+		if matches!(rel.cardinality, RelationshipCardinality::ManyToMany)
+			&& let Some(junction) = rel.junction.as_ref()
+		{
 			body_statements.push(self.let_junction_filter(level, rel, junction, parent_index)?);
 		}
 

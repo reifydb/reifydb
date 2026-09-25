@@ -54,12 +54,9 @@ impl BufferInner {
 		let mut bytes = ByteSize::ZERO;
 		let front = self.live.first_key_value().map(|(version, _)| *version);
 		let ceiling = front.and_then(|version| self.sealed.next_start_above(version));
-		loop {
-			let Some((version, cost)) =
-				self.live.first_key_value().map(|(version, cdc)| (*version, cdc_resident_bytes(cdc)))
-			else {
-				break;
-			};
+		while let Some((version, cost)) =
+			self.live.first_key_value().map(|(version, cdc)| (*version, cdc_resident_bytes(cdc)))
+		{
 			if ceiling.is_some_and(|ceiling| version >= ceiling) {
 				break;
 			}
