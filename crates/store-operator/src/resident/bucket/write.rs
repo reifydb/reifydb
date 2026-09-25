@@ -616,7 +616,9 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 	) -> Vec<(GroupStateKey, WriteEntry)> {
 		let bounds = (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF));
 		let encode = |suffix: &K::Suffix, entry: &WriteEntry| {
-			entry.touch();
+			if entry.post.is_some() {
+				entry.touch();
+			}
 			(OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()), entry.clone())
 		};
 		if tombstones {
