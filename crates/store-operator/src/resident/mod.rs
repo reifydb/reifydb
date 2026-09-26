@@ -108,7 +108,6 @@ pub struct ResidentLimits {
 	pub tombstones: u64,
 	pub dirty_budget: ByteSize,
 	pub slice: ByteSize,
-	pub local_budget: Option<ByteSize>,
 }
 
 impl Default for ResidentLimits {
@@ -119,7 +118,6 @@ impl Default for ResidentLimits {
 			tombstones: TOMBSTONE_LIMIT,
 			dirty_budget: DIRTY_BUDGET_BYTES,
 			slice: SLICE_BYTES,
-			local_budget: None,
 		}
 	}
 }
@@ -222,9 +220,7 @@ impl Shared {
 			dirty_bytes: AtomicU64::new(0),
 			entry_limit: limits.entries,
 			tombstone_limit: limits.tombstones,
-			local_budget: limits
-				.local_budget
-				.unwrap_or(ByteSize::from_bytes(limits.budget.as_bytes() / OPERATOR_LOCAL_FRACTION)),
+			local_budget: ByteSize::from_bytes(limits.budget.as_bytes() / OPERATOR_LOCAL_FRACTION),
 			local_tombstone_limit: limits.tombstones / OPERATOR_LOCAL_FRACTION,
 			slice: limits.slice.min(limits.budget),
 			dirty_budget: limits.dirty_budget,
