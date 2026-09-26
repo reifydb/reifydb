@@ -61,7 +61,7 @@ impl BlockSequenceReader {
 			let id = self.snapshots[self.index];
 			self.index += 1;
 
-			let block = self.store.get(id).ok_or_else(|| {
+			let block = self.store.get(id)?.ok_or_else(|| {
 				Error(Box::new(internal(format!(
 					"column block for snapshot {} is missing from the column store",
 					id

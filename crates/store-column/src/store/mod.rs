@@ -9,8 +9,6 @@ use reifydb_column::persist::{deserialize_block, serialize_block};
 use reifydb_column::snapshot::ColumnBlock;
 use reifydb_core::interface::catalog::id::ColumnSnapshotId;
 use reifydb_value::Result;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use tracing::warn;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::persistent::sqlite::SqliteColumnStore;
@@ -39,32 +37,21 @@ impl ColumnStore {
 		self.blocks.insert(id, block);
 	}
 
-	pub fn get(&self, id: ColumnSnapshotId) -> Option<Arc<ColumnBlock>> {
+	pub fn get(&self, id: ColumnSnapshotId) -> Result<Option<Arc<ColumnBlock>>> {
 		if let Some(block) = self.blocks.get(&id).map(|e: Ref<'_, _, _>| Arc::clone(e.value())) {
-			return Some(block);
+			return Ok(Some(block));
 		}
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(tier) = &self.persistent {
-			match tier.get(id) {
-				Ok(Some(bytes)) => match deserialize_block(&bytes) {
-					Ok(block) => {
-						let arc = Arc::new(block);
-						self.blocks.insert(id, Arc::clone(&arc));
-						return Some(arc);
-					}
-					Err(e) => {
-						warn!(snapshot_id = id.0, error = %e, "failed to deserialize persisted column block")
-					}
-				},
-				Ok(None) => {}
-				Err(e) => {
-					warn!(snapshot_id = id.0, error = %e, "failed to load persisted column block")
-				}
-			}
+		if let Some(tier) = &self.persistent
+			&& let Some(bytes) = tier.get(id)?
+		{
+			let arc = Arc::new(deserialize_block(&bytes)?);
+			self.blocks.insert(id, Arc::clone(&arc));
+			return Ok(Some(arc));
 		}
 
-		None
+		Ok(None)
 	}
 
 	#[cfg_attr(not(all(feature = "sqlite", not(target_arch = "wasm32"))), allow(unused_variables))]
@@ -80,14 +67,7 @@ impl ColumnStore {
 	pub fn warm(&self) -> Result<()> {
 		if let Some(tier) = &self.persistent {
 			for (id, bytes) in tier.load_all()? {
-				match deserialize_block(&bytes) {
-					Ok(block) => {
-						self.blocks.insert(id, Arc::new(block));
-					}
-					Err(e) => {
-						warn!(snapshot_id = id.0, error = %e, "skipping undecodable column block during warm")
-					}
-				}
+				self.blocks.insert(id, Arc::new(deserialize_block(&bytes)?));
 			}
 		}
 		Ok(())
@@ -111,5 +91,28 @@ impl ColumnStore {
 
 	pub fn entries(&self) -> Vec<(ColumnSnapshotId, Arc<ColumnBlock>)> {
 		self.blocks.iter().map(|e| (*e.key(), Arc::clone(e.value()))).collect()
+	}
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn warm_fails_on_undecodable_block() {
+		// Otherwise a corrupt block is skipped and startup silently loses its rows.
+		let (tier, _guard) = SqliteColumnStore::in_memory();
+		tier.put(ColumnSnapshotId(1), &[0xff; 5]).unwrap();
+		let store = ColumnStore::with_persistent(Some(Arc::new(tier)));
+		assert!(store.warm().is_err());
+	}
+
+	#[test]
+	fn get_fails_on_undecodable_block() {
+		// Otherwise a corrupt block reads as missing and the real cause is lost.
+		let (tier, _guard) = SqliteColumnStore::in_memory();
+		tier.put(ColumnSnapshotId(1), &[0xff; 5]).unwrap();
+		let store = ColumnStore::with_persistent(Some(Arc::new(tier)));
+		assert!(store.get(ColumnSnapshotId(1)).is_err());
 	}
 }

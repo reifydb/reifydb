@@ -74,7 +74,7 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<()> {
 		let clean_name = strip_dollar_prefix(target.text());
-		let mut columns = match self.stack.pop()? {
+		let columns = match self.stack.pop()? {
 			Variable::Columns {
 				columns: cols,
 				..
@@ -83,13 +83,6 @@ impl<'a> Vm<'a> {
 				return Err(internal_error!("APPEND requires columns/frame data on stack"));
 			}
 		};
-
-		if self.batch_size != 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
-			let mask = self.effective_mask();
-			for col in columns.columns.iter_mut() {
-				col.filter(&mask)?;
-			}
-		}
 
 		match self.symbols.get(clean_name) {
 			Some(Variable::Columns {
