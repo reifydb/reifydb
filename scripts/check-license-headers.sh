@@ -18,7 +18,7 @@ LICENSE="Apache-2.0"
 echo "Checking SPDX license headers..."
 echo ""
 
-violations=$(git ls-files -- '*.rs' '*.ts' '*.tsx' '*.js' '*.css' '*.sh' '*.mk' '*.py' 'Makefile' '*/Makefile' \
+violations=$(git ls-files --cached --others --exclude-standard -- '*.rs' '*.ts' '*.tsx' '*.js' '*.css' '*.sh' '*.mk' '*.py' 'Makefile' '*/Makefile' \
   | grep -v '^vendor/' \
   | while read f; do
       spdx=$(head -2 "$f" | grep -oE 'SPDX-License-Identifier: [A-Za-z0-9.+-]+' | head -1 | sed 's/SPDX-License-Identifier: //')
