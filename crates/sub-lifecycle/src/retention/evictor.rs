@@ -506,6 +506,7 @@ impl Evictor {
 			groups.entry(partition).or_default().push(key.clone());
 		}
 
+		#[allow(clippy::disallowed_methods)]
 		let values_by_partition: HashMap<Partition, Vec<Value>> = if partitioned {
 			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer)?
 				.into_iter()

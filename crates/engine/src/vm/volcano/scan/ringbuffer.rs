@@ -144,6 +144,7 @@ impl RingBufferScan {
 				self.current_partition_loaded = true;
 			}
 
+			#[allow(clippy::disallowed_methods)]
 			let hash = if partitioned {
 				Some(Partition::of(&self.partitions[self.current_partition_index].partition_values))
 			} else {
@@ -229,6 +230,7 @@ impl RingBufferScan {
 			return Ok(out);
 		}
 
+		#[allow(clippy::disallowed_methods)]
 		let hash = Partition::of(&pm.partition_values);
 		let mut out = Vec::new();
 		let mut last_key = None;

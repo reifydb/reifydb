@@ -19,6 +19,7 @@ use reifydb_value::{
 
 use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 
+#[allow(clippy::disallowed_methods)]
 pub fn extract_partition(condition: &Expression, columns: &[Column], partition_by: &[String]) -> Option<Partition> {
 	if partition_by.is_empty() {
 		return None;

@@ -16,6 +16,7 @@ pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<
 }
 
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+#[allow(clippy::disallowed_methods)]
 pub fn partition_of(columns: &[Column], partition_by: &[String], values: &[Value]) -> Partition {
 	reifydb_assertions! {
 		assert_eq!(

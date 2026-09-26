@@ -122,6 +122,7 @@ fn note_touched(touched: &mut Vec<Vec<Value>>, partition_values: Vec<Value>) {
 	}
 }
 
+#[allow(clippy::disallowed_methods)]
 fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
 	(!partition_values.is_empty()).then(|| Partition::of(partition_values))
 }

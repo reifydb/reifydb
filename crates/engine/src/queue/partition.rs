@@ -29,6 +29,7 @@ pub fn placement_of(
 	ordered_by_index: Option<usize>,
 	row_number: RowNumber,
 ) -> QueuePlacement {
+	#[allow(clippy::disallowed_methods)]
 	let hash = match ordered_by_index {
 		Some(index) => Partition::of(&[shape.get_value(row.as_slice(), index)]),
 		None => Partition::of(&[Value::Uint8(row_number.0)]),
