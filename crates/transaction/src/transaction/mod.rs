@@ -331,6 +331,33 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	pub fn flow_cursor(&self) -> usize {
+		match self {
+			Self::Command(txn) => txn.accumulator.cursor(),
+			Self::Admin(txn) => txn.accumulator.cursor(),
+			Self::Query(_) => 0,
+			Self::Test(t) => t.inner.accumulator.cursor(),
+		}
+	}
+
+	pub fn set_flow_cursor(&mut self, at: usize) {
+		match self {
+			Self::Command(txn) => txn.accumulator.set_cursor(at),
+			Self::Admin(txn) => txn.accumulator.set_cursor(at),
+			Self::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Self::Test(t) => t.inner.accumulator.set_cursor(at),
+		}
+	}
+
+	pub fn flow_entries_from(&self, at: usize) -> &[(ObjectId, Diff)] {
+		match self {
+			Self::Command(txn) => txn.accumulator.entries_from(at),
+			Self::Admin(txn) => txn.accumulator.entries_from(at),
+			Self::Query(_) => &[],
+			Self::Test(t) => t.inner.accumulator.entries_from(at),
+		}
+	}
+
 	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
