@@ -34,6 +34,7 @@ use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 use reifydb_runtime::sync::{
 	condvar::Condvar,
 	mutex::{Mutex, MutexGuard},
+	rwlock::RwLock,
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Duration};
 use tracing::{Span, field::Empty, instrument};
@@ -169,7 +170,7 @@ pub struct Shared {
 	idle: Condvar,
 	drain: Mutex<()>,
 	flusher: Mutex<()>,
-	accounting: Mutex<()>,
+	accounting: RwLock<()>,
 	sinks: OnceLock<OperatorSinks>,
 	budget: Arc<MemoryBudget>,
 	entries: AtomicU64,
@@ -203,7 +204,7 @@ impl Shared {
 			idle: Condvar::new(),
 			drain: Mutex::new(()),
 			flusher: Mutex::new(()),
-			accounting: Mutex::new(()),
+			accounting: RwLock::new(()),
 			sinks: OnceLock::new(),
 			budget: Arc::new(MemoryBudget::new(limits.budget)),
 			entries: AtomicU64::new(0),
@@ -528,6 +529,7 @@ impl Resident {
 		}
 		for (operator, group) in grouped {
 			let slot = self.shared.slot_or_create(operator);
+			let _accounting = self.shared.accounting.read();
 			let mut inner = slot.inner.lock();
 			let before = inner.buckets.totals();
 			for write in group {
@@ -571,6 +573,7 @@ impl Resident {
 		let Some(slot) = self.shared.slot(operator) else {
 			return;
 		};
+		let _accounting = self.shared.accounting.read();
 		let mut inner = slot.inner.lock();
 		let before = inner.buckets.footprint();
 		let before_entries = inner.buckets.entry_count();
@@ -631,7 +634,7 @@ impl Resident {
 		if operators.is_empty() {
 			return (0, ByteSize::ZERO);
 		}
-		let _accounting = self.shared.accounting.lock();
+		let _accounting = self.shared.accounting.read();
 		let start = self.shared.sweep_cursor.fetch_add(1, Ordering::Relaxed) as usize % operators.len();
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
@@ -967,7 +970,7 @@ impl Resident {
 		}
 
 		reifydb_assertions! {
-			let _accounting = self.shared.accounting.lock();
+			let _accounting = self.shared.accounting.write();
 			let counted = self.shared.budget.used();
 			let walked = self.resident_bytes();
 			assert_eq!(
