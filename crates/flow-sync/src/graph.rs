@@ -102,7 +102,7 @@ pub fn build<T: Lookup>(
 			}
 			Sort {
 				..
-			} => Node::Sort(*operator_id),
+			} => Node::Sort(*operator_id, parent_schema(&nodes, first_input(inputs)?)?),
 			SinkTableView {
 				..
 			} => continue,
@@ -385,6 +385,49 @@ mod tests {
 			(0..post.row_count()).map(|row| post[1].get_value(row).to_string()).collect::<Vec<_>>(),
 			vec!["120", "140"]
 		);
+	}
+
+	#[test]
+	fn a_sort_reports_its_parents_schema_so_operators_below_it_keep_the_column_types() {
+		let flow = flow(
+			vec![
+				(1, source_table()),
+				(
+					2,
+					OperatorDef::Sort {
+						by: Vec::new(),
+					},
+				),
+				(3, sink()),
+			],
+			&[(1, 2), (2, 3)],
+		);
+
+		let nodes = build(&mut memory_txn(), &flow, &Routines::empty(), &runtime_context()).unwrap();
+
+		let source = nodes[0].1.output_schema();
+		let sort = nodes[1].1.output_schema();
+		assert!(source.is_some());
+		assert_eq!(format!("{:?}", sort), format!("{:?}", source));
+	}
+
+	#[test]
+	fn build_rejects_a_sort_without_an_input_edge_instead_of_sorting_nothing() {
+		let flow = flow(
+			vec![(
+				1,
+				OperatorDef::Sort {
+					by: Vec::new(),
+				},
+			)],
+			&[],
+		);
+
+		let Err(err) = build(&mut memory_txn(), &flow, &Routines::empty(), &runtime_context()) else {
+			panic!("a sort with no input edge must not build");
+		};
+
+		assert_eq!(err.code, "FLOW_028");
 	}
 
 	#[test]

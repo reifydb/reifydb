@@ -81,7 +81,7 @@ pub enum Node {
 	Map(MapOperator),
 	Extend(ExtendOperator),
 	Append(AppendOperator),
-	Sort(OperatorId),
+	Sort(OperatorId, Option<Columns>),
 }
 
 impl Node {
@@ -92,7 +92,7 @@ impl Node {
 			Node::Map(map) => map.id(),
 			Node::Extend(extend) => extend.id(),
 			Node::Append(append) => append.id(),
-			Node::Sort(operator) => *operator,
+			Node::Sort(operator, _) => *operator,
 		}
 	}
 
@@ -103,7 +103,7 @@ impl Node {
 			Node::Map(map) => map.output_schema(),
 			Node::Extend(extend) => extend.output_schema(),
 			Node::Append(append) => append.output_schema(),
-			Node::Sort(_) => None,
+			Node::Sort(_, parent_schema) => parent_schema.clone(),
 		}
 	}
 
@@ -114,7 +114,7 @@ impl Node {
 			Node::Map(map) => map.apply(change),
 			Node::Extend(extend) => extend.apply(change),
 			Node::Append(append) => append.apply(change),
-			Node::Sort(operator) => {
+			Node::Sort(operator, _) => {
 				Ok(Change::from_flow(*operator, change.version, change.diffs, change.changed_at))
 			}
 		}
@@ -340,7 +340,7 @@ mod tests {
 			Diff::update(trades(&[(3, 30, entry)]), trades(&[(3, 31, entry)])),
 			Diff::remove(trades(&[(4, 40, entry)])),
 		];
-		let mut sort = Node::Sort(OperatorId(4));
+		let mut sort = Node::Sort(OperatorId(4), None);
 
 		let out = sort
 			.apply(&mut txn, Change::from_flow(OperatorId(2), version(), diffs.clone(), at_millis(5)))
