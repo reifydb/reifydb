@@ -162,7 +162,7 @@ impl StandardMultiStore {
 		key: &EncodedKey,
 		version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
-		Ok(match self.commit.get(table, key.as_ref(), version)? {
+		Ok(match self.commit.get(table, key.as_ref(), version) {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -562,7 +562,8 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
-		self.commit.set(version, batches)
+		self.commit.set(version, batches);
+		Ok(())
 	}
 
 	#[inline]
@@ -1263,7 +1264,7 @@ impl StandardMultiStore {
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
-		Ok(match self.commit.get(table, key.as_ref(), prev_version)? {
+		Ok(match self.commit.get(table, key.as_ref(), prev_version) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -1704,9 +1705,9 @@ mod cache_tests {
 
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		let commit = store.commit();
-		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_compact, _consumed, _more) =
-				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
+		for kind in commit.list_all_entry_kinds() {
+			let (to_persist, to_compact, _consumed, _next) =
+				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
 			if to_compact.is_empty() {
 				continue;
 			}
@@ -1728,14 +1729,10 @@ mod cache_tests {
 					persistent.set(version, batch).unwrap();
 				}
 			}
-			for evicted in &to_compact {
-				store.invalidate_read_key(kind, &evicted.key);
+			for (key, _) in &to_compact {
+				store.invalidate_read_key(kind, key);
 			}
-			commit.compact(HashMap::from([(
-				kind,
-				to_compact.into_iter().map(|e| (e.key, e.version)).collect(),
-			)]))
-			.unwrap();
+			commit.compact(HashMap::from([(kind, to_compact)]));
 		}
 	}
 
@@ -2302,13 +2299,11 @@ mod cache_tests {
 				store.flush_all_blocking();
 				assert!(
 					matches!(
-						store.commit()
-							.get(
-								kind,
-								RowKey::encoded(STORAGE, FLUSHED).as_slice(),
-								CommitVersion(u64::MAX)
-							)
-							.unwrap(),
+						store.commit().get(
+							kind,
+							RowKey::encoded(STORAGE, FLUSHED).as_slice(),
+							CommitVersion(u64::MAX)
+						),
 						VersionedGetResult::NotFound
 					),
 					"the flush must move the row out of the buffer, or the rescan reads it from there"
@@ -2858,7 +2853,7 @@ impl StandardMultiStore {
 					scope,
 					TIER_SCAN_CHUNK_SIZE,
 					&mut cursor.commit_buf,
-				)?;
+				);
 				for entry in cursor.commit_buf.drain(..) {
 					let Some(key) = L::narrow(table, &entry.key) else {
 						continue;

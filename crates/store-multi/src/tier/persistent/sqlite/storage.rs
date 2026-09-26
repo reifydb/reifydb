@@ -2318,24 +2318,6 @@ impl TierStorage for SqlitePersistentStorage {
 		Self::create_table_if_needed(conn, &table_sql.create_sql)
 			.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))
 	}
-
-	fn clear_table(&self, table: EntryKind) -> Result<()> {
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(());
-		};
-		let table_sql = self.table_sql(conn, table)?;
-		let result = conn.execute(&format!("DELETE FROM \"{}\"", table_sql.table_name), []);
-		if let Err(e) = result
-			&& !e.to_string().contains("no such table")
-		{
-			return Err(error!(internal(format!(
-				"Failed to clear persistent {}: {}",
-				table_sql.table_name, e
-			))));
-		}
-		Ok(())
-	}
 }
 
 impl Shutdown for SqlitePersistentStorage {

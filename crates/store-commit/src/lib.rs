@@ -6,9 +6,14 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod config;
 pub mod entry;
+pub mod memory;
 pub mod rows;
+pub mod storage;
 pub mod store;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 use std::collections::HashMap;
 
@@ -118,10 +123,4 @@ impl ScannedStop for RangeStop {
 	fn scanned(&self) -> bool {
 		matches!(self, RangeStop::Scanned)
 	}
-}
-
-#[derive(Debug, Default)]
-pub struct HistoricalSweep {
-	pub entries: Vec<(EncodedKey, CommitVersion)>,
-	pub remaining: u64,
 }

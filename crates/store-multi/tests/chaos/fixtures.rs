@@ -67,12 +67,12 @@ pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 /// leave the stand-in behaving differently from the actor it models.
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	let commit = store.commit();
-	for kind in commit.list_all_entry_kinds().unwrap() {
+	for kind in commit.list_all_entry_kinds() {
 		// The oracle assumes a complete flush, so a budgeted call would leave a tail and the
 		// differential check would compare against a state the model never reaches.
-		let (to_persist, to_compact, _consumed, more) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
-		assert!(!more, "an unbounded collect must never report a remaining tail");
+		let (to_persist, to_compact, _consumed, next) =
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
+		assert!(next.is_none(), "an unbounded collect must never report a remaining tail");
 		if to_compact.is_empty() {
 			continue;
 		}
@@ -97,9 +97,7 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				store.insert_read_key(kind, key, version, value);
 			}
 		}
-		let to_compact: Vec<(EncodedKey, CommitVersion)> =
-			to_compact.into_iter().map(|evicted| (evicted.key, evicted.version)).collect();
-		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)]));
 	}
 }
 

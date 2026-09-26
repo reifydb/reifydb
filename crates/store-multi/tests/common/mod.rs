@@ -359,7 +359,7 @@ impl testscript::runner::Runner for Runner {
 				let stored = script_key(&key).encode();
 				let buffer = self.store.commit();
 				let table = classify_key(&stored);
-				let value = match buffer.get(table, stored.as_ref(), version)? {
+				let value = match buffer.get(table, stored.as_ref(), version) {
 					VersionedGetResult::Value {
 						value,
 						..
@@ -395,7 +395,7 @@ impl testscript::runner::Runner for Runner {
 				let stored = script_key(&key).encode();
 				let buffer = self.store.commit();
 				let table = classify_key(&stored);
-				let line = match buffer.get(table, stored.as_ref(), version)? {
+				let line = match buffer.get(table, stored.as_ref(), version) {
 					VersionedGetResult::Value {
 						value,
 						version: found,

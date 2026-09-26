@@ -358,12 +358,6 @@ impl TierStorage for MultiPersistentTier {
 			Self::Sqlite(s) => s.ensure_table(table),
 		}
 	}
-
-	fn clear_table(&self, table: EntryKind) -> Result<()> {
-		match self {
-			Self::Sqlite(s) => s.clear_table(table),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -401,10 +395,6 @@ impl TierStorage for MultiPersistentTier {
 	}
 
 	fn ensure_table(&self, _table: EntryKind) -> Result<()> {
-		match *self {}
-	}
-
-	fn clear_table(&self, _table: EntryKind) -> Result<()> {
 		match *self {}
 	}
 }

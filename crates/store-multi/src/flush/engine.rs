@@ -32,7 +32,7 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, instrument};
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
@@ -52,6 +52,8 @@ pub const FLUSH_BYTE_BUDGET: ByteSize = if default::TESTING {
 pub struct FlushEngineState {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	resume_from: Option<EntryKind>,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	resume_keys: HashMap<EntryKind, EncodedKey>,
 }
 
 #[allow(dead_code)]
@@ -70,7 +72,7 @@ pub struct FlushEngine {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-type EvictableDrop = Vec<EvictedVersion>;
+type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 type EvictablePartition = (EvictablePersist, EvictableDrop);
 
@@ -132,16 +134,12 @@ impl FlushEngine {
 	}
 
 	fn buffered_entries(&self) -> u64 {
-		self.commit
-			.list_all_entry_kinds()
-			.map(|kinds| {
-				kinds.iter().map(|kind| self.commit.estimated_current_count(*kind).unwrap_or(0)).sum()
-			})
-			.unwrap_or(0)
+		self.commit.list_all_entry_kinds().iter().map(|kind| self.commit.estimated_current_count(*kind)).sum()
 	}
 
 	pub fn flush_pending(&self) {
 		let mut guard = self.sweep_lock.lock();
+		guard.resume_keys.clear();
 		if let Some(cutoff) = self.eviction_cutoff() {
 			while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
 		}
@@ -149,6 +147,7 @@ impl FlushEngine {
 
 	pub fn flush_all(&self) {
 		let mut guard = self.sweep_lock.lock();
+		guard.resume_keys.clear();
 		while self.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_BYTE_BUDGET).0.is_yielded() {}
 	}
 
@@ -172,14 +171,13 @@ impl FlushEngine {
 	#[cfg(test)]
 	fn sweep(&self, cutoff: CommitVersion) {
 		let mut guard = self.sweep_lock.lock();
+		guard.resume_keys.clear();
 		while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
 	}
 
 	#[instrument(name = "store::multi::flush::sweep_once", level = "debug", skip_all)]
 	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: ByteSize) -> (Progress, u64) {
-		let Some(mut entry_kinds) = self.list_evictable_kinds() else {
-			return (Progress::Exhausted, 0);
-		};
+		let mut entry_kinds = self.list_evictable_kinds();
 		if let Some(resume) = state.resume_from
 			&& let Some(position) = entry_kinds.iter().position(|kind| *kind == resume)
 		{
@@ -189,7 +187,7 @@ impl FlushEngine {
 
 		let mut remaining = budget;
 		let mut more = false;
-		let mut plan: Vec<(EntryKind, bool, EvictablePartition)> = Vec::new();
+		let mut plan: Vec<(EntryKind, bool, EvictablePartition, Option<EncodedKey>)> = Vec::new();
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
 			if remaining == ByteSize::ZERO {
@@ -197,13 +195,14 @@ impl FlushEngine {
 				state.resume_from = Some(kind);
 				break;
 			}
-			let (to_persist, to_drop, consumed, kind_more) =
-				self.collect_evictable(kind, cutoff, remaining);
+			let (to_persist, to_drop, consumed, next) =
+				self.collect_evictable(kind, cutoff, remaining, state.resume_keys.get(&kind));
 			if to_persist.is_empty() && to_drop.is_empty() {
+				state.resume_keys.remove(&kind);
 				continue;
 			}
 			remaining = remaining.saturating_sub(consumed);
-			more |= kind_more;
+			more |= next.is_some();
 			let persistent_object = self.is_persistent_object(kind);
 			if persistent_object {
 				for (key, version, value) in &to_persist {
@@ -214,7 +213,7 @@ impl FlushEngine {
 						.push((key.clone(), value.clone()));
 				}
 			}
-			plan.push((kind, persistent_object, (to_persist, to_drop)));
+			plan.push((kind, persistent_object, (to_persist, to_drop), next));
 		}
 		if plan.is_empty() {
 			return (Progress::Exhausted, 0);
@@ -238,7 +237,11 @@ impl FlushEngine {
 		let mut persists: Vec<MultiPersist> = Vec::new();
 
 		let mut dropped = 0usize;
-		for (kind, persistent_object, (to_persist, to_drop)) in plan {
+		for (kind, persistent_object, (to_persist, to_drop), next) in plan {
+			match next {
+				Some(key) => state.resume_keys.insert(kind, key),
+				None => state.resume_keys.remove(&kind),
+			};
 			self.refresh_read_tier(kind, persistent_object, &to_persist, &to_drop, &accepted_keys);
 			if persistent_object {
 				for (key, _, value) in &to_persist {
@@ -252,15 +255,14 @@ impl FlushEngine {
 					}
 				}
 			}
-			for evicted in &to_drop {
+			let removed = self.drop_from_commit(kind, to_drop);
+			dropped += removed.len();
+			for evicted in removed {
 				evictions.push(MultiEviction {
-					key: evicted.key.clone(),
+					key: evicted.key,
 					value_bytes: evicted.value_bytes,
 					current: evicted.current,
 				});
-			}
-			if let Some(count) = self.drop_from_commit(kind, to_drop) {
-				dropped += count;
 			}
 		}
 		if let Some(range) = &self.range {
@@ -284,14 +286,8 @@ impl FlushEngine {
 	}
 
 	#[inline]
-	fn list_evictable_kinds(&self) -> Option<Vec<EntryKind>> {
-		match self.commit.list_entry_kinds_by_oldest_pending() {
-			Ok(v) => Some(v),
-			Err(e) => {
-				warn!(error = %e, "flush sweep: list_entry_kinds_by_oldest_pending failed");
-				None
-			}
-		}
+	fn list_evictable_kinds(&self) -> Vec<EntryKind> {
+		self.commit.list_entry_kinds_by_oldest_pending()
 	}
 
 	#[inline]
@@ -300,8 +296,9 @@ impl FlushEngine {
 		kind: EntryKind,
 		cutoff: CommitVersion,
 		budget: ByteSize,
-	) -> (EvictablePersist, EvictableDrop, ByteSize, bool) {
-		self.commit.collect_evictable_below(kind, cutoff, budget)
+		start: Option<&EncodedKey>,
+	) -> (EvictablePersist, EvictableDrop, ByteSize, Option<EncodedKey>) {
+		self.commit.collect_evictable_below(kind, cutoff, budget, start)
 	}
 
 	#[inline]
@@ -311,7 +308,7 @@ impl FlushEngine {
 		table: EntryKind,
 		persistent_object: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
-		to_drop: &[EvictedVersion],
+		to_drop: &[(EncodedKey, CommitVersion)],
 		accepted: &HashSet<&[u8]>,
 	) {
 		if self.point.is_none() && self.range.is_none() {
@@ -342,35 +339,30 @@ impl FlushEngine {
 				}
 			}
 		} else {
-			for evicted in to_drop {
+			for (key, _) in to_drop {
 				if let Some(range) = &self.range {
-					range.invalidate(table, &evicted.key);
+					range.invalidate(table, key);
 				}
 				if let Some(point) = &self.point {
-					point.invalidate(table, storage_key(&evicted.key).1, &evicted.key);
+					point.invalidate(table, storage_key(key).1, key);
 				}
 			}
 		}
 	}
 
 	#[inline]
-	fn drop_from_commit(&self, kind: EntryKind, to_drop: EvictableDrop) -> Option<usize> {
-		let drop_count = to_drop.len();
+	fn drop_from_commit(&self, kind: EntryKind, to_drop: EvictableDrop) -> Vec<EvictedVersion> {
 		reifydb_assertions! {
 			assert!(
-				drop_count > 0,
+				!to_drop.is_empty(),
 				"sweep must only reach drop_from_commit with a non-empty drop set; an empty drop \
 				 issues a no-op commit-buffer drop and lets the dropped counter run for zero work \
 				 (kind={kind:?})"
 			);
 		}
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		batches.insert(kind, to_drop.into_iter().map(|e| (e.key, e.version)).collect());
-		if let Err(e) = self.commit.compact(batches) {
-			warn!(?kind, error = %e, "flush sweep: commit buffer drop failed");
-			return None;
-		}
-		Some(drop_count)
+		batches.insert(kind, to_drop);
+		self.commit.compact(batches)
 	}
 }
 
@@ -408,8 +400,7 @@ mod tests {
 	}
 
 	fn write(buffer: &CommitStore, kind: EntryKind, key: &EncodedKey, version: u64, value: &str) {
-		buffer.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), Some(val(value)))])]))
-			.unwrap();
+		buffer.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), Some(val(value)))])]));
 	}
 
 	fn budget_for(keys: &[String], value: &str) -> ByteSize {
@@ -418,13 +409,13 @@ mod tests {
 			storage.set(
 				CommitVersion(1),
 				HashMap::from([(EntryKind::Multi, vec![(ek(key), Some(val(value)))])]),
-			)
-			.unwrap();
+			);
 		}
 		let (_, _, consumed, _) = storage.collect_evictable_below(
 			EntryKind::Multi,
 			CommitVersion(1),
 			ByteSize::from_bytes(u64::MAX),
+			None,
 		);
 		consumed
 	}
@@ -655,10 +646,7 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(
-				actor.commit.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
-				VersionedGetResult::NotFound
-			),
+			matches!(actor.commit.get(kind, key.as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 			"v2 must be gone from the buffer after eviction"
 		);
 		assert!(
@@ -670,7 +658,7 @@ mod tests {
 		);
 
 		assert_eq!(
-			actor.commit.get(kind, key.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+			actor.commit.get(kind, key.as_ref(), CommitVersion(3)).value().as_deref(),
 			Some(b"v3".as_slice()),
 			"v3 (> cutoff) must stay in the buffer"
 		);
@@ -688,10 +676,7 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(
-				actor.commit.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
-				VersionedGetResult::NotFound
-			),
+			matches!(actor.commit.get(kind, key.as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 			"non-persistent object must still be evicted below the watermark"
 		);
 		assert!(
@@ -702,7 +687,7 @@ mod tests {
 			"non-persistent object must NOT be written to the persistent tier"
 		);
 		assert_eq!(
-			actor.commit.get(kind, key.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+			actor.commit.get(kind, key.as_ref(), CommitVersion(3)).value().as_deref(),
 			Some(b"v3".as_slice()),
 			"v3 (> cutoff) must stay resident even for a non-persistent object"
 		);
@@ -718,7 +703,7 @@ mod tests {
 		actor.sweep(CommitVersion(1));
 
 		assert_eq!(
-			actor.commit.get(kind, key.as_ref(), CommitVersion(5)).unwrap().value().as_deref(),
+			actor.commit.get(kind, key.as_ref(), CommitVersion(5)).value().as_deref(),
 			Some(b"v5".as_slice()),
 			"a version above the watermark must never be evicted"
 		);
@@ -768,7 +753,7 @@ mod tests {
 			.unwrap();
 		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(1), Some(val("v1")));
 		write(&actor.commit, kind, &key, 1, "v1");
-		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
+		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])]));
 
 		actor.sweep(CommitVersion(2));
 
@@ -911,15 +896,12 @@ mod tests {
 			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
 			.unwrap();
 		write(&actor.commit, kind, &key, 1, "v1");
-		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
+		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])]));
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(
-				actor.commit.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
-				VersionedGetResult::NotFound
-			),
+			matches!(actor.commit.get(kind, key.as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 			"both versions are gone from the buffer"
 		);
 		assert!(
@@ -943,10 +925,7 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(
-				actor.commit.get(kind, cold.as_ref(), CommitVersion(2)).unwrap(),
-				VersionedGetResult::NotFound
-			),
+			matches!(actor.commit.get(kind, cold.as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 			"cold (v1 <= cutoff) must be evicted from the buffer"
 		);
 		assert!(
@@ -957,7 +936,7 @@ mod tests {
 			"cold must survive in persistent"
 		);
 		assert_eq!(
-			actor.commit.get(kind, hot.as_ref(), CommitVersion(4)).unwrap().value().as_deref(),
+			actor.commit.get(kind, hot.as_ref(), CommitVersion(4)).value().as_deref(),
 			Some(b"hot4".as_slice()),
 			"hot (v4 > cutoff) must stay resident in the buffer"
 		);
@@ -993,7 +972,7 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.commit.get(kind, hot.as_ref(), CommitVersion(u64::MAX)).unwrap(),
+				actor.commit.get(kind, hot.as_ref(), CommitVersion(u64::MAX)),
 				VersionedGetResult::NotFound
 			),
 			"a full flush drains the buffer after persisting"
@@ -1014,12 +993,12 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert_eq!(
-			actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+			actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(2)).value().as_deref(),
 			Some(b"id=7".as_slice()),
 			"a failed persist must leave the row write in the commit buffer, not drop the only copy"
 		);
 		assert_eq!(
-			actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+			actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(2)).value().as_deref(),
 			Some(b"entry-7".as_slice()),
 			"a failed persist must leave the dictionary write in the commit buffer, not drop the only copy"
 		);
@@ -1066,14 +1045,14 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(3)).unwrap(),
+				actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(3)),
 				VersionedGetResult::NotFound
 			),
 			"a persisted row write must be drained from the buffer"
 		);
 		assert!(
 			matches!(
-				actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(3)).unwrap(),
+				actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(3)),
 				VersionedGetResult::NotFound
 			),
 			"a persisted dictionary write must be drained from the buffer"
@@ -1089,7 +1068,7 @@ mod tests {
 			.set(CommitVersion(5), HashMap::from([(kind, vec![(key.clone(), Some(val("v5")))])]))
 			.unwrap();
 		write(&actor.commit, kind, &key, 5, "v5");
-		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
+		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])]));
 
 		actor.sweep(CommitVersion(u64::MAX));
 
@@ -1163,14 +1142,28 @@ mod tests {
 			"the budget must run out every slice for this to exercise starvation at all"
 		);
 
-		let oldest = actor.commit.oldest_pending_version().expect("writes are still pending");
+		assert!(!actor.commit.list_entry_kinds_by_oldest_pending().is_empty(), "writes are still pending");
+		let unswept = kinds
+			.iter()
+			.filter(|kind| {
+				(0..KEYS_PER_ROUND).any(|key| {
+					!matches!(
+						actor.commit.get(
+							**kind,
+							chronological_key(FIRST_VERSION, key).as_ref(),
+							CommitVersion(FIRST_VERSION)
+						),
+						VersionedGetResult::NotFound
+					)
+				})
+			})
+			.count();
 		assert!(
-			oldest.0 > FIRST_VERSION,
-			"the oldest pending version is still {} after {ROUNDS} slices, so at least one of the \
-			 {KINDS} kinds was never swept once; that kind pins the durable frontier at the first \
+			unswept == 0,
+			"{unswept} of the {KINDS} kinds still hold a write at version {FIRST_VERSION} after {ROUNDS} \
+			 slices, so they were never swept once; that kind pins the durable frontier at the first \
 			 write, which clamps the tombstone reap cutoff to zero and leaves every tombstone in the \
-			 persistent tier undeletable",
-			oldest.0
+			 persistent tier undeletable"
 		);
 	}
 
@@ -1202,13 +1195,13 @@ mod tests {
 			actor.sweep_slice(budget);
 		}
 
+		let pending = actor.commit.list_entry_kinds_by_oldest_pending();
 		assert!(
-			actor.commit.oldest_pending_for(hot[0]).is_some(),
+			pending.contains(&hot[0]),
 			"the hot kinds must stay backlogged, otherwise the budget never ran out and this exercises nothing"
 		);
-		assert_eq!(
-			actor.commit.oldest_pending_for(cold),
-			None,
+		assert!(
+			!pending.contains(&cold),
 			"the single write to the cold kind is still pending after {} slices, so the sweep never reached past the hot kinds sorted ahead of it",
 			ROUNDS - COLD_FIRST_VERSION
 		);
@@ -1236,15 +1229,22 @@ mod tests {
 			actor.sweep_slice(budget);
 		}
 
-		assert_eq!(
-			actor.commit.oldest_pending_for(deep),
-			Some(CommitVersion(1)),
+		let pending = actor.commit.list_entry_kinds_by_oldest_pending();
+		assert!(
+			pending.contains(&deep),
 			"the deep kind must still hold the oldest pending version after every slice, otherwise it \
 			 stopped ranking ahead of the cold kind and this never exercised the cursor at all"
 		);
-		assert_eq!(
-			actor.commit.oldest_pending_for(cold),
-			None,
+		assert!(
+			(0..DEEP_KEYS).any(|key| matches!(
+				actor.commit.get(deep, ek(&format!("deep-k{key}")).as_ref(), CommitVersion(1)),
+				VersionedGetResult::Value { version, .. } if version == CommitVersion(1)
+			)),
+			"the deep kind must still hold the oldest pending version after every slice, otherwise it \
+			 stopped ranking ahead of the cold kind and this never exercised the cursor at all"
+		);
+		assert!(
+			!pending.contains(&cold),
 			"the cold write is still pending after {SLICES} slices, so every slice restarted at the deep \
 			 kind the ranking puts first and never resumed past the kind it was cut off in"
 		);
@@ -1274,9 +1274,9 @@ mod tests {
 
 			actor.sweep_slice(budget);
 
-			assert_eq!(
-				actor.commit.oldest_pending_for(kinds[oldest as usize]),
-				None,
+			let pending = actor.commit.list_entry_kinds_by_oldest_pending();
+			assert!(
+				!pending.contains(&kinds[oldest as usize]),
 				"a budget covering exactly one entry must buy the kind holding the oldest pending \
 				 write, but the kind at version {OLD_VERSION} was left pending while a younger kind \
 				 took the slice; the durable frontier is the minimum over kinds, so serving anything \
@@ -1286,9 +1286,16 @@ mod tests {
 				if index as u64 == oldest {
 					continue;
 				}
-				assert_eq!(
-					actor.commit.oldest_pending_for(*kind),
-					Some(CommitVersion(YOUNG_VERSION)),
+				assert!(
+					pending.contains(kind),
+					"the budget covered one entry, so no kind younger than the oldest may have \
+					 been served in the same slice"
+				);
+				assert!(
+					matches!(
+						actor.commit.get(*kind, ek("k").as_ref(), CommitVersion(YOUNG_VERSION)),
+						VersionedGetResult::Value { version, .. } if version == CommitVersion(YOUNG_VERSION)
+					),
 					"the budget covered one entry, so no kind younger than the oldest may have \
 					 been served in the same slice"
 				);

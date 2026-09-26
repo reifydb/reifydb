@@ -45,8 +45,7 @@ fn drain_forward(s: &CommitStore, kind: EntryKind, version: CommitVersion, batch
 				read: version,
 			},
 			batch_size,
-		)
-		.unwrap();
+		);
 		for e in entries {
 			out.push(e.key.as_slice().to_vec());
 		}
@@ -63,10 +62,10 @@ fn paginated_range_does_not_truncate_when_filtered_key_is_inside_limit_window() 
 		let kind = object();
 
 		for key in ["a", "b", "d", "e", "f", "g", "h", "i"] {
-			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("v1")))])])).unwrap();
+			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("v1")))])]));
 		}
 
-		storage.set(CommitVersion(10), HashMap::from([(kind, vec![(k("c"), Some(v("v10")))])])).unwrap();
+		storage.set(CommitVersion(10), HashMap::from([(kind, vec![(k("c"), Some(v("v10")))])]));
 
 		let result = drain_forward(&storage, kind, CommitVersion(3), 7);
 
@@ -85,13 +84,12 @@ fn paginated_range_includes_trailing_tombstone_after_filter_skip() {
 		let kind = object();
 
 		for key in ["a", "b", "c", "d", "e", "f", "g", "h"] {
-			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("init")))])]))
-				.unwrap();
+			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("init")))])]));
 		}
 
-		storage.set(CommitVersion(2), HashMap::from([(kind, vec![(k("z"), None)])])).unwrap();
+		storage.set(CommitVersion(2), HashMap::from([(kind, vec![(k("z"), None)])]));
 
-		storage.set(CommitVersion(8), HashMap::from([(kind, vec![(k("a"), Some(v("v8")))])])).unwrap();
+		storage.set(CommitVersion(8), HashMap::from([(kind, vec![(k("a"), Some(v("v8")))])]));
 
 		let result = drain_forward(&storage, kind, CommitVersion(3), 7);
 

@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeSet, VecDeque},
-	mem::size_of,
-	sync::{Arc, atomic::AtomicU64},
-};
+use std::{collections::BTreeSet, mem::size_of};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind, metrics::heap::HeapSize};
-use reifydb_runtime::sync::{
-	map::Map,
-	mutex::Mutex,
-	rwlock::{RwLock, RwLockWriteGuard},
-};
-use reifydb_value::util::cowvec::CowVec;
-use tracing::instrument;
-
-use crate::rows::{ActiveRows, ClosedRows};
+use reifydb_core::{common::CommitVersion, metrics::heap::HeapSize};
+use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 pub(super) type Value = Option<CowVec<u8>>;
 
@@ -31,47 +20,42 @@ pub(super) fn entry_bytes_with(key_heap: usize, value: &Value) -> u64 {
 	(ENTRY_OVERHEAD + key_heap + value.as_ref().map_or(0, |bytes| bytes.len())) as u64
 }
 
-pub(super) struct Entry {
-	pub active: RwLock<ActiveRows>,
+pub(super) fn value_bytes_of(value: &Value) -> ByteSize {
+	ByteSize::from_bytes(value.as_ref().map(|v| v.len() as u64).unwrap_or(0))
+}
 
-	pub closed: RwLock<VecDeque<Arc<ClosedRows>>>,
+pub(super) struct Entry<R> {
+	pub rows: R,
 
 	pub pending: Mutex<BTreeSet<EncodedKey>>,
 
 	pub retained: Mutex<BTreeSet<EncodedKey>>,
 
-	pub key_count: AtomicU64,
+	pub retained_cursor: Mutex<Option<EncodedKey>>,
 }
 
-impl Entry {
-	pub fn new() -> Self {
+impl<R> Entry<R> {
+	pub fn new(rows: R) -> Self {
 		Self {
-			active: RwLock::new(ActiveRows::new()),
-			closed: RwLock::new(VecDeque::new()),
+			rows,
 			pending: Mutex::new(BTreeSet::new()),
 			retained: Mutex::new(BTreeSet::new()),
-			key_count: AtomicU64::new(0),
+			retained_cursor: Mutex::new(None),
 		}
 	}
 
-	#[instrument(name = "store::multi::memory::write_acquire", level = "debug", skip_all)]
-	pub fn active_write(&self) -> RwLockWriteGuard<'_, ActiveRows> {
-		self.active.write()
-	}
-
-	pub fn closed_snapshot(&self) -> Vec<Arc<ClosedRows>> {
-		self.closed.read().iter().cloned().collect()
-	}
-}
-
-pub(super) struct Entries {
-	pub(super) data: Map<EntryKind, Arc<Entry>>,
-}
-
-impl Default for Entries {
-	fn default() -> Self {
-		Self {
-			data: Map::new(),
+	pub fn unqueue(&self, keys: &[EncodedKey]) {
+		if keys.is_empty() {
+			return;
+		}
+		let mut pending = self.pending.lock();
+		for key in keys {
+			pending.remove(key);
+		}
+		drop(pending);
+		let mut retained = self.retained.lock();
+		for key in keys {
+			retained.remove(key);
 		}
 	}
 }

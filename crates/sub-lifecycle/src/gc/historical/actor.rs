@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	event::metric::{MultiEviction, MultiSweptEvent},
@@ -21,8 +20,8 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::store::StandardMultiStore;
-use reifydb_value::{Result, value::duration::Duration};
-use tracing::{debug, instrument, trace, warn};
+use reifydb_value::value::duration::Duration;
+use tracing::{debug, instrument, trace};
 
 use crate::plane::RetentionPlane;
 
@@ -76,17 +75,10 @@ impl Actor {
 		entry_kind: EntryKind,
 		cutoff: CommitVersion,
 		batch_size: usize,
-	) -> Result<(u64, u64)> {
-		let sweep = buffer.sweep_historical_below(entry_kind, cutoff, batch_size)?;
-		if sweep.entries.is_empty() {
-			return Ok((0, sweep.remaining));
-		}
-
-		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		batches.insert(entry_kind, sweep.entries);
-		let removed = buffer.compact(batches)?;
+	) -> (u64, u64) {
+		let (removed, remaining) = buffer.gc(entry_kind, cutoff, batch_size);
 		if removed.is_empty() {
-			return Ok((0, sweep.remaining));
+			return (0, remaining);
 		}
 
 		let count = removed.len() as u64;
@@ -99,7 +91,7 @@ impl Actor {
 			})
 			.collect();
 		self.store.event_bus().emit(MultiSweptEvent::new(evictions, vec![], cutoff));
-		Ok((count, sweep.remaining))
+		(count, remaining)
 	}
 
 	#[instrument(name = "lifecycle::gc::historical::sweep", level = "debug", skip_all)]
@@ -114,13 +106,7 @@ impl Actor {
 			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
 			return 0;
 		};
-		let entry_kinds = match buffer.list_all_entry_kinds() {
-			Ok(v) => v,
-			Err(e) => {
-				warn!(error = %e, "Historical GC sweep failed: list_all_entry_kinds");
-				return 0;
-			}
-		};
+		let entry_kinds = buffer.list_all_entry_kinds();
 		if entry_kinds.is_empty() {
 			return 0;
 		}
@@ -129,13 +115,7 @@ impl Actor {
 		let mut stats = GcMetrics::default();
 		let mut backlog = 0;
 		for entry_kind in entry_kinds {
-			let (dropped, remaining) = match self.sweep_shape(buffer, entry_kind, cutoff, batch_size) {
-				Ok(n) => n,
-				Err(e) => {
-					warn!(?entry_kind, error = %e, "Historical GC sweep failed for shape");
-					(0, 0)
-				}
-			};
+			let (dropped, remaining) = self.sweep_shape(buffer, entry_kind, cutoff, batch_size);
 			stats.objects_scanned += 1;
 			stats.versions_dropped += dropped;
 			backlog += remaining;

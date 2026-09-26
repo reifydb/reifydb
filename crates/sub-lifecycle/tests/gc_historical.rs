@@ -107,15 +107,13 @@ fn write_versions(store: &StandardMultiStore, name: &str, versions: u64) {
 		buffer.set(
 			CommitVersion(v),
 			HashMap::from([(SHAPE, vec![(key(name), Some(value(&format!("v{v}"))))])]),
-		)
-		.unwrap();
+		);
 	}
 }
 
 fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<String> {
 	let buffer = store.commit();
 	buffer.get(SHAPE, key(name).as_ref(), CommitVersion(version))
-		.unwrap()
 		.value()
 		.map(|v| String::from_utf8_lossy(v.as_ref()).to_string())
 }

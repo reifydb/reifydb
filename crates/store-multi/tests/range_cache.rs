@@ -57,9 +57,9 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	// Deterministic stand-in for the flush sweep, in the same persist -> invalidate-read -> drop order
 	// the actor runs; the invalidate step is what clears bucket completeness.
 	let commit = store.commit();
-	for kind in commit.list_all_entry_kinds().unwrap() {
+	for kind in commit.list_all_entry_kinds() {
 		let (to_persist, to_compact, _, _) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
 		if to_compact.is_empty() {
 			continue;
 		}
@@ -76,11 +76,10 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				persistent.set(version, batch).unwrap();
 			}
 		}
-		for evicted in &to_compact {
-			store.invalidate_read_key(kind, &evicted.key);
+		for (key, _) in &to_compact {
+			store.invalidate_read_key(kind, key);
 		}
-		commit.compact(HashMap::from([(kind, to_compact.into_iter().map(|e| (e.key, e.version)).collect())]))
-			.unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)]));
 	}
 }
 

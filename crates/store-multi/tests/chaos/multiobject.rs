@@ -74,21 +74,28 @@ impl MsOracle {
 
 /// Object-scoped version-anchored TTL sweep: buffer drop first, then persistent delete and a read-cache
 /// clear on a hit. Scoping it to a single object is what lets the test assert isolation.
-fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64], cutoff_version: CommitVersion) {
+fn ttl_sweep_storage(
+	store: &StandardMultiStore,
+	written: &BTreeMap<(usize, u64), Vec<u64>>,
+	s: usize,
+	rows: &[u64],
+	cutoff_version: CommitVersion,
+) {
+	let storage_id = storage(s);
 	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for key in &keys {
-			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
-				if v <= cutoff_version {
-					batch.push((key.clone(), v));
+		for (row, key) in rows.iter().zip(&keys) {
+			for v in written.get(&(s, *row)).into_iter().flatten() {
+				if CommitVersion(*v) <= cutoff_version {
+					batch.push((key.clone(), CommitVersion(*v)));
 				}
 			}
 		}
 		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)]));
 		}
 	}
 	for key in &keys {
@@ -102,7 +109,13 @@ fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[
 	}
 }
 
-fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64]) {
+fn physical_delete_storage(
+	store: &StandardMultiStore,
+	written: &BTreeMap<(usize, u64), Vec<u64>>,
+	s: usize,
+	rows: &[u64],
+) {
+	let storage_id = storage(s);
 	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	if let Some(persistent) = store.persistent() {
@@ -111,13 +124,13 @@ fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, ro
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for key in &keys {
-			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
-				batch.push((key.clone(), v));
+		for (row, key) in rows.iter().zip(&keys) {
+			for v in written.get(&(s, *row)).into_iter().flatten() {
+				batch.push((key.clone(), CommitVersion(*v)));
 			}
 		}
 		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)]));
 		}
 	}
 	for key in &keys {
@@ -211,6 +224,7 @@ pub struct Params {
 pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut oracle = MsOracle::default();
+	let mut written: BTreeMap<(usize, u64), Vec<u64>> = BTreeMap::new();
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
@@ -235,6 +249,7 @@ pub fn drive(seed: u64, p: Params) {
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			let mut values: Vec<(u64, Option<Vec<u8>>)> = Vec::new();
 			for row in rows {
+				written.entry((s, row)).or_default().push(version);
 				if rng.random_range(0u32..100) < p.remove_pct {
 					oracle.remove(s, row);
 					values.push((row, None));
@@ -276,7 +291,7 @@ pub fn drive(seed: u64, p: Params) {
 				.map(|((_, row), _)| *row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_storage(store, storage(s), &expired, CommitVersion(cutoff_version));
+				ttl_sweep_storage(store, &written, s, &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove(s, row);
@@ -285,7 +300,7 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store) in &configs {
-				physical_delete_storage(store, storage(s), &rows);
+				physical_delete_storage(store, &written, s, &rows);
 			}
 			for row in rows {
 				oracle.remove(s, row);
