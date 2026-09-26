@@ -47,7 +47,7 @@ use super::{
 };
 use crate::{
 	error::FlowSinkError,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryExtension},
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
@@ -174,7 +174,7 @@ impl SinkTableViewOperator {
 			let (_, encoded) =
 				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
-				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, values) = partition_of(&self.partition_indices, source, row_idx);
 				resolve_partition_flow(
 					txn,
 					ObjectId::from(self.storage),
@@ -229,9 +229,9 @@ impl SinkTableViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(&self.partition_indices, &coerced_pre, row_idx);
+					partition_of(&self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, &coerced_post, row_idx);
+					partition_of(&self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(
 					ObjectId::from(self.storage),
 					pre_partition,
@@ -316,7 +316,7 @@ impl SinkTableViewOperator {
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_table_view_remove(&mut self, txn: &mut DeferredTransaction, pre: &Columns) -> Result<()> {
 		let coerced = coerce_columns(pre, self.view.def().columns())?;
-		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
+		let dict_encoded = dictionary_lookup_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
@@ -324,7 +324,7 @@ impl SinkTableViewOperator {
 			let row_number = source.row_numbers()[row_idx];
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
-				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, _values) = partition_of(&self.partition_indices, source, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)?
 			} else {
 				self.sorted_view_key(source, row_idx, row_number)?
@@ -393,6 +393,52 @@ pub(crate) fn dictionary_encode_view_columns(
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
 		for outcome in &outcomes {
 			new_data.push_value(outcome.id.to_value());
+		}
+		encoded.columns[*col_pos] = new_data.finish();
+	}
+
+	Ok(Some(encoded))
+}
+
+#[inline]
+pub(crate) fn dictionary_lookup_view_columns(
+	txn: &mut DeferredTransaction,
+	view: &View,
+	columns: &Columns,
+) -> Result<Option<Columns>> {
+	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
+	{
+		let catalog = txn.catalog();
+		for (pos, col) in view.columns().iter().enumerate() {
+			if let Some(dict_id) = col.dictionary_id {
+				let dictionary = catalog.cache().find_dictionary(dict_id).ok_or_else(|| {
+					Error::from(FlowSinkError::DictionaryNotFound {
+						dictionary_id: format!("{:?}", dict_id),
+						column: col.name.to_string(),
+					})
+				})?;
+				dict_columns.push((pos, dictionary));
+			}
+		}
+	}
+
+	if dict_columns.is_empty() {
+		return Ok(None);
+	}
+
+	let mut encoded = columns.clone();
+	for (col_pos, dictionary) in &dict_columns {
+		let row_count = encoded[*col_pos].len();
+		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
+		for row_idx in 0..row_count {
+			let value = encoded[*col_pos].get_value(row_idx);
+			let id = txn.find_in_dictionary(dictionary, &value)?.ok_or_else(|| {
+				Error::from(FlowSinkError::DictionaryEntryNotFound {
+					dictionary_id: format!("{:?}", dictionary.id),
+					column: view.columns()[*col_pos].name.to_string(),
+				})
+			})?;
+			new_data.push_value(id.to_value());
 		}
 		encoded.columns[*col_pos] = new_data.finish();
 	}

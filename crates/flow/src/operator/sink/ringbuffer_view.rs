@@ -69,7 +69,7 @@ use super::{
 	DurableSink, coerce_columns, decode_dictionary_columns, emit_view_change, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
-	view::dictionary_encode_view_columns,
+	view::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
 };
 use crate::{
 	error::FlowStateError,
@@ -855,7 +855,7 @@ impl SinkRingBufferViewOperator {
 			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
 			let mut group_index: HashMap<Partition, usize> = HashMap::new();
 			for row_idx in 0..row_count {
-				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, values) = partition_of(&self.partition_indices, source, row_idx);
 				match group_index.get(&partition) {
 					Some(&group) => groups[group].2.push(row_idx),
 					None => {
@@ -1048,9 +1048,9 @@ impl SinkRingBufferViewOperator {
 			let post_source_rn = source_post.row_numbers()[row_idx];
 
 			let partition = if self.is_partitioned() {
-				let (pre_partition, _) = partition_of(&self.partition_indices, &coerced_pre, row_idx);
+				let (pre_partition, _) = partition_of(&self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, &coerced_post, row_idx);
+					partition_of(&self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -1108,6 +1108,8 @@ impl SinkRingBufferViewOperator {
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
+		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
+		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.row_count();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
@@ -1118,7 +1120,7 @@ impl SinkRingBufferViewOperator {
 
 			let (partition, partition_values) = if self.is_partitioned() {
 				let (partition, partition_values) =
-					partition_of(&self.partition_indices, &coerced, row_idx);
+					partition_of(&self.partition_indices, source, row_idx);
 				note_touched(touched, partition_values.clone());
 				(Some(partition), Some(partition_values))
 			} else {

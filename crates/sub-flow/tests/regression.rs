@@ -38,6 +38,8 @@ mod update_pre_fidelity;
 
 #[path = "regression/view_dictionary_columns.rs"]
 mod view_dictionary_columns;
+#[path = "regression/view_dictionary_partition.rs"]
+mod view_dictionary_partition;
 
 #[path = "regression/view_hop_source_order.rs"]
 mod view_hop_source_order;
