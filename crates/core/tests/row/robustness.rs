@@ -4,7 +4,7 @@
 use std::str::FromStr;
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::ValueType};
+use reifydb_value::value::{blob::Blob, decimal::Decimal, value_type::ValueType};
 
 #[test]
 fn test_massive_field_count() {
@@ -95,16 +95,12 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let shape = RowShape::testing(
-		RowFamily::Pod,
-		&[ValueType::Utf8, ValueType::Blob, ValueType::INT, ValueType::DECIMAL],
-	);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::DECIMAL]);
 
 	let mut original = shape.allocate_pod();
 	shape.set_utf8(&mut original, 0, "x".repeat(1000));
 	shape.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
-	shape.set_int(&mut original, 2, &Int::from(i128::MAX));
-	shape.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
+	shape.set_decimal(&mut original, 2, &Decimal::from_str("99999.99999").unwrap());
 
 	let mut current = original.clone();
 
@@ -115,7 +111,6 @@ fn test_repeated_clone_stability() {
 		// Verify data is still intact
 		assert_eq!(shape.get_utf8(&next, 0), "x".repeat(1000));
 		assert_eq!(shape.get_blob(&next, 1), Blob::from(vec![42u8; 1000]));
-		assert_eq!(shape.get_int(&next, 2), Int::from(i128::MAX));
 
 		current = next;
 	}

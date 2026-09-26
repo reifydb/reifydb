@@ -156,9 +156,7 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 		| ValueKind::DictionaryId => 16,
 		ValueKind::Utf8 | ValueKind::Blob => 1,
 		ValueKind::Any => 1,
-		ValueKind::Int
-		| ValueKind::Uint
-		| ValueKind::Decimal
+		ValueKind::Decimal
 		| ValueKind::None
 		| ValueKind::Type
 		| ValueKind::List
@@ -646,7 +644,7 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+		ValueKind::Decimal => {
 			let (precision, scale) = family?;
 			decode_family_column(type_code, precision, scale, &data, written_count).ok()?
 		}

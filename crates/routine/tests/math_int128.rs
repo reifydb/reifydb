@@ -3,7 +3,6 @@
 
 use std::sync::LazyLock;
 
-use arrow_array::Array;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupId};
 use reifydb_routine::function::math::{
 	abs::Abs,
@@ -20,12 +19,7 @@ use reifydb_routine_abi::{Function, context::FunctionContext, error::RoutineErro
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{
-		Value,
-		container::decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
-		decimal::Decimal,
-		identity::IdentityId,
-	},
+	value::{Value, container::wide_int_array::wides, decimal::Decimal, identity::IdentityId},
 };
 
 const TWO_POW_64: u128 = 1 << 64;
@@ -70,16 +64,14 @@ fn uint16_rows(column: &ColumnBuffer) -> Vec<u128> {
 	let ColumnBuffer::Uint16(array) = column else {
 		panic!("expected a Uint16 column, got {:?}", column.get_type());
 	};
-	assert_eq!(array.data_type(), &UINT16_DATA_TYPE, "a Uint16 result must keep Decimal256(39, 0)");
-	u128s(array)
+	wides::<u128>(array)
 }
 
 fn int16_rows(column: &ColumnBuffer) -> Vec<i128> {
 	let ColumnBuffer::Int16(array) = column else {
 		panic!("expected an Int16 column, got {:?}", column.get_type());
 	};
-	assert_eq!(array.data_type(), &INT16_DATA_TYPE, "an Int16 result must keep Decimal128(38, 0)");
-	array.values().to_vec()
+	wides::<i128>(array)
 }
 
 fn out_of_range_code(err: RoutineError) -> String {

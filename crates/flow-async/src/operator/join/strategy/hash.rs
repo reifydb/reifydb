@@ -19,7 +19,11 @@ use reifydb_value::{
 	fragment::Fragment,
 	util::{cowvec::CowVec, hash::Hash128},
 	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+		Value,
+		datetime::DateTime,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, SystemColumns},
+		value_type::ValueType,
 	},
 };
 use tracing::{Span, instrument};
@@ -39,17 +43,44 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(RowFamily::Pod, fields)
 }
 
-pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedPodRow {
+pub(crate) fn encode_row(
+	shape: &RowShape,
+	columns: &Columns,
+	row_idx: usize,
+	now: DateTime,
+	side: JoinSide,
+) -> EncodedPodRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
-	let at = columns.time().get(row_idx).copied();
 	let envelope = EnvelopeBuilder::new().fingerprint(shape.fingerprint());
-	let envelope = match at {
-		Some(time) => envelope.time(time),
-		None => envelope.created_at(now),
+	let envelope = match side {
+		JoinSide::Left => left_envelope(envelope, columns, row_idx),
+		JoinSide::Right => match columns.time().get(row_idx).copied() {
+			Some(time) => envelope.time(time),
+			None => envelope.created_at(now),
+		},
 	};
 	envelope.build(encoded.freeze().as_slice())
+}
+
+fn left_envelope(mut envelope: EnvelopeBuilder, columns: &Columns, row_idx: usize) -> EnvelopeBuilder {
+	if let Some(&created_at) = columns.created_at().get(row_idx) {
+		envelope = envelope.created_at(created_at);
+	}
+	if let Some(&updated_at) = columns.updated_at().get(row_idx) {
+		envelope = envelope.updated_at(updated_at);
+	}
+	if let Some(&time) = columns.time().get(row_idx) {
+		envelope = envelope.time(time);
+	}
+	if let Some(&commit_version) = columns.system.commit_versions().get(row_idx) {
+		envelope = envelope.commit_version(commit_version);
+	}
+	if let Some(&partition) = columns.partitions().get(row_idx) {
+		envelope = envelope.partition(partition);
+	}
+	envelope
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
@@ -67,7 +98,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(host, &shape)?;
 	let group = store.group_of(key_hash);
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at());
+		let row = encode_row(&shape, columns, idx, host.written_at(), store.side());
 		store.write_row(host, group, columns.row_numbers()[idx], &row)?;
 	}
 	Ok(())
@@ -100,7 +131,7 @@ pub(crate) fn update_row_in_entry(
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	let row = encode_row(&prepared.shape, post, row_idx, host.written_at());
+	let row = encode_row(&prepared.shape, post, row_idx, host.written_at(), store.side());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row_in(host, prepared.group, post_row_number, &row)
@@ -124,7 +155,7 @@ pub(crate) fn update_single_row_in_entry(
 ) -> Result<bool> {
 	let shape = build_shape(post);
 	store.set_row_shape(host, &shape)?;
-	let row = encode_row(&shape, post, row_idx, host.written_at());
+	let row = encode_row(&shape, post, row_idx, host.written_at(), store.side());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row(host, key_hash, post_row_number, &row)
@@ -160,18 +191,44 @@ fn decode_run(
 		envelopes.iter().map(|envelope| EncodedBytes(CowVec::new(envelope.body().to_vec()))).collect();
 
 	let mut decoded = Columns::from_encoded_bytes(&shape, ids, &bodies);
-	let instants: Vec<DateTime> = envelopes
-		.iter()
-		.map(|envelope| envelope.time().or_else(|| envelope.created_at()).unwrap_or_default())
-		.collect();
-	let time: Vec<DateTime> = envelopes.iter().filter_map(|envelope| envelope.time()).collect();
-	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), instants.clone(), instants, time, Vec::new());
+	decoded.system = match store.side() {
+		JoinSide::Left => SystemColumns::new(
+			ids.to_vec(),
+			left_stamps(&envelopes, SystemColumn::Partitions, Envelope::partition),
+			left_stamps(&envelopes, SystemColumn::CreatedAt, Envelope::created_at),
+			left_stamps(&envelopes, SystemColumn::UpdatedAt, Envelope::updated_at),
+			left_stamps(&envelopes, SystemColumn::Time, Envelope::time),
+			left_stamps(&envelopes, SystemColumn::CommitVersion, Envelope::commit_version),
+		),
+		JoinSide::Right => {
+			let instants: Vec<DateTime> = envelopes
+				.iter()
+				.map(|envelope| envelope.time().or_else(|| envelope.created_at()).unwrap_or_default())
+				.collect();
+			let time: Vec<DateTime> = envelopes.iter().filter_map(|envelope| envelope.time()).collect();
+			SystemColumns::new(ids.to_vec(), Vec::new(), instants.clone(), instants, time, Vec::new())
+		}
+	};
 
 	Ok(decoded)
 }
 
+fn left_stamps<T>(envelopes: &[&Envelope], column: SystemColumn, read: impl Fn(&Envelope) -> Option<T>) -> Vec<T> {
+	let stamps: Vec<T> = envelopes.iter().filter_map(|envelope| read(envelope)).collect();
+	assert_all_or_none(column, stamps.len(), envelopes.len());
+	stamps
+}
+
+fn assert_all_or_none(column: SystemColumn, stamps: usize, rows: usize) {
+	assert!(
+		stamps == 0 || stamps == rows,
+		"{rows} stored left rows hold {stamps} {} stamps; a join side must stamp all of its rows or none",
+		column.name()
+	);
+}
+
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
-fn merge_runs(runs: Vec<Columns>) -> Columns {
+fn merge_runs(runs: Vec<Columns>, side: JoinSide) -> Columns {
 	let mut names: Vec<String> = Vec::new();
 	for run in &runs {
 		for name in run.names.iter() {
@@ -211,10 +268,24 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 	let created_at: Vec<DateTime> = runs.iter().flat_map(|run| run.created_at().iter().copied()).collect();
 	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at().iter().copied()).collect();
 	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time().iter().copied()).collect();
+	let partitions: Vec<_> = runs.iter().flat_map(|run| run.partitions().iter().copied()).collect();
+	let commit_versions: Vec<_> =
+		runs.iter().flat_map(|run| run.system.commit_versions().iter().copied()).collect();
+	if side == JoinSide::Left {
+		for (column, stamps) in [
+			(SystemColumn::Partitions, partitions.len()),
+			(SystemColumn::CreatedAt, created_at.len()),
+			(SystemColumn::UpdatedAt, updated_at.len()),
+			(SystemColumn::Time, time.len()),
+			(SystemColumn::CommitVersion, commit_versions.len()),
+		] {
+			assert_all_or_none(column, stamps, total);
+		}
+	}
 
 	Columns::with_system(
 		result_columns,
-		SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
+		SystemColumns::new(row_numbers, partitions, created_at, updated_at, time, commit_versions),
 	)
 }
 
@@ -249,7 +320,7 @@ pub(crate) fn columns_from_block(
 	if runs.len() == 1 {
 		return Ok(runs.into_iter().next().unwrap());
 	}
-	Ok(merge_runs(runs))
+	Ok(merge_runs(runs, store.side()))
 }
 
 fn stream_join_blocks<F>(
@@ -499,7 +570,7 @@ mod tests {
 	}
 
 	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> Columns {
-		// with_row_numbers backfills a default #time, so a timeless row must bypass it or it arrives timed.
+		// with_row_numbers carries no #time, so a timed row must set it through with_system.
 		let cols: Vec<ColumnWithName> = fields
 			.iter()
 			.map(|(name, value)| {
@@ -532,7 +603,7 @@ mod tests {
 		let shape = build_shape(&columns);
 		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
 
-		let row = encode_row(&shape, &columns, 0, now);
+		let row = encode_row(&shape, &columns, 0, now, JoinSide::Right);
 		let envelope = Envelope::try_view(&row).unwrap();
 		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
 		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
@@ -568,7 +639,7 @@ mod tests {
 		let shape = build_shape(&columns);
 		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
 
-		let row = encode_row(&shape, &columns, 0, now);
+		let row = encode_row(&shape, &columns, 0, now, JoinSide::Right);
 		let envelope = Envelope::try_view(&row).unwrap();
 		assert_eq!(envelope.header_size(), 17, "a timed row must cost the same as a timeless one");
 		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
@@ -607,7 +678,7 @@ mod tests {
 
 		let rows: Vec<EncodedBytes> = [&first, &second, &third]
 			.into_iter()
-			.map(|columns| encode_row(&shape, columns, 0, now).into_bytes())
+			.map(|columns| encode_row(&shape, columns, 0, now, JoinSide::Right).into_bytes())
 			.collect();
 
 		let decoded = decode_run(

@@ -18,9 +18,9 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::Constraint,
-		datetime::{CREATED_AT_COLUMN_NAME, DateTime, TIME_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
+		datetime::DateTime,
 		partition::Partition,
-		row_number::{ROW_NUMBER_COLUMN_NAME, RowNumber},
+		row_number::RowNumber,
 		system_columns::{RowStamps, SystemColumn, SystemColumns},
 		value_type::ValueType,
 	},
@@ -68,28 +68,32 @@ impl Columns {
 	}
 
 	pub fn system_column(&self, name: &str) -> Option<ColumnBuffer> {
-		let name = name.strip_prefix('#').unwrap_or(name);
+		let bare = name.strip_prefix('#').unwrap_or(name);
+		let column = SystemColumn::ALL.into_iter().find(|column| &column.name()[1..] == bare)?;
 		let row_count = self.row_count();
-
-		if name == ROW_NUMBER_COLUMN_NAME && self.row_numbers().len() == row_count {
-			let values: Vec<u64> = self.row_numbers().iter().map(|r| r.value()).collect();
-			return Some(ColumnBuffer::uint8(values));
+		match column {
+			SystemColumn::RowNumbers if self.row_numbers().len() == row_count => Some(ColumnBuffer::uint8(
+				self.row_numbers().iter().map(|r| r.value()).collect::<Vec<u64>>(),
+			)),
+			SystemColumn::Partitions if self.system.partitions().len() == row_count => {
+				Some(ColumnBuffer::uint16(
+					self.system.partitions().iter().map(|p| p.0).collect::<Vec<u128>>(),
+				))
+			}
+			SystemColumn::CreatedAt if self.created_at().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.created_at().to_vec()))
+			}
+			SystemColumn::UpdatedAt if self.updated_at().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.updated_at().to_vec()))
+			}
+			SystemColumn::Time if self.time().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.time().to_vec()))
+			}
+			SystemColumn::CommitVersion if self.system.commit_versions().len() == row_count => {
+				Some(ColumnBuffer::uint8(self.system.commit_versions().to_vec()))
+			}
+			_ => None,
 		}
-		if name == CREATED_AT_COLUMN_NAME && self.created_at().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.created_at().to_vec()));
-		}
-		if name == UPDATED_AT_COLUMN_NAME && self.updated_at().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.updated_at().to_vec()));
-		}
-		if name == TIME_COLUMN_NAME && self.time().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.time().to_vec()));
-		}
-		if name == SystemColumn::CommitVersion.name().trim_start_matches('#')
-			&& self.system.commit_versions().len() == row_count
-		{
-			return Some(ColumnBuffer::uint8(self.system.commit_versions().to_vec()));
-		}
-		None
 	}
 }
 
@@ -161,7 +165,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
 		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
 		Value::Blob(v) => ColumnBuffer::blob([v]),
-		value @ (Value::Int(_) | Value::Uint(_) | Value::Decimal(_)) => ColumnBuffer::from(value),
+		value @ Value::Decimal(_) => ColumnBuffer::from(value),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
 		Value::Any(v) => ColumnBuffer::any(vec![*v]),
 		Value::Type(v) => ColumnBuffer::any(vec![Value::Type(v)]),
@@ -623,9 +627,7 @@ impl Columns {
 				Value::None {
 					..
 				} => field.constraint.get_type(),
-				Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
-					field.constraint.get_type().inner_type().clone()
-				}
+				Value::Decimal(_) => field.constraint.get_type().inner_type().clone(),
 				_ => value.get_type(),
 			};
 
@@ -663,9 +665,7 @@ pub mod tests {
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	};
 	use uuid::{Timestamp, Uuid};
@@ -838,18 +838,6 @@ pub mod tests {
 			Blob::new(vec![7, 8, 9, 10]),
 		];
 		assert_extract_preserves_values(ColumnBuffer::blob(data), &[3, 1, 2]);
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_int_values() {
-		let data = [Int::from(-1i64), Int::from(2i64), Int::from(-3i64), Int::from(4i64)];
-		assert_extract_preserves_values(ColumnBuffer::int(Precision::MAX, data), &[3, 1, 2]);
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_uint_values() {
-		let data = [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64), Uint::from(4u64)];
-		assert_extract_preserves_values(ColumnBuffer::uint(Precision::MAX, data), &[3, 1, 2]);
 	}
 
 	#[test]
@@ -1086,45 +1074,6 @@ pub mod tests {
 				..
 			} => assert_eq!(*max_bytes, MaxBytes::new(1024), "Blob max_bytes must survive extraction"),
 			other => panic!("expected Blob buffer, got {:?}", other.get_type()),
-		}
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_int_precision_metadata() {
-		let buffer = ColumnBuffer::int(Precision::new(16), [Int::from(1i64), Int::from(2i64), Int::from(3i64)]);
-
-		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
-
-		match extracted.data_at(0) {
-			ColumnBuffer::Int(array) => {
-				assert_eq!(
-					array.precision(),
-					Precision::new(16),
-					"Int precision must survive extraction"
-				)
-			}
-			other => panic!("expected Int buffer, got {:?}", other.get_type()),
-		}
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_uint_precision_metadata() {
-		let buffer =
-			ColumnBuffer::uint(Precision::new(8), [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64)]);
-
-		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
-
-		match extracted.data_at(0) {
-			ColumnBuffer::Uint(array) => {
-				assert_eq!(
-					array.precision(),
-					Precision::new(8),
-					"Uint precision must survive extraction"
-				)
-			}
-			other => panic!("expected Uint buffer, got {:?}", other.get_type()),
 		}
 	}
 

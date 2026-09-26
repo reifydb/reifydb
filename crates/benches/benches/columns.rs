@@ -16,7 +16,7 @@ use reifydb_allocator::backend::ALLOCATOR as BACKEND;
 use reifydb_benches::{BenchReport, env_flag, env_usize};
 use reifydb_column::{
 	reader::SnapshotReader,
-	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -27,7 +27,8 @@ use reifydb_core::value::column::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::{
-	Value, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, uuid::Uuid7, value_type::ValueType,
+	Value, datetime::DateTime, decimal::Decimal, duration::Duration, system_columns::SystemColumn, uuid::Uuid7,
+	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -156,7 +157,6 @@ fn value_sets(rows: usize) -> Vec<(&'static str, ValueType, Vec<Value>)> {
 		),
 		("uuid7", ValueType::Uuid7, values(|i| Value::Uuid7(uuid7(i)))),
 		("utf8", ValueType::Utf8, values(|i| Value::Utf8(name(i)))),
-		("int", ValueType::INT, values(|i| Value::Int(Int::from(mix(i) as i64)))),
 		("decimal", ValueType::DECIMAL, values(|i| Value::Decimal(Decimal::from((mix(i) % 1_000_000) as i64)))),
 		(
 			"option_int4",
@@ -180,7 +180,7 @@ fn columns_fixture(start: usize, end: usize) -> Columns {
 
 fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 	let schema = vec![
-		(SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false),
+		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		("id".to_string(), ValueType::Int8, false),
 		("g".to_string(), ValueType::Int4, false),
 		("v".to_string(), ValueType::Float8, false),

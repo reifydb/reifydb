@@ -224,7 +224,7 @@ impl TableMaterializationActor {
 	) -> Result<ColumnBlock> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
-		schema.extend(system_column_schema(&table.time));
+		schema.extend(system_column_schema(&table.time, !table.partition_by.is_empty()));
 		column_block_from_batches(schema, batches, version, &self.compressor)
 	}
 

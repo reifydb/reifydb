@@ -3,10 +3,10 @@
 
 use std::iter::repeat_n;
 
-use reifydb_value::value::{container::decimal_array::int16_array, frame::data::FrameColumnData};
+use reifydb_value::value::{container::wide_int_array::wide_array, frame::data::FrameColumnData};
 
 fn make(v: Vec<i128>) -> FrameColumnData {
-	FrameColumnData::Int16(int16_array(v))
+	FrameColumnData::Int16(wide_array(v))
 }
 
 crate::rle_tests! {

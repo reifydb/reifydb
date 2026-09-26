@@ -11,30 +11,6 @@ impl_safe_convert!(i64 => u8, u16, u32, u64, u128);
 impl_safe_convert_signed_to_float!(24; i64 => f32);
 impl_safe_convert_signed_to_float!(53; i64 => f64);
 
-impl_safe_convert_to_int!(i64);
-
-impl SafeConvert<Uint> for i64 {
-	fn checked_convert(self) -> Option<Uint> {
-		if self >= 0 {
-			Some(Uint::from(self))
-		} else {
-			None
-		}
-	}
-
-	fn saturating_convert(self) -> Uint {
-		if self >= 0 {
-			Uint::from(self)
-		} else {
-			Uint::zero()
-		}
-	}
-
-	fn wrapping_convert(self) -> Uint {
-		Uint::from(self as u64)
-	}
-}
-
 impl_safe_convert_to_decimal_from_int!(i64);
 
 #[cfg(test)]
@@ -482,67 +458,6 @@ pub mod tests {
 			let x: i64 = i64::MAX;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "9223372036854775807");
-		}
-	}
-
-	mod int {
-		use super::*;
-		use crate::value::int::Int;
-
-		#[test]
-		fn test_checked_convert() {
-			let x: i64 = i64::MIN;
-			let y: Option<Int> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "-9223372036854775808");
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x: i64 = i64::MAX;
-			let y: Int = x.saturating_convert();
-			assert_eq!(y.to_string(), "9223372036854775807");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x: i64 = -1;
-			let y: Int = x.wrapping_convert();
-			assert_eq!(y.to_string(), "-1");
-		}
-	}
-
-	mod uint {
-		use super::*;
-		use crate::value::uint::Uint;
-
-		#[test]
-		fn test_checked_convert_positive() {
-			let x: i64 = 42;
-			let y: Option<Uint> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "42");
-		}
-
-		#[test]
-		fn test_checked_convert_negative() {
-			let x: i64 = -1;
-			let y: Option<Uint> = x.checked_convert();
-			assert!(y.is_none());
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x: i64 = -1;
-			let y: Uint = x.saturating_convert();
-			assert_eq!(y.to_string(), "0");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x: i64 = -1;
-			let y: Uint = x.wrapping_convert();
-			assert_eq!(y.to_string(), "18446744073709551615");
 		}
 	}
 }

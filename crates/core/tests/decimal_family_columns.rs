@@ -13,15 +13,13 @@ use reifydb_value::value::{
 	container::decimal_array::DecimalArray,
 	decimal::Decimal,
 	frame::data::FrameColumnData,
-	int::Int,
 	row_number::RowNumber,
-	uint::Uint,
 	value_type::ValueType,
 };
 
 fn family_array(buffer: &ColumnBuffer) -> &DecimalArray {
 	match buffer {
-		ColumnBuffer::Int(array) | ColumnBuffer::Uint(array) | ColumnBuffer::Decimal(array) => array,
+		ColumnBuffer::Decimal(array) => array,
 		other => panic!("expected an int, uint or decimal column, got {:?}", other.get_type()),
 	}
 }
@@ -37,9 +35,9 @@ fn decimal(text: &str) -> Decimal {
 	text.parse().unwrap()
 }
 
-fn family_types(precision: u8) -> [ValueType; 3] {
+fn family_types(precision: u8) -> [ValueType; 1] {
 	let precision = Precision::new(precision);
-	[ValueType::int(precision), ValueType::uint(precision), ValueType::decimal(precision, Scale::new(4))]
+	[ValueType::decimal(precision, Scale::new(4))]
 }
 
 fn round_trips(buffer: &ColumnBuffer) -> Vec<ColumnBuffer> {
@@ -57,33 +55,17 @@ fn round_trips(buffer: &ColumnBuffer) -> Vec<ColumnBuffer> {
 	]
 }
 
-fn sample_columns() -> [ColumnBuffer; 3] {
-	[
-		ColumnBuffer::int(Precision::new(20), [Int::from(-7i64), Int::from(i64::MAX)]),
-		ColumnBuffer::uint(Precision::new(39), [Uint::from(7u64), Uint::from(u128::MAX)]),
-		ColumnBuffer::decimal(Precision::new(12), Scale::new(3), [decimal("1.25"), decimal("-0.5")]),
-	]
+fn sample_columns() -> [ColumnBuffer; 1] {
+	[ColumnBuffer::decimal(Precision::new(12), Scale::new(3), [decimal("1.25"), decimal("-0.5")])]
 }
 
-fn sample_columns_with_a_none() -> [ColumnBuffer; 3] {
-	[
-		ColumnBuffer::int_with_bitvec(
-			Precision::new(20),
-			[Int::from(-7i64), Int::from(2i64), Int::from(i64::MAX)],
-			vec![true, false, true],
-		),
-		ColumnBuffer::uint_with_bitvec(
-			Precision::new(39),
-			[Uint::from(7u64), Uint::from(2u64), Uint::from(u128::MAX)],
-			vec![true, false, true],
-		),
-		ColumnBuffer::decimal_with_bitvec(
-			Precision::new(12),
-			Scale::new(3),
-			[decimal("1.25"), decimal("2.5"), decimal("-0.5")],
-			vec![true, false, true],
-		),
-	]
+fn sample_columns_with_a_none() -> [ColumnBuffer; 1] {
+	[ColumnBuffer::decimal_with_bitvec(
+		Precision::new(12),
+		Scale::new(3),
+		[decimal("1.25"), decimal("2.5"), decimal("-0.5")],
+		vec![true, false, true],
+	)]
 }
 
 #[test]
@@ -94,8 +76,6 @@ fn precision_38_is_decimal128_for_every_family_type() {
 		assert!(!is_decimal256(&ColumnBuffer::none_typed(ty.clone(), 2)), "{ty:?} none typed");
 		assert_eq!(ColumnBuffer::none_typed(ty.clone(), 2).get_type(), ValueType::Option(Box::new(ty)));
 	}
-	assert!(!is_decimal256(&ColumnBuffer::int(Precision::new(38), [Int::from(i64::MIN)])));
-	assert!(!is_decimal256(&ColumnBuffer::uint(Precision::new(38), [Uint::from(u64::MAX)])));
 	assert!(!is_decimal256(&ColumnBuffer::decimal(Precision::new(38), Scale::new(4), [decimal("1.5")])));
 }
 
@@ -107,8 +87,6 @@ fn precision_39_is_decimal256_for_every_family_type() {
 		assert!(is_decimal256(&ColumnBuffer::none_typed(ty.clone(), 2)), "{ty:?} none typed");
 		assert_eq!(ColumnBuffer::none_typed(ty.clone(), 2).get_type(), ValueType::Option(Box::new(ty)));
 	}
-	assert!(is_decimal256(&ColumnBuffer::int(Precision::new(39), [Int::from(i64::MIN)])));
-	assert!(is_decimal256(&ColumnBuffer::uint(Precision::new(39), [Uint::from(u128::MAX)])));
 	assert!(is_decimal256(&ColumnBuffer::decimal(Precision::new(39), Scale::new(4), [decimal("1.5")])));
 }
 
@@ -164,22 +142,15 @@ fn frame_and_serde_round_trips_keep_precision_and_scale() {
 #[test]
 fn reset_from_row_keeps_precision_and_scale() {
 	// Columns built from a stored row must carry the shape's declared type, not the default precision.
-	let types = [
-		ValueType::int(Precision::new(20)),
-		ValueType::uint(Precision::new(39)),
-		ValueType::decimal(Precision::new(12), Scale::new(3)),
-	];
-	let fields = ["i", "u", "d"]
+	let types = [ValueType::decimal(Precision::new(12), Scale::new(3))];
+	let fields = ["d"]
 		.iter()
 		.zip(&types)
 		.map(|(name, ty)| RowShapeField::new(*name, TypeConstraint::unconstrained(ty.clone())))
 		.collect();
 	let shape = RowShape::new(RowFamily::Table, fields);
 	let mut encoded = shape.allocate_table();
-	shape.set_values(
-		&mut encoded,
-		&[Value::Int(Int::from(-7i64)), Value::Uint(Uint::from(u128::MAX)), Value::Decimal(decimal("1.25"))],
-	);
+	shape.set_values(&mut encoded, &[Value::Decimal(decimal("1.25"))]);
 	let row = Row {
 		number: RowNumber(1),
 		encoded: encoded.freeze().into(),
@@ -187,13 +158,11 @@ fn reset_from_row_keeps_precision_and_scale() {
 	};
 	let mut columns = Columns::new(vec![ColumnWithName::undefined_typed("stale", ValueType::Int4, 1)]);
 	columns.reset_from_row(&row);
-	assert_eq!(columns.len(), 3);
+	assert_eq!(columns.len(), 1);
 	for (index, ty) in types.iter().enumerate() {
 		assert_eq!(&columns[index].get_type(), ty);
 	}
-	assert_eq!(columns[0].get_value(0), Value::Int(Int::from(-7i64)));
-	assert_eq!(columns[1].get_value(0), Value::Uint(Uint::from(u128::MAX)));
-	assert_eq!(columns[2].as_string(0), "1.250");
+	assert_eq!(columns[0].as_string(0), "1.250");
 }
 
 #[test]

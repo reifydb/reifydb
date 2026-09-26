@@ -3,31 +3,27 @@
 
 use std::fmt::Debug;
 
-use arrow_array::{Array, BooleanArray, Decimal128Array, PrimitiveArray};
+use arrow_array::{Array, BooleanArray, PrimitiveArray};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, ScalarBuffer};
 use reifydb_value::{
 	util::{bitmap, kernel},
 	value::{
 		Value,
 		container::{
-			decimal_array::{
-				decimal_array, decimals, int_array, int16_array, ints, u128s, uint_array, uint16_array,
-				uints,
-			},
+			decimal_array::{decimal_array, decimals},
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
 				times,
 			},
 			uuid_array::{uuid4_array, uuid4s, uuid7_array, uuid7s},
+			wide_int_array::{wide_array, wides},
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
-		int::Int,
 		is::{IsNumber, IsTemporal, IsUuid},
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -295,14 +291,12 @@ fn scatter_merge_typed(
 	native_kernel!(Int2, i16);
 	native_kernel!(Int4, i32);
 	native_kernel!(Int8, i64);
-	number_kernel!(Int16, i128, Decimal128Array::values, int16_array);
+	number_kernel!(Int16, i128, wides::<i128>, wide_array);
 	native_kernel!(Uint1, u8);
 	native_kernel!(Uint2, u16);
 	native_kernel!(Uint4, u32);
 	native_kernel!(Uint8, u64);
-	number_kernel!(Uint16, u128, u128s, uint16_array);
-	family_kernel!(Int, Int, ints, |a, data| int_array(a.precision(), data));
-	family_kernel!(Uint, Uint, uints, |a, data| uint_array(a.precision(), data));
+	number_kernel!(Uint16, u128, wides::<u128>, wide_array);
 	family_kernel!(Decimal, Decimal, decimals, |a, data| decimal_array(a.precision(), a.scale(), data));
 
 	temporal_kernel!(Date, Date, dates, date_array);

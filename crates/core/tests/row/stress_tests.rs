@@ -15,9 +15,7 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -57,8 +55,6 @@ fn test_mixed_type_stress() {
 			ValueType::Uuid4,
 			ValueType::Uuid7,
 			ValueType::IdentityId,
-			ValueType::INT,
-			ValueType::UINT,
 			ValueType::DECIMAL,
 		],
 	);
@@ -87,9 +83,7 @@ fn test_mixed_type_stress() {
 	shape.set::<Uuid4>(&mut row, 19, Uuid4::generate());
 	shape.set::<Uuid7>(&mut row, 20, Uuid7::generate(&clock, &rng));
 	shape.set::<IdentityId>(&mut row, 21, IdentityId::generate(&clock, &rng));
-	shape.set_int(&mut row, 22, &Int::from(i128::MAX));
-	shape.set_uint(&mut row, 23, &Uint::from(u128::MAX));
-	shape.set_decimal(&mut row, 24, &Decimal::from_str("123.45").unwrap());
+	shape.set_decimal(&mut row, 22, &Decimal::from_str("123.45").unwrap());
 
 	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get::<i8>(&row, 1), -128);
@@ -114,7 +108,5 @@ fn test_mixed_type_stress() {
 	assert!(row.is_defined(19));
 	assert!(row.is_defined(20));
 	assert!(row.is_defined(21));
-	assert_eq!(shape.get_int(&row, 22), Int::from(i128::MAX));
-	assert_eq!(shape.get_uint(&row, 23), Uint::from(u128::MAX));
-	assert_eq!(shape.get_decimal(&row, 24), Decimal::from_str("123.45").unwrap());
+	assert_eq!(shape.get_decimal(&row, 22), Decimal::from_str("123.45").unwrap());
 }

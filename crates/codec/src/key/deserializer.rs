@@ -15,12 +15,10 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -290,18 +288,6 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Blob::from(bytes))
 	}
 
-	pub fn read_int(&mut self) -> Result<Int> {
-		let precision = self.read_u8()?;
-		let unscaled = self.read_unscaled(ValueKind::Int, precision, 0)?;
-		Ok(Int::from_i256(unscaled).expect("a checked unscaled value is within 76 digits"))
-	}
-
-	pub fn read_uint(&mut self) -> Result<Uint> {
-		let precision = self.read_u8()?;
-		let unscaled = self.read_unscaled(ValueKind::Uint, precision, 0)?;
-		Ok(Uint::from_i256(unscaled).expect("a checked unscaled value is non-negative and within 76 digits"))
-	}
-
 	pub fn read_decimal(&mut self) -> Result<Decimal> {
 		let precision = self.read_u8()?;
 		let scale = self.read_u8()?;
@@ -449,8 +435,6 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Uuid4 => Ok(Value::Uuid4(self.read_uuid4()?)),
 			ValueKind::Uuid7 => Ok(Value::Uuid7(self.read_uuid7()?)),
 			ValueKind::Blob => Ok(Value::Blob(self.read_blob()?)),
-			ValueKind::Int => Ok(Value::Int(self.read_int()?)),
-			ValueKind::Uint => Ok(Value::Uint(self.read_uint()?)),
 			ValueKind::Decimal => Ok(Value::Decimal(self.read_decimal()?)),
 			ValueKind::List => Ok(Value::List(self.read_container_items()?)),
 			ValueKind::Tuple => Ok(Value::Tuple(self.read_container_items()?)),

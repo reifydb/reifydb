@@ -17,11 +17,9 @@ use reifydb_value::{
 		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -67,8 +65,6 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 		Value::Uuid4(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
 		Value::Uuid7(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
 		Value::Blob(b) => encode_len_prefixed(b.as_bytes(), buf),
-		Value::Int(v) => buf.extend_from_slice(&v.to_i256().to_le_bytes()),
-		Value::Uint(v) => buf.extend_from_slice(&v.to_i256().to_le_bytes()),
 		Value::Decimal(v) => {
 			buf.push(v.scale());
 			buf.extend_from_slice(&v.unscaled().to_le_bytes());
@@ -179,18 +175,6 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 		ValueKind::Uuid4 => Ok(Value::Uuid4(Uuid4::read_le(r.take(Uuid4::ENCODED_SIZE)?))),
 		ValueKind::Uuid7 => Ok(Value::Uuid7(Uuid7::read_le(r.take(Uuid7::ENCODED_SIZE)?))),
 		ValueKind::Blob => Ok(Value::Blob(Blob::new(decode_len_prefixed_bytes(r)?.to_vec()))),
-		ValueKind::Int => {
-			let unscaled = decode_i256(r)?;
-			Int::from_i256(unscaled)
-				.map(Value::Int)
-				.ok_or_else(|| DecodeError::InvalidData(format!("int {unscaled} exceeds 76 digits")))
-		}
-		ValueKind::Uint => {
-			let unscaled = decode_i256(r)?;
-			Uint::from_i256(unscaled).map(Value::Uint).ok_or_else(|| {
-				DecodeError::InvalidData(format!("uint {unscaled} is negative or exceeds 76 digits"))
-			})
-		}
 		ValueKind::Decimal => {
 			let scale = r.u8()?;
 			let unscaled = decode_i256(r)?;

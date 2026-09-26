@@ -98,9 +98,9 @@ fn dictionary_id_with_some_dictionary_id_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a0202010202012a",
+			column_postcard: "180202010202012a",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U4\":1},{\"U4\":2}],\"dictionary_id\":42}}",
-			frame_postcard: "1a0202010202012a",
+			frame_postcard: "180202010202012a",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U4\":1},{\"U4\":2}],\"dictionary_id\":42}}",
 		},
 	);
@@ -113,9 +113,9 @@ fn dictionary_id_u1_rows_are_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a02000100ff00",
+			column_postcard: "1802000100ff00",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U1\":1},{\"U1\":255}],\"dictionary_id\":null}}",
-			frame_postcard: "1a02000100ff00",
+			frame_postcard: "1802000100ff00",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U1\":1},{\"U1\":255}],\"dictionary_id\":null}}",
 		},
 	);
@@ -128,9 +128,9 @@ fn dictionary_id_u2_rows_are_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a02010101ffff0300",
+			column_postcard: "1802010101ffff0300",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U2\":1},{\"U2\":65535}],\"dictionary_id\":null}}",
-			frame_postcard: "1a02010101ffff0300",
+			frame_postcard: "1802010101ffff0300",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U2\":1},{\"U2\":65535}],\"dictionary_id\":null}}",
 		},
 	);
@@ -143,9 +143,9 @@ fn dictionary_id_u8_rows_are_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a02030103ffffffffffffffffff0100",
+			column_postcard: "1802030103ffffffffffffffffff0100",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U8\":1},{\"U8\":18446744073709551615}],\"dictionary_id\":null}}",
-			frame_postcard: "1a02030103ffffffffffffffffff0100",
+			frame_postcard: "1802030103ffffffffffffffffff0100",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U8\":1},{\"U8\":18446744073709551615}],\"dictionary_id\":null}}",
 		},
 	);
@@ -163,9 +163,9 @@ fn dictionary_id_mixed_width_rows_are_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a04000302070309040100",
+			column_postcard: "1804000302070309040100",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U1\":3},{\"U4\":7},{\"U8\":9},{\"U16\":1}],\"dictionary_id\":null}}",
-			frame_postcard: "1a04000302070309040100",
+			frame_postcard: "1804000302070309040100",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U1\":3},{\"U4\":7},{\"U8\":9},{\"U16\":1}],\"dictionary_id\":null}}",
 		},
 	);
@@ -182,9 +182,9 @@ fn dictionary_id_u1_zero_placeholder_rows_are_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a0300000000000000",
+			column_postcard: "180300000000000000",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U1\":0},{\"U1\":0},{\"U1\":0}],\"dictionary_id\":null}}",
-			frame_postcard: "1a0300000000000000",
+			frame_postcard: "180300000000000000",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U1\":0},{\"U1\":0},{\"U1\":0}],\"dictionary_id\":null}}",
 		},
 	);
@@ -234,9 +234,9 @@ fn sliced_dictionary_id_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a0302020203020400",
+			column_postcard: "180302020203020400",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U4\":2},{\"U4\":3},{\"U4\":4}],\"dictionary_id\":null}}",
-			frame_postcard: "1a0302020203020400",
+			frame_postcard: "180302020203020400",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U4\":2},{\"U4\":3},{\"U4\":4}],\"dictionary_id\":null}}",
 		},
 	);
@@ -259,9 +259,9 @@ fn sliced_dictionary_id_keeps_some_dictionary_id_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1a03020202030204012a",
+			column_postcard: "1803020202030204012a",
 			column_json: "{\"DictionaryId\":{\"data\":[{\"U4\":2},{\"U4\":3},{\"U4\":4}],\"dictionary_id\":42}}",
-			frame_postcard: "1a03020202030204012a",
+			frame_postcard: "1803020202030204012a",
 			frame_json: "{\"DictionaryId\":{\"data\":[{\"U4\":2},{\"U4\":3},{\"U4\":4}],\"dictionary_id\":42}}",
 		},
 	);
@@ -274,9 +274,9 @@ fn option_int16_with_none_row_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1b0703ffffffffffffffffffffffffffffffffffff0300feffffffffffffffffffffffffffffffffff03010503",
+			column_postcard: "190703ffffffffffffffffffffffffffffffffffff0300feffffffffffffffffffffffffffffffffff03010503",
 			column_json: "{\"Option\":{\"inner\":{\"Int16\":{\"data\":[-170141183460469231731687303715884105728,0,170141183460469231731687303715884105727]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
-			frame_postcard: "1b0703ffffffffffffffffffffffffffffffffffff0300feffffffffffffffffffffffffffffffffff03010503",
+			frame_postcard: "190703ffffffffffffffffffffffffffffffffffff0300feffffffffffffffffffffffffffffffffff03010503",
 			frame_json: "{\"Option\":{\"inner\":{\"Int16\":{\"data\":[-170141183460469231731687303715884105728,0,170141183460469231731687303715884105727]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
 		},
 	);
@@ -289,9 +289,9 @@ fn option_uint16_with_none_row_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1b0c030100ffffffffffffffffffffffffffffffffffff03010503",
+			column_postcard: "190c030100ffffffffffffffffffffffffffffffffffff03010503",
 			column_json: "{\"Option\":{\"inner\":{\"Uint16\":{\"data\":[1,0,340282366920938463463374607431768211455]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
-			frame_postcard: "1b0c030100ffffffffffffffffffffffffffffffffffff03010503",
+			frame_postcard: "190c030100ffffffffffffffffffffffffffffffffffff03010503",
 			frame_json: "{\"Option\":{\"inner\":{\"Uint16\":{\"data\":[1,0,340282366920938463463374607431768211455]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
 		},
 	);
@@ -307,9 +307,9 @@ fn option_dictionary_id_with_none_row_is_pinned() {
 	assert_pinned(
 		buffer,
 		Pin {
-			column_postcard: "1b1a0302070000030900010503",
+			column_postcard: "19180302070000030900010503",
 			column_json: "{\"Option\":{\"inner\":{\"DictionaryId\":{\"data\":[{\"U4\":7},{\"U1\":0},{\"U8\":9}],\"dictionary_id\":null}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
-			frame_postcard: "1b1a0302070000030900010503",
+			frame_postcard: "19180302070000030900010503",
 			frame_json: "{\"Option\":{\"inner\":{\"DictionaryId\":{\"data\":[{\"U4\":7},{\"U1\":0},{\"U8\":9}],\"dictionary_id\":null}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
 		},
 	);

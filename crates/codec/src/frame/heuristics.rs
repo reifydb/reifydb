@@ -5,10 +5,7 @@ use std::collections::HashSet;
 
 use arrow_buffer::i256;
 use reifydb_value::value::{
-	container::{
-		decimal_array::{DecimalArray, u128s},
-		temporal_array::times,
-	},
+	container::{decimal_array::DecimalArray, temporal_array::times, wide_int_array::wides},
 	frame::data::FrameColumnData,
 };
 
@@ -37,7 +34,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	match inner {
 		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
 
-		FrameColumnData::Int(c) | FrameColumnData::Uint(c) | FrameColumnData::Decimal(c) => match c {
+		FrameColumnData::Decimal(c) => match c {
 			DecimalArray::Decimal128(array) => try_numeric_heuristic_i128(array.values()),
 			DecimalArray::Decimal256(array) => try_numeric_heuristic_i256(array.values()),
 		},
@@ -50,7 +47,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		}
 		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c.values()),
 		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c.values()),
-		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(c.values()),
+		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(&wides::<i128>(c)),
 		FrameColumnData::Uint1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
@@ -61,7 +58,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
 		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c.values()),
-		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&u128s(c)),
+		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&wides::<u128>(c)),
 		FrameColumnData::Float4(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
 		}
@@ -299,15 +296,13 @@ mod tests {
 	use reifydb_value::value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
-			decimal_array::{decimal_array, int_array, uint_array},
+			decimal_array::decimal_array,
 			temporal_array::{date_array, datetime_array, time_array},
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		int::Int,
 		time::Time,
-		uint::Uint,
 	};
 
 	use super::*;
@@ -471,26 +466,6 @@ mod tests {
 		let narrow = Precision::new(38);
 		let wide = Precision::new(76);
 
-		let strided: Vec<Uint> = (0..100u64).map(|i| Uint::from_u64(i * 7)).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Uint(uint_array(narrow, &strided)), CompressionLevel::Fast),
-			Encoding::DeltaRle
-		);
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Uint(uint_array(wide, &strided)), CompressionLevel::Fast),
-			Encoding::DeltaRle
-		);
-
-		let irregular: Vec<Int> = (0..100i64).map(|i| Int::from_i64(-i * i)).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(narrow, &irregular)), CompressionLevel::Fast),
-			Encoding::Delta
-		);
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(wide, &irregular)), CompressionLevel::Fast),
-			Encoding::Delta
-		);
-
 		let runny: Vec<Decimal> = (0..100i64).map(|i| Decimal::from_i64(i / 10)).collect();
 		assert_eq!(
 			choose_encoding(
@@ -505,12 +480,6 @@ mod tests {
 				CompressionLevel::Fast
 			),
 			Encoding::Rle
-		);
-
-		let scattered: Vec<Int> = [5i64, 1, 9, 2, 8, 3, 7, 4].into_iter().map(Int::from_i64).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(wide, &scattered)), CompressionLevel::Fast),
-			Encoding::Plain
 		);
 	}
 }

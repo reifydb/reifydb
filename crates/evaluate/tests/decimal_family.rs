@@ -22,10 +22,8 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::decimal_array::{decimals, ints},
+		container::decimal_array::decimals,
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -137,27 +135,6 @@ fn decimal128_against_decimal256_columns() {
 }
 
 #[test]
-fn a_rescale_past_76_digits_still_orders_correctly() {
-	// int(76) values near 10^75 cannot rescale to scale 5; they must stay above or below every decimal(10, 5).
-	let big = Int::MAX;
-	let ints = || ColumnBuffer::int(Precision::MAX, [big.clone(), big.negate(), Int::from(3i64)]);
-	let decimals = || decimal(10, 5, &["99999.99999", "-99999.99999", "3.00000"]);
-
-	assert_eq!(compare::<GreaterThan>(ints(), decimals()), [Some(true), Some(false), Some(false)]);
-	assert_eq!(compare::<LessThan>(ints(), decimals()), [Some(false), Some(true), Some(false)]);
-	assert_eq!(compare::<Equal>(ints(), decimals()), [Some(false), Some(false), Some(true)]);
-}
-
-#[test]
-fn uint_family_against_int_family() {
-	// Signed and unsigned family columns share one signed storage; a negative int must stay below any uint.
-	let uints = ColumnBuffer::uint(Precision::new(5), [Uint::from(0u64), Uint::from(7u64)]);
-	let ints = ColumnBuffer::int(Precision::new(3), [Int::from(-1i64), Int::from(7i64)]);
-
-	assert_eq!(compare::<GreaterThan>(uints, ints), [Some(true), Some(false)]);
-}
-
-#[test]
 fn decimal_against_text_is_a_type_error() {
 	// Only numbers join the family target; text must not be cast into a decimal array.
 	let result = compare_columns::<Equal>(
@@ -201,30 +178,6 @@ fn arithmetic_result_types_follow_the_fixed_rules() {
 }
 
 #[test]
-fn integer_family_arithmetic_keeps_its_kind_and_precision() {
-	// int(p) with int4 counts int4 as int(10); the sum needs 11 digits and stays an int, not a decimal.
-	let left = || ColumnBuffer::int(Precision::new(8), [Int::from(99_999_999i64)]);
-	let sum = arith!(add_columns, left(), ColumnBuffer::int4([i32::MAX])).unwrap();
-	assert_eq!(sum.get_type(), ValueType::int(Precision::new(11)));
-
-	let product = arith!(mul_columns, left(), ColumnBuffer::int4([2])).unwrap();
-	assert_eq!(product.get_type(), ValueType::int(Precision::new(18)));
-	let ColumnBuffer::Int(array) = &product else {
-		panic!("expected an int column, got {:?}", product.get_type())
-	};
-	assert_eq!(ints(array), [Int::from(199_999_998i64)]);
-}
-
-#[test]
-fn uint_one_minus_two_is_a_range_error_by_default() {
-	// N5: a uint below 0 follows the saturation policy, which defaults to an error, never a wrap.
-	let one = ColumnBuffer::uint(Precision::new(3), [Uint::from(1u64)]);
-	let two = ColumnBuffer::uint(Precision::new(3), [Uint::from(2u64)]);
-	let err = arith!(sub_columns, one, two).unwrap_err();
-	assert_eq!(err.0.code, "NUMBER_002");
-}
-
-#[test]
 fn a_product_whose_scales_add_past_76_digits_keeps_six_fraction_digits() {
 	// Scale 40 + 40 leaves no whole digit, so 1.5 * 1.5 overflowed although 2.25 needs only one.
 	let wide = || decimal(76, 40, &["1.5"]);
@@ -242,14 +195,6 @@ fn a_product_trims_its_scale_only_down_to_what_the_whole_digits_leave() {
 }
 
 #[test]
-fn a_product_past_76_digits_is_a_range_error() {
-	// P2-Q3: two 40 digit ints multiply past 76 digits; the result must fail, not saturate or wrap.
-	let big = || ColumnBuffer::int(Precision::new(40), [Int::from_str(&"9".repeat(40)).unwrap()]);
-	let err = arith!(mul_columns, big(), big()).unwrap_err();
-	assert_eq!(err.0.code, "NUMBER_002");
-}
-
-#[test]
 fn prefix_minus_keeps_precision_and_scale() {
 	// Negation must not fall back to a default decimal(76, 10) or drop the column scale.
 	let result = prefix_apply(
@@ -261,24 +206,6 @@ fn prefix_minus_keeps_precision_and_scale() {
 	.data;
 	assert_eq!(result.get_type(), ValueType::decimal(Precision::new(10), Scale::new(2)));
 	assert_eq!(decimal_strings(&result), ["-1.50", "0.25"]);
-}
-
-#[test]
-fn prefix_minus_on_uint_gives_an_int_of_the_same_precision() {
-	// A uint negated must become a signed int of the same width, never wrap to a huge uint.
-	let column = ColumnBuffer::uint(Precision::new(20), [Uint::from(u64::MAX)]);
-	let result = prefix_apply(
-		&ColumnWithName::new("column", column),
-		&PrefixOperator::Minus(Fragment::testing_empty()),
-		&Fragment::testing_empty(),
-	)
-	.unwrap()
-	.data;
-	assert_eq!(result.get_type(), ValueType::int(Precision::new(20)));
-	let ColumnBuffer::Int(array) = &result else {
-		panic!("expected an int column, got {:?}", result.get_type())
-	};
-	assert_eq!(ints(array), [Int::from(u64::MAX).negate()]);
 }
 
 #[test]
@@ -298,12 +225,18 @@ fn a_decimal_literal_takes_precision_and_scale_from_its_text() {
 
 #[test]
 fn an_integer_literal_takes_the_narrowest_type_then_u128_then_int() {
-	// N20: i8 .. i128, then u128, then int; a negative past i128 must become an int, not an error.
+	// N20: i8 .. i128, then u128, then decimal; a negative past i128 must become a decimal, not an error.
 	assert_eq!(literal("127").unwrap().get_type(), ValueType::Int1);
 	assert_eq!(literal("170141183460469231731687303715884105727").unwrap().get_type(), ValueType::Int16);
 	assert_eq!(literal("170141183460469231731687303715884105728").unwrap().get_type(), ValueType::Uint16);
-	assert_eq!(literal("340282366920938463463374607431768211456").unwrap().get_type(), ValueType::INT);
-	assert_eq!(literal("-170141183460469231731687303715884105729").unwrap().get_type(), ValueType::INT);
+	assert_eq!(
+		literal("340282366920938463463374607431768211456").unwrap().get_type(),
+		ValueType::decimal(Precision::new(39), Scale::new(0))
+	);
+	assert_eq!(
+		literal("-170141183460469231731687303715884105729").unwrap().get_type(),
+		ValueType::decimal(Precision::new(39), Scale::new(0))
+	);
 }
 
 #[test]

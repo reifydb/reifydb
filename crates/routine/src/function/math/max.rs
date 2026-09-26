@@ -21,10 +21,8 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::decimal_array::{decimal_at, int_at, u128s, uint_at},
+		container::{decimal_array::decimal_at, wide_int_array::wides},
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
@@ -184,7 +182,8 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				max_arm!(self, column, groups, container.values(), Int16);
+				let values = wides::<i128>(container);
+				max_arm!(self, column, groups, values, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -204,7 +203,7 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				max_arm!(self, column, groups, values, Uint16);
 				Ok(())
 			}
@@ -252,58 +251,6 @@ impl Accumulator for MaxAccumulator {
 							_ => v,
 						};
 						self.maxs.insert(group, Value::float8(merged));
-					} else {
-						self.maxs.or_insert(group, Value::none());
-					}
-				}
-				Ok(())
-			}
-			ColumnBuffer::Int(container) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut max: Option<Int> = None;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = int_at(container, i)
-						{
-							max = Some(match max {
-								Some(current) if val > current => val,
-								Some(current) => current,
-								None => val,
-							});
-						}
-					}
-					if let Some(v) = max {
-						let merged = match self.maxs.remove(group) {
-							Some(Value::Int(prev)) if prev > v => prev,
-							_ => v,
-						};
-						self.maxs.insert(group, Value::Int(merged));
-					} else {
-						self.maxs.or_insert(group, Value::none());
-					}
-				}
-				Ok(())
-			}
-			ColumnBuffer::Uint(container) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut max: Option<Uint> = None;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = uint_at(container, i)
-						{
-							max = Some(match max {
-								Some(current) if val > current => val,
-								Some(current) => current,
-								None => val,
-							});
-						}
-					}
-					if let Some(v) = max {
-						let merged = match self.maxs.remove(group) {
-							Some(Value::Uint(prev)) if prev > v => prev,
-							_ => v,
-						};
-						self.maxs.insert(group, Value::Uint(merged));
 					} else {
 						self.maxs.or_insert(group, Value::none());
 					}

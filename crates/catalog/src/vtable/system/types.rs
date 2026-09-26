@@ -48,7 +48,7 @@ impl BaseVTable for SystemTypes {
 			return Ok(None);
 		}
 
-		const TYPE_COUNT: usize = 27;
+		const TYPE_COUNT: usize = 25;
 
 		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint1, TYPE_COUNT);
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, TYPE_COUNT);

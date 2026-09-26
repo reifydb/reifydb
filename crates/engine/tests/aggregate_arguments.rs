@@ -99,7 +99,7 @@ fn an_expression_input_that_calls_a_udf_is_hoisted_and_evaluated_per_row() {
 	let t = engine();
 
 	let frames = t.query(r#"
-			UDF twice ($x: int) { RETURN $x * 2 };
+			UDF twice ($x: int4) { RETURN $x * 2 };
 			FROM test::t | aggregate { x: math::sum(twice(a)), y: math::sum(a) } by { g }
 		"#);
 
@@ -142,7 +142,7 @@ fn a_udf_expression_input_after_a_filter_that_removes_every_row_gives_no_groups(
 	let t = engine();
 
 	let frames = t.query(r#"
-			UDF twice ($x: int) { RETURN $x * 2 };
+			UDF twice ($x: int4) { RETURN $x * 2 };
 			FROM test::t | filter { a > 1000 } | aggregate { x: math::sum(twice(a)) } by { g }
 		"#);
 

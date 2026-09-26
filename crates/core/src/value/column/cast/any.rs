@@ -10,10 +10,11 @@ use reifydb_value::{
 		blob::Blob,
 		container::{
 			any_array,
-			decimal_array::{decimal_at, int_at, u128_at, uint_at},
+			decimal_array::decimal_at,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
+			wide_int_array::wide_at,
 		},
 		value_type::ValueType,
 	},
@@ -123,13 +124,10 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int16(c) => {
-					if !c.is_empty() {
-						result.push::<i128>(c.value(0));
-					} else {
-						result.push_none();
-					}
-				}
+				ColumnBuffer::Int16(c) => match wide_at::<i128>(c, 0) {
+					Some(value) => result.push::<i128>(value),
+					None => result.push_none(),
+				},
 				ColumnBuffer::Uint1(c) => {
 					if !c.is_empty() {
 						result.push::<u8>(c.value(0));
@@ -158,7 +156,7 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint16(c) => match u128_at(c, 0) {
+				ColumnBuffer::Uint16(c) => match wide_at::<u128>(c, 0) {
 					Some(value) => result.push::<u128>(value),
 					None => result.push_none(),
 				},
@@ -245,14 +243,6 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int(c) => match int_at(c, 0) {
-					Some(value) => result.push(value),
-					None => result.push_none(),
-				},
-				ColumnBuffer::Uint(c) => match uint_at(c, 0) {
-					Some(value) => result.push(value),
-					None => result.push_none(),
-				},
 				ColumnBuffer::Decimal(c) => match decimal_at(c, 0) {
 					Some(value) => result.push(value),
 					None => result.push_none(),

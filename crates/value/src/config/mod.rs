@@ -22,7 +22,6 @@ pub mod i32;
 pub mod i64;
 pub mod i8;
 pub mod identity;
-pub mod int;
 pub mod string;
 pub mod time;
 pub mod u128;
@@ -30,7 +29,6 @@ pub mod u16;
 pub mod u32;
 pub mod u64;
 pub mod u8;
-pub mod uint;
 pub mod usize;
 
 #[derive(Debug, Clone)]

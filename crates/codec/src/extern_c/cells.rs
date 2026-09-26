@@ -8,46 +8,15 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
-	int::Int,
-	uint::Uint,
 };
 
 use crate::{
 	error::{DecodeError, EncodeError},
 	reader::Reader,
 	tag::ValueKind,
-	unscaled::{NARROW, WIDE, decimal_unscaled, extend_le, int_unscaled, read_le, uint_unscaled, width},
+	unscaled::{NARROW, WIDE, decimal_unscaled, extend_le, read_le, width},
 	value::{decode_value, encode_value_into},
 };
-
-pub fn encode_int_cell(value: &Int, precision: Precision, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
-	let unscaled = int_unscaled(value, precision).ok_or_else(|| {
-		EncodeError::UnsupportedType(format!("int {value} does not fit precision {}", precision.value()))
-	})?;
-	extend_le(unscaled, width(precision), buf);
-	Ok(())
-}
-
-pub fn decode_int_cell(bytes: &[u8]) -> Result<Int, DecodeError> {
-	let unscaled = read_cell(ValueKind::Int, bytes)?;
-	Int::from_i256(unscaled)
-		.ok_or_else(|| DecodeError::InvalidData(format!("int cell {unscaled} exceeds 76 digits")))
-}
-
-pub fn encode_uint_cell(value: &Uint, precision: Precision, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
-	let unscaled = uint_unscaled(value, precision).ok_or_else(|| {
-		EncodeError::UnsupportedType(format!("uint {value} does not fit precision {}", precision.value()))
-	})?;
-	extend_le(unscaled, width(precision), buf);
-	Ok(())
-}
-
-pub fn decode_uint_cell(bytes: &[u8]) -> Result<Uint, DecodeError> {
-	let unscaled = read_cell(ValueKind::Uint, bytes)?;
-	Uint::from_i256(unscaled).ok_or_else(|| {
-		DecodeError::InvalidData(format!("uint cell {unscaled} is negative or exceeds 76 digits"))
-	})
-}
 
 pub fn encode_decimal_cell(
 	value: &Decimal,

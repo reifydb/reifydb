@@ -25,8 +25,6 @@ fn to_json(value: &Value) -> String {
 		Value::Uint4(u) => u.to_string(),
 		Value::Uint8(u) => u.to_string(),
 		Value::Uint16(u) => u.to_string(),
-		Value::Int(i) => i.to_string(),
-		Value::Uint(u) => u.to_string(),
 		Value::Decimal(d) => d.to_string(),
 		Value::Utf8(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
 		Value::Uuid4(u) => format!("\"{}\"", u),

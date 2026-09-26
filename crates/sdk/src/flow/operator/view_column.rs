@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::value::{decimal::Decimal, int::Int, uint::Uint};
+use reifydb_value::value::decimal::Decimal;
 
 use crate::{
 	common::family::FamilyValue,
@@ -181,14 +181,6 @@ impl<'a> ColumnView<'a> {
 			return None;
 		}
 		Some(self.inner.iter_bytes())
-	}
-
-	pub fn int_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Int>> + 'a> {
-		self.family_iter()
-	}
-
-	pub fn uint_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Uint>> + 'a> {
-		self.family_iter()
 	}
 
 	pub fn decimal_iter(&self) -> Option<impl ExactSizeIterator<Item = Option<Decimal>> + 'a> {

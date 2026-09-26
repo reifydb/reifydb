@@ -145,7 +145,7 @@ pub(crate) fn write_right_rows(
 
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at());
+		let row = encode_row(&shape, columns, idx, host.written_at(), right.side());
 		candidates.push((columns.row_numbers()[idx], row.into_bytes()));
 	}
 	let held = read_slot(host, right, group)?;

@@ -56,6 +56,10 @@ impl Store {
 		}
 	}
 
+	pub(crate) fn side(&self) -> JoinSide {
+		self.side
+	}
+
 	pub(crate) fn group_of(&self, hash: &Hash128) -> GroupId {
 		GroupId::hashed(*hash)
 	}

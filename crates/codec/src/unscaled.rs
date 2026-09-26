@@ -6,8 +6,6 @@ use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	container::decimal_array::DECIMAL128_MAX_PRECISION,
 	decimal::{Decimal, unscaled::digits},
-	int::Int,
-	uint::Uint,
 	value_type::ValueType,
 };
 
@@ -22,14 +20,6 @@ pub(crate) fn width(precision: Precision) -> usize {
 	} else {
 		WIDE
 	}
-}
-
-pub(crate) fn int_unscaled(value: &Int, precision: Precision) -> Option<i256> {
-	(value.digits() <= precision.value()).then(|| value.to_i256())
-}
-
-pub(crate) fn uint_unscaled(value: &Uint, precision: Precision) -> Option<i256> {
-	(value.digits() <= precision.value()).then(|| value.to_i256())
 }
 
 pub(crate) fn decimal_unscaled(value: &Decimal, precision: Precision, scale: Scale) -> Option<i256> {
@@ -83,12 +73,6 @@ pub(crate) fn decode_params(precision: u8, scale: u8) -> Result<(Precision, Scal
 pub(crate) fn family_type(kind: ValueKind, precision: Precision, scale: Scale) -> Result<ValueType, DecodeError> {
 	match kind {
 		ValueKind::Decimal => Ok(ValueType::decimal(precision, scale)),
-		ValueKind::Int | ValueKind::Uint if scale.value() != 0 => Err(DecodeError::InvalidData(format!(
-			"{kind:?} carries scale {} but must have scale 0",
-			scale.value()
-		))),
-		ValueKind::Int => Ok(ValueType::int(precision)),
-		ValueKind::Uint => Ok(ValueType::uint(precision)),
 		other => Err(DecodeError::InvalidData(format!("{other:?} carries no precision or scale"))),
 	}
 }
@@ -99,9 +83,6 @@ pub(crate) fn check_unscaled(kind: ValueKind, value: i256, precision: Precision)
 			"{kind:?} value {value} has more digits than precision {}",
 			precision.value()
 		)));
-	}
-	if kind == ValueKind::Uint && value.is_negative() {
-		return Err(DecodeError::InvalidData(format!("Uint value {value} is negative")));
 	}
 	Ok(value)
 }

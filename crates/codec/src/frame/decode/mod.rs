@@ -326,7 +326,7 @@ fn decode_column_dispatch(
 		}
 		return varlen::decode_digest_plain(row_count, data, offsets, extra);
 	}
-	if let Some(kind @ (ValueKind::Int | ValueKind::Uint | ValueKind::Decimal)) = ValueKind::from_byte(type_code) {
+	if let Some(kind @ ValueKind::Decimal) = ValueKind::from_byte(type_code) {
 		return fixed::decode_unscaled_column(kind, encoding, row_count, data, extra);
 	}
 	let ty = column_type_from_code(type_code)?;

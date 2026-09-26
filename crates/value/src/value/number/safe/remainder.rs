@@ -79,43 +79,7 @@ macro_rules! impl_safe_rem_unsigned {
 impl_safe_rem_signed!(i8, i16, i32, i64, i128);
 impl_safe_rem_unsigned!(u8, u16, u32, u64, u128);
 
-use crate::value::{decimal::Decimal, int::Int, uint::Uint};
-
-impl SafeRemainder for Int {
-	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		Int::checked_rem(self, r)
-	}
-
-	fn saturating_rem(&self, r: &Self) -> Self {
-		Int::checked_rem(self, r).unwrap_or_default()
-	}
-
-	fn wrapping_rem(&self, r: &Self) -> Self {
-		Int::checked_rem(self, r).unwrap_or_default()
-	}
-
-	fn is_zero(&self) -> bool {
-		Int::is_zero(self)
-	}
-}
-
-impl SafeRemainder for Uint {
-	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		Uint::checked_rem(self, r)
-	}
-
-	fn saturating_rem(&self, r: &Self) -> Self {
-		Uint::checked_rem(self, r).unwrap_or_default()
-	}
-
-	fn wrapping_rem(&self, r: &Self) -> Self {
-		Uint::checked_rem(self, r).unwrap_or_default()
-	}
-
-	fn is_zero(&self) -> bool {
-		Uint::is_zero(self)
-	}
-}
+use crate::value::decimal::Decimal;
 
 impl SafeRemainder for Decimal {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {

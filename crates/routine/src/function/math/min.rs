@@ -21,10 +21,8 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::decimal_array::{decimal_at, int_at, u128s, uint_at},
+		container::{decimal_array::decimal_at, wide_int_array::wides},
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
@@ -184,7 +182,8 @@ impl Accumulator for MinAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				min_arm!(self, column, groups, container.values(), Int16);
+				let values = wides::<i128>(container);
+				min_arm!(self, column, groups, values, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -204,7 +203,7 @@ impl Accumulator for MinAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				min_arm!(self, column, groups, values, Uint16);
 				Ok(())
 			}
@@ -252,58 +251,6 @@ impl Accumulator for MinAccumulator {
 							_ => v,
 						};
 						self.mins.insert(group, Value::float8(merged));
-					} else {
-						self.mins.or_insert(group, Value::none());
-					}
-				}
-				Ok(())
-			}
-			ColumnBuffer::Int(container) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut min: Option<Int> = None;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = int_at(container, i)
-						{
-							min = Some(match min {
-								Some(current) if val < current => val,
-								Some(current) => current,
-								None => val,
-							});
-						}
-					}
-					if let Some(v) = min {
-						let merged = match self.mins.remove(group) {
-							Some(Value::Int(prev)) if prev < v => prev,
-							_ => v,
-						};
-						self.mins.insert(group, Value::Int(merged));
-					} else {
-						self.mins.or_insert(group, Value::none());
-					}
-				}
-				Ok(())
-			}
-			ColumnBuffer::Uint(container) => {
-				for &(group, ref indices) in groups.iter() {
-					let mut min: Option<Uint> = None;
-					for &i in indices {
-						if column.is_defined(i)
-							&& let Some(val) = uint_at(container, i)
-						{
-							min = Some(match min {
-								Some(current) if val < current => val,
-								Some(current) => current,
-								None => val,
-							});
-						}
-					}
-					if let Some(v) = min {
-						let merged = match self.mins.remove(group) {
-							Some(Value::Uint(prev)) if prev < v => prev,
-							_ => v,
-						};
-						self.mins.insert(group, Value::Uint(merged));
 					} else {
 						self.mins.or_insert(group, Value::none());
 					}

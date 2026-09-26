@@ -18,7 +18,7 @@ use reifydb_value::{
 		container::{
 			any_array, bool_array,
 			decimal_array::{self, DecimalArray},
-			digest_array, primitive, temporal_array, uuid_array,
+			digest_array, fixed_array, primitive, temporal_array, uuid_array,
 			varlen_array::{self, blob_array, compact_parts, equals, get, slice},
 		},
 		date::Date,
@@ -27,9 +27,7 @@ use reifydb_value::{
 		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -216,38 +214,6 @@ fn decimal_bytes(array: &DecimalArray) -> &[u8] {
 }
 
 decimal_suite!(
-	int128,
-	Int,
-	|i| Int::from_i64(i as i64 * 1_000_003 - 7_000_000),
-	|values| decimal_array::int_array(Precision::new(38), values),
-	decimal_array::ints,
-	"decimal_array::deserialize_int_array"
-);
-decimal_suite!(
-	int256,
-	Int,
-	|i| Int::from_i128(i as i128 * 1_000_003 - 7_000_000).checked_mul(&Int::from_u128(u128::MAX)).unwrap(),
-	|values| decimal_array::int_array(Precision::MAX, values),
-	decimal_array::ints,
-	"decimal_array::deserialize_int_array"
-);
-decimal_suite!(
-	uint128,
-	Uint,
-	|i| Uint::from_u64(i as u64 * 7),
-	|values| decimal_array::uint_array(Precision::new(38), values),
-	decimal_array::uints,
-	"decimal_array::deserialize_uint_array"
-);
-decimal_suite!(
-	uint256,
-	Uint,
-	|i| Uint::from_u128(u128::MAX).checked_add(&Uint::from_u64(i as u64 * 7)).unwrap(),
-	|values| decimal_array::uint_array(Precision::MAX, values),
-	decimal_array::uints,
-	"decimal_array::deserialize_uint_array"
-);
-decimal_suite!(
 	decimal128,
 	Decimal,
 	|i| Decimal::from_parts(i256::from_i128(i as i128 * 125 - 60_000), 3).unwrap(),
@@ -409,7 +375,7 @@ array_suite!(
 	|i| Uuid4(Uuid::from_u128(i as u128 + 1)),
 	uuid_array::uuid4_array,
 	uuid_array::uuid4s,
-	uuid_array,
+	fixed_array,
 	"uuid_array::serialize_uuid4s",
 	"uuid_array::deserialize_uuid4s"
 );
@@ -420,7 +386,7 @@ array_suite!(
 	|i| Uuid7(Uuid::from_u128((i as u128 + 1) << 64)),
 	uuid_array::uuid7_array,
 	uuid_array::uuid7s,
-	uuid_array,
+	fixed_array,
 	"uuid_array::serialize_uuid7s",
 	"uuid_array::deserialize_uuid7s"
 );
@@ -431,7 +397,7 @@ array_suite!(
 	|i| IdentityId(Uuid7(Uuid::from_u128(((i as u128 + 1) << 80) | (0x7 << 76) | (0x2 << 62)))),
 	uuid_array::identity_id_array,
 	uuid_array::identity_ids,
-	uuid_array,
+	fixed_array,
 	"uuid_array::serialize_identity_ids",
 	"uuid_array::deserialize_identity_ids"
 );

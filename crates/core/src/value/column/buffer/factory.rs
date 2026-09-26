@@ -12,15 +12,14 @@ use reifydb_value::value::{
 	constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 	container::{
 		any_array::any_array,
-		decimal_array::{
-			DecimalArray, decimal_array, int_array, int16_array, uint_array, uint16_array, with_int16_type,
-			with_uint16_type,
-		},
-		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH, dictionary_array},
+		decimal_array::{DecimalArray, decimal_array},
+		dictionary_array::{DICTIONARY_ENTRY_WIDTH, dictionary_array},
 		digest_array::digest_array,
+		fixed_array,
 		temporal_array::{DATETIME_TIMEZONE, date_array, datetime_array, duration_array, time_array},
-		uuid_array::{self, UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
+		uuid_array::{UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
 		varlen_array::blob_array,
+		wide_int_array::{WideInt, wide_array},
 	},
 	date::Date,
 	datetime::DateTime,
@@ -29,9 +28,7 @@ use reifydb_value::value::{
 	digest::Digest,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -66,24 +63,24 @@ macro_rules! impl_native_factory {
 	};
 }
 
-macro_rules! impl_number_factory {
-	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty, $build:ident, $with_type:ident) => {
+macro_rules! impl_wide_factory {
+	($name:ident, $name_cap:ident, $name_bv:ident, $variant:ident, $t:ty) => {
 		pub fn $name(data: impl IntoIterator<Item = $t>) -> Self {
-			ColumnBuffer::$variant($build(data))
+			ColumnBuffer::$variant(wide_array(data))
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
-			ColumnBuffer::$variant($with_type(PrimitiveArray::new(
-				ScalarBuffer::from(Vec::with_capacity(capacity)),
-				None,
-			)))
+			ColumnBuffer::$variant(fixed_array::from_buffer(
+				<$t>::WIDTH,
+				MutableBuffer::with_capacity(capacity * <$t>::WIDTH),
+			))
 		}
 
 		pub fn $name_bv(data: impl IntoIterator<Item = $t>, bitvec: impl Into<BooleanBuffer>) -> Self {
 			let data = data.into_iter().collect::<Vec<_>>();
 			let bitvec = bitvec.into();
 			assert_eq!(bitvec.len(), data.len());
-			let inner = ColumnBuffer::$variant($build(data));
+			let inner = ColumnBuffer::$variant(wide_array(data));
 			if !bitvec.has_false() {
 				inner
 			} else {
@@ -129,9 +126,10 @@ macro_rules! impl_uuid_factory {
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
-			ColumnBuffer::$variant(uuid_array::from_buffer(MutableBuffer::with_capacity(
-				capacity * UUID_WIDTH,
-			)))
+			ColumnBuffer::$variant(fixed_array::from_buffer(
+				UUID_WIDTH,
+				MutableBuffer::with_capacity(capacity * UUID_WIDTH),
+			))
 		}
 
 		pub fn $name_bv(data: impl IntoIterator<Item = $t>, bitvec: impl Into<BooleanBuffer>) -> Self {
@@ -202,20 +200,12 @@ impl ColumnBuffer {
 	}
 
 	impl_native_factory!(int8, int8_with_capacity, int8_with_bitvec, Int8, i64);
-	impl_number_factory!(int16, int16_with_capacity, int16_with_bitvec, Int16, i128, int16_array, with_int16_type);
+	impl_wide_factory!(int16, int16_with_capacity, int16_with_bitvec, Int16, i128);
 	impl_native_factory!(uint1, uint1_with_capacity, uint1_with_bitvec, Uint1, u8);
 	impl_native_factory!(uint2, uint2_with_capacity, uint2_with_bitvec, Uint2, u16);
 	impl_native_factory!(uint4, uint4_with_capacity, uint4_with_bitvec, Uint4, u32);
 	impl_native_factory!(uint8, uint8_with_capacity, uint8_with_bitvec, Uint8, u64);
-	impl_number_factory!(
-		uint16,
-		uint16_with_capacity,
-		uint16_with_bitvec,
-		Uint16,
-		u128,
-		uint16_array,
-		with_uint16_type
-	);
+	impl_wide_factory!(uint16, uint16_with_capacity, uint16_with_bitvec, Uint16, u128);
 
 	pub fn utf8(data: impl IntoIterator<Item = impl Into<String>>) -> Self {
 		let data = data.into_iter().map(|c| c.into()).collect::<Vec<String>>();
@@ -335,7 +325,10 @@ impl ColumnBuffer {
 	}
 
 	pub(crate) fn identity_id_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::IdentityId(uuid_array::from_buffer(MutableBuffer::with_capacity(capacity * UUID_WIDTH)))
+		ColumnBuffer::IdentityId(fixed_array::from_buffer(
+			UUID_WIDTH,
+			MutableBuffer::with_capacity(capacity * UUID_WIDTH),
+		))
 	}
 
 	pub fn identity_id_with_bitvec(
@@ -346,54 +339,6 @@ impl ColumnBuffer {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		let inner = ColumnBuffer::IdentityId(identity_id_array(data));
-		if !bitvec.has_false() {
-			inner
-		} else {
-			inner.with_nulls(NullBuffer::new(bitvec))
-		}
-	}
-
-	pub fn int(precision: Precision, data: impl IntoIterator<Item = Int>) -> Self {
-		ColumnBuffer::Int(int_array(precision, data))
-	}
-
-	pub fn uint(precision: Precision, data: impl IntoIterator<Item = Uint>) -> Self {
-		ColumnBuffer::Uint(uint_array(precision, data))
-	}
-
-	pub(crate) fn int_with_capacity(precision: Precision, capacity: usize) -> Self {
-		ColumnBuffer::Int(DecimalArray::from_unscaled(precision, Scale::MIN, Vec::with_capacity(capacity)))
-	}
-
-	pub(crate) fn uint_with_capacity(precision: Precision, capacity: usize) -> Self {
-		ColumnBuffer::Uint(DecimalArray::from_unscaled(precision, Scale::MIN, Vec::with_capacity(capacity)))
-	}
-
-	pub fn int_with_bitvec(
-		precision: Precision,
-		data: impl IntoIterator<Item = Int>,
-		bitvec: impl Into<BooleanBuffer>,
-	) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		let bitvec = bitvec.into();
-		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Int(int_array(precision, &data));
-		if !bitvec.has_false() {
-			inner
-		} else {
-			inner.with_nulls(NullBuffer::new(bitvec))
-		}
-	}
-
-	pub fn uint_with_bitvec(
-		precision: Precision,
-		data: impl IntoIterator<Item = Uint>,
-		bitvec: impl Into<BooleanBuffer>,
-	) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		let bitvec = bitvec.into();
-		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Uint(uint_array(precision, &data));
 		if !bitvec.has_false() {
 			inner
 		} else {
@@ -497,9 +442,10 @@ impl ColumnBuffer {
 
 	pub(crate) fn dictionary_id_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::DictionaryId {
-			container: dictionary_array::from_buffer(MutableBuffer::with_capacity(
-				capacity * DICTIONARY_ENTRY_WIDTH,
-			)),
+			container: fixed_array::from_buffer(
+				DICTIONARY_ENTRY_WIDTH,
+				MutableBuffer::with_capacity(capacity * DICTIONARY_ENTRY_WIDTH),
+			),
 			dictionary_id: None,
 		}
 	}
@@ -554,12 +500,6 @@ impl ColumnBuffer {
 			ValueType::Uuid4 => Self::uuid4(vec![Uuid4::default(); len]),
 			ValueType::Uuid7 => Self::uuid7(vec![Uuid7::default(); len]),
 			ValueType::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
-			ValueType::Int {
-				precision,
-			} => Self::int(precision, vec![Int::default(); len]),
-			ValueType::Uint {
-				precision,
-			} => Self::uint(precision, vec![Uint::default(); len]),
 			ValueType::Decimal {
 				precision,
 				scale,

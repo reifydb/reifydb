@@ -17,7 +17,6 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::Constraint,
 		container::{
-			decimal_array::uint16_to_native,
 			dictionary_array::push_entry,
 			digest_array::push_digest,
 			temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
@@ -28,11 +27,9 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		system_columns::RowStamps,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -249,20 +246,6 @@ impl Columns {
 						vec![Blob::new(vec![]); size],
 						BooleanBuffer::new_unset(size),
 					),
-					ValueType::Int {
-						precision,
-					} => ColumnBuffer::int_with_bitvec(
-						precision,
-						vec![Int::default(); size],
-						BooleanBuffer::new_unset(size),
-					),
-					ValueType::Uint {
-						precision,
-					} => ColumnBuffer::uint_with_bitvec(
-						precision,
-						vec![Uint::default(); size],
-						BooleanBuffer::new_unset(size),
-					),
 					ValueType::Decimal {
 						precision,
 						scale,
@@ -423,7 +406,7 @@ impl Columns {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
-					builder.append_value(uint16_to_native(shape.get::<u128>(bytes, index)));
+					builder.append_value(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));
@@ -454,22 +437,6 @@ impl Columns {
 					ValueType::Blob,
 				) => {
 					builder.append_value(shape.get_blob_slice(bytes, index));
-				}
-				(
-					ColumnBuilder::Int(builder),
-					ValueType::Int {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_int(bytes, index)));
-				}
-				(
-					ColumnBuilder::Uint(builder),
-					ValueType::Uint {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
 				}
 				(
 					ColumnBuilder::Decimal(builder),
@@ -589,7 +556,7 @@ impl Columns {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
-					builder.append_value(uint16_to_native(shape.get::<u128>(bytes, index)));
+					builder.append_value(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));
@@ -620,22 +587,6 @@ impl Columns {
 					ValueType::Blob,
 				) => {
 					builder.append_value(shape.get_blob_slice(bytes, index));
-				}
-				(
-					ColumnBuilder::Int(builder),
-					ValueType::Int {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_int(bytes, index)));
-				}
-				(
-					ColumnBuilder::Uint(builder),
-					ValueType::Uint {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
 				}
 				(
 					ColumnBuilder::Decimal(builder),

@@ -77,13 +77,6 @@ export function decodeTypeInfo(data: Uint8Array, pos: number): DecodedTypeInfo {
             pos += DIGEST_PARAMS_SIZE;
             break;
         }
-        case TYPE_CODE.Int:
-        case TYPE_CODE.Uint: {
-            if (pos >= data.length) throw new Error(`RBCF: ${kindName} precision truncated`);
-            base = fixedPointTypeName(fixedPointType(kind === TYPE_CODE.Int ? "Int" : "Uint", data[pos], 0));
-            pos += 1;
-            break;
-        }
         case TYPE_CODE.Decimal: {
             if (pos + 2 > data.length) throw new Error("RBCF: Decimal precision and scale truncated");
             base = fixedPointTypeName(fixedPointType("Decimal", data[pos], data[pos + 1]));

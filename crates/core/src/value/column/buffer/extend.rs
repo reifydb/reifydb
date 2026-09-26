@@ -15,11 +15,8 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
-			any_array::push_any,
-			decimal_array::DecimalArray,
-			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
-			uuid_array::{self, UUID_WIDTH},
-			varlen_array,
+			any_array::push_any, decimal_array::DecimalArray, dictionary_array::DICTIONARY_ENTRY_WIDTH,
+			fixed_array, uuid_array::UUID_WIDTH, varlen_array, wide_int_array,
 		},
 	},
 };
@@ -62,15 +59,10 @@ fn extend_bool(array: &mut BooleanArray, append: impl FnOnce(&mut BooleanBufferB
 }
 
 fn extend_fixed(array: &mut FixedSizeBinaryArray, append: impl FnOnce(&mut MutableBuffer)) {
-	let mut buffer = fixed_builder(mem::replace(array, uuid_array::from_buffer(MutableBuffer::new(0))));
+	let width = array.value_length() as usize;
+	let mut buffer = fixed_builder(mem::replace(array, fixed_array::from_buffer(width, MutableBuffer::new(0))));
 	append(&mut buffer);
-	*array = uuid_array::from_buffer(buffer);
-}
-
-fn extend_dictionary(array: &mut FixedSizeBinaryArray, append: impl FnOnce(&mut MutableBuffer)) {
-	let mut buffer = fixed_builder(mem::replace(array, dictionary_array::from_buffer(MutableBuffer::new(0))));
-	append(&mut buffer);
-	*array = dictionary_array::from_buffer(buffer);
+	*array = fixed_array::from_buffer(width, buffer);
 }
 
 fn extend_varlen<T, R>(array: &mut GenericByteArray<T>, append: impl FnOnce(&mut GenericByteBuilder<T>) -> R) -> R
@@ -93,12 +85,13 @@ fn extend_decimal(array: &mut DecimalArray, append: impl FnOnce(&mut DecimalBuil
 fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 	match buffer {
 		ColumnBuffer::Bool(a) => extend_bool(a, |b| b.append_n(count, false)),
-		ColumnBuffer::Uint16(a) => extend_native(a, |b| b.append_value_n(Default::default(), count)),
+		ColumnBuffer::Int16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<i128>(b, count)),
+		ColumnBuffer::Uint16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<u128>(b, count)),
 		ColumnBuffer::DictionaryId {
 			container,
 			..
-		} => extend_dictionary(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
-		ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
+		} => extend_fixed(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
+		ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
 			for _ in 0..count {
 				b.append_default();
 			}
@@ -128,12 +121,7 @@ fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
 }
 
 fn same_family(left: &ColumnBuffer, right: &ColumnBuffer) -> bool {
-	matches!(
-		(left, right),
-		(ColumnBuffer::Int(_), ColumnBuffer::Int(_))
-			| (ColumnBuffer::Uint(_), ColumnBuffer::Uint(_))
-			| (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_))
-	)
+	matches!((left, right), (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_)))
 }
 
 fn joinable(first: &ColumnBuffer, part: &ColumnBuffer) -> bool {
@@ -235,7 +223,7 @@ impl ColumnBuffer {
 				extend_native(l, |b| b.append_slice(r.values()))
 			}
 			(ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) => {
-				extend_native(l, |b| b.append_slice(r.values()))
+				extend_fixed(l, |b| b.extend_from_slice(r.value_data()))
 			}
 			(ColumnBuffer::Uint1(l), ColumnBuffer::Uint1(r)) => {
 				extend_native(l, |b| b.append_slice(r.values()))
@@ -250,7 +238,7 @@ impl ColumnBuffer {
 				extend_native(l, |b| b.append_slice(r.values()))
 			}
 			(ColumnBuffer::Uint16(l), ColumnBuffer::Uint16(r)) => {
-				extend_native(l, |b| b.append_slice(r.values()))
+				extend_fixed(l, |b| b.extend_from_slice(r.value_data()))
 			}
 			(
 				ColumnBuffer::Utf8 {
@@ -293,8 +281,6 @@ impl ColumnBuffer {
 					..
 				},
 			) => extend_varlen(l, |b| append_varlen(b, &r))?,
-			(ColumnBuffer::Int(l), ColumnBuffer::Int(r)) => extend_decimal(l, |b| b.append_array(&r)),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint(r)) => extend_decimal(l, |b| b.append_array(&r)),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Decimal(r)) => {
 				extend_decimal(l, |b| b.append_array(&r))
 			}
@@ -307,7 +293,7 @@ impl ColumnBuffer {
 					container: r,
 					..
 				},
-			) => extend_dictionary(l, |b| b.extend_from_slice(r.value_data())),
+			) => extend_fixed(l, |b| b.extend_from_slice(r.value_data())),
 			(
 				ColumnBuffer::Any {
 					container: l,

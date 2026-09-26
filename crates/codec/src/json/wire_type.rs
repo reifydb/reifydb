@@ -58,13 +58,7 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Blob => "Blob",
 		ValueType::Any => "Any",
 		ValueType::DictionaryId => "DictionaryId",
-		ValueType::Int {
-			..
-		}
-		| ValueType::Uint {
-			..
-		}
-		| ValueType::Decimal {
+		ValueType::Decimal {
 			..
 		}
 		| ValueType::Option(_)
@@ -152,12 +146,6 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 		return descriptor(id, None);
 	}
 	match ty {
-		ValueType::Int {
-			precision,
-		} => family_descriptor("Int", *precision, None),
-		ValueType::Uint {
-			precision,
-		} => family_descriptor("Uint", *precision, None),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -212,15 +200,6 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 	};
 
 	match id {
-		"Int" | "Uint" => {
-			let default = ValueType::INT.precision().expect("int carries a precision");
-			let precision = family_precision(object, default, value)?;
-			Ok(if id == "Int" {
-				ValueType::int(precision)
-			} else {
-				ValueType::uint(precision)
-			})
-		}
 		"Decimal" => {
 			let precision = family_precision(
 				object,

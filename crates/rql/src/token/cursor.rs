@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::fragment::{StatementColumn, StatementLine};
+use reifydb_value::{
+	fragment::{StatementColumn, StatementLine},
+	value::system_columns::SystemColumn,
+};
 
-use crate::{bump::BumpFragment, token::SYSTEM_COLUMNS};
+use crate::bump::BumpFragment;
 
 pub struct Cursor<'bump> {
 	input: &'bump str,
@@ -124,10 +127,10 @@ impl<'bump> Cursor<'bump> {
 
 	fn is_system_column_ahead(&self) -> bool {
 		let remaining = &self.input[self.pos..];
-		for col in SYSTEM_COLUMNS {
-			let prefixed = format!("#{col}");
-			if remaining.starts_with(&prefixed) {
-				let next_char = remaining[prefixed.len()..].chars().next();
+		for column in SystemColumn::ALL {
+			let prefixed = column.name();
+			if let Some(stripped) = remaining.strip_prefix(prefixed) {
+				let next_char = stripped.chars().next();
 				if next_char.is_none()
 					|| !(next_char.unwrap().is_alphanumeric() || next_char.unwrap() == '_')
 				{

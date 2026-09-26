@@ -60,35 +60,6 @@ macro_rules! impl_safe_convert_decimal_to_float {
 impl_safe_convert_decimal_to_int!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 impl_safe_convert_decimal_to_float!(f32 => to_f32, f64 => to_f64);
 
-impl SafeConvert<Int> for Decimal {
-	fn checked_convert(self) -> Option<Int> {
-		Int::from_i256(self.trunc())
-	}
-
-	fn saturating_convert(self) -> Int {
-		Int::from_i256(self.trunc()).expect("the integer part of a decimal is a valid int")
-	}
-
-	fn wrapping_convert(self) -> Int {
-		self.saturating_convert()
-	}
-}
-
-impl SafeConvert<Uint> for Decimal {
-	fn checked_convert(self) -> Option<Uint> {
-		Uint::from_i256(self.trunc())
-	}
-
-	fn saturating_convert(self) -> Uint {
-		Uint::from_i256(self.trunc()).unwrap_or_default()
-	}
-
-	fn wrapping_convert(self) -> Uint {
-		Uint::from_i256(self.trunc().wrapping_abs())
-			.expect("the integer magnitude of a decimal is a valid uint")
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	mod i8 {
@@ -334,65 +305,6 @@ pub mod tests {
 		}
 	}
 
-	mod int {
-		use crate::value::{decimal::Decimal, int::Int, number::safe::convert::SafeConvert};
-
-		#[test]
-		fn test_checked_convert() {
-			let x = Decimal::from(12345i64);
-			let y: Option<Int> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "12345");
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x = Decimal::from(-999999i64);
-			let y: Int = x.saturating_convert();
-			assert_eq!(y.to_string(), "-999999");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x = Decimal::from(0i64);
-			let y: Int = x.wrapping_convert();
-			assert_eq!(y.to_string(), "0");
-		}
-	}
-
-	mod uint {
-		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert, uint::Uint};
-
-		#[test]
-		fn test_checked_convert_positive() {
-			let x = Decimal::from(42i64);
-			let y: Option<Uint> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "42");
-		}
-
-		#[test]
-		fn test_checked_convert_negative() {
-			let x = Decimal::from(-1i64);
-			let y: Option<Uint> = x.checked_convert();
-			assert!(y.is_none());
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x = Decimal::from(-100i64);
-			let y: Uint = x.saturating_convert();
-			assert_eq!(y.to_string(), "0");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x = Decimal::from(-1i64);
-			let y: Uint = x.wrapping_convert();
-			assert_eq!(y.to_string(), "1");
-		}
-	}
-
 	mod self_conversion {
 		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
@@ -421,17 +333,13 @@ pub mod tests {
 	mod range {
 		use std::str::FromStr;
 
-		use crate::value::{decimal::Decimal, int::Int, number::safe::convert::SafeConvert, uint::Uint};
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn integer_targets_truncate_toward_zero() {
 			// Flooring would turn -1.9 into -2 where every integer conversion truncates.
 			let dec = Decimal::from_str("-1.9").unwrap();
 			assert_eq!(SafeConvert::<i8>::checked_convert(dec.clone()), Some(-1));
-			assert_eq!(SafeConvert::<Int>::checked_convert(dec.clone()), Some(Int::from(-1)));
-			assert_eq!(SafeConvert::<Uint>::checked_convert(dec), None);
-			let dec = Decimal::from_str("-0.9").unwrap();
-			assert_eq!(SafeConvert::<Uint>::checked_convert(dec), Some(Uint::zero()));
 		}
 
 		#[test]
@@ -442,8 +350,6 @@ pub mod tests {
 			assert_eq!(SafeConvert::<u128>::checked_convert(max.clone()), None);
 			assert_eq!(SafeConvert::<u128>::saturating_convert(max.clone()), u128::MAX);
 			assert_eq!(SafeConvert::<i64>::saturating_convert(max.negate()), i64::MIN);
-			assert_eq!(SafeConvert::<Int>::checked_convert(max.clone()), Some(Int::MAX));
-			assert_eq!(SafeConvert::<Uint>::wrapping_convert(max.negate()), Uint::MAX);
 			let u128_max = Decimal::from_str(&u128::MAX.to_string()).unwrap();
 			assert_eq!(SafeConvert::<u128>::checked_convert(u128_max), Some(u128::MAX));
 		}

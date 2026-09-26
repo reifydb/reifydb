@@ -10,15 +10,10 @@ use reifydb_value::{
 	error::TypeError,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::{
-			decimal_array::{decimals, ints, u128s, uints},
-			varlen_array,
-		},
+		container::{decimal_array::decimals, varlen_array, wide_int_array::wides},
 		decimal::{Decimal, unscaled},
-		int::Int,
 		is::IsNumber,
 		number::safe::div::SafeDiv,
-		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
@@ -93,12 +88,6 @@ fn family_operand(original: &ValueType, promoted: &ValueType) -> FamilyOperand {
 			precision,
 			scale,
 		} => (precision.value().saturating_sub(scale.value()), Some(scale.value())),
-		ValueType::Int {
-			precision,
-		}
-		| ValueType::Uint {
-			precision,
-		} => (precision.value(), Some(0)),
 		ValueType::Int1 | ValueType::Uint1 => (3, Some(0)),
 		ValueType::Int2 | ValueType::Uint2 => (5, Some(0)),
 		ValueType::Int4 | ValueType::Uint4 => (10, Some(0)),
@@ -152,12 +141,6 @@ fn family_target<Op: ArithOp>(
 	let max = unscaled::MAX_DIGITS;
 	let scale = digits.scale.min(max);
 	match promoted {
-		ValueType::Int {
-			..
-		} => ValueType::int(Precision::new(digits.integer.clamp(1, max))),
-		ValueType::Uint {
-			..
-		} => ValueType::uint(Precision::new(digits.integer.clamp(1, max))),
 		ValueType::Decimal {
 			..
 		} => ValueType::decimal(
@@ -330,7 +313,26 @@ fn execute_arith<Op: ArithOp>(
 			ColumnBuffer::int8_with_bitvec(values, bits)
 		}
 		ValueType::Int16 => {
-			let (values, bits) = run!(Int16);
+			let (ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) = (a_inner, b_inner) else {
+				unreachable!()
+			};
+			let d = d_parts.as_ref().map(|(inner, bv)| {
+				let ColumnBuffer::Int16(c) = inner else {
+					unreachable!()
+				};
+				(wides::<i128>(c), *bv)
+			});
+			let (values, bits) = compute_rows::<_, Op>(
+				ctx,
+				&target,
+				(&wides::<i128>(l), a_bv),
+				(&wides::<i128>(r), b_bv),
+				&mode,
+				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
+				strict_msg,
+				Some,
+				identity,
+			)?;
 			ColumnBuffer::int16_with_bitvec(values, bits)
 		}
 		ValueType::Uint1 => {
@@ -357,13 +359,13 @@ fn execute_arith<Op: ArithOp>(
 				let ColumnBuffer::Uint16(c) = inner else {
 					unreachable!()
 				};
-				(u128s(c), *bv)
+				(wides::<u128>(c), *bv)
 			});
 			let (values, bits) = compute_rows::<_, Op>(
 				ctx,
 				&target,
-				(&u128s(l), a_bv),
-				(&u128s(r), b_bv),
+				(&wides::<u128>(l), a_bv),
+				(&wides::<u128>(r), b_bv),
 				&mode,
 				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
 				strict_msg,
@@ -379,42 +381,6 @@ fn execute_arith<Op: ArithOp>(
 		ValueType::Float8 => {
 			let (values, bits) = run!(Float8);
 			ColumnBuffer::float8_with_bitvec(values, bits)
-		}
-		ValueType::Int {
-			precision,
-		} => {
-			let (values, bits) = run!(
-				Int(..),
-				ints,
-				|value: Int| (value.digits() <= precision.value()).then_some(value),
-				|value: Int| {
-					if value.digits() <= precision.value() {
-						value
-					} else {
-						Int::from_i256(family_bound(precision, value.is_negative()))
-							.expect("a precision bound is in range")
-					}
-				}
-			);
-			ColumnBuffer::int_with_bitvec(precision, values, bits)
-		}
-		ValueType::Uint {
-			precision,
-		} => {
-			let (values, bits) = run!(
-				Uint(..),
-				uints,
-				|value: Uint| (value.digits() <= precision.value()).then_some(value),
-				|value: Uint| {
-					if value.digits() <= precision.value() {
-						value
-					} else {
-						Uint::from_i256(family_bound(precision, false))
-							.expect("a precision bound is in range")
-					}
-				}
-			);
-			ColumnBuffer::uint_with_bitvec(precision, values, bits)
 		}
 		ValueType::Decimal {
 			precision,

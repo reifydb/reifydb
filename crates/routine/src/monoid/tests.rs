@@ -3,9 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_routine_abi::monoid::{Monoid, MonoidState};
-use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
-};
+use reifydb_value::value::{Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use super::math::{count::Count, max::Max, min::Min, sum::Sum};
 
@@ -44,22 +42,6 @@ fn float4() -> Vec<Value> {
 }
 fn float8() -> Vec<Value> {
 	vec![Value::float8(1.5), Value::float8(-2.5), Value::float8(0.1), Value::float8(0.2), Value::float8(1e10)]
-}
-fn int_big() -> Vec<Value> {
-	vec![
-		Value::Int(Int::from_i64(123_456_789)),
-		Value::Int(Int::from_i64(-987_654_321)),
-		Value::Int(Int::from_i64(42)),
-		Value::Int(Int::from_i64(0)),
-	]
-}
-fn uint_big() -> Vec<Value> {
-	vec![
-		Value::Uint(Uint::from(1_000_000u64)),
-		Value::Uint(Uint::from(2_000_000u64)),
-		Value::Uint(Uint::from(3u64)),
-		Value::Uint(Uint::from(0u64)),
-	]
 }
 fn decimal() -> Vec<Value> {
 	vec![
@@ -112,8 +94,6 @@ fn numeric_fixtures() -> Vec<(&'static str, Vec<Value>)> {
 		("uint8", uint8()),
 		("uint16", uint16()),
 		("float4", float4()),
-		("int", int_big()),
-		("uint", uint_big()),
 		("decimal", decimal()),
 	]
 }

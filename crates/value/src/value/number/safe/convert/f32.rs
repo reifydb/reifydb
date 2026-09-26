@@ -9,9 +9,6 @@ impl_safe_convert_float_to_signed!(f32 => i8, i16, i32, i64, i128);
 
 impl_safe_convert_float_to_unsigned!(f32 => u8, u16, u32, u64, u128);
 
-impl_safe_convert_float_to_int!(f32);
-impl_safe_convert_float_to_uint!(f32);
-
 impl_safe_convert_to_decimal_from_float!(f32 => from_f32);
 
 #[cfg(test)]

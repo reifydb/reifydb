@@ -7,14 +7,12 @@ use reifydb_value::value::{
 	blob::Blob,
 	container::{
 		any_array::push_any,
-		decimal_array::uint16_to_native,
 		dictionary_array::push_entry,
 		digest_array::push_digest,
 		temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 	},
 	date::Date,
 	datetime::DateTime,
-	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
@@ -106,11 +104,11 @@ impl ColumnBuilder {
 						ColumnBuffer::dictionary_id(vec![DictionaryEntryId::default(); len])
 					}
 					Value::Blob(_) => ColumnBuffer::blob(vec![Blob::default(); len]),
-					Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
+					Value::Decimal(_) => {
 						let declared = match (&**inner, &value) {
-							(ColumnBuilder::Int(_), Value::Int(_))
-							| (ColumnBuilder::Uint(_), Value::Uint(_))
-							| (ColumnBuilder::Decimal(_), Value::Decimal(_)) => inner.get_type(),
+							(ColumnBuilder::Decimal(_), Value::Decimal(_)) => {
+								inner.get_type()
+							}
 							_ => value.get_type(),
 						};
 						ColumnBuffer::none_typed(declared, len).split_nulls().0
@@ -163,7 +161,7 @@ impl ColumnBuilder {
 			Value::Uint2(v) => push_or_promote!(native self, v, Uint2),
 			Value::Uint4(v) => push_or_promote!(native self, v, Uint4),
 			Value::Uint8(v) => push_or_promote!(native self, v, Uint8),
-			Value::Uint16(v) => push_or_promote!(temporal self, v, Uint16, uint16_to_native),
+			Value::Uint16(v) => push_or_promote!(native self, v, Uint16),
 			Value::Utf8(v) => push_or_promote!(varlen self, v, Utf8),
 			Value::Date(v) => push_or_promote!(temporal self, v, Date, date_to_native),
 			Value::DateTime(v) => push_or_promote!(temporal self, v, DateTime, datetime_to_native),
@@ -180,8 +178,6 @@ impl ColumnBuilder {
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => push_or_promote!(varlen self, v.as_bytes(), Blob),
-			Value::Int(v) => push_or_promote!(decimal self, Decimal::from(v), Int),
-			Value::Uint(v) => push_or_promote!(decimal self, Decimal::from(v), Uint),
 			Value::Decimal(v) => push_or_promote!(decimal self, v, Decimal),
 			Value::None {
 				..
@@ -229,10 +225,10 @@ pub mod tests {
 	use reifydb_value::value::{
 		Value,
 		container::{
-			decimal_array::u128s,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
+			wide_int_array::wides,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -487,7 +483,7 @@ pub mod tests {
 		let ColumnBuffer::Int16(container) = col else {
 			panic!("Expected Int16");
 		};
-		assert_eq!(&container.values()[..], &[1000, 2000]);
+		assert_eq!(wides::<i128>(&container), [1000, 2000]);
 	}
 
 	#[test]
@@ -647,7 +643,7 @@ pub mod tests {
 		let ColumnBuffer::Uint16(container) = col else {
 			panic!("Expected Uint16");
 		};
-		assert_eq!(u128s(&container), &[10000, 20000]);
+		assert_eq!(wides::<u128>(&container), [10000, 20000]);
 	}
 
 	#[test]

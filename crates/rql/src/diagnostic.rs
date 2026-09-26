@@ -259,7 +259,7 @@ impl IntoDiagnostic for AstError {
 					message: format!("type `{}` does not accept these parameters", &type_name),
 					fragment,
 					label: Some("unsupported type parameters".to_string()),
-					help: Some("Only utf8 and blob take a byte limit, e.g. utf8(255), int and uint take a precision, e.g. int(20), decimal takes precision and scale, e.g. decimal(10,2), and digest takes an input type and an accuracy, e.g. digest(float8, 0.01)".to_string()),
+					help: Some("Only utf8 and blob take a byte limit, e.g. utf8(255), decimal takes precision and scale, e.g. decimal(10,2), and digest takes an input type and an accuracy, e.g. digest(float8, 0.01)".to_string()),
 					column: None,
 					notes: vec![],
 					cause: None,

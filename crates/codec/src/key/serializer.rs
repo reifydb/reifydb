@@ -15,10 +15,8 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -32,7 +30,7 @@ use super::{
 use crate::{
 	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
 	tag::{TypeTag, ValueKind},
-	unscaled::{NARROW, decimal_unscaled, int_unscaled, uint_unscaled, width},
+	unscaled::{NARROW, decimal_unscaled, width},
 };
 
 fn keycode_type_descending(ty: &ValueType) -> bool {
@@ -60,8 +58,6 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 			| ValueType::Uuid4
 			| ValueType::Uuid7
 			| ValueType::IdentityId
-			| ValueType::Int { .. }
-			| ValueType::Uint { .. }
 			| ValueType::Decimal { .. }
 	)
 }
@@ -250,22 +246,6 @@ impl KeySerializer {
 		self.extend_bytes(blob.as_ref() as &[u8])
 	}
 
-	pub fn extend_int(&mut self, value: &Int, precision: Precision) -> Result<&mut Self> {
-		let unscaled = int_unscaled(value, precision).ok_or_else(|| {
-			key_error(format!("int {value} does not fit precision {}", precision.value()))
-		})?;
-		self.buffer.push(encode_u8(precision.value()));
-		Ok(self.extend_unscaled(unscaled, precision))
-	}
-
-	pub fn extend_uint(&mut self, value: &Uint, precision: Precision) -> Result<&mut Self> {
-		let unscaled = uint_unscaled(value, precision).ok_or_else(|| {
-			key_error(format!("uint {value} does not fit precision {}", precision.value()))
-		})?;
-		self.buffer.push(encode_u8(precision.value()));
-		Ok(self.extend_unscaled(unscaled, precision))
-	}
-
 	pub fn extend_decimal(&mut self, value: &Decimal, precision: Precision, scale: Scale) -> Result<&mut Self> {
 		let unscaled = decimal_unscaled(value, precision, scale).ok_or_else(|| {
 			key_error(format!(
@@ -407,14 +387,6 @@ impl KeySerializer {
 			Value::Blob(b) => {
 				self.buffer.push(ValueKind::Blob.byte());
 				self.extend_blob(b);
-			}
-			Value::Int(i) => {
-				self.buffer.push(ValueKind::Int.byte());
-				self.extend_int(i, Precision::MAX)?;
-			}
-			Value::Uint(u) => {
-				self.buffer.push(ValueKind::Uint.byte());
-				self.extend_uint(u, Precision::MAX)?;
 			}
 			Value::Decimal(d) => {
 				self.buffer.push(ValueKind::Decimal.byte());

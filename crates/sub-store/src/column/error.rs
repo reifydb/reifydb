@@ -38,6 +38,13 @@ pub enum SubStoreError {
 		time: usize,
 		rows: usize,
 	},
+
+	#[error("{}", partition_mismatch_message(*.partitioned, *.partitions, *.rows))]
+	PartitionMismatch {
+		partitioned: bool,
+		partitions: usize,
+		rows: usize,
+	},
 }
 
 impl From<SubStoreError> for Error {
@@ -127,6 +134,23 @@ impl IntoDiagnostic for SubStoreError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			SubStoreError::PartitionMismatch {
+				partitioned,
+				partitions,
+				rows,
+			} => Diagnostic {
+				code: "SCOL_006".to_string(),
+				rql: None,
+				message: partition_mismatch_message(partitioned, partitions, rows),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("#partition does not match the partition declaration".to_string()),
+				help: Some("a partitioned object stamps #partition on every row, and an unpartitioned object stamps it on none".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
 }
@@ -138,4 +162,15 @@ fn time_mismatch_message(timed: bool, time: usize, rows: usize) -> String {
 		"declares no time source"
 	};
 	format!("column_block_from_batches: #time holds {time} entries for {rows} rows but the object {declaration}")
+}
+
+fn partition_mismatch_message(partitioned: bool, partitions: usize, rows: usize) -> String {
+	let declaration = if partitioned {
+		"declares a partition"
+	} else {
+		"declares no partition"
+	};
+	format!(
+		"column_block_from_batches: #partition holds {partitions} entries for {rows} rows but the object {declaration}"
+	)
 }

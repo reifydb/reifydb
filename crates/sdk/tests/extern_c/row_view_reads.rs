@@ -39,11 +39,9 @@ use reifydb_value::{
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
-		int::Int,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
-		uint::Uint,
 	},
 };
 
@@ -79,8 +77,6 @@ fn read_all(row: &impl RowView, name: &str) -> Vec<String> {
 		outcome(row.i128(name)),
 		outcome(row.f32(name)),
 		outcome(row.f64(name)),
-		outcome(row.int(name)),
-		outcome(row.uint(name)),
 		outcome(row.decimal(name)),
 		outcome(row.date(name)),
 		outcome(row.datetime(name)),
@@ -136,8 +132,6 @@ fn one_row_of_every_type() -> Columns {
 		("utf8", ColumnBuffer::utf8(["a"])),
 		("blob", ColumnBuffer::blob([Blob::new(vec![1, 2])])),
 		("bool", ColumnBuffer::bool([true])),
-		("int", ColumnBuffer::int(Precision::MAX, [Int::MIN])),
-		("uint", ColumnBuffer::uint(Precision::MAX, [Uint::MAX])),
 		(
 			"decimal",
 			ColumnBuffer::decimal(Precision::new(38), Scale::new(2), [Decimal::parse("-1.25").unwrap()]),
@@ -195,7 +189,6 @@ fn the_shared_read_table_widens_refuses_and_rejects_nan() {
 	assert_eq!(row.f64("float4").unwrap(), Some(1.5));
 	assert_eq!(outcome(row.i32("int8")), "error: wrong type");
 	assert_eq!(outcome(row.u64("int4")), "error: wrong type");
-	assert_eq!(outcome(row.f64("int")), "error: wrong type");
 	assert_eq!(outcome(row.decimal("float8_nan")), "error: does not fit");
 	assert_eq!(row.decimal("float8").unwrap(), Some(Decimal::parse("1.5").unwrap()));
 }
@@ -211,7 +204,7 @@ fn a_family_cell_past_76_digits_is_an_error_not_none() {
 	let column = ExternCColumn {
 		name: ExternCBuffer::from_slice(name),
 		data: ExternCColumnData {
-			type_code: ValueKind::Int,
+			type_code: ValueKind::Decimal,
 			precision: 76,
 			scale: 0,
 			row_count: 1,
@@ -231,5 +224,5 @@ fn a_family_cell_past_76_digits_is_an_error_not_none() {
 	let borrowed = unsafe { BorrowedColumns::from_extern_c(&columns) };
 	let row = borrowed.row(0).unwrap();
 	assert!(row.is_defined("c"));
-	assert!(matches!(row.int("c"), Err(SdkError::InvalidInput(_))), "got {:?}", row.int("c"));
+	assert!(matches!(row.decimal("c"), Err(SdkError::InvalidInput(_))), "got {:?}", row.decimal("c"));
 }

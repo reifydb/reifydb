@@ -108,7 +108,7 @@ function typeColorClass(typeName: string): string | undefined {
     case 'Float4': case 'Float8':
     case 'Int1': case 'Int2': case 'Int4': case 'Int8': case 'Int16':
     case 'Uint1': case 'Uint2': case 'Uint4': case 'Uint8': case 'Uint16':
-    case 'Int': case 'Uint': case 'Decimal':
+    case 'Decimal':
       return 'rdb-catalog__node-type--numeric';
     case 'Utf8': case 'Blob':
       return 'rdb-catalog__node-type--string';

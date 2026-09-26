@@ -11,4 +11,3 @@ mod string_binary_edge_cases;
 mod temporal_edge_cases;
 mod update;
 mod uuid_identity_edge_cases;
-mod variable_type_edge_cases;

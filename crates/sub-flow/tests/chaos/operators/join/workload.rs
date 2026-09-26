@@ -111,8 +111,7 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
 		.collect();
 
-	// `with_row_numbers` would stamp every system time at the epoch, so the times have to be written
-	// alongside the numbers or the harness reads the whole batch as arriving at time zero.
+	// `with_row_numbers` leaves every system time empty, so the times must be written alongside the numbers.
 	let numbers: Vec<RowNumber> = rows.iter().map(|row| row.number).collect();
 	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
 	Columns::with_system(
