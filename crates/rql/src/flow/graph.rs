@@ -12,7 +12,7 @@ use reifydb_core::interface::catalog::flow::{FlowEdgeId, OperatorId};
 
 use super::operator::FlowEdge;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DirectedGraph<NodeData> {
 	nodes: BTreeMap<OperatorId, NodeData>,
 	edges: Vec<FlowEdge>,

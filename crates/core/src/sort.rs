@@ -25,7 +25,7 @@ impl From<SortDirection> for SortOrder {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SortKey {
 	pub column: Fragment,
 	pub direction: SortDirection,

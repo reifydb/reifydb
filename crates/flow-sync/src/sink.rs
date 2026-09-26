@@ -514,8 +514,10 @@ mod tests {
 
 	#[test]
 	fn an_update_moves_the_row_to_its_new_key_keeps_the_prior_created_at_and_takes_updated_from_the_post_row() {
-		let mut txn = MemoryTxn::default();
-		txn.clock = MockClock::from_millis(500);
+		let mut txn = MemoryTxn {
+			clock: MockClock::from_millis(500),
+			..Default::default()
+		};
 		let view = view(plain_symbol(), by_qty(), &[]);
 		let storage = view.storage_id();
 		let mut sink = sink(&view);

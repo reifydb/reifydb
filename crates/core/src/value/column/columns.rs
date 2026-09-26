@@ -34,7 +34,7 @@ use crate::{
 	value::column::{ColumnBuffer, ColumnWithName, builder::ColumnBuilder},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Columns {
 	pub system: SystemColumns,
 	pub columns: Vec<ColumnBuffer>,

@@ -417,8 +417,7 @@ mod tests {
 
 		run_all(&mut txn);
 
-		let emitted: Vec<RowNumber> =
-			emitted_to(&txn, VIEW).into_iter().flat_map(|diff| row_numbers(diff)).collect();
+		let emitted: Vec<RowNumber> = emitted_to(&txn, VIEW).into_iter().flat_map(row_numbers).collect();
 		let distinct: BTreeSet<RowNumber> = emitted.iter().copied().collect();
 		assert_eq!(emitted.len(), 4);
 		assert_eq!(distinct.len(), 4);

@@ -14,12 +14,12 @@ use super::{
 	operator::{FlowEdge, FlowNode, OperatorDef},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FlowDag {
 	inner: Arc<Inner>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,

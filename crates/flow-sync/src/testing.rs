@@ -240,17 +240,18 @@ mod tests {
 			},
 			change::Diff,
 		},
-		value::column::columns::Columns,
+		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_rql::flow::flow::FlowBuilder;
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		error::{Diagnostic, Error},
+		fragment::Fragment,
 		util::cowvec::CowVec,
 		value::{Value, dictionary::DictionaryId, value_type::ValueType},
 	};
 
-	use super::{Continue, LookupOutcome, LookupTarget, Outcome, SyncHooks, TestingTxn};
+	use super::{Continue, LookupOutcome, LookupTarget, NoFaults, Outcome, SyncHooks, TestingTxn};
 	use crate::{
 		memory::MemoryTxn,
 		txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
@@ -495,5 +496,41 @@ mod tests {
 		assert!(txn.txn().rows.contains_key(&key(2)));
 		assert!(!txn.txn().rows.contains_key(&key(3)));
 		assert_eq!(txn.calls(), 3);
+	}
+
+	#[test]
+	fn no_faults_over_a_memory_transaction_behaves_exactly_like_the_bare_memory_transaction() {
+		let mut bare = catalog();
+		let mut txn = TestingTxn::over(catalog(), Arc::new(NoFaults));
+		let diff = Diff::insert(Columns::new(vec![ColumnWithName::new(
+			Fragment::internal("qty"),
+			ColumnBuffer::int8(vec![10]),
+		)]));
+
+		assert_eq!(txn.get(&key(1)), bare.get(&key(1)));
+		assert_eq!(txn.set(&key(1), row(1)), bare.set(&key(1), row(1)));
+		assert_eq!(txn.remove(&key(1)), bare.remove(&key(1)));
+		assert_eq!(txn.emit(VIEW, diff.clone()), bare.emit(VIEW, diff));
+		let sol = txn.intern(&symbols(), &utf8("sol"));
+		let bare_sol = bare.intern(&symbols(), &utf8("sol"));
+		assert_eq!(sol, bare_sol);
+		assert_eq!(txn.resolve(&symbols(), sol.unwrap()), bare.resolve(&symbols(), bare_sol.unwrap()));
+		assert_eq!(txn.transactional_flows(), bare.transactional_flows());
+		assert_eq!(txn.view(VIEW), bare.view(VIEW));
+		assert_eq!(txn.table(TABLE), bare.table(TABLE));
+		assert_eq!(txn.dictionary(SYMBOLS), bare.dictionary(SYMBOLS));
+		assert_eq!(txn.cursor(), bare.cursor());
+		assert_eq!(txn.entries_from(0), bare.entries_from(0));
+		txn.set_cursor(1);
+		bare.set_cursor(1);
+		assert_eq!(txn.now(), bare.now());
+
+		assert_eq!(txn.txn().rows, bare.rows);
+		assert_eq!(txn.txn().entries, bare.entries);
+		assert_eq!(txn.txn().emitted, bare.emitted);
+		assert_eq!(txn.txn().cursor, bare.cursor);
+		assert_eq!(txn.txn().dictionary_values, bare.dictionary_values);
+		assert_eq!(txn.txn().flows, bare.flows);
+		assert_eq!(txn.calls(), 4);
 	}
 }
