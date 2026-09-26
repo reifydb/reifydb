@@ -3,7 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, Bound},
-	sync::{Arc, Mutex},
+	sync::Arc,
 };
 
 use reifydb_cdc::rebuild::rebuild_changes;
@@ -19,6 +19,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -40,15 +41,13 @@ impl TrackedChanges {
 	fn settled(&self, t: &TestEngine) -> BTreeMap<CommitVersion, Vec<Change>> {
 		t.await_cdc();
 		t.event_bus().wait_for_completion();
-		self.0.lock().expect("tracked changes lock").clone()
+		self.0.lock().clone()
 	}
 }
 
 impl EventListener<PostCommitEvent> for TrackedChanges {
 	fn on(&self, event: &PostCommitEvent) {
-		self.0.lock()
-			.expect("tracked changes lock")
-			.insert(event.version().commit, event.flow_changes().clone());
+		self.0.lock().insert(event.version().commit, event.flow_changes().clone());
 	}
 }
 

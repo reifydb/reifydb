@@ -227,7 +227,7 @@ mod tests {
 	};
 
 	fn group_id(name: &str) -> GroupId {
-		GroupId::of(&EncodedKey::new(name.as_bytes().to_vec()))
+		GroupId::of(&EncodedKey::new(name.as_bytes()))
 	}
 
 	type Engine = SessionEngine<u32, reifydb_value::value::datetime::DateTime, SumAccumulator>;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::str::FromStr;
+use std::{slice::from_ref, str::FromStr};
 
 use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
@@ -223,8 +223,8 @@ fn row_values_round_trip_at_both_slot_widths() {
 			assert_eq!(read.scale(), 4, "field {index} must read back at the column scale");
 		}
 	}
-	for index in 0..types.len() {
-		shape.set_value(&mut row, index, &Value::none_of(types[index].clone()));
+	for (index, ty) in types.iter().enumerate() {
+		shape.set_value(&mut row, index, &Value::none_of(ty.clone()));
 		assert!(!row.is_defined(index));
 	}
 }
@@ -264,7 +264,7 @@ fn json_frames_keep_precision_scale_and_values() {
 		},
 	]);
 	// The text form alone loses the column type, so the wire type must carry the params back.
-	let decoded = frames_from_json(&frames_to_json(&[frame.clone()]).unwrap()).unwrap();
+	let decoded = frames_from_json(&frames_to_json(from_ref(&frame)).unwrap()).unwrap();
 	assert_eq!(decoded.len(), 1);
 	for (want, got) in frame.columns.iter().zip(&decoded[0].columns) {
 		assert_eq!(want.name, got.name);

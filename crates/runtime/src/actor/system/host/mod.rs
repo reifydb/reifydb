@@ -500,8 +500,7 @@ mod tests {
 
 		system.shutdown();
 		system.join().unwrap();
-		let order = log.lock().unwrap().clone();
-		order
+		log.lock().unwrap().clone()
 	}
 
 	#[test]

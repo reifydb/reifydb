@@ -929,6 +929,150 @@ impl MultiWriteTransaction {
 	}
 }
 
+pub(crate) struct MergePendingIterator<I, K = EncodedKey> {
+	pending_iter: iter::Peekable<vec::IntoIter<(K, DeltaEntry)>>,
+	storage_iter: I,
+	next_storage: Option<MultiVersionRow<K>>,
+	reverse: bool,
+}
+
+impl<I, K> MergePendingIterator<I, K>
+where
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
+{
+	pub(crate) fn new(pending: Vec<(K, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
+		Self {
+			pending_iter: pending.into_iter().peekable(),
+			storage_iter,
+			next_storage: None,
+			reverse,
+		}
+	}
+}
+
+impl<I, K> Iterator for MergePendingIterator<I, K>
+where
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
+{
+	type Item = Result<MultiVersionRow<K>>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			if self.next_storage.is_none() {
+				self.next_storage = match self.storage_iter.next() {
+					Some(Ok(v)) => Some(v),
+					Some(Err(e)) => return Some(Err(e)),
+					None => None,
+				};
+			}
+
+			match (self.pending_iter.peek(), &self.next_storage) {
+				(Some((pending_key, _)), Some(storage_val)) => {
+					let cmp = pending_key.cmp(&storage_val.key);
+					let should_yield_pending = if self.reverse {
+						matches!(cmp, Ordering::Greater)
+					} else {
+						matches!(cmp, Ordering::Less)
+					};
+
+					if should_yield_pending {
+						let (key, value) = self.pending_iter.next().unwrap();
+						if let Some(bytes) = value.bytes() {
+							return Some(Ok(MultiVersionRow {
+								key,
+								bytes: bytes.clone(),
+								version: value.version,
+							}));
+						}
+					} else if matches!(cmp, Ordering::Equal) {
+						let (key, value) = self.pending_iter.next().unwrap();
+						self.next_storage = None;
+						if let Some(bytes) = value.bytes() {
+							return Some(Ok(MultiVersionRow {
+								key,
+								bytes: bytes.clone(),
+								version: value.version,
+							}));
+						}
+					} else {
+						return Some(Ok(self.next_storage.take().unwrap()));
+					}
+				}
+				(Some(_), None) => {
+					let (key, value) = self.pending_iter.next().unwrap();
+					if let Some(bytes) = value.bytes() {
+						return Some(Ok(MultiVersionRow {
+							key,
+							bytes: bytes.clone(),
+							version: value.version,
+						}));
+					}
+				}
+				(None, Some(_)) => {
+					return Some(Ok(self.next_storage.take().unwrap()));
+				}
+				(None, None) => return None,
+			}
+		}
+	}
+}
+
+fn row_bounds_to_typed(
+	storage: StorageId,
+	start: &Bound<StorageRowKey>,
+	end: &Bound<StorageRowKey>,
+) -> TaggedKeyBoundRange {
+	let bound = |k: &StorageRowKey| TaggedKeyBound::Key(TaggedKey::Row(RowKey::new(storage, k.row())));
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::Row, storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::Row, storage)),
+	};
+	TaggedKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
+}
+
+fn partitioned_row_bounds_to_typed(
+	storage: StorageId,
+	start: &Bound<StoragePartitionedRowKey>,
+	end: &Bound<StoragePartitionedRowKey>,
+) -> TaggedKeyBoundRange {
+	let bound = |k: &StoragePartitionedRowKey| {
+		TaggedKeyBound::Key(TaggedKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
+	};
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::PartitionedRow, storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::PartitionedRow, storage)),
+	};
+	TaggedKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
+}
+
+fn storage_span_start(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
+}
+
+fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
@@ -1074,148 +1218,4 @@ mod tests {
 			}
 		}
 	}
-}
-
-pub(crate) struct MergePendingIterator<I, K = EncodedKey> {
-	pending_iter: iter::Peekable<vec::IntoIter<(K, DeltaEntry)>>,
-	storage_iter: I,
-	next_storage: Option<MultiVersionRow<K>>,
-	reverse: bool,
-}
-
-impl<I, K> MergePendingIterator<I, K>
-where
-	K: Ord,
-	I: Iterator<Item = Result<MultiVersionRow<K>>>,
-{
-	pub(crate) fn new(pending: Vec<(K, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
-		Self {
-			pending_iter: pending.into_iter().peekable(),
-			storage_iter,
-			next_storage: None,
-			reverse,
-		}
-	}
-}
-
-impl<I, K> Iterator for MergePendingIterator<I, K>
-where
-	K: Ord,
-	I: Iterator<Item = Result<MultiVersionRow<K>>>,
-{
-	type Item = Result<MultiVersionRow<K>>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			if self.next_storage.is_none() {
-				self.next_storage = match self.storage_iter.next() {
-					Some(Ok(v)) => Some(v),
-					Some(Err(e)) => return Some(Err(e)),
-					None => None,
-				};
-			}
-
-			match (self.pending_iter.peek(), &self.next_storage) {
-				(Some((pending_key, _)), Some(storage_val)) => {
-					let cmp = pending_key.cmp(&storage_val.key);
-					let should_yield_pending = if self.reverse {
-						matches!(cmp, Ordering::Greater)
-					} else {
-						matches!(cmp, Ordering::Less)
-					};
-
-					if should_yield_pending {
-						let (key, value) = self.pending_iter.next().unwrap();
-						if let Some(bytes) = value.bytes() {
-							return Some(Ok(MultiVersionRow {
-								key,
-								bytes: bytes.clone(),
-								version: value.version,
-							}));
-						}
-					} else if matches!(cmp, Ordering::Equal) {
-						let (key, value) = self.pending_iter.next().unwrap();
-						self.next_storage = None;
-						if let Some(bytes) = value.bytes() {
-							return Some(Ok(MultiVersionRow {
-								key,
-								bytes: bytes.clone(),
-								version: value.version,
-							}));
-						}
-					} else {
-						return Some(Ok(self.next_storage.take().unwrap()));
-					}
-				}
-				(Some(_), None) => {
-					let (key, value) = self.pending_iter.next().unwrap();
-					if let Some(bytes) = value.bytes() {
-						return Some(Ok(MultiVersionRow {
-							key,
-							bytes: bytes.clone(),
-							version: value.version,
-						}));
-					}
-				}
-				(None, Some(_)) => {
-					return Some(Ok(self.next_storage.take().unwrap()));
-				}
-				(None, None) => return None,
-			}
-		}
-	}
-}
-
-fn row_bounds_to_typed(
-	storage: StorageId,
-	start: &Bound<StorageRowKey>,
-	end: &Bound<StorageRowKey>,
-) -> TaggedKeyBoundRange {
-	let bound = |k: &StorageRowKey| TaggedKeyBound::Key(TaggedKey::Row(RowKey::new(storage, k.row())));
-	let lower = match start {
-		Bound::Included(k) => Bound::Included(bound(k)),
-		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::Row, storage)),
-	};
-	let upper = match end {
-		Bound::Included(k) => Bound::Included(bound(k)),
-		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::Row, storage)),
-	};
-	TaggedKeyBoundRange {
-		start: lower,
-		end: upper,
-	}
-}
-
-fn partitioned_row_bounds_to_typed(
-	storage: StorageId,
-	start: &Bound<StoragePartitionedRowKey>,
-	end: &Bound<StoragePartitionedRowKey>,
-) -> TaggedKeyBoundRange {
-	let bound = |k: &StoragePartitionedRowKey| {
-		TaggedKeyBound::Key(TaggedKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
-	};
-	let lower = match start {
-		Bound::Included(k) => Bound::Included(bound(k)),
-		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::PartitionedRow, storage)),
-	};
-	let upper = match end {
-		Bound::Included(k) => Bound::Included(bound(k)),
-		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::PartitionedRow, storage)),
-	};
-	TaggedKeyBoundRange {
-		start: lower,
-		end: upper,
-	}
-}
-
-fn storage_span_start(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
-	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
-}
-
-fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
-	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
 }

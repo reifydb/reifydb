@@ -163,6 +163,36 @@ fn byte_to_tier(byte: u8) -> Option<Tier> {
 	}
 }
 
+fn extend_metrics_id_fields<'a>(out: &mut SmallVec<[Field<'a>; 6]>, id: MetricsId) {
+	match id {
+		MetricsId::Object(object) => {
+			out.push(Field::UDesc(Width::U8, ID_OBJECT as u128));
+			out.push(Field::UAsc(Width::U8, object.type_tag() as u128));
+			out.push(Field::UDesc(Width::U64, object.as_u64() as u128));
+		}
+		MetricsId::System => out.push(Field::UDesc(Width::U8, ID_SYSTEM as u128)),
+	}
+}
+
+impl KeyFields for MetricStorageKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![
+			Field::UDesc(Width::U8, SUBKEY_STORAGE as u128),
+			Field::UDesc(Width::U8, tier_to_byte(self.tier) as u128),
+		];
+		extend_metrics_id_fields(&mut out, self.id);
+		out
+	}
+}
+
+impl KeyFields for MetricCdcKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![Field::UDesc(Width::U8, SUBKEY_CDC as u128)];
+		extend_metrics_id_fields(&mut out, self.id);
+		out
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::decode_u8;
@@ -235,35 +265,5 @@ mod tests {
 		let buffer = MetricStorageKey::encoded(Tier::Buffer, MetricsId::System);
 		let persistent = MetricStorageKey::encoded(Tier::Persistent, MetricsId::System);
 		assert!(persistent.as_slice() < buffer.as_slice());
-	}
-}
-
-fn extend_metrics_id_fields<'a>(out: &mut SmallVec<[Field<'a>; 6]>, id: MetricsId) {
-	match id {
-		MetricsId::Object(object) => {
-			out.push(Field::UDesc(Width::U8, ID_OBJECT as u128));
-			out.push(Field::UAsc(Width::U8, object.type_tag() as u128));
-			out.push(Field::UDesc(Width::U64, object.as_u64() as u128));
-		}
-		MetricsId::System => out.push(Field::UDesc(Width::U8, ID_SYSTEM as u128)),
-	}
-}
-
-impl KeyFields for MetricStorageKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![
-			Field::UDesc(Width::U8, SUBKEY_STORAGE as u128),
-			Field::UDesc(Width::U8, tier_to_byte(self.tier) as u128),
-		];
-		extend_metrics_id_fields(&mut out, self.id);
-		out
-	}
-}
-
-impl KeyFields for MetricCdcKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![Field::UDesc(Width::U8, SUBKEY_CDC as u128)];
-		extend_metrics_id_fields(&mut out, self.id);
-		out
 	}
 }

@@ -74,6 +74,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::approx_constant)]
 	fn test_format_f64_small_values() {
 		assert_eq!(format_f64(1.0), "1");
 		assert_eq!(format_f64(-1.0), "-1");
@@ -134,6 +135,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::approx_constant)]
 	fn test_format_f32_small_values() {
 		assert_eq!(format_f32(1.0f32), "1");
 		assert_eq!(format_f32(3.14f32), "3.14");

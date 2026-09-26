@@ -126,7 +126,7 @@ fn test_mixed_with_other_types() {
 	shape.set::<u128>(&mut row, 2, large_value2);
 
 	assert_eq!(shape.get::<u128>(&row, 0), large_value1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<u128>(&row, 2), large_value2);
 }
 

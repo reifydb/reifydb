@@ -432,7 +432,7 @@ fn an_armed_filter_reports_a_real_allocation_and_an_empty_fill() {
 	assert_eq!(metrics.fill_ratio, 0.0, "nothing has been added, so no bit may be set");
 	assert_eq!(metrics.estimated_keys, 0);
 
-	filter.add(0xC0FF_EE);
+	filter.add(0x00C0_FFEE);
 	assert!(filter.metrics().fill_ratio > 0.0, "a write into an armed filter set no bits");
 }
 

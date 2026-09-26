@@ -61,7 +61,7 @@ impl ExecutionTrace {
 
 enum TxHandle {
 	Read(MultiReadTransaction),
-	Write(MultiWriteTransaction),
+	Write(Box<MultiWriteTransaction>),
 }
 
 pub struct Executor {
@@ -118,7 +118,7 @@ impl Executor {
 			let result = match op {
 				Op::BeginCommand => match self.engine.begin_command() {
 					Ok(tx) => {
-						handles.insert(tx_id, TxHandle::Write(tx));
+						handles.insert(tx_id, TxHandle::Write(Box::new(tx)));
 						OpResult::Ok
 					}
 					Err(e) => OpResult::Error(format!("{}", e)),

@@ -526,8 +526,7 @@ mod tests {
 		buckets: TumblingBuckets<u32, DateTime, i64>,
 	) -> Vec<WindowResult<u32, DateTime, i64>> {
 		let order = order_of(&buckets);
-		let out = engine.apply(store, buckets, &order, group_slot, SumAccumulator::default).expect("apply");
-		out
+		engine.apply(store, buckets, &order, group_slot, SumAccumulator::default).expect("apply")
 	}
 
 	fn one_bucket(group: u32, window_start: i64, contribution: i64) -> TumblingBuckets<u32, DateTime, i64> {

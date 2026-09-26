@@ -287,6 +287,7 @@ fn run_guarded(item: Arc<dyn Runnable>) {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_types)]
 mod tests {
 	use std::{
 		sync::mpsc::{Sender as StdSender, channel},

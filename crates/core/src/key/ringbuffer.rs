@@ -108,6 +108,19 @@ impl RingBufferMetadataKey {
 	}
 }
 
+impl KeyFields for RingBufferMetadataKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
+			Field::RawAsc(
+				RawEncoding::Verbatim,
+				Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())
+			),
+		]
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::ops::RangeBounds;
@@ -176,18 +189,5 @@ mod tests {
 			legacy.extend_u8(KeyTag::RingBuffer as u8).extend_u64(id);
 			assert_eq!(legacy.to_encoded_key().as_slice(), RingBufferKey::encoded(id).as_slice());
 		}
-	}
-}
-
-impl KeyFields for RingBufferMetadataKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
-			Field::RawAsc(
-				RawEncoding::Verbatim,
-				Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())
-			),
-		]
 	}
 }

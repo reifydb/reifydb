@@ -63,7 +63,7 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-	($key:expr) => {{ <_ as crate::multi::transaction::IntoKey>::into_key($key) }};
+	($key:expr) => {{ <_ as $crate::multi::transaction::IntoKey>::into_key($key) }};
 }
 
 #[macro_export]
@@ -78,7 +78,7 @@ macro_rules! as_bound {
 
 #[macro_export]
 macro_rules! as_values {
-	($val:expr) => {{ <_ as crate::multi::transaction::IntoValues>::into_bytes($val) }};
+	($val:expr) => {{ <_ as $crate::multi::transaction::IntoValues>::into_bytes($val) }};
 }
 
 #[macro_export]

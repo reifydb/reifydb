@@ -649,7 +649,7 @@ mod tests {
 				assert!(version.0 >= 1);
 
 				let inner = oracle.inner.read();
-				assert!(inner.time_windows.len() > 0);
+				assert!(!inner.time_windows.is_empty());
 				let any_window_has_key1 =
 					inner.time_windows.values().any(|w| w.modified_keys.contains(&key1));
 				let any_window_has_key2 =

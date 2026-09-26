@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::Bound;
+use std::{collections::Bound, slice::from_ref};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -354,11 +354,11 @@ fn test_state_clear() {
 	txn.state_set(operator_id, &make_key("key2"), make_value("value2")).unwrap();
 	txn.state_set(operator_id, &make_key("key3"), make_value("value3")).unwrap();
 
-	assert_eq!(txn.state_scan_all(operator_id).unwrap().items.into_iter().count(), 3);
+	assert_eq!(txn.state_scan_all(operator_id).unwrap().items.len(), 3);
 
 	txn.state_clear(operator_id).unwrap();
 
-	assert_eq!(txn.state_scan_all(operator_id).unwrap().items.into_iter().count(), 0);
+	assert_eq!(txn.state_scan_all(operator_id).unwrap().items.len(), 0);
 }
 
 #[test]
@@ -382,8 +382,8 @@ fn test_state_clear_only_own_node() {
 
 	txn.state_clear(node1).unwrap();
 
-	assert_eq!(txn.state_scan_all(node1).unwrap().items.into_iter().count(), 0);
-	assert_eq!(txn.state_scan_all(node2).unwrap().items.into_iter().count(), 1);
+	assert_eq!(txn.state_scan_all(node1).unwrap().items.len(), 0);
+	assert_eq!(txn.state_scan_all(node2).unwrap().items.len(), 1);
 }
 
 #[test]
@@ -451,7 +451,7 @@ fn cached_state_reads_never_mask_writes_or_removes() {
 
 	txn.state_remove(operator_id, &key).unwrap();
 	assert_eq!(txn.state_get(operator_id, &key).unwrap(), None);
-	let batch = txn.state_get_many(operator_id, &[key.clone()]).unwrap();
+	let batch = txn.state_get_many(operator_id, from_ref(&key)).unwrap();
 	assert!(batch.items.is_empty(), "a removed key must not resurface through the batch path");
 
 	// A key first seen as a cached miss must surface a later write.

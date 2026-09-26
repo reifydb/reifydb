@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::approx_constant)]
 use std::f64::consts::{E, PI};
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
@@ -88,13 +87,13 @@ fn test_mixed_with_other_types() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float8, ValueType::Int8, ValueType::Float8]);
 	let mut row = shape.allocate_pod();
 
-	shape.set::<f64>(&mut row, 0, 3.14159265359f64);
+	shape.set::<f64>(&mut row, 0, PI);
 	shape.set::<i64>(&mut row, 1, 9223372036854775807i64);
-	shape.set::<f64>(&mut row, 2, -2.718281828459045f64);
+	shape.set::<f64>(&mut row, 2, -E);
 
-	assert_eq!(shape.get::<f64>(&row, 0), 3.14159265359);
+	assert_eq!(shape.get::<f64>(&row, 0), PI);
 	assert_eq!(shape.get::<i64>(&row, 1), 9223372036854775807);
-	assert_eq!(shape.get::<f64>(&row, 2), -2.718281828459045);
+	assert_eq!(shape.get::<f64>(&row, 2), -E);
 }
 
 #[test]
@@ -102,9 +101,9 @@ fn test_undefined_handling() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float8, ValueType::Float8]);
 	let mut row = shape.allocate_pod();
 
-	shape.set::<f64>(&mut row, 0, 2.718281828459045f64);
+	shape.set::<f64>(&mut row, 0, E);
 
-	assert_eq!(shape.try_get::<f64>(&row, 0), Some(2.718281828459045));
+	assert_eq!(shape.try_get::<f64>(&row, 0), Some(E));
 	assert_eq!(shape.try_get::<f64>(&row, 1), None);
 
 	shape.set_none(&mut row, 0);

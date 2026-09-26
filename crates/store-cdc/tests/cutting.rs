@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::Bound,
-	thread::sleep,
-	time::{Duration as StdDuration, Instant},
-};
+#[allow(clippy::disallowed_types)]
+use std::time::Duration as StdDuration;
+use std::{collections::Bound, thread::sleep, time::Instant};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -35,6 +33,7 @@ const SUMMARY_LIMIT: usize = 1024;
 
 const TIMESTAMP_BASE: u64 = 1_700_000_000_000_000_000;
 
+#[allow(clippy::disallowed_types)]
 const AUTO_CUT_TIMEOUT: StdDuration = StdDuration::from_secs(5);
 
 /// Byte cost of the smallest record these tests write; every other record is an exact multiple of it, so a block
@@ -229,6 +228,7 @@ mod cases {
 		);
 	}
 
+	#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 	pub fn writer_not_blocked_by_requested_cut(combination: Combination) {
 		// passing the cut size asks the flusher for a block; the writer must keep being accepted while that cut
 		// is outstanding

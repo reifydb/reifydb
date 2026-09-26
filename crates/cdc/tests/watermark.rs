@@ -223,7 +223,7 @@ fn the_floor_finds_the_minimum_among_many_consumers() {
 
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	for i in 0..100 {
-		let consumer_id = CdcConsumerId::new(&format!("consumer_{}", i));
+		let consumer_id = CdcConsumerId::new(format!("consumer_{}", i));
 		let version = CommitVersion(100 + (i * 10));
 		CdcCheckpoint::persist(&mut txn, &consumer_id, version, ConsumerClass::Pinning).unwrap();
 	}

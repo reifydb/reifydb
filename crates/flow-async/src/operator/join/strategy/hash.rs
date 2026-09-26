@@ -29,225 +29,6 @@ use crate::operator::{
 	join::{Identity, operator::JoinOperator, state::JoinSide, store::Store},
 };
 
-#[cfg(test)]
-mod tests {
-	use reifydb_core::{interface::catalog::flow::OperatorId, value::column::buffer::ColumnBuffer};
-	use reifydb_test_harness::engine::TestEngine;
-
-	use super::*;
-	use crate::{
-		operator::host::TxnHostContext,
-		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
-	};
-
-	fn h(v: u128) -> Hash128 {
-		Hash128(v)
-	}
-
-	fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
-		TxnHostContext::new(txn, operator)
-	}
-
-	fn columns_with_fields(fields: &[(&str, i32)], row_number: u64) -> Columns {
-		let cols: Vec<ColumnWithName> = fields
-			.iter()
-			.map(|(name, value)| {
-				ColumnWithName::new(Fragment::internal(*name), ColumnBuffer::int4(vec![*value]))
-			})
-			.collect();
-		Columns::new(cols).with_row_numbers(vec![RowNumber(row_number)])
-	}
-
-	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> Columns {
-		// with_row_numbers backfills a default #time, so a timeless row must bypass it or it arrives timed.
-		let cols: Vec<ColumnWithName> = fields
-			.iter()
-			.map(|(name, value)| {
-				ColumnWithName::new(Fragment::internal(*name), ColumnBuffer::int4(vec![*value]))
-			})
-			.collect();
-		Columns::with_system(
-			cols,
-			SystemColumns::new(
-				vec![RowNumber(row_number)],
-				Vec::new(),
-				Vec::new(),
-				Vec::new(),
-				time.into_iter().collect(),
-				Vec::new(),
-			),
-		)
-	}
-
-	#[test]
-	fn a_timeless_join_row_pays_for_one_instant_and_decodes_it_into_both_stamps() {
-		// Join stores exactly one instant per buffered row; a third envelope field would cost 25 B, not 17.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(72);
-		let store = Store::new(JoinSide::Right);
-
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
-		let columns = columns_with_time(&[("mint", 7)], 1, None);
-		let shape = build_shape(&columns);
-		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
-
-		let row = encode_row(&shape, &columns, 0, now);
-		let envelope = Envelope::try_view(&row).unwrap();
-		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
-		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
-		assert_eq!(envelope.created_at(), Some(now));
-		assert_eq!(envelope.time(), None);
-		assert_eq!(envelope.updated_at(), None, "a second stamp would widen every buffered row by 8 bytes");
-
-		let decoded = decode_run(
-			&mut host(&mut txn, operator),
-			&store,
-			shape.fingerprint(),
-			&[RowNumber(1)],
-			&[row.into_bytes()],
-		)
-		.unwrap();
-		assert_eq!(decoded.created_at(), &[now][..]);
-		assert_eq!(decoded.updated_at(), &[now][..], "both stamps are synthesized from the one stored instant");
-		assert!(decoded.time().is_empty(), "a row that carried no #time must not gain one on the way back");
-		assert_eq!(decoded.column("mint").unwrap().data().get_value(0), Value::Int4(7));
-	}
-
-	#[test]
-	fn a_timed_join_row_stores_its_time_in_the_single_instant_slot_and_still_pays_seventeen_bytes() {
-		// The row's #time replaces the write stamp rather than joining it, so a timed row is never wider.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(73);
-		let store = Store::new(JoinSide::Right);
-
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
-		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
-		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
-		let shape = build_shape(&columns);
-		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
-
-		let row = encode_row(&shape, &columns, 0, now);
-		let envelope = Envelope::try_view(&row).unwrap();
-		assert_eq!(envelope.header_size(), 17, "a timed row must cost the same as a timeless one");
-		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
-		assert_eq!(envelope.time(), Some(event));
-		assert_eq!(envelope.created_at(), None, "the write stamp is dropped, never stored beside the time");
-		assert_eq!(envelope.updated_at(), None);
-
-		let decoded = decode_run(
-			&mut host(&mut txn, operator),
-			&store,
-			shape.fingerprint(),
-			&[RowNumber(2)],
-			&[row.into_bytes()],
-		)
-		.unwrap();
-		assert_eq!(decoded.created_at(), &[event][..]);
-		assert_eq!(decoded.updated_at(), &[event][..]);
-		assert_eq!(decoded.time(), &[event][..]);
-	}
-
-	#[test]
-	fn a_run_mixing_timed_and_timeless_rows_lists_only_the_timed_rows_in_the_time_column() {
-		// The time vector is a filter_map over the run, so it stays shorter than the two stamp vectors.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(74);
-		let store = Store::new(JoinSide::Right);
-
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
-		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
-		let first = columns_with_time(&[("mint", 1)], 1, None);
-		let second = columns_with_time(&[("mint", 2)], 2, Some(event));
-		let third = columns_with_time(&[("mint", 3)], 3, None);
-		let shape = build_shape(&first);
-		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
-
-		let rows: Vec<EncodedBytes> = [&first, &second, &third]
-			.into_iter()
-			.map(|columns| encode_row(&shape, columns, 0, now).into_bytes())
-			.collect();
-
-		let decoded = decode_run(
-			&mut host(&mut txn, operator),
-			&store,
-			shape.fingerprint(),
-			&[RowNumber(1), RowNumber(2), RowNumber(3)],
-			&rows,
-		)
-		.unwrap();
-		assert_eq!(decoded.created_at(), &[now, event, now][..]);
-		assert_eq!(decoded.updated_at(), &[now, event, now][..]);
-		assert_eq!(decoded.time(), &[event][..], "only the row that carried a #time may appear here");
-	}
-
-	#[test]
-	fn columns_from_block_reads_a_second_key_whose_shape_differs_from_the_first() {
-		// A key arriving with an extra column gets its own shape fingerprint, and reading it back
-		// must not fail just because the first key's shape was the only one this Store instance
-		// ever persisted.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(70);
-		let mut store = Store::new(JoinSide::Right);
-
-		let key_a = h(0xA);
-		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_a, &resolved, &[0]).unwrap();
-
-		let key_b = h(0xB);
-		let freshly_discovered = columns_with_fields(&[("mint", 2), ("decimals", 6), ("bump", 255)], 2);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_b, &freshly_discovered, &[0])
-			.unwrap();
-
-		let block_b = store.rows_for_key(&mut host(&mut txn, operator), &key_b, None, 10).unwrap();
-		assert_eq!(block_b.len(), 1);
-		let read_back = columns_from_block(&mut host(&mut txn, operator), &store, block_b)
-			.expect("row shape for key B must be found");
-		assert_eq!(read_back.row_count(), 1);
-		assert_eq!(read_back.len(), 3, "key B's own 3-field shape must be the one used to decode it");
-	}
-
-	#[test]
-	fn columns_from_block_decodes_each_row_with_its_own_shape_when_one_key_spans_two_shapes() {
-		// An upstream field list rebuilt per tick is not order-stable, so two rows under one key
-		// can carry different shape fingerprints and each must decode with its own.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(71);
-		let mut store = Store::new(JoinSide::Right);
-		let key = h(0xC);
-
-		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row1, &[0]).unwrap();
-
-		// The same column set in the opposite order, which is a different fingerprint.
-		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row2, &[0]).unwrap();
-
-		let block = store.rows_for_key(&mut host(&mut txn, operator), &key, None, 10).unwrap();
-		assert_eq!(block.len(), 2);
-		let read_back = columns_from_block(&mut host(&mut txn, operator), &store, block).unwrap();
-
-		let mint = read_back.column("mint").unwrap();
-		let flag = read_back.column("flag").unwrap();
-		assert_eq!(mint.data().get_value(0), Value::Int4(111));
-		assert_eq!(flag.data().get_value(0), Value::Int4(1));
-		assert_eq!(
-			mint.data().get_value(1),
-			Value::Int4(222),
-			"row 2's real mint value must be reported under the mint column"
-		);
-		assert_eq!(
-			flag.data().get_value(1),
-			Value::Int4(999),
-			"row 2's real flag value must be reported under the flag column, not swapped with mint"
-		);
-	}
-}
-
 pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	let fields: Vec<RowShapeField> = columns
 		.names
@@ -686,4 +467,223 @@ where
 		after = Some(last);
 	}
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{interface::catalog::flow::OperatorId, value::column::buffer::ColumnBuffer};
+	use reifydb_test_harness::engine::TestEngine;
+
+	use super::*;
+	use crate::{
+		operator::host::TxnHostContext,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+	};
+
+	fn h(v: u128) -> Hash128 {
+		Hash128(v)
+	}
+
+	fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
+		TxnHostContext::new(txn, operator)
+	}
+
+	fn columns_with_fields(fields: &[(&str, i32)], row_number: u64) -> Columns {
+		let cols: Vec<ColumnWithName> = fields
+			.iter()
+			.map(|(name, value)| {
+				ColumnWithName::new(Fragment::internal(*name), ColumnBuffer::int4(vec![*value]))
+			})
+			.collect();
+		Columns::new(cols).with_row_numbers(vec![RowNumber(row_number)])
+	}
+
+	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> Columns {
+		// with_row_numbers backfills a default #time, so a timeless row must bypass it or it arrives timed.
+		let cols: Vec<ColumnWithName> = fields
+			.iter()
+			.map(|(name, value)| {
+				ColumnWithName::new(Fragment::internal(*name), ColumnBuffer::int4(vec![*value]))
+			})
+			.collect();
+		Columns::with_system(
+			cols,
+			SystemColumns::new(
+				vec![RowNumber(row_number)],
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				time.into_iter().collect(),
+				Vec::new(),
+			),
+		)
+	}
+
+	#[test]
+	fn a_timeless_join_row_pays_for_one_instant_and_decodes_it_into_both_stamps() {
+		// Join stores exactly one instant per buffered row; a third envelope field would cost 25 B, not 17.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(72);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let columns = columns_with_time(&[("mint", 7)], 1, None);
+		let shape = build_shape(&columns);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let row = encode_row(&shape, &columns, 0, now);
+		let envelope = Envelope::try_view(&row).unwrap();
+		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
+		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
+		assert_eq!(envelope.created_at(), Some(now));
+		assert_eq!(envelope.time(), None);
+		assert_eq!(envelope.updated_at(), None, "a second stamp would widen every buffered row by 8 bytes");
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(1)],
+			&[row.into_bytes()],
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[now][..]);
+		assert_eq!(decoded.updated_at(), &[now][..], "both stamps are synthesized from the one stored instant");
+		assert!(decoded.time().is_empty(), "a row that carried no #time must not gain one on the way back");
+		assert_eq!(decoded.column("mint").unwrap().data().get_value(0), Value::Int4(7));
+	}
+
+	#[test]
+	fn a_timed_join_row_stores_its_time_in_the_single_instant_slot_and_still_pays_seventeen_bytes() {
+		// The row's #time replaces the write stamp rather than joining it, so a timed row is never wider.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(73);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
+		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
+		let shape = build_shape(&columns);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let row = encode_row(&shape, &columns, 0, now);
+		let envelope = Envelope::try_view(&row).unwrap();
+		assert_eq!(envelope.header_size(), 17, "a timed row must cost the same as a timeless one");
+		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
+		assert_eq!(envelope.time(), Some(event));
+		assert_eq!(envelope.created_at(), None, "the write stamp is dropped, never stored beside the time");
+		assert_eq!(envelope.updated_at(), None);
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(2)],
+			&[row.into_bytes()],
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[event][..]);
+		assert_eq!(decoded.updated_at(), &[event][..]);
+		assert_eq!(decoded.time(), &[event][..]);
+	}
+
+	#[test]
+	fn a_run_mixing_timed_and_timeless_rows_lists_only_the_timed_rows_in_the_time_column() {
+		// The time vector is a filter_map over the run, so it stays shorter than the two stamp vectors.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(74);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
+		let first = columns_with_time(&[("mint", 1)], 1, None);
+		let second = columns_with_time(&[("mint", 2)], 2, Some(event));
+		let third = columns_with_time(&[("mint", 3)], 3, None);
+		let shape = build_shape(&first);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let rows: Vec<EncodedBytes> = [&first, &second, &third]
+			.into_iter()
+			.map(|columns| encode_row(&shape, columns, 0, now).into_bytes())
+			.collect();
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(1), RowNumber(2), RowNumber(3)],
+			&rows,
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[now, event, now][..]);
+		assert_eq!(decoded.updated_at(), &[now, event, now][..]);
+		assert_eq!(decoded.time(), &[event][..], "only the row that carried a #time may appear here");
+	}
+
+	#[test]
+	fn columns_from_block_reads_a_second_key_whose_shape_differs_from_the_first() {
+		// A key arriving with an extra column gets its own shape fingerprint, and reading it back
+		// must not fail just because the first key's shape was the only one this Store instance
+		// ever persisted.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(70);
+		let mut store = Store::new(JoinSide::Right);
+
+		let key_a = h(0xA);
+		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
+		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_a, &resolved, &[0]).unwrap();
+
+		let key_b = h(0xB);
+		let freshly_discovered = columns_with_fields(&[("mint", 2), ("decimals", 6), ("bump", 255)], 2);
+		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_b, &freshly_discovered, &[0])
+			.unwrap();
+
+		let block_b = store.rows_for_key(&mut host(&mut txn, operator), &key_b, None, 10).unwrap();
+		assert_eq!(block_b.len(), 1);
+		let read_back = columns_from_block(&mut host(&mut txn, operator), &store, block_b)
+			.expect("row shape for key B must be found");
+		assert_eq!(read_back.row_count(), 1);
+		assert_eq!(read_back.len(), 3, "key B's own 3-field shape must be the one used to decode it");
+	}
+
+	#[test]
+	fn columns_from_block_decodes_each_row_with_its_own_shape_when_one_key_spans_two_shapes() {
+		// An upstream field list rebuilt per tick is not order-stable, so two rows under one key
+		// can carry different shape fingerprints and each must decode with its own.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(71);
+		let mut store = Store::new(JoinSide::Right);
+		let key = h(0xC);
+
+		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
+		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row1, &[0]).unwrap();
+
+		// The same column set in the opposite order, which is a different fingerprint.
+		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
+		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row2, &[0]).unwrap();
+
+		let block = store.rows_for_key(&mut host(&mut txn, operator), &key, None, 10).unwrap();
+		assert_eq!(block.len(), 2);
+		let read_back = columns_from_block(&mut host(&mut txn, operator), &store, block).unwrap();
+
+		let mint = read_back.column("mint").unwrap();
+		let flag = read_back.column("flag").unwrap();
+		assert_eq!(mint.data().get_value(0), Value::Int4(111));
+		assert_eq!(flag.data().get_value(0), Value::Int4(1));
+		assert_eq!(
+			mint.data().get_value(1),
+			Value::Int4(222),
+			"row 2's real mint value must be reported under the mint column"
+		);
+		assert_eq!(
+			flag.data().get_value(1),
+			Value::Int4(999),
+			"row 2's real flag value must be reported under the flag column, not swapped with mint"
+		);
+	}
 }

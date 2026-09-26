@@ -10,7 +10,7 @@ fn test_set_get_date() {
 	let mut row = shape.allocate_pod();
 
 	let value = Date::new(2021, 1, 1).unwrap();
-	shape.set::<Date>(&mut row, 0, value.clone());
+	shape.set::<Date>(&mut row, 0, value);
 	assert_eq!(shape.get::<Date>(&row, 0), value);
 }
 
@@ -22,7 +22,7 @@ fn test_try_get_date() {
 	assert_eq!(shape.try_get::<Date>(&row, 0), None);
 
 	let test_date = Date::from_ymd(2025, 1, 15).unwrap();
-	shape.set::<Date>(&mut row, 0, test_date.clone());
+	shape.set::<Date>(&mut row, 0, test_date);
 	assert_eq!(shape.try_get::<Date>(&row, 0), Some(test_date));
 }
 
@@ -32,7 +32,7 @@ fn test_epoch() {
 	let mut row = shape.allocate_pod();
 
 	let epoch = Date::default(); // Unix epoch
-	shape.set::<Date>(&mut row, 0, epoch.clone());
+	shape.set::<Date>(&mut row, 0, epoch);
 	assert_eq!(shape.get::<Date>(&row, 0), epoch);
 }
 
@@ -49,7 +49,7 @@ fn test_various_dates() {
 
 	for date in test_dates {
 		let mut row = shape.allocate_pod();
-		shape.set::<Date>(&mut row, 0, date.clone());
+		shape.set::<Date>(&mut row, 0, date);
 		assert_eq!(shape.get::<Date>(&row, 0), date);
 	}
 }
@@ -68,7 +68,7 @@ fn test_boundaries() {
 
 	for date in boundary_dates {
 		let mut row = shape.allocate_pod();
-		shape.set::<Date>(&mut row, 0, date.clone());
+		shape.set::<Date>(&mut row, 0, date);
 		assert_eq!(shape.get::<Date>(&row, 0), date);
 	}
 }
@@ -84,13 +84,13 @@ fn test_mixed_with_other_types() {
 	let date1 = Date::new(2025, 6, 15).unwrap();
 	let date2 = Date::new(1995, 3, 22).unwrap();
 
-	shape.set::<Date>(&mut row, 0, date1.clone());
+	shape.set::<Date>(&mut row, 0, date1);
 	shape.set::<bool>(&mut row, 1, true);
-	shape.set::<Date>(&mut row, 2, date2.clone());
+	shape.set::<Date>(&mut row, 2, date2);
 	shape.set::<i32>(&mut row, 3, 42i32);
 
 	assert_eq!(shape.get::<Date>(&row, 0), date1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<Date>(&row, 2), date2);
 	assert_eq!(shape.get::<i32>(&row, 3), 42);
 }
@@ -101,7 +101,7 @@ fn test_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let date = Date::new(2025, 7, 4).unwrap();
-	shape.set::<Date>(&mut row, 0, date.clone());
+	shape.set::<Date>(&mut row, 0, date);
 
 	assert_eq!(shape.try_get::<Date>(&row, 0), Some(date));
 	assert_eq!(shape.try_get::<Date>(&row, 1), None);
@@ -116,7 +116,7 @@ fn test_clone_consistency() {
 	let mut row = shape.allocate_pod();
 
 	let original_date = Date::new(2023, 9, 15).unwrap();
-	shape.set::<Date>(&mut row, 0, original_date.clone());
+	shape.set::<Date>(&mut row, 0, original_date);
 
 	let retrieved_date = shape.get::<Date>(&row, 0);
 	assert_eq!(retrieved_date, original_date);
@@ -141,7 +141,7 @@ fn test_special_years() {
 
 	for date in special_dates {
 		let mut row = shape.allocate_pod();
-		shape.set::<Date>(&mut row, 0, date.clone());
+		shape.set::<Date>(&mut row, 0, date);
 		assert_eq!(shape.get::<Date>(&row, 0), date);
 	}
 }

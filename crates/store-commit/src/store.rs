@@ -717,7 +717,7 @@ pub mod tests {
 	}
 
 	fn keyed(name: &str, value: &[u8]) -> (EncodedKey, Option<CowVec<u8>>) {
-		(EncodedKey::new(name.as_bytes().to_vec()), Some(CowVec::new(value.to_vec())))
+		(EncodedKey::new(name.as_bytes()), Some(CowVec::new(value.to_vec())))
 	}
 
 	fn seed(storage: &CommitStore, version: u64, entries: &[(EncodedKey, Option<CowVec<u8>>)]) {
@@ -1152,8 +1152,7 @@ pub mod tests {
 		] {
 			seed(&storage, version, &[keyed(name, b"v")]);
 		}
-		let row =
-			|name: &str, version: u64| (EncodedKey::new(name.as_bytes().to_vec()), CommitVersion(version));
+		let row = |name: &str, version: u64| (EncodedKey::new(name.as_bytes()), CommitVersion(version));
 		let expected =
 			vec![row("a", 1), row("a", 2), row("b", 1), row("d", 1), row("d", 2), row("e", 1), row("e", 2)];
 
@@ -1181,7 +1180,7 @@ pub mod tests {
 		// a new write to the key, so the key has to stay queued; but it must not count as backlog, or the
 		// actor would spin re-examining it before the cutoff moves.
 		let storage = CommitStore::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		for version in [1, 2, 3] {
 			seed(&storage, version, &[keyed("k", b"v")]);
 		}
@@ -1271,10 +1270,8 @@ pub mod tests {
 
 		let mut all = first.entries;
 		all.extend(sweep_all(&storage, 10, 2));
-		let mut expected: Vec<(EncodedKey, CommitVersion)> = names
-			.iter()
-			.map(|name| (EncodedKey::new(name.as_bytes().to_vec()), CommitVersion(1)))
-			.collect();
+		let mut expected: Vec<(EncodedKey, CommitVersion)> =
+			names.iter().map(|name| (EncodedKey::new(name.as_bytes()), CommitVersion(1))).collect();
 		expected.sort();
 		all.sort();
 		assert_eq!(all, expected);
@@ -1720,7 +1717,7 @@ pub mod tests {
 		// that only charged for the live version would let a deep version chain blow the slice's byte
 		// ceiling without ever reporting it.
 		let storage = CommitStore::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		for v in 1..=4u64 {
 			storage.set(
 				CommitVersion(v),

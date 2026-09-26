@@ -237,7 +237,8 @@ mod tests {
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
 		// watermark with them lets a wedged CDC consumer or a leaked query lease freeze it.
-		for class in [RetentionClass::RowTtl] {
+		{
+			let class = RetentionClass::RowTtl;
 			assert!(
 				!class.constrained_by(FloorTerm::ConsumerCheckpoint),
 				"{class} must not be pinned by a CDC consumer; it reclaims rows no consumer reads"

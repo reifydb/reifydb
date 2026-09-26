@@ -94,7 +94,7 @@ fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
 
 	assert_eq!(
 		txn.find_in_dictionary(&dictionary, &mint()).unwrap(),
-		Some(interned.clone()),
+		Some(interned),
 		"after a restart the mint must resolve through its durable entry"
 	);
 	assert_eq!(

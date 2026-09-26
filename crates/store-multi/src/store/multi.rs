@@ -1542,10 +1542,7 @@ mod cache_tests {
 		rc::Rc,
 	};
 
-	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::bytes::EncodedBytes,
-	};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
@@ -1561,7 +1558,9 @@ mod cache_tests {
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
 	};
-	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
+	use reifydb_store_commit::{
+		MultiVersionScope, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
+	};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
@@ -1712,10 +1711,7 @@ mod cache_tests {
 			}
 			if !to_persist.is_empty() {
 				let persistent = store.persistent().expect("persistent tier");
-				let mut by_version: HashMap<
-					CommitVersion,
-					HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
-				> = HashMap::new();
+				let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
 				for (key, version, value) in to_persist {
 					by_version
 						.entry(version)

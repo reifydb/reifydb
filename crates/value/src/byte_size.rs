@@ -130,6 +130,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::erasing_op)]
 	fn test_mul_scales_a_fixed_record_width_by_a_count() {
 		// A fixed-width record times a row count is the whole reason Mul exists; scaling must stay in bytes.
 		assert_eq!(ByteSize::from_bytes(33) * 4, ByteSize::from_bytes(132));

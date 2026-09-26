@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use arrow_array::{BooleanArray, Int32Array, LargeStringArray, UInt64Array};
 use arrow_buffer::BooleanBuffer;
 use reifydb_codec::json::{from::frames_from_json, to::frames_to_json};
@@ -11,7 +13,7 @@ use reifydb_value::value::{
 };
 
 fn round_trip(frame: Frame) {
-	let json = frames_to_json(&[frame.clone()]).expect("to_json failed");
+	let json = frames_to_json(from_ref(&frame)).expect("to_json failed");
 	let decoded = frames_from_json(&json).expect("from_json failed");
 	assert_eq!(decoded.len(), 1);
 	let got = &decoded[0];

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::result_large_err)]
+
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,

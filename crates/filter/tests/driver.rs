@@ -81,7 +81,7 @@ impl KeyFilterSource for FakeSource {
 }
 
 fn key(i: u64) -> u64 {
-	i.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0x5DEE_CE66_D
+	i.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0x0005_DEEC_E66D
 }
 
 fn keys(range: std::ops::Range<u64>) -> Vec<u64> {

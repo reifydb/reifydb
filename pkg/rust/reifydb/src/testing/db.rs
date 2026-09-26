@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
+use std::time::Duration;
 use std::{
 	env,
 	fs::{remove_dir_all, remove_file},
@@ -8,7 +10,7 @@ use std::{
 	path::{Path, PathBuf},
 	process,
 	thread::sleep,
-	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+	time::Instant,
 };
 
 use reifydb_engine::engine::StandardEngine;
@@ -96,6 +98,7 @@ impl TestDb {
 		self.query(rql).iter().map(|frame| frame.row_count()).sum()
 	}
 
+	#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 	pub fn await_row_count(&self, rql: &str, want: usize, timeout: Duration) -> usize {
 		let deadline = Instant::now() + timeout;
 		loop {
@@ -107,10 +110,12 @@ impl TestDb {
 		}
 	}
 
+	#[allow(clippy::disallowed_types)]
 	pub fn await_exact_row_count(&self, rql: &str, want: usize, timeout: Duration) -> usize {
 		await_value(want, timeout, || self.row_count(rql))
 	}
 
+	#[allow(clippy::disallowed_types)]
 	pub fn await_all_flows(&self, timeout: Duration) -> bool {
 		let watermarks = self.db.watermarks();
 		let target = watermarks.tx().current().expect("current commit version");
@@ -215,6 +220,7 @@ impl AsEngine for Database {
 	}
 }
 
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 pub fn await_value<T: PartialEq>(want: T, timeout: Duration, mut poll: impl FnMut() -> T) -> T {
 	let deadline = Instant::now() + timeout;
 	loop {
@@ -226,6 +232,7 @@ pub fn await_value<T: PartialEq>(want: T, timeout: Duration, mut poll: impl FnMu
 	}
 }
 
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 pub fn poll_until<T>(mut poll: impl FnMut() -> Option<T>, timeout: Duration) -> Option<T> {
 	let deadline = Instant::now() + timeout;
 	loop {
@@ -245,7 +252,7 @@ pub struct TempDbPath {
 
 impl TempDbPath {
 	pub fn new(tag: &str) -> Self {
-		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let nanos = Clock::Real.now().to_nanos();
 		let path = env::temp_dir().join(format!("reifydb_{tag}_{}_{}.reifydb", process::id(), nanos));
 		let _ = remove_file(&path);
 		Self {

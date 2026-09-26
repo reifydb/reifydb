@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::repeat_n;
+
 use arrow_array::Int64Array;
 use reifydb_value::value::frame::data::FrameColumnData;
 
@@ -12,7 +14,7 @@ crate::rle_tests! {
 	repeated: {
 		let mut v = Vec::new();
 		for val in [1000i64, 2000, 3000, 4000, 5000] {
-			v.extend(std::iter::repeat(val).take(100));
+			v.extend(repeat_n(val, 100));
 		}
 		v
 	},

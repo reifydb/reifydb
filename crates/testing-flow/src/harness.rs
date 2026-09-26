@@ -294,6 +294,30 @@ fn coordinate_of(change: &Change) -> DateTime {
 		.unwrap_or(change.changed_at)
 }
 
+impl<O: HostOperator> Subject for Harness<O> {
+	fn apply(&mut self, change: Change) -> Result<Change> {
+		Harness::apply(self, change)
+	}
+
+	fn footprint(&mut self) -> Result<Option<StateFootprint>> {
+		Harness::footprint(self).map(Some)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>> {
+		Harness::on_timer(
+			self,
+			Timer {
+				due: DateTime::from_epoch_millis(
+					i64::try_from(at_ms).expect("chaos tick time fits in i64 milliseconds"),
+				)
+				.unwrap(),
+				kind: TimerKind::Seal,
+				key: EncodedKey::new(Vec::new()),
+			},
+		)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
@@ -332,29 +356,5 @@ mod tests {
 			.enumerate()
 			.map(|(index, at)| row(RowNumber(index as u64 + 1), 1, index as i64, *at))
 			.collect())
-	}
-}
-
-impl<O: HostOperator> Subject for Harness<O> {
-	fn apply(&mut self, change: Change) -> Result<Change> {
-		Harness::apply(self, change)
-	}
-
-	fn footprint(&mut self) -> Result<Option<StateFootprint>> {
-		Harness::footprint(self).map(Some)
-	}
-
-	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>> {
-		Harness::on_timer(
-			self,
-			Timer {
-				due: DateTime::from_epoch_millis(
-					i64::try_from(at_ms).expect("chaos tick time fits in i64 milliseconds"),
-				)
-				.unwrap(),
-				kind: TimerKind::Seal,
-				key: EncodedKey::new(Vec::new()),
-			},
-		)
 	}
 }

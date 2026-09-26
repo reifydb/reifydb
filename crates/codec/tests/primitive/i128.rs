@@ -104,7 +104,7 @@ fn test_mixed_with_other_types() {
 	shape.set::<i128>(&mut row, 2, large_positive);
 
 	assert_eq!(shape.get::<i128>(&row, 0), large_negative);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<i128>(&row, 2), large_positive);
 }
 

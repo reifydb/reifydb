@@ -19,9 +19,7 @@ use reifydb_store_multi::{
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
-#[path = "common/mod.rs"]
-mod common;
-use common::Runner;
+use crate::common::Runner;
 
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/flush" as ts_flush => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/versions" as ts_versions => test_snapshot }

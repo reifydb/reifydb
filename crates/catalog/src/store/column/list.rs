@@ -157,8 +157,8 @@ pub mod tests {
 		assert_eq!(columns[0].index, ColumnIndex(0));
 		assert_eq!(columns[1].index, ColumnIndex(1));
 
-		assert_eq!(columns[0].auto_increment, false);
-		assert_eq!(columns[1].auto_increment, true);
+		assert!(!columns[0].auto_increment);
+		assert!(columns[1].auto_increment);
 	}
 
 	#[test]

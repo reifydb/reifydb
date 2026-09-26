@@ -12,10 +12,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionGet, classify_key},
+		store::{MultiVersionGet, classify_key},
 	},
 	key::{any::TaggedKey, row::RowKey},
 };
+use reifydb_store_commit::TierBatch;
 use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, point::MultiReadMetrics},
@@ -33,7 +34,7 @@ fn row_key(n: u64) -> EncodedKey {
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
 	let persistent = store.persistent().expect("persistent tier configured");
 	let table = classify_key(k);
-	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
+	let mut batches: TierBatch = HashMap::new();
 	batches.entry(table).or_default().push((k.clone(), Some(CowVec::new(value.as_bytes().to_vec()))));
 	persistent.set(CommitVersion(version), batches).unwrap();
 }

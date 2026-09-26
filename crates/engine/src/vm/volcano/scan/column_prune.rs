@@ -226,7 +226,7 @@ mod tests {
 	fn a_value_on_the_bound_keeps_the_block() {
 		// min and max are inclusive. An exclusive read of either bound drops the one block that
 		// holds the matching row whenever the query targets an extreme.
-		let snapshots = vec![bucket(0, 100, vec![stat("value", Some(10), Some(20))])];
+		let snapshots = [bucket(0, 100, vec![stat("value", Some(10), Some(20))])];
 		for probe in [10, 20] {
 			let predicate = Predicate::Eq(ColRef::from("value"), Value::Int4(probe));
 			let kept = prune_series_snapshots(vec![snapshots[0].clone()], None, None, Some(&predicate));
@@ -322,7 +322,7 @@ mod tests {
 	fn a_predicate_the_statistics_cannot_answer_keeps_the_block() {
 		// Negation and inequality say nothing about a range, and a none count is not consulted
 		// here. Each must fall through to keeping the block rather than guessing.
-		let snapshots = vec![bucket(0, 100, vec![stat("value", Some(0), Some(9))])];
+		let snapshots = [bucket(0, 100, vec![stat("value", Some(0), Some(9))])];
 		let cases = [
 			Predicate::Ne(ColRef::from("value"), Value::Int4(5)),
 			Predicate::Not(Box::new(Predicate::Eq(ColRef::from("value"), Value::Int4(5)))),

@@ -28,7 +28,7 @@ fn int4_endianness_witness() {
 
 #[test]
 fn int4_thirty_two_rows() {
-	let values: Vec<i32> = (0..32).map(|i| (i as i32) * 1_000_000 - 16_000_000).collect();
+	let values: Vec<i32> = (0..32).map(|i| i * 1_000_000 - 16_000_000).collect();
 	let input = ColumnBuffer::int4(values);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int4_thirty_two_rows", &input, &output);

@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 	row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 };
 use reifydb_core::{
@@ -19,11 +19,11 @@ use reifydb_core::{
 			id::{QueueId, TableId},
 			storage::StorageId,
 		},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+		store::{MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 };
-use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_commit::{MultiVersionScope, TierBatch};
 use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{point::MultiPointConfig, range::MultiRangeConfig},
@@ -51,7 +51,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, 
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
 	let table = classify_key(&encoded);
-	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
+	let mut batches: TierBatch = HashMap::new();
 	batches.entry(table).or_default().push((encoded, Some(CowVec::new(value.as_bytes().to_vec()))));
 	use reifydb_store_multi::tier::TierStorage;
 	persistent.set(CommitVersion(version), batches).unwrap();
@@ -186,7 +186,7 @@ fn stamped(nanos: u64) -> Vec<u8> {
 fn persistent_only_set_bytes(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: Vec<u8>) {
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
-	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
+	let mut batches: TierBatch = HashMap::new();
 	batches.entry(classify_key(&encoded)).or_default().push((encoded, Some(CowVec::new(value))));
 	use reifydb_store_multi::tier::TierStorage;
 	persistent.set(CommitVersion(version), batches).unwrap();

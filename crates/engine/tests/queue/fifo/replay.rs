@@ -77,12 +77,12 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemptRecord)> {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn
+	let stream = txn
 		.range(QueueAttemptKey::queue_scan(queue), reifydb_transaction::multi::RangeScope::All, 1024)
 		.unwrap();
 
 	let mut out = Vec::new();
-	while let Some(item) = stream.next() {
+	for item in stream {
 		let item = item.unwrap();
 		out.push((
 			match item.key {
@@ -357,7 +357,7 @@ fn test_replay_finds_an_item_in_any_partition() {
 	let (partition, item) = (key.partition, key.row);
 
 	let token = t
-		.command(&format!(r#"CALL queue::claim("w1", "test::jobs", 16, duration::seconds(30))"#))
+		.command(r#"CALL queue::claim("w1", "test::jobs", 16, duration::seconds(30))"#)
 		.first()
 		.map(|frame| {
 			let index = frame

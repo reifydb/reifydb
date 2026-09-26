@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::f32::consts::PI;
+
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
@@ -87,11 +89,11 @@ fn test_mixed_with_other_types() {
 	let mut row = shape.allocate_pod();
 
 	shape.set::<u32>(&mut row, 0, 3_000_000_000u32);
-	shape.set::<f32>(&mut row, 1, 3.14f32);
+	shape.set::<f32>(&mut row, 1, PI);
 	shape.set::<u32>(&mut row, 2, 1_500_000_000u32);
 
 	assert_eq!(shape.get::<u32>(&row, 0), 3_000_000_000u32);
-	assert_eq!(shape.get::<f32>(&row, 1), 3.14f32);
+	assert_eq!(shape.get::<f32>(&row, 1), PI);
 	assert_eq!(shape.get::<u32>(&row, 2), 1_500_000_000u32);
 }
 

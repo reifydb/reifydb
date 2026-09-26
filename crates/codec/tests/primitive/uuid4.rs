@@ -10,7 +10,7 @@ fn test_set_get_uuid4() {
 	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	assert_eq!(shape.get::<Uuid4>(&row, 0), uuid);
 }
 
@@ -22,7 +22,7 @@ fn test_try_get_uuid4() {
 	assert_eq!(shape.try_get::<Uuid4>(&row, 0), None);
 
 	let uuid = Uuid4::generate();
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	assert_eq!(shape.try_get::<Uuid4>(&row, 0), Some(uuid));
 }
 
@@ -34,7 +34,7 @@ fn test_multiple_generations() {
 	for _ in 0..10 {
 		let mut row = shape.allocate_pod();
 		let uuid = Uuid4::generate();
-		shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+		shape.set::<Uuid4>(&mut row, 0, uuid);
 		let retrieved = shape.get::<Uuid4>(&row, 0);
 		assert_eq!(retrieved, uuid);
 		uuids.push(uuid);
@@ -53,7 +53,7 @@ fn test_version_check() {
 	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	let retrieved = shape.get::<Uuid4>(&row, 0);
 
 	// The version nibble must survive the row slot.
@@ -71,13 +71,13 @@ fn test_mixed_with_other_types() {
 	let uuid1 = Uuid4::generate();
 	let uuid2 = Uuid4::generate();
 
-	shape.set::<Uuid4>(&mut row, 0, uuid1.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid1);
 	shape.set::<bool>(&mut row, 1, true);
-	shape.set::<Uuid4>(&mut row, 2, uuid2.clone());
+	shape.set::<Uuid4>(&mut row, 2, uuid2);
 	shape.set::<i32>(&mut row, 3, 42i32);
 
 	assert_eq!(shape.get::<Uuid4>(&row, 0), uuid1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<Uuid4>(&row, 2), uuid2);
 	assert_eq!(shape.get::<i32>(&row, 3), 42);
 }
@@ -88,7 +88,7 @@ fn test_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 
 	assert_eq!(shape.try_get::<Uuid4>(&row, 0), Some(uuid));
 	assert_eq!(shape.try_get::<Uuid4>(&row, 1), None);
@@ -105,7 +105,7 @@ fn test_persistence() {
 	let uuid = Uuid4::generate();
 	let uuid_string = uuid.to_string();
 
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	let retrieved = shape.get::<Uuid4>(&row, 0);
 
 	assert_eq!(retrieved, uuid);
@@ -119,7 +119,7 @@ fn test_clone_consistency() {
 	let mut row = shape.allocate_pod();
 
 	let original_uuid = Uuid4::generate();
-	shape.set::<Uuid4>(&mut row, 0, original_uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, original_uuid);
 
 	let retrieved_uuid = shape.get::<Uuid4>(&row, 0);
 	assert_eq!(retrieved_uuid, original_uuid);
@@ -136,9 +136,9 @@ fn test_multiple_fields() {
 	let uuid2 = Uuid4::generate();
 	let uuid3 = Uuid4::generate();
 
-	shape.set::<Uuid4>(&mut row, 0, uuid1.clone());
-	shape.set::<Uuid4>(&mut row, 1, uuid2.clone());
-	shape.set::<Uuid4>(&mut row, 2, uuid3.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid1);
+	shape.set::<Uuid4>(&mut row, 1, uuid2);
+	shape.set::<Uuid4>(&mut row, 2, uuid3);
 
 	assert_eq!(shape.get::<Uuid4>(&row, 0), uuid1);
 	assert_eq!(shape.get::<Uuid4>(&row, 1), uuid2);
@@ -157,7 +157,7 @@ fn test_format_consistency() {
 	let uuid = Uuid4::generate();
 	let original_string = uuid.to_string();
 
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	let retrieved = shape.get::<Uuid4>(&row, 0);
 	let retrieved_string = retrieved.to_string();
 
@@ -176,7 +176,7 @@ fn test_byte_level_storage() {
 	let uuid = Uuid4::generate();
 	let original_bytes = *uuid.as_bytes();
 
-	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid);
 	let retrieved = shape.get::<Uuid4>(&row, 0);
 	let retrieved_bytes = *retrieved.as_bytes();
 

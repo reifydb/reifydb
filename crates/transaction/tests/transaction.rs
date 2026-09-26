@@ -60,7 +60,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 enum TransactionHandle {
 	Read(MultiReadTransaction),
-	Write(MultiWriteTransaction),
+	Write(Box<MultiWriteTransaction>),
 }
 use reifydb_transaction::multi::RangeScope;
 use test_each_file::test_each_path;
@@ -120,7 +120,7 @@ impl MvccRunner {
 	}
 }
 
-impl<'a> Runner for MvccRunner {
+impl Runner for MvccRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		let tags = command.tags.clone();
@@ -147,9 +147,9 @@ impl<'a> Runner for MvccRunner {
 					true => TransactionHandle::Read(
 						MultiReadTransaction::new(self.engine.clone(), version).unwrap(),
 					),
-					false => TransactionHandle::Write(
+					false => TransactionHandle::Write(Box::new(
 						MultiWriteTransaction::new(self.engine.clone()).unwrap(),
-					),
+					)),
 				};
 
 				self.transactions.insert(name.to_string(), t);
@@ -231,12 +231,12 @@ impl<'a> Runner for MvccRunner {
 					let stored = script_key(key.as_slice().to_vec());
 
 					let value = match &mut t {
-						TransactionHandle::Read(rx) => rx
-							.get(&stored)
-							.map(|r| r.and_then(|tv| Some(tv.bytes().to_vec()))),
-						TransactionHandle::Write(tx) => tx
-							.get(&stored)
-							.map(|r| r.and_then(|tv| Some(tv.bytes().to_vec()))),
+						TransactionHandle::Read(rx) => {
+							rx.get(&stored).map(|r| r.map(|tv| tv.bytes().to_vec()))
+						}
+						TransactionHandle::Write(tx) => {
+							tx.get(&stored).map(|r| r.map(|tv| tv.bytes().to_vec()))
+						}
 					}
 					.unwrap();
 
@@ -515,11 +515,11 @@ fn script_range(range: EncodedKeyRange) -> TaggedKeyBoundRange {
 	}
 }
 
-fn print_rx<I>(output: &mut String, mut iter: I)
+fn print_rx<I>(output: &mut String, iter: I)
 where
 	I: Iterator<Item = MultiVersionRow<TaggedKey>>,
 {
-	while let Some(sv) = iter.next() {
+	for sv in iter {
 		let fmtkv = Raw::key_value(&script_raw(&sv.key), sv.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}

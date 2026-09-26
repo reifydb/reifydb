@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
+use std::time::Duration as StdDuration;
 use std::{
 	collections::Bound,
 	sync::{
@@ -8,7 +10,7 @@ use std::{
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	thread::{self, JoinHandle},
-	time::{Duration as StdDuration, Instant},
+	time::Instant,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -62,6 +64,7 @@ const WATCHDOG: Duration = Duration::from_seconds_const(120);
 
 const JOIN: Duration = Duration::from_seconds_const(30);
 
+#[allow(clippy::disallowed_types)]
 const CONDITION: StdDuration = StdDuration::from_secs(30);
 
 fn record(version: u64) -> Cdc {
@@ -73,7 +76,7 @@ fn record(version: u64) -> Cdc {
 				.expect("test record timestamp fits in i64 nanos"),
 		),
 		vec![CdcChange::Insert {
-			key: EncodedKey::new(version.to_be_bytes().to_vec()),
+			key: EncodedKey::new(version.to_be_bytes()),
 			post: EncodedBytes(CowVec::new(vec![7u8; PAYLOAD_BYTES])),
 		}],
 	)
@@ -162,6 +165,7 @@ where
 	}
 }
 
+#[allow(clippy::disallowed_methods)]
 fn wait_for(label: &str, mut ready: impl FnMut() -> bool) {
 	// spins rather than sleeps so no ordering depends on a duration, and gives up so a lost wakeup fails
 	let deadline = Instant::now() + CONDITION;

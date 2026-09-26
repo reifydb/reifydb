@@ -190,7 +190,7 @@ mod tests {
 		v.columns = columns.iter().map(|c| c.to_string()).collect();
 		for (key, pairs) in rows {
 			v.insert(
-				OutputKey::new(vec![Value::Uint8((*key).into())]),
+				OutputKey::new(vec![Value::Uint8(*key)]),
 				MaterializedRow::from_pairs(pairs.iter().map(|(k, x)| (k.to_string(), x.clone()))),
 			);
 		}

@@ -76,8 +76,8 @@ fn encode_bool_sorts_true_before_false() {
 
 #[test]
 fn encode_bool_round_trips() {
-	assert_eq!(decode_bool(encode_bool(true)).unwrap(), true);
-	assert_eq!(decode_bool(encode_bool(false)).unwrap(), false);
+	assert!(decode_bool(encode_bool(true)).unwrap());
+	assert!(!decode_bool(encode_bool(false)).unwrap());
 	assert!(decode_bool(0x02).is_err(), "only 0x00 and 0x01 are legal bool encodings");
 }
 

@@ -212,35 +212,35 @@ pub mod tests {
 	#[test]
 	fn test_add() {
 		let test_instance = EvalContext::testing();
-		let result = test_instance.add(&1i8, &255i16, || Fragment::testing_empty());
+		let result = test_instance.add(&1i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(256i128)));
 	}
 
 	#[test]
 	fn test_sub() {
 		let test_instance = EvalContext::testing();
-		let result = test_instance.sub(&1i8, &255i16, || Fragment::testing_empty());
+		let result = test_instance.sub(&1i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
 
 	#[test]
 	fn test_mul() {
 		let test_instance = EvalContext::testing();
-		let result = test_instance.mul(&23i8, &255i16, || Fragment::testing_empty());
+		let result = test_instance.mul(&23i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
 
 	#[test]
 	fn test_div() {
 		let test_instance = EvalContext::testing();
-		let result = test_instance.div(&120i8, &20i16, || Fragment::testing_empty());
+		let result = test_instance.div(&120i8, &20i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(6i128)));
 	}
 
 	#[test]
 	fn test_remainder() {
 		let test_instance = EvalContext::testing();
-		let result = test_instance.remainder(&120i8, &21i16, || Fragment::testing_empty());
+		let result = test_instance.remainder(&120i8, &21i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(15i128)));
 	}
 }

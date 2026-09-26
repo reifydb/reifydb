@@ -302,8 +302,8 @@ fn dropping_one_left_reclaims_every_join_mapping_under_it() {
 
 	let doomed = join_key(1, 7);
 	let kept = join_key(2, 7);
-	txn.get_or_create_join_row_numbers(NODE, &[doomed.clone()]).unwrap().remove(0);
-	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
+	txn.get_or_create_join_row_numbers(NODE, &[doomed]).unwrap().remove(0);
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept]).unwrap().remove(0);
 
 	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
@@ -347,7 +347,7 @@ fn dropping_one_left_reclaims_joins_that_span_more_than_one_scan_page() {
 	let doomed: Vec<JoinRowMappingKey> = (1..=1027u64).map(|right| join_key(1, right)).collect();
 	let kept = join_key(2, 7);
 	txn.get_or_create_join_row_numbers(NODE, &doomed).unwrap();
-	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept]).unwrap().remove(0);
 
 	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::repeat_n;
+
 use reifydb_value::value::{
 	container::temporal_array::datetime_array, datetime::DateTime, frame::data::FrameColumnData,
 };
@@ -15,7 +17,7 @@ crate::rle_tests! {
 		let base = 1_700_000_000_000_000_000i64;
 		for offset in [0i64, 1_000_000_000, 2_000_000_000, 3_000_000_000, 4_000_000_000] {
 			let dt = DateTime::from_nanos(base + offset);
-			v.extend(std::iter::repeat(dt).take(100));
+			v.extend(repeat_n(dt, 100));
 		}
 		v
 	},

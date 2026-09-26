@@ -521,7 +521,7 @@ mod tests {
 	fn timer_kind_orders_by_its_repr_discriminant() {
 		// the key column stores the discriminant byte, so an Ord that disagreed with `as u8` would sort
 		// the wheel index differently in memory than in sqlite
-		let mut kinds = vec![
+		let mut kinds = [
 			TimerKind::Reclaim,
 			TimerKind::Maintenance,
 			TimerKind::Seal,

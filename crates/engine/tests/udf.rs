@@ -22,7 +22,7 @@ fn setup() -> TestEngine {
 
 fn bools(frames: &[Frame]) -> Vec<Option<bool>> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().rev().next().unwrap();
+	let out_col = frame.columns.iter().next_back().unwrap();
 	(0..out_col.data.len())
 		.map(|i| match out_col.data.get_value(i) {
 			Value::Boolean(b) => Some(b),
@@ -36,7 +36,7 @@ fn bools(frames: &[Frame]) -> Vec<Option<bool>> {
 
 fn strings(frames: &[Frame]) -> Vec<String> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().rev().next().unwrap();
+	let out_col = frame.columns.iter().next_back().unwrap();
 	(0..out_col.data.len())
 		.map(|i| match out_col.data.get_value(i) {
 			Value::Utf8(s) => s,
@@ -47,7 +47,7 @@ fn strings(frames: &[Frame]) -> Vec<String> {
 
 fn ints(frames: &[Frame]) -> Vec<i64> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().rev().next().unwrap();
+	let out_col = frame.columns.iter().next_back().unwrap();
 	(0..out_col.data.len())
 		.map(|i| match out_col.data.get_value(i) {
 			Value::Int1(v) => v as i64,

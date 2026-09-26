@@ -554,8 +554,8 @@ pub mod tests {
 			layout.set_bool(&mut key2, 0, true);
 
 			assert!(key1.as_slice() < key2.as_slice());
-			assert_eq!(layout.get_bool(&key1, 0), false);
-			assert_eq!(layout.get_bool(&key2, 0), true);
+			assert!(!layout.get_bool(&key1, 0));
+			assert!(layout.get_bool(&key2, 0));
 		}
 
 		#[test]
@@ -568,8 +568,8 @@ pub mod tests {
 			layout.set_bool(&mut key2, 0, true);
 
 			assert!(key1.as_slice() > key2.as_slice());
-			assert_eq!(layout.get_bool(&key1, 0), false);
-			assert_eq!(layout.get_bool(&key2, 0), true);
+			assert!(!layout.get_bool(&key1, 0));
+			assert!(layout.get_bool(&key2, 0));
 		}
 	}
 
@@ -925,9 +925,9 @@ pub mod tests {
 			let date2 = Date::new(2023, 6, 15).unwrap();
 			let date3 = Date::new(2025, 12, 31).unwrap();
 
-			layout.set_date(&mut key1, 0, date1.clone());
-			layout.set_date(&mut key2, 0, date2.clone());
-			layout.set_date(&mut key3, 0, date3.clone());
+			layout.set_date(&mut key1, 0, date1);
+			layout.set_date(&mut key2, 0, date2);
+			layout.set_date(&mut key3, 0, date3);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -947,9 +947,9 @@ pub mod tests {
 			let date2 = Date::new(2023, 6, 15).unwrap();
 			let date3 = Date::new(2025, 12, 31).unwrap();
 
-			layout.set_date(&mut key1, 0, date1.clone());
-			layout.set_date(&mut key2, 0, date2.clone());
-			layout.set_date(&mut key3, 0, date3.clone());
+			layout.set_date(&mut key1, 0, date1);
+			layout.set_date(&mut key2, 0, date2);
+			layout.set_date(&mut key3, 0, date3);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -1074,8 +1074,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
-			layout.set_identity_id(&mut key1, 0, id1.clone());
-			layout.set_identity_id(&mut key2, 0, id2.clone());
+			layout.set_identity_id(&mut key1, 0, id1);
+			layout.set_identity_id(&mut key2, 0, id2);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert_eq!(layout.get_identity_id(&key1, 0), id1);
@@ -1094,8 +1094,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
-			layout.set_identity_id(&mut key1, 0, id1.clone());
-			layout.set_identity_id(&mut key2, 0, id2.clone());
+			layout.set_identity_id(&mut key1, 0, id1);
+			layout.set_identity_id(&mut key2, 0, id2);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert_eq!(layout.get_identity_id(&key1, 0), id1);
@@ -1110,7 +1110,7 @@ pub mod tests {
 			let id = IdentityId::generate(&clock, &rng);
 			let mut key = layout.allocate_key();
 
-			layout.set_identity_id(&mut key, 0, id.clone());
+			layout.set_identity_id(&mut key, 0, id);
 			let retrieved = layout.get_identity_id(&key, 0);
 			assert_eq!(retrieved, id);
 		}

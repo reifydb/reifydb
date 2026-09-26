@@ -208,7 +208,7 @@ pub mod tests {
 		let time = Time::new(14, 30, 45, 123000000).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.123000000");
 
-		let time = Time::new(14, 30, 45, 001000000).unwrap();
+		let time = Time::new(14, 30, 45, 1000000).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.001000000");
 
 		let time = Time::new(14, 30, 45, 999000000).unwrap();
@@ -220,7 +220,7 @@ pub mod tests {
 		let time = Time::new(14, 30, 45, 123456000).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.123456000");
 
-		let time = Time::new(14, 30, 45, 000001000).unwrap();
+		let time = Time::new(14, 30, 45, 1000).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.000001000");
 
 		let time = Time::new(14, 30, 45, 999999000).unwrap();
@@ -232,7 +232,7 @@ pub mod tests {
 		let time = Time::new(14, 30, 45, 123456789).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.123456789");
 
-		let time = Time::new(14, 30, 45, 000000001).unwrap();
+		let time = Time::new(14, 30, 45, 1).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.000000001");
 
 		let time = Time::new(14, 30, 45, 999999999).unwrap();
@@ -363,28 +363,28 @@ pub mod tests {
 		let time = Time::new(14, 30, 45, 100000000).unwrap(); // 0.1 seconds
 		assert_eq!(format!("{}", time), "14:30:45.100000000");
 
-		let time = Time::new(14, 30, 45, 010000000).unwrap(); // 0.01 seconds
+		let time = Time::new(14, 30, 45, 10000000).unwrap(); // 0.01 seconds
 		assert_eq!(format!("{}", time), "14:30:45.010000000");
 
-		let time = Time::new(14, 30, 45, 001000000).unwrap(); // 0.001 seconds
+		let time = Time::new(14, 30, 45, 1000000).unwrap(); // 0.001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.001000000");
 
-		let time = Time::new(14, 30, 45, 000100000).unwrap(); // 0.0001 seconds
+		let time = Time::new(14, 30, 45, 100000).unwrap(); // 0.0001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000100000");
 
-		let time = Time::new(14, 30, 45, 000010000).unwrap(); // 0.00001 seconds
+		let time = Time::new(14, 30, 45, 10000).unwrap(); // 0.00001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000010000");
 
-		let time = Time::new(14, 30, 45, 000001000).unwrap(); // 0.000001 seconds
+		let time = Time::new(14, 30, 45, 1000).unwrap(); // 0.000001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000001000");
 
-		let time = Time::new(14, 30, 45, 000000100).unwrap(); // 0.0000001 seconds
+		let time = Time::new(14, 30, 45, 100).unwrap(); // 0.0000001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000000100");
 
-		let time = Time::new(14, 30, 45, 000000010).unwrap(); // 0.00000001 seconds
+		let time = Time::new(14, 30, 45, 10).unwrap(); // 0.00000001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000000010");
 
-		let time = Time::new(14, 30, 45, 000000001).unwrap(); // 0.000000001 seconds
+		let time = Time::new(14, 30, 45, 1).unwrap(); // 0.000000001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000000001");
 	}
 

@@ -499,6 +499,27 @@ impl TestMetadataHarness {
 	}
 }
 
+impl<T: ExternCOperator> Subject for ExternCOperatorHarness<T> {
+	fn apply(&mut self, change: Change) -> ValueResult<Change> {
+		ExternCOperatorHarness::apply(self, change).map_err(Into::into)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
+		let at = DateTime::from_epoch_millis(
+			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
+		)
+		.unwrap();
+		self.advance_watermark(at)?;
+		let diffs = into_diffs(self.builder_registry.drain_diffs());
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		let output = Change::from_flow(self.operator_id, ChangeVersion::from(self.version()), diffs, at);
+		self.history.push(output.clone());
+		Ok(Some(output))
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
 	use reifydb_codec::tag::ValueKind;
@@ -869,7 +890,7 @@ pub mod tests {
 		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			ctx.emit_insert(
 				&[SealRow {
-					total: timer.due.to_millis() as i64,
+					total: timer.due.to_millis(),
 				}],
 				&[RowNumber(1)],
 			)
@@ -1081,26 +1102,5 @@ pub mod tests {
 		let state = harness.snapshot_state();
 		assert!(state.contains_key(&counter), "the counter survives even a sweep naming the root group");
 		assert!(state.contains_key(&timer), "so does the timer wheel");
-	}
-}
-
-impl<T: ExternCOperator> Subject for ExternCOperatorHarness<T> {
-	fn apply(&mut self, change: Change) -> ValueResult<Change> {
-		ExternCOperatorHarness::apply(self, change).map_err(Into::into)
-	}
-
-	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
-		let at = DateTime::from_epoch_millis(
-			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
-		)
-		.unwrap();
-		self.advance_watermark(at)?;
-		let diffs = into_diffs(self.builder_registry.drain_diffs());
-		if diffs.is_empty() {
-			return Ok(None);
-		}
-		let output = Change::from_flow(self.operator_id, ChangeVersion::from(self.version()), diffs, at);
-		self.history.push(output.clone());
-		Ok(Some(output))
 	}
 }

@@ -272,13 +272,13 @@ pub mod column_snapshot_key_tests {
 	fn a_snapshot_key_reports_its_own_kind_from_its_first_byte() {
 		// the leading version byte made KeyTag::of read every snapshot key as a namespace key, so the
 		// metrics parser and the entry classifier both routed them to an owner they never belonged to
-		assert_eq!(KeyTag::of(&ColumnSnapshotKey::encoded(ColumnSnapshotId(1))), Some(KeyTag::ColumnSnapshot));
+		assert_eq!(KeyTag::of(ColumnSnapshotKey::encoded(ColumnSnapshotId(1))), Some(KeyTag::ColumnSnapshot));
 		assert_eq!(
-			KeyTag::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), Partition(3), ColumnSnapshotId(2))),
+			KeyTag::of(SeriesColumnSnapshotKey::encoded(SeriesId(1), Partition(3), ColumnSnapshotId(2))),
 			Some(KeyTag::SeriesColumnSnapshot)
 		);
 		assert_eq!(
-			KeyTag::of(&TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
+			KeyTag::of(TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
 			Some(KeyTag::TableColumnSnapshot)
 		);
 	}

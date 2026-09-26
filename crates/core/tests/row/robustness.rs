@@ -101,7 +101,7 @@ fn test_repeated_clone_stability() {
 	);
 
 	let mut original = shape.allocate_pod();
-	shape.set_utf8(&mut original, 0, &"x".repeat(1000));
+	shape.set_utf8(&mut original, 0, "x".repeat(1000));
 	shape.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
 	shape.set_int(&mut original, 2, &Int::from(i128::MAX));
 	shape.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
@@ -215,9 +215,9 @@ fn test_concurrent_field_updates() {
 
 		// Set all fields for this encoded
 		shape.set::<i64>(&mut row, 0, (i * 4) as i64);
-		shape.set_utf8(&mut row, 1, &(i * 4 + 1).to_string());
+		shape.set_utf8(&mut row, 1, (i * 4 + 1).to_string());
 		shape.set::<i64>(&mut row, 2, (i * 4 + 2) as i64);
-		shape.set_utf8(&mut row, 3, &(i * 4 + 3).to_string());
+		shape.set_utf8(&mut row, 3, (i * 4 + 3).to_string());
 
 		rows.push(row);
 	}
@@ -265,7 +265,7 @@ fn test_row_size_stability() {
 
 	for size in sizes {
 		let mut row = shape.allocate_pod();
-		shape.set_utf8(&mut row, 0, &"x".repeat(size));
+		shape.set_utf8(&mut row, 0, "x".repeat(size));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
 		row_sizes.push(row.len());
@@ -285,7 +285,7 @@ fn test_row_size_stability() {
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
 		let mut row = shape.allocate_pod();
-		shape.set_utf8(&mut row, 0, &"x".repeat(50));
+		shape.set_utf8(&mut row, 0, "x".repeat(50));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());
 	}

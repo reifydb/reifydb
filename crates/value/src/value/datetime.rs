@@ -426,7 +426,7 @@ pub mod tests {
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123000000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123000000Z");
 
-		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 001000000).unwrap();
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 1000000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.001000000Z");
 
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999000000).unwrap();
@@ -438,7 +438,7 @@ pub mod tests {
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456000Z");
 
-		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 000001000).unwrap();
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 1000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.000001000Z");
 
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999999000).unwrap();
@@ -450,7 +450,7 @@ pub mod tests {
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456789Z");
 
-		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 000000001).unwrap();
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 1).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.000000001Z");
 
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999999999).unwrap();

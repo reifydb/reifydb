@@ -31,7 +31,7 @@ fn call(
 	let columns = Columns::new(
 		args.into_iter()
 			.enumerate()
-			.map(|(i, a)| ColumnWithName::new(Fragment::internal(&i.to_string()), a))
+			.map(|(i, a)| ColumnWithName::new(Fragment::internal(i.to_string()), a))
 			.collect(),
 	);
 	routine.call(&mut ctx(name, row_count), &columns)

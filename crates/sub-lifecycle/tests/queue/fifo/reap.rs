@@ -87,10 +87,10 @@ fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemptRecord)> {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
+	let stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
 
 	let mut out = Vec::new();
-	while let Some(item) = stream.next() {
+	for item in stream {
 		let item = item.unwrap();
 		out.push((
 			match item.key {
@@ -149,7 +149,7 @@ fn test_an_expired_lease_comes_back_with_exactly_one_lost_attempt() {
 
 	let recorded = attempts(&t, queue);
 	assert_eq!(recorded.len(), 1, "exactly one loss for one expired lease");
-	assert_eq!(recorded[0].1.lost, true);
+	assert!(recorded[0].1.lost);
 	assert_eq!(recorded[0].0.attempt, 1);
 
 	assert_eq!(counters(&t, queue).in_flight, 0);
@@ -278,7 +278,7 @@ fn test_an_already_acked_item_is_healed_rather_than_marked_lost() {
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Done, "the recorded ok outcome decides the transition");
 	let recorded = attempts(&t, queue);
 	assert_eq!(recorded.len(), 1, "the reaper must not add a loss on top of a real outcome");
-	assert_eq!(recorded[0].1.lost, false);
+	assert!(!recorded[0].1.lost);
 	assert_eq!(claimable(&t), 0);
 }
 

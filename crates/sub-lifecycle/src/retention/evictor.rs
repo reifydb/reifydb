@@ -731,6 +731,8 @@ impl LifecycleTask for RetentionEvictTask {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_types)]
 mod tests {
 	use std::{
 		thread::sleep,

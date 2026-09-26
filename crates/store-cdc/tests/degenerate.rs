@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::Bound,
-	thread,
-	time::{Duration as StdDuration, Instant},
-};
+#[allow(clippy::disallowed_types)]
+use std::time::Duration as StdDuration;
+use std::{collections::Bound, thread, time::Instant};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -63,6 +61,7 @@ fn version_list(batch: &CdcBatch) -> Vec<u64> {
 	batch.items.iter().map(|cdc| cdc.version.commit.0).collect()
 }
 
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn within<T: Send + 'static>(label: &str, seconds: u64, body: impl FnOnce() -> T + Send + 'static) -> T {
 	// a saturating cursor turns a bounded walk into an unbounded one, which without a deadline hangs the whole
 	// suite

@@ -197,12 +197,11 @@ fn truncated_encodings_error_and_never_panic() {
 	for value in sample_values() {
 		let encoded = encode_value(&value).unwrap();
 		for cut in 0..encoded.len() {
-			match decode_value(&encoded[..cut]) {
-				Ok(decoded) => panic!(
+			if let Ok(decoded) = decode_value(&encoded[..cut]) {
+				panic!(
 					"truncated encoding of {value:?} at {cut}/{} unexpectedly decoded to {decoded:?}",
 					encoded.len()
-				),
-				Err(_) => {}
+				)
 			}
 		}
 	}

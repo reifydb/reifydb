@@ -100,9 +100,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_integer() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -121,9 +121,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_integer() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Prefix(PrefixExpression {
@@ -146,9 +146,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_min() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Prefix(PrefixExpression {
@@ -171,9 +171,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_float_8() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -192,9 +192,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_float_4() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -213,9 +213,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_float_4() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -234,9 +234,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_float_8() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -255,9 +255,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_string_to_bool() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {
@@ -276,9 +276,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_string_neg_one_to_bool_should_fail() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {
@@ -304,9 +304,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_boolean_to_date_should_fail() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Bool {
@@ -329,9 +329,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_text_to_decimal() {
-		let mut ctx = EvalContext::testing();
+		let ctx = EvalContext::testing();
 		let result = evaluate(
-			&mut ctx,
+			&ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {

@@ -30,7 +30,7 @@ fn test_basic_subscribe_to_query() {
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		assert!(!sub_id.is_empty(), "Subscription ID should be defined");
-		assert!(sub_id.len() > 0, "Subscription ID should have length > 0");
+		assert!(!sub_id.is_empty(), "Subscription ID should have length > 0");
 
 		ctx.close(&sub_id).await
 	});
@@ -684,7 +684,6 @@ fn test_stress_many_concurrent_clients() {
 
 		let mut handles = Vec::new();
 		for client_idx in 0..NUM_CLIENTS {
-			let port = port;
 			let table = shared_table.clone();
 			let counter = Arc::clone(&received_count);
 
@@ -866,9 +865,8 @@ fn test_stress_concurrent_connect_disconnect() {
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		let mut handles = Vec::new();
-		for task_idx in 0..NUM_TASKS {
-			let port = port;
-			let table = tables[task_idx].clone();
+		for (task_idx, table) in tables.iter().enumerate() {
+			let table = table.clone();
 			let counter = Arc::clone(&success_count);
 
 			let handle = tokio::spawn(async move {

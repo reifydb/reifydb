@@ -515,6 +515,16 @@ impl MultiPointTier {
 	}
 }
 
+impl MetricsCollector for MultiPointTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.blob.collect(out);
+		self.row.collect(out);
+		self.partitioned.collect(out);
+		self.series.collect(out);
+		self.partitioned_series.collect(out);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::str::from_utf8;
@@ -1049,15 +1059,5 @@ mod tests {
 			),
 			"invalidating table a must not evict table b's entry sharing the same bytes"
 		);
-	}
-}
-
-impl MetricsCollector for MultiPointTier {
-	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		self.blob.collect(out);
-		self.row.collect(out);
-		self.partitioned.collect(out);
-		self.series.collect(out);
-		self.partitioned_series.collect(out);
 	}
 }

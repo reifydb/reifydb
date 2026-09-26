@@ -1044,7 +1044,7 @@ pub mod tests {
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_int::<i128>(Fragment::testing(&i128::MAX.to_string())),
+				parse_primitive_int::<i128>(Fragment::testing(i128::MAX.to_string())),
 				Ok(i128::MAX)
 			);
 		}
@@ -1052,7 +1052,7 @@ pub mod tests {
 		#[test]
 		fn test_valid_min() {
 			assert_eq!(
-				parse_primitive_int::<i128>(Fragment::testing(&i128::MIN.to_string())),
+				parse_primitive_int::<i128>(Fragment::testing(i128::MIN.to_string())),
 				Ok(i128::MIN)
 			);
 		}
@@ -1563,7 +1563,7 @@ pub mod tests {
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(Fragment::testing(&u128::MAX.to_string())),
+				parse_primitive_uint::<u128>(Fragment::testing(u128::MAX.to_string())),
 				Ok(u128::MAX)
 			);
 		}

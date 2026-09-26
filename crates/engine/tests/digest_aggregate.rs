@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::result_large_err)]
+
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::catalog::config::ConfigKey;

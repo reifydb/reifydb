@@ -1394,6 +1394,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::approx_constant)]
 	fn kahan_compensation_preserves_small_terms_across_cancellation() {
 		// The cancellation the running accumulator hits when a huge trade expires: naive f64
 		// rounds 3.14 away against 1e16, so retracting the 1e16 leaves 4.0 or 0.0.
@@ -1406,6 +1407,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::approx_constant)]
 	fn sum_returns_none_after_float_churn_empties_it() {
 		// The contribution count is an exact integer, so a fully retracted sum must report none
 		// regardless of accumulated float dust.
@@ -1424,17 +1426,15 @@ mod tests {
 		// relies on the error staying near one ulp rather than becoming a random walk.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		let mut oracle_cents: i128 = 0;
-		let mut seq = 0u64;
 		let mut pending: Vec<(u64, i64)> = Vec::new();
 		let mut state = 0x243F_6A88_85A3_08D3u64;
-		for round in 0..5_000u64 {
+		for (seq, round) in (0u64..).zip(0..5_000u64) {
 			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 			let cents = ((state >> 16) % 1_000_000_000) as i64 + 1;
 			let dollars = cents as f64 / 100.0;
 			add(&mut a, seq, vec![Some(Value::float8(dollars))]);
 			oracle_cents += cents as i128;
 			pending.push((seq, cents));
-			seq += 1;
 			if round % 3 == 2 {
 				let (old_seq, old_cents) = pending.remove(0);
 				let old_dollars = old_cents as f64 / 100.0;
@@ -1603,14 +1603,15 @@ mod tests {
 		// A dropped retraction or a counted none shifts every rank, so the answer drifts from the rows present.
 		let mut a = accumulator(&[digest_kind(Some(PPM))]);
 		let mut live: Vec<(u64, f64)> = Vec::new();
+		#[allow(clippy::unusual_byte_groupings)]
 		let mut rng = Lcg(0x5EED_D16E_57u64);
 		for seq in 0..3_000u64 {
 			let roll = rng.next();
-			if roll % 5 == 0 {
+			if roll.is_multiple_of(5) {
 				a.add(&(at(seq), vec![Some(Value::none())]));
 				continue;
 			}
-			if roll % 3 == 0 && !live.is_empty() {
+			if roll.is_multiple_of(3) && !live.is_empty() {
 				let (old_seq, old) = live.swap_remove((rng.next() % live.len() as u64) as usize);
 				a.remove(&(at(old_seq), vec![f8(old)]));
 			} else {

@@ -7,23 +7,20 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+		store::{MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 };
-use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_commit::{MultiVersionScope, TierBatch};
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{
 	cow_vec,
@@ -45,7 +42,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, 
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
 	let table = classify_key(&encoded);
-	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
+	let mut batches: TierBatch = HashMap::new();
 	batches.entry(table).or_default().push((encoded, Some(CowVec::new(value.as_bytes().to_vec()))));
 	persistent.set(CommitVersion(version), batches).unwrap();
 }

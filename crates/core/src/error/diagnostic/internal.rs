@@ -182,7 +182,7 @@ pub mod tests {
 		assert!(diagnostic.message.contains("simple error message"));
 		assert!(diagnostic.help.is_some());
 		assert!(diagnostic.help.as_ref().unwrap().contains("bug report"));
-		assert!(diagnostic.notes.len() > 0);
+		assert!(!diagnostic.notes.is_empty());
 	}
 
 	#[test]
@@ -295,8 +295,8 @@ pub mod tests {
 
 		let diagnostic2 = internal_with_context("error 2", "file2.rs", 20, 10, "func2", "mod2");
 
-		let id1 = diagnostic1.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
-		let id2 = diagnostic2.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
+		let id1 = diagnostic1.message.split('[').nth(1).unwrap().split(']').next().unwrap();
+		let id2 = diagnostic2.message.split('[').nth(1).unwrap().split(']').next().unwrap();
 
 		assert_ne!(id1, id2);
 		assert!(id1.starts_with("ERR-"));

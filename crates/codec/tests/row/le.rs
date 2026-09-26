@@ -71,7 +71,7 @@ fn one_generic_path_writes_every_width_into_its_own_slot() {
 
 	assert_eq!(shape.get::<u64>(&row, 0), 0xAAAA_AAAA_AAAA_AAAAu64);
 	assert_eq!(shape.get::<u64>(&row, 5), 0xBBBB_BBBB_BBBB_BBBBu64);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<Date>(&row, 2), date);
 	assert_eq!(shape.get::<DateTime>(&row, 3), datetime);
 	assert_eq!(shape.get::<Duration>(&row, 4), duration);

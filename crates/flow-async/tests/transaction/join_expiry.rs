@@ -31,7 +31,7 @@ const NODE: OperatorId = OperatorId(1);
 
 fn resume_from(page: &JoinDuePage) -> DueStart {
 	match &page.resume {
-		Some(cursor) => DueStart::After(cursor.clone()),
+		Some(cursor) => DueStart::After(*cursor),
 		None => DueStart::Bottom,
 	}
 }

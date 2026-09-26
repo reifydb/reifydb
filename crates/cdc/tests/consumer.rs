@@ -7,7 +7,7 @@ use std::{
 	os::unix::process::ExitStatusExt,
 	process::{Command, ExitStatus, Stdio},
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread::{self, JoinHandle, sleep},
@@ -37,6 +37,7 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	sync::mutex::Mutex,
 };
 use reifydb_store_cdc::storage::{CdcStorage, Cutoff};
 use reifydb_test_harness::engine::TestEngine;
@@ -336,6 +337,7 @@ struct ChildOutput {
 	stderr: String,
 }
 
+#[allow(clippy::disallowed_methods)]
 fn run_child_with_limit(test_name: &str, child_env: &str, limit: Duration) -> ChildOutput {
 	let exe = env::current_exe().expect("Failed to resolve test binary path");
 	let mut child = Command::new(exe)
@@ -921,11 +923,11 @@ impl TestConsumer {
 	}
 
 	fn get_transactions(&self) -> Vec<Cdc> {
-		self.cdc_received.lock().unwrap().clone()
+		self.cdc_received.lock().clone()
 	}
 
 	fn get_total_changes(&self) -> usize {
-		self.cdc_received.lock().unwrap().iter().map(|cdc| cdc.changes.len()).sum()
+		self.cdc_received.lock().iter().map(|cdc| cdc.changes.len()).sum()
 	}
 
 	fn get_process_count(&self) -> usize {
@@ -996,7 +998,7 @@ impl CdcConsume for TestConsumer {
 			}
 		}
 
-		let mut received = self.cdc_received.lock().unwrap();
+		let mut received = self.cdc_received.lock();
 		received.extend(transactions);
 		self.process_count.fetch_add(1, Ordering::SeqCst);
 		(reply)(Ok(()));
@@ -1014,6 +1016,7 @@ fn poll_interval() -> Duration {
 	Duration::from_milliseconds(10).unwrap()
 }
 
+#[allow(clippy::disallowed_methods)]
 fn await_until<F: Fn() -> bool>(label: &str, check: F) {
 	let timeout = poll_timeout().to_std();
 	let deadline = Instant::now() + timeout;
@@ -1052,11 +1055,11 @@ impl ResyncConsumer {
 	}
 
 	fn received_versions(&self) -> Vec<CommitVersion> {
-		self.cdc_received.lock().unwrap().iter().map(|c| c.version.commit).collect()
+		self.cdc_received.lock().iter().map(|c| c.version.commit).collect()
 	}
 
 	fn overtaken_calls(&self) -> Vec<(CommitVersion, CommitVersion)> {
-		self.overtaken_calls.lock().unwrap().clone()
+		self.overtaken_calls.lock().clone()
 	}
 }
 
@@ -1072,7 +1075,7 @@ impl Clone for ResyncConsumer {
 
 impl CdcConsume for ResyncConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
-		self.cdc_received.lock().unwrap().extend(transactions);
+		self.cdc_received.lock().extend(transactions);
 		(reply)(Ok(()));
 	}
 
@@ -1086,7 +1089,7 @@ impl CdcConsume for ResyncConsumer {
 		truncated_before: CommitVersion,
 		reply: Box<dyn FnOnce(reifydb_value::Result<CommitVersion>) + Send>,
 	) {
-		self.overtaken_calls.lock().unwrap().push((cursor, truncated_before));
+		self.overtaken_calls.lock().push((cursor, truncated_before));
 		let head = self.host.current_version().unwrap();
 		(reply)(Ok(head));
 	}

@@ -53,7 +53,7 @@ pub mod tests {
 		let bitvec = BooleanBuffer::new_set(2);
 		let container = ColumnBuffer::utf8_with_bitvec(strings, bitvec);
 
-		let result = to_blob(&container, || Fragment::testing_empty()).unwrap();
+		let result = to_blob(&container, Fragment::testing_empty).unwrap();
 
 		match result {
 			ColumnBuffer::Blob {
@@ -73,7 +73,7 @@ pub mod tests {
 		let bitvec = BooleanBuffer::new_set(1);
 		let container = ColumnBuffer::int4_with_bitvec(ints, bitvec);
 
-		let result = to_blob(&container, || Fragment::testing_empty());
+		let result = to_blob(&container, Fragment::testing_empty);
 		assert!(result.is_err());
 	}
 }

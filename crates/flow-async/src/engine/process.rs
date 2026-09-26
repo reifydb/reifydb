@@ -655,7 +655,7 @@ mod tests {
 			FlowId(1),
 			ChangeVersion::from(CommitVersion(1)),
 			vec![completeness_change(&[(9, at_millis(30_000))])],
-			&topo,
+			topo,
 		)
 		.unwrap();
 

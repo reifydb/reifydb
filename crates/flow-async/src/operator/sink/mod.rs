@@ -189,14 +189,14 @@ mod tests {
 		let entry_id = {
 			let registry =
 				DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
-			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().id.clone()
+			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().id
 		};
 
 		let decode_store = Arc::new(SingleDictionaryStore::new(single));
 		let decode_registry = DictionaryAllocatorRegistry::new(decode_store.clone());
 		{
 			let mut txn = flow_txn(&engine, &decode_registry);
-			let mut columns = dictionary_column(&dictionary, entry_id.clone());
+			let mut columns = dictionary_column(&dictionary, entry_id);
 			let before = decode_store.read_count();
 			decode_dictionary_columns(&mut columns, &mut TxnHostContext::new(&mut txn, OperatorId(1)))
 				.unwrap();

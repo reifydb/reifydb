@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::f64::consts::PI;
+
 use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::value::{
 	Value,
@@ -598,7 +600,7 @@ fn any_record_multi_field_mixed() {
 		("id".to_string(), Value::Int8(1)),
 		("name".to_string(), Value::Utf8("alice".to_string())),
 		("active".to_string(), Value::Boolean(true)),
-		("score".to_string(), float8(3.14)),
+		("score".to_string(), float8(PI)),
 	]));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_record_mixed", &input, &output);
@@ -645,7 +647,7 @@ fn any_heterogeneous_column() {
 		Value::Int8(1i64),
 		Value::Utf8("two".to_string()),
 		Value::Boolean(true),
-		Value::Float8(OrderedF64::try_from(3.14f64).expect("valid")),
+		Value::Float8(OrderedF64::try_from(PI).expect("valid")),
 	]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_heterogeneous", &input, &output);
@@ -653,7 +655,7 @@ fn any_heterogeneous_column() {
 
 #[test]
 fn any_thirty_two_rows() {
-	let values: Vec<Value> = (0..32i64).map(|i| Value::Int8(i)).collect();
+	let values: Vec<Value> = (0..32i64).map(Value::Int8).collect();
 	let input = ColumnBuffer::any(values);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_thirty_two", &input, &output);

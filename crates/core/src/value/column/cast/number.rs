@@ -1271,7 +1271,7 @@ pub mod tests {
 			let result = convert_vec::<i8, i16>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -1290,7 +1290,7 @@ pub mod tests {
 			let result = convert_vec::<i8, i16>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -1309,7 +1309,7 @@ pub mod tests {
 			let result = convert_vec::<i8, i16>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -1329,7 +1329,7 @@ pub mod tests {
 			let result = convert_vec::<i8, i16>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -1386,7 +1386,7 @@ pub mod tests {
 			let result = convert_vec::<i16, i8>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1406,7 +1406,7 @@ pub mod tests {
 			let result = convert_vec::<i16, i8>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1425,7 +1425,7 @@ pub mod tests {
 			let result = convert_vec::<i16, i8>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1445,7 +1445,7 @@ pub mod tests {
 			let result = convert_vec::<i16, i8>(
 				&data,
 				&ctx,
-				|| Fragment::testing_empty(),
+				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)

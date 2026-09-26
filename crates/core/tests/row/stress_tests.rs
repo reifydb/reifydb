@@ -91,7 +91,7 @@ fn test_mixed_type_stress() {
 	shape.set_uint(&mut row, 23, &Uint::from(u128::MAX));
 	shape.set_decimal(&mut row, 24, &Decimal::from_str("123.45").unwrap());
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get::<i8>(&row, 1), -128);
 	assert_eq!(shape.get::<i16>(&row, 2), -32768);
 	assert_eq!(shape.get::<i32>(&row, 3), -2147483648);

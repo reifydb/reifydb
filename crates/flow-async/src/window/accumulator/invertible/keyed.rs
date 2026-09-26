@@ -108,7 +108,7 @@ mod tests {
 		accumulator.remove(&(2, 5.0));
 		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.len(), 1, "key 2 drained to empty and was dropped");
-		assert!(out.get(&2).is_none());
+		assert!(!out.contains_key(&2));
 	}
 
 	#[test]

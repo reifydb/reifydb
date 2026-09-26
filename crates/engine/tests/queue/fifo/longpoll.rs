@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{
 	sync::atomic::{AtomicBool, Ordering},
 	thread,
@@ -9,6 +11,7 @@ use std::{
 
 use reifydb_core::{execution::ExecutionResult, interface::catalog::id::QueueId};
 use reifydb_engine::{queue::lookup::find_queue_id, session::Session};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::duration::Duration;
 
@@ -41,6 +44,7 @@ fn queue_id(t: &TestEngine) -> QueueId {
 	find_queue_id(t.inner(), TestEngine::identity(), "test::jobs").expect("the queue must exist")
 }
 
+#[allow(clippy::disallowed_methods)]
 fn await_parked(t: &TestEngine, count: usize) {
 	// Advancing before the worker is on the registry expires the budget before it ever parks.
 	let registry = t.inner().queue_wake();
@@ -62,7 +66,7 @@ fn test_a_parked_claim_is_released_by_a_concurrent_insert() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let parked = thread::scope(|scope| {
 		let handle = scope.spawn(|| claim_wait(&worker, Duration::from_seconds(5).unwrap()));
 		thread::sleep(StdDuration::from_millis(100));
@@ -118,7 +122,7 @@ fn test_a_zero_budget_claim_never_parks() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = claim_wait(&worker, Duration::zero());
 
 	assert!(result.error.is_none());
@@ -134,7 +138,7 @@ fn test_a_claim_finds_work_that_is_already_waiting_without_parking() {
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = claim_wait(&worker, Duration::from_seconds(30).unwrap());
 
 	assert_eq!(rows(&result), 2, "both waiting items must come back on the first scan");
@@ -148,7 +152,7 @@ fn test_an_unknown_queue_faults_instead_of_parking() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = worker.claim_wait(
 		"test::missing",
 		"w1",

@@ -848,7 +848,7 @@ pub mod tests {
 	#[test]
 	fn test_human_seconds_with_milliseconds() {
 		let d = parse_duration(Fragment::testing("1s500ms")).unwrap();
-		assert_eq!(d.get_nanos(), 1 * 1_000_000_000 + 500 * 1_000_000);
+		assert_eq!(d.get_nanos(), 1_000_000_000 + 500 * 1_000_000);
 	}
 
 	#[test]

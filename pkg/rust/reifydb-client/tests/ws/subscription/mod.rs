@@ -44,10 +44,7 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 }
 
 pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
-	match timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await {
-		Ok(result) => result,
-		Err(_) => None,
-	}
+	timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await.ok().flatten()
 }
 
 pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {

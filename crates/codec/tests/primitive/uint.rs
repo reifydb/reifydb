@@ -151,7 +151,7 @@ fn test_multiple_fields() {
 
 	shape.set::<i32>(&mut row, 4, 42i32);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get_uint(&row, 1), small);
 	assert_eq!(shape.get_utf8(&row, 2), "test");
 	assert_eq!(shape.get_uint(&row, 3), large);

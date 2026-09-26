@@ -64,7 +64,7 @@ pub mod tests {
 		assert_eq!(result.id, ColumnId(16387));
 		assert_eq!(result.name, "col_3");
 		assert_eq!(result.constraint.get_type(), ValueType::Int4);
-		assert_eq!(result.auto_increment, false);
+		assert!(!result.auto_increment);
 	}
 
 	#[test]

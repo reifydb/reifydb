@@ -222,15 +222,13 @@ impl EventBus {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{
-		sync::{Arc, Mutex},
-		thread,
-	};
+	use std::{sync::Arc, thread};
 
 	use reifydb_runtime::{
 		actor::system::ActorSystem,
 		context::clock::Clock,
 		pool::{PoolConfig, Pools},
+		sync::mutex::Mutex,
 	};
 
 	use crate::event::{Event, EventBus, EventListener};
@@ -258,14 +256,14 @@ pub mod tests {
 
 	impl EventListener<TestEvent> for TestEventListener {
 		fn on(&self, _event: &TestEvent) {
-			let mut x = self.0.counter.lock().unwrap();
+			let mut x = self.0.counter.lock();
 			*x += 1;
 		}
 	}
 
 	impl EventListener<AnotherEvent> for TestEventListener {
 		fn on(&self, _event: &AnotherEvent) {
-			let mut x = self.0.counter.lock().unwrap();
+			let mut x = self.0.counter.lock();
 			*x *= 2;
 		}
 	}
@@ -287,7 +285,7 @@ pub mod tests {
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
+		assert_eq!(*listener.0.counter.lock(), 1);
 	}
 
 	#[test]
@@ -310,8 +308,8 @@ pub mod tests {
 
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
-		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
-		assert_eq!(*listener2.0.counter.lock().unwrap(), 1);
+		assert_eq!(*listener1.0.counter.lock(), 1);
+		assert_eq!(*listener2.0.counter.lock(), 1);
 	}
 
 	#[test]
@@ -324,7 +322,7 @@ pub mod tests {
 		let event_bus2 = event_bus1.clone();
 		event_bus2.emit(TestEvent::new());
 		event_bus2.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
+		assert_eq!(*listener.0.counter.lock(), 1);
 	}
 
 	#[test]
@@ -371,7 +369,7 @@ pub mod tests {
 		}
 
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 10);
+		assert_eq!(*listener.0.counter.lock(), 10);
 	}
 
 	define_event! {
@@ -400,14 +398,14 @@ pub mod tests {
 		// Each event type triggers only its own listeners
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
+		assert_eq!(*listener.0.counter.lock(), 1);
 
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 2);
+		assert_eq!(*listener.0.counter.lock(), 2);
 
 		event_bus.emit(AnotherEvent::new());
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.0.counter.lock().unwrap(), 4); // 2 * 2
+		assert_eq!(*listener.0.counter.lock(), 4); // 2 * 2
 	}
 }

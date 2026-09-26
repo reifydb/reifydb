@@ -589,7 +589,7 @@ mod tests {
 		if !buffer.is_empty() {
 			out.insert(0u32, buffer.values().map(|a| a.sum).sum());
 		}
-		out.into()
+		out
 	}
 
 	#[test]

@@ -24,10 +24,7 @@ use reifydb_core::{
 			id::{IndexId, TableId},
 			object::ObjectId,
 		},
-		store::{
-			EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
-			classify_key,
-		},
+		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key},
 	},
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	lifecycle::watermark::EvictionWatermark,
@@ -42,7 +39,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
+use reifydb_store_commit::{MultiVersionScope, TierBatch, VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{
 	config::{CommitStoreConfig, MultiStoreConfig},
 	store::StandardMultiStore,
@@ -453,8 +450,7 @@ impl testscript::runner::Runner for Runner {
 				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
-				let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> =
-					HashMap::new();
+				let mut batches: TierBatch = HashMap::new();
 				batches.entry(table).or_default().push((stored, Some(CowVec::new(value_bytes))));
 				persistent.set(version, batches)?;
 			}

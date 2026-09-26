@@ -81,7 +81,7 @@ fn test_mixed_with_static_fields() {
 	shape.set::<i32>(&mut row, 2, 42i32);
 	shape.set_utf8(&mut row, 3, "goodbye");
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get_utf8(&row, 1), "hello world");
 	assert_eq!(shape.get::<i32>(&row, 2), 42);
 	assert_eq!(shape.get_utf8(&row, 3), "goodbye");

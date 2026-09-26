@@ -991,15 +991,15 @@ pub mod tests {
 
 		let extracted = original.extract_by_indices(&[3, 0]);
 
-		let rns: Vec<RowNumber> = extracted.row_numbers().iter().cloned().collect();
+		let rns: Vec<RowNumber> = extracted.row_numbers().to_vec();
 		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
 		assert_eq!(
-			extracted.created_at().iter().cloned().collect::<Vec<_>>(),
+			extracted.created_at().to_vec(),
 			vec![DateTime::from_epoch_secs(4000).unwrap(), DateTime::from_epoch_secs(1000).unwrap()],
 			"created_at must follow indices"
 		);
 		assert_eq!(
-			extracted.updated_at().iter().cloned().collect::<Vec<_>>(),
+			extracted.updated_at().to_vec(),
 			vec![DateTime::from_epoch_secs(4400).unwrap(), DateTime::from_epoch_secs(1100).unwrap()],
 			"updated_at must follow indices"
 		);
@@ -1164,10 +1164,10 @@ pub mod tests {
 		let duration = Duration::from_days(30).unwrap();
 
 		let columns = Columns::single_row([
-			("date_col", Value::Date(date.clone())),
-			("datetime_col", Value::DateTime(datetime.clone())),
-			("time_col", Value::Time(time.clone())),
-			("interval_col", Value::Duration(duration.clone())),
+			("date_col", Value::Date(date)),
+			("datetime_col", Value::DateTime(datetime)),
+			("time_col", Value::Time(time)),
+			("interval_col", Value::Duration(duration)),
 		]);
 
 		assert_eq!(columns.len(), 4);
@@ -1188,8 +1188,8 @@ pub mod tests {
 			("bool_col", Value::Boolean(true)),
 			("int_col", Value::Int4(42)),
 			("str_col", Value::Utf8("hello".to_string())),
-			("date_col", Value::Date(date.clone())),
-			("time_col", Value::Time(time.clone())),
+			("date_col", Value::Date(date)),
+			("time_col", Value::Time(time)),
 			("none_col", Value::none()),
 		]);
 

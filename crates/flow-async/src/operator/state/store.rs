@@ -149,9 +149,9 @@ pub mod tests {
 		let entries = {
 			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
 			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
-			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
+			let stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
-			while let Some(result) = stream.next() {
+			for result in stream {
 				entries.push(result.unwrap());
 			}
 			entries
@@ -161,9 +161,9 @@ pub mod tests {
 		let entries = {
 			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
 			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
-			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
+			let stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
-			while let Some(result) = stream.next() {
+			for result in stream {
 				entries.push(result.unwrap());
 			}
 			entries

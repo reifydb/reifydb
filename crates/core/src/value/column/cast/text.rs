@@ -154,13 +154,11 @@ pub mod tests {
 
 	#[test]
 	fn test_from_blob() {
-		let blobs = vec![
-			Blob::from_utf8(Fragment::internal("Hello")),
-			Blob::from_utf8(Fragment::internal("World")),
-		];
+		let blobs =
+			[Blob::from_utf8(Fragment::internal("Hello")), Blob::from_utf8(Fragment::internal("World"))];
 		let container = LargeBinaryArray::from_iter_values(blobs.iter().map(|blob| blob.as_bytes()));
 
-		let result = from_blob(&container, || Fragment::testing_empty()).unwrap();
+		let result = from_blob(&container, Fragment::testing_empty).unwrap();
 
 		match result {
 			ColumnBuffer::Utf8 {
@@ -176,12 +174,12 @@ pub mod tests {
 
 	#[test]
 	fn test_from_blob_invalid() {
-		let blobs = vec![
+		let blobs = [
 			Blob::new(vec![0xFF, 0xFE]), // Invalid UTF-8
 		];
 		let container = LargeBinaryArray::from_iter_values(blobs.iter().map(|blob| blob.as_bytes()));
 
-		let result = from_blob(&container, || Fragment::testing_empty());
+		let result = from_blob(&container, Fragment::testing_empty);
 		assert!(result.is_err());
 	}
 }

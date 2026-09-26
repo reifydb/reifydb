@@ -190,7 +190,7 @@ mod tests {
 	#[test]
 	fn the_env_override_only_accepts_known_spellings() {
 		// An unparsed value must fall through to the armed default rather than silently disarming.
-		assert_eq!(FatalConfig::disarmed().armed, false);
+		assert!(!FatalConfig::disarmed().armed);
 		assert!(FatalConfig::armed(true).armed);
 	}
 

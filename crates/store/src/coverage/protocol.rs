@@ -4,7 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	sync::{
-		Arc, Barrier, Mutex, RwLock,
+		Arc, Barrier,
 		atomic::{AtomicU64, Ordering},
 	},
 	thread,
@@ -12,6 +12,7 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::key::typed::{Edge, OpaqueKey};
+use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 
 use crate::coverage::{interval::CoverageSet, retraction::Retractions};
 
@@ -103,7 +104,7 @@ impl ModelCache {
 
 	fn place(&self, rows: &[(EncodedKey, u64)], span: &Hull) -> Option<PartId> {
 		let part = part_of(&rows.first()?.0);
-		let mut partitions = self.partitions.lock().unwrap();
+		let mut partitions = self.partitions.lock();
 		let entry = partitions.entry(part).or_default();
 		for (at, value) in rows {
 			entry.rows.insert(at.clone(), *value);
@@ -115,7 +116,7 @@ impl ModelCache {
 	}
 
 	fn publish(&self, span: Hull, token: u64) -> bool {
-		let mut coverage = self.coverage.write().unwrap();
+		let mut coverage = self.coverage.write();
 		if !self.retractions.unchanged(token) {
 			self.refused.fetch_add(1, Ordering::Relaxed);
 			return false;
@@ -150,13 +151,13 @@ impl ModelCache {
 	}
 
 	fn withdraw_key(&self, at: &EncodedKey) {
-		let mut coverage = self.coverage.write().unwrap();
+		let mut coverage = self.coverage.write();
 		coverage.shrink_key(at);
 		self.retractions.record();
 	}
 
 	fn withdraw_span(&self, span: &Hull) {
-		let mut coverage = self.coverage.write().unwrap();
+		let mut coverage = self.coverage.write();
 		coverage.shrink_range(&span.0, &span.1);
 		self.retractions.record();
 	}
@@ -167,7 +168,7 @@ impl ModelCache {
 			hook(self);
 		}
 		let emptied = {
-			let mut partitions = self.partitions.lock().unwrap();
+			let mut partitions = self.partitions.lock();
 			match partitions.get_mut(&part_of(at)) {
 				Some(entry) => {
 					entry.rows.remove(at);
@@ -183,14 +184,14 @@ impl ModelCache {
 	}
 
 	fn retract_partition(&self, part: PartId) {
-		let hull = self.partitions.lock().unwrap().get(&part).and_then(|entry| entry.claimed.clone());
+		let hull = self.partitions.lock().get(&part).and_then(|entry| entry.claimed.clone());
 		if let Some(hull) = &hull {
 			self.withdraw_span(hull);
 		}
 	}
 
 	fn pick_victim(&self) -> Option<(PartId, u64)> {
-		let partitions = self.partitions.lock().unwrap();
+		let partitions = self.partitions.lock();
 		if partitions.len() <= self.cap {
 			return None;
 		}
@@ -199,7 +200,7 @@ impl ModelCache {
 
 	fn drop_victim(&self, part: PartId, fills: u64) -> bool {
 		self.retract_partition(part);
-		let mut partitions = self.partitions.lock().unwrap();
+		let mut partitions = self.partitions.lock();
 		let Some(entry) = partitions.get(&part) else {
 			return false;
 		};
@@ -221,26 +222,26 @@ impl ModelCache {
 	}
 
 	fn clear(&self) {
-		let mut coverage = self.coverage.write().unwrap();
+		let mut coverage = self.coverage.write();
 		coverage.clear();
-		self.partitions.lock().unwrap().clear();
+		self.partitions.lock().clear();
 		self.retractions.record();
 	}
 
 	fn covers(&self, at: &EncodedKey) -> bool {
-		self.coverage.read().unwrap().contains(at)
+		self.coverage.read().contains(at)
 	}
 
 	fn resident(&self, at: &EncodedKey) -> bool {
-		self.partitions.lock().unwrap().get(&part_of(at)).is_some_and(|entry| entry.rows.contains_key(at))
+		self.partitions.lock().get(&part_of(at)).is_some_and(|entry| entry.rows.contains_key(at))
 	}
 
 	fn hull_of(&self, part: PartId) -> Option<Hull> {
-		self.partitions.lock().unwrap().get(&part).and_then(|entry| entry.claimed.clone())
+		self.partitions.lock().get(&part).and_then(|entry| entry.claimed.clone())
 	}
 
 	fn intervals(&self) -> usize {
-		self.coverage.read().unwrap().len()
+		self.coverage.read().len()
 	}
 
 	fn overstated(&self, domain: &[EncodedKey]) -> Option<EncodedKey> {
@@ -617,7 +618,7 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 					if id == 0
 						&& let Some(at) = cache.overstated(&domain)
 					{
-						let mut slot = violation.lock().unwrap();
+						let mut slot = violation.lock();
 						if slot.is_none() {
 							*slot = Some(format!(
 								"seed {seed} round {round}: {:?} covered but not resident",
@@ -638,7 +639,7 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 		evictions += cache.evictions.load(Ordering::Relaxed);
 	}
 
-	assert_eq!(violation.lock().unwrap().clone(), None, "coverage overstated what RAM holds");
+	assert_eq!(violation.lock().clone(), None, "coverage overstated what RAM holds");
 	assert!(published > 1000, "only {published} claims published: nothing was ever claimed to overstate");
 	assert!(evictions > 100, "only {evictions} evictions: the capacity cap never forced the retraction path");
 	assert!(refused > 10, "only {refused} claims refused by a token: the fill-versus-shrink race never ran");

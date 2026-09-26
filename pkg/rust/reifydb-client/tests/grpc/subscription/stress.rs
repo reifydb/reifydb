@@ -273,8 +273,8 @@ fn test_concurrent_connect_disconnect() {
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		let mut handles = Vec::new();
-		for task_idx in 0..NUM_TASKS {
-			let table = tables[task_idx].clone();
+		for (task_idx, table) in tables.iter().enumerate() {
+			let table = table.clone();
 			let counter = Arc::clone(&success_count);
 
 			let handle = tokio::spawn(async move {

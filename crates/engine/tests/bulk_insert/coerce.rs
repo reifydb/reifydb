@@ -103,7 +103,7 @@ fn test_coercion_batch_multiple_rows() {
 	t.admin("CREATE TABLE test::batch { val: int8 }");
 
 	// 100 rows so the batched coercion path is exercised, not the single-row one.
-	let rows: Vec<_> = (1..=100).map(|n| params! { val: n as i32 }).collect();
+	let rows: Vec<_> = (1..=100).map(|n| params! { val: n }).collect();
 
 	let mut builder = t.bulk_insert(identity);
 	builder.table("test::batch").rows(rows).done();
@@ -121,6 +121,7 @@ fn test_coercion_batch_multiple_rows() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_coercion_float4_to_float8() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();

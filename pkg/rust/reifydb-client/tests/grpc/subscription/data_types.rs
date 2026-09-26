@@ -136,11 +136,11 @@ fn test_subscription_float_types() {
 
 		let frame = &change.unwrap().changes[0].frame;
 		let f4_val = match find_column(frame, "f4").unwrap().data.get_value(0) {
-			Value::Float4(v) => f32::from(*v),
+			Value::Float4(v) => *v,
 			other => panic!("Expected Float4, got {:?}", other),
 		};
 		let f8_val = match find_column(frame, "f8").unwrap().data.get_value(0) {
-			Value::Float8(v) => f64::from(*v),
+			Value::Float8(v) => *v,
 			other => panic!("Expected Float8, got {:?}", other),
 		};
 

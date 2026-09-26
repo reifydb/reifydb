@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{f32::consts::PI, f64};
+
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, date::Date, int::Int, uuid::Uuid4, value_type::ValueType};
 
@@ -34,8 +36,8 @@ fn test_large_row() {
 				2 => shape.set::<i16>(&mut row, i, 1234i16),
 				3 => shape.set::<i32>(&mut row, i, 123456i32),
 				4 => shape.set::<i64>(&mut row, i, 1234567890i64),
-				5 => shape.set::<f32>(&mut row, i, 3.14f32),
-				6 => shape.set::<f64>(&mut row, i, 3.14159f64),
+				5 => shape.set::<f32>(&mut row, i, PI),
+				6 => shape.set::<f64>(&mut row, i, f64::consts::PI),
 				7 => shape.set::<Date>(&mut row, i, Date::from_ymd(2024, 12, 25).unwrap()),
 				8 => shape.set::<Uuid4>(&mut row, i, Uuid4::generate()),
 				_ => shape.set_utf8(&mut row, i, "test"),
@@ -138,7 +140,7 @@ fn test_memory_efficiency() {
 	let small_size = row1.len();
 
 	let mut row2 = shape.allocate_pod();
-	shape.set_utf8(&mut row2, 0, &"x".repeat(1000));
+	shape.set_utf8(&mut row2, 0, "x".repeat(1000));
 	let large_size = row2.len();
 
 	assert!(small_size > initial_size, "Dynamic field didn't grow");
@@ -150,7 +152,7 @@ fn test_memory_efficiency() {
 
 	for size in sizes {
 		let mut row = shape.allocate_pod();
-		shape.set_utf8(&mut row, 0, &"x".repeat(size));
+		shape.set_utf8(&mut row, 0, "x".repeat(size));
 		row_sizes.push(row.len());
 	}
 

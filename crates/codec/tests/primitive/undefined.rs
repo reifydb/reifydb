@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::str::FromStr;
+use std::{f64::consts::PI, str::FromStr};
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
@@ -102,7 +102,7 @@ fn test_set_all_fields() {
 
 	shape.set::<bool>(&mut row, 0, false);
 	shape.set::<i32>(&mut row, 1, -999i32);
-	shape.set::<f64>(&mut row, 2, 3.14159f64);
+	shape.set::<f64>(&mut row, 2, PI);
 
 	assert!(row.is_defined(0));
 	assert!(row.is_defined(1));
@@ -146,10 +146,10 @@ fn test_set_temporal_types() {
 	let time = Time::from_hms(14, 30, 45).unwrap();
 	let duration = Duration::from_days(7).unwrap();
 
-	shape.set::<Date>(&mut row, 0, date.clone());
-	shape.set::<DateTime>(&mut row, 1, datetime.clone());
-	shape.set::<Time>(&mut row, 2, time.clone());
-	shape.set::<Duration>(&mut row, 3, duration.clone());
+	shape.set::<Date>(&mut row, 0, date);
+	shape.set::<DateTime>(&mut row, 1, datetime);
+	shape.set::<Time>(&mut row, 2, time);
+	shape.set::<Duration>(&mut row, 3, duration);
 
 	assert!(row.is_defined(0));
 	assert!(row.is_defined(1));
@@ -180,9 +180,9 @@ fn test_set_uuid_types() {
 	let uuid7 = Uuid7::generate(&clock, &rng);
 	let identity_id = IdentityId::generate(&clock, &rng);
 
-	shape.set::<Uuid4>(&mut row, 0, uuid4.clone());
-	shape.set::<Uuid7>(&mut row, 1, uuid7.clone());
-	shape.set::<IdentityId>(&mut row, 2, identity_id.clone());
+	shape.set::<Uuid4>(&mut row, 0, uuid4);
+	shape.set::<Uuid7>(&mut row, 1, uuid7);
+	shape.set::<IdentityId>(&mut row, 2, identity_id);
 
 	assert!(row.is_defined(0));
 	assert!(row.is_defined(1));

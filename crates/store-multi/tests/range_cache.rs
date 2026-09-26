@@ -5,12 +5,9 @@
 //! turns on one invariant: a cache-served scan is byte-for-byte identical to the cache-cold read-through
 //! and to the data actually written.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -23,7 +20,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 };
-use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_commit::{MultiVersionScope, TierBatch};
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
@@ -65,10 +62,7 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		}
 		if !to_persist.is_empty() {
 			let persistent = store.persistent().expect("persistent tier configured");
-			let mut by_version: HashMap<
-				CommitVersion,
-				HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
-			> = HashMap::new();
+			let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
 			for (key, version, value) in to_persist {
 				by_version.entry(version).or_default().entry(kind).or_default().push((key, value));
 			}
@@ -312,9 +306,9 @@ fn physical_delete_then_range_omits_row_no_ghost() {
 	let removed = RowKey::encoded(STORAGE, 5);
 	store.persistent()
 		.unwrap()
-		.delete_keys(EntryKind::Source(STORAGE.into(), EntryLayout::Row), &[removed.clone()])
+		.delete_keys(EntryKind::Source(STORAGE, EntryLayout::Row), from_ref(&removed))
 		.unwrap();
-	store.invalidate_read_key(EntryKind::Source(STORAGE.into(), EntryLayout::Row), &removed);
+	store.invalidate_read_key(EntryKind::Source(STORAGE, EntryLayout::Row), &removed);
 
 	let rows = scan_fwd(&store, 1000, 64);
 	assert_eq!(rows.len(), (BUCKET_ROWS - 1) as usize, "exactly one row removed");

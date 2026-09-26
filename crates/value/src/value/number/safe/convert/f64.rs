@@ -637,6 +637,8 @@ pub mod tests {
 	}
 
 	mod decimal {
+		use std::f64::consts::PI;
+
 		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
@@ -759,7 +761,7 @@ pub mod tests {
 
 		#[test]
 		fn test_wrapping_convert_with_decimal() {
-			let x: f64 = 3.14159;
+			let x: f64 = PI;
 			let y: Decimal = x.wrapping_convert();
 			let str_repr = y.to_string();
 			assert!(str_repr.starts_with("3.141"), "actual: {}", str_repr);

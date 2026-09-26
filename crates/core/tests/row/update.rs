@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{f64::consts::E, str::FromStr};
+use std::{f32::consts::PI, f64, f64::consts::E, str::FromStr};
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
@@ -564,7 +564,7 @@ fn test_any_cycle_all_types() {
 		Value::Uint4(u32::MAX),
 		Value::Uint8(u64::MAX),
 		Value::Uint16(u128::MAX),
-		Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),
+		Value::Float4(OrderedF32::try_from(PI).unwrap()),
 		Value::Float8(OrderedF64::try_from(E).unwrap()),
 		Value::Date(Date::new(2025, 12, 31).unwrap()),
 		Value::DateTime(DateTime::new(2025, 7, 15, 14, 30, 45, 0).unwrap()),
@@ -687,17 +687,17 @@ fn test_update_dynamic_preserves_static() {
 	shape.set::<bool>(&mut row, 0, true);
 	shape.set::<i32>(&mut row, 1, 42i32);
 	shape.set_utf8(&mut row, 2, "hello");
-	shape.set::<f64>(&mut row, 3, 3.14f64);
+	shape.set::<f64>(&mut row, 3, f64::consts::PI);
 	shape.set_blob(&mut row, 4, &Blob::from_slice(&[1, 2, 3]));
 
 	for i in 0..10 {
-		shape.set_utf8(&mut row, 2, &format!("iteration_{}", i));
+		shape.set_utf8(&mut row, 2, format!("iteration_{}", i));
 		shape.set_blob(&mut row, 4, &Blob::from_slice(&vec![i as u8; i + 1]));
 
 		// Static fields must be unchanged
-		assert_eq!(shape.get::<bool>(&row, 0), true);
+		assert!(shape.get::<bool>(&row, 0));
 		assert_eq!(shape.get::<i32>(&row, 1), 42);
-		assert!((shape.get::<f64>(&row, 3) - 3.14).abs() < f64::EPSILON);
+		assert!((shape.get::<f64>(&row, 3) - f64::consts::PI).abs() < f64::EPSILON);
 	}
 
 	assert_eq!(shape.get_utf8(&row, 2), "iteration_9");
@@ -707,7 +707,7 @@ fn test_update_dynamic_preserves_static() {
 	shape.set::<bool>(&mut fresh, 0, true);
 	shape.set::<i32>(&mut fresh, 1, 42i32);
 	shape.set_utf8(&mut fresh, 2, "iteration_9");
-	shape.set::<f64>(&mut fresh, 3, 3.14f64);
+	shape.set::<f64>(&mut fresh, 3, f64::consts::PI);
 	shape.set_blob(&mut fresh, 4, &Blob::from_slice(&[9; 10]));
 	assert_eq!(row.len(), fresh.len());
 }
@@ -751,7 +751,7 @@ fn test_all_dynamic_types_in_one_row() {
 	assert_eq!(shape.get_int(&row, 3), huge_int());
 	assert_eq!(shape.get_uint(&row, 4), huge_uint());
 	assert_eq!(shape.get_any(&row, 5), Value::Utf8("now a string".to_string()));
-	assert_eq!(shape.get::<bool>(&row, 6), true);
+	assert!(shape.get::<bool>(&row, 6));
 	assert_eq!(shape.get::<i32>(&row, 7), 999);
 
 	let mut fresh = shape.allocate_pod();

@@ -1001,6 +1001,8 @@ mod tests {
 
 	type TimeKey = (u64, u64);
 
+	type RoundEvents = TestBTreeMap<(Hash128, u64), Vec<(Option<f64>, bool)>>;
+
 	struct Lcg(u64);
 
 	impl Lcg {
@@ -1206,7 +1208,7 @@ mod tests {
 				let expiries = if runnable {
 					engine.expire_before_running(&mut store, at).unwrap()
 				} else {
-					engine.expire_before(&mut store, at, &combine).unwrap()
+					engine.expire_before(&mut store, at, combine).unwrap()
 				};
 				for (group, rows) in live.iter_mut() {
 					let kept = rows.split_off(&(next + 1, 0));
@@ -1246,7 +1248,7 @@ mod tests {
 		let drained = if runnable {
 			engine.expire_before_running(&mut store, past_every_slot).unwrap()
 		} else {
-			engine.expire_before(&mut store, past_every_slot, &combine).unwrap()
+			engine.expire_before(&mut store, past_every_slot, combine).unwrap()
 		};
 		assert!(
 			drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
@@ -1329,8 +1331,7 @@ mod tests {
 			let (mut next_row, mut checked, mut evictions, mut reentries) = (0u64, 0usize, 0usize, 0usize);
 
 			for round in 0..400u64 {
-				let mut events: TestBTreeMap<(Hash128, u64), Vec<(Option<f64>, bool)>> =
-					TestBTreeMap::new();
+				let mut events: RoundEvents = TestBTreeMap::new();
 				for _ in 0..=rng.below(3) {
 					next_row += 1;
 					let (group, value) = (rng.group(), rng.latency());

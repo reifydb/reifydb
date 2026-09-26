@@ -255,7 +255,7 @@ fn render(out: &Change) -> Emitted {
 			));
 		}
 	}
-	rendered.sort_by(|a, b| (a.0 as u8, a.1).cmp(&(b.0 as u8, b.1)));
+	rendered.sort_by_key(|a| (a.0 as u8, a.1));
 	rendered
 }
 
@@ -265,6 +265,7 @@ macro_rules! harness {
 	};
 }
 
+#[allow(clippy::extra_unused_type_parameters)]
 fn marker_of<T: WindowDriver<M>, M: 'static>() -> TypeId {
 	TypeId::of::<M>()
 }

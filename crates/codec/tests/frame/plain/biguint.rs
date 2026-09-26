@@ -23,7 +23,7 @@ mod narrow {
 
 	crate::plain_tests! {
 		typical: vec![uint(0), uint(u64::MAX as u128)],
-		boundary: vec![uint(0), uint(1), uint(99_999_999_999_999_999_999_999_999_999_999_999_99)],
+		boundary: vec![uint(0), uint(1), uint(9_999_999_999_999_999_999_999_999_999_999_999_999)],
 		single: uint(0),
 	}
 }

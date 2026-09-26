@@ -1265,7 +1265,7 @@ mod storage_series_key_tests {
 	fn storage_key_order_matches_the_encoded_byte_order() {
 		// the storage key is the cache key for the same rows the encoded key orders on disk, so a disagreement
 		// here silently hands back a neighbouring row on any ordered lookup
-		let mut keys = vec![
+		let mut keys = [
 			series(None, 5, 1),
 			series(Some(0), 5, 1),
 			series(Some(9), 5, 1),
@@ -1319,7 +1319,7 @@ mod storage_series_key_tests {
 
 	#[test]
 	fn partitioned_storage_key_order_matches_the_encoded_byte_order() {
-		let mut keys = vec![
+		let mut keys = [
 			StoragePartitionedSeriesKey::new(Partition(2), None, 5, 1),
 			StoragePartitionedSeriesKey::new(Partition(2), Some(3), 5, 1),
 			StoragePartitionedSeriesKey::new(Partition(1), Some(3), 5, 1),

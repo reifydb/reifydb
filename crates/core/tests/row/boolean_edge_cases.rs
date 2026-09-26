@@ -10,10 +10,10 @@ fn test_boolean_bit_patterns() {
 	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 
 	shape.set::<bool>(&mut row, 0, false);
-	assert_eq!(shape.get::<bool>(&row, 0), false);
+	assert!(!shape.get::<bool>(&row, 0));
 
 	// none must be distinguishable from false, not collapse onto it.
 	shape.set_none(&mut row, 0);
@@ -49,12 +49,12 @@ fn test_boolean_field_independence() {
 	shape.set::<bool>(&mut row, 2, true);
 	shape.set::<bool>(&mut row, 5, false);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
-	assert_eq!(shape.get::<bool>(&row, 1), false);
-	assert_eq!(shape.get::<bool>(&row, 2), true); // Changed
-	assert_eq!(shape.get::<bool>(&row, 3), false);
-	assert_eq!(shape.get::<bool>(&row, 4), true);
-	assert_eq!(shape.get::<bool>(&row, 5), false); // Changed
-	assert_eq!(shape.get::<bool>(&row, 6), true);
-	assert_eq!(shape.get::<bool>(&row, 7), false);
+	assert!(shape.get::<bool>(&row, 0));
+	assert!(!shape.get::<bool>(&row, 1));
+	assert!(shape.get::<bool>(&row, 2)); // Changed
+	assert!(!shape.get::<bool>(&row, 3));
+	assert!(shape.get::<bool>(&row, 4));
+	assert!(!shape.get::<bool>(&row, 5)); // Changed
+	assert!(shape.get::<bool>(&row, 6));
+	assert!(!shape.get::<bool>(&row, 7));
 }

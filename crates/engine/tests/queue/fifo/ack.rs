@@ -82,12 +82,12 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemptRecord)> {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn
+	let stream = txn
 		.range(QueueAttemptKey::queue_scan(queue), reifydb_transaction::multi::RangeScope::All, 1024)
 		.unwrap();
 
 	let mut out = Vec::new();
-	while let Some(item) = stream.next() {
+	for item in stream {
 		let item = item.unwrap();
 		out.push((
 			match item.key {
@@ -178,7 +178,7 @@ fn test_a_fail_ack_records_what_the_worker_reported() {
 	assert_eq!(record.worker, "worker-a");
 	assert_eq!(record.outcome, AttemptOutcome::Err);
 	assert_eq!(record.response.as_deref(), Some("gateway timeout"));
-	assert_eq!(record.lost, false, "only the step-5 reaper writes lost attempts");
+	assert!(!record.lost, "only the step-5 reaper writes lost attempts");
 	assert_eq!(record.anomaly, None);
 }
 

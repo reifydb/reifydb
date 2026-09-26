@@ -42,7 +42,7 @@ fn auth_reply(id: &str, status: &str) -> Value {
 #[tokio::test]
 async fn a_ws_auth_reply_of_the_wrong_type_fails_the_request_instead_of_panicking() {
 	// A server answering auth with another reply type must fail that request, not panic the caller.
-	let url = ws_server_answering(|id| logout_reply(id)).await;
+	let url = ws_server_answering(logout_reply).await;
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result =
@@ -68,7 +68,7 @@ async fn a_ws_login_the_server_does_not_authenticate_fails_the_request_instead_o
 #[tokio::test]
 async fn a_ws_login_reply_of_the_wrong_type_fails_the_request_instead_of_panicking() {
 	// A server answering login with another reply type must fail that request, not panic the caller.
-	let url = ws_server_answering(|id| logout_reply(id)).await;
+	let url = ws_server_answering(logout_reply).await;
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result = spawn(async move {
@@ -94,7 +94,7 @@ async fn a_ws_logout_reply_of_the_wrong_type_fails_the_request_instead_of_panick
 #[tokio::test]
 async fn a_ws_unsubscribe_reply_of_the_wrong_type_fails_the_request_instead_of_panicking() {
 	// A server answering unsubscribe with another reply type must fail that request, not panic the caller.
-	let url = ws_server_answering(|id| logout_reply(id)).await;
+	let url = ws_server_answering(logout_reply).await;
 	let client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result =

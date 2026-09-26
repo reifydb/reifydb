@@ -4,12 +4,13 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	sync::{
-		Barrier, Mutex,
+		Barrier,
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
 };
 
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{Value, frame::frame::Frame};
 
@@ -97,7 +98,7 @@ fn fail(t: &TestEngine, token: &str) {
 }
 
 fn take_key(observed: &Mutex<Observed>, delivery: &Delivery) {
-	let mut observed = observed.lock().unwrap();
+	let mut observed = observed.lock();
 	if !observed.in_flight.insert(delivery.tenant.clone()) {
 		observed.overlaps.push(delivery.tenant.clone());
 	}
@@ -105,7 +106,7 @@ fn take_key(observed: &Mutex<Observed>, delivery: &Delivery) {
 }
 
 fn release_key(observed: &Mutex<Observed>, delivery: &Delivery, completed: bool) {
-	let mut observed = observed.lock().unwrap();
+	let mut observed = observed.lock();
 	observed.in_flight.remove(&delivery.tenant);
 	if completed && !observed.completed.insert(delivery.item) {
 		observed.duplicates.push(delivery.item);
@@ -167,7 +168,7 @@ fn test_concurrent_claim_and_ack_preserve_per_key_order() {
 		}
 	});
 
-	let observed = observed.into_inner().unwrap();
+	let observed = observed.lock();
 	assert!(observed.overlaps.is_empty(), "two items of one key were leased at once: {:?}", observed.overlaps);
 	assert!(observed.duplicates.is_empty(), "items were delivered twice: {:?}", observed.duplicates);
 	assert_eq!(observed.completed.len(), KEYS * PER_KEY, "every item must be delivered exactly once");
@@ -202,7 +203,7 @@ fn test_per_key_order_survives_failed_attempts_and_redelivery() {
 					idle = 0;
 
 					for delivery in &batch {
-						let first_failure = failed.lock().unwrap().insert(delivery.item);
+						let first_failure = failed.lock().insert(delivery.item);
 
 						if !first_failure {
 							assert!(
@@ -223,7 +224,7 @@ fn test_per_key_order_survives_failed_attempts_and_redelivery() {
 		}
 	});
 
-	let observed = observed.into_inner().unwrap();
+	let observed = observed.lock();
 	assert!(observed.duplicates.is_empty(), "items completed twice: {:?}", observed.duplicates);
 	assert_eq!(observed.completed.len(), KEYS * PER_KEY, "every item must eventually complete");
 	assert_eq!(observed.order, expected, "a failed attempt must not let a younger sibling overtake");
@@ -275,7 +276,7 @@ fn test_items_enqueued_during_a_drain_keep_their_key_order() {
 		}
 	});
 
-	let observed = observed.into_inner().unwrap();
+	let observed = observed.lock();
 	assert!(observed.overlaps.is_empty(), "two items of one key were leased at once: {:?}", observed.overlaps);
 	assert!(observed.duplicates.is_empty(), "items were delivered twice: {:?}", observed.duplicates);
 	assert_eq!(observed.completed.len(), KEYS * PER_KEY, "every enqueued item must be drained");
@@ -314,11 +315,11 @@ fn test_a_claim_never_hands_out_an_item_whose_payload_it_cannot_read() {
 				let tenants = frame.columns.iter().find(|c| c.name == "tenant").unwrap();
 				for i in 0..frame.row_count() {
 					if matches!(tenants.data.get_value(i), Value::None { .. }) {
-						*missing.lock().unwrap() += 1;
+						*missing.lock() += 1;
 					}
 				}
 			}
 		});
 	});
-	assert_eq!(*missing.lock().unwrap(), 0, "claim handed out items whose payload its snapshot cannot see");
+	assert_eq!(*missing.lock(), 0, "claim handed out items whose payload its snapshot cannot see");
 }

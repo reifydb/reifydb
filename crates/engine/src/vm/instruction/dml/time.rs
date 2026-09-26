@@ -360,7 +360,12 @@ mod tests {
 			BLOCK_TIME,
 			"a correction to an earlier instant must be honoured"
 		);
-		assert!(BLOCK_TIME < ARRIVAL, "the corrected instant is genuinely earlier than what it replaces");
+		const {
+			assert!(
+				BLOCK_TIME < ARRIVAL,
+				"the corrected instant is genuinely earlier than what it replaces"
+			)
+		};
 	}
 
 	#[test]

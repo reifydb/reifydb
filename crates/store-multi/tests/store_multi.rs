@@ -7,9 +7,7 @@ use reifydb_store_commit::store::CommitStore;
 use reifydb_testing::testscript::runner::run_path;
 use test_each_file::test_each_path;
 
-#[path = "common/mod.rs"]
-mod common;
-use common::Runner;
+use crate::common::Runner;
 
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_memory => test_memory }
 

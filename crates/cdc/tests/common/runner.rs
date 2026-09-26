@@ -66,6 +66,7 @@ impl Runner {
 		Ok(self.active_txn.as_mut().unwrap())
 	}
 
+	#[allow(clippy::disallowed_methods)]
 	fn wait_for_cdc(&self, version: CommitVersion) {
 		let deadline = Instant::now() + Duration::from_seconds(5).unwrap().to_std();
 		loop {
@@ -154,11 +155,10 @@ impl TsRunner for Runner {
 				let txn = self.active_txn.take().ok_or("no active transaction")?;
 				let mut txn = txn;
 				let engine_version = txn.commit()?;
-				if self.version_offset.is_none() {
-					if let Some(script_v) = self.pending_script_version {
-						self.version_offset =
-							Some((script_v as i64) - (engine_version.0 as i64));
-					}
+				if self.version_offset.is_none()
+					&& let Some(script_v) = self.pending_script_version
+				{
+					self.version_offset = Some((script_v as i64) - (engine_version.0 as i64));
 				}
 				self.pending_script_version = None;
 				self.last_committed = Some(engine_version);
@@ -194,11 +194,10 @@ impl TsRunner for Runner {
 				let txn = self.active_txn.take().ok_or("no active transaction")?;
 				let mut txn = txn;
 				let engine_version = txn.commit()?;
-				if self.version_offset.is_none() {
-					if let Some(script_v) = self.pending_script_version {
-						self.version_offset =
-							Some((script_v as i64) - (engine_version.0 as i64));
-					}
+				if self.version_offset.is_none()
+					&& let Some(script_v) = self.pending_script_version
+				{
+					self.version_offset = Some((script_v as i64) - (engine_version.0 as i64));
 				}
 				self.pending_script_version = None;
 				self.last_committed = Some(engine_version);

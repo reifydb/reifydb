@@ -42,9 +42,9 @@ const ROWS: usize = 1000;
 
 fn points_into<T>(parent: &[T], child: &[T]) -> bool {
 	let start = parent.as_ptr() as usize;
-	let end = start + parent.len() * size_of::<T>();
+	let end = start + size_of_val(parent);
 	let child_start = child.as_ptr() as usize;
-	let child_end = child_start + child.len() * size_of::<T>();
+	let child_end = child_start + size_of_val(child);
 	child_start >= start && child_end <= end
 }
 

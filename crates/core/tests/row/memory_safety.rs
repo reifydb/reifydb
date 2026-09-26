@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{f32::consts::PI, f64};
+
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
@@ -54,9 +56,9 @@ fn test_unaligned_access_all_types() {
 		match target_type {
 			ValueType::Boolean => {
 				shape.set::<bool>(&mut row, 1, true);
-				assert_eq!(shape.get::<bool>(&row, 1), true);
+				assert!(shape.get::<bool>(&row, 1));
 				shape.set::<bool>(&mut row, 3, false);
-				assert_eq!(shape.get::<bool>(&row, 3), false);
+				assert!(!shape.get::<bool>(&row, 3));
 			}
 			ValueType::Int1 => {
 				shape.set::<i8>(&mut row, 1, 42i8);
@@ -75,12 +77,12 @@ fn test_unaligned_access_all_types() {
 				assert_eq!(shape.get::<i64>(&row, 1), 1234567890);
 			}
 			ValueType::Float4 => {
-				shape.set::<f32>(&mut row, 1, 3.14f32);
-				assert!((shape.get::<f32>(&row, 1) - 3.14).abs() < f32::EPSILON);
+				shape.set::<f32>(&mut row, 1, PI);
+				assert!((shape.get::<f32>(&row, 1) - PI).abs() < f32::EPSILON);
 			}
 			ValueType::Float8 => {
-				shape.set::<f64>(&mut row, 1, 3.14159f64);
-				assert!((shape.get::<f64>(&row, 1) - 3.14159).abs() < f64::EPSILON);
+				shape.set::<f64>(&mut row, 1, f64::consts::PI);
+				assert!((shape.get::<f64>(&row, 1) - f64::consts::PI).abs() < f64::EPSILON);
 			}
 			ValueType::Utf8 => {
 				shape.set_utf8(&mut row, 1, "test");
@@ -132,7 +134,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 		.map(|_| {
 			let mut r = shape.allocate_pod();
 			shape.set::<i32>(&mut r, 0, 42i32);
-			shape.set::<f64>(&mut r, 1, 3.14f64);
+			shape.set::<f64>(&mut r, 1, f64::consts::PI);
 			shape.set_utf8(&mut r, 2, "constant");
 			shape.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
 			shape.set_int(&mut r, 4, &Int::from(123i64));
@@ -149,7 +151,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 fn test_minimal_row_handling() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
 	let row = shape.allocate_pod();
-	assert!(row.len() > 0, "Row should have validity bits and data");
+	assert!(!row.is_empty(), "Row should have validity bits and data");
 }
 
 #[test]
@@ -168,7 +170,7 @@ fn test_maximum_field_count() {
 	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 
 	shape.set::<i32>(&mut row, 1, 42i32);
 	assert_eq!(shape.get::<i32>(&row, 1), 42);
