@@ -92,6 +92,21 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn empty_map(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_014".to_string(),
+		rql: None,
+		message: "MAP needs at least one field".to_string(),
+		fragment,
+		label: Some("MAP with no fields would return rows with no columns".to_string()),
+		help: Some("list the fields to keep, e.g. MAP { x }".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn duplicate_field(fragment: Fragment, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_009".to_string(),
