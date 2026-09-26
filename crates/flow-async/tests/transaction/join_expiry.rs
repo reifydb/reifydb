@@ -11,7 +11,7 @@ use reifydb_core::{
 		state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_key},

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{
+use reifydb_flow_async::window::{
 	accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
 };
 use reifydb_sdk::{

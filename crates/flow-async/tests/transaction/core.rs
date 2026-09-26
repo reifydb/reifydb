@@ -17,7 +17,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
-use reifydb_flow::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
+use reifydb_flow_async::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{

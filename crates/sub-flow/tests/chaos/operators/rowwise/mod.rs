@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{HostOperator, extend::ExtendOperator, filter::FilterOperator, host::HostContext, map::MapOperator},
 };

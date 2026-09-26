@@ -6,7 +6,7 @@ pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
-use reifydb_flow::operator::append::{AppendOperator, lane::AppendLanes};
+use reifydb_flow_async::operator::append::{AppendOperator, lane::AppendLanes};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

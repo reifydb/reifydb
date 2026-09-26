@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	state::timer::sweep_order,
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	state::{StateExtension, StateRange},

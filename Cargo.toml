@@ -20,7 +20,7 @@ members = [
     "crates/export",
     "crates/extension",
     "crates/filter",
-    "crates/flow",
+    "crates/flow-async",
     "crates/policy",
     "crates/profiler",
     "crates/macro",
@@ -111,7 +111,7 @@ default-members = [
     "crates/export",
     "crates/extension",
     "crates/filter",
-    "crates/flow",
+    "crates/flow-async",
     "crates/policy",
     "crates/profiler",
     "crates/macro",
@@ -241,7 +241,7 @@ reifydb-evaluate = { version = "0.9.3", path = "crates/evaluate" }
 reifydb-export = { version = "0.9.3", path = "crates/export" }
 reifydb-extension = { version = "0.9.3", path = "crates/extension" }
 reifydb-filter = { version = "0.9.3", path = "crates/filter" }
-reifydb-flow = { version = "0.9.3", path = "crates/flow" }
+reifydb-flow-async = { version = "0.9.3", path = "crates/flow-async" }
 reifydb-policy = { version = "0.9.3", path = "crates/policy" }
 reifydb-profiler = { version = "0.9.3", path = "crates/profiler" }
 reifydb-runtime = { version = "0.9.3", path = "crates/runtime" }

@@ -16,7 +16,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{
 		aggregation::core::{Aggregation, SlotInput},

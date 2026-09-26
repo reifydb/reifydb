@@ -16,7 +16,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},

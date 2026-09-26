@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::operator::state::unmanaged_key,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::operator::{HostOperator, host::TxnHostContext};
+use reifydb_flow_async::operator::{HostOperator, host::TxnHostContext};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{

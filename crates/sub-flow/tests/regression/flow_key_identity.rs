@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{
 		HostOperator,

@@ -30,8 +30,8 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 #[cfg(reifydb_assertions)]
-use reifydb_flow::transaction::read::{ReadFrom, read_from};
-use reifydb_flow::{
+use reifydb_flow_async::transaction::read::{ReadFrom, read_from};
+use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::substrate::FlowSubstrate,
@@ -981,7 +981,7 @@ mod pull_protocol {
 		},
 		metrics::{collect::MetricsCollector, sample::Reading},
 	};
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
 			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
@@ -2277,7 +2277,7 @@ mod tick_failures {
 		state::timer::TimerKind,
 	};
 	use reifydb_engine::engine::StandardEngine;
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		operator::{BoxedHostOperator, HostOperator, host::HostContext},
 		timer::{Timer, wheel::TimerWheel},
 		transaction::{

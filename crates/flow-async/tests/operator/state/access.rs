@@ -7,7 +7,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::operator::state_access::{get, get_or_default, set, update};
+use reifydb_flow_async::operator::state_access::{get, get_or_default, set, update};
 use reifydb_macro::operator_state;
 use reifydb_sdk::{
 	error::Result,

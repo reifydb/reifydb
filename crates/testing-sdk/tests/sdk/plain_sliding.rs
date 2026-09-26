@@ -6,7 +6,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
 };
-use reifydb_flow::operator::state::seal::coord::Coord;
+use reifydb_flow_async::operator::state::seal::coord::Coord;
 use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::{

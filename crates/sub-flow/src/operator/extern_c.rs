@@ -25,7 +25,7 @@ use reifydb_extension::{
 		create_host_callbacks,
 	},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::{HostOperator, host::HostContext},
 	timer::Timer,
 };

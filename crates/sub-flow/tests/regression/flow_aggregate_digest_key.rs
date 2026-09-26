@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow::operator::{HostOperator, aggregation::operator::AggregateOperator, host::TxnHostContext};
+use reifydb_flow_async::operator::{HostOperator, aggregation::operator::AggregateOperator, host::TxnHostContext};
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{

@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{actors::pending::Pending, interface::catalog::flow::OperatorId, state::timer::TimerKind};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	timer::{
 		Timer, TimerDue,
 		wheel::{DueTimers, MAX_TIMERS_PER_SCAN, TimerWheel},

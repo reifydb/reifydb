@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
-use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
+use reifydb_flow_async::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
 use reifydb_runtime::{
 	actor::{

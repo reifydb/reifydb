@@ -50,7 +50,7 @@ reifydb-sub-api = { workspace = true }
 reifydb-sub-lifecycle = { workspace = true }
 reifydb-sub-store = { workspace = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
-reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
+reifydb-flow-async = { workspace = true, optional = true, features = ["runtime"] }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-subscription = { workspace = true, optional = true }
 reifydb-sub-task = { workspace = true }
@@ -108,7 +108,7 @@ wasm = ["reifydb-extension/wasm"]
 
 # Subsystem features
 column = ["reifydb-sub-store/column", "reifydb-sub-store/sqlite"]
-sub_flow = ["dep:reifydb-flow", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
+sub_flow = ["dep:reifydb-flow-async", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 flow_testing = ["testing", "sub_flow", "dep:reifydb-testing-flow"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_metric_profiler = ["dep:tracing-subscriber"]

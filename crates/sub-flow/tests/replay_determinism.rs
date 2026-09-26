@@ -29,7 +29,7 @@ use reifydb_core::{
 	key::operator::state::KeyspaceId,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{
 		HostOperator,

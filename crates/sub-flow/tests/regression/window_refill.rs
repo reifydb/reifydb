@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::window::operator::{WindowConfig, WindowOperator},
 };

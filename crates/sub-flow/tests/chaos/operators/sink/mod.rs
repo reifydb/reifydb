@@ -29,7 +29,7 @@ use reifydb_core::interface::{
 	flow::OperatorCapability,
 	resolved::{ResolvedNamespace, ResolvedView},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::sink::{
 		DurableSink, ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
 		view::SinkTableViewOperator,

@@ -17,7 +17,7 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, reclaim::ReclaimExtension,
 	state::StateExtension, substrate::FlowSubstrate,
 };

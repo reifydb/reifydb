@@ -45,7 +45,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry},
 	transaction::substrate::FlowSubstrate,
 };

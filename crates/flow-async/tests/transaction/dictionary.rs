@@ -8,7 +8,7 @@ use reifydb_core::{
 	actors::pending::Pending,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryExtension,
 	substrate::FlowSubstrate,
 };

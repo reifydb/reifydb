@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_codec::{key::encoded::IntoEncodedKey, row::operator::state::StateCodec};
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, operator_with::ApplyWith};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::domain::SealDomain,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator},

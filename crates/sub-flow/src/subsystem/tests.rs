@@ -19,7 +19,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::operator::{BoxedHostOperator, HostOperator, host::HostContext};
+use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator, host::HostContext};
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_value::Result;

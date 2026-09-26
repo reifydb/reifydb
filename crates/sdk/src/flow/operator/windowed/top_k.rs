@@ -14,7 +14,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,

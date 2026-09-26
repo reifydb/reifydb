@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::{BoxedHostOperator, HostOperator, host::HostContext},
 	timer::Timer,
 };
@@ -124,7 +124,7 @@ mod tests {
 		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, unmanaged_key_in},
 		state::timer::{StateStore, TimerKind},
 	};
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		operator::host::{HostContext, TxnHostContext},
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};

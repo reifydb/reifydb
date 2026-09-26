@@ -11,7 +11,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},

@@ -18,7 +18,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
 	timer::{Timer, wheel::TimerWheel},
 	transaction::{

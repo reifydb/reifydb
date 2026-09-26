@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::{
+use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
@@ -544,7 +544,7 @@ mod integration {
 		},
 		key::tag::KeyTag,
 	};
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		engine::frontier::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{

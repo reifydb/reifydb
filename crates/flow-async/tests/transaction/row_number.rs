@@ -14,7 +14,7 @@ use reifydb_core::{
 		typed::direction::{Asc, Desc},
 	},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	row_number::*,

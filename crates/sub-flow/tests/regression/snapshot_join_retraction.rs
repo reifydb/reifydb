@@ -19,7 +19,7 @@ use reifydb_core::{
 	row::JoinPick,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{
 		HostOperator,

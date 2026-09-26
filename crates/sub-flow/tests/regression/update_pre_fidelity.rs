@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	context::FlowContext,
 	operator::{
 		aggregation::operator::AggregateOperator,
@@ -309,7 +309,7 @@ mod join {
 		row::JoinPick,
 		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		context::FlowContext,
 		operator::join::operator::{JoinOperator, JoinSideConfig},
 	};
@@ -566,7 +566,7 @@ mod source {
 		},
 		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
-	use reifydb_flow::operator::{
+	use reifydb_flow_async::operator::{
 		HostOperator,
 		host::HostContext,
 		scan::{

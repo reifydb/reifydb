@@ -12,8 +12,8 @@ use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWit
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_flow::error::FlowStateError;
-use reifydb_flow::{
+use reifydb_flow_async::error::FlowStateError;
+use reifydb_flow_async::{
 	error::FlowGraphError,
 	operator::{BoxedHostOperator, provider::OperatorProvider},
 };

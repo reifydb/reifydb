@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow::operator::InputOrder;
+use reifydb_flow_async::operator::InputOrder;
 use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
 use reifydb_value::{
 	fragment::Fragment,

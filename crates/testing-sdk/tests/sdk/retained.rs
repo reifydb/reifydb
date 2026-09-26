@@ -11,7 +11,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	state::timer::TimerKind,
 };
-use reifydb_flow::window::{
+use reifydb_flow_async::window::{
 	accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
 };
 use reifydb_sdk::{

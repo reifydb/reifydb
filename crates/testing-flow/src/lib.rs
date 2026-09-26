@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_flow::operator::apply::ApplyOperator;
+use reifydb_flow_async::operator::apply::ApplyOperator;
 
 pub mod generator;
 pub mod guest;

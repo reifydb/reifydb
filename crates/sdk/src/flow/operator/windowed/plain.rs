@@ -14,8 +14,8 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_flow::operator::state::reaper::queued;
-use reifydb_flow::{
+use reifydb_flow_async::operator::state::reaper::queued;
+use reifydb_flow_async::{
 	operator::{
 		state::{
 			reaper::{drain, drain_groups, enqueue},
@@ -1285,7 +1285,7 @@ mod tests {
 		common::{WindowKind, WindowSize, WindowSizeDomain},
 		operator_with::WithSpan,
 	};
-	use reifydb_flow::window::{
+	use reifydb_flow_async::window::{
 		accumulator::invertible::last_value::LastValue,
 		coord::{OrdinalCoord, RowSpan},
 	};

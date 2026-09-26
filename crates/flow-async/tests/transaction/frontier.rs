@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{id::ViewId, object::ObjectId},
 };
-use reifydb_flow::transaction::frontier::*;
+use reifydb_flow_async::transaction::frontier::*;
 use reifydb_value::factory::time::at_millis;
 
 const OUTPUT: ObjectId = ObjectId::View(ViewId(42));

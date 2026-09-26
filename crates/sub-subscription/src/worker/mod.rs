@@ -16,7 +16,7 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext},
 };
-use reifydb_flow::engine::FlowEngineInner;
+use reifydb_flow_async::engine::FlowEngineInner;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
