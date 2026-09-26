@@ -141,11 +141,14 @@ impl Intern for MemoryTxn {
 				values.len() - 1
 			}
 		};
-		DictionaryEntryId::from_u128(position as u128, dictionary.id_type.clone())
+		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let Ok(position) = usize::try_from(id.to_u128()) else {
+		let Some(offset) = id.to_u128().checked_sub(1) else {
+			return Ok(None);
+		};
+		let Ok(position) = usize::try_from(offset) else {
 			return Ok(None);
 		};
 		Ok(self.dictionary_values.get(&dictionary.id).and_then(|values| values.get(position)).cloned())
