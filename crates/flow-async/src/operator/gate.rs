@@ -18,6 +18,7 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_macro::operator_state;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
@@ -28,13 +29,10 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{
-		HostOperator,
-		host::HostContext,
-		state_access::{get, put, remove},
-	},
+use crate::operator::{
+	HostOperator,
+	host::HostContext,
+	state_access::{get, put, remove},
 };
 
 #[operator_state]

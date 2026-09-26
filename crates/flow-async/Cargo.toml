@@ -18,6 +18,8 @@ reifydb-build = { workspace = true }
 default = []
 runtime = [
     "dep:reifydb-catalog",
+    "dep:reifydb-flow",
+    "reifydb-flow/runtime",
     "dep:reifydb-evaluate",
     "dep:reifydb-routine-abi",
     "dep:reifydb-rql",
@@ -35,6 +37,7 @@ reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true, optional = true }
+reifydb-flow = { workspace = true, optional = true }
 reifydb-routine-abi = { workspace = true, optional = true }
 reifydb-rql = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }

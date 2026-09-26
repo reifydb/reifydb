@@ -1269,6 +1269,7 @@ mod reap_tests {
 		interface::catalog::flow::OperatorId,
 		key::operator::state::{KeyspaceId, keyspace_inner_range},
 	};
+	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1276,7 +1277,6 @@ mod reap_tests {
 
 	use super::*;
 	use crate::{
-		context::FlowContext,
 		operator::{
 			host::TxnHostContext,
 			window::operator::{WindowConfig, WindowOperator},
@@ -1386,6 +1386,7 @@ mod seal_arm_tests {
 		},
 		state::typed::SuffixBytes,
 	};
+	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1393,7 +1394,6 @@ mod seal_arm_tests {
 
 	use super::*;
 	use crate::{
-		context::FlowContext,
 		operator::{
 			host::TxnHostContext,
 			window::operator::{WindowConfig, WindowOperator},

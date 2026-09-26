@@ -12,6 +12,16 @@ use reifydb_core::{
 	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
 	value::column::columns::Columns,
 };
+use reifydb_flow::{
+	context::FlowContext,
+	error::FlowGraphError,
+	operator::{
+		append::{AppendOperator, lane::assign_lanes},
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		map::MapOperator,
+	},
+};
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::flow::FlowDag,
@@ -19,22 +29,16 @@ use reifydb_rql::{
 use reifydb_value::{Result, config::ExtensionParams, error::Error, fragment::Fragment};
 
 use crate::{
-	context::FlowContext,
 	engine::{
 		FlowEngineInner,
 		register::{config::evaluate_operator_params, first_input},
 	},
-	error::FlowGraphError,
 	operator::{
 		aggregation::operator::AggregateOperator,
-		append::{AppendOperator, lane::assign_lanes},
 		apply::ApplyOperator,
 		distinct::operator::DistinctOperator,
-		extend::ExtendOperator,
-		filter::FilterOperator,
 		gate::GateOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
-		map::MapOperator,
 		sort::SortOperator,
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},

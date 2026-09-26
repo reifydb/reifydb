@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::{encoded::EncodedKey, serializer::KeySerializer},
+	key::encoded::EncodedKey,
 	row::{
 		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
 		shape::{RowFamily, RowShape},
@@ -24,14 +24,20 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{
-		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
-		sort_run::SortRun,
-	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{builder::ColumnBuilder, columns::Columns},
 };
+use reifydb_flow::{
+	error::FlowSinkError,
+	operator::sink::{
+		coerce_columns, encode_row_at_index,
+		partition::{ensure_partition_unchanged, partition_of},
+		shape_field_columns,
+		view::{partitioned_key, sorted_view_key},
+	},
+};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
@@ -40,15 +46,8 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{
-	DurableSink, coerce_columns, emit_view_change, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
-	shape_field_columns,
-};
-use crate::{
-	error::FlowSinkError,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
-};
+use super::{DurableSink, emit_view_change, partition::resolve_partition_flow};
+use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 
@@ -62,10 +61,16 @@ pub struct SinkTableViewOperator {
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
 	created_at: HashMap<RowNumber, DateTime>,
+	runtime_context: RuntimeContext,
 }
 
 impl SinkTableViewOperator {
-	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
+	pub fn new(
+		operator: OperatorId,
+		view: ResolvedView,
+		partition_by: Vec<String>,
+		runtime_context: RuntimeContext,
+	) -> Self {
 		let storage = view.def().storage_id();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
@@ -79,49 +84,13 @@ impl SinkTableViewOperator {
 			partition_indices,
 			verified_partitions: HashMap::new(),
 			created_at: HashMap::new(),
+			runtime_context,
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
-	}
-
-	#[inline]
-	fn row_key(&self, row: RowNumber) -> EncodedKey {
-		RowKey::encoded(self.storage, row)
-	}
-
-	#[inline]
-	fn sort_run(&self, cols: &Columns, row_idx: usize) -> Result<SortRun> {
-		let mut serializer = KeySerializer::new();
-		for key in &self.sort {
-			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
-			serializer.extend_value_with_direction(&value, key.direction.clone().into())?;
-		}
-		Ok(SortRun::from_encoded(serializer.to_encoded_key()))
-	}
-
-	#[inline]
-	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> Result<EncodedKey> {
-		if self.sort.is_empty() {
-			return Ok(self.row_key(row));
-		}
-		Ok(SortedViewRowKey::encoded(self.storage, self.sort_run(cols, row_idx)?, row))
-	}
-
-	#[inline]
-	fn partitioned_key(
-		&self,
-		cols: &Columns,
-		row_idx: usize,
-		partition: Partition,
-		row: RowNumber,
-	) -> Result<EncodedKey> {
-		if self.sort.is_empty() {
-			return Ok(PartitionedRowKey::encoded(self.storage, partition, row));
-		}
-		Ok(PartitionedSortedViewRowKey::encoded(self.storage, partition, self.sort_run(cols, row_idx)?, row))
 	}
 }
 
@@ -161,7 +130,7 @@ impl SinkTableViewOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_insert(&mut self, txn: &mut DeferredTransaction, post: &Columns) -> Result<()> {
-		let coerced = coerce_columns(post, self.view.def().columns())?;
+		let coerced = coerce_columns(post, self.view.def().columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
@@ -182,9 +151,9 @@ impl SinkTableViewOperator {
 					&values,
 					&mut self.verified_partitions,
 				)?;
-				self.partitioned_key(source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
 			} else {
-				self.sorted_view_key(source, row_idx, row_number)?
+				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -205,8 +174,8 @@ impl SinkTableViewOperator {
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
-		let coerced_pre = coerce_columns(pre, self.view.def().columns())?;
-		let coerced_post = coerce_columns(post, self.view.def().columns())?;
+		let coerced_pre = coerce_columns(pre, self.view.def().columns(), &self.runtime_context)?;
+		let coerced_post = coerce_columns(post, self.view.def().columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, self.view.def(), &coerced_pre)?;
 		let dict_post = dictionary_encode_view_columns(txn, self.view.def(), &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
@@ -245,13 +214,33 @@ impl SinkTableViewOperator {
 					&mut self.verified_partitions,
 				)?;
 				(
-					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number)?,
-					self.partitioned_key(source_post, row_idx, post_partition, post_row_number)?,
+					partitioned_key(
+						self.storage,
+						&self.sort,
+						source_pre,
+						row_idx,
+						pre_partition,
+						pre_row_number,
+					)?,
+					partitioned_key(
+						self.storage,
+						&self.sort,
+						source_post,
+						row_idx,
+						post_partition,
+						post_row_number,
+					)?,
 				)
 			} else {
 				(
-					self.sorted_view_key(source_pre, row_idx, pre_row_number)?,
-					self.sorted_view_key(source_post, row_idx, post_row_number)?,
+					sorted_view_key(self.storage, &self.sort, source_pre, row_idx, pre_row_number)?,
+					sorted_view_key(
+						self.storage,
+						&self.sort,
+						source_post,
+						row_idx,
+						post_row_number,
+					)?,
 				)
 			};
 
@@ -315,7 +304,7 @@ impl SinkTableViewOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_table_view_remove(&mut self, txn: &mut DeferredTransaction, pre: &Columns) -> Result<()> {
-		let coerced = coerce_columns(pre, self.view.def().columns())?;
+		let coerced = coerce_columns(pre, self.view.def().columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
@@ -325,9 +314,9 @@ impl SinkTableViewOperator {
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				self.partitioned_key(source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
 			} else {
-				self.sorted_view_key(source, row_idx, row_number)?
+				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
 			};
 			keys.push(key);
 		}
@@ -418,9 +407,10 @@ mod tests {
 			resolved::ResolvedNamespace,
 			store::SingleVersionGet,
 		},
-		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey},
+		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey, row::RowKey},
 		value::column::{ColumnWithName, buffer::ColumnBuffer},
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore};
 	use reifydb_value::{
@@ -461,7 +451,12 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		SinkTableViewOperator::new(OperatorId(1), resolved, vec![])
+		SinkTableViewOperator::new(
+			OperatorId(1),
+			resolved,
+			vec![],
+			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+		)
 	}
 
 	fn one_row(v: f64, ts_nanos: i64) -> Columns {

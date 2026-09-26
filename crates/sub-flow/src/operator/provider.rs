@@ -11,12 +11,10 @@ use reifydb_core::operator_with::encode_apply_with;
 use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
+use reifydb_flow::error::FlowGraphError;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_flow_async::error::FlowStateError;
-use reifydb_flow_async::{
-	error::FlowGraphError,
-	operator::{BoxedHostOperator, provider::OperatorProvider},
-};
+use reifydb_flow_async::operator::{BoxedHostOperator, provider::OperatorProvider};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
 use reifydb_value::{Result, config::ExtensionParams, error::Error};

@@ -29,14 +29,12 @@ use reifydb_core::{
 	key::operator::state::KeyspaceId,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::{
-		HostOperator,
-		distinct::operator::DistinctOperator,
-		join::operator::{JoinOperator, JoinSideConfig},
-		window::operator::{WindowConfig, WindowOperator},
-	},
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::{
+	HostOperator,
+	distinct::operator::DistinctOperator,
+	join::operator::{JoinOperator, JoinSideConfig},
+	window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,

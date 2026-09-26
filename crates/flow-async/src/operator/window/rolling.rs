@@ -604,6 +604,7 @@ mod tests {
 		key::operator::state::{GroupId, GroupStateKey},
 		state::timer::{StateStore, TimerKind, TimerStore},
 	};
+	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_value::{
@@ -613,7 +614,6 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		context::FlowContext,
 		operator::{
 			state::seal::{coord::Coord, rule::EvictionRule},
 			window::operator::{WindowConfig, WindowOperator},

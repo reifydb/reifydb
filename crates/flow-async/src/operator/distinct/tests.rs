@@ -16,6 +16,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
@@ -24,7 +25,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	context::FlowContext,
 	operator::{
 		HostOperator,
 		distinct::operator::{DistinctOperator, DistinctPlan},

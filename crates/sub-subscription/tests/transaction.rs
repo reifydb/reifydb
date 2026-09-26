@@ -18,7 +18,9 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
-use reifydb_flow_async::transaction::{ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate};
+use reifydb_flow_async::transaction::{
+	ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
+};
 use reifydb_sub_subscription::transaction::EphemeralTransaction;
 use reifydb_test_harness::{
 	engine::TestEngine,

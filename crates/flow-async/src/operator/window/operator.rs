@@ -10,6 +10,7 @@ use reifydb_core::{
 	state::timer::TimerKind,
 	value::column::columns::Columns,
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{expression::Expression, flow::aggregate::AggregateContext};
 use reifydb_runtime::context::RuntimeContext;
@@ -27,7 +28,6 @@ use super::{
 	rolling::{apply_rolling_engine, seal_rolling_engine},
 };
 use crate::{
-	context::FlowContext,
 	operator::{
 		HostOperator,
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},

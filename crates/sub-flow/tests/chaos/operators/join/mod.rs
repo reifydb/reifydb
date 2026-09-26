@@ -8,12 +8,10 @@ use std::sync::Arc;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{common::JoinType, row::JoinPick};
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::{
-		HostOperator,
-		join::operator::{JoinOperator, JoinSideConfig},
-	},
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::{
+	HostOperator,
+	join::operator::{JoinOperator, JoinSideConfig},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::engine::TestEngine;

@@ -52,7 +52,13 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
+use reifydb_flow::operator::sink::{
+	coerce_columns, encode_row_at_index,
+	partition::{ensure_partition_unchanged, partition_of},
+	shape_field_columns,
+};
 use reifydb_macro::operator_state;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -66,9 +72,7 @@ use reifydb_value::{
 };
 
 use super::{
-	DurableSink, coerce_columns, decode_dictionary_columns, emit_view_change, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
-	shape_field_columns,
+	DurableSink, decode_dictionary_columns, emit_view_change, partition::resolve_partition_flow,
 	view::dictionary_encode_view_columns,
 };
 use crate::{
@@ -177,6 +181,7 @@ pub struct SinkRingBufferViewOperator {
 	ttl: Option<Duration>,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
+	runtime_context: RuntimeContext,
 }
 
 impl SinkRingBufferViewOperator {
@@ -187,6 +192,7 @@ impl SinkRingBufferViewOperator {
 		capacity: u64,
 		ttl: Option<Duration>,
 		partition_by: Vec<String>,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		let storage = view.def().storage_id();
@@ -198,6 +204,7 @@ impl SinkRingBufferViewOperator {
 			ttl,
 			partition_indices,
 			verified_partitions: HashMap::new(),
+			runtime_context,
 		}
 	}
 
@@ -841,7 +848,7 @@ impl SinkRingBufferViewOperator {
 		post: &Columns,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
-		let coerced = coerce_columns(post, view.columns())?;
+		let coerced = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
@@ -1034,8 +1041,8 @@ impl SinkRingBufferViewOperator {
 		post: &Columns,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
-		let coerced_pre = coerce_columns(pre, view.columns())?;
-		let coerced_post = coerce_columns(post, view.columns())?;
+		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
+		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
 		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
@@ -1107,7 +1114,7 @@ impl SinkRingBufferViewOperator {
 		pre: &Columns,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
-		let coerced = coerce_columns(pre, view.columns())?;
+		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let row_count = coerced.row_count();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
@@ -1178,6 +1185,7 @@ mod tests {
 		key::{any::TaggedKey, tag::KeyTag},
 		value::column::buffer::ColumnBuffer,
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
@@ -1248,7 +1256,14 @@ mod tests {
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(OperatorId(1), resolved, 100, ttl, partition_by)
+		SinkRingBufferViewOperator::new(
+			OperatorId(1),
+			resolved,
+			100,
+			ttl,
+			partition_by,
+			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+		)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> DeferredTransaction {

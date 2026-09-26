@@ -113,6 +113,7 @@ mod tests {
 		},
 		operator_with::{ApplyWith, WithSpan},
 	};
+	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_rql::flow::{
 		flow::FlowBuilder,
@@ -131,7 +132,6 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		context::FlowContext,
 		operator::{
 			HostOperator,
 			apply::ApplyOperator,

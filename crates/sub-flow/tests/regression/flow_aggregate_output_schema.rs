@@ -8,13 +8,11 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::{
-		HostOperator,
-		aggregation::operator::AggregateOperator,
-		window::operator::{WindowConfig, WindowOperator},
-	},
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::{
+	HostOperator,
+	aggregation::operator::AggregateOperator,
+	window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_rql::expression::{Expression, parse_expression};
 use reifydb_test_harness::engine::TestEngine;

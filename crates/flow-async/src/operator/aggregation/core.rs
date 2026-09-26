@@ -24,6 +24,7 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
+use reifydb_flow::{context::FlowContext, operator::map::schema_column};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{
 	expression::{Expression, name::display_label},
@@ -50,9 +51,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	context::FlowContext,
 	error::FlowStateError,
-	operator::{aggregation::accumulator::RowAccumulator, map::schema_column},
+	operator::aggregation::accumulator::RowAccumulator,
 	window::{engine::tumbling::TumblingEngine, span::WindowSpan},
 };
 

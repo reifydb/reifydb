@@ -19,8 +19,8 @@ use reifydb_core::{
 	state::timer::TimerKind,
 	value::column::columns::Columns,
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::{
-	context::FlowContext,
 	operator::{
 		state::seal::coord::Coord,
 		window::operator::{WindowConfig, WindowOperator},

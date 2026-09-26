@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_flow_async::{context::FlowContext, operator::distinct::operator::DistinctOperator};
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::distinct::operator::DistinctOperator;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{

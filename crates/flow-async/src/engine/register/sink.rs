@@ -32,7 +32,12 @@ impl FlowEngineInner {
 		let partition_by = resolved.def().partition_by().to_vec();
 		self.durable_sinks.insert(
 			(flow.id, operator_id),
-			Box::new(SinkTableViewOperator::new(operator_id, resolved, partition_by)),
+			Box::new(SinkTableViewOperator::new(
+				operator_id,
+				resolved,
+				partition_by,
+				self.runtime_context.clone(),
+			)),
 		);
 		Ok(())
 	}
@@ -65,6 +70,7 @@ impl FlowEngineInner {
 				capacity,
 				row_ttl,
 				partition_by,
+				self.runtime_context.clone(),
 			)),
 		);
 		Ok(())
@@ -87,7 +93,13 @@ impl FlowEngineInner {
 		let partition_by = resolved.def().partition_by().to_vec();
 		self.durable_sinks.insert(
 			(flow.id, operator_id),
-			Box::new(SinkSeriesViewOperator::new(operator_id, resolved, key.clone(), partition_by)),
+			Box::new(SinkSeriesViewOperator::new(
+				operator_id,
+				resolved,
+				key.clone(),
+				partition_by,
+				self.runtime_context.clone(),
+			)),
 		);
 		Ok(())
 	}

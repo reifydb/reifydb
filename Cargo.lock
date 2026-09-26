@@ -3423,6 +3423,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-evaluate",
+ "reifydb-routine-abi",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-test-harness",
+ "reifydb-value",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
@@ -3435,6 +3452,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-evaluate",
+ "reifydb-flow",
  "reifydb-macro",
  "reifydb-routine-abi",
  "reifydb-rql",
@@ -3886,6 +3904,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-evaluate",
  "reifydb-extension",
+ "reifydb-flow",
  "reifydb-flow-async",
  "reifydb-macro",
  "reifydb-routine",
@@ -4141,6 +4160,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-flow",
  "reifydb-flow-async",
  "reifydb-macro",
  "reifydb-rql",

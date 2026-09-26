@@ -21,6 +21,7 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -28,7 +29,6 @@ use reifydb_value::{Result, error::Error, util::hash::Hash128, value::datetime::
 use tracing::instrument;
 
 use crate::{
-	context::FlowContext,
 	error::FlowStateError,
 	operator::{
 		HostOperator,

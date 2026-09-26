@@ -172,7 +172,7 @@ impl DurableSink for SinkOp {
 	}
 }
 
-pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
+pub fn build(kind: Kind, layout: Layout, runtime: RuntimeContext) -> SinkOp {
 	let partition_by = layout.partition_by();
 
 	match kind {
@@ -187,7 +187,7 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				partition_by: partition_by.clone(),
 				sort: vec![],
 			});
-			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), partition_by))
+			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), partition_by, runtime))
 		}
 		Kind::Series => {
 			let key = SeriesKey::Integer {
@@ -205,7 +205,7 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				tag: None,
 				sort: vec![],
 			});
-			SinkOp::Series(SinkSeriesViewOperator::new(SINK, resolved(def), key, partition_by))
+			SinkOp::Series(SinkSeriesViewOperator::new(SINK, resolved(def), key, partition_by, runtime))
 		}
 		Kind::Ring {
 			capacity,
@@ -221,7 +221,14 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				capacity,
 				sort: vec![],
 			});
-			SinkOp::Ring(SinkRingBufferViewOperator::new(SINK, resolved(def), capacity, None, partition_by))
+			SinkOp::Ring(SinkRingBufferViewOperator::new(
+				SINK,
+				resolved(def),
+				capacity,
+				None,
+				partition_by,
+				runtime,
+			))
 		}
 	}
 }

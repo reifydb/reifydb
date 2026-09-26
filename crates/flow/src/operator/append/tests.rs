@@ -169,11 +169,6 @@ fn an_empty_batch_translates_to_nothing() {
 	assert!(operator.translate_append_remove(0, rows(&[])).is_none());
 }
 
-#[test]
-fn append_reports_no_operator_sample() {
-	assert!(HostOperator::sample(&op(1, [Some(0), Some(1)])).is_none());
-}
-
 struct Dag {
 	builder: FlowBuilder,
 	next_edge: u64,

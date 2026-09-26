@@ -22,6 +22,15 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
+use reifydb_flow::{
+	error::FlowSinkError,
+	operator::sink::{
+		coerce_columns, encode_row_at_index,
+		partition::{ensure_partition_unchanged, partition_of},
+		shape_field_columns,
+	},
+};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -30,16 +39,8 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{
-	DurableSink, coerce_columns, emit_view_change, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
-	shape_field_columns,
-	view::dictionary_encode_view_columns,
-};
-use crate::{
-	error::FlowSinkError,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
-};
+use super::{DurableSink, emit_view_change, partition::resolve_partition_flow, view::dictionary_encode_view_columns};
+use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
@@ -48,10 +49,17 @@ pub struct SinkSeriesViewOperator {
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
+	runtime_context: RuntimeContext,
 }
 
 impl SinkSeriesViewOperator {
-	pub fn new(operator: OperatorId, view: ResolvedView, key: SeriesKey, partition_by: Vec<String>) -> Self {
+	pub fn new(
+		operator: OperatorId,
+		view: ResolvedView,
+		key: SeriesKey,
+		partition_by: Vec<String>,
+		runtime_context: RuntimeContext,
+	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		let storage = view.def().storage_id();
 		Self {
@@ -61,6 +69,7 @@ impl SinkSeriesViewOperator {
 			key,
 			partition_indices,
 			verified_partitions: HashMap::new(),
+			runtime_context,
 		}
 	}
 
@@ -149,7 +158,7 @@ impl SinkSeriesViewOperator {
 		object_id: StorageId,
 		post: &Columns,
 	) -> Result<()> {
-		let coerced = coerce_columns(post, view.columns())?;
+		let coerced = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
@@ -200,8 +209,8 @@ impl SinkSeriesViewOperator {
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
-		let coerced_pre = coerce_columns(pre, view.columns())?;
-		let coerced_post = coerce_columns(post, view.columns())?;
+		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
+		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
 		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
@@ -290,7 +299,7 @@ impl SinkSeriesViewOperator {
 		object_id: StorageId,
 		pre: &Columns,
 	) -> Result<()> {
-		let coerced = coerce_columns(pre, view.columns())?;
+		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let row_count = coerced.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {

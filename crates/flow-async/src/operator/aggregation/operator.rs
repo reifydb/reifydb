@@ -15,6 +15,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
+use reifydb_flow::context::FlowContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{expression::Expression, flow::aggregate::AggregateContext};
 use reifydb_runtime::context::RuntimeContext;
@@ -30,7 +31,6 @@ use super::{
 	engine::{Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
 };
 use crate::{
-	context::FlowContext,
 	operator::{HostOperator, host::HostContext, state::seal::coord::Coord},
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},

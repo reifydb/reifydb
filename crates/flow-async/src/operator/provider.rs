@@ -2,9 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
+use reifydb_flow::error::FlowGraphError;
 use reifydb_value::{Result, config::ExtensionParams, error::Error};
 
-use crate::{error::FlowGraphError, operator::BoxedHostOperator};
+use crate::operator::BoxedHostOperator;
 
 pub trait OperatorProvider: Send + Sync {
 	fn provide(

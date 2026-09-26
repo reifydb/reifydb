@@ -22,8 +22,8 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 	key::any::TaggedKey,
 };
+use reifydb_flow::error::FlowGraphError;
 use reifydb_flow_async::{
-	error::FlowGraphError,
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{

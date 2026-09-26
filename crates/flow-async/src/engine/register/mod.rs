@@ -14,6 +14,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	value::column::columns::Columns,
 };
+use reifydb_flow::{context::FlowContext, error::FlowGraphError};
 use reifydb_rql::flow::{
 	flow::FlowDag,
 	operator::{
@@ -31,9 +32,7 @@ use reifydb_value::{Result, error::Error, reifydb_assertions};
 use tracing::{info, instrument};
 
 use crate::{
-	context::FlowContext,
 	engine::FlowEngineInner,
-	error::FlowGraphError,
 	operator::BoxedHostOperator,
 	timer::{TimerDue, wheel::TimerWheel},
 };

@@ -4,10 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns};
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::window::operator::{WindowConfig, WindowOperator},
-};
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
 	procedure::default_in_process_procedures,

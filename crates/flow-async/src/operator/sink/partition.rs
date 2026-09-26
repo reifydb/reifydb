@@ -5,10 +5,7 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-use reifydb_core::{
-	interface::catalog::object::ObjectId, key::partition::PartitionKey, partition::PartitionError,
-	value::column::columns::Columns,
-};
+use reifydb_core::{interface::catalog::object::ObjectId, key::partition::PartitionKey, partition::PartitionError};
 use reifydb_value::{
 	Result,
 	value::{Value, blob::Blob, partition::Partition, value_type::ValueType},
@@ -18,21 +15,6 @@ use crate::transaction::FlowTransaction;
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
-
-pub(crate) fn partition_of(indices: &[usize], columns: &Columns, row_idx: usize) -> (Partition, Vec<Value>) {
-	let values: Vec<Value> = indices.iter().map(|&i| columns.data_at(i).get_value(row_idx)).collect();
-	(Partition::of(&values), values)
-}
-
-pub(crate) fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post: Partition) -> Result<()> {
-	if pre != post {
-		return Err(PartitionError::ImmutablePartitionColumn {
-			object,
-		}
-		.into());
-	}
-	Ok(())
-}
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 

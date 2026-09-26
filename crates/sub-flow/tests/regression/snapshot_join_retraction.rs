@@ -19,13 +19,11 @@ use reifydb_core::{
 	row::JoinPick,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::{
-		HostOperator,
-		host::TxnHostContext,
-		join::operator::{JoinOperator, JoinSideConfig},
-	},
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::{
+	HostOperator,
+	host::TxnHostContext,
+	join::operator::{JoinOperator, JoinSideConfig},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};

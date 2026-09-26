@@ -16,12 +16,10 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	value::column::columns::Columns,
 };
-use reifydb_flow_async::{
-	context::FlowContext,
-	operator::{
-		aggregation::core::{Aggregation, SlotInput},
-		window::operator::{WindowConfig, WindowOperator},
-	},
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::{
+	aggregation::core::{Aggregation, SlotInput},
+	window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_rql::{
 	expression::{Expression, parse_expression},

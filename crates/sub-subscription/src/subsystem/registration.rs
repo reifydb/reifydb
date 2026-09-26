@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use reifydb_core::operator_with::ApplyWith;
 use reifydb_engine::subscription::SubscriptionContext;
-use reifydb_flow_async::{context::FlowContext, engine::FlowEngineInner, operator::apply::ApplyOperator};
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::{engine::FlowEngineInner, operator::apply::ApplyOperator};
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
