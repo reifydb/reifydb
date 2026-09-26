@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
@@ -20,23 +18,23 @@ fn nested(depth: usize) -> String {
 	(0..depth).fold("int4".to_string(), |inner, _| format!("Option({inner})"))
 }
 
-fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().admin_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
 
-fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().query_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
 
-fn assert_nested_option_refused(result: Result<Vec<Frame>, Diagnostic>, rql: &str) {
+fn assert_nested_option_refused(result: Result<Vec<Frame>, Box<Diagnostic>>, rql: &str) {
 	let err = match result {
 		Err(err) => err,
 		Ok(frames) => panic!("expected the nested Option to be refused, got {frames:?}\nrql: {rql}"),

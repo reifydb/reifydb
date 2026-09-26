@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded, testing::db::TestDb};
+use reifydb::{
+	ConfigKey, RuntimeConfig, Value, embedded as db_embedded, testing::db::TestDb, value::value::duration::Duration,
+};
 use reifydb_sub_metrics::accumulator::StatementMetricsAccumulator;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 fn await_table_metrics(db: &TestDb, query: &str, want: usize) {
 	// The sampler publishes asynchronously, so poll the very query under test until every written

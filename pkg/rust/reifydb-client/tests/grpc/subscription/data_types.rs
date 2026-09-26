@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{f32::consts::PI, f64::consts::E, sync::Arc};
 
 use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
@@ -127,9 +127,7 @@ fn test_subscription_float_types() {
 			.await
 			.unwrap();
 
-		client.command(&format!("INSERT test::{} [{{ f4: 3.14, f8: 2.718281828459045 }}]", table), None)
-			.await
-			.unwrap();
+		client.command(&format!("INSERT test::{} [{{ f4: {}, f8: {} }}]", table, PI, E), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
@@ -144,8 +142,8 @@ fn test_subscription_float_types() {
 			other => panic!("Expected Float8, got {:?}", other),
 		};
 
-		assert!((f4_val - 3.14).abs() < 0.01);
-		assert!((f8_val - 2.718281828459045).abs() < 0.0001);
+		assert!((f4_val - PI).abs() < 0.01);
+		assert!((f8_val - E).abs() < 0.0001);
 
 		drop(sub);
 	});

@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_client::{WireFormat, ws::WsClient};
+use reifydb_value::value::duration::Duration;
 use serde_json::{Value, from_str, json};
 use tokio::{net::TcpListener, spawn, time::timeout};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
-const WAIT: Duration = Duration::from_secs(5);
+const WAIT: Duration = Duration::from_seconds_const(5);
 
 async fn ws_server_answering(reply: impl Fn(&str) -> Value + Send + 'static) -> String {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -46,7 +47,10 @@ async fn a_ws_auth_reply_of_the_wrong_type_fails_the_request_instead_of_panickin
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result =
-		spawn(async move { timeout(WAIT, client.authenticate("token")).await.map(|auth| auth.is_err()) }).await;
+		spawn(
+			async move { timeout(WAIT.to_std(), client.authenticate("token")).await.map(|auth| auth.is_err()) },
+		)
+		.await;
 
 	assert!(matches!(result, Ok(Ok(true))), "expected the request to fail, got {result:?}");
 }
@@ -58,7 +62,7 @@ async fn a_ws_login_the_server_does_not_authenticate_fails_the_request_instead_o
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result = spawn(async move {
-		timeout(WAIT, client.login("password", HashMap::new())).await.map(|login| login.is_err())
+		timeout(WAIT.to_std(), client.login("password", HashMap::new())).await.map(|login| login.is_err())
 	})
 	.await;
 
@@ -72,7 +76,7 @@ async fn a_ws_login_reply_of_the_wrong_type_fails_the_request_instead_of_panicki
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result = spawn(async move {
-		timeout(WAIT, client.login("password", HashMap::new())).await.map(|login| login.is_err())
+		timeout(WAIT.to_std(), client.login("password", HashMap::new())).await.map(|login| login.is_err())
 	})
 	.await;
 
@@ -86,7 +90,8 @@ async fn a_ws_logout_reply_of_the_wrong_type_fails_the_request_instead_of_panick
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 	client.authenticate("token").await.unwrap();
 
-	let result = spawn(async move { timeout(WAIT, client.logout()).await.map(|logout| logout.is_err()) }).await;
+	let result =
+		spawn(async move { timeout(WAIT.to_std(), client.logout()).await.map(|logout| logout.is_err()) }).await;
 
 	assert!(matches!(result, Ok(Ok(true))), "expected the request to fail, got {result:?}");
 }
@@ -97,11 +102,10 @@ async fn a_ws_unsubscribe_reply_of_the_wrong_type_fails_the_request_instead_of_p
 	let url = ws_server_answering(logout_reply).await;
 	let client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
-	let result =
-		spawn(
-			async move { timeout(WAIT, client.unsubscribe("1")).await.map(|unsubscribe| unsubscribe.is_err()) },
-		)
-		.await;
+	let result = spawn(async move {
+		timeout(WAIT.to_std(), client.unsubscribe("1")).await.map(|unsubscribe| unsubscribe.is_err())
+	})
+	.await;
 
 	assert!(matches!(result, Ok(Ok(true))), "expected the request to fail, got {result:?}");
 }

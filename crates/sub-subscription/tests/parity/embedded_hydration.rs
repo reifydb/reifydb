@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread, time::Instant};
+use std::thread;
 
 use reifydb::{HydrationConfig, Params, Subscription, testing::db::TestDb};
 use reifydb_core::{interface::change::StagedBatch, value::column::columns::Columns};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::{diff_type::DiffType, duration::Duration, frame::frame::Frame};
 
 use crate::common::{Row, insert_all_at_once, make_db, normalize};
@@ -34,10 +35,10 @@ fn rows() -> Vec<Row> {
 fn drain_collect(sub: &Subscription) -> Vec<StagedBatch> {
 	// The handle is drained rather than the raw store because the hydration snapshot lives in the handle's
 	// prelude, which a store drain would bypass.
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap().to_std();
 	let mut acc: Vec<Frame> = Vec::new();
 	let mut empty = 0u32;
-	while Instant::now() < deadline {
+	while Clock::Real.instant() < deadline {
 		let batch = sub.drain(usize::MAX);
 		if batch.is_empty() {
 			empty += 1;

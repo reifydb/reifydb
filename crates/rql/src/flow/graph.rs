@@ -260,8 +260,8 @@ pub mod tests {
 		assert_eq!(graph.node_count(), 3);
 		assert_eq!(graph.edge_count(), 0);
 
-		graph.add_edge(FlowEdge::new(1, &node1, &node2));
-		graph.add_edge(FlowEdge::new(2, &node2, &node3));
+		graph.add_edge(FlowEdge::new(1, node1, node2));
+		graph.add_edge(FlowEdge::new(2, node2, node3));
 
 		assert_eq!(graph.edge_count(), 2);
 		assert_eq!(graph.neighbors(&node1), vec![OperatorId(2)]);
@@ -278,10 +278,10 @@ pub mod tests {
 		let node2 = graph.add_node(OperatorId(2), "Node 2");
 		let node3 = graph.add_node(OperatorId(3), "Node 3");
 
-		graph.add_edge(FlowEdge::new(1, &node1, &node2));
-		graph.add_edge(FlowEdge::new(2, &node2, &node3));
+		graph.add_edge(FlowEdge::new(1, node1, node2));
+		graph.add_edge(FlowEdge::new(2, node2, node3));
 
-		graph.add_edge(FlowEdge::new(3, &node3, &node1));
+		graph.add_edge(FlowEdge::new(3, node3, node1));
 	}
 
 	#[test]
@@ -292,8 +292,8 @@ pub mod tests {
 		let node2 = graph.add_node(OperatorId(2), "Node 2");
 		let node3 = graph.add_node(OperatorId(3), "Node 3");
 
-		graph.add_edge(FlowEdge::new(1, &node1, &node2));
-		graph.add_edge(FlowEdge::new(2, &node2, &node3));
+		graph.add_edge(FlowEdge::new(1, node1, node2));
+		graph.add_edge(FlowEdge::new(2, node2, node3));
 
 		let sorted = graph.topological_sort();
 		assert_eq!(sorted, vec![OperatorId(1), OperatorId(2), OperatorId(3)]);
@@ -308,9 +308,9 @@ pub mod tests {
 		let node3 = graph.add_node(OperatorId(3), "Node 3");
 		let node4 = graph.add_node(OperatorId(4), "Node 4");
 
-		graph.add_edge(FlowEdge::new(1, &node1, &node2));
-		graph.add_edge(FlowEdge::new(2, &node1, &node3));
-		graph.add_edge(FlowEdge::new(3, &node2, &node4));
+		graph.add_edge(FlowEdge::new(1, node1, node2));
+		graph.add_edge(FlowEdge::new(2, node1, node3));
+		graph.add_edge(FlowEdge::new(3, node2, node4));
 
 		let dfs_result = graph.dfs_from(&node1);
 		assert!(dfs_result.contains(&OperatorId(1)));

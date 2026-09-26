@@ -5,7 +5,7 @@
 //! persists the latest-<=W value of persistent objects and drops all <=W versions from the commit tier,
 //! so snapshots older than W are deliberately not preserved.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -319,7 +319,6 @@ impl ObjectPersistence for AllPersistent {
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
 fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	// Drives the genuine engine sweep rather than the stand-in. The persistent tier is current-only with a
 	// version-guarded upsert, so the sweep must persist the latest-<=W value (v2); anything writing the
@@ -337,7 +336,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let versions = commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len();
 		let evicted_gone = matches!(
@@ -347,7 +346,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 		if versions == 1 && evicted_gone {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!(
 				"flush actor sweep did not evict <= W within the timeout (versions={versions}, evicted_gone={evicted_gone})"
 			);
@@ -377,7 +376,6 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
 fn real_flush_actor_seeds_read_tier_on_eviction() {
 	// Deleting the persistent row after eviction isolates the read tier as the only possible source, so a
 	// successful read proves the sweep seeded rather than invalidated.
@@ -393,7 +391,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
 			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
@@ -402,7 +400,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 		if evicted {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!("flush actor sweep did not evict v2 from the commit tier within the timeout");
 		}
 		std::thread::yield_now();
@@ -421,7 +419,6 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
 fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier;
 	// deleting the persistent row isolates the seed as the only source of v2.
@@ -438,7 +435,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
 			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
@@ -447,7 +444,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 		if evicted {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!("flush actor sweep did not evict <= W (v2) from the commit tier within the timeout");
 		}
 		std::thread::yield_now();

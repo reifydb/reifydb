@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
-use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb, value::value::duration::Duration};
 use reifydb_test_harness::assert::column_values;
 
 use crate::flow::state::{await_state_keys, state_keys};
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
 const APPEND_NODE_TYPE: u8 = 9;
 

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::Arc,
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, thread::sleep};
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
@@ -20,16 +15,16 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator, host::HostContext};
-use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
+use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
 	builder::{CustomOperatorEntry, CustomOperators, FlowConfig},
 	subsystem::FlowSubsystem,
 };
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_seconds_const(5);
 
 const PANICKING_OPERATOR: &str = "panics_on_apply";
 
@@ -121,14 +116,14 @@ fn a_flow_step_that_panics_leaves_the_flow_subsystem_not_healthy_and_names_the_f
 	));
 	db.command("INSERT app::t [{ a: 1 }]");
 
-	let deadline = Instant::now() + SETTLE;
+	let deadline = Clock::Real.instant() + SETTLE;
 	let status = loop {
 		let status =
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
-		if description(&status).is_some() || Instant::now() >= deadline {
+		if description(&status).is_some() || Clock::Real.instant() >= deadline {
 			break status;
 		}
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds_const(20).to_std());
 	};
 
 	let Some(description) = description(&status) else {

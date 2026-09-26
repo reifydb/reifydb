@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{
 	ConfigKey, Value, WithSubsystem,
 	core::{
@@ -27,10 +25,10 @@ use reifydb::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
+	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
 #[reifydb::r#macro::operator_state]
 #[derive(Clone, Debug, PartialEq, HeapSize)]

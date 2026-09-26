@@ -5,12 +5,11 @@
 //! uniform ts/scope/metric/value/unit/kind shape, histograms flattened to six scalar rows. Driven end to end so
 //! the registration, the sampler and the cache-backed `::current` are all exercised on the real path.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded as db_embedded, testing::db::TestDb};
 use reifydb_profiler::category::ALL_CATEGORIES;
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 #[test]
 fn instruments_current_serves_every_registered_reporter() {

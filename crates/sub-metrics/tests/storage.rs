@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	error::Error as StdError,
-	fmt::Write,
-	path::Path,
-	sync::{Arc, Condvar, Mutex},
-};
+use std::{error::Error as StdError, fmt::Write, path::Path, sync::Arc};
 
 use reifydb_catalog::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
@@ -43,6 +38,7 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	sync::{condvar::Condvar, mutex::Mutex},
 };
 use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{
@@ -91,15 +87,22 @@ impl StatsWaiter {
 	}
 
 	fn wait_until(&self, version: CommitVersion, timeout: Duration) -> bool {
-		let guard = self.inner.processed_up_to.lock().unwrap();
-		let result = self.inner.condvar.wait_timeout_while(guard, timeout.to_std(), |v| *v < version).unwrap();
-		!result.1.timed_out()
+		let mut guard = self.inner.processed_up_to.lock();
+		let deadline = Clock::Real.instant() + timeout;
+		while *guard < version {
+			let now = Clock::Real.instant();
+			if now >= deadline {
+				break;
+			}
+			self.inner.condvar.wait_for(&mut guard, (&deadline - &now).into());
+		}
+		*guard >= version
 	}
 }
 
 impl EventListener<MetricsProcessedEvent> for StatsWaiter {
 	fn on(&self, event: &MetricsProcessedEvent) {
-		let mut v = self.inner.processed_up_to.lock().unwrap();
+		let mut v = self.inner.processed_up_to.lock();
 		if *event.up_to() > *v {
 			*v = *event.up_to();
 		}

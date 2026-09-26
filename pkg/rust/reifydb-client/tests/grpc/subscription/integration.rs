@@ -8,9 +8,9 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{SystemTime, UNIX_EPOCH},
 };
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{ChangeKind, GrpcClient, SubscriptionConfig, Value, WireFormat};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::sleep};
@@ -420,10 +420,7 @@ fn test_error_nonexistent_table() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let non_existent_table = format!(
-			"table_that_does_not_exist_{}",
-			SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
-		);
+		let non_existent_table = format!("table_that_does_not_exist_{}", Clock::Real.now().to_epoch_millis());
 
 		let result =
 			client.subscribe(&format!("from {}", non_existent_table), SubscriptionConfig::default()).await;

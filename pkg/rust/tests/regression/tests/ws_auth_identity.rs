@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration as StdDuration};
+use std::sync::Arc;
 
 use reifydb::{RuntimeConfig, server};
 use reifydb_client::{WireFormat, WsClient, subscription::SubscriptionConfig};
-use reifydb_value::params::Params;
+use reifydb_value::{params::Params, value::duration::Duration};
 use tokio::{runtime::Runtime, time::timeout};
 
 #[test]
@@ -46,7 +46,7 @@ fn failed_auth_must_not_subscribe_as_root() {
 			return 0;
 		};
 
-		match timeout(StdDuration::from_secs(3), client.recv()).await {
+		match timeout(Duration::from_seconds_const(3).to_std(), client.recv()).await {
 			Ok(Some(payload)) => payload.changes.iter().map(|c| c.frame.rows().count()).sum::<usize>(),
 			Ok(None) => 0,
 			Err(_) => 0,

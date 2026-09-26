@@ -532,7 +532,7 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashSet, ops::Bound, sync::mpsc, thread::sleep, time::Duration as StdDuration};
+	use std::{collections::HashSet, ops::Bound, sync::mpsc, thread::sleep};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_core::{
@@ -564,7 +564,10 @@ mod integration {
 		commit::{CommitBegin, CommitHandle},
 		transaction::Transaction,
 	};
-	use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
+	use reifydb_value::{
+		factory::time::at_millis,
+		value::{duration::Duration, identity::IdentityId},
+	};
 
 	use super::*;
 	use crate::{
@@ -601,7 +604,9 @@ mod integration {
 			})
 			.is_ok();
 		assert!(sent, "the committer must accept the slice");
-		receiver.recv_timeout(StdDuration::from_secs(10)).expect("slice reply timed out").expect("commit slice")
+		receiver.recv_timeout(Duration::from_seconds_const(10).to_std())
+			.expect("slice reply timed out")
+			.expect("commit slice")
 	}
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {
@@ -862,7 +867,7 @@ mod integration {
 					if view_row_count(&te, "FROM app::v") == 3 {
 						break;
 					}
-					sleep(StdDuration::from_millis(5));
+					sleep(Duration::from_milliseconds_const(5).to_std());
 				}
 			}
 		}
@@ -984,7 +989,7 @@ mod integration {
 					cursor = advance_to;
 				}
 				None => {
-					sleep(StdDuration::from_millis(5));
+					sleep(Duration::from_milliseconds_const(5).to_std());
 				}
 			}
 		}
@@ -1106,7 +1111,7 @@ mod integration {
 					if view_row_count(&te, "FROM app::v") == 2 {
 						break;
 					}
-					sleep(StdDuration::from_millis(5));
+					sleep(Duration::from_milliseconds_const(5).to_std());
 				}
 			}
 		}
@@ -1203,7 +1208,7 @@ mod integration {
 					advance_to,
 					..
 				}) => cursor = advance_to,
-				None => sleep(StdDuration::from_millis(5)),
+				None => sleep(Duration::from_milliseconds_const(5).to_std()),
 			}
 		}
 		assert!(cursor >= inserted, "the flow never stepped past the filtered insert at {inserted:?}");
@@ -1285,7 +1290,7 @@ mod integration {
 			if safe >= inserted {
 				return inserted;
 			}
-			sleep(StdDuration::from_millis(5));
+			sleep(Duration::from_milliseconds_const(5).to_std());
 		}
 		panic!("the cdc producer never caught up to {inserted:?}");
 	}

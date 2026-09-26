@@ -3,12 +3,13 @@
 
 // Windows seal off the flow watermark, the minimum over every source feeding the flow.
 
-use std::{thread::sleep, time::Duration as StdDuration};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{assert_same_timed_rows, timed_rows};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
@@ -274,7 +275,7 @@ fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
 
 	// Not a synchronisation wait: the quiet interval is longer than the window, so a coordinate
 	// taken from arrival would put the next row in a different bucket.
-	sleep(StdDuration::from_millis(2_500));
+	sleep(Duration::from_milliseconds_const(2_500).to_std());
 
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_all_flows(TIMEOUT);

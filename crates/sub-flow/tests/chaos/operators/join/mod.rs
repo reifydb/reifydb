@@ -139,7 +139,7 @@ pub fn build(
 		engine.executor().runtime_context.clone(),
 		variant.snapshot,
 		false,
-		variant.latest.then(|| JoinPick::latest()),
+		variant.latest.then(JoinPick::latest),
 		left_ttl,
 		right_ttl,
 		Arc::new(FlowContext::default()),

@@ -419,16 +419,16 @@ mod tests {
 
 	fn call(name: &str, args: Vec<Expression>) -> Expression {
 		Expression::Call(CallExpression {
-			func: IdentExpression(Fragment::internal(name.to_string())),
+			func: IdentExpression(Fragment::internal(name)),
 			args,
-			fragment: Fragment::internal(name.to_string()),
+			fragment: Fragment::internal(name),
 		})
 	}
 
 	fn column(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			object: ColumnObject::Alias(Fragment::internal(name.to_string())),
-			name: Fragment::internal(name.to_string()),
+			object: ColumnObject::Alias(Fragment::internal(name)),
+			name: Fragment::internal(name),
 		}))
 	}
 
@@ -512,9 +512,9 @@ mod tests {
 		// Every real use is aliased (bucket_start: window::start()); missing the alias unwrap would reject
 		// the only form anyone writes.
 		let expr = Expression::Alias(AliasExpression {
-			alias: IdentExpression(Fragment::internal("bucket_start".to_string())),
+			alias: IdentExpression(Fragment::internal("bucket_start")),
 			expression: Box::new(call("window::start", vec![])),
-			fragment: Fragment::internal("bucket_start".to_string()),
+			fragment: Fragment::internal("bucket_start"),
 		});
 		let (kind, _) = classify_slot(&Routines::empty(), &expr, AggregateContext::Windowed)
 			.expect("aliased window::start must classify");
@@ -535,15 +535,15 @@ mod tests {
 
 	fn number(text: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::internal(text.to_string()),
+			fragment: Fragment::internal(text),
 		})
 	}
 
 	fn negative(text: &str) -> Expression {
 		Expression::Prefix(PrefixExpression {
-			operator: PrefixOperator::Minus(Fragment::internal("-".to_string())),
+			operator: PrefixOperator::Minus(Fragment::internal("-")),
 			expression: Box::new(number(text)),
-			fragment: Fragment::internal("-".to_string()),
+			fragment: Fragment::internal("-"),
 		})
 	}
 
@@ -599,7 +599,7 @@ mod tests {
 		let input = Expression::Add(AddExpression {
 			left: Box::new(column("latency")),
 			right: Box::new(column("queue")),
-			fragment: Fragment::internal("+".to_string()),
+			fragment: Fragment::internal("+"),
 		});
 		let (_, arg) = classify("stats::digest", vec![input, number("0.05")])
 			.expect("an expression input must classify");
@@ -623,10 +623,12 @@ mod tests {
 		);
 	}
 
+	type AccuracyCase = (Expression, fn(&DigestError) -> bool);
+
 	#[test]
 	fn a_bad_accuracy_is_not_a_slot_and_names_its_own_error() {
 		// Folding every bad accuracy into one generic rejection hides which rule the literal broke.
-		let cases: [(Expression, fn(&DigestError) -> bool); 7] = [
+		let cases: [AccuracyCase; 7] = [
 			(number("0.5"), |e| matches!(e, DigestError::AccuracyOutOfRange)),
 			(number("0.0009"), |e| matches!(e, DigestError::AccuracyOutOfRange)),
 			(negative("0.01"), |e| matches!(e, DigestError::AccuracyOutOfRange)),
@@ -660,13 +662,13 @@ mod tests {
 		Expression::Sub(SubExpression {
 			left: Box::new(left),
 			right: Box::new(right),
-			fragment: Fragment::internal("-".to_string()),
+			fragment: Fragment::internal("-"),
 		})
 	}
 
 	fn text(value: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Text {
-			fragment: Fragment::internal(value.to_string()),
+			fragment: Fragment::internal(value),
 		})
 	}
 
@@ -779,7 +781,7 @@ mod tests {
 					number("0.99"),
 					number("0.01"),
 				])),
-				fragment: Fragment::internal("+".to_string()),
+				fragment: Fragment::internal("+"),
 			}),
 			percentile(vec![column("latency"), number("0.75"), number("0.05")]),
 		]);
@@ -818,12 +820,12 @@ mod tests {
 	fn a_percentile_inside_an_alias_and_arithmetic_is_still_rewritten() {
 		// Missing the recursion would leave the raw call for classify, which builds no digest for it.
 		let mut expr = Expression::Alias(AliasExpression {
-			alias: IdentExpression(Fragment::internal("p99_ms".to_string())),
+			alias: IdentExpression(Fragment::internal("p99_ms")),
 			expression: Box::new(sub(
 				percentile(vec![column("latency"), number("0.99"), number("0.01")]),
 				number("1"),
 			)),
-			fragment: Fragment::internal("p99_ms".to_string()),
+			fragment: Fragment::internal("p99_ms"),
 		});
 		let mut slots = Vec::new();
 
@@ -934,7 +936,9 @@ mod tests {
 		(slot.0, input)
 	}
 
-	fn flow_rewrite(exprs: Vec<Expression>) -> Result<(Vec<String>, Vec<(SlotKind, String)>), AggregateCallError> {
+	type FlowRewrite = (Vec<String>, Vec<(SlotKind, String)>);
+
+	fn flow_rewrite(exprs: Vec<Expression>) -> Result<FlowRewrite, AggregateCallError> {
 		let mut slots = Vec::new();
 		let mut digests = DigestSlots::default();
 		let mut outputs = Vec::new();
@@ -1024,7 +1028,7 @@ mod tests {
 			Expression::Add(AddExpression {
 				left: Box::new(left),
 				right: Box::new(right),
-				fragment: Fragment::internal("+".to_string()),
+				fragment: Fragment::internal("+"),
 			})
 		};
 

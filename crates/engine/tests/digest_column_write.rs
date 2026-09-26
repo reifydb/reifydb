@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::collections::HashMap;
 
 use reifydb_core::execution::ExecutionResult;
@@ -46,14 +44,14 @@ fn params() -> Params {
 	]))
 }
 
-fn run(result: ExecutionResult) -> Result<Vec<Frame>, Diagnostic> {
+fn run(result: ExecutionResult) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	match result.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(result.frames),
 	}
 }
 
-fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	run(t.inner().command_as(TestEngine::identity(), rql, params()))
 }
 

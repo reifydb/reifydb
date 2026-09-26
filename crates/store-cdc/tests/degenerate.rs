@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration as StdDuration;
-use std::{collections::Bound, thread, time::Instant};
+use std::{collections::Bound, thread};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcBatch, CdcChange},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_store_cdc::{
 	storage::{CdcStorage, Cutoff},
 	store::CdcStore,
 };
-use reifydb_value::{byte_size::ByteSize, count::Count, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{
+	byte_size::ByteSize,
+	count::Count,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 mod common;
 
@@ -61,17 +65,16 @@ fn version_list(batch: &CdcBatch) -> Vec<u64> {
 	batch.items.iter().map(|cdc| cdc.version.commit.0).collect()
 }
 
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-fn within<T: Send + 'static>(label: &str, seconds: u64, body: impl FnOnce() -> T + Send + 'static) -> T {
+fn within<T: Send + 'static>(label: &str, seconds: i64, body: impl FnOnce() -> T + Send + 'static) -> T {
 	// a saturating cursor turns a bounded walk into an unbounded one, which without a deadline hangs the whole
 	// suite
 	let handle = thread::spawn(body);
-	let deadline = Instant::now() + StdDuration::from_secs(seconds);
+	let deadline = Clock::Real.instant() + Duration::from_seconds(seconds).unwrap();
 	while !handle.is_finished() {
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!("{label} did not terminate within {seconds}s");
 		}
-		thread::sleep(StdDuration::from_millis(20));
+		thread::sleep(Duration::from_milliseconds_const(20).to_std());
 	}
 	match handle.join() {
 		Ok(value) => value,

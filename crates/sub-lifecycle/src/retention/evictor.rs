@@ -731,13 +731,8 @@ impl LifecycleTask for RetentionEvictTask {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
-#[allow(clippy::disallowed_types)]
 mod tests {
-	use std::{
-		thread::sleep,
-		time::{Duration, Instant},
-	};
+	use std::thread::sleep;
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
 	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
@@ -756,7 +751,7 @@ mod tests {
 		},
 		key::ringbuffer::RingBufferMetadataKey,
 	};
-	use reifydb_runtime::version_epoch::EpochSpan;
+	use reifydb_runtime::{context::clock::Clock, version_epoch::EpochSpan};
 	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
@@ -919,13 +914,13 @@ mod tests {
 
 	fn wait_cdc_watermark(engine: &StandardEngine, version: CommitVersion) {
 		let watermark = engine.ioc().try_resolve::<CdcProducerWatermark>().unwrap();
-		let deadline = Instant::now() + Duration::from_secs(5);
+		let deadline = Clock::Real.instant() + ValueDuration::from_seconds_const(5);
 		while watermark.get() < version {
 			assert!(
-				Instant::now() < deadline,
+				Clock::Real.instant() < deadline,
 				"the cdc producer did not reach version {version:?} within the deadline"
 			);
-			sleep(Duration::from_millis(10));
+			sleep(ValueDuration::from_milliseconds_const(10).to_std());
 		}
 	}
 

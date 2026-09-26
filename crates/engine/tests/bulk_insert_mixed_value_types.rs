@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::collections::HashMap;
 
 use reifydb_engine::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};
@@ -54,7 +52,7 @@ fn execute<V: ValidationMode>(
 	mut builder: BulkInsertBuilder<'_, V>,
 	target: &str,
 	rows: Vec<Params>,
-) -> Result<(), Diagnostic> {
+) -> Result<(), Box<Diagnostic>> {
 	match target {
 		"s::r" => {
 			builder.ringbuffer(target).rows(rows).done();
@@ -66,10 +64,10 @@ fn execute<V: ValidationMode>(
 			builder.table(target).rows(rows).done();
 		}
 	}
-	builder.execute().map(|_| ()).map_err(|e| e.diagnostic())
+	builder.execute().map(|_| ()).map_err(|e| e.0)
 }
 
-fn bulk(t: &TestEngine, target: &str, mode: Mode, values: &[Value]) -> Result<(), Diagnostic> {
+fn bulk(t: &TestEngine, target: &str, mode: Mode, values: &[Value]) -> Result<(), Box<Diagnostic>> {
 	let rows = rows(mode, values);
 	match mode {
 		Mode::Named | Mode::Positional => execute(t.bulk_insert(TestEngine::identity()), target, rows),

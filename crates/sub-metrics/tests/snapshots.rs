@@ -5,11 +5,10 @@
 //! cadence. Driven end to end because the append path crosses the sampler, the bulk series insert and the
 //! bootstrap-declared series schema; a column drift anywhere leaves the series silently unwritten.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 #[test]
 fn snapshots_append_readings_when_the_interval_is_set() {

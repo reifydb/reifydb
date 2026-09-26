@@ -19,8 +19,10 @@ use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 const AUTH_CLEANUP: &str = "auth-cleanup";
 
 fn db_with_session_ttl(mock: &MockClock, session_ttl: Duration) -> TestDb {
-	let mut config = RuntimeConfig::default();
-	config.clock = Clock::Mock(mock.clone());
+	let config = RuntimeConfig {
+		clock: Clock::Mock(mock.clone()),
+		..Default::default()
+	};
 
 	TestDb::from(
 		embedded::memory()

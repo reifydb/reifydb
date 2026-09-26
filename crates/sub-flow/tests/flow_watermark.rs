@@ -5,9 +5,11 @@
 // uses it, and one that advances on discovery rather than on commit races the following query
 // against an unmaterialized view. The wall-clock deadline turns the first into a timeout.
 
-use std::time::{Duration as StdDuration, Instant};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
+use reifydb_value::value::duration::Duration;
 
 fn setup() -> TestDb {
 	// `.with_flow(...)` installs the subsystem that registers the caught-up watermark.
@@ -27,13 +29,13 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 	let target = db.watermarks().tx().current().expect("current version");
 
 	// A wall-clock deadline, so a watermark that never advances fails as a timeout, not a hang.
-	let deadline = Instant::now() + StdDuration::from_secs(10);
+	let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 	loop {
 		let flow_consumer = db.watermarks().cdc().flow_consumer();
 		if flow_consumer >= target {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!(
 				"flow consumer watermark did not reach the committed version within 10s: \
 				 flow_consumer={} target={} (the flow subsystem is not advancing \
@@ -41,7 +43,7 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 				flow_consumer.0, target.0
 			);
 		}
-		std::thread::sleep(StdDuration::from_millis(5));
+		sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 
 	// Queried with no seal poll, so `flow_consumer() >= target` has to be a true materialization

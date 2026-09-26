@@ -202,7 +202,7 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 		let mut keys = BTreeSet::new();
 		for block in blocks {
 			assert_eq!(schema_names(&block), expected_schema, "test::{name}");
-			assert!(block.len() > 0, "test::{name}: a closed bucket must hold rows");
+			assert!(!block.is_empty(), "test::{name}: a closed bucket must hold rows");
 
 			let len = block.len();
 			let mut reader = SnapshotReader::new(block, 100);

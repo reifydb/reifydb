@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb::{
 	Value,
 	testing::db::{TestDb, await_value},
+	value::value::duration::Duration,
 };
 use reifydb_test_harness::assert::column_values;
 

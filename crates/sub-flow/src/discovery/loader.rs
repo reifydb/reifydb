@@ -201,17 +201,16 @@ impl Actor for LoaderActor {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		sync::Mutex,
-		thread::sleep,
-		time::{Duration, Instant},
-	};
+	use std::thread::sleep;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{common::ChangeVersion, interface::cdc::CdcChange};
-	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools, sync::mutex::Mutex};
 	use reifydb_store_cdc::{config::CdcStoreConfig, storage::Cutoff};
-	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 
@@ -251,18 +250,18 @@ mod tests {
 				up_to: cv(up_to),
 				budget,
 				reply: Box::new(move |chunk| {
-					*out.lock().unwrap() = Some(chunk);
+					*out.lock() = Some(chunk);
 				}),
 			})
 			.map_err(|_| "loader mailbox closed")
 			.expect("send fetch");
-		let deadline = Instant::now() + Duration::from_secs(10);
+		let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 		loop {
-			if let Some(chunk) = slot.lock().unwrap().take() {
+			if let Some(chunk) = slot.lock().take() {
 				return chunk;
 			}
-			assert!(Instant::now() < deadline, "loader never replied");
-			sleep(Duration::from_millis(2));
+			assert!(Clock::Real.instant() < deadline, "loader never replied");
+			sleep(Duration::from_milliseconds_const(2).to_std());
 		}
 	}
 

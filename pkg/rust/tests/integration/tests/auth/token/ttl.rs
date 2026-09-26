@@ -5,8 +5,10 @@ use reifydb::{Clock, MockClock, RuntimeConfig, embedded, testing::db::TestDb, va
 use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
 fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> TestDb {
-	let mut config = RuntimeConfig::default();
-	config.clock = Clock::Mock(mock.clone());
+	let config = RuntimeConfig {
+		clock: Clock::Mock(mock.clone()),
+		..Default::default()
+	};
 
 	TestDb::from(
 		embedded::memory()
@@ -61,8 +63,10 @@ fn test_token_expires_after_ttl() {
 #[test]
 fn test_token_no_ttl_never_expires() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let mut config = RuntimeConfig::default();
-	config.clock = Clock::Mock(mock.clone());
+	let config = RuntimeConfig {
+		clock: Clock::Mock(mock.clone()),
+		..Default::default()
+	};
 
 	let mut db = TestDb::from(
 		embedded::memory().with_runtime_config(config).with_auth(|a| a.no_session_ttl()).build().unwrap(),

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::collections::HashMap;
 
 use reifydb_test_harness::engine::TestEngine;
@@ -22,10 +20,10 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn query(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Diagnostic> {
+fn query(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().query_as(TestEngine::identity(), rql, params);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

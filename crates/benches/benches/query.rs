@@ -9,7 +9,6 @@ use std::{
 		atomic::{AtomicU64, Ordering},
 	},
 	thread,
-	time::{Duration, Instant},
 };
 
 use hdrhistogram::Histogram;
@@ -20,11 +19,13 @@ use reifydb_benches::{
 	BenchReport, env_list_u64, env_list_usize, env_opt, env_u64, latency_histogram, median_by_throughput, merge,
 };
 use reifydb_client::WireFormat;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_testing_scenario::{
 	query::{NamedQuery, OperationKind},
 	registry,
 	scenario::Scenario,
 };
+use reifydb_value::value::duration::Duration;
 use rustls::crypto::ring::default_provider;
 
 use crate::transport::{
@@ -87,7 +88,7 @@ fn build_database(serve: bool) -> Database {
 }
 
 fn seed_database(db: &Database, scenario: &Scenario, scale: u64) -> Duration {
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 
 	for statement in scenario.setup_statements(scale) {
 		let outcome = match statement.kind {
@@ -101,7 +102,7 @@ fn seed_database(db: &Database, scenario: &Scenario, scale: u64) -> Duration {
 		});
 	}
 
-	started.elapsed()
+	started.elapsed().into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -122,7 +123,7 @@ fn run_once(
 	let per_thread = iterations / threads as u64;
 
 	let ready = Arc::new(Barrier::new(threads + 1));
-	let mut started = Instant::now();
+	let mut started = Clock::Real.instant();
 
 	let outcomes: Vec<(Histogram<u64>, u64, u64, u64)> = thread::scope(|scope| {
 		let handles: Vec<_> = (0..threads)
@@ -136,17 +137,17 @@ fn run_once(
 					let (mut compile_ns, mut execute_ns, mut ops) = (0u64, 0u64, 0u64);
 
 					ready.wait();
-					let deadline = Instant::now() + budget;
+					let deadline = Clock::Real.instant() + budget;
 
 					for _ in 0..per_thread {
-						if Instant::now() >= deadline {
+						if Clock::Real.instant() >= deadline {
 							break;
 						}
 
 						let next = sequence.fetch_add(1, Ordering::Relaxed);
 						let rql = query.rql.render(&mut rng, scale, next);
 
-						let call = Instant::now();
+						let call = Clock::Real.instant();
 						let timing = driver.execute(query.kind, &rql);
 						let elapsed = call.elapsed();
 
@@ -164,12 +165,12 @@ fn run_once(
 			.collect();
 
 		ready.wait();
-		started = Instant::now();
+		started = Clock::Real.instant();
 
 		handles.into_iter().map(|handle| handle.join().expect("worker thread does not panic")).collect()
 	});
 
-	let elapsed = started.elapsed();
+	let elapsed = started.elapsed().into();
 	let ops = outcomes.iter().map(|outcome| outcome.3).sum();
 
 	Sample {
@@ -183,7 +184,7 @@ fn run_once(
 }
 
 fn record(report: &mut BenchReport, label: &str, sample: &Sample) {
-	report.record(&format!("{label} section=e2e"), sample.ops, sample.elapsed, &sample.latency);
+	report.record(&format!("{label} section=e2e"), sample.ops, sample.elapsed.to_std(), &sample.latency);
 
 	if !sample.attributed {
 		return;
@@ -198,9 +199,21 @@ fn record(report: &mut BenchReport, label: &str, sample: &Sample) {
 	let attributed = compile_avg.saturating_add(execute_avg);
 	let overhead_avg = e2e_avg.saturating_sub(attributed);
 
-	report.record_throughput(&format!("{label} section=compile avg_ns={compile_avg}"), ops, sample.elapsed);
-	report.record_throughput(&format!("{label} section=execute avg_ns={execute_avg}"), ops, sample.elapsed);
-	report.record_throughput(&format!("{label} section=overhead avg_ns={overhead_avg}"), ops, sample.elapsed);
+	report.record_throughput(
+		&format!("{label} section=compile avg_ns={compile_avg}"),
+		ops,
+		sample.elapsed.to_std(),
+	);
+	report.record_throughput(
+		&format!("{label} section=execute avg_ns={execute_avg}"),
+		ops,
+		sample.elapsed.to_std(),
+	);
+	report.record_throughput(
+		&format!("{label} section=overhead avg_ns={overhead_avg}"),
+		ops,
+		sample.elapsed.to_std(),
+	);
 }
 
 fn mint_tokens(db: &Database, identities: &[Identity], serve: bool) -> Vec<(Identity, String)> {
@@ -244,7 +257,7 @@ fn main() {
 	let threads = env_list_usize("THREADS", &DEFAULT_THREADS);
 	let iterations = env_u64("ITERATIONS", DEFAULT_ITERATIONS);
 	let warmup = env_u64("WARMUP", DEFAULT_WARMUP);
-	let budget = Duration::from_secs(env_u64("BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS));
+	let budget = Duration::from_seconds_const(env_u64("BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS) as i64);
 	let repeats = env_u64("REPEATS", DEFAULT_REPEATS);
 	let only = env_opt("SCENARIO");
 	let only_query = env_opt("QUERY");
@@ -279,7 +292,7 @@ fn main() {
 		identities.len(),
 		threads.len(),
 		repeats,
-		cells as u64 * repeats * budget.as_secs() / 60
+		cells as u64 * repeats * budget.to_std().as_secs() / 60
 	);
 
 	let mut report = BenchReport::new("query");
@@ -303,7 +316,7 @@ fn main() {
 				scenario.name,
 				scale,
 				scenario.dataset.row_count(scale),
-				seed_elapsed.as_millis()
+				seed_elapsed.to_std().as_millis()
 			);
 
 			let engine = db.engine();
@@ -352,7 +365,8 @@ fn main() {
 									budget,
 									SEED.wrapping_add(repeat),
 								);
-								let overran = sample.elapsed > budget * OVERRUN_FACTOR;
+								let overran = sample.elapsed.to_std()
+									> budget.to_std() * OVERRUN_FACTOR;
 								samples.push(sample);
 
 								if overran {
@@ -364,14 +378,14 @@ fn main() {
 										count,
 										samples.len(),
 										repeats,
-										budget.as_secs()
+										budget.to_std().as_secs()
 									);
 									break;
 								}
 							}
 
 							let median = median_by_throughput(&samples, |sample| {
-								(sample.ops, sample.elapsed)
+								(sample.ops, sample.elapsed.to_std())
 							});
 							let label = format!(
 								"scenario={} query={} transport={} identity={} scale={} threads={}",

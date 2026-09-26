@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use reifydb_test_harness::engine::TestEngine;
@@ -25,23 +23,23 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().query_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
 
-fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().command_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
 
-fn error_text(result: Result<Vec<Frame>, Diagnostic>) -> String {
+fn error_text(result: Result<Vec<Frame>, Box<Diagnostic>>) -> String {
 	match result {
 		Err(diagnostic) => format!("{} at {:?}", diagnostic.code, diagnostic.fragment.text()),
 		Ok(frames) => format!("no error, got {frames:?}"),

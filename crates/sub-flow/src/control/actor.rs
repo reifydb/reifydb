@@ -948,12 +948,7 @@ impl Actor for FlowActor {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod pull_protocol {
-	use std::{
-		collections::HashMap,
-		ops::Bound,
-		thread::sleep,
-		time::{Duration as StdDuration, Instant},
-	};
+	use std::{collections::HashMap, ops::Bound, thread::sleep};
 
 	use reifydb_cdc::{
 		consume::watermark::CdcConsumerWatermark,
@@ -1176,7 +1171,7 @@ mod pull_protocol {
 			);
 
 			assert_eq!(
-				self.await_flow_position(flow_id, cursor, StdDuration::from_secs(10)),
+				self.await_flow_position(flow_id, cursor, seconds(10)),
 				Some(cursor),
 				"the init Drain must be consumed, and the cursor settled at {}, before the test \
 				 writes anything a wake will deliver",
@@ -1207,30 +1202,30 @@ mod pull_protocol {
 				.count()
 		}
 
-		fn await_view_rows(&self, want: usize, timeout: StdDuration) -> usize {
-			let deadline = Instant::now() + timeout;
+		fn await_view_rows(&self, want: usize, timeout: Duration) -> usize {
+			let deadline = Clock::Real.instant() + timeout;
 			loop {
 				let got = self.view_rows();
-				if got >= want || Instant::now() >= deadline {
+				if got >= want || Clock::Real.instant() >= deadline {
 					return got;
 				}
-				sleep(StdDuration::from_millis(10));
+				sleep(millis(10).to_std());
 			}
 		}
 
 		fn await_safe_watermark(&self, want: CommitVersion) {
-			let deadline = Instant::now() + StdDuration::from_secs(10);
+			let deadline = Clock::Real.instant() + seconds(10);
 			loop {
 				let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
 				if safe >= want {
 					return;
 				}
-				assert!(Instant::now() < deadline, "safe watermark never reached {}", want.0);
-				sleep(StdDuration::from_millis(5));
+				assert!(Clock::Real.instant() < deadline, "safe watermark never reached {}", want.0);
+				sleep(millis(5).to_std());
 			}
 		}
 
-		fn await_position(&self, want: CommitVersion, timeout: StdDuration) -> Option<CommitVersion> {
+		fn await_position(&self, want: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
 			self.await_flow_position(self.flow_id, want, timeout)
 		}
 
@@ -1238,20 +1233,20 @@ mod pull_protocol {
 			&self,
 			flow_id: FlowId,
 			want: CommitVersion,
-			timeout: StdDuration,
+			timeout: Duration,
 		) -> Option<CommitVersion> {
-			let deadline = Instant::now() + timeout;
+			let deadline = Clock::Real.instant() + timeout;
 			loop {
 				let got = self.tracker.all().get(&flow_id).copied();
-				if got == Some(want) || Instant::now() >= deadline {
+				if got == Some(want) || Clock::Real.instant() >= deadline {
 					return got;
 				}
-				sleep(StdDuration::from_millis(10));
+				sleep(millis(10).to_std());
 			}
 		}
 
 		fn poll_until<T>(&self, timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
-			let started = Clock::testing().instant();
+			let started = Clock::Real.instant();
 			let timeout = timeout.to_std();
 			loop {
 				if let Some(found) = probe() {
@@ -1413,7 +1408,7 @@ mod pull_protocol {
 		h.await_safe_watermark(target);
 		h.wake(&actor);
 
-		let rows = h.await_view_rows(2, StdDuration::from_secs(10));
+		let rows = h.await_view_rows(2, seconds(10));
 		assert_eq!(
 			rows, 2,
 			"a wake received during a commit must schedule a follow-up pull; nothing else \
@@ -1442,7 +1437,7 @@ mod pull_protocol {
 		h.await_safe_watermark(target);
 		h.wake(&actor);
 
-		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
+		let rows = h.await_view_rows(total, seconds(15));
 		assert_eq!(rows, total, "a burst must not drop an accumulated version");
 
 		h.await_safe_watermark(h.engine.current_version().expect("current version"));
@@ -1471,7 +1466,7 @@ mod pull_protocol {
 		h.backlog.evict_below(target);
 		h.wake(&actor);
 
-		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
+		let rows = h.await_view_rows(total, seconds(15));
 		assert_eq!(rows, total, "the loader path must recover every version evicted from the backlog");
 		assert!(
 			h.await_position_at_least(target, seconds(10)).is_some(),
@@ -1479,7 +1474,7 @@ mod pull_protocol {
 			 recovered through"
 		);
 
-		sleep(StdDuration::from_millis(200));
+		sleep(millis(200).to_std());
 		assert_eq!(
 			h.view_rows(),
 			total,
@@ -1508,7 +1503,7 @@ mod pull_protocol {
 		let first = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(first);
 		h.wake(&producer);
-		assert_eq!(h.await_view_rows(1, StdDuration::from_secs(10)), 1, "the producer must emit the first row");
+		assert_eq!(h.await_view_rows(1, seconds(10)), 1, "the producer must emit the first row");
 		let producer_position = h
 			.await_position_at_least(first, seconds(10))
 			.expect("the producer must publish its first commit");
@@ -1535,11 +1530,7 @@ mod pull_protocol {
 		h.backlog.evict_below(floor);
 
 		h.wake(&producer);
-		assert_eq!(
-			h.await_view_rows(2, StdDuration::from_secs(10)),
-			2,
-			"the producer must emit the second row"
-		);
+		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the producer must emit the second row");
 		assert!(
 			h.await_position_at_least(read_end, seconds(10)).is_some(),
 			"the producer must publish the commit carrying the second row"
@@ -1632,7 +1623,7 @@ mod pull_protocol {
 		h.await_safe_watermark(target);
 		h.wake(&actor);
 
-		sleep(StdDuration::from_millis(300));
+		sleep(millis(300).to_std());
 		assert_eq!(
 			h.tracker.all().get(&h.flow_id).copied(),
 			Some(v0),
@@ -1643,11 +1634,11 @@ mod pull_protocol {
 		h.control.store(target);
 		h.wake(&actor);
 		assert_eq!(
-			h.await_view_rows(2, StdDuration::from_secs(10)),
+			h.await_view_rows(2, seconds(10)),
 			2,
 			"raising the frontier and waking must release exactly the held-back versions"
 		);
-		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
+		assert_eq!(h.await_position(target, seconds(5)), Some(target));
 		drop(actor);
 	}
 
@@ -1672,7 +1663,7 @@ mod pull_protocol {
 
 		h.wake(&actor);
 		assert_eq!(
-			h.await_view_rows(1, StdDuration::from_secs(10)),
+			h.await_view_rows(1, seconds(10)),
 			1,
 			"an overshooting producer watermark must not stall the pull below done_until"
 		);
@@ -1721,12 +1712,12 @@ mod pull_protocol {
 			h.await_safe_watermark(target);
 			h.wake(&actor);
 			assert_eq!(
-				h.await_view_rows(expected_rows, seconds(10).to_std()),
+				h.await_view_rows(expected_rows, seconds(10)),
 				expected_rows,
 				"each arrival must land in its own bucket, or the tick has no sealed group to commit"
 			);
 			assert_eq!(
-				h.await_position(target, seconds(5).to_std()),
+				h.await_position(target, seconds(5)),
 				Some(target),
 				"the wake must settle the cursor before the tick, so that any later move is \
 				 the tick's doing and nothing else's"
@@ -1773,12 +1764,12 @@ mod pull_protocol {
 		h.await_safe_watermark(target);
 		h.wake(&actor);
 		assert_eq!(
-			h.await_view_rows(1, seconds(10).to_std()),
+			h.await_view_rows(1, seconds(10)),
 			1,
 			"the woken row must reach the window, or no seal timer is ever armed"
 		);
 		assert_eq!(
-			h.await_position(target, seconds(5).to_std()),
+			h.await_position(target, seconds(5)),
 			Some(target),
 			"the wake must settle before the tick, so any later movement is the tick's doing"
 		);
@@ -1843,12 +1834,12 @@ mod pull_protocol {
 		h.await_safe_watermark(target);
 		h.wake(&actor);
 		assert_eq!(
-			h.await_view_rows(1, StdDuration::from_secs(10)),
+			h.await_view_rows(1, seconds(10)),
 			1,
 			"the row must land in the ring before its ttl can have anything to evict"
 		);
 		assert_eq!(
-			h.await_position(target, StdDuration::from_secs(5)),
+			h.await_position(target, seconds(5)),
 			Some(target),
 			"the wake must settle before the tick, so the eviction is the tick's doing and \
 			 nothing else's"
@@ -1950,12 +1941,12 @@ mod pull_protocol {
 		h.await_safe_watermark(filled);
 		h.wake(&actor);
 		assert_eq!(
-			h.await_view_rows(2, StdDuration::from_secs(10)),
+			h.await_view_rows(2, seconds(10)),
 			2,
 			"the ring must be filled to capacity before an overflow can evict anything"
 		);
 		assert_eq!(
-			h.await_position(filled, StdDuration::from_secs(5)),
+			h.await_position(filled, seconds(5)),
 			Some(filled),
 			"the fill must settle first, so every delete counted below is an eviction"
 		);
@@ -1966,7 +1957,7 @@ mod pull_protocol {
 		h.await_safe_watermark(overflow);
 		h.wake(&actor);
 		assert_eq!(
-			h.await_position(overflow, StdDuration::from_secs(10)),
+			h.await_position(overflow, seconds(10)),
 			Some(overflow),
 			"the overflow row must be applied, or capacity never evicts the oldest row"
 		);
@@ -2057,12 +2048,8 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 		h.wake(&actor);
-		assert_eq!(
-			h.await_view_rows(2, StdDuration::from_secs(10)),
-			2,
-			"the aggregate must materialize its two groups"
-		);
-		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
+		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the aggregate must materialize its two groups");
+		assert_eq!(h.await_position(target, seconds(5)), Some(target));
 
 		assert!(
 			h.substrate
@@ -2198,7 +2185,7 @@ mod pull_protocol {
 			h.await_safe_watermark(target);
 			h.wake(&actor);
 			assert_eq!(
-				h.await_position(target, StdDuration::from_secs(10)),
+				h.await_position(target, seconds(10)),
 				Some(target),
 				"each row must settle, or the eviction it triggers has not run yet"
 			);
@@ -2261,7 +2248,7 @@ mod pull_protocol {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tick_failures {
-	use std::{collections::HashMap, marker::PhantomData, sync::mpsc, time::Duration as StdDuration};
+	use std::{collections::HashMap, marker::PhantomData, sync::mpsc};
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
@@ -2731,7 +2718,8 @@ mod tick_failures {
 			"precondition: the timer must fire cleanly, otherwise no tick commit is sent"
 		);
 		assert_eq!(
-			sources.recv_timeout(StdDuration::from_secs(5)).expect("a fired timer must send a tick commit"),
+			sources.recv_timeout(Duration::from_seconds(5).unwrap().to_std())
+				.expect("a fired timer must send a tick commit"),
 			SourceVersion(8),
 			"a reader level with this flow skips view rows at or below cursor 7, so a tick stamped at the cursor \
 			 is never read"
@@ -2830,7 +2818,8 @@ mod tick_failures {
 	}
 
 	fn next_message(received: &mpsc::Receiver<&'static str>) -> &'static str {
-		received.recv_timeout(StdDuration::from_secs(10)).expect("the recorder must receive the next message")
+		received.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
+			.expect("the recorder must receive the next message")
 	}
 
 	#[test]

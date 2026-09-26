@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration as StdDuration;
-
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{
 	Frame, SqliteConfig, Value, WithSubsystem, embedded,
@@ -10,9 +8,9 @@ use reifydb::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_test_harness::assert::{column_values, rows};
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_seconds_const(60);
 const ROWS: usize = 3000;
 const CHUNK: usize = 500;
 const SEED: u64 = 0xD16E_57F1_0A7E_0042;
@@ -20,6 +18,8 @@ const DIGEST: &str = "stats::digest(latency, 0.01)";
 const PERCENTILES: [(&str, &str); 4] = [("p0", "0"), ("p50", "0.5"), ("p99", "0.99"), ("p100", "1")];
 
 type Canonical = (ValueType, u32, u64, Vec<u8>);
+
+type Summary<'a> = Vec<(&'a [String], Option<(&'a ValueType, u32, u64, usize)>)>;
 
 #[derive(Clone, Copy)]
 enum Latency {
@@ -180,7 +180,7 @@ fn digests(db: &TestDb, rql: &str, keys: &[&str]) -> Vec<(Vec<String>, Option<Ca
 	keyed(&db.query(rql), keys, &["d"]).into_iter().map(|(key, values)| (key, canonical(&values[0]))).collect()
 }
 
-fn summary(rows: &[(Vec<String>, Option<Canonical>)]) -> Vec<(&[String], Option<(&ValueType, u32, u64, usize)>)> {
+fn summary(rows: &[(Vec<String>, Option<Canonical>)]) -> Summary<'_> {
 	rows.iter()
 		.map(|(key, digest)| {
 			(
@@ -404,7 +404,7 @@ fn a_reopened_database_whose_flows_are_caught_up_reports_them_caught_up() {
 	}
 
 	let mut db = sqlite(&path);
-	let caught_up = db.await_all_flows(StdDuration::from_secs(10));
+	let caught_up = db.await_all_flows(Duration::from_seconds_const(10));
 	let views = rows(&db.query("FROM app::sums"));
 	db.stop();
 	assert_eq!(views.len(), 1, "precondition: the stored view row survives the restart");

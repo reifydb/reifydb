@@ -218,9 +218,10 @@ fn run_standalone_probe(args: RunArgs, token: String) {
 
 #[cfg(test)]
 mod tests {
-	use std::{sync::atomic::Ordering, time::Duration};
+	use std::sync::atomic::Ordering;
 
 	use libc::{SIGTERM, raise};
+	use reifydb::value::value::duration::Duration;
 	use tokio::time::timeout;
 
 	use super::{PROBE_SHUTDOWN, await_termination_signal, install_probe_signal_handlers};
@@ -241,8 +242,7 @@ mod tests {
 			raise(SIGTERM);
 		}
 
-		#[allow(clippy::disallowed_types)]
-		let wait = timeout(Duration::from_secs(2), await_termination_signal());
+		let wait = timeout(Duration::from_seconds(2).unwrap().to_std(), await_termination_signal());
 		wait.await.expect("await_termination_signal must return after SIGTERM");
 		assert!(PROBE_SHUTDOWN.load(Ordering::SeqCst), "SIGTERM must set the shutdown flag");
 	}

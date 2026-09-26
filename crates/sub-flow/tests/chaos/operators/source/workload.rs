@@ -7,10 +7,7 @@
 //! function, and a sweep against it would restate the workload. The interned column is the only part
 //! of a source's contract that can be wrong.
 
-use std::{
-	collections::BTreeMap,
-	sync::{Arc, Mutex},
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
@@ -21,6 +18,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_testing_chaos::operator::workload::{Lanes, Workload};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use reifydb_value::{
@@ -66,15 +64,13 @@ pub struct SourceWorkload {
 
 impl SourceWorkload {
 	pub fn entry_id(&self, symbol: &'static str) -> DictionaryEntryId {
-		let mut held = self.interned.lock().expect("the intern map is not poisoned");
-		held.entry(symbol)
-			.or_insert_with(|| {
-				self.registry
-					.intern(&self.dictionary, &Value::Utf8(symbol.to_string()))
-					.expect("interning a symbol succeeds")
-					.id
-			})
-			.clone()
+		let mut held = self.interned.lock();
+		*held.entry(symbol).or_insert_with(|| {
+			self.registry
+				.intern(&self.dictionary, &Value::Utf8(symbol.to_string()))
+				.expect("interning a symbol succeeds")
+				.id
+		})
 	}
 
 	fn columns(&self, rows: &[SourceRow]) -> Columns {

@@ -5,16 +5,14 @@
 // is its own commit, so a wrong total means the state carried over disagrees with what was
 // committed - a double-merge, a stale high_water, or a missed eviction.
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{
 	WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
 use reifydb_test_harness::assert::rows;
-use reifydb_value::value::{Value, digest::Digest, value_type::ValueType};
+use reifydb_value::value::{Value, digest::Digest, duration::Duration, value_type::ValueType};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 const PPM: u32 = 10_000;
 
@@ -39,7 +37,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	};
 	let await_total = |g: i32, total: f64| {
 		let rql = format!("FROM app::r | filter {{ g == {g} and total == {total} }}");
-		let got = db.await_row_count(&rql, 1, StdDuration::from_secs(5));
+		let got = db.await_row_count(&rql, 1, Duration::from_seconds_const(5));
 		assert_eq!(
 			got,
 			1,
@@ -91,7 +89,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	};
 	let await_total = |g: i32, total: f64| {
 		let rql = format!("FROM app::p | filter {{ g == {g} and total == {total} }}");
-		let got = db.await_row_count(&rql, 1, StdDuration::from_secs(5));
+		let got = db.await_row_count(&rql, 1, Duration::from_seconds_const(5));
 		assert_eq!(
 			got,
 			1,
@@ -148,7 +146,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 		]"#,
 	);
 
-	let settled = db.await_row_count("FROM app::e | filter { total == 5.0 }", 1, StdDuration::from_secs(5));
+	let settled = db.await_row_count("FROM app::e | filter { total == 5.0 }", 1, Duration::from_seconds_const(5));
 	assert_eq!(
 		settled,
 		1,
@@ -181,13 +179,14 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 
 	db.command("INSERT app::t [{ g: 1, v: 6.0 }]");
 	assert_eq!(
-		db.await_row_count("FROM app::p | filter { total == 6.0 }", 1, StdDuration::from_secs(5)),
+		db.await_row_count("FROM app::p | filter { total == 6.0 }", 1, Duration::from_seconds_const(5)),
 		1,
 		"view now: {:?}",
 		db.query_as_root("FROM app::p", ())
 	);
 
-	let held = db.await_exact_row_count("FROM app::p | filter { total == 6.0 }", 1, StdDuration::from_secs(2));
+	let held =
+		db.await_exact_row_count("FROM app::p | filter { total == 6.0 }", 1, Duration::from_seconds_const(2));
 	assert_eq!(
 		held,
 		1,

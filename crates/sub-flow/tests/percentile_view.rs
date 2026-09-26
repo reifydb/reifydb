@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::Arc,
-	time::{Duration as StdDuration, Instant},
-};
+use std::sync::Arc;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{
@@ -25,12 +22,12 @@ use reifydb_rql::{
 	expression::{Expression, parse_expression},
 	flow::aggregate::{AggregateContext, DIGEST_FUNCTION, PERCENTILE_FUNCTION, SlotKind},
 };
-use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
+use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::{assert::rows, engine::TestEngine};
 use reifydb_value::value::{Value, datetime::DateTime, digest::Digest, duration::Duration, value_type::ValueType};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_seconds_const(60);
 const ROWS: usize = 1200;
 const CHUNK: usize = 400;
 const SEED: u64 = 0x5443_0000_D16E_0059;
@@ -57,6 +54,8 @@ const PERCENTILE_CALLS: [(&str, &str); 4] = [
 	("p90w", "stats::approx_percentile(latency, 0.9, 0.05)"),
 	("e99", "stats::approx_percentile(latency - queue, 0.99, 0.01)"),
 ];
+
+type Cases<'a> = Vec<(Vec<(&'a str, &'a str)>, Value, &'a str, &'a str)>;
 
 fn runtime() -> RuntimeConfig {
 	RuntimeConfig::default().fatal(FatalConfig::disarmed())
@@ -340,7 +339,7 @@ fn every_runtime_digest_input_error_names_the_function_written_for_the_slot_that
 		Value::Digest(Box::new(digest))
 	};
 	let instant = || Value::DateTime(DateTime::from_millis(1_000_000));
-	let cases: Vec<(Vec<(&str, &str)>, Value, &str, &str)> = vec![
+	let cases: Cases<'_> = vec![
 		(
 			vec![("d", "stats::digest(x)"), ("p", "stats::approx_percentile(y, 0.5)")],
 			float(),
@@ -671,9 +670,9 @@ fn frozen_rows(from: usize, to: usize) -> Vec<String> {
 }
 
 fn poisoned_before_flows_catch_up(db: &TestDb) -> Option<String> {
-	let deadline = Instant::now() + TIMEOUT;
+	let deadline = Clock::Real.instant() + TIMEOUT;
 	loop {
-		if db.await_all_flows(StdDuration::from_millis(100)) {
+		if db.await_all_flows(Duration::from_milliseconds(100).unwrap()) {
 			return None;
 		}
 		let status =
@@ -685,7 +684,10 @@ fn poisoned_before_flows_catch_up(db: &TestDb) -> Option<String> {
 		{
 			return Some(description.clone());
 		}
-		assert!(Instant::now() < deadline, "the flows must either catch up or fail, last status: {status:?}");
+		assert!(
+			Clock::Real.instant() < deadline,
+			"the flows must either catch up or fail, last status: {status:?}"
+		);
 	}
 }
 

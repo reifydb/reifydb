@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration;
 use std::{
 	env,
 	fs::{remove_dir_all, remove_file},
@@ -10,7 +8,6 @@ use std::{
 	path::{Path, PathBuf},
 	process,
 	thread::sleep,
-	time::Instant,
 };
 
 use reifydb_engine::engine::StandardEngine;
@@ -98,30 +95,27 @@ impl TestDb {
 		self.query(rql).iter().map(|frame| frame.row_count()).sum()
 	}
 
-	#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-	pub fn await_row_count(&self, rql: &str, want: usize, timeout: Duration) -> usize {
-		let deadline = Instant::now() + timeout;
+	pub fn await_row_count(&self, rql: &str, want: usize, timeout: impl Into<ValueDuration>) -> usize {
+		let deadline = Clock::Real.instant() + timeout.into();
 		loop {
 			let got = self.row_count(rql);
-			if got >= want || Instant::now() >= deadline {
+			if got >= want || Clock::Real.instant() >= deadline {
 				return got;
 			}
-			sleep(Duration::from_millis(20));
+			sleep(ValueDuration::from_milliseconds_const(20).to_std());
 		}
 	}
 
-	#[allow(clippy::disallowed_types)]
-	pub fn await_exact_row_count(&self, rql: &str, want: usize, timeout: Duration) -> usize {
+	pub fn await_exact_row_count(&self, rql: &str, want: usize, timeout: impl Into<ValueDuration>) -> usize {
 		await_value(want, timeout, || self.row_count(rql))
 	}
 
-	#[allow(clippy::disallowed_types)]
-	pub fn await_all_flows(&self, timeout: Duration) -> bool {
+	pub fn await_all_flows(&self, timeout: impl Into<ValueDuration>) -> bool {
 		let watermarks = self.db.watermarks();
 		let target = watermarks.tx().current().expect("current commit version");
 		watermarks
 			.cdc()
-			.wait_for_flow_consumer(target, ValueDuration::from_nanos_infallible(timeout.as_nanos() as u64))
+			.wait_for_flow_consumer(target, timeout.into())
 			.unwrap_or_else(|e| panic!("awaiting deferred flows failed: {e}"))
 	}
 
@@ -220,29 +214,27 @@ impl AsEngine for Database {
 	}
 }
 
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-pub fn await_value<T: PartialEq>(want: T, timeout: Duration, mut poll: impl FnMut() -> T) -> T {
-	let deadline = Instant::now() + timeout;
+pub fn await_value<T: PartialEq>(want: T, timeout: impl Into<ValueDuration>, mut poll: impl FnMut() -> T) -> T {
+	let deadline = Clock::Real.instant() + timeout.into();
 	loop {
 		let got = poll();
-		if got == want || Instant::now() >= deadline {
+		if got == want || Clock::Real.instant() >= deadline {
 			return got;
 		}
-		sleep(Duration::from_millis(20));
+		sleep(ValueDuration::from_milliseconds_const(20).to_std());
 	}
 }
 
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-pub fn poll_until<T>(mut poll: impl FnMut() -> Option<T>, timeout: Duration) -> Option<T> {
-	let deadline = Instant::now() + timeout;
+pub fn poll_until<T>(mut poll: impl FnMut() -> Option<T>, timeout: impl Into<ValueDuration>) -> Option<T> {
+	let deadline = Clock::Real.instant() + timeout.into();
 	loop {
 		if let Some(value) = poll() {
 			return Some(value);
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			return None;
 		}
-		sleep(Duration::from_millis(20));
+		sleep(ValueDuration::from_milliseconds_const(20).to_std());
 	}
 }
 

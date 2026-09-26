@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration as StdDuration;
 use std::{
 	collections::Bound,
 	sync::{
@@ -10,7 +8,6 @@ use std::{
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	thread::{self, JoinHandle},
-	time::Instant,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -64,8 +61,7 @@ const WATCHDOG: Duration = Duration::from_seconds_const(120);
 
 const JOIN: Duration = Duration::from_seconds_const(30);
 
-#[allow(clippy::disallowed_types)]
-const CONDITION: StdDuration = StdDuration::from_secs(30);
+const CONDITION: Duration = Duration::from_seconds_const(30);
 
 fn record(version: u64) -> Cdc {
 	// every record must cost exactly the same, otherwise a ceiling in records is not a ceiling in bytes
@@ -165,12 +161,11 @@ where
 	}
 }
 
-#[allow(clippy::disallowed_methods)]
 fn wait_for(label: &str, mut ready: impl FnMut() -> bool) {
 	// spins rather than sleeps so no ordering depends on a duration, and gives up so a lost wakeup fails
-	let deadline = Instant::now() + CONDITION;
+	let deadline = Clock::Real.instant() + CONDITION;
 	while !ready() {
-		assert!(Instant::now() < deadline, "{label}");
+		assert!(Clock::Real.instant() < deadline, "{label}");
 		thread::yield_now();
 	}
 }

@@ -125,7 +125,7 @@ fn a_dispatch_publishes_nothing_until_every_worker_has_finished() {
 		"both workers must share one coordination thread so the free worker's dispatch runs to completion first"
 	);
 	assert!(
-		held.0 % 2 == 1 && free.0 % 2 == 0,
+		held.0 % 2 == 1 && free.0.is_multiple_of(2),
 		"the free subscription must shard onto worker 0 so its dispatch is queued before the held one's \
 		 (held={:?} free={:?})",
 		held,

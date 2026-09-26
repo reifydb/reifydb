@@ -3,6 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc};
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
@@ -22,8 +23,7 @@ mod stress;
 
 /// Create a unique test table name to avoid conflicts between tests
 pub fn unique_table_name(prefix: &str) -> String {
-	use std::time::{SystemTime, UNIX_EPOCH};
-	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+	let timestamp = Clock::Real.now().to_nanos();
 	format!("{}_{}", prefix, timestamp % 1_000_000_000)
 }
 

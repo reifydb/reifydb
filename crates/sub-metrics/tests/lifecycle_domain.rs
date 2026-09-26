@@ -7,12 +7,11 @@
 //! has never run - both read as "no complaints". Driven end to end because an unregistered vtable, an unresolved
 //! IoC handle and a sampler that never spawns all leave the surface empty.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
 use reifydb_core::lifecycle::class::RetentionClass;
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 fn db_with_refresh() -> TestDb {
 	TestDb::from(

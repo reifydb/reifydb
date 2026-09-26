@@ -5,13 +5,11 @@
 // slide sequence. These tests pin the three places that distinction is observable: which windows
 // a row lands in, what a window stamps #time with, and when a window seals.
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{column_values, timed_rows};
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))

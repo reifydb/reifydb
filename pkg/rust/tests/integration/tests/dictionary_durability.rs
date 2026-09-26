@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread,
-	time::{Duration, Instant},
-};
+use std::thread;
 
 use reifydb::{
 	ConfigKey, Frame, SqliteConfig, Value, WithSubsystem,
 	core::key::tag::KeyTag,
 	embedded,
+	runtime::context::clock::Clock,
 	testing::db::{TempDbPath, TestDb},
+	value::value::duration::Duration,
 };
 use reifydb_codec::key::serializer::KeySerializer;
 use reifydb_test_harness::assert::column_values;
@@ -76,15 +75,15 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 
 		db.command("insert app::src [{ id: 1, sym: 'wsol' }, { id: 2, sym: 'usdc' }]");
 
-		let deadline = Instant::now() + Duration::from_secs(10);
+		let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 		loop {
 			let frames = db.query("from app::v");
 			let n = frames.first().and_then(|f| f.columns.first()).map_or(0, |c| c.data.len());
-			if n >= 2 || Instant::now() >= deadline {
+			if n >= 2 || Clock::Real.instant() >= deadline {
 				assert_eq!(n, 2, "precondition: the deferred view must materialize both rows");
 				break;
 			}
-			thread::sleep(Duration::from_millis(20));
+			thread::sleep(Duration::from_milliseconds_const(20).to_std());
 		}
 
 		db.stop();
@@ -122,7 +121,7 @@ fn dictionary_entries_reach_disk_without_a_graceful_stop() {
 	db.command("insert app::t [{ sym: 'wsol' }]");
 
 	// Give the periodic flush (1s interval, pinned above) ample time to reach the persistent tier.
-	thread::sleep(Duration::from_secs(12));
+	thread::sleep(Duration::from_seconds_const(12).to_std());
 
 	// Skip Drop, which would run the graceful shutdown flush. This is the crash case.
 	std::mem::forget(db);

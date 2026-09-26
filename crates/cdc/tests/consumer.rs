@@ -11,7 +11,6 @@ use std::{
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread::{self, JoinHandle, sleep},
-	time::Instant,
 };
 
 use reifydb_cdc::consume::{
@@ -337,7 +336,6 @@ struct ChildOutput {
 	stderr: String,
 }
 
-#[allow(clippy::disallowed_methods)]
 fn run_child_with_limit(test_name: &str, child_env: &str, limit: Duration) -> ChildOutput {
 	let exe = env::current_exe().expect("Failed to resolve test binary path");
 	let mut child = Command::new(exe)
@@ -350,13 +348,13 @@ fn run_child_with_limit(test_name: &str, child_env: &str, limit: Duration) -> Ch
 	let stdout = read_in_background(child.stdout.take().expect("child stdout is piped"));
 	let stderr = read_in_background(child.stderr.take().expect("child stderr is piped"));
 
-	let deadline = Instant::now() + limit.to_std();
+	let deadline = Clock::Real.instant() + limit;
 	let mut timed_out = false;
 	let status = loop {
 		if let Some(status) = child.try_wait().expect("Failed to poll child process") {
 			break status;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			timed_out = true;
 			child.kill().expect("Failed to kill child past its wall-clock limit");
 			break child.wait().expect("Failed to reap killed child");
@@ -1016,17 +1014,16 @@ fn poll_interval() -> Duration {
 	Duration::from_milliseconds(10).unwrap()
 }
 
-#[allow(clippy::disallowed_methods)]
 fn await_until<F: Fn() -> bool>(label: &str, check: F) {
-	let timeout = poll_timeout().to_std();
-	let deadline = Instant::now() + timeout;
-	while Instant::now() < deadline {
+	let timeout = poll_timeout();
+	let deadline = Clock::Real.instant() + timeout;
+	while Clock::Real.instant() < deadline {
 		if check() {
 			return;
 		}
 		sleep(poll_interval().to_std());
 	}
-	panic!("await_until({label}) timed out after {timeout:?}");
+	panic!("await_until({label}) timed out after {timeout}");
 }
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {

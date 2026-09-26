@@ -5,11 +5,10 @@
 //! end: the flush actor scans the metrics KV store, resolves object ids through the catalog, and pushes wide
 //! rows to the sampler, which publishes them. A break anywhere in that chain leaves the surface empty.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 fn db_with_fast_metrics() -> TestDb {
 	TestDb::from(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, time::Duration as StdDuration};
+use std::collections::BTreeMap;
 
 use reifydb::{
 	WithSubsystem, embedded,
@@ -9,9 +9,9 @@ use reifydb::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_test_harness::assert::rows;
-use reifydb_value::value::{Value, digest::Digest, value_type::ValueType};
+use reifydb_value::value::{Value, digest::Digest, duration::Duration, value_type::ValueType};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_seconds_const(30);
 const PPM: u32 = 10_000;
 const P50: &str = "p50: stats::approx_percentile(v, 0.5, 0.01)";
 

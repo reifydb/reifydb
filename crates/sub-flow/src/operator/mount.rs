@@ -118,6 +118,8 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 
 #[cfg(test)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
@@ -176,7 +178,7 @@ mod tests {
 		host.state_set(&written, EncodedPodRow::new(&[7])).unwrap();
 
 		let from_get_many: Vec<GroupStateKey> =
-			host.state_get_many(&[written.clone()]).unwrap().into_iter().map(|(key, _)| key).collect();
+			host.state_get_many(from_ref(&written)).unwrap().into_iter().map(|(key, _)| key).collect();
 		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
 
 		let from_range: Vec<GroupStateKey> =
@@ -184,7 +186,7 @@ mod tests {
 		assert_eq!(from_range, vec![written.clone()], "a group sweep must return the key that was written");
 
 		let mut visited = Vec::new();
-		host.state_get_many_visit(&[written.clone()], &mut |key, _| {
+		host.state_get_many_visit(from_ref(&written), &mut |key, _| {
 			visited.push(key);
 			Ok(())
 		})

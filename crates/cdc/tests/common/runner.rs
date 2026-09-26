@@ -3,7 +3,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep, time::Instant};
+use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::context::clock::MockClock;
+use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_store_cdc::{storage::CdcStorage as _, store::CdcStore};
 use reifydb_testing::testscript::{command::Command, runner::Runner as TsRunner};
 use reifydb_transaction::transaction::command::CommandTransaction;
@@ -66,15 +66,14 @@ impl Runner {
 		Ok(self.active_txn.as_mut().unwrap())
 	}
 
-	#[allow(clippy::disallowed_methods)]
 	fn wait_for_cdc(&self, version: CommitVersion) {
-		let deadline = Instant::now() + Duration::from_seconds(5).unwrap().to_std();
+		let deadline = Clock::Real.instant() + Duration::from_seconds(5).unwrap();
 		loop {
 			match self.cdc_store.max_version() {
 				Ok(Some(max)) if max.0 >= version.0 => return,
 				_ => {}
 			}
-			if Instant::now() >= deadline {
+			if Clock::Real.instant() >= deadline {
 				return;
 			}
 			sleep(Duration::from_milliseconds(2).unwrap().to_std());

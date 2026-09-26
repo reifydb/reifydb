@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::assert::column_values;
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_seconds_const(5);
 
 fn make_db() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
@@ -31,7 +29,7 @@ fn insert_matching_rows(db: &TestDb) {
 }
 
 fn poisoned_flows(db: &TestDb) -> Result<String, String> {
-	let deadline = Instant::now() + SETTLE;
+	let deadline = Clock::Real.instant() + SETTLE;
 	loop {
 		let status =
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
@@ -41,10 +39,10 @@ fn poisoned_flows(db: &TestDb) -> Result<String, String> {
 		{
 			return Ok(description.clone());
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			return Err(format!("the view flow must be poisoned, last status: {status:?}"));
 		}
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds_const(20).to_std());
 	}
 }
 

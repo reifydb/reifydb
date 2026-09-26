@@ -241,8 +241,8 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 			batch.row_count(),
 			"row numbers must cover the batch or this guard cannot identify the rows it checks"
 		);
-		for row_idx in 0..batch.row_count() {
-			let row = row_numbers[row_idx].value();
+		for row_number in row_numbers.iter() {
+			let row = row_number.value();
 			seen += 1;
 			match op {
 				DiffType::Insert => {

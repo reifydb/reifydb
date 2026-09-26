@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, time::Duration as StdDuration};
+use std::collections::BTreeSet;
 
 use reifydb::{
 	ConfigKey, Value, WithSubsystem, embedded,
@@ -27,10 +27,10 @@ use reifydb_sdk::{
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
 };
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(20);
+const TIMEOUT: Duration = Duration::from_seconds_const(20);
 
 const KEEPER_REASON: &str = "keeps one key per group for as long as it runs";
 

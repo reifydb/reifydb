@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
-use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb, value::value::duration::Duration};
 
 const ROWS: &str = "insert test::src [{ ts: 10, region: 'us', n: 1 }, { ts: 20, region: 'us', n: 2 }, \
                     { ts: 30, region: 'eu', n: 3 }]";
@@ -16,7 +14,10 @@ fn db_with(ddl: &[&str]) -> TestDb {
 		db.admin(statement);
 	}
 	db.command(ROWS);
-	assert!(db.await_all_flows(Duration::from_secs(10)), "the views must materialize before anything is asserted");
+	assert!(
+		db.await_all_flows(Duration::from_seconds_const(10)),
+		"the views must materialize before anything is asserted"
+	);
 	db
 }
 

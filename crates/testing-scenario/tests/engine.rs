@@ -146,7 +146,7 @@ fn full_scan_asks_for_more_rows_than_the_filter_can_ever_match() {
 	// the newest rows and the scan stops. Should FULL_SCAN_MATCHES ever reach WINDOW, take would
 	// short-circuit the same way and this scenario would quietly stop being a full scan while
 	// still reporting under the same name.
-	assert!(FULL_SCAN_MATCHES < WINDOW, "take must be unfillable or the scan short-circuits");
+	const { assert!(FULL_SCAN_MATCHES < WINDOW, "take must be unfillable or the scan short-circuits") };
 
 	let scenario = by_name("scan").expect("scan scenario is registered");
 	let db = TestDb::memory();

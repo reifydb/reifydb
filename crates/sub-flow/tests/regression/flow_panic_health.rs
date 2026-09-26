@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::HealthStatus;
+use reifydb_value::value::duration::Duration;
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_seconds_const(5);
 
 const PICK_ON_A_MISSING_COLUMN: &str = "CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_e: int4 } AS { FROM app::t INNER JOIN { FROM app::w } AS s USING (a, s.a) WITH { snapshot: true, latest: { no_such } } }";
 
@@ -35,14 +34,14 @@ fn a_join_pick_on_a_column_an_aggregate_right_side_lacks_poisons_the_flow_naming
 	);
 	insert_matching_rows(&db);
 
-	let deadline = Instant::now() + SETTLE;
+	let deadline = Clock::Real.instant() + SETTLE;
 	let status = loop {
 		let status =
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
-		if matches!(status, HealthStatus::Degraded { .. }) || Instant::now() >= deadline {
+		if matches!(status, HealthStatus::Degraded { .. }) || Clock::Real.instant() >= deadline {
 			break status;
 		}
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds_const(20).to_std());
 	};
 
 	let HealthStatus::Degraded {

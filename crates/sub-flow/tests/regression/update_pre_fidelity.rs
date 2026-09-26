@@ -432,7 +432,7 @@ mod join {
 			engine.executor().runtime_context.clone(),
 			snapshot,
 			false,
-			latest.then(|| JoinPick::latest()),
+			latest.then(JoinPick::latest),
 			None,
 			None,
 			Arc::new(FlowContext::default()),

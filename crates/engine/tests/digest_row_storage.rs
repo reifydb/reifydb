@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use reifydb_core::execution::ExecutionResult;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
@@ -32,18 +30,18 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn run(result: ExecutionResult) -> Result<Vec<Frame>, Diagnostic> {
+fn run(result: ExecutionResult) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	match result.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(result.frames),
 	}
 }
 
-fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	run(t.inner().admin_as(TestEngine::identity(), rql, Params::None))
 }
 
-fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	run(t.inner().command_as(TestEngine::identity(), rql, Params::None))
 }
 

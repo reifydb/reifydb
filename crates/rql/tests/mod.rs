@@ -27,6 +27,12 @@ impl Runner {
 	}
 }
 
+impl Default for Runner {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();

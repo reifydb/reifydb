@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration;
-use std::{hint::black_box, time::Instant};
+use std::hint::black_box;
 
 use reifydb_benches::{BenchReport, env_usize};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_evaluate::expression::compare::{CompareOp, Equal, LessThan, compare_columns};
-use reifydb_value::{error::Diagnostic, fragment::Fragment, value::value_type::ValueType};
+use reifydb_runtime::context::clock::Clock;
+use reifydb_value::{
+	error::Diagnostic,
+	fragment::Fragment,
+	value::{duration::Duration, value_type::ValueType},
+};
 
-#[allow(clippy::disallowed_types)]
 fn measure<Op: CompareOp>(repeats: usize, left: &ColumnWithName, right: &ColumnWithName) -> Duration {
 	let mut samples: Vec<Duration> = (0..repeats)
 		.map(|_| {
-			let started = Instant::now();
+			let started = Clock::Real.instant();
 			let output = compare_columns::<Op>(
 				left,
 				right,
@@ -24,7 +26,7 @@ fn measure<Op: CompareOp>(repeats: usize, left: &ColumnWithName, right: &ColumnW
 				},
 			)
 			.expect("bench comparison succeeds");
-			let elapsed = started.elapsed();
+			let elapsed = started.elapsed().into();
 			drop(black_box(output));
 			elapsed
 		})
@@ -43,8 +45,16 @@ fn bench_case(
 ) {
 	let left = ColumnWithName::new("left", left);
 	let right = ColumnWithName::new("right", right);
-	report.record_throughput(&format!("{label}/eq"), rows as u64, measure::<Equal>(repeats, &left, &right));
-	report.record_throughput(&format!("{label}/lt"), rows as u64, measure::<LessThan>(repeats, &left, &right));
+	report.record_throughput(
+		&format!("{label}/eq"),
+		rows as u64,
+		measure::<Equal>(repeats, &left, &right).to_std(),
+	);
+	report.record_throughput(
+		&format!("{label}/lt"),
+		rows as u64,
+		measure::<LessThan>(repeats, &left, &right).to_std(),
+	);
 }
 
 fn main() {

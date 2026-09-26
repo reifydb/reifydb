@@ -317,12 +317,9 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	#[allow(clippy::disallowed_types)]
-	use std::time::Duration as StdDuration;
 	use std::{
 		sync::atomic::{AtomicUsize, Ordering},
 		thread::sleep,
-		time::Instant,
 	};
 
 	use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKey};
@@ -437,7 +434,6 @@ pub mod tests {
 	}
 
 	#[test]
-	#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 	fn produce_feeds_the_flow_backlog_and_wakes_it() {
 		// The backlog is the flow hot path's only transport, so a produced commit must land there
 		// and wake it without any consumer touching storage. A flow-irrelevant commit must still
@@ -484,7 +480,7 @@ pub mod tests {
 			})
 			.unwrap();
 
-		let deadline = Instant::now() + StdDuration::from_secs(10);
+		let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 		let items = loop {
 			match backlog.pull(CommitVersion(0), CommitVersion(2), ByteSize::from_mib(1)) {
 				BacklogPull::Hit {
@@ -493,8 +489,8 @@ pub mod tests {
 					..
 				} if advance_to == CommitVersion(2) && !items.is_empty() => break items,
 				_ => {
-					assert!(Instant::now() < deadline, "producer never fed the backlog");
-					sleep(StdDuration::from_millis(5));
+					assert!(Clock::Real.instant() < deadline, "producer never fed the backlog");
+					sleep(Duration::from_milliseconds(5).unwrap().to_std());
 				}
 			}
 		};

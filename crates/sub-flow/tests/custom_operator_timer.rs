@@ -5,8 +5,6 @@
 //! operator never reads a clock and is never handed a timestamp on apply: it arms off the row's own
 //! #time, and the due timer fires inside the flow transaction that carried the watermark past it.
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -29,10 +27,13 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
+	value::{
+		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
+		value_type::ValueType,
+	},
 };
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(20);
+const TIMEOUT: Duration = Duration::from_seconds_const(20);
 
 // How long after a row's own event time the operator asks to be woken.
 const DELAY_MS: i64 = 1_000;
@@ -124,7 +125,7 @@ impl UnmanagedOperator for Alarm {
 
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
-		let fired_at = timer.due.to_millis() as i64;
+		let fired_at = timer.due.to_millis();
 		ctx.state().set(&unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
@@ -330,7 +331,7 @@ impl UnmanagedOperator for Snooze {
 
 				let wake = at.to_millis() + DELAY_MS;
 				ctx.arm_timer(DateTime::from_millis(wake), TimerKind::Seal, &key)?;
-				ctx.state().set(&armed_key, &(wake as i64))?;
+				ctx.state().set(&armed_key, &wake)?;
 			}
 		}
 		Ok(())
@@ -339,7 +340,7 @@ impl UnmanagedOperator for Snooze {
 	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let group = GroupId::of(&group_key(g));
-		let fired_at = timer.due.to_millis() as i64;
+		let fired_at = timer.due.to_millis();
 
 		// Keyed by the firing instant, not the group, so a timer that should have been cancelled
 		// surfaces as an extra row instead of overwriting the surviving timer's.

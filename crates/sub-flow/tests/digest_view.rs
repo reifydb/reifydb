@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::column_values;
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
+
+type Groups = Vec<(String, String)>;
 
 fn setup() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
@@ -33,7 +34,7 @@ fn groups(db: &TestDb, rql: &str) -> Vec<(String, String)> {
 	text(db, rql, "g").into_iter().zip(text(db, rql, "x")).collect()
 }
 
-fn view_matches_batch(aggregate: &str, column: &str, rows: &str) -> (Vec<(String, String)>, Vec<(String, String)>) {
+fn view_matches_batch(aggregate: &str, column: &str, rows: &str) -> (Groups, Groups) {
 	let db = setup();
 	db.admin(&format!(
 		"CREATE DEFERRED VIEW app::v {{ g: int4, x: {column} }} AS {{ FROM app::t | aggregate {{ x: {aggregate} }} by {{ g }} }}"

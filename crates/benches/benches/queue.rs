@@ -12,7 +12,6 @@ use std::{
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	thread,
-	time::{Duration, Instant},
 };
 
 use hdrhistogram::Histogram;
@@ -20,6 +19,7 @@ use reifydb::{Database, embedded, engine::engine::StandardEngine, server};
 use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{BenchReport, env_list_usize, env_opt, env_u64, latency_histogram, median_by_throughput, merge};
 use reifydb_client::WireFormat;
+use reifydb_runtime::context::clock::{Clock, Instant};
 use reifydb_testing_scenario::query::OperationKind;
 use reifydb_value::value::{Value, duration::Duration as ValueDuration, frame::frame::Frame};
 use rustls::crypto::ring::default_provider;
@@ -114,14 +114,14 @@ struct Knobs {
 	keys: u64,
 	lease_seconds: u64,
 	wait_millis: u64,
-	budget: Duration,
+	budget: ValueDuration,
 	format: WireFormat,
 }
 
 struct Claimed {
 	seq: u64,
 	key: String,
-	at: Duration,
+	at: ValueDuration,
 }
 
 struct ClaimedRow {
@@ -161,7 +161,7 @@ struct Sample {
 	claim_calls: u64,
 	empty_claims: u64,
 	enqueued: u64,
-	elapsed: Duration,
+	elapsed: ValueDuration,
 	claim_latency: Histogram<u64>,
 	delay: Histogram<u64>,
 	e2e: Histogram<u64>,
@@ -290,15 +290,15 @@ fn parse_claim(frames: &[Frame], keyed: bool) -> Vec<ClaimedRow> {
 	rows
 }
 
-fn wait_within(wait: ValueDuration, remaining: Duration) -> ValueDuration {
-	match wait.to_std() <= remaining {
+fn wait_within(wait: ValueDuration, remaining: ValueDuration) -> ValueDuration {
+	match wait.to_std() <= remaining.to_std() {
 		true => wait,
-		false => ValueDuration::from_milliseconds(remaining.as_millis() as i64)
+		false => ValueDuration::from_milliseconds(remaining.to_std().as_millis() as i64)
 			.expect("a clamped wait is a representable duration"),
 	}
 }
 
-fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> Outcome {
+fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: ValueDuration) -> Outcome {
 	let mut outcome = Outcome::new();
 	let keyed = shared.knobs.keys > 0;
 	let lease_ttl = ValueDuration::from_seconds(shared.knobs.lease_seconds as i64)
@@ -308,10 +308,10 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		Claim::LongPoll => ValueDuration::from_milliseconds(shared.knobs.wait_millis as i64)
 			.expect("WAIT_MILLIS is a representable duration"),
 	};
-	let deadline = Instant::now() + budget;
+	let deadline = Clock::Real.instant() + budget;
 
 	loop {
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			break;
 		}
 
@@ -322,10 +322,10 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 
 		let wait_for = match stopped {
 			true => ValueDuration::zero(),
-			false => wait_within(parked, deadline.saturating_duration_since(Instant::now())),
+			false => wait_within(parked, deadline.duration_since(&Clock::Real.instant()).into()),
 		};
 
-		let call = Instant::now();
+		let call = Clock::Real.instant();
 		let frames = driver.claim_frames(shared.queue, name, shared.knobs.batch as u32, lease_ttl, wait_for);
 		let latency = call.elapsed();
 		outcome.claim_calls += 1;
@@ -349,14 +349,14 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 			outcome.claimed.push(Claimed {
 				seq: row.seq,
 				key: row.key.clone(),
-				at: claimed_at,
+				at: claimed_at.into(),
 			});
 		}
 
 		for row in &rows {
 			driver.command_frames(&format!(r#"CALL queue::ack("{}")"#, row.token));
 			outcome.acked += 1;
-			outcome.last_ack = Some(Instant::now());
+			outcome.last_ack = Some(Clock::Real.instant());
 			shared.acked.fetch_add(1, Ordering::Release);
 
 			let enqueued = shared.enqueued_at[row.seq as usize].load(Ordering::Acquire);
@@ -372,19 +372,22 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 
 fn produce(driver: &Driver, shared: &Shared<'_>) {
 	let capacity = shared.enqueued_at.len() as u64;
-	let paced_from = Instant::now();
-	let stop = paced_from + Duration::from_secs(shared.knobs.seconds);
+	let paced_from = Clock::Real.instant();
+	let stop = paced_from.clone()
+		+ ValueDuration::from_seconds(shared.knobs.seconds as i64)
+			.expect("SECONDS is a representable duration");
 	let mut seq = 0u64;
 
 	while seq < capacity {
-		let now = Instant::now();
+		let now = Clock::Real.instant();
 		if now >= stop {
 			break;
 		}
 
-		let target = paced_from + Duration::from_nanos(seq.saturating_mul(1_000_000_000) / shared.knobs.rate);
+		let target = paced_from.clone()
+			+ ValueDuration::from_nanos_infallible(seq.saturating_mul(1_000_000_000) / shared.knobs.rate);
 		if target > now {
-			thread::sleep(target - now);
+			thread::sleep(&target - &now);
 		}
 
 		let count = INSERT_BATCH.min(capacity - seq);
@@ -426,7 +429,7 @@ fn verify(cell: Cell, knobs: &Knobs, outcomes: &[Outcome], acked: u64, enqueued:
 		acked,
 		enqueued,
 		"{cell_label}: acked {acked} of {enqueued} enqueued items, so items were lost or the {}s budget expired before the queue drained",
-		knobs.budget.as_secs()
+		knobs.budget.to_std().as_secs()
 	);
 
 	assert_eq!(
@@ -484,14 +487,17 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 	let acked_total = AtomicU64::new(0);
 	let budget = match cell.mode {
 		Mode::Drain => knobs.budget,
-		Mode::Steady => Duration::from_secs(knobs.seconds) + knobs.budget,
+		Mode::Steady => ValueDuration::from_seconds(knobs.seconds as i64)
+			.expect("SECONDS is a representable duration")
+			.try_add(knobs.budget)
+			.expect("SECONDS plus BUDGET_SECONDS is a representable duration"),
 	};
 
 	let shared = Shared {
 		queue: &queue,
 		knobs,
 		claim: cell.claim,
-		origin: Instant::now(),
+		origin: Clock::Real.instant(),
 		enqueued_at: &enqueued_at,
 		producing: &producing,
 		produced: &produced,
@@ -499,7 +505,7 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 	};
 
 	let ready = Arc::new(Barrier::new(cell.workers + usize::from(steady) + 1));
-	let mut started = Instant::now();
+	let mut started = Clock::Real.instant();
 
 	let outcomes: Vec<Outcome> = thread::scope(|scope| {
 		let shared = &shared;
@@ -533,17 +539,18 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 			.collect();
 
 		ready.wait();
-		started = Instant::now();
+		started = Clock::Real.instant();
 
 		handles.into_iter().map(|handle| handle.join().expect("worker thread does not panic")).collect()
 	});
 
 	let elapsed = outcomes
 		.iter()
-		.filter_map(|outcome| outcome.last_ack)
+		.filter_map(|outcome| outcome.last_ack.clone())
 		.max()
-		.map(|at| at.saturating_duration_since(started))
-		.unwrap_or_else(|| started.elapsed());
+		.map(|at| at.duration_since(&started))
+		.unwrap_or_else(|| started.elapsed())
+		.into();
 	let enqueued = produced.load(Ordering::Acquire);
 	let acked = outcomes.iter().map(|outcome| outcome.acked).sum();
 
@@ -574,16 +581,16 @@ fn record(report: &mut BenchReport, label: &str, sample: &Sample, mode: Mode) {
 		Mode::Steady => &sample.e2e,
 		Mode::Drain => &sample.claim_latency,
 	};
-	report.record(&format!("{label} section=jobs"), sample.acked, sample.elapsed, jobs);
+	report.record(&format!("{label} section=jobs"), sample.acked, sample.elapsed.to_std(), jobs);
 	report.record(
 		&format!("{label} section=claim empty={} enqueued={}", sample.empty_claims, sample.enqueued),
 		sample.claim_calls,
-		sample.elapsed,
+		sample.elapsed.to_std(),
 		&sample.claim_latency,
 	);
 
 	if mode == Mode::Steady {
-		report.record(&format!("{label} section=delay"), sample.acked, sample.elapsed, &sample.delay);
+		report.record(&format!("{label} section=delay"), sample.acked, sample.elapsed.to_std(), &sample.delay);
 	}
 }
 
@@ -612,7 +619,8 @@ fn main() {
 		keys: env_u64("KEYS", DEFAULT_KEYS),
 		lease_seconds: env_u64("LEASE_SECONDS", DEFAULT_LEASE_SECONDS),
 		wait_millis: env_u64("WAIT_MILLIS", DEFAULT_WAIT_MILLIS),
-		budget: Duration::from_secs(env_u64("BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS)),
+		budget: ValueDuration::from_seconds(env_u64("BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS) as i64)
+			.expect("BUDGET_SECONDS is a representable duration"),
 		format: wire_format(),
 	};
 
@@ -684,8 +692,9 @@ fn main() {
 						samples.push(run_once(engine, cell, &knobs, token.as_deref(), index));
 					}
 
-					let median =
-						median_by_throughput(&samples, |sample| (sample.acked, sample.elapsed));
+					let median = median_by_throughput(&samples, |sample| {
+						(sample.acked, sample.elapsed.to_std())
+					});
 					let label = format!(
 						"mode={} transport={} claim={} workers={} partitions={} keys={} batch={}",
 						cell.mode,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::collections::HashMap;
 
 use reifydb_test_harness::engine::TestEngine;
@@ -12,10 +10,10 @@ use reifydb_value::{
 	value::{Value, digest::Digest, frame::frame::Frame, value_type::ValueType},
 };
 
-fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().command_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

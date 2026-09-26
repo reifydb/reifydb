@@ -362,7 +362,6 @@ mod tests {
 			atomic::{AtomicBool, Ordering},
 			mpsc,
 		},
-		time::Duration,
 	};
 
 	use reifydb_core::{actors::flow::FlowActorMessage, common::CommitVersion, interface::catalog::flow::FlowId};
@@ -375,6 +374,7 @@ mod tests {
 		},
 		context::clock::{Clock, MockClock},
 	};
+	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
@@ -565,7 +565,8 @@ mod tests {
 	}
 
 	fn next_message(received: &mpsc::Receiver<&'static str>) -> &'static str {
-		received.recv_timeout(Duration::from_secs(10)).expect("the recorder must receive the next message")
+		received.recv_timeout(Duration::from_seconds_const(10).to_std())
+			.expect("the recorder must receive the next message")
 	}
 
 	fn send_marker(reader: &ActorRef<FlowActorMessage>, marker: FlowActorMessage) {

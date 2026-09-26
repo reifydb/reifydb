@@ -88,7 +88,7 @@ fn series_materialization_populates_block_store() {
 
 	let mut all_keys: BTreeSet<u64> = BTreeSet::new();
 	for (_id, block) in &blocks {
-		assert!(block.len() > 0);
+		assert!(!block.is_empty());
 
 		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 		assert_eq!(

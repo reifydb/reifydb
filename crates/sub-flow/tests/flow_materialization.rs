@@ -5,11 +5,13 @@
 // passing version V does not mean the effects of V are visible: in a multi-hop chain those effects
 // exist only as a later commit, so a plain min-of-cursors reports caught-up one commit early.
 
-use std::time::{Duration as StdDuration, Instant};
+use std::thread::sleep;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
+use reifydb_value::value::duration::Duration;
 
-const BARRIER_TIMEOUT: StdDuration = StdDuration::from_secs(10);
+const BARRIER_TIMEOUT: Duration = Duration::from_seconds_const(10);
 const ROUNDS: usize = 40;
 
 // The false zero this pins is a narrow window between a flow's commit and its CDC becoming
@@ -20,10 +22,10 @@ fn await_caught_up(db: &TestDb) {
 	// Spins rather than delegating to `await_all_flows`: the defect is a watermark that crosses too
 	// early, so a sleep interval hands the chain enough time to finish and hides it.
 	let target = db.watermarks().tx().current().expect("current commit version");
-	let deadline = Instant::now() + BARRIER_TIMEOUT;
+	let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
 	while db.watermarks().cdc().flow_consumer() < target {
 		assert!(
-			Instant::now() < deadline,
+			Clock::Real.instant() < deadline,
 			"the caught-up watermark never reached committed version {} - the materialization gate is \
 			 stalled, not just imprecise",
 			target.0
@@ -46,7 +48,7 @@ fn prime_flows(db: &TestDb) {
 	// Primes every hop to skip-advance the moment the next insert lands; a chain that is still
 	// quiet cannot expose the race in the first rounds.
 	assert!(db.await_all_flows(BARRIER_TIMEOUT), "flows never caught up on an idle chain");
-	std::thread::sleep(StdDuration::from_millis(100));
+	sleep(Duration::from_milliseconds_const(100).to_std());
 }
 
 fn create_table(db: &TestDb) {
@@ -92,14 +94,14 @@ fn zero_outstanding_means_the_whole_chain_is_materialized() {
 	for round in 0..OUTSTANDING_ROUNDS {
 		db.command(&format!("INSERT app::t [{{ id: {round} }}]"));
 
-		let deadline = Instant::now() + BARRIER_TIMEOUT;
+		let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
 		loop {
 			let flow = db.watermarks().flow().expect("flow watermarks");
 			let rows = flow.all();
 			if !rows.is_empty() && rows.iter().all(|r| r.outstanding == 0) {
 				break;
 			}
-			assert!(Instant::now() < deadline, "round {round}: outstanding never reached zero");
+			assert!(Clock::Real.instant() < deadline, "round {round}: outstanding never reached zero");
 			std::thread::yield_now();
 		}
 

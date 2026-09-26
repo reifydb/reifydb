@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(clippy::result_large_err)]
-
 use std::collections::HashMap;
 
 use reifydb_test_harness::engine::TestEngine;
@@ -17,18 +15,18 @@ fn named(entries: Vec<(&str, Value)>) -> Params {
 	Params::from(map)
 }
 
-fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().admin_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
 
-fn command(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().command_as(TestEngine::identity(), rql, params);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
@@ -36,7 +34,7 @@ fn command(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Diag
 fn create_procedure_error(param_type: &str) -> Diagnostic {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE app");
-	admin(&t, &format!("CREATE PROCEDURE app::p {{ ids: {param_type} }} AS {{ map {{ one: 1 }} }}"))
+	*admin(&t, &format!("CREATE PROCEDURE app::p {{ ids: {param_type} }} AS {{ map {{ one: 1 }} }}"))
 		.expect_err("the procedure must be refused")
 }
 
