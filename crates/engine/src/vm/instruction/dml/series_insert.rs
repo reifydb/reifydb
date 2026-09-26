@@ -212,7 +212,23 @@ fn insert_series_row(
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
 	let values = coerce_series_row(series, columns, context, row_idx)?;
-	let partition_values = series_partition_values(series, &values)?;
+	let mut encoded = values.clone();
+	for (col_def, value) in series.columns.iter().zip(encoded.iter_mut()) {
+		if col_def.name != key_column_name
+			&& let Some(dict_id) = col_def.dictionary_id
+		{
+			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
+				internal_error!("Dictionary {:?} not found for column {}", dict_id, col_def.name)
+			})?;
+			let entry_id = if matches!(value, Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, value)?
+			};
+			*value = entry_id.to_value();
+		}
+	}
+	let partition_values = series_partition_values(series, &encoded)?;
 	let partition = if partition_values.is_empty() {
 		Partition::default()
 	} else {
@@ -264,20 +280,13 @@ fn insert_series_row(
 		.filter(|(column, _)| column.name != key_column_name)
 		.map(|(_, value)| value)
 		.collect();
-	let mut encoded_values = data_values.clone();
-	for (i, col_def) in data_columns.iter().enumerate() {
-		if let Some(dict_id) = col_def.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, col_def.name)
-			})?;
-			let entry_id = if matches!(encoded_values[i], Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &encoded_values[i])?
-			};
-			encoded_values[i] = entry_id.to_value();
-		}
-	}
+	let encoded_values: Vec<Value> = series
+		.columns
+		.iter()
+		.zip(encoded)
+		.filter(|(column, _)| column.name != key_column_name)
+		.map(|(_, value)| value)
+		.collect();
 	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values)?;
 
 	let mut rows_buf = [EncodedSeriesRow::from(row).thaw()];

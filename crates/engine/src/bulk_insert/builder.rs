@@ -325,10 +325,10 @@ fn prepare_table_row<V: ValidationMode>(
 	mut values: Vec<Value>,
 ) -> Result<EncodedTableRowBuilder> {
 	fill_auto_increment_table(catalog, txn, table, &mut values)?;
-	dictionary_encode_table(catalog, txn, table, &mut values)?;
 	if V::VALIDATED {
 		coerce_table_constraints(table, &mut values)?;
 	}
+	dictionary_encode_table(catalog, txn, table, &mut values)?;
 	encode_row(table, shape, &values, clock)
 }
 
@@ -472,13 +472,13 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	let mut inserted_count = 0u64;
 
 	for mut values in coerced_rows {
-		dict_encode_ringbuffer_row(catalog, txn, ringbuffer, &mut values)?;
-
 		if V::VALIDATED {
 			for (idx, col) in ringbuffer.columns.iter().enumerate() {
 				col.constraint.coerce(&mut values[idx])?;
 			}
 		}
+
+		dict_encode_ringbuffer_row(catalog, txn, ringbuffer, &mut values)?;
 
 		let partition_key: Vec<Value> = partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
 		let partition = if partition_col_indices.is_empty() {
@@ -723,13 +723,13 @@ fn insert_series_rows<V: ValidationMode>(
 
 	let mut inserted_count = 0u64;
 	for mut values in coerced_rows {
-		dict_encode_series_row(catalog, txn, series, &mut values)?;
-
 		if V::VALIDATED {
 			for (idx, col) in series.columns.iter().enumerate() {
 				col.constraint.coerce(&mut values[idx])?;
 			}
 		}
+
+		dict_encode_series_row(catalog, txn, series, &mut values)?;
 
 		let partition_values: Vec<Value> =
 			partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
