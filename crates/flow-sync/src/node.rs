@@ -19,7 +19,10 @@ use reifydb_value::{
 	},
 };
 
-use crate::txn::{Intern, Lookup};
+use crate::{
+	sink::TableSink,
+	txn::{Emit, Intern, Lookup, Rows},
+};
 
 pub struct SourceNode {
 	operator: OperatorId,
@@ -82,6 +85,7 @@ pub enum Node {
 	Extend(ExtendOperator),
 	Append(AppendOperator),
 	Sort(OperatorId, Option<Columns>),
+	Sink(TableSink),
 }
 
 impl Node {
@@ -93,6 +97,7 @@ impl Node {
 			Node::Extend(extend) => extend.id(),
 			Node::Append(append) => append.id(),
 			Node::Sort(operator, _) => *operator,
+			Node::Sink(sink) => sink.id(),
 		}
 	}
 
@@ -104,10 +109,11 @@ impl Node {
 			Node::Extend(extend) => extend.output_schema(),
 			Node::Append(append) => append.output_schema(),
 			Node::Sort(_, parent_schema) => parent_schema.clone(),
+			Node::Sink(_) => None,
 		}
 	}
 
-	pub fn apply<T: Lookup + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: Rows + Emit + Lookup + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		match self {
 			Node::Source(source) => source.apply(txn, change),
 			Node::Filter(filter) => filter.apply(change),
@@ -116,6 +122,12 @@ impl Node {
 			Node::Append(append) => append.apply(change),
 			Node::Sort(operator, _) => {
 				Ok(Change::from_flow(*operator, change.version, change.diffs, change.changed_at))
+			}
+			Node::Sink(sink) => {
+				let version = change.version;
+				let changed_at = change.changed_at;
+				sink.apply(txn, change)?;
+				Ok(Change::from_flow(sink.id(), version, Vec::new(), changed_at))
 			}
 		}
 	}

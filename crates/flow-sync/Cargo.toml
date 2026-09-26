@@ -24,3 +24,5 @@ reifydb-routine-abi = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
+
+postcard = { workspace = true }

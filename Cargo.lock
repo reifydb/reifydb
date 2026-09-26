@@ -3475,6 +3475,7 @@ dependencies = [
 name = "reifydb-flow-sync"
 version = "0.9.3"
 dependencies = [
+ "postcard",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",

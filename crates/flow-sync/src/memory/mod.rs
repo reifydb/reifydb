@@ -98,6 +98,7 @@ impl Rows for MemoryTxn {
 
 impl Emit for MemoryTxn {
 	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+		self.entries.push((ObjectId::view(view), diff.clone()));
 		self.emitted.push((view, diff));
 		Ok(())
 	}

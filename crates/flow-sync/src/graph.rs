@@ -28,6 +28,7 @@ use reifydb_value::{Result, error::Error};
 
 use crate::{
 	node::{Node, SourceNode},
+	sink::TableSink,
 	txn::Lookup,
 };
 
@@ -104,8 +105,11 @@ pub fn build<T: Lookup>(
 				..
 			} => Node::Sort(*operator_id, parent_schema(&nodes, first_input(inputs)?)?),
 			SinkTableView {
-				..
-			} => continue,
+				view,
+			} => {
+				require_parent(&nodes, first_input(inputs)?)?;
+				Node::Sink(TableSink::new(*operator_id, txn.view(view)?, runtime_context.clone()))
+			}
 			SourceInlineData {
 				..
 			}
@@ -251,6 +255,19 @@ mod tests {
 				sort: Vec::new(),
 			}),
 		);
+		txn.views.insert(
+			SINK,
+			View::Table(TableView {
+				id: SINK,
+				namespace: NamespaceId(1),
+				name: "s".to_string(),
+				kind: ViewKind::Transactional,
+				columns: columns(),
+				primary_key: None,
+				partition_by: Vec::new(),
+				sort: Vec::new(),
+			}),
+		);
 		txn
 	}
 
@@ -305,7 +322,7 @@ mod tests {
 	}
 
 	#[test]
-	fn build_returns_every_parent_before_its_children_and_leaves_the_sink_out() {
+	fn build_returns_every_parent_before_its_children_and_builds_the_sink_last() {
 		let flow = flow(
 			vec![
 				(1, sink()),
@@ -326,12 +343,12 @@ mod tests {
 			],
 			&[(5, 7), (3, 7), (7, 2), (2, 1)],
 		);
-		let expected: Vec<OperatorId> =
-			flow.topological_order().iter().copied().filter(|id| *id != OperatorId(1)).collect();
+		let expected: Vec<OperatorId> = flow.topological_order().to_vec();
 
 		let nodes = build(&mut memory_txn(), &flow, &Routines::empty(), &runtime_context()).unwrap();
 
-		assert_eq!(expected.len(), 4);
+		assert_eq!(expected.len(), 5);
+		assert_eq!(expected.last(), Some(&OperatorId(1)));
 		assert_eq!(nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(), expected);
 		assert!(nodes.iter().all(|(id, node)| node.id() == *id));
 	}
@@ -366,7 +383,7 @@ mod tests {
 			at_millis(0),
 		);
 
-		for (_, node) in nodes.iter_mut() {
+		for (_, node) in nodes.iter_mut().filter(|(id, _)| *id != OperatorId(4)) {
 			change = node.apply(&mut txn, change).unwrap();
 		}
 
@@ -425,6 +442,17 @@ mod tests {
 
 		let Err(err) = build(&mut memory_txn(), &flow, &Routines::empty(), &runtime_context()) else {
 			panic!("a sort with no input edge must not build");
+		};
+
+		assert_eq!(err.code, "FLOW_028");
+	}
+
+	#[test]
+	fn build_rejects_a_sink_without_an_input_edge_instead_of_writing_nothing() {
+		let flow = flow(vec![(1, sink())], &[]);
+
+		let Err(err) = build(&mut memory_txn(), &flow, &Routines::empty(), &runtime_context()) else {
+			panic!("a sink with no input edge must not build");
 		};
 
 		assert_eq!(err.code, "FLOW_028");

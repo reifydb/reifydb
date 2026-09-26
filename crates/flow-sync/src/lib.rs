@@ -10,4 +10,6 @@ pub mod graph;
 #[cfg(any(test, feature = "testing"))]
 pub mod memory;
 pub mod node;
+pub mod run;
+pub mod sink;
 pub mod txn;
