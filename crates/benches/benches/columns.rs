@@ -19,7 +19,7 @@ use reifydb_allocator::backend::ALLOCATOR as BACKEND;
 use reifydb_benches::{BenchReport, env_flag, env_usize};
 use reifydb_column::{
 	reader::SnapshotReader,
-	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -28,7 +28,9 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	data::{Column, canonical::Canonical},
 };
-use reifydb_value::value::{Value, datetime::DateTime, decimal::Decimal, uuid::Uuid7, value_type::ValueType};
+use reifydb_value::value::{
+	Value, datetime::DateTime, decimal::Decimal, system_columns::SystemColumn, uuid::Uuid7, value_type::ValueType,
+};
 use uuid::Uuid;
 
 struct Counting;
@@ -180,7 +182,7 @@ fn columns_fixture(start: usize, end: usize) -> Columns {
 
 fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 	let schema = vec![
-		(SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false),
+		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		("id".to_string(), ValueType::Int8, false),
 		("g".to_string(), ValueType::Int4, false),
 		("v".to_string(), ValueType::Float8, false),

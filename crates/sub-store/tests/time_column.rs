@@ -261,7 +261,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
-	schema.extend(system_column_schema(&TimeSource::Processing));
+	schema.extend(system_column_schema(&TimeSource::Processing, false));
 
 	let err = column_block_from_batches(
 		schema,
@@ -291,7 +291,7 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
-	schema.extend(system_column_schema(&TimeSource::None));
+	schema.extend(system_column_schema(&TimeSource::None, false));
 
 	let err = column_block_from_batches(
 		schema,

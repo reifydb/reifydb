@@ -5,20 +5,24 @@ use std::sync::Arc;
 
 use reifydb_column::{
 	compress::Compressor,
-	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
 	value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical},
 };
-use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::{system_columns::SystemColumn, value_type::ValueType},
+};
 
 use crate::column::error::SubStoreError;
 
-pub fn system_column_schema(time: &TimeSource) -> Vec<(String, ValueType)> {
+pub fn system_column_schema(time: &TimeSource, partitioned: bool) -> Vec<(String, ValueType)> {
 	SystemColumn::ALL
 		.into_iter()
 		.filter(|sc| *sc != SystemColumn::Time || carries_time(time))
+		.filter(|sc| *sc != SystemColumn::Partitions || partitioned)
 		.map(|sc| (sc.name().to_string(), sc.ty()))
 		.collect()
 }
@@ -40,9 +44,25 @@ pub fn column_block_from_batches(
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
 	let timed = schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Time));
+	let partitioned =
+		schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Partitions));
 	for batch in &batches {
 		let time = batch.time().len();
 		let rows = batch.row_count();
+		let partitions = batch.system.partitions().len();
+		let expected_partitions = if partitioned {
+			rows
+		} else {
+			0
+		};
+		if partitions != expected_partitions {
+			return Err(SubStoreError::PartitionMismatch {
+				partitioned,
+				partitions,
+				rows,
+			}
+			.into());
+		}
 		let expected = if timed {
 			rows
 		} else {
@@ -129,7 +149,7 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns], version: CommitVe
 		.into());
 	}
 	match sc {
-		SystemColumn::RowNumber => {
+		SystemColumn::RowNumbers => {
 			let total: usize = batches.iter().map(|b| b.row_numbers().len()).sum();
 			let mut values = Vec::with_capacity(total);
 			for batch in batches {
@@ -138,6 +158,16 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns], version: CommitVe
 				}
 			}
 			Ok(ColumnBuffer::uint8(values))
+		}
+		SystemColumn::Partitions => {
+			let total: usize = batches.iter().map(|b| b.system.partitions().len()).sum();
+			let mut values = Vec::with_capacity(total);
+			for batch in batches {
+				for partition in batch.system.partitions().iter() {
+					values.push(partition.0);
+				}
+			}
+			Ok(ColumnBuffer::uint16(values))
 		}
 		SystemColumn::CreatedAt => {
 			let total: usize = batches.iter().map(|b| b.created_at().len()).sum();

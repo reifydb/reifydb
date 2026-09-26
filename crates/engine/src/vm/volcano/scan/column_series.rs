@@ -3,7 +3,7 @@
 
 use std::{cmp::Reverse, sync::Arc};
 
-use reifydb_column::snapshot::{Schema, SystemColumn};
+use reifydb_column::snapshot::Schema;
 use reifydb_core::{
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::{
@@ -19,7 +19,11 @@ use reifydb_core::{
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{error::Error, fragment::Fragment, value::partition::Partition};
+use reifydb_value::{
+	error::Error,
+	fragment::Fragment,
+	value::{partition::Partition, system_columns::SystemColumn},
+};
 
 use crate::{
 	Result,

@@ -844,6 +844,9 @@ impl<'bump> Parser<'bump> {
 		let colon_token = self.advance()?;
 
 		let mut expression = self.parse_node(Precedence::None)?;
+		if matches!(expression, Ast::Nop) {
+			return Err(AstError::UnexpectedEof.into());
+		}
 
 		if let Ast::Identifier(ref ident) = expression
 			&& !self.is_eof()

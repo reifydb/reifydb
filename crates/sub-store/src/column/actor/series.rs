@@ -534,7 +534,7 @@ fn scan_output_schema(series: &Series) -> Vec<(String, ValueType)> {
 		.map(|c| c.constraint.get_type())
 		.unwrap_or(ValueType::Uint8);
 
-	let system = system_column_schema(&series.time);
+	let system = system_column_schema(&series.time, !series.partition_by.is_empty());
 	let mut schema = Vec::with_capacity(series.columns.len() + 1 + system.len());
 	schema.push((key_name.clone(), key_ty));
 	if series.tag.is_some() {
