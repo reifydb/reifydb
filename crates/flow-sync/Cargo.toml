@@ -1,0 +1,26 @@
+[package]
+name = "reifydb-flow-sync"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Transactional view flows maintained inside the user transaction"
+
+[lib]
+doctest = false
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[features]
+testing = []
+
+[dependencies]
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-flow = { workspace = true, features = ["runtime"] }
+reifydb-routine-abi = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-value = { workspace = true }

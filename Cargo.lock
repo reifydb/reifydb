@@ -3472,6 +3472,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow-sync"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-flow",
+ "reifydb-routine-abi",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-value",
+]
+
+[[package]]
 name = "reifydb-macro"
 version = "0.9.3"
 dependencies = [
