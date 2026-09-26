@@ -8,11 +8,7 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_value::{fragment::Fragment, reifydb_assertions, value::Value};
 use tracing::instrument;
 
 use super::common::{
@@ -105,25 +101,26 @@ impl QueryNode for NestedLoopJoinNode {
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
-		let left_row_numbers = left_columns.row_numbers().to_vec();
 
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
 		let session = eval_context_from_query(ctx);
-		let (left_picks, right_picks, result_row_numbers) =
-			self.probe(&session, &left_columns, &right_columns, &left_row_numbers, left_rows, right_rows)?;
+		let (left_picks, right_picks) =
+			self.probe(&session, &left_columns, &right_columns, left_rows, right_rows)?;
 
 		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 		let columns = materialize_join(
 			&resolved.qualified_names,
 			&[JoinSlot {
 				columns: &left_columns.columns,
+				system: &left_columns.system,
 				picks: &left_picks,
 			}],
 			&right_columns.columns,
 			&right_picks,
-			result_row_numbers,
+			right_columns.time(),
 			left_rownum,
+			0,
 		)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
@@ -136,20 +133,17 @@ impl QueryNode for NestedLoopJoinNode {
 }
 
 impl NestedLoopJoinNode {
-	#[allow(clippy::too_many_arguments)]
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::probe")]
 	fn probe(
 		&self,
 		session: &EvalContext,
 		left_columns: &Columns,
 		right_columns: &Columns,
-		left_row_numbers: &[RowNumber],
 		left_rows: usize,
 		right_rows: usize,
-	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
+	) -> Result<(Vec<usize>, Vec<usize>)> {
 		let mut left_picks: Vec<usize> = Vec::new();
 		let mut right_picks: Vec<usize> = Vec::new();
-		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..left_rows {
 			let left_row = left_columns.get_row(i);
@@ -178,21 +172,15 @@ impl NestedLoopJoinNode {
 					left_picks.push(i);
 					right_picks.push(j);
 					matched = true;
-					if !left_row_numbers.is_empty() {
-						result_row_numbers.push(left_row_numbers[i]);
-					}
 				}
 			}
 
 			if self.mode == NestedLoopMode::Left && !matched {
 				left_picks.push(i);
 				right_picks.push(NO_MATCH);
-				if !left_row_numbers.is_empty() {
-					result_row_numbers.push(left_row_numbers[i]);
-				}
 			}
 		}
 
-		Ok((left_picks, right_picks, result_row_numbers))
+		Ok((left_picks, right_picks))
 	}
 }
