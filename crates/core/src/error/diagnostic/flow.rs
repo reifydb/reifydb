@@ -864,3 +864,21 @@ pub fn extern_library_load_failed(path: &str, cause: String) -> Diagnostic {
 		 dependencies and that it was built for this platform.",
 	)
 }
+
+pub fn flow_transactional_not_supported(what: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_084",
+		format!("not supported in transactional views: {}", what),
+		"Transactional views support table sources, transactional view sources, filter, map, extend and \
+		 append, with table storage and no ttl.",
+	)
+}
+
+pub fn flow_transactional_reads_deferred_view(name: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_085",
+		format!("transactional view cannot read deferred view {}", name),
+		"A transactional view updates inside the txn, but a deferred view updates after commit. Read the \
+		 source table instead.",
+	)
+}

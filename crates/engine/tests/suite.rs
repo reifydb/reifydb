@@ -212,8 +212,8 @@ mod time_update_lifecycle;
 mod top_k_system_columns;
 #[path = "transaction.rs"]
 mod transaction;
-#[path = "transactional_view_unimplemented.rs"]
-mod transactional_view_unimplemented;
+#[path = "transactional_view_create.rs"]
+mod transactional_view_create;
 #[path = "udf.rs"]
 mod udf;
 #[path = "udf_arity.rs"]

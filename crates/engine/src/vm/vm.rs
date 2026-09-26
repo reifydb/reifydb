@@ -436,7 +436,9 @@ impl<'a> Vm<'a> {
 					})?
 				}
 				Instruction::CreateTransactionalView(n) => {
-					self.exec_ddl(services, tx, |s, t| create_transactional_view(s, t, n.clone()))?
+					self.exec_ddl_with_symbols(services, tx, |s, t, sym| {
+						create_transactional_view(s, t, sym, n.clone())
+					})?
 				}
 				Instruction::CreateDictionary(n) => {
 					self.exec_ddl(services, tx, |s, t| create_dictionary(s, t, n.clone()))?

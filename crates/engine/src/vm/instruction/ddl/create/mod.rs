@@ -13,14 +13,15 @@ use reifydb_core::{
 			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
-			flow_operator_with_window_size_duration, flow_view_calls_script_routine,
+			flow_operator_with_window_size_duration, flow_transactional_not_supported,
+			flow_transactional_reads_deferred_view, flow_view_calls_script_routine,
 		},
 		query,
 	},
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
-		view::{View, ViewSortKey},
+		view::{View, ViewKind, ViewSortKey},
 	},
 	operator_with::ApplyWith,
 	sort::SortKey,
@@ -359,4 +360,116 @@ pub(crate) fn create_deferred_view_flow(
 	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
 	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
 	check_operator_with_requirements(&dag, operators)
+}
+
+fn check_transactional_flow(catalog: &Catalog, txn: &mut AdminTransaction, flow: &FlowDag) -> Result<()> {
+	for operator_id in flow.topological_order() {
+		let Some(node) = flow.get_operator(operator_id) else {
+			continue;
+		};
+		if let Some(what) = transactional_unsupported(&node.ty) {
+			return Err(error!(flow_transactional_not_supported(what)));
+		}
+		if let OperatorDef::SourceView {
+			view,
+			..
+		} = &node.ty
+		{
+			let source = catalog.get_view(&mut Transaction::Admin(txn), *view)?;
+			if source.kind() == ViewKind::Deferred {
+				return Err(error!(flow_transactional_reads_deferred_view(source.name())));
+			}
+		}
+	}
+	Ok(())
+}
+
+fn transactional_unsupported(ty: &OperatorDef) -> Option<&'static str> {
+	match ty {
+		OperatorDef::SourceTable {
+			..
+		}
+		| OperatorDef::SourceView {
+			..
+		}
+		| OperatorDef::Filter {
+			..
+		}
+		| OperatorDef::Map {
+			..
+		}
+		| OperatorDef::Extend {
+			..
+		}
+		| OperatorDef::Append {}
+		| OperatorDef::Sort {
+			..
+		}
+		| OperatorDef::SinkTableView {
+			..
+		} => None,
+		OperatorDef::SourceInlineData {} => Some("inline data source"),
+		OperatorDef::SourceRingBuffer {
+			..
+		} => Some("ring buffer source"),
+		OperatorDef::SourceSeries {
+			..
+		} => Some("series source"),
+		OperatorDef::Gate {
+			..
+		} => Some("gate"),
+		OperatorDef::Join {
+			..
+		} => Some("join"),
+		OperatorDef::Aggregate {
+			..
+		} => Some("aggregate"),
+		OperatorDef::Take {
+			..
+		} => Some("take"),
+		OperatorDef::Distinct {
+			..
+		} => Some("distinct"),
+		OperatorDef::Apply {
+			..
+		} => Some("apply"),
+		OperatorDef::Window {
+			..
+		} => Some("window"),
+		OperatorDef::SinkRingBufferView {
+			..
+		} => Some("ring buffer storage"),
+		OperatorDef::SinkSeriesView {
+			..
+		} => Some("series storage"),
+		OperatorDef::SinkSubscription {
+			..
+		} => Some("subscription sink"),
+	}
+}
+
+pub(crate) fn create_transactional_view_flow(
+	catalog: &Catalog,
+	routines: &Routines,
+	operators: &OperatorLibrary,
+	txn: &mut AdminTransaction,
+	symbols: &SymbolTable,
+	view: &View,
+	mut plan: QueryPlan,
+) -> Result<()> {
+	ensure_no_script_routine_call(&mut plan, symbols)?;
+	ensure_apply_operators_registered(&mut plan, operators)?;
+	resolve_flow_variants(catalog, txn, &mut plan)?;
+	ensure_flow_expressions_compile(&mut plan, symbols)?;
+	let flow = catalog.create_flow(
+		txn,
+		FlowToCreate {
+			name: Fragment::internal(view.name()),
+			namespace: view.namespace(),
+			status: FlowStatus::Active,
+		},
+	)?;
+
+	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
+	check_transactional_flow(catalog, txn, &dag)
 }
