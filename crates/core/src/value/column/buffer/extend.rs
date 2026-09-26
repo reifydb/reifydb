@@ -15,11 +15,8 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
-			any_array::push_any,
-			decimal_array::DecimalArray,
-			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
-			uuid_array::{self, UUID_WIDTH},
-			varlen_array,
+			any_array::push_any, decimal_array::DecimalArray, dictionary_array::DICTIONARY_ENTRY_WIDTH,
+			fixed_array, uuid_array::UUID_WIDTH, varlen_array,
 		},
 	},
 };
@@ -62,15 +59,10 @@ fn extend_bool(array: &mut BooleanArray, append: impl FnOnce(&mut BooleanBufferB
 }
 
 fn extend_fixed(array: &mut FixedSizeBinaryArray, append: impl FnOnce(&mut MutableBuffer)) {
-	let mut buffer = fixed_builder(mem::replace(array, uuid_array::from_buffer(MutableBuffer::new(0))));
+	let width = array.value_length() as usize;
+	let mut buffer = fixed_builder(mem::replace(array, fixed_array::from_buffer(width, MutableBuffer::new(0))));
 	append(&mut buffer);
-	*array = uuid_array::from_buffer(buffer);
-}
-
-fn extend_dictionary(array: &mut FixedSizeBinaryArray, append: impl FnOnce(&mut MutableBuffer)) {
-	let mut buffer = fixed_builder(mem::replace(array, dictionary_array::from_buffer(MutableBuffer::new(0))));
-	append(&mut buffer);
-	*array = dictionary_array::from_buffer(buffer);
+	*array = fixed_array::from_buffer(width, buffer);
 }
 
 fn extend_varlen<T, R>(array: &mut GenericByteArray<T>, append: impl FnOnce(&mut GenericByteBuilder<T>) -> R) -> R
@@ -97,7 +89,7 @@ fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 		ColumnBuffer::DictionaryId {
 			container,
 			..
-		} => extend_dictionary(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
+		} => extend_fixed(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
 		ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
 			for _ in 0..count {
 				b.append_default();
@@ -300,7 +292,7 @@ impl ColumnBuffer {
 					container: r,
 					..
 				},
-			) => extend_dictionary(l, |b| b.extend_from_slice(r.value_data())),
+			) => extend_fixed(l, |b| b.extend_from_slice(r.value_data())),
 			(
 				ColumnBuffer::Any {
 					container: l,

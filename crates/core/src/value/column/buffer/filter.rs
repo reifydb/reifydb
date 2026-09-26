@@ -6,7 +6,7 @@ use arrow_select::filter::FilterPredicate;
 use reifydb_value::{
 	Result,
 	util::kernel,
-	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+	value::container::{bool_array, fixed_array, primitive, varlen_array},
 };
 
 use crate::value::column::{
@@ -24,15 +24,11 @@ impl ColumnBuffer {
 			ColumnBuffer::Bool(a) => *a = bool_array::filter_with(a, predicate),
 			ColumnBuffer::Uint16(a) => *a = primitive::filter_with(a, predicate),
 			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::filter_with(a, predicate)),
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => *container = dictionary_array::filter_with(container, predicate),
 			_ => with_container!(
 				self,
 				|a| *a = primitive::filter_with(a, predicate),
 				|t| *t = primitive::filter_with(t, predicate),
-				|u| *u = uuid_array::filter_with(u, predicate),
+				|u| *u = fixed_array::filter_with(u, predicate),
 				|v| *v = varlen_array::filter_with(v, predicate)
 			),
 		}

@@ -24,10 +24,11 @@ use reifydb_value::{
 				self, DECIMAL128_MAX_PRECISION, DecimalArray, INT16_DATA_TYPE, UINT16_DATA_TYPE,
 				decimal_at, with_int16_type, with_uint16_type,
 			},
-			dictionary_array::{self, DICTIONARY_ENTRY_WIDTH},
+			dictionary_array::DICTIONARY_ENTRY_WIDTH,
 			digest_array::push_none_slot,
+			fixed_array,
 			temporal_array::DATETIME_TIMEZONE,
-			uuid_array::{self, UUID_WIDTH},
+			uuid_array::UUID_WIDTH,
 			varlen_array,
 		},
 		decimal::{Decimal, unscaled},
@@ -686,14 +687,16 @@ impl ColumnBuilder {
 			ColumnBuilder::DateTime(mut b) => ColumnBuffer::DateTime(b.finish()),
 			ColumnBuilder::Time(mut b) => ColumnBuffer::Time(b.finish()),
 			ColumnBuilder::Duration(mut b) => ColumnBuffer::Duration(b.finish()),
-			ColumnBuilder::IdentityId(b) => ColumnBuffer::IdentityId(uuid_array::from_buffer(b)),
-			ColumnBuilder::Uuid4(b) => ColumnBuffer::Uuid4(uuid_array::from_buffer(b)),
-			ColumnBuilder::Uuid7(b) => ColumnBuffer::Uuid7(uuid_array::from_buffer(b)),
+			ColumnBuilder::IdentityId(b) => {
+				ColumnBuffer::IdentityId(fixed_array::from_buffer(UUID_WIDTH, b))
+			}
+			ColumnBuilder::Uuid4(b) => ColumnBuffer::Uuid4(fixed_array::from_buffer(UUID_WIDTH, b)),
+			ColumnBuilder::Uuid7(b) => ColumnBuffer::Uuid7(fixed_array::from_buffer(UUID_WIDTH, b)),
 			ColumnBuilder::DictionaryId {
 				buffer,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: dictionary_array::from_buffer(buffer),
+				container: fixed_array::from_buffer(DICTIONARY_ENTRY_WIDTH, buffer),
 				dictionary_id,
 			},
 			ColumnBuilder::Utf8 {

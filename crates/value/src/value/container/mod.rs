@@ -6,6 +6,7 @@ pub mod bool_array;
 pub mod decimal_array;
 pub mod dictionary_array;
 pub mod digest_array;
+pub mod fixed_array;
 pub mod primitive;
 pub mod temporal_array;
 pub mod uuid_array;

@@ -32,7 +32,7 @@ use reifydb_value::{
 				DecimalArray, decimal_as_string, deserialize_decimal_array, deserialize_int16s,
 				deserialize_uint16s, serialize_decimal_array, serialize_uint16s, uint16_as_string,
 			},
-			dictionary_array, digest_array, primitive,
+			dictionary_array, digest_array, fixed_array, primitive,
 			temporal_array::{
 				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
 				deserialize_durations, deserialize_times, durations, serialize_dates,
@@ -627,6 +627,10 @@ macro_rules! with_container {
 			ColumnBuffer::IdentityId($u) => $fixed,
 			ColumnBuffer::Uuid4($u) => $fixed,
 			ColumnBuffer::Uuid7($u) => $fixed,
+			ColumnBuffer::DictionaryId {
+				container: $u,
+				..
+			} => $fixed,
 			ColumnBuffer::Utf8 {
 				container: $v,
 				..
@@ -656,13 +660,6 @@ macro_rules! with_container {
 			ColumnBuffer::Decimal(_) => {
 				unreachable!(
 					"with_container! must not be called on a decimal backed variant directly; handle it explicitly"
-				)
-			}
-			ColumnBuffer::DictionaryId {
-				..
-			} => {
-				unreachable!(
-					"with_container! must not be called on DictionaryId variant directly; handle it explicitly"
 				)
 			}
 		}
@@ -705,10 +702,6 @@ impl ColumnBuffer {
 			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| d.nulls())
 			}
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => container.nulls(),
 			_ => with_container!(self, |a| a.nulls(), |t| t.nulls(), |u| u.nulls(), |v| v.nulls()),
 		}
 	}
@@ -756,9 +749,9 @@ impl ColumnBuffer {
 			ColumnBuffer::DateTime(a) => ColumnBuffer::DateTime(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Time(a) => ColumnBuffer::Time(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Duration(a) => ColumnBuffer::Duration(primitive::attach_nulls(a, nulls)),
-			ColumnBuffer::IdentityId(a) => ColumnBuffer::IdentityId(uuid_array::attach_nulls(a, nulls)),
-			ColumnBuffer::Uuid4(a) => ColumnBuffer::Uuid4(uuid_array::attach_nulls(a, nulls)),
-			ColumnBuffer::Uuid7(a) => ColumnBuffer::Uuid7(uuid_array::attach_nulls(a, nulls)),
+			ColumnBuffer::IdentityId(a) => ColumnBuffer::IdentityId(fixed_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid4(a) => ColumnBuffer::Uuid4(fixed_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid7(a) => ColumnBuffer::Uuid7(fixed_array::attach_nulls(a, nulls)),
 			ColumnBuffer::Blob {
 				container,
 				max_bytes,
@@ -780,7 +773,7 @@ impl ColumnBuffer {
 				container,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: uuid_array::attach_nulls(container, nulls),
+				container: fixed_array::attach_nulls(container, nulls),
 				dictionary_id,
 			},
 			ColumnBuffer::Digest {
@@ -958,10 +951,6 @@ impl ColumnBuffer {
 			ColumnBuffer::Bool(a) => a.len(),
 			ColumnBuffer::Uint16(a) => a.len(),
 			ColumnBuffer::Decimal(a) => a.len(),
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => container.len(),
 			_ => with_container!(self, |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
 		}
 	}
@@ -988,15 +977,11 @@ impl ColumnBuffer {
 			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| primitive::heap_size(d))
 			}
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => dictionary_array::heap_size(container),
 			_ => with_container!(
 				self,
 				|a| primitive::heap_size(a),
 				|t| primitive::heap_size(t),
-				|u| uuid_array::heap_size(u),
+				|u| fixed_array::heap_size(u),
 				|v| varlen_array::heap_size(v)
 			),
 		}

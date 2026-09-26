@@ -5,7 +5,7 @@ use arrow_array::{Array, ArrayRef, UInt64Array};
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::{
 	util::{bitmap, kernel},
-	value::container::{bool_array, dictionary_array, primitive, uuid_array, varlen_array},
+	value::container::{bool_array, fixed_array, primitive, varlen_array},
 };
 
 use crate::value::column::{
@@ -92,10 +92,10 @@ impl ColumnBuffer {
 				container,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: dictionary_array::take(container, num),
+				container: fixed_array::take(container, num),
 				dictionary_id: *dictionary_id,
 			},
-			_ => map_container!(self, |a| primitive::take(a, num), |u| uuid_array::take(u, num), |v| {
+			_ => map_container!(self, |a| primitive::take(a, num), |u| fixed_array::take(u, num), |v| {
 				varlen_array::take(v, num)
 			}),
 		}
@@ -112,13 +112,13 @@ impl ColumnBuffer {
 				container,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: dictionary_array::slice(container, start, end),
+				container: fixed_array::slice(container, start, end),
 				dictionary_id: *dictionary_id,
 			},
 			_ => map_container!(
 				self,
 				|a| primitive::slice(a, start, end),
-				|u| uuid_array::slice(u, start, end),
+				|u| fixed_array::slice(u, start, end),
 				|v| varlen_array::slice(v, start, end)
 			),
 		}
@@ -215,10 +215,6 @@ pub(crate) fn as_array(buffer: &ColumnBuffer) -> &dyn Array {
 		ColumnBuffer::Decimal(d) => {
 			on_decimal!(d, |a| a as &dyn Array)
 		}
-		ColumnBuffer::DictionaryId {
-			container,
-			..
-		} => container,
 		_ => with_container!(buffer, |a| a as &dyn Array, |t| t as &dyn Array, |u| u as &dyn Array, |v| v
 			as &dyn Array),
 	}

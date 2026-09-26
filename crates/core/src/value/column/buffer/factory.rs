@@ -15,10 +15,11 @@ use reifydb_value::value::{
 		decimal_array::{
 			DecimalArray, decimal_array, int16_array, uint16_array, with_int16_type, with_uint16_type,
 		},
-		dictionary_array::{self, DICTIONARY_ENTRY_WIDTH, dictionary_array},
+		dictionary_array::{DICTIONARY_ENTRY_WIDTH, dictionary_array},
 		digest_array::digest_array,
+		fixed_array,
 		temporal_array::{DATETIME_TIMEZONE, date_array, datetime_array, duration_array, time_array},
-		uuid_array::{self, UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
+		uuid_array::{UUID_WIDTH, identity_id_array, uuid4_array, uuid7_array},
 		varlen_array::blob_array,
 	},
 	date::Date,
@@ -126,9 +127,10 @@ macro_rules! impl_uuid_factory {
 		}
 
 		pub(crate) fn $name_cap(capacity: usize) -> Self {
-			ColumnBuffer::$variant(uuid_array::from_buffer(MutableBuffer::with_capacity(
-				capacity * UUID_WIDTH,
-			)))
+			ColumnBuffer::$variant(fixed_array::from_buffer(
+				UUID_WIDTH,
+				MutableBuffer::with_capacity(capacity * UUID_WIDTH),
+			))
 		}
 
 		pub fn $name_bv(data: impl IntoIterator<Item = $t>, bitvec: impl Into<BooleanBuffer>) -> Self {
@@ -332,7 +334,10 @@ impl ColumnBuffer {
 	}
 
 	pub(crate) fn identity_id_with_capacity(capacity: usize) -> Self {
-		ColumnBuffer::IdentityId(uuid_array::from_buffer(MutableBuffer::with_capacity(capacity * UUID_WIDTH)))
+		ColumnBuffer::IdentityId(fixed_array::from_buffer(
+			UUID_WIDTH,
+			MutableBuffer::with_capacity(capacity * UUID_WIDTH),
+		))
 	}
 
 	pub fn identity_id_with_bitvec(
@@ -446,9 +451,10 @@ impl ColumnBuffer {
 
 	pub(crate) fn dictionary_id_with_capacity(capacity: usize) -> Self {
 		ColumnBuffer::DictionaryId {
-			container: dictionary_array::from_buffer(MutableBuffer::with_capacity(
-				capacity * DICTIONARY_ENTRY_WIDTH,
-			)),
+			container: fixed_array::from_buffer(
+				DICTIONARY_ENTRY_WIDTH,
+				MutableBuffer::with_capacity(capacity * DICTIONARY_ENTRY_WIDTH),
+			),
 			dictionary_id: None,
 		}
 	}

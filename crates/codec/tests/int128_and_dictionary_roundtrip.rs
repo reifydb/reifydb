@@ -16,7 +16,7 @@ use reifydb_value::value::{
 	container::{
 		decimal_array::{int16_array, u128s, uint16_array},
 		dictionary_array::{self, dictionary_array},
-		primitive,
+		fixed_array, primitive,
 	},
 	dictionary::DictionaryEntryId,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -239,7 +239,7 @@ fn sliced_columns_round_trip_only_their_window() {
 	}
 	let entries = [DictionaryEntryId::U1(0), DictionaryEntryId::U1(u8::MAX), DictionaryEntryId::U1(7)];
 	let all = dictionary_array(padded(DictionaryEntryId::U16(u128::MAX), &entries));
-	let sliced = dictionary_array::slice(&all, PAD, PAD + entries.len());
+	let sliced = fixed_array::slice(&all, PAD, PAD + entries.len());
 	let decoded = round_trip(dictionary_column(sliced), Encoding::Plain);
 	assert_eq!(dictionary_entries(&decoded), entries);
 }
