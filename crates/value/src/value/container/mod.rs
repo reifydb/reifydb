@@ -11,3 +11,4 @@ pub mod primitive;
 pub mod temporal_array;
 pub mod uuid_array;
 pub mod varlen_array;
+pub mod wide_int_array;

@@ -54,18 +54,3 @@ fn an_arbitrary_precision_number_cast_to_utf8_reads_exactly_as_the_number_displa
 		);
 	}
 }
-
-#[test]
-fn a_none_int_cast_to_utf8_stays_none_beside_its_defined_rows() {
-	// A none row must not become text or shift the rows after it when the column is cast.
-	let t = TestEngine::new();
-	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE TABLE test::n { id: int4, v: Option(int) }");
-	t.command("INSERT test::n [{ id: 1, v: 42 }, { id: 2, v: none }, { id: 3, v: 7 }]");
-
-	let frames = query(&t, "FROM test::n | sort { id: asc } | map { v: cast(v, utf8) }");
-
-	let (_, values) = column(&frames, "v");
-	assert_eq!(values.iter().map(|v| v.to_string()).collect::<Vec<_>>(), vec!["42", "none", "7"]);
-	assert!(matches!(values[1], Value::None { .. }), "the none row must stay none, got {:?}", values[1]);
-}

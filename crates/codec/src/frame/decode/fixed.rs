@@ -7,10 +7,11 @@ use reifydb_value::{
 	encoding::LeBytes,
 	value::{
 		container::{
-			decimal_array::{DecimalArray, int16_array, uint16_array},
+			decimal_array::DecimalArray,
 			dictionary_array::dictionary_array,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
+			wide_int_array::wide_array,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -78,7 +79,7 @@ pub(crate) fn decode_fixed_plain(
 			ValueType::Int8 => decode_le_array::<i64>(data, row_count)
 				.map(|values| FrameColumnData::Int8(values.into())),
 			ValueType::Int16 => decode_le_array::<i128>(data, row_count)
-				.map(|values| FrameColumnData::Int16(int16_array(values))),
+				.map(|values| FrameColumnData::Int16(wide_array(values))),
 			ValueType::Uint1 => decode_le_array::<u8>(data, row_count)
 				.map(|values| FrameColumnData::Uint1(values.into())),
 			ValueType::Uint2 => decode_le_array::<u16>(data, row_count)
@@ -88,7 +89,7 @@ pub(crate) fn decode_fixed_plain(
 			ValueType::Uint8 => decode_le_array::<u64>(data, row_count)
 				.map(|values| FrameColumnData::Uint8(values.into())),
 			ValueType::Uint16 => decode_le_array::<u128>(data, row_count)
-				.map(|values| FrameColumnData::Uint16(uint16_array(values))),
+				.map(|values| FrameColumnData::Uint16(wide_array(values))),
 			ValueType::Date => decode_date_plain(data, row_count),
 			ValueType::DateTime => decode_datetime_plain(data, row_count),
 			ValueType::Time => decode_time_plain(data, row_count),
@@ -148,7 +149,7 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					b[12], b[13], b[14], b[15],
 				])
 			})?;
-			Ok(FrameColumnData::Int16(int16_array(values)))
+			Ok(FrameColumnData::Int16(wide_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_rle(data, row_count, 16, |b| {
@@ -157,7 +158,7 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 					b[12], b[13], b[14], b[15],
 				])
 			})?;
-			Ok(FrameColumnData::Uint16(uint16_array(values)))
+			Ok(FrameColumnData::Uint16(wide_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_rle(data, row_count, 4, |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
@@ -243,11 +244,11 @@ pub(crate) fn decode_delta_column(
 		}
 		ValueType::Int16 => {
 			let values = decode_delta_i128(data, row_count)?;
-			Ok(FrameColumnData::Int16(int16_array(values)))
+			Ok(FrameColumnData::Int16(wide_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_delta_u128(data, row_count)?;
-			Ok(FrameColumnData::Uint16(uint16_array(values)))
+			Ok(FrameColumnData::Uint16(wide_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_delta_f32(data, row_count)?;
@@ -331,11 +332,11 @@ pub(crate) fn decode_delta_rle_column(
 		}
 		ValueType::Int16 => {
 			let values = decode_delta_rle_i128(data, row_count)?;
-			Ok(FrameColumnData::Int16(int16_array(values)))
+			Ok(FrameColumnData::Int16(wide_array(values)))
 		}
 		ValueType::Uint16 => {
 			let values = decode_delta_rle_u128(data, row_count)?;
-			Ok(FrameColumnData::Uint16(uint16_array(values)))
+			Ok(FrameColumnData::Uint16(wide_array(values)))
 		}
 		ValueType::Float4 => {
 			let values = decode_delta_rle_f32(data, row_count)?;

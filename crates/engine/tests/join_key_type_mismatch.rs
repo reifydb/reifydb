@@ -114,25 +114,11 @@ fn decimal_keys_of_different_precision_and_scale_join_by_value() {
 }
 
 #[test]
-fn int_keys_of_different_precision_join_by_value() {
-	// int(5) and int(30) are one family, so the wider precision must hold both sides instead of JOIN_004.
-	let t = engine();
-	t.admin("CREATE TABLE test::il { k: int(5), a: int4 }");
-	t.admin("CREATE TABLE test::ir { k: int(30), b: int4 }");
-	t.command("INSERT test::il [{ k: 7, a: 10 }, { k: 8, a: 20 }]");
-	t.command("INSERT test::ir [{ k: 7, b: 100 }, { k: 123456789012345678901234567890, b: 200 }]");
-
-	let frames = query(&t, "FROM test::il INNER JOIN { FROM test::ir } AS s USING (k, s.k)", Params::None).unwrap();
-
-	assert_eq!(TestEngine::row_count(&frames), 1, "only k = 7 is on both sides, got:\n{}", frames[0]);
-}
-
-#[test]
 fn a_decimal_key_against_an_int_key_still_reports_join_004() {
 	// Only keys of one family share a common type, so decimal against int must stay a type mismatch.
 	let t = engine();
 	t.admin("CREATE TABLE test::xl { k: decimal(5,1), a: int4 }");
-	t.admin("CREATE TABLE test::xr { k: int(5), b: int4 }");
+	t.admin("CREATE TABLE test::xr { k: int4, b: int4 }");
 
 	let err =
 		query(&t, "FROM test::xl INNER JOIN { FROM test::xr } AS s USING (k, s.k)", Params::None).unwrap_err();

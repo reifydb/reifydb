@@ -4,7 +4,7 @@
 use std::{fmt::Display, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{
-	Array, ArrayRef, ArrowPrimitiveType, BooleanArray, Datum, PrimitiveArray, Scalar,
+	Array, ArrayRef, ArrowPrimitiveType, BooleanArray, Datum, FixedSizeBinaryArray, PrimitiveArray, Scalar,
 	cast::AsArray,
 	types::{
 		Decimal128Type, Decimal256Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, UInt16Type,
@@ -23,9 +23,10 @@ use reifydb_value::{
 	return_error,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::decimal_array::{
-			self, DECIMAL128_MAX_PRECISION, DecimalArray, uint16_from_native, with_int16_type,
-			with_uint16_type,
+		container::{
+			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalArray},
+			fixed_array,
+			wide_int_array::{WideInt, wide_array, wides},
 		},
 		decimal::unscaled,
 		value_type::ValueType,
@@ -154,7 +155,7 @@ fn signed_of_rank(rank: u8) -> ValueType {
 		3 => ValueType::Int4,
 		4 => ValueType::Int8,
 		5 => ValueType::Int16,
-		_ => ValueType::Uint16,
+		_ => ValueType::decimal(Precision::new(39), Scale::new(0)),
 	}
 }
 
@@ -244,6 +245,20 @@ fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
 	}
 }
 
+fn wide_unary<W: WideInt, T: ArrowPrimitiveType>(
+	array: &FixedSizeBinaryArray,
+	f: impl Fn(W) -> T::Native,
+) -> PrimitiveArray<T> {
+	PrimitiveArray::new(wides::<W>(array).into_iter().map(f).collect(), array.nulls().cloned())
+}
+
+fn to_wide<T: ArrowPrimitiveType, W: WideInt>(
+	array: &PrimitiveArray<T>,
+	f: impl Fn(T::Native) -> W,
+) -> FixedSizeBinaryArray {
+	fixed_array::attach_nulls(wide_array(array.values().iter().map(|&v| f(v))), array.nulls().cloned())
+}
+
 macro_rules! widen {
 	($array:expr, $to:ty, |$v:ident| $conv:expr) => {
 		Arc::new($array.unary::<_, $to>(|$v| $conv)) as ArrayRef
@@ -260,13 +275,15 @@ fn cast_to(column: &ColumnBuffer, target: &ValueType) -> ArrayRef {
 		(ValueType::Float8, ColumnBuffer::Int2(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Int4(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Int8(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int16(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ColumnBuffer::Int16(a)) => {
+			Arc::new(wide_unary::<i128, Float64Type>(a, |v| v as f64))
+		}
 		(ValueType::Float8, ColumnBuffer::Uint1(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Uint2(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Uint4(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Uint8(a)) => widen!(a, Float64Type, |v| v as f64),
 		(ValueType::Float8, ColumnBuffer::Uint16(a)) => {
-			widen!(a, Float64Type, |v| uint16_from_native(v) as f64)
+			Arc::new(wide_unary::<u128, Float64Type>(a, |v| v as f64))
 		}
 		(ValueType::Int2, ColumnBuffer::Int1(a)) => widen!(a, Int16Type, |v| v as i16),
 		(ValueType::Int2, ColumnBuffer::Uint1(a)) => widen!(a, Int16Type, |v| v as i16),
@@ -286,57 +303,18 @@ fn cast_to(column: &ColumnBuffer, target: &ValueType) -> ArrayRef {
 		(ValueType::Uint8, ColumnBuffer::Uint1(a)) => widen!(a, UInt64Type, |v| v as u64),
 		(ValueType::Uint8, ColumnBuffer::Uint2(a)) => widen!(a, UInt64Type, |v| v as u64),
 		(ValueType::Uint8, ColumnBuffer::Uint4(a)) => widen!(a, UInt64Type, |v| v as u64),
-		(ValueType::Int16, ColumnBuffer::Int1(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Int2(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Int4(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Int8(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Uint1(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Uint2(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Uint4(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Int16, ColumnBuffer::Uint8(a)) => {
-			Arc::new(with_int16_type(a.unary::<_, Decimal128Type>(|v| v as i128)))
-		}
-		(ValueType::Uint16, ColumnBuffer::Int1(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Int2(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Int4(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Int8(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Uint1(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Uint2(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Uint4(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Uint8(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(|v| i256::from_i128(v as i128))))
-		}
-		(ValueType::Uint16, ColumnBuffer::Int16(a)) => {
-			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(i256::from_i128)))
-		}
+		(ValueType::Int16, ColumnBuffer::Int1(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Int2(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Int4(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Int8(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Uint1(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Uint2(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Uint4(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ColumnBuffer::Uint8(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Uint16, ColumnBuffer::Uint1(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ColumnBuffer::Uint2(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ColumnBuffer::Uint4(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ColumnBuffer::Uint8(a)) => Arc::new(to_wide(a, |v| v as u128)),
 		(ValueType::Float8, ColumnBuffer::Decimal(a)) => family_to_float(a),
 		(
 			ValueType::Decimal {
@@ -425,12 +403,16 @@ fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> Ar
 			ColumnBuffer::Int2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Int4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Int8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Int16(a) => rescale256!(a, by, |v| i256::from_i128(v)),
+			ColumnBuffer::Int16(a) => {
+				wide_unary::<i128, Decimal256Type>(a, |v| upscale_or_beyond(i256::from_i128(v), by))
+			}
 			ColumnBuffer::Uint1(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Uint2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Uint4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Uint8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Uint16(a) => rescale256!(a, by, |v| v),
+			ColumnBuffer::Uint16(a) => {
+				wide_unary::<u128, Decimal256Type>(a, |v| upscale_or_beyond(i256::from_parts(v, 0), by))
+			}
 			ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => {
 				rescale256!(a, by, |v| i256::from_i128(v))
 			}

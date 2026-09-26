@@ -811,7 +811,6 @@ fn numeric_bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 mod tests {
 	use std::ptr;
 
-	use arrow_array::Array;
 	use postcard::to_allocvec;
 	use reifydb_codec::tag::ValueKind;
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
@@ -827,7 +826,7 @@ mod tests {
 		value::{
 			blob::Blob,
 			constraint::{precision::Precision, scale::Scale},
-			container::decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
+			container::wide_int_array::wides,
 			decimal::Decimal,
 			dictionary::DictionaryEntryId,
 		},
@@ -910,26 +909,24 @@ mod tests {
 
 	#[test]
 	fn int16_extremes_round_trip_through_the_host_builder() {
-		// A narrowed row or an arrow default scale 10 on the rebuilt column corrupts every 128 bit value.
+		// A narrowed row or a missed sign flip on the rebuilt column corrupts every 128 bit value.
 		let values = [i128::MIN, i128::MAX, 0, -1];
 		let output = host_to_guest_to_host(ColumnBuffer::int16(values));
 		let ColumnBuffer::Int16(array) = &output else {
 			panic!("expected a plain Int16 column, got {:?}", output.get_type())
 		};
-		assert_eq!(&array.values()[..], &values);
-		assert_eq!(array.data_type(), &INT16_DATA_TYPE);
+		assert_eq!(wides::<i128>(array), values);
 	}
 
 	#[test]
 	fn uint16_past_64_bits_round_trip_through_the_host_builder() {
-		// Any hop through a 64 bit conversion of the 256 bit native loses 2^64 and u128::MAX.
+		// Any hop through a 64 bit conversion of a row loses 2^64 and u128::MAX.
 		let values = [1u128 << 64, u128::MAX, (1u128 << 64) - 1, 1u128 << 127, 0];
 		let output = host_to_guest_to_host(ColumnBuffer::uint16(values));
 		let ColumnBuffer::Uint16(array) = &output else {
 			panic!("expected a plain Uint16 column, got {:?}", output.get_type())
 		};
-		assert_eq!(u128s(array), values);
-		assert_eq!(array.data_type(), &UINT16_DATA_TYPE);
+		assert_eq!(wides::<u128>(array), values);
 	}
 
 	#[test]

@@ -9,9 +9,10 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		container::{
-			decimal_array::{decimals, u128s},
+			decimal_array::decimals,
 			temporal_array::{duration_array, durations},
 			varlen_array::get,
+			wide_int_array::wides,
 		},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},

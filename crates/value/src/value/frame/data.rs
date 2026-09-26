@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::{
-	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
-	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
-	LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array,
-	UInt64Array,
+	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, Float32Array, Float64Array, Int8Array, Int16Array,
+	Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray, LargeStringArray, Time64NanosecondArray,
+	TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
@@ -21,8 +20,7 @@ use crate::{
 			any_array, bool_array,
 			decimal_array::{
 				DecimalArray, decimal_as_string, decimal_get_value, deserialize_decimal_array,
-				deserialize_int16s, deserialize_uint16s, serialize_decimal_array, serialize_uint16s,
-				uint16_as_string, uint16_get_value,
+				serialize_decimal_array,
 			},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{
@@ -35,6 +33,7 @@ use crate::{
 				serialize_identity_ids, serialize_uuid4s, serialize_uuid7s, uuid4s, uuid7s,
 			},
 			varlen_array::{self, blob_as_string, blob_get_value, utf8_as_string, utf8_get_value},
+			wide_int_array,
 		},
 		dictionary::DictionaryId,
 		value_type::ValueType,
@@ -52,16 +51,22 @@ pub enum FrameColumnData {
 	Int4(#[serde(with = "primitive")] Int32Array),
 	Int8(#[serde(with = "primitive")] Int64Array),
 	Int16(
-		#[serde(serialize_with = "primitive::serialize", deserialize_with = "deserialize_int16s")]
-		Decimal128Array,
+		#[serde(
+			serialize_with = "wide_int_array::serialize::<i128, _>",
+			deserialize_with = "wide_int_array::deserialize::<i128, _>"
+		)]
+		FixedSizeBinaryArray,
 	),
 	Uint1(#[serde(with = "primitive")] UInt8Array),
 	Uint2(#[serde(with = "primitive")] UInt16Array),
 	Uint4(#[serde(with = "primitive")] UInt32Array),
 	Uint8(#[serde(with = "primitive")] UInt64Array),
 	Uint16(
-		#[serde(serialize_with = "serialize_uint16s", deserialize_with = "deserialize_uint16s")]
-		Decimal256Array,
+		#[serde(
+			serialize_with = "wide_int_array::serialize::<u128, _>",
+			deserialize_with = "wide_int_array::deserialize::<u128, _>"
+		)]
+		FixedSizeBinaryArray,
 	),
 	Utf8(
 		#[serde(
@@ -420,12 +425,12 @@ impl FrameColumnData {
 			FrameColumnData::Int2(container) => primitive::as_string(container, index),
 			FrameColumnData::Int4(container) => primitive::as_string(container, index),
 			FrameColumnData::Int8(container) => primitive::as_string(container, index),
-			FrameColumnData::Int16(container) => primitive::as_string(container, index),
+			FrameColumnData::Int16(container) => wide_int_array::as_string::<i128>(container, index),
 			FrameColumnData::Uint1(container) => primitive::as_string(container, index),
 			FrameColumnData::Uint2(container) => primitive::as_string(container, index),
 			FrameColumnData::Uint4(container) => primitive::as_string(container, index),
 			FrameColumnData::Uint8(container) => primitive::as_string(container, index),
-			FrameColumnData::Uint16(container) => uint16_as_string(container, index),
+			FrameColumnData::Uint16(container) => wide_int_array::as_string::<u128>(container, index),
 			FrameColumnData::Utf8(container) => utf8_as_string(container, index),
 			FrameColumnData::Date(container) => temporal_array::as_string(dates(container), index),
 			FrameColumnData::DateTime(container) => temporal_array::as_string(datetimes(container), index),
@@ -472,12 +477,12 @@ impl FrameColumnData {
 			FrameColumnData::Int2(container) => primitive::get_value(container, index),
 			FrameColumnData::Int4(container) => primitive::get_value(container, index),
 			FrameColumnData::Int8(container) => primitive::get_value(container, index),
-			FrameColumnData::Int16(container) => primitive::get_value(container, index),
+			FrameColumnData::Int16(container) => wide_int_array::get_value::<i128>(container, index),
 			FrameColumnData::Uint1(container) => primitive::get_value(container, index),
 			FrameColumnData::Uint2(container) => primitive::get_value(container, index),
 			FrameColumnData::Uint4(container) => primitive::get_value(container, index),
 			FrameColumnData::Uint8(container) => primitive::get_value(container, index),
-			FrameColumnData::Uint16(container) => uint16_get_value(container, index),
+			FrameColumnData::Uint16(container) => wide_int_array::get_value::<u128>(container, index),
 			FrameColumnData::Utf8(container) => utf8_get_value(container, index),
 			FrameColumnData::Date(container) => temporal_array::get_value(dates(container), index),
 			FrameColumnData::DateTime(container) => temporal_array::get_value(datetimes(container), index),

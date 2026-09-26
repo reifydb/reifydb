@@ -8,7 +8,7 @@ use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	value::{boolean::parse::parse_bool, container::decimal_array::u128s, is::IsNumber, value_type::ValueType},
+	value::{boolean::parse::parse_bool, container::wide_int_array::wides, is::IsNumber, value_type::ValueType},
 };
 
 use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
@@ -19,12 +19,12 @@ pub fn to_boolean(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Resu
 		ColumnBuffer::Int2(container) => from_int2(container.values(), lazy_fragment),
 		ColumnBuffer::Int4(container) => from_int4(container.values(), lazy_fragment),
 		ColumnBuffer::Int8(container) => from_int8(container.values(), lazy_fragment),
-		ColumnBuffer::Int16(container) => from_int16(container.values(), lazy_fragment),
+		ColumnBuffer::Int16(container) => from_int16(&wides::<i128>(container), lazy_fragment),
 		ColumnBuffer::Uint1(container) => from_uint1(container.values(), lazy_fragment),
 		ColumnBuffer::Uint2(container) => from_uint2(container.values(), lazy_fragment),
 		ColumnBuffer::Uint4(container) => from_uint4(container.values(), lazy_fragment),
 		ColumnBuffer::Uint8(container) => from_uint8(container.values(), lazy_fragment),
-		ColumnBuffer::Uint16(container) => from_uint16(&u128s(container), lazy_fragment),
+		ColumnBuffer::Uint16(container) => from_uint16(&wides::<u128>(container), lazy_fragment),
 		ColumnBuffer::Float4(container) => from_float4(container.values(), lazy_fragment),
 		ColumnBuffer::Float8(container) => from_float8(container.values(), lazy_fragment),
 		ColumnBuffer::Utf8 {

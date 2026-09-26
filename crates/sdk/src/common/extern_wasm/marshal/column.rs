@@ -14,11 +14,12 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array,
-			decimal_array::{DecimalArray, u128s},
+			decimal_array::DecimalArray,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
 			varlen_array::compact_parts,
+			wide_int_array::wides,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -172,12 +173,12 @@ impl Arena {
 			ColumnBuffer::Int2(container) => self.marshal_numeric_slice::<i16>(container.values()),
 			ColumnBuffer::Int4(container) => self.marshal_numeric_slice::<i32>(container.values()),
 			ColumnBuffer::Int8(container) => self.marshal_numeric_slice::<i64>(container.values()),
-			ColumnBuffer::Int16(container) => self.marshal_numeric_slice::<i128>(container.values()),
+			ColumnBuffer::Int16(container) => self.marshal_copied(&wides::<i128>(container)),
 			ColumnBuffer::Uint1(container) => self.marshal_numeric_slice::<u8>(container.values()),
 			ColumnBuffer::Uint2(container) => self.marshal_numeric_slice::<u16>(container.values()),
 			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
 			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
-			ColumnBuffer::Uint16(container) => self.marshal_copied_u128s(&u128s(container)),
+			ColumnBuffer::Uint16(container) => self.marshal_copied(&wides::<u128>(container)),
 			ColumnBuffer::Decimal(array) => self.marshal_unscaled(array),
 
 			ColumnBuffer::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
@@ -277,16 +278,16 @@ impl Arena {
 		}
 	}
 
-	fn marshal_copied_u128s(&mut self, values: &[u128]) -> (ExternCBuffer, ExternCBuffer) {
+	fn marshal_copied<T: Copy>(&mut self, values: &[T]) -> (ExternCBuffer, ExternCBuffer) {
 		let byte_len = mem::size_of_val(values);
 		if byte_len == 0 {
 			return (ExternCBuffer::empty(), ExternCBuffer::empty());
 		}
-		let ptr = self.alloc_aligned(byte_len, 16);
-		// SAFETY: `ptr` is a fresh non-null arena block of `byte_len == values.len() * 16` writable bytes at
-		// alignment 16, so it holds exactly `values.len()` aligned u128 and cannot overlap `values`.
+		let ptr = self.alloc_aligned(byte_len, mem::align_of::<T>());
+		// SAFETY: `ptr` is a fresh non-null arena block of `byte_len == values.len() * size_of::<T>()` writable
+		// bytes at `align_of::<T>()`, so it holds exactly `values.len()` aligned T and cannot overlap `values`.
 		unsafe {
-			ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut u128, values.len());
+			ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut T, values.len());
 		}
 		(
 			ExternCBuffer {

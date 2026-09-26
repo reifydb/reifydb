@@ -479,10 +479,10 @@ pub mod test {
 			})),
 		);
 
-		assert_eq!(stored_type_and_constraint(&mut txn, plain), (32, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
+		assert_eq!(stored_type_and_constraint(&mut txn, plain), (30, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
 		assert_eq!(
 			stored_type_and_constraint(&mut txn, optional),
-			(0x40 | 32, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
+			(0x40 | 30, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
 		);
 	}
 }

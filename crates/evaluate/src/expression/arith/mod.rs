@@ -35,12 +35,12 @@ macro_rules! dispatch_arith {
 				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
-				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => $fh($ctx, dispatch_arith!(@values $L l), &wides::<i128>(r), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => $fh($ctx, dispatch_arith!(@values $L l), &u128s(r), $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => $fh($ctx, dispatch_arith!(@values $L l), &wides::<u128>(r), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Decimal(r)) => $ah($ctx, dispatch_arith!(@values $L l), &decimals(r), $target, $fragment),
 			}
 		)
@@ -66,12 +66,12 @@ macro_rules! dispatch_arith {
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Int2(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Int4(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Int8(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Decimal(l), ColumnBuffer::Int16(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
+			(ColumnBuffer::Decimal(l), ColumnBuffer::Int16(r)) => $ah($ctx, &decimals(l), &wides::<i128>(r), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint1(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint2(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint4(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint8(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint16(r)) => $ah($ctx, &decimals(l), &u128s(r), $target, $fragment),
+			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint16(r)) => $ah($ctx, &decimals(l), &wides::<u128>(r), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Decimal(r)) => $ah($ctx, &decimals(l), &decimals(r), $target, $fragment),
 
 
@@ -80,8 +80,13 @@ macro_rules! dispatch_arith {
 	};
 
 
+	(@values Int16 $array:ident) => {
+		&wides::<i128>($array)
+	};
+
+
 	(@values Uint16 $array:ident) => {
-		&u128s($array)
+		&wides::<u128>($array)
 	};
 
 

@@ -21,7 +21,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		container::decimal_array::{decimal_at, u128s},
+		container::{decimal_array::decimal_at, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -182,7 +182,8 @@ impl Accumulator for MinAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				min_arm!(self, column, groups, container.values(), Int16);
+				let values = wides::<i128>(container);
+				min_arm!(self, column, groups, values, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -202,7 +203,7 @@ impl Accumulator for MinAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				min_arm!(self, column, groups, values, Uint16);
 				Ok(())
 			}

@@ -64,7 +64,7 @@ fn ints(frames: &[Frame]) -> Vec<i64> {
 fn test_batch_udf_logic_and() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF in_range ($x: int) { RETURN $x > 2 AND $x < 8 };
+			UDF in_range ($x: int4) { RETURN $x > 2 AND $x < 8 };
 			FROM test::nums MAP { id, r: in_range(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -74,13 +74,13 @@ fn test_batch_udf_logic_and() {
 fn test_batch_udf_logic_or_xor() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF or_check ($x: int) { RETURN $x == 0 OR $x == 10 };
+			UDF or_check ($x: int4) { RETURN $x == 0 OR $x == 10 };
 			FROM test::nums MAP { id, r: or_check(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(false), Some(false), Some(true)]);
 
 	let frames = t.query(r#"
-			UDF xor_check ($x: int) { RETURN ($x > 2) XOR ($x > 5) };
+			UDF xor_check ($x: int4) { RETURN ($x > 2) XOR ($x > 5) };
 			FROM test::nums MAP { id, r: xor_check(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(false), Some(false)]);
@@ -90,7 +90,7 @@ fn test_batch_udf_logic_or_xor() {
 fn test_batch_udf_between() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF in_range ($x: int) { RETURN $x BETWEEN 3 AND 7 };
+			UDF in_range ($x: int4) { RETURN $x BETWEEN 3 AND 7 };
 			FROM test::nums MAP { id, r: in_range(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -100,13 +100,13 @@ fn test_batch_udf_between() {
 fn test_batch_udf_in_list() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF is_one_of ($x: int) { RETURN $x IN [0, 5, 10] };
+			UDF is_one_of ($x: int4) { RETURN $x IN [0, 5, 10] };
 			FROM test::nums MAP { id, r: is_one_of(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(true), Some(false), Some(true)]);
 
 	let frames = t.query(r#"
-			UDF not_in ($x: int) { RETURN $x NOT IN [0, 10] };
+			UDF not_in ($x: int4) { RETURN $x NOT IN [0, 10] };
 			FROM test::nums MAP { id, r: not_in(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -118,7 +118,7 @@ fn test_batch_udf_cast() {
 	// utf8 is the only target every integer round-trips through; CAST to boolean accepts
 	// literal 0 or 1 only.
 	let frames = t.query(r#"
-			UDF as_utf8 ($x: int) { RETURN CAST($x, utf8) };
+			UDF as_utf8 ($x: int4) { RETURN CAST($x, utf8) };
 			FROM test::nums MAP { id, r: as_utf8(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(strings(&frames), vec!["0", "3", "5", "7", "10"]);
@@ -130,8 +130,8 @@ fn test_batch_udf_calls_vectorizable_udf() {
 	// The inner body is arithmetic only, so the outer's batch path must dispatch Call into the
 	// columnar user-function path rather than falling back.
 	let frames = t.query(r#"
-			UDF helper ($y: int) { RETURN $y * 2 };
-			UDF outer ($x: int) { RETURN helper($x) + 1 };
+			UDF helper ($y: int4) { RETURN $y * 2 };
+			UDF outer ($x: int4) { RETURN helper($x) + 1 };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(ints(&frames), vec![1, 7, 11, 15, 21]);
@@ -143,7 +143,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 	// BREAK is not vectorizable, so the columnar Call path must fall back to per-row scalar
 	// execution instead of producing a wrong batch answer.
 	let frames = t.query(r#"
-			UDF helper ($x: int) : int2 {
+			UDF helper ($x: int4) : int2 {
 				LET $i = 0;
 				WHILE $i < 100 {
 					IF $i >= $x { BREAK };
@@ -151,7 +151,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 				};
 				RETURN $i
 			};
-			UDF outer ($x: int) : int2 { RETURN helper($x) };
+			UDF outer ($x: int4) : int2 { RETURN helper($x) };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(ints(&frames), vec![0, 3, 5, 7, 10]);
@@ -161,7 +161,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 fn test_batch_udf_if_branches() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF classify ($x: int) {
+			UDF classify ($x: int4) {
 				IF $x > 2 AND $x < 8 {
 					RETURN TRUE
 				}
@@ -176,7 +176,7 @@ fn test_batch_udf_if_branches() {
 fn test_batch_udf_if_else_if_else_chain() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF classify ($x: int) : int2 {
+			UDF classify ($x: int4) : int2 {
 				IF $x < 3 {
 					RETURN 1
 				}
@@ -196,7 +196,7 @@ fn test_batch_udf_if_else_if_else_chain() {
 fn test_batch_udf_match_returns_without_else() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF classify ($x: int) : int2 {
+			UDF classify ($x: int4) : int2 {
 				MATCH {
 					$x < 3 => { RETURN 1 },
 					$x < 8 => { RETURN 2 }
@@ -213,7 +213,7 @@ fn test_batch_udf_match_returns_without_else() {
 fn test_batch_udf_match_value_without_else_is_none() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF flag ($x: int) {
+			UDF flag ($x: int4) {
 				RETURN MATCH {
 					$x < 3 => TRUE,
 					$x < 8 => FALSE
@@ -229,7 +229,7 @@ fn test_batch_udf_match_value_without_else_is_none() {
 fn test_batch_udf_nested_if_returns() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF classify ($x: int) : int2 {
+			UDF classify ($x: int4) : int2 {
 				IF $x < 3 {
 					RETURN 1
 				}
@@ -254,7 +254,7 @@ fn test_batch_udf_nested_if_returns() {
 fn test_batch_udf_return_inside_while() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF first_at_least ($x: int) : int2 {
+			UDF first_at_least ($x: int4) : int2 {
 				LET $i = 0;
 				WHILE $i < 10 {
 					IF $i >= $x {
@@ -276,7 +276,7 @@ fn test_batch_udf_return_inside_while() {
 fn test_batch_udf_if_else_chain_single_line() {
 	let t = setup();
 	let frames = t.query(r#"
-			UDF classify ($x: int) : int2 {
+			UDF classify ($x: int4) : int2 {
 				IF $x < 3 { RETURN 1 } ELSE IF $x < 8 { RETURN 2 } ELSE { RETURN 3 }
 			};
 			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }

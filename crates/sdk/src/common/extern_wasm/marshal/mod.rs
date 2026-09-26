@@ -29,7 +29,7 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::{self, any_array},
-			decimal_array::{DecimalArray, u128s},
+			decimal_array::DecimalArray,
 			dictionary_array,
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
@@ -37,6 +37,7 @@ use reifydb_value::{
 			},
 			uuid_array::{identity_id_array, identity_ids, uuid4_array, uuid4s, uuid7_array, uuid7s},
 			varlen_array::blob_array,
+			wide_int_array::wides,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -323,12 +324,12 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		ColumnBuffer::Int2(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Int4(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Int8(container) => marshal_numeric_to_buf(buf, container.values()),
-		ColumnBuffer::Int16(container) => marshal_numeric_to_buf(buf, container.values()),
+		ColumnBuffer::Int16(container) => marshal_numeric_to_buf(buf, &wides::<i128>(container)),
 		ColumnBuffer::Uint1(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint2(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint4(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint8(container) => marshal_numeric_to_buf(buf, container.values()),
-		ColumnBuffer::Uint16(container) => marshal_numeric_to_buf(buf, &u128s(container)),
+		ColumnBuffer::Uint16(container) => marshal_numeric_to_buf(buf, &wides::<u128>(container)),
 
 		ColumnBuffer::Date(container) => {
 			let encoded: Vec<i32> = dates(container).iter().map(|d| d.to_days_since_epoch()).collect();

@@ -16,7 +16,7 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array::push_any, decimal_array::DecimalArray, dictionary_array::DICTIONARY_ENTRY_WIDTH,
-			fixed_array, uuid_array::UUID_WIDTH, varlen_array,
+			fixed_array, uuid_array::UUID_WIDTH, varlen_array, wide_int_array,
 		},
 	},
 };
@@ -85,7 +85,8 @@ fn extend_decimal(array: &mut DecimalArray, append: impl FnOnce(&mut DecimalBuil
 fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 	match buffer {
 		ColumnBuffer::Bool(a) => extend_bool(a, |b| b.append_n(count, false)),
-		ColumnBuffer::Uint16(a) => extend_native(a, |b| b.append_value_n(Default::default(), count)),
+		ColumnBuffer::Int16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<i128>(b, count)),
+		ColumnBuffer::Uint16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<u128>(b, count)),
 		ColumnBuffer::DictionaryId {
 			container,
 			..
@@ -222,7 +223,7 @@ impl ColumnBuffer {
 				extend_native(l, |b| b.append_slice(r.values()))
 			}
 			(ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) => {
-				extend_native(l, |b| b.append_slice(r.values()))
+				extend_fixed(l, |b| b.extend_from_slice(r.value_data()))
 			}
 			(ColumnBuffer::Uint1(l), ColumnBuffer::Uint1(r)) => {
 				extend_native(l, |b| b.append_slice(r.values()))
@@ -237,7 +238,7 @@ impl ColumnBuffer {
 				extend_native(l, |b| b.append_slice(r.values()))
 			}
 			(ColumnBuffer::Uint16(l), ColumnBuffer::Uint16(r)) => {
-				extend_native(l, |b| b.append_slice(r.values()))
+				extend_fixed(l, |b| b.extend_from_slice(r.value_data()))
 			}
 			(
 				ColumnBuffer::Utf8 {

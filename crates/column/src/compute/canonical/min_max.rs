@@ -5,7 +5,7 @@ use arrow_arith::aggregate::{max, min};
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_value::{
 	Result,
-	value::{Value, container::decimal_array::u128s},
+	value::{Value, container::wide_int_array::wides},
 };
 
 use crate::error::ColumnError;
@@ -86,12 +86,12 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Int2(c) => reduce_arrow!(c, Int2),
 		ColumnBuffer::Int4(c) => reduce_arrow!(c, Int4),
 		ColumnBuffer::Int8(c) => reduce_arrow!(c, Int8),
-		ColumnBuffer::Int16(_) => reduce_int!(array.buffer.as_slice::<i128>(), Int16),
+		ColumnBuffer::Int16(c) => reduce_int!(wides::<i128>(c), Int16),
 		ColumnBuffer::Uint1(c) => reduce_arrow!(c, Uint1),
 		ColumnBuffer::Uint2(c) => reduce_arrow!(c, Uint2),
 		ColumnBuffer::Uint4(c) => reduce_arrow!(c, Uint4),
 		ColumnBuffer::Uint8(c) => reduce_arrow!(c, Uint8),
-		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
+		ColumnBuffer::Uint16(c) => reduce_int!(wides::<u128>(c), Uint16),
 		ColumnBuffer::Decimal(c) => reduce_family!(c),
 		ColumnBuffer::Any {
 			..

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::container::{any_array, bool_array, fixed_array, primitive, varlen_array};
+use reifydb_value::value::container::{
+	any_array, bool_array, fixed_array, primitive, varlen_array, wide_int_array::wide_array,
+};
 
 use crate::value::column::{
 	ColumnBuffer,
@@ -12,7 +14,9 @@ impl ColumnBuffer {
 	pub fn reorder(&mut self, indices: &[usize]) {
 		match self {
 			ColumnBuffer::Bool(a) => *a = bool_array::reorder(a, indices),
-			ColumnBuffer::Uint16(a) => *a = primitive::reorder(a, indices),
+			ColumnBuffer::Int16(a) => {
+				*a = fixed_array::reorder(a, indices, wide_array([0i128]).value_data())
+			}
 			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::reorder(a, indices)),
 			ColumnBuffer::Any {
 				container,
@@ -22,7 +26,7 @@ impl ColumnBuffer {
 				self,
 				|a| *a = primitive::reorder(a, indices),
 				|t| *t = primitive::reorder(t, indices),
-				|u| *u = fixed_array::reorder(u, indices),
+				|u| *u = fixed_array::reorder(u, indices, &vec![0; u.value_length() as usize]),
 				|v| *v = varlen_array::reorder(v, indices)
 			),
 		}

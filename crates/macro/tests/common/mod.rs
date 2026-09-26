@@ -8,9 +8,9 @@ use arrow_array::{
 use arrow_buffer::BooleanBuffer;
 use reifydb_value::value::{
 	container::{
-		decimal_array::{int16_array, uint16_array},
 		temporal_array::{date_array, datetime_array, time_array},
 		uuid_array::{uuid4_array, uuid7_array},
+		wide_int_array::wide_array,
 	},
 	date::Date,
 	datetime::DateTime,
@@ -43,7 +43,7 @@ pub fn int1_column(name: &str, values: Vec<i8>) -> FrameColumn {
 }
 
 pub fn int16_column(name: &str, values: Vec<i128>) -> FrameColumn {
-	column(name, FrameColumnData::Int16(int16_array(values)))
+	column(name, FrameColumnData::Int16(wide_array(values)))
 }
 
 pub fn uint8_column(name: &str, values: Vec<u64>) -> FrameColumn {
@@ -63,7 +63,7 @@ pub fn uint1_column(name: &str, values: Vec<u8>) -> FrameColumn {
 }
 
 pub fn uint16_column(name: &str, values: Vec<u128>) -> FrameColumn {
-	column(name, FrameColumnData::Uint16(uint16_array(values)))
+	column(name, FrameColumnData::Uint16(wide_array(values)))
 }
 
 pub fn float8_column(name: &str, values: Vec<f64>) -> FrameColumn {

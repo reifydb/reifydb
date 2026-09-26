@@ -17,7 +17,6 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::Constraint,
 		container::{
-			decimal_array::uint16_to_native,
 			dictionary_array::push_entry,
 			digest_array::push_digest,
 			temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
@@ -407,7 +406,7 @@ impl Columns {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
-					builder.append_value(uint16_to_native(shape.get::<u128>(bytes, index)));
+					builder.append_value(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));
@@ -557,7 +556,7 @@ impl Columns {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
-					builder.append_value(uint16_to_native(shape.get::<u128>(bytes, index)));
+					builder.append_value(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));

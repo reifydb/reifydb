@@ -10,7 +10,7 @@ use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
-		container::decimal_array::{decimals, u128s},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::{Decimal, parse::parse_decimal, unscaled},
 		is::IsNumber,
 		number::{
@@ -531,7 +531,7 @@ fn number_to_number(
 	    family => [(Decimal, Decimal)]
 	);
 
-	cast!(Int16, i128,
+	cast!(Int16 via wides::<i128>, i128,
 	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
 	    family => [(Decimal, Decimal)]
 	);
@@ -556,7 +556,7 @@ fn number_to_number(
 	    family => [(Decimal, Decimal)]
 	);
 
-	cast!(Uint16 via u128s, u128,
+	cast!(Uint16 via wides::<u128>, u128,
 	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
 	    family => [(Decimal, Decimal)]
 	);

@@ -12,11 +12,12 @@ use reifydb_value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
 			any_array::any_array,
-			decimal_array::{decimal_array, int16_array, uint16_array},
+			decimal_array::decimal_array,
 			digest_array::{push_digest, push_none_slot},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 			varlen_array::blob_array,
+			wide_int_array::wide_array,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -439,14 +440,14 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		ValueType::Int4 => FrameColumnData::Int4(cells(name, base, rows, 0i32, |s| s.parse().ok())?.into()),
 		ValueType::Int8 => FrameColumnData::Int8(cells(name, base, rows, 0i64, |s| s.parse().ok())?.into()),
 		ValueType::Int16 => {
-			FrameColumnData::Int16(int16_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
+			FrameColumnData::Int16(wide_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
 		}
 		ValueType::Uint1 => FrameColumnData::Uint1(cells(name, base, rows, 0u8, |s| s.parse().ok())?.into()),
 		ValueType::Uint2 => FrameColumnData::Uint2(cells(name, base, rows, 0u16, |s| s.parse().ok())?.into()),
 		ValueType::Uint4 => FrameColumnData::Uint4(cells(name, base, rows, 0u32, |s| s.parse().ok())?.into()),
 		ValueType::Uint8 => FrameColumnData::Uint8(cells(name, base, rows, 0u64, |s| s.parse().ok())?.into()),
 		ValueType::Uint16 => {
-			FrameColumnData::Uint16(uint16_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
+			FrameColumnData::Uint16(wide_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
 		}
 		ValueType::Date => FrameColumnData::Date(date_array(cells(
 			name,

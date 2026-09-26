@@ -27,8 +27,8 @@ macro_rules! map_container {
 			ColumnBuffer::Uint2($a) => ColumnBuffer::Uint2($native),
 			ColumnBuffer::Uint4($a) => ColumnBuffer::Uint4($native),
 			ColumnBuffer::Uint8($a) => ColumnBuffer::Uint8($native),
-			ColumnBuffer::Int16($a) => ColumnBuffer::Int16($native),
-			ColumnBuffer::Uint16($a) => ColumnBuffer::Uint16($native),
+			ColumnBuffer::Int16($u) => ColumnBuffer::Int16($fixed),
+			ColumnBuffer::Uint16($u) => ColumnBuffer::Uint16($fixed),
 			ColumnBuffer::Bool(_) => {
 				unreachable!(
 					"map_container! must not be called on Bool variant directly; handle it explicitly"

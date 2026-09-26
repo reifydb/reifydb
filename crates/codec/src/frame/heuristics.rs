@@ -5,10 +5,7 @@ use std::collections::HashSet;
 
 use arrow_buffer::i256;
 use reifydb_value::value::{
-	container::{
-		decimal_array::{DecimalArray, u128s},
-		temporal_array::times,
-	},
+	container::{decimal_array::DecimalArray, temporal_array::times, wide_int_array::wides},
 	frame::data::FrameColumnData,
 };
 
@@ -50,7 +47,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		}
 		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c.values()),
 		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c.values()),
-		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(c.values()),
+		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(&wides::<i128>(c)),
 		FrameColumnData::Uint1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
@@ -61,7 +58,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
 		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c.values()),
-		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&u128s(c)),
+		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&wides::<u128>(c)),
 		FrameColumnData::Float4(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
 		}

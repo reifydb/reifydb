@@ -13,7 +13,7 @@ use reifydb_value::{
 	Result,
 	error::Diagnostic,
 	fragment::Fragment,
-	value::{container::decimal_array::u128s, value_type::ValueType},
+	value::{container::wide_int_array::wides, value_type::ValueType},
 };
 
 const TWO_POW_64: u128 = 1 << 64;
@@ -42,21 +42,17 @@ fn prefix(column: ColumnBuffer, operator: PrefixOperator) -> ColumnBuffer {
 }
 
 fn uint16_rows(column: &ColumnBuffer) -> Vec<u128> {
-	// Arrow's default decimal type (76, 10) would read every row 10^10 times too small on export.
 	let ColumnBuffer::Uint16(array) = column else {
 		panic!("expected a Uint16 column, got {:?}", column.get_type());
 	};
-	assert_eq!((array.precision(), array.scale()), (39, 0));
-	u128s(array)
+	wides::<u128>(array)
 }
 
 fn int16_rows(column: &ColumnBuffer) -> Vec<i128> {
-	// Arrow's default decimal type (38, 10) would read every row 10^10 times too small on export.
 	let ColumnBuffer::Int16(array) = column else {
 		panic!("expected an Int16 column, got {:?}", column.get_type());
 	};
-	assert_eq!((array.precision(), array.scale()), (38, 0));
-	array.values().to_vec()
+	wides::<i128>(array)
 }
 
 #[test]

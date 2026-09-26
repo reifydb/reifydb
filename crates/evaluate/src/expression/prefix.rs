@@ -11,7 +11,7 @@ use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 	value::{
-		container::decimal_array::{decimals, u128s},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::ValueType,
 	},
@@ -20,8 +20,8 @@ use reifydb_value::{
 use crate::{Result, expression::option::unary_op_unwrap_option};
 
 macro_rules! prefix_signed_int {
-	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{
-		let values: &[_] = $container.values();
+	($column:expr, $values:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{
+		let values: &[_] = $values;
 		let mut result = Vec::with_capacity(values.len());
 		for val in values.iter() {
 			result.push(match $operator {
@@ -149,23 +149,58 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		}
 
 		ColumnBuffer::Int1(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int1, ValueType::Int1)
+			prefix_signed_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				int1,
+				ValueType::Int1
+			)
 		}
 
 		ColumnBuffer::Int2(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int2, ValueType::Int2)
+			prefix_signed_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				int2,
+				ValueType::Int2
+			)
 		}
 
 		ColumnBuffer::Int4(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int4, ValueType::Int4)
+			prefix_signed_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				int4,
+				ValueType::Int4
+			)
 		}
 
 		ColumnBuffer::Int8(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int8, ValueType::Int8)
+			prefix_signed_int!(
+				column,
+				container.values(),
+				operator,
+				fragment.clone(),
+				int8,
+				ValueType::Int8
+			)
 		}
 
 		ColumnBuffer::Int16(container) => {
-			prefix_signed_int!(column, container, operator, fragment.clone(), int16, ValueType::Int16)
+			prefix_signed_int!(
+				column,
+				&wides::<i128>(container),
+				operator,
+				fragment.clone(),
+				int16,
+				ValueType::Int16
+			)
 		}
 
 		ColumnBuffer::Utf8 {
@@ -235,7 +270,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		ColumnBuffer::Uint16(container) => {
 			prefix_unsigned_int!(
 				column,
-				&u128s(container),
+				&wides::<u128>(container),
 				operator,
 				fragment.clone(),
 				i128,

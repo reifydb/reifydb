@@ -10,10 +10,7 @@ use reifydb_value::{
 	error::TypeError,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::{
-			decimal_array::{decimals, u128s},
-			varlen_array,
-		},
+		container::{decimal_array::decimals, varlen_array, wide_int_array::wides},
 		decimal::{Decimal, unscaled},
 		is::IsNumber,
 		number::safe::div::SafeDiv,
@@ -316,7 +313,26 @@ fn execute_arith<Op: ArithOp>(
 			ColumnBuffer::int8_with_bitvec(values, bits)
 		}
 		ValueType::Int16 => {
-			let (values, bits) = run!(Int16);
+			let (ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) = (a_inner, b_inner) else {
+				unreachable!()
+			};
+			let d = d_parts.as_ref().map(|(inner, bv)| {
+				let ColumnBuffer::Int16(c) = inner else {
+					unreachable!()
+				};
+				(wides::<i128>(c), *bv)
+			});
+			let (values, bits) = compute_rows::<_, Op>(
+				ctx,
+				&target,
+				(&wides::<i128>(l), a_bv),
+				(&wides::<i128>(r), b_bv),
+				&mode,
+				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
+				strict_msg,
+				Some,
+				identity,
+			)?;
 			ColumnBuffer::int16_with_bitvec(values, bits)
 		}
 		ValueType::Uint1 => {
@@ -343,13 +359,13 @@ fn execute_arith<Op: ArithOp>(
 				let ColumnBuffer::Uint16(c) = inner else {
 					unreachable!()
 				};
-				(u128s(c), *bv)
+				(wides::<u128>(c), *bv)
 			});
 			let (values, bits) = compute_rows::<_, Op>(
 				ctx,
 				&target,
-				(&u128s(l), a_bv),
-				(&u128s(r), b_bv),
+				(&wides::<u128>(l), a_bv),
+				(&wides::<u128>(r), b_bv),
 				&mode,
 				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
 				strict_msg,

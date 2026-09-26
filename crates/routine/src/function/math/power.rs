@@ -9,7 +9,7 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::decimal_array::{decimals, u128s},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
 		is::IsNumber,
 		value_type::ValueType,
@@ -133,7 +133,20 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			ValueType::Int2 => run!(Int2, int2_with_bitvec, signed_pow_op!()),
 			ValueType::Int4 => run!(Int4, int4_with_bitvec, signed_pow_op!()),
 			ValueType::Int8 => run!(Int8, int8_with_bitvec, signed_pow_op!()),
-			ValueType::Int16 => run!(Int16, int16_with_bitvec, signed_pow_op!()),
+			ValueType::Int16 => {
+				let (ColumnBuffer::Int16(b), ColumnBuffer::Int16(e)) = (base_inner, exp_inner) else {
+					unreachable!()
+				};
+				let (values, bits) = pow_rows(
+					&wides::<i128>(b),
+					base_bv,
+					&wides::<i128>(e),
+					exp_bv,
+					signed_pow_op!(),
+					&overflow,
+				)?;
+				ColumnBuffer::int16_with_bitvec(values, bits)
+			}
 			ValueType::Uint1 => run!(Uint1, uint1_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint2 => run!(Uint2, uint2_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint4 => run!(Uint4, uint4_with_bitvec, unsigned_pow_op!()),
@@ -142,8 +155,14 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				let (ColumnBuffer::Uint16(b), ColumnBuffer::Uint16(e)) = (base_inner, exp_inner) else {
 					unreachable!()
 				};
-				let (values, bits) =
-					pow_rows(&u128s(b), base_bv, &u128s(e), exp_bv, unsigned_pow_op!(), &overflow)?;
+				let (values, bits) = pow_rows(
+					&wides::<u128>(b),
+					base_bv,
+					&wides::<u128>(e),
+					exp_bv,
+					unsigned_pow_op!(),
+					&overflow,
+				)?;
 				ColumnBuffer::uint16_with_bitvec(values, bits)
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),

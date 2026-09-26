@@ -55,7 +55,7 @@ fn nullable_int4_block_with_an_all_set_none_bitmap_is_pinned() {
 	// A nullable chunk with zero nones must still store the Option wrapper and an all-set bitmap on disk.
 	let canonical = all_valid(ValueType::Int4, ColumnBuffer::int4([1, 2, 3]));
 	let block = nullable_block(ValueType::Int4, canonical);
-	assert_block_pinned(block.clone(), "0201016105010101001b0503020406010703");
+	assert_block_pinned(block.clone(), "020101610501010100190503020406010703");
 	let restored = deserialize_block(&serialize_block(&block).unwrap()).unwrap();
 	let chunk = restored.columns[0].chunks[0].to_canonical().unwrap();
 	assert!(chunk.nullable, "a reloaded chunk must keep its nullable flag");
@@ -67,7 +67,7 @@ fn nullable_utf8_block_with_an_all_set_none_bitmap_is_pinned() {
 	// A varlen nullable chunk with zero nones must store the wrapper and its max_bytes exactly on disk.
 	let canonical = all_valid(ValueType::Utf8, ColumnBuffer::utf8(["a", "bc"]));
 	let block = nullable_block(ValueType::Utf8, canonical);
-	assert_block_pinned(block.clone(), "0201016108010101001b0d020161026263ffffffff0f010302");
+	assert_block_pinned(block.clone(), "020101610801010100190d020161026263ffffffff0f010302");
 	let restored = deserialize_block(&serialize_block(&block).unwrap()).unwrap();
 	let chunk = restored.columns[0].chunks[0].to_canonical().unwrap();
 	assert_eq!(chunk.buffer.nulls().map(|nones| (nones.len(), nones.null_count())), Some((2, 0)));

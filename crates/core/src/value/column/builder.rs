@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Debug, mem};
+use std::{fmt::Debug, marker::PhantomData, mem};
 
 use arrow_array::{
 	Array, ArrowPrimitiveType, BooleanArray, FixedSizeBinaryArray, GenericByteArray, PrimitiveArray,
@@ -20,16 +20,14 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any_array::push_any,
-			decimal_array::{
-				self, DECIMAL128_MAX_PRECISION, DecimalArray, INT16_DATA_TYPE, UINT16_DATA_TYPE,
-				decimal_at, with_int16_type, with_uint16_type,
-			},
+			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalArray, decimal_at},
 			dictionary_array::DICTIONARY_ENTRY_WIDTH,
 			digest_array::push_none_slot,
 			fixed_array,
 			temporal_array::DATETIME_TIMEZONE,
 			uuid_array::UUID_WIDTH,
 			varlen_array,
+			wide_int_array::{self, WideInt},
 		},
 		decimal::{Decimal, unscaled},
 		dictionary::DictionaryId,
@@ -237,18 +235,56 @@ impl DecimalBuilder {
 }
 
 #[derive(Debug)]
+pub struct WideBuilder<T: WideInt> {
+	buffer: MutableBuffer,
+	marker: PhantomData<T>,
+}
+
+impl<T: WideInt> WideBuilder<T> {
+	pub(crate) fn with_capacity(capacity: usize) -> Self {
+		Self {
+			buffer: MutableBuffer::with_capacity(capacity * T::WIDTH),
+			marker: PhantomData,
+		}
+	}
+
+	pub(crate) fn from_array(array: FixedSizeBinaryArray) -> Self {
+		Self {
+			buffer: fixed_builder(array),
+			marker: PhantomData,
+		}
+	}
+
+	pub(crate) fn append_value(&mut self, value: T) {
+		wide_int_array::push_wide(&mut self.buffer, value);
+	}
+
+	pub(crate) fn append_array(&mut self, array: &FixedSizeBinaryArray) {
+		self.buffer.extend_from_slice(array.value_data());
+	}
+
+	pub(crate) fn len(&self) -> usize {
+		self.buffer.len() / T::WIDTH
+	}
+
+	pub(crate) fn finish(&mut self) -> FixedSizeBinaryArray {
+		fixed_array::from_buffer(T::WIDTH, mem::take(&mut self.buffer))
+	}
+}
+
+#[derive(Debug)]
 pub enum ColumnBuilder {
 	Bool(BooleanBufferBuilder),
 	Int1(PrimitiveBuilder<Int8Type>),
 	Int2(PrimitiveBuilder<Int16Type>),
 	Int4(PrimitiveBuilder<Int32Type>),
 	Int8(PrimitiveBuilder<Int64Type>),
-	Int16(PrimitiveBuilder<Decimal128Type>),
+	Int16(WideBuilder<i128>),
 	Uint1(PrimitiveBuilder<UInt8Type>),
 	Uint2(PrimitiveBuilder<UInt16Type>),
 	Uint4(PrimitiveBuilder<UInt32Type>),
 	Uint8(PrimitiveBuilder<UInt64Type>),
-	Uint16(PrimitiveBuilder<Decimal256Type>),
+	Uint16(WideBuilder<u128>),
 	Float4(PrimitiveBuilder<Float32Type>),
 	Float8(PrimitiveBuilder<Float64Type>),
 	Date(PrimitiveBuilder<Date32Type>),
@@ -294,18 +330,12 @@ impl ColumnBuilder {
 			ValueType::Int2 => ColumnBuilder::Int2(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Int4 => ColumnBuilder::Int4(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Int8 => ColumnBuilder::Int8(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Int16 => ColumnBuilder::Int16(
-				PrimitiveBuilder::<Decimal128Type>::with_capacity(capacity)
-					.with_data_type(INT16_DATA_TYPE),
-			),
+			ValueType::Int16 => ColumnBuilder::Int16(WideBuilder::with_capacity(capacity)),
 			ValueType::Uint1 => ColumnBuilder::Uint1(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Uint2 => ColumnBuilder::Uint2(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Uint4 => ColumnBuilder::Uint4(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Uint8 => ColumnBuilder::Uint8(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Uint16 => ColumnBuilder::Uint16(
-				PrimitiveBuilder::<Decimal256Type>::with_capacity(capacity)
-					.with_data_type(UINT16_DATA_TYPE),
-			),
+			ValueType::Uint16 => ColumnBuilder::Uint16(WideBuilder::with_capacity(capacity)),
 			ValueType::Float4 => ColumnBuilder::Float4(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Float8 => ColumnBuilder::Float8(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Date => ColumnBuilder::Date(PrimitiveBuilder::with_capacity(capacity)),
@@ -481,12 +511,12 @@ impl ColumnBuilder {
 			(ColumnBuilder::Int2(l), ColumnBuffer::Int2(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Int4(l), ColumnBuffer::Int4(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Int8(l), ColumnBuffer::Int8(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Int16(l), ColumnBuffer::Int16(r)) => l.append_slice(r.values()),
+			(ColumnBuilder::Int16(l), ColumnBuffer::Int16(r)) => l.append_array(&r),
 			(ColumnBuilder::Uint1(l), ColumnBuffer::Uint1(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Uint2(l), ColumnBuffer::Uint2(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Uint4(l), ColumnBuffer::Uint4(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Uint8(l), ColumnBuffer::Uint8(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Uint16(l), ColumnBuffer::Uint16(r)) => l.append_slice(r.values()),
+			(ColumnBuilder::Uint16(l), ColumnBuffer::Uint16(r)) => l.append_array(&r),
 			(ColumnBuilder::Float4(l), ColumnBuffer::Float4(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Float8(l), ColumnBuffer::Float8(r)) => l.append_slice(r.values()),
 			(ColumnBuilder::Date(l), ColumnBuffer::Date(r)) => l.append_slice(r.values()),
@@ -675,12 +705,12 @@ impl ColumnBuilder {
 			ColumnBuilder::Int2(mut b) => ColumnBuffer::Int2(b.finish()),
 			ColumnBuilder::Int4(mut b) => ColumnBuffer::Int4(b.finish()),
 			ColumnBuilder::Int8(mut b) => ColumnBuffer::Int8(b.finish()),
-			ColumnBuilder::Int16(mut b) => ColumnBuffer::Int16(with_int16_type(b.finish())),
+			ColumnBuilder::Int16(mut b) => ColumnBuffer::Int16(b.finish()),
 			ColumnBuilder::Uint1(mut b) => ColumnBuffer::Uint1(b.finish()),
 			ColumnBuilder::Uint2(mut b) => ColumnBuffer::Uint2(b.finish()),
 			ColumnBuilder::Uint4(mut b) => ColumnBuffer::Uint4(b.finish()),
 			ColumnBuilder::Uint8(mut b) => ColumnBuffer::Uint8(b.finish()),
-			ColumnBuilder::Uint16(mut b) => ColumnBuffer::Uint16(with_uint16_type(b.finish())),
+			ColumnBuilder::Uint16(mut b) => ColumnBuffer::Uint16(b.finish()),
 			ColumnBuilder::Float4(mut b) => ColumnBuffer::Float4(b.finish()),
 			ColumnBuilder::Float8(mut b) => ColumnBuffer::Float8(b.finish()),
 			ColumnBuilder::Date(mut b) => ColumnBuffer::Date(b.finish()),
@@ -756,12 +786,12 @@ impl ColumnBuffer {
 			ColumnBuffer::Int2(a) => ColumnBuilder::Int2(primitive_builder(a)),
 			ColumnBuffer::Int4(a) => ColumnBuilder::Int4(primitive_builder(a)),
 			ColumnBuffer::Int8(a) => ColumnBuilder::Int8(primitive_builder(a)),
-			ColumnBuffer::Int16(a) => ColumnBuilder::Int16(primitive_builder(a)),
+			ColumnBuffer::Int16(a) => ColumnBuilder::Int16(WideBuilder::from_array(a)),
 			ColumnBuffer::Uint1(a) => ColumnBuilder::Uint1(primitive_builder(a)),
 			ColumnBuffer::Uint2(a) => ColumnBuilder::Uint2(primitive_builder(a)),
 			ColumnBuffer::Uint4(a) => ColumnBuilder::Uint4(primitive_builder(a)),
 			ColumnBuffer::Uint8(a) => ColumnBuilder::Uint8(primitive_builder(a)),
-			ColumnBuffer::Uint16(a) => ColumnBuilder::Uint16(primitive_builder(a)),
+			ColumnBuffer::Uint16(a) => ColumnBuilder::Uint16(WideBuilder::from_array(a)),
 			ColumnBuffer::Float4(a) => ColumnBuilder::Float4(primitive_builder(a)),
 			ColumnBuffer::Float8(a) => ColumnBuilder::Float8(primitive_builder(a)),
 			ColumnBuffer::Date(a) => ColumnBuilder::Date(primitive_builder(a)),

@@ -8,13 +8,11 @@ use reifydb_value::{
 };
 
 #[test]
-fn an_int_uint_or_decimal_cast_to_utf8_gives_its_text() {
+fn a_decimal_cast_to_utf8_gives_its_text() {
 	// Every fixed-width number casts to text, so an arbitrary-precision number must never be the exception.
 	let t = TestEngine::new();
 
-	for (source, expected) in
-		[("cast(42, int)", "42"), ("cast(42, uint)", "42"), ("cast('1.5', decimal)", "1.5000000000")]
-	{
+	for (source, expected) in [("cast('1.5', decimal)", "1.5000000000")] {
 		let result = t.inner().query_as(
 			TestEngine::identity(),
 			&format!("map {{ v: cast({source}, utf8) }}"),

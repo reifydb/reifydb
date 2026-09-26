@@ -11,11 +11,12 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array, bool_array,
-			decimal_array::{decimal_at, decimal_get_value, u128_at, uint16_get_value},
+			decimal_array::{decimal_at, decimal_get_value},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{self, dates, datetimes, durations, times},
 			uuid_array::{self, identity_ids, uuid4s, uuid7s},
 			varlen_array::{self, blob_get_value, utf8_get_value},
+			wide_int_array::{self, wide_at},
 		},
 		date::Date,
 		datetime::DateTime,
@@ -58,7 +59,8 @@ impl ColumnBuffer {
 				..
 			} => blob_get_value(container, index),
 			ColumnBuffer::Bool(c) => bool_array::get_value(c, index),
-			ColumnBuffer::Uint16(a) => uint16_get_value(a, index),
+			ColumnBuffer::Int16(a) => wide_int_array::get_value::<i128>(a, index),
+			ColumnBuffer::Uint16(a) => wide_int_array::get_value::<u128>(a, index),
 			ColumnBuffer::DictionaryId {
 				container,
 				..
@@ -172,7 +174,6 @@ impl_from_column_data_widening!(
 	i16 => [Int1, Int2],
 	i32 => [Int1, Int2, Int4],
 	i64 => [Int1, Int2, Int4, Int8],
-	i128 => [Int1, Int2, Int4, Int8, Int16],
 	u8 => [Uint1],
 	u16 => [Uint1, Uint2],
 	u32 => [Uint1, Uint2, Uint4],
@@ -181,6 +182,19 @@ impl_from_column_data_widening!(
 	f64 => [Float4, Float8],
 );
 
+impl FromColumnBuffer for i128 {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+		match data {
+			ColumnBuffer::Int1(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
+			ColumnBuffer::Int2(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
+			ColumnBuffer::Int4(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
+			ColumnBuffer::Int8(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
+			ColumnBuffer::Int16(c) => Ok(wide_at::<i128>(c, index)),
+			_ => wrong_type(),
+		}
+	}
+}
+
 impl FromColumnBuffer for u128 {
 	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
@@ -188,7 +202,7 @@ impl FromColumnBuffer for u128 {
 			ColumnBuffer::Uint2(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
 			ColumnBuffer::Uint4(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
 			ColumnBuffer::Uint8(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
-			ColumnBuffer::Uint16(c) => Ok(u128_at(c, index)),
+			ColumnBuffer::Uint16(c) => Ok(wide_at::<u128>(c, index)),
 			_ => wrong_type(),
 		}
 	}

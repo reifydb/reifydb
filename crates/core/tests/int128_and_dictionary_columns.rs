@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
 use reifydb_value::value::{
 	Value,
 	container::{
-		decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
 		dictionary_array::{self, dictionary_array},
+		wide_int_array::wides,
 	},
 	dictionary::{DictionaryEntryId, DictionaryId},
 	frame::data::FrameColumnData,
@@ -45,20 +44,14 @@ fn dictionary_parts(buffer: &ColumnBuffer) -> (Vec<DictionaryEntryId>, Option<Di
 
 fn assert_int16(buffer: &ColumnBuffer, expected: &[i128]) {
 	match buffer {
-		ColumnBuffer::Int16(array) => {
-			assert_eq!(array.data_type(), &INT16_DATA_TYPE);
-			assert_eq!(&array.values()[..], expected);
-		}
+		ColumnBuffer::Int16(array) => assert_eq!(wides::<i128>(array), expected),
 		other => panic!("expected an int16 column, got {:?}", other.get_type()),
 	}
 }
 
 fn assert_uint16(buffer: &ColumnBuffer, expected: &[u128]) {
 	match buffer {
-		ColumnBuffer::Uint16(array) => {
-			assert_eq!(array.data_type(), &UINT16_DATA_TYPE);
-			assert_eq!(u128s(array), expected);
-		}
+		ColumnBuffer::Uint16(array) => assert_eq!(wides::<u128>(array), expected),
 		other => panic!("expected a uint16 column, got {:?}", other.get_type()),
 	}
 }
@@ -188,7 +181,7 @@ fn shared_or_offset_dictionary_buffer_copies_whole_rows_into_the_builder() {
 
 #[test]
 fn int16_keeps_its_values_and_data_type_through_every_op() {
-	// Falling back to the arrow default scale 10 misreports every value by a factor of 10^10.
+	// Every op must keep the ordered rows exact; a zero filler row would read back as i128::MIN.
 	let buffer = ColumnBuffer::int16(INTS);
 	assert_int16(&buffer, &INTS);
 
@@ -232,14 +225,13 @@ fn int16_keeps_its_values_and_data_type_through_every_op() {
 
 	assert_int16(&ColumnBuffer::none_typed(ValueType::Int16, 2), &[0, 0]);
 	assert_int16(&ColumnBuffer::int16_with_bitvec([4, 0], vec![true, false]), &[4, 0]);
-	assert_eq!(buffer.as_slice::<i128>(), &INTS);
 	assert_eq!(buffer.get_as::<i128>(2), Ok(Some(i128::MAX)));
 	assert_eq!(buffer.get_value(0), Value::Int16(i128::MIN));
 }
 
 #[test]
 fn uint16_keeps_values_above_i128_max_and_its_data_type() {
-	// Values at and above 2^127 must never pick up a sign in the signed 256 bit storage.
+	// Values at and above 2^127 must never pick up a sign on any op.
 	let buffer = ColumnBuffer::uint16(UINTS);
 	assert_uint16(&buffer, &UINTS);
 

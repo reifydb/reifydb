@@ -22,7 +22,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::decimal_array::{decimals, u128s},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -275,7 +275,8 @@ fn execute_decimal<'a>(
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
 			ColumnBuffer::Int16(container) => {
-				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
+				let values = wides::<i128>(container);
+				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
 			ColumnBuffer::Uint1(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
@@ -290,7 +291,7 @@ fn execute_decimal<'a>(
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
 			ColumnBuffer::Decimal(container) => {
@@ -418,7 +419,8 @@ impl Accumulator for AvgAccumulator {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int16(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
+				let values = wides::<i128>(container);
+				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint1(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
@@ -433,7 +435,7 @@ impl Accumulator for AvgAccumulator {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
 			(AvgState::Decimal(sums), ColumnBuffer::Decimal(container)) => {
