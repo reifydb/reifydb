@@ -25,9 +25,7 @@ use reifydb_value::{
 	value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
-		int::Int,
 		row_number::RowNumber,
-		uint::Uint,
 	},
 };
 
@@ -75,36 +73,6 @@ impl ExternCOperator for FamilyEchoOperator {
 				let scale = Scale::try_new_with_precision(view.raw().scale(), precision)
 					.expect("a valid scale");
 				let column = match view.type_code() {
-					ValueKind::Int => {
-						let values = read_both_ways(
-							&view,
-							view.int_iter().expect("an int column"),
-							post.rows().map(|row| row.int(name).unwrap()).collect(),
-						);
-						let mut writer = builder.int_writer(rows.max(1), precision)?;
-						for value in &values {
-							match value {
-								Some(value) => writer.push(value)?,
-								None => writer.push_none()?,
-							}
-						}
-						writer.finish()?
-					}
-					ValueKind::Uint => {
-						let values = read_both_ways(
-							&view,
-							view.uint_iter().expect("a uint column"),
-							post.rows().map(|row| row.uint(name).unwrap()).collect(),
-						);
-						let mut writer = builder.uint_writer(rows.max(1), precision)?;
-						for value in &values {
-							match value {
-								Some(value) => writer.push(value)?,
-								None => writer.push_none()?,
-							}
-						}
-						writer.finish()?
-					}
 					ValueKind::Decimal => {
 						let values = read_both_ways(
 							&view,
@@ -136,8 +104,6 @@ impl ExternCOperator for FamilyEchoOperator {
 	}
 }
 
-const WIDTHS: [Precision; 2] = [Precision::new(38), Precision::MAX];
-
 fn echo(label: &str, input: ColumnBuffer) {
 	let output = round_trip_column_through::<FamilyEchoOperator>("f", input.clone());
 	assert_column_eq(label, &input, &output);
@@ -145,40 +111,6 @@ fn echo(label: &str, input: ColumnBuffer) {
 
 fn decimals(texts: &[&str]) -> Vec<Decimal> {
 	texts.iter().map(|t| Decimal::parse(t).unwrap()).collect()
-}
-
-#[test]
-fn int_reads_and_writes_through_the_guest_api_at_both_widths() {
-	// The guest must size cells from the column precision; a fixed 16 or 32 byte guess breaks the other width.
-	let edge = Int::parse("99999999999999999999999999999999999999").unwrap();
-	for precision in WIDTHS {
-		echo(
-			&format!("int at precision {}", precision.value()),
-			ColumnBuffer::int_with_bitvec(
-				precision,
-				[edge.clone(), Int::default(), edge.negate(), Int::from_i64(-1)],
-				vec![true, false, true, true],
-			),
-		);
-	}
-	echo("int past i128", ColumnBuffer::int(Precision::MAX, [Int::MAX, Int::MIN, Int::from_i128(i128::MIN)]));
-}
-
-#[test]
-fn uint_reads_and_writes_through_the_guest_api_at_both_widths() {
-	// The guest must size cells from the column precision; a fixed 16 or 32 byte guess breaks the other width.
-	let edge = Uint::parse("99999999999999999999999999999999999999").unwrap();
-	for precision in WIDTHS {
-		echo(
-			&format!("uint at precision {}", precision.value()),
-			ColumnBuffer::uint_with_bitvec(
-				precision,
-				[edge.clone(), Uint::default(), Uint::from_u64(u64::MAX)],
-				vec![true, false, true],
-			),
-		);
-	}
-	echo("uint past u128", ColumnBuffer::uint(Precision::MAX, [Uint::MAX, Uint::from_u128(u128::MAX)]));
 }
 
 #[test]

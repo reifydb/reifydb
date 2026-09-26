@@ -41,8 +41,6 @@ macro_rules! dispatch_arith {
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => $fh($ctx, dispatch_arith!(@values $L l), r.values(), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => $fh($ctx, dispatch_arith!(@values $L l), &u128s(r), $target, $fragment),
-				(ColumnBuffer::$L(l), ColumnBuffer::Int(r)) => $ah($ctx, dispatch_arith!(@values $L l), &ints(r), $target, $fragment),
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint(r)) => $ah($ctx, dispatch_arith!(@values $L l), &uints(r), $target, $fragment),
 				(ColumnBuffer::$L(l), ColumnBuffer::Decimal(r)) => $ah($ctx, dispatch_arith!(@values $L l), &decimals(r), $target, $fragment),
 			}
 		)
@@ -60,37 +58,7 @@ macro_rules! dispatch_arith {
 			$($acc)*
 
 
-			(ColumnBuffer::Int(l), ColumnBuffer::Float4(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Float8(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int1(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int2(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int4(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int8(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int16(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint1(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint2(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint4(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint8(r)) => $ah($ctx, &ints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint16(r)) => $ah($ctx, &ints(l), &u128s(r), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Int(r)) => $ah($ctx, &ints(l), &ints(r), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Uint(r)) => $ah($ctx, &ints(l), &uints(r), $target, $fragment),
-			(ColumnBuffer::Int(l), ColumnBuffer::Decimal(r)) => $ah($ctx, &ints(l), &decimals(r), $target, $fragment),
 
-			(ColumnBuffer::Uint(l), ColumnBuffer::Float4(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Float8(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int1(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int2(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int4(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int8(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int16(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint1(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint2(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint4(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint8(r)) => $ah($ctx, &uints(l), r.values(), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint16(r)) => $ah($ctx, &uints(l), &u128s(r), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Int(r)) => $ah($ctx, &uints(l), &ints(r), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint(r)) => $ah($ctx, &uints(l), &uints(r), $target, $fragment),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Decimal(r)) => $ah($ctx, &uints(l), &decimals(r), $target, $fragment),
 
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Float4(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Float8(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
@@ -104,8 +72,6 @@ macro_rules! dispatch_arith {
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint4(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint8(r)) => $ah($ctx, &decimals(l), r.values(), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint16(r)) => $ah($ctx, &decimals(l), &u128s(r), $target, $fragment),
-			(ColumnBuffer::Decimal(l), ColumnBuffer::Int(r)) => $ah($ctx, &decimals(l), &ints(r), $target, $fragment),
-			(ColumnBuffer::Decimal(l), ColumnBuffer::Uint(r)) => $ah($ctx, &decimals(l), &uints(r), $target, $fragment),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Decimal(r)) => $ah($ctx, &decimals(l), &decimals(r), $target, $fragment),
 
 
@@ -154,18 +120,6 @@ fn arith_digits(ty: &ValueType) -> Option<(u8, u8)> {
 	family_digits(ty)
 }
 
-fn is_unsigned(ty: &ValueType) -> bool {
-	matches!(
-		ty,
-		ValueType::Uint { .. }
-			| ValueType::Uint1
-			| ValueType::Uint2
-			| ValueType::Uint4
-			| ValueType::Uint8
-			| ValueType::Uint16
-	)
-}
-
 pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> ValueType {
 	if !(is_family(&left) || is_family(&right)) {
 		return ValueType::promote(left, right);
@@ -175,8 +129,6 @@ pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> Va
 	else {
 		return ValueType::promote(left, right);
 	};
-	let decimal =
-		[&left, &right].iter().any(|ty| ty.is_floating_point() || matches!(ty, ValueType::Decimal { .. }));
 	let (digits, scale) = match op {
 		ArithOp::Add | ArithOp::Sub => (left_digits.max(right_digits) + 1, left_scale.max(right_scale)),
 		ArithOp::Mul => {
@@ -187,17 +139,10 @@ pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> Va
 				(digits, scale)
 			}
 		}
-		ArithOp::Div if decimal => (left_digits + right_scale, left_scale.max(right_scale).max(6)),
-		ArithOp::Div => (left_digits, 0),
+		ArithOp::Div => (left_digits + right_scale, left_scale.max(right_scale).max(6)),
 		ArithOp::Rem => (left_digits.min(right_digits), left_scale.max(right_scale)),
 	};
 	let scale = scale.min(MAX_DIGITS);
 	let precision = Precision::new(digits.saturating_add(scale).clamp(1, MAX_DIGITS));
-	if decimal {
-		ValueType::decimal(precision, Scale::new(scale))
-	} else if is_unsigned(&left) && is_unsigned(&right) {
-		ValueType::uint(precision)
-	} else {
-		ValueType::int(precision)
-	}
+	ValueType::decimal(precision, Scale::new(scale))
 }

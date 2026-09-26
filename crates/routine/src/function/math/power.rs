@@ -9,11 +9,9 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::decimal_array::{decimals, u128s},
 		decimal::Decimal,
-		int::Int,
 		is::IsNumber,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -150,32 +148,6 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
-			ValueType::Int {
-				precision,
-			} => run!(
-				Int(..),
-				ints,
-				|values, bits| ColumnBuffer::int_with_bitvec(precision, values, bits),
-				|b: &Int, e: &Int| {
-					if e.is_negative() {
-						Some(Int::zero())
-					} else {
-						family_exponent(e.to_i256())
-							.and_then(|exp| b.to_i256().checked_pow(exp))
-							.and_then(Int::from_i256)
-					}
-				}
-			),
-			ValueType::Uint {
-				precision,
-			} => run!(
-				Uint(..),
-				uints,
-				|values, bits| ColumnBuffer::uint_with_bitvec(precision, values, bits),
-				|b: &Uint, e: &Uint| family_exponent(e.to_i256())
-					.and_then(|exp| b.to_i256().checked_pow(exp))
-					.and_then(Uint::from_i256)
-			),
 			ValueType::Decimal {
 				precision,
 				scale,

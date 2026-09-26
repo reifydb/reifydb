@@ -106,11 +106,9 @@ mod tests {
 		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	};
 
@@ -159,8 +157,6 @@ mod tests {
 			Value::Uuid4(Uuid4(StdUuid::from_u128(4))),
 			Value::Uuid7(Uuid7(StdUuid::from_u128(77))),
 			Value::Blob(Blob::new(vec![1, 2, 3])),
-			Value::Int(Int::from_i128(i128::MIN)),
-			Value::Uint(Uint::from_u128(u128::MAX)),
 			Value::Decimal(Decimal::from_parts(i256::from_i128(150), 2).unwrap()),
 			Value::Any(Box::new(Value::Boolean(false))),
 			Value::DictionaryId(DictionaryEntryId::U16(u128::MAX)),

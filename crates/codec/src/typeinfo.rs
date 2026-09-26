@@ -53,12 +53,6 @@ fn encode_base(base: &ValueType, depth: u8, buf: &mut Vec<u8>) -> Result<(), Enc
 			inner,
 			accuracy,
 		} => encode_digest_params(inner, *accuracy, buf)?,
-		ValueType::Int {
-			precision,
-		}
-		| ValueType::Uint {
-			precision,
-		} => buf.push(precision.value()),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -127,10 +121,6 @@ pub fn decode_value_type(r: &mut Reader) -> Result<ValueType, DecodeError> {
 				inner: Box::new(inner),
 				accuracy,
 			}
-		}
-		ValueKind::Int | ValueKind::Uint => {
-			let (precision, scale) = decode_params(r.u8()?, 0)?;
-			family_type(kind, precision, scale)?
 		}
 		ValueKind::Decimal => {
 			let precision = r.u8()?;

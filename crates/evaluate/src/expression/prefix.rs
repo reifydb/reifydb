@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
-
 use arrow_arith::boolean::not;
 use reifydb_core::{
 	error::CoreError,
@@ -13,9 +11,8 @@ use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 	value::{
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::decimal_array::{decimals, u128s},
 		decimal::Decimal,
-		int::Int,
 		value_type::ValueType,
 	},
 };
@@ -279,44 +276,6 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			.into()),
 			_ => Err(CoreError::FrameError {
 				message: "Cannot apply arithmetic prefix operator to BLOB".to_string(),
-			}
-			.into()),
-		},
-		ColumnBuffer::Int(container) => match operator {
-			PrefixOperator::Minus(_) => {
-				let result = ints(container).iter().map(Int::negate).collect::<Vec<_>>();
-				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
-			}
-			PrefixOperator::Plus(_) => Ok(column.clone()),
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Number,
-				fragment: fragment.clone(),
-			}
-			.into()),
-		},
-		ColumnBuffer::Uint(container) => match operator {
-			PrefixOperator::Minus(_) => {
-				let result = uints(container)
-					.into_iter()
-					.map(|val| {
-						Int::from_i256(val.to_i256().wrapping_neg()).ok_or_else(|| {
-							Box::new(TypeError::NumberOutOfRange {
-								target: ValueType::int(container.precision()),
-								fragment: fragment.clone(),
-								descriptor: None,
-							})
-						})
-					})
-					.collect::<StdResult<Vec<_>, Box<TypeError>>>()
-					.map_err(|e| *e)?;
-				Ok(column.with_new_data(ColumnBuffer::int(container.precision(), result)))
-			}
-			PrefixOperator::Plus(_) => Ok(column.clone()),
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Number,
-				fragment: fragment.clone(),
 			}
 			.into()),
 		},

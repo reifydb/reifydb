@@ -12,11 +12,9 @@ use reifydb_value::value::{
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
 use uuid::Uuid;
@@ -511,42 +509,6 @@ fn option_uuid7_all_undefined() {
 	let input = ColumnBuffer::uuid7_with_bitvec(vec![Uuid7::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_uuid7_all_undef", &input, &output);
-}
-
-#[test]
-fn option_int_alternating() {
-	let input = ColumnBuffer::int_with_bitvec(
-		Precision::MAX,
-		[Int::zero(), Int::default(), Int::from_i64(42), Int::default(), Int::from_i128(i128::MAX)],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_int_alt", &input, &output);
-}
-
-#[test]
-fn option_int_all_undefined() {
-	let input = ColumnBuffer::int_with_bitvec(Precision::MAX, vec![Int::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_int_all_undef", &input, &output);
-}
-
-#[test]
-fn option_uint_alternating() {
-	let input = ColumnBuffer::uint_with_bitvec(
-		Precision::MAX,
-		[Uint::zero(), Uint::default(), Uint::from_u64(42), Uint::default(), Uint::from_u128(u128::MAX)],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uint_alt", &input, &output);
-}
-
-#[test]
-fn option_uint_all_undefined() {
-	let input = ColumnBuffer::uint_with_bitvec(Precision::MAX, vec![Uint::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uint_all_undef", &input, &output);
 }
 
 #[test]

@@ -19,10 +19,8 @@ use reifydb_value::value::{
 use crate::value::column::builder::ColumnBuilder;
 
 pub mod decimal;
-pub mod int;
 pub mod none;
 pub mod typed;
-pub mod uint;
 pub mod uuid;
 pub mod value;
 

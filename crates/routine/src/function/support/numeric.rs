@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_value::value::container::decimal_array::{decimal_at, int_at, u128_at, uint_at};
+use reifydb_value::value::container::decimal_array::{decimal_at, u128_at};
 
 pub(crate) const MIN_DIVISION_SCALE: u8 = 6;
 
@@ -20,8 +20,6 @@ pub(crate) fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as f64),
 		ColumnBuffer::Float4(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Float8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int(c) => int_at(c, i).map(|v| v.to_f64()),
-		ColumnBuffer::Uint(c) => uint_at(c, i).map(|v| v.to_f64()),
 		ColumnBuffer::Decimal(c) => decimal_at(c, i).map(|v| v.to_f64()),
 		_ => None,
 	}

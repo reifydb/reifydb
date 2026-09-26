@@ -23,9 +23,7 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => *a = bool_array::filter_with(a, predicate),
 			ColumnBuffer::Uint16(a) => *a = primitive::filter_with(a, predicate),
-			ColumnBuffer::Int(d) | ColumnBuffer::Uint(d) | ColumnBuffer::Decimal(d) => {
-				*d = map_decimal!(&*d, |a| primitive::filter_with(a, predicate))
-			}
+			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::filter_with(a, predicate)),
 			ColumnBuffer::DictionaryId {
 				container,
 				..

@@ -600,9 +600,7 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 		ValueKind::Utf8 | ValueKind::Blob => 1,
 		ValueKind::DictionaryId => 16,
 		ValueKind::Any => 1,
-		ValueKind::Int
-		| ValueKind::Uint
-		| ValueKind::Decimal
+		ValueKind::Decimal
 		| ValueKind::None
 		| ValueKind::Type
 		| ValueKind::List
@@ -731,7 +729,7 @@ fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+		ValueKind::Decimal => {
 			let (precision, scale) = family.ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			decode_family_column(type_code, precision, scale, &data, written_count)
 				.map_err(|_| EXTERN_C_ERROR_MARSHAL)?
@@ -832,8 +830,6 @@ mod tests {
 			container::decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
 			decimal::Decimal,
 			dictionary::DictionaryEntryId,
-			int::Int,
-			uint::Uint,
 		},
 	};
 	use serde_json::to_string;
@@ -1056,45 +1052,6 @@ mod tests {
 	}
 
 	#[test]
-	fn int_at_both_widths_round_trips_through_the_host_builder() {
-		// A 16 byte cell read as 32 bytes, or a lost sign extension, changes every value at the width edge.
-		let narrow = Precision::new(38);
-		let edge = Int::parse("99999999999999999999999999999999999999").unwrap();
-		let narrow_values = vec![edge.clone(), edge.negate(), Int::zero(), Int::from_i64(-1)];
-		let output = host_to_guest_to_host(ColumnBuffer::int(narrow, narrow_values.clone()));
-		assert_eq!(output, ColumnBuffer::int(narrow, narrow_values));
-
-		let wide = Precision::MAX;
-		let wide_values = vec![
-			Int::MAX,
-			Int::MIN,
-			Int::from_i128(i128::MIN),
-			Int::from_i128(i128::MAX),
-			Int::from_i64(-1),
-		];
-		let output = host_to_guest_to_host(ColumnBuffer::int(wide, wide_values.clone()));
-		assert_eq!(output, ColumnBuffer::int(wide, wide_values));
-	}
-
-	#[test]
-	fn uint_at_both_widths_round_trips_through_the_host_builder() {
-		// A 16 byte cell read as 32 bytes, or an unsigned value read as signed, changes the top values.
-		let narrow = Precision::new(38);
-		let narrow_values = vec![
-			Uint::parse("99999999999999999999999999999999999999").unwrap(),
-			Uint::from_u128(1u128 << 64),
-			Uint::zero(),
-		];
-		let output = host_to_guest_to_host(ColumnBuffer::uint(narrow, narrow_values.clone()));
-		assert_eq!(output, ColumnBuffer::uint(narrow, narrow_values));
-
-		let wide = Precision::MAX;
-		let wide_values = vec![Uint::MAX, Uint::from_u128(u128::MAX), Uint::zero()];
-		let output = host_to_guest_to_host(ColumnBuffer::uint(wide, wide_values.clone()));
-		assert_eq!(output, ColumnBuffer::uint(wide, wide_values));
-	}
-
-	#[test]
 	fn decimal_at_both_widths_round_trips_through_the_host_builder() {
 		// Dropping the scale on the way back would read every unscaled value as a whole number.
 		let (narrow, narrow_scale) = (Precision::new(38), Scale::new(10));
@@ -1117,14 +1074,7 @@ mod tests {
 	fn family_acquire_with_invalid_precision_or_scale_returns_null() {
 		// Without the check a guest could size cells from a precision the column type cannot hold.
 		let registry = BuilderRegistry::new();
-		let bad = [
-			(ValueKind::Int, 0, 0),
-			(ValueKind::Int, 77, 0),
-			(ValueKind::Int, 38, 1),
-			(ValueKind::Uint, 38, 2),
-			(ValueKind::Decimal, 10, 11),
-			(ValueKind::Decimal, 0, 0),
-		];
+		let bad = [(ValueKind::Decimal, 10, 11), (ValueKind::Decimal, 0, 0)];
 		for (kind, precision, scale) in bad {
 			// SAFETY: a registry is installed and nothing is written through the handle.
 			let handle = with_registry(&registry, || unsafe {
@@ -1144,23 +1094,9 @@ mod tests {
 		let precision = Precision::new(5);
 		let mut cells = 100_000i128.to_le_bytes().to_vec();
 		cells.extend_from_slice(&7i128.to_le_bytes());
-		for kind in [ValueKind::Int, ValueKind::Uint, ValueKind::Decimal] {
+		for kind in [ValueKind::Decimal] {
 			let result = finalize_buffer(kind, Some((precision, Scale::MIN)), cells.clone(), None, None, 2);
 			assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL), "{kind:?} must reject a 6 digit cell");
 		}
-	}
-
-	#[test]
-	fn negative_uint_cell_is_a_marshal_error() {
-		// A signed cell accepted as uint would wrap to a huge positive value.
-		let result = finalize_buffer(
-			ValueKind::Uint,
-			Some((Precision::new(38), Scale::MIN)),
-			(-1i128).to_le_bytes().to_vec(),
-			None,
-			None,
-			1,
-		);
-		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
 	}
 }

@@ -27,9 +27,7 @@ use reifydb_value::{
 		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -215,38 +213,6 @@ fn decimal_bytes(array: &DecimalArray) -> &[u8] {
 	}
 }
 
-decimal_suite!(
-	int128,
-	Int,
-	|i| Int::from_i64(i as i64 * 1_000_003 - 7_000_000),
-	|values| decimal_array::int_array(Precision::new(38), values),
-	decimal_array::ints,
-	"decimal_array::deserialize_int_array"
-);
-decimal_suite!(
-	int256,
-	Int,
-	|i| Int::from_i128(i as i128 * 1_000_003 - 7_000_000).checked_mul(&Int::from_u128(u128::MAX)).unwrap(),
-	|values| decimal_array::int_array(Precision::MAX, values),
-	decimal_array::ints,
-	"decimal_array::deserialize_int_array"
-);
-decimal_suite!(
-	uint128,
-	Uint,
-	|i| Uint::from_u64(i as u64 * 7),
-	|values| decimal_array::uint_array(Precision::new(38), values),
-	decimal_array::uints,
-	"decimal_array::deserialize_uint_array"
-);
-decimal_suite!(
-	uint256,
-	Uint,
-	|i| Uint::from_u128(u128::MAX).checked_add(&Uint::from_u64(i as u64 * 7)).unwrap(),
-	|values| decimal_array::uint_array(Precision::MAX, values),
-	decimal_array::uints,
-	"decimal_array::deserialize_uint_array"
-);
 decimal_suite!(
 	decimal128,
 	Decimal,

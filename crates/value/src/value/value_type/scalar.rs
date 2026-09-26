@@ -59,8 +59,6 @@ mod tests {
 			Uuid4,
 			Uuid7,
 			Blob,
-			ValueType::INT,
-			ValueType::UINT,
 			ValueType::DECIMAL,
 			DictionaryId,
 		];

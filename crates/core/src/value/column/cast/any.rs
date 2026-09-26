@@ -10,7 +10,7 @@ use reifydb_value::{
 		blob::Blob,
 		container::{
 			any_array,
-			decimal_array::{decimal_at, int_at, u128_at, uint_at},
+			decimal_array::{decimal_at, u128_at},
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -245,14 +245,6 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int(c) => match int_at(c, 0) {
-					Some(value) => result.push(value),
-					None => result.push_none(),
-				},
-				ColumnBuffer::Uint(c) => match uint_at(c, 0) {
-					Some(value) => result.push(value),
-					None => result.push_none(),
-				},
 				ColumnBuffer::Decimal(c) => match decimal_at(c, 0) {
 					Some(value) => result.push(value),
 					None => result.push_none(),

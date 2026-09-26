@@ -77,14 +77,6 @@ pub enum ValueType {
 
 	Blob,
 
-	Int {
-		precision: Precision,
-	},
-
-	Uint {
-		precision: Precision,
-	},
-
 	Decimal {
 		precision: Precision,
 		scale: Scale,
@@ -109,30 +101,10 @@ pub enum ValueType {
 }
 
 impl ValueType {
-	pub const INT: ValueType = ValueType::Int {
-		precision: Precision::MAX,
-	};
-
-	pub const UINT: ValueType = ValueType::Uint {
-		precision: Precision::MAX,
-	};
-
 	pub const DECIMAL: ValueType = ValueType::Decimal {
 		precision: Precision::MAX,
 		scale: Scale::new(10),
 	};
-
-	pub const fn int(precision: Precision) -> Self {
-		ValueType::Int {
-			precision,
-		}
-	}
-
-	pub const fn uint(precision: Precision) -> Self {
-		ValueType::Uint {
-			precision,
-		}
-	}
 
 	pub const fn decimal(precision: Precision, scale: Scale) -> Self {
 		ValueType::Decimal {
@@ -143,13 +115,7 @@ impl ValueType {
 
 	pub fn precision(&self) -> Option<Precision> {
 		match self {
-			ValueType::Int {
-				precision,
-			}
-			| ValueType::Uint {
-				precision,
-			}
-			| ValueType::Decimal {
+			ValueType::Decimal {
 				precision,
 				..
 			} => Some(*precision),
@@ -159,12 +125,6 @@ impl ValueType {
 
 	pub fn scale(&self) -> Option<Scale> {
 		match self {
-			ValueType::Int {
-				..
-			}
-			| ValueType::Uint {
-				..
-			} => Some(Scale::MIN),
 			ValueType::Decimal {
 				scale,
 				..
@@ -195,8 +155,6 @@ impl ValueType {
 						| ValueType::Uint4
 						| ValueType::Uint8
 						| ValueType::Uint16
-						| ValueType::Int { .. }
-						| ValueType::Uint { .. }
 						| ValueType::Decimal { .. }
 				)
 			}
@@ -220,7 +178,6 @@ impl ValueType {
 					| ValueType::Int4
 					| ValueType::Int8
 					| ValueType::Int16
-					| ValueType::Int { .. }
 			),
 		}
 	}
@@ -235,7 +192,6 @@ impl ValueType {
 					| ValueType::Uint4
 					| ValueType::Uint8
 					| ValueType::Uint16
-					| ValueType::Uint { .. }
 			),
 		}
 	}
@@ -333,13 +289,7 @@ impl ValueType {
 			ValueType::Uuid4 => Uuid4::ENCODED_SIZE,
 			ValueType::Uuid7 => Uuid7::ENCODED_SIZE,
 			ValueType::Blob => 8,
-			ValueType::Int {
-				precision,
-			}
-			| ValueType::Uint {
-				precision,
-			}
-			| ValueType::Decimal {
+			ValueType::Decimal {
 				precision,
 				..
 			} => {
@@ -385,13 +335,7 @@ impl ValueType {
 			ValueType::Uuid4 => 8,
 			ValueType::Uuid7 => 8,
 			ValueType::Blob => 4,
-			ValueType::Int {
-				..
-			}
-			| ValueType::Uint {
-				..
-			}
-			| ValueType::Decimal {
+			ValueType::Decimal {
 				..
 			} => 16,
 			ValueType::Option(inner) => inner.alignment(),
@@ -432,24 +376,6 @@ impl Display for ValueType {
 			ValueType::Uuid4 => f.write_str("Uuid4"),
 			ValueType::Uuid7 => f.write_str("Uuid7"),
 			ValueType::Blob => f.write_str("Blob"),
-			ValueType::Int {
-				precision,
-			} => {
-				if *precision == Precision::MAX {
-					f.write_str("Int")
-				} else {
-					write!(f, "Int({precision})")
-				}
-			}
-			ValueType::Uint {
-				precision,
-			} => {
-				if *precision == Precision::MAX {
-					f.write_str("Uint")
-				} else {
-					write!(f, "Uint({precision})")
-				}
-			}
 			ValueType::Decimal {
 				..
 			} if *self == ValueType::DECIMAL => f.write_str("Decimal"),
@@ -526,8 +452,6 @@ impl From<&Value> for ValueType {
 			Value::Uuid4(_) => ValueType::Uuid4,
 			Value::Uuid7(_) => ValueType::Uuid7,
 			Value::Blob(_) => ValueType::Blob,
-			Value::Int(_) => ValueType::INT,
-			Value::Uint(_) => ValueType::UINT,
 			Value::Decimal(decimal) => ValueType::decimal(Precision::MAX, Scale::new(decimal.scale())),
 			Value::Any(_) => ValueType::Any,
 			Value::DictionaryId(_) => ValueType::DictionaryId,
@@ -582,8 +506,6 @@ impl FromStr for ValueType {
 			"UUID4" => Ok(ValueType::Uuid4),
 			"UUID7" => Ok(ValueType::Uuid7),
 			"BLOB" => Ok(ValueType::Blob),
-			"INT" => Ok(ValueType::INT),
-			"UINT" => Ok(ValueType::UINT),
 			"DECIMAL" => Ok(ValueType::DECIMAL),
 			"ANY" => Ok(ValueType::Any),
 			"DICTIONARYID" | "DICTIONARY_ID" => Ok(ValueType::DictionaryId),
@@ -597,20 +519,15 @@ mod tests {
 	use std::str::FromStr;
 
 	use super::*;
-	use crate::value::{decimal::Decimal, int::Int, uint::Uint};
+	use crate::value::decimal::Decimal;
 
 	#[test]
 	fn bare_names_are_the_widest_defaults() {
 		// Bare int, uint and decimal must hold any value their family can hold without a declared precision.
-		assert_eq!(ValueType::from_str("int"), Ok(ValueType::int(Precision::new(76))));
-		assert_eq!(ValueType::from_str("UINT"), Ok(ValueType::uint(Precision::new(76))));
 		assert_eq!(ValueType::from_str("decimal"), Ok(ValueType::decimal(Precision::new(76), Scale::new(10))));
-		assert_eq!(ValueType::INT.to_string(), "Int");
 		assert_eq!(ValueType::DECIMAL.to_string(), "Decimal");
 		assert_eq!(ValueType::decimal(Precision::new(10), Scale::new(2)).to_string(), "Decimal(10, 2)");
 		assert_eq!(ValueType::decimal(Precision::new(76), Scale::new(2)).to_string(), "Decimal(76, 2)");
-		assert_eq!(ValueType::int(Precision::new(20)).to_string(), "Int(20)");
-		assert_eq!(ValueType::uint(Precision::new(20)).to_string(), "Uint(20)");
 	}
 
 	#[test]
@@ -618,9 +535,6 @@ mod tests {
 		// Precision 38 is the widest a 128 bit decimal holds; 39 must take the 256 bit layout.
 		assert_eq!(ValueType::decimal(Precision::new(38), Scale::new(2)).size(), 16);
 		assert_eq!(ValueType::decimal(Precision::new(39), Scale::new(2)).size(), 32);
-		assert_eq!(ValueType::int(Precision::new(38)).size(), 16);
-		assert_eq!(ValueType::int(Precision::new(39)).size(), 32);
-		assert_eq!(ValueType::UINT.size(), 32);
 		assert_eq!(ValueType::Option(Box::new(ValueType::DECIMAL)).size(), 32);
 	}
 
@@ -629,8 +543,6 @@ mod tests {
 		// Int and uint have scale 0, so arithmetic that mixes them with decimal can derive a scale.
 		assert_eq!(ValueType::DECIMAL.precision(), Some(Precision::MAX));
 		assert_eq!(ValueType::DECIMAL.scale(), Some(Scale::new(10)));
-		assert_eq!(ValueType::int(Precision::new(5)).scale(), Some(Scale::new(0)));
-		assert_eq!(ValueType::uint(Precision::new(5)).precision(), Some(Precision::new(5)));
 		assert_eq!(ValueType::Int16.precision(), None);
 		assert_eq!(ValueType::Float8.scale(), None);
 	}
@@ -643,7 +555,5 @@ mod tests {
 			ValueType::from(&Value::Decimal(decimal)),
 			ValueType::decimal(Precision::MAX, Scale::new(2))
 		);
-		assert_eq!(ValueType::from(&Value::Int(Int::from(1))), ValueType::INT);
-		assert_eq!(ValueType::from(&Value::Uint(Uint::from(1u8))), ValueType::UINT);
 	}
 }

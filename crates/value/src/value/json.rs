@@ -40,8 +40,6 @@ impl Value {
 				}
 			}
 			Value::Utf8(s) => JsonValue::String(s.clone()),
-			Value::Int(i) => JsonValue::String(i.to_string()),
-			Value::Uint(u) => JsonValue::String(u.to_string()),
 			Value::Decimal(d) => JsonValue::String(d.to_string()),
 			Value::Uuid4(u) => JsonValue::String(u.to_string()),
 			Value::Uuid7(u) => JsonValue::String(u.to_string()),

@@ -22,7 +22,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::decimal_array::{decimals, u128s},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -293,14 +293,6 @@ fn execute_decimal<'a>(
 				let values = u128s(container);
 				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int(container) => {
-				let values = ints(container);
-				exec_int_arm!(values, row_count, sums, counts, overflow)
-			}
-			ColumnBuffer::Uint(container) => {
-				let values = uints(container);
-				exec_int_arm!(values, row_count, sums, counts, overflow)
-			}
 			ColumnBuffer::Decimal(container) => {
 				let values = decimals(container);
 				for i in 0..row_count {
@@ -442,14 +434,6 @@ impl Accumulator for AvgAccumulator {
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
 				let values = u128s(container);
-				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
-			}
-			(AvgState::Int(sums), ColumnBuffer::Int(container)) => {
-				let values = ints(container);
-				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
-			}
-			(AvgState::Int(sums), ColumnBuffer::Uint(container)) => {
-				let values = uints(container);
 				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
 			(AvgState::Decimal(sums), ColumnBuffer::Decimal(container)) => {

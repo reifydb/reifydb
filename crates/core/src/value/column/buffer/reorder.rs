@@ -17,9 +17,7 @@ impl ColumnBuffer {
 				container,
 				..
 			} => *container = dictionary_array::reorder(container, indices),
-			ColumnBuffer::Int(d) | ColumnBuffer::Uint(d) | ColumnBuffer::Decimal(d) => {
-				*d = map_decimal!(&*d, |a| primitive::reorder(a, indices))
-			}
+			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::reorder(a, indices)),
 			ColumnBuffer::Any {
 				container,
 				..

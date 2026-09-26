@@ -28,7 +28,7 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	data::{Column, canonical::Canonical},
 };
-use reifydb_value::value::{Value, datetime::DateTime, decimal::Decimal, int::Int, uuid::Uuid7, value_type::ValueType};
+use reifydb_value::value::{Value, datetime::DateTime, decimal::Decimal, uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
 
 struct Counting;
@@ -157,7 +157,6 @@ fn value_sets(rows: usize) -> Vec<(&'static str, ValueType, Vec<Value>)> {
 		),
 		("uuid7", ValueType::Uuid7, values(|i| Value::Uuid7(uuid7(i)))),
 		("utf8", ValueType::Utf8, values(|i| Value::Utf8(name(i)))),
-		("int", ValueType::INT, values(|i| Value::Int(Int::from(mix(i) as i64)))),
 		("decimal", ValueType::DECIMAL, values(|i| Value::Decimal(Decimal::from((mix(i) % 1_000_000) as i64)))),
 		(
 			"option_int4",

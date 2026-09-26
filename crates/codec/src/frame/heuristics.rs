@@ -37,7 +37,7 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	match inner {
 		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
 
-		FrameColumnData::Int(c) | FrameColumnData::Uint(c) | FrameColumnData::Decimal(c) => match c {
+		FrameColumnData::Decimal(c) => match c {
 			DecimalArray::Decimal128(array) => try_numeric_heuristic_i128(array.values()),
 			DecimalArray::Decimal256(array) => try_numeric_heuristic_i256(array.values()),
 		},
@@ -299,15 +299,13 @@ mod tests {
 	use reifydb_value::value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
-			decimal_array::{decimal_array, int_array, uint_array},
+			decimal_array::decimal_array,
 			temporal_array::{date_array, datetime_array, time_array},
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		int::Int,
 		time::Time,
-		uint::Uint,
 	};
 
 	use super::*;
@@ -471,26 +469,6 @@ mod tests {
 		let narrow = Precision::new(38);
 		let wide = Precision::new(76);
 
-		let strided: Vec<Uint> = (0..100u64).map(|i| Uint::from_u64(i * 7)).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Uint(uint_array(narrow, &strided)), CompressionLevel::Fast),
-			Encoding::DeltaRle
-		);
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Uint(uint_array(wide, &strided)), CompressionLevel::Fast),
-			Encoding::DeltaRle
-		);
-
-		let irregular: Vec<Int> = (0..100i64).map(|i| Int::from_i64(-i * i)).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(narrow, &irregular)), CompressionLevel::Fast),
-			Encoding::Delta
-		);
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(wide, &irregular)), CompressionLevel::Fast),
-			Encoding::Delta
-		);
-
 		let runny: Vec<Decimal> = (0..100i64).map(|i| Decimal::from_i64(i / 10)).collect();
 		assert_eq!(
 			choose_encoding(
@@ -505,12 +483,6 @@ mod tests {
 				CompressionLevel::Fast
 			),
 			Encoding::Rle
-		);
-
-		let scattered: Vec<Int> = [5i64, 1, 9, 2, 8, 3, 7, 4].into_iter().map(Int::from_i64).collect();
-		assert_eq!(
-			choose_encoding(&FrameColumnData::Int(int_array(wide, &scattered)), CompressionLevel::Fast),
-			Encoding::Plain
 		);
 	}
 }

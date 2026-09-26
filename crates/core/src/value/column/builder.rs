@@ -269,8 +269,6 @@ pub enum ColumnBuilder {
 		builder: LargeBinaryBuilder,
 		max_bytes: MaxBytes,
 	},
-	Int(DecimalBuilder),
-	Uint(DecimalBuilder),
 	Decimal(DecimalBuilder),
 	Any {
 		builder: LargeBinaryBuilder,
@@ -333,12 +331,6 @@ impl ColumnBuilder {
 				builder: LargeBinaryBuilder::with_capacity(capacity, capacity * 32),
 				max_bytes: MaxBytes::MAX,
 			},
-			ValueType::Int {
-				precision,
-			} => ColumnBuilder::Int(DecimalBuilder::with_capacity(precision, Scale::MIN, capacity)),
-			ValueType::Uint {
-				precision,
-			} => ColumnBuilder::Uint(DecimalBuilder::with_capacity(precision, Scale::MIN, capacity)),
 			ValueType::Decimal {
 				precision,
 				scale,
@@ -431,9 +423,7 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.append_value(b""),
-			ColumnBuilder::Int(b) | ColumnBuilder::Uint(b) | ColumnBuilder::Decimal(b) => {
-				b.append_default()
-			}
+			ColumnBuilder::Decimal(b) => b.append_default(),
 			ColumnBuilder::Any {
 				builder,
 				..
@@ -537,9 +527,7 @@ impl ColumnBuilder {
 					..
 				},
 			) => append_varlen(builder, &container)?,
-			(ColumnBuilder::Int(l), ColumnBuffer::Int(r))
-			| (ColumnBuilder::Uint(l), ColumnBuffer::Uint(r))
-			| (ColumnBuilder::Decimal(l), ColumnBuffer::Decimal(r)) => l.append_array(&r),
+			(ColumnBuilder::Decimal(l), ColumnBuffer::Decimal(r)) => l.append_array(&r),
 			(
 				ColumnBuilder::Any {
 					builder,
@@ -608,7 +596,7 @@ impl ColumnBuilder {
 				builder,
 				..
 			} => builder.len(),
-			ColumnBuilder::Int(b) | ColumnBuilder::Uint(b) | ColumnBuilder::Decimal(b) => b.len(),
+			ColumnBuilder::Decimal(b) => b.len(),
 			ColumnBuilder::Any {
 				builder,
 				..
@@ -659,8 +647,6 @@ impl ColumnBuilder {
 			ColumnBuilder::Blob {
 				..
 			} => ValueType::Blob,
-			ColumnBuilder::Int(b) => ValueType::int(b.precision()),
-			ColumnBuilder::Uint(b) => ValueType::uint(b.precision()),
 			ColumnBuilder::Decimal(b) => ValueType::decimal(b.precision(), b.scale()),
 			ColumnBuilder::Any {
 				declared_type,
@@ -724,8 +710,6 @@ impl ColumnBuilder {
 				container: builder.finish(),
 				max_bytes,
 			},
-			ColumnBuilder::Int(mut b) => ColumnBuffer::Int(b.finish()),
-			ColumnBuilder::Uint(mut b) => ColumnBuffer::Uint(b.finish()),
 			ColumnBuilder::Decimal(mut b) => ColumnBuffer::Decimal(b.finish()),
 			ColumnBuilder::Any {
 				mut builder,
@@ -805,8 +789,6 @@ impl ColumnBuffer {
 				builder: varlen_builder(container),
 				max_bytes,
 			},
-			ColumnBuffer::Int(a) => ColumnBuilder::Int(DecimalBuilder::from_array(a)),
-			ColumnBuffer::Uint(a) => ColumnBuilder::Uint(DecimalBuilder::from_array(a)),
 			ColumnBuffer::Decimal(a) => ColumnBuilder::Decimal(DecimalBuilder::from_array(a)),
 			ColumnBuffer::Any {
 				container,

@@ -11,14 +11,12 @@ use reifydb_value::{
 	value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
-			decimal_array::{decimals, ints, u128s, uints},
+			decimal_array::{decimals, u128s},
 			varlen_array,
 		},
 		decimal::{Decimal, unscaled},
-		int::Int,
 		is::IsNumber,
 		number::safe::div::SafeDiv,
-		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
@@ -93,12 +91,6 @@ fn family_operand(original: &ValueType, promoted: &ValueType) -> FamilyOperand {
 			precision,
 			scale,
 		} => (precision.value().saturating_sub(scale.value()), Some(scale.value())),
-		ValueType::Int {
-			precision,
-		}
-		| ValueType::Uint {
-			precision,
-		} => (precision.value(), Some(0)),
 		ValueType::Int1 | ValueType::Uint1 => (3, Some(0)),
 		ValueType::Int2 | ValueType::Uint2 => (5, Some(0)),
 		ValueType::Int4 | ValueType::Uint4 => (10, Some(0)),
@@ -152,12 +144,6 @@ fn family_target<Op: ArithOp>(
 	let max = unscaled::MAX_DIGITS;
 	let scale = digits.scale.min(max);
 	match promoted {
-		ValueType::Int {
-			..
-		} => ValueType::int(Precision::new(digits.integer.clamp(1, max))),
-		ValueType::Uint {
-			..
-		} => ValueType::uint(Precision::new(digits.integer.clamp(1, max))),
 		ValueType::Decimal {
 			..
 		} => ValueType::decimal(
@@ -379,42 +365,6 @@ fn execute_arith<Op: ArithOp>(
 		ValueType::Float8 => {
 			let (values, bits) = run!(Float8);
 			ColumnBuffer::float8_with_bitvec(values, bits)
-		}
-		ValueType::Int {
-			precision,
-		} => {
-			let (values, bits) = run!(
-				Int(..),
-				ints,
-				|value: Int| (value.digits() <= precision.value()).then_some(value),
-				|value: Int| {
-					if value.digits() <= precision.value() {
-						value
-					} else {
-						Int::from_i256(family_bound(precision, value.is_negative()))
-							.expect("a precision bound is in range")
-					}
-				}
-			);
-			ColumnBuffer::int_with_bitvec(precision, values, bits)
-		}
-		ValueType::Uint {
-			precision,
-		} => {
-			let (values, bits) = run!(
-				Uint(..),
-				uints,
-				|value: Uint| (value.digits() <= precision.value()).then_some(value),
-				|value: Uint| {
-					if value.digits() <= precision.value() {
-						value
-					} else {
-						Uint::from_i256(family_bound(precision, false))
-							.expect("a precision bound is in range")
-					}
-				}
-			);
-			ColumnBuffer::uint_with_bitvec(precision, values, bits)
 		}
 		ValueType::Decimal {
 			precision,

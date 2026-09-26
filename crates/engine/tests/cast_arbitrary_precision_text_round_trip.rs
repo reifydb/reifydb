@@ -25,11 +25,7 @@ fn a_utf8_cast_to_int_uint_or_decimal_gives_that_type_with_the_parsed_value() {
 	// Text must parse into the arbitrary-precision type, otherwise the text cast only works in one direction.
 	let t = TestEngine::new();
 
-	for (text, target, expected_type, expected_text) in [
-		("42", "int", ValueType::INT, "42"),
-		("42", "uint", ValueType::UINT, "42"),
-		("1.5", "decimal", ValueType::DECIMAL, "1.5000000000"),
-	] {
+	for (text, target, expected_type, expected_text) in [("1.5", "decimal", ValueType::DECIMAL, "1.5000000000")] {
 		let frames = query(&t, &format!("map {{ v: cast('{text}', {target}) }}"));
 
 		let (ty, values) = column(&frames, "v");
@@ -42,28 +38,11 @@ fn a_utf8_cast_to_int_uint_or_decimal_gives_that_type_with_the_parsed_value() {
 }
 
 #[test]
-fn an_int_or_uint_wider_than_128_bits_cast_to_utf8_keeps_every_digit() {
-	// A text conversion routed through a fixed-width integer would overflow or truncate these values.
-	let t = TestEngine::new();
-
-	for (text, target) in [
-		("-170141183460469231731687303715884105729", "int"),
-		("340282366920938463463374607431768211456", "uint"),
-	] {
-		let frames = query(&t, &format!("map {{ v: cast(cast('{text}', {target}), utf8) }}"));
-
-		assert_eq!(column(&frames, "v"), (ValueType::Utf8, vec![Value::Utf8(text.to_string())]), "{target}");
-	}
-}
-
-#[test]
 fn an_arbitrary_precision_number_cast_to_utf8_reads_exactly_as_the_number_displays() {
 	// Output renders these values with their display form, so a cast must never produce a different spelling.
 	let t = TestEngine::new();
 
-	for (text, target) in
-		[("-7", "int"), ("0", "uint"), ("1.50", "decimal"), ("-0.000000000000000000001", "decimal")]
-	{
+	for (text, target) in [("1.50", "decimal"), ("-0.000000000000000000001", "decimal")] {
 		let source = format!("cast('{text}', {target})");
 		let frames = query(&t, &format!("map {{ n: {source}, v: cast({source}, utf8) }}"));
 

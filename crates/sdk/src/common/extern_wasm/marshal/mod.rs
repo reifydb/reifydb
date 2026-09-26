@@ -372,7 +372,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			..
 		} => marshal_blobs_iter_to_buf(buf, (0..container.len()).map(|i| container.value(i))),
 
-		ColumnBuffer::Int(array) | ColumnBuffer::Uint(array) | ColumnBuffer::Decimal(array) => match array {
+		ColumnBuffer::Decimal(array) => match array {
 			DecimalArray::Decimal128(array) => marshal_numeric_to_buf(buf, array.values()),
 			DecimalArray::Decimal256(array) => marshal_numeric_to_buf(buf, array.values()),
 		},
@@ -545,7 +545,7 @@ fn unmarshal_column_data(
 		ValueKind::DictionaryId => {
 			ColumnBuffer::dictionary_id(unmarshal_dictionary_ids(data, row_count, offsets_bytes)?)
 		}
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
+		ValueKind::Decimal => {
 			return Err(malformed(format!("guest {type_code:?} column reached the var-len decoder")));
 		}
 		ValueKind::None

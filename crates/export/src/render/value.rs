@@ -40,8 +40,6 @@ pub fn render_value(value: &Value) -> Result<String, RenderError> {
 		Value::Uint4(v) => Ok(v.to_string()),
 		Value::Uint8(v) => Ok(v.to_string()),
 		Value::Uint16(v) => Ok(v.to_string()),
-		Value::Int(v) => Ok(v.to_string()),
-		Value::Uint(v) => Ok(v.to_string()),
 		Value::Decimal(d) => Ok(format!("'{}'", d)),
 		Value::Utf8(s) => render_text(s),
 		Value::Date(d) => Ok(format!("@{}", d)),

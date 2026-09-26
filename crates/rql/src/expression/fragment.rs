@@ -7,7 +7,6 @@ use reifydb_value::{
 		Value,
 		boolean::parse::parse_bool,
 		decimal::parse::parse_decimal,
-		int::Int,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
 		temporal::parse::duration::parse_duration,
 	},
@@ -172,7 +171,7 @@ impl ConstantExpression {
 			.or_else(|_| parse_primitive_int::<i64>(fragment.clone()).map(Value::Int8))
 			.or_else(|_| parse_primitive_int::<i128>(fragment.clone()).map(Value::Int16))
 			.or_else(|_| parse_primitive_uint::<u128>(fragment.clone()).map(Value::Uint16))
-			.or_else(|_| parse_primitive_int::<Int>(fragment.clone()).map(Value::Int))
+			.or_else(|_| parse_decimal(fragment.clone()).map(Value::Decimal))
 	}
 }
 

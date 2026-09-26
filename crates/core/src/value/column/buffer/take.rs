@@ -63,8 +63,6 @@ macro_rules! map_container {
 				container: $varlen,
 				max_bytes: *max_bytes,
 			},
-			ColumnBuffer::Int(d) => ColumnBuffer::Int(map_decimal!(d, |$a| $native)),
-			ColumnBuffer::Uint(d) => ColumnBuffer::Uint(map_decimal!(d, |$a| $native)),
 			ColumnBuffer::Decimal(d) => ColumnBuffer::Decimal(map_decimal!(d, |$a| $native)),
 			ColumnBuffer::Any {
 				container: $v,
@@ -214,7 +212,7 @@ pub(crate) fn as_array(buffer: &ColumnBuffer) -> &dyn Array {
 	match buffer {
 		ColumnBuffer::Bool(a) => a,
 		ColumnBuffer::Uint16(a) => a,
-		ColumnBuffer::Int(d) | ColumnBuffer::Uint(d) | ColumnBuffer::Decimal(d) => {
+		ColumnBuffer::Decimal(d) => {
 			on_decimal!(d, |a| a as &dyn Array)
 		}
 		ColumnBuffer::DictionaryId {

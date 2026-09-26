@@ -15,7 +15,6 @@ use serde::{
 	de::{self, Visitor},
 };
 
-use super::{int::Int, uint::Uint};
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
@@ -481,18 +480,6 @@ impl From<f64> for Decimal {
 			return Self::zero();
 		}
 		Self::from_f64(value).unwrap_or_else(|| Self::saturated(value < 0.0, 0))
-	}
-}
-
-impl From<Int> for Decimal {
-	fn from(value: Int) -> Self {
-		Self::integer(value.to_i256())
-	}
-}
-
-impl From<Uint> for Decimal {
-	fn from(value: Uint) -> Self {
-		Self::integer(value.to_i256())
 	}
 }
 

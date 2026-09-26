@@ -55,10 +55,6 @@ fn ints(frames: &[Frame]) -> Vec<i64> {
 			Value::Int4(v) => v as i64,
 			Value::Int8(v) => v,
 			Value::Int16(v) => v as i64,
-			Value::Int(v) => v
-				.to_i128()
-				.and_then(|n| i64::try_from(n).ok())
-				.unwrap_or_else(|| panic!("expected an i64 integer, got {:?}", v)),
 			other => panic!("expected integer, got {:?}", other),
 		})
 		.collect()

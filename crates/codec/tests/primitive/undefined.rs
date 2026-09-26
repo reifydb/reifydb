@@ -15,9 +15,7 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -201,31 +199,20 @@ fn test_set_uuid_types() {
 
 #[test]
 fn test_set_decimal_int_uint() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DECIMAL, ValueType::INT, ValueType::UINT]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DECIMAL]);
 	let mut row = shape.allocate_pod();
 
 	let decimal = Decimal::from_str("123.45").unwrap();
-	let int = Int::from(i64::MAX);
-	let uint = Uint::from(u64::MAX);
 
 	shape.set_decimal(&mut row, 0, &decimal);
-	shape.set_int(&mut row, 1, &int);
-	shape.set_uint(&mut row, 2, &uint);
 
 	assert!(row.is_defined(0));
-	assert!(row.is_defined(1));
-	assert!(row.is_defined(2));
 
 	shape.set_none(&mut row, 0);
-	shape.set_none(&mut row, 2);
 
 	assert!(!row.is_defined(0));
-	assert!(row.is_defined(1));
-	assert!(!row.is_defined(2));
 
 	assert_eq!(shape.try_get_decimal(&row, 0), None);
-	assert_eq!(shape.try_get_int(&row, 1), Some(int));
-	assert_eq!(shape.try_get_uint(&row, 2), None);
 }
 
 #[test]

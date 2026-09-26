@@ -11,11 +11,9 @@ use reifydb_value::value::{
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -412,62 +410,6 @@ fn any_uuid7_specific() {
 }
 
 #[test]
-fn any_int_zero() {
-	let input = one_row(Value::Int(Int::zero()));
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_int_zero", &input, &output);
-}
-
-#[test]
-fn any_int_small() {
-	let input = ColumnBuffer::any([
-		Value::Int(Int::from_i64(-1)),
-		Value::Int(Int::from_i64(0)),
-		Value::Int(Int::from_i64(42)),
-	]);
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_int_small", &input, &output);
-}
-
-#[test]
-fn any_int_i128_extremes() {
-	let input = ColumnBuffer::any([Value::Int(Int::from_i128(i128::MIN)), Value::Int(Int::from_i128(i128::MAX))]);
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_int_i128_extremes", &input, &output);
-}
-
-#[test]
-fn any_int_outside_i128_range() {
-	let big = Int::from_i128(i128::MAX).checked_add(&Int::from_i128(i128::MAX)).unwrap();
-	let neg_big = Int::from_i128(i128::MIN).checked_add(&Int::from_i128(i128::MIN)).unwrap();
-	let input = ColumnBuffer::any([Value::Int(big), Value::Int(neg_big)]);
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_int_outside_i128", &input, &output);
-}
-
-#[test]
-fn any_uint_zero() {
-	let input = one_row(Value::Uint(Uint::zero()));
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_uint_zero", &input, &output);
-}
-
-#[test]
-fn any_uint_u128_max() {
-	let input = one_row(Value::Uint(Uint::from_u128(u128::MAX)));
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_uint_u128_max", &input, &output);
-}
-
-#[test]
-fn any_uint_outside_u128_range() {
-	let big = Uint::from_u128(u128::MAX).checked_add(&Uint::from_u128(u128::MAX)).unwrap();
-	let input = one_row(Value::Uint(big));
-	let output = round_trip_column("a", input.clone());
-	assert_column_eq("any_uint_outside_u128", &input, &output);
-}
-
-#[test]
 fn any_decimal_zero() {
 	let input = one_row(Value::Decimal(Decimal::zero()));
 	let output = round_trip_column("a", input.clone());
@@ -696,8 +638,6 @@ fn any_one_per_variant_in_one_column() {
 		Value::IdentityId(IdentityId::root()),
 		uuid4_bytes([0xAA; 16]),
 		uuid7_bytes([0x55; 16]),
-		Value::Int(Int::from_i64(7)),
-		Value::Uint(Uint::from_u64(7)),
 		Value::Decimal(Decimal::from_i64(7)),
 		Value::Any(Box::new(Value::Int8(42))),
 		Value::DictionaryId(DictionaryEntryId::U4(7)),

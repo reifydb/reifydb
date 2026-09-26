@@ -9,7 +9,7 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::{decimals, ints, u128s, uints},
+	container::decimal_array::{decimals, u128s},
 	is::IsNumber,
 	value_type::ValueType,
 };
@@ -159,18 +159,6 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 			ValueType::Float8 => {
 				let (values, bits) = run!(Float8);
 				ColumnBuffer::float8_with_bitvec(values, bits)
-			}
-			ValueType::Int {
-				precision,
-			} => {
-				let (values, bits) = run!(Int(..), ints);
-				ColumnBuffer::int_with_bitvec(precision, values, bits)
-			}
-			ValueType::Uint {
-				precision,
-			} => {
-				let (values, bits) = run!(Uint(..), uints);
-				ColumnBuffer::uint_with_bitvec(precision, values, bits)
 			}
 			ValueType::Decimal {
 				precision,

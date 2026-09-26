@@ -59,7 +59,7 @@ mod tests {
 	}
 
 	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> Columns {
-		// with_row_numbers backfills a default #time, so a timeless row must bypass it or it arrives timed.
+		// with_row_numbers carries no #time, so a timed row must set it through with_system.
 		let cols: Vec<ColumnWithName> = fields
 			.iter()
 			.map(|(name, value)| {

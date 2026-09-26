@@ -28,11 +28,9 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		system_columns::RowStamps,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -249,20 +247,6 @@ impl Columns {
 						vec![Blob::new(vec![]); size],
 						BooleanBuffer::new_unset(size),
 					),
-					ValueType::Int {
-						precision,
-					} => ColumnBuffer::int_with_bitvec(
-						precision,
-						vec![Int::default(); size],
-						BooleanBuffer::new_unset(size),
-					),
-					ValueType::Uint {
-						precision,
-					} => ColumnBuffer::uint_with_bitvec(
-						precision,
-						vec![Uint::default(); size],
-						BooleanBuffer::new_unset(size),
-					),
 					ValueType::Decimal {
 						precision,
 						scale,
@@ -456,22 +440,6 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Int(builder),
-					ValueType::Int {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_int(bytes, index)));
-				}
-				(
-					ColumnBuilder::Uint(builder),
-					ValueType::Uint {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
-				}
-				(
 					ColumnBuilder::Decimal(builder),
 					ValueType::Decimal {
 						..
@@ -620,22 +588,6 @@ impl Columns {
 					ValueType::Blob,
 				) => {
 					builder.append_value(shape.get_blob_slice(bytes, index));
-				}
-				(
-					ColumnBuilder::Int(builder),
-					ValueType::Int {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_int(bytes, index)));
-				}
-				(
-					ColumnBuilder::Uint(builder),
-					ValueType::Uint {
-						..
-					},
-				) => {
-					builder.push(&Decimal::from(shape.get_uint(bytes, index)));
 				}
 				(
 					ColumnBuilder::Decimal(builder),

@@ -8,7 +8,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		container::{
-			decimal_array::{decimals, ints, u128s, uints},
+			decimal_array::{decimals, u128s},
 			temporal_array::{duration_array, durations},
 		},
 		is::IsNumber,

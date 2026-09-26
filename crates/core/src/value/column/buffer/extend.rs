@@ -98,7 +98,7 @@ fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
 			container,
 			..
 		} => extend_dictionary(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
-		ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
+		ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
 			for _ in 0..count {
 				b.append_default();
 			}
@@ -128,12 +128,7 @@ fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
 }
 
 fn same_family(left: &ColumnBuffer, right: &ColumnBuffer) -> bool {
-	matches!(
-		(left, right),
-		(ColumnBuffer::Int(_), ColumnBuffer::Int(_))
-			| (ColumnBuffer::Uint(_), ColumnBuffer::Uint(_))
-			| (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_))
-	)
+	matches!((left, right), (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_)))
 }
 
 fn joinable(first: &ColumnBuffer, part: &ColumnBuffer) -> bool {
@@ -293,8 +288,6 @@ impl ColumnBuffer {
 					..
 				},
 			) => extend_varlen(l, |b| append_varlen(b, &r))?,
-			(ColumnBuffer::Int(l), ColumnBuffer::Int(r)) => extend_decimal(l, |b| b.append_array(&r)),
-			(ColumnBuffer::Uint(l), ColumnBuffer::Uint(r)) => extend_decimal(l, |b| b.append_array(&r)),
 			(ColumnBuffer::Decimal(l), ColumnBuffer::Decimal(r)) => {
 				extend_decimal(l, |b| b.append_array(&r))
 			}

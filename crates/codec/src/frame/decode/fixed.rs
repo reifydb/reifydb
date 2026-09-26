@@ -418,11 +418,7 @@ pub(crate) fn decode_unscaled_column(
 		check_unscaled(kind, value, precision)?;
 	}
 	let array = DecimalArray::from_unscaled(precision, scale, values);
-	Ok(match kind {
-		ValueKind::Int => FrameColumnData::Int(array),
-		ValueKind::Uint => FrameColumnData::Uint(array),
-		_ => FrameColumnData::Decimal(array),
-	})
+	Ok(FrameColumnData::Decimal(array))
 }
 
 fn decode_le_array<T: LeBytes>(data: &[u8], row_count: usize) -> Result<Vec<T>, DecodeError> {

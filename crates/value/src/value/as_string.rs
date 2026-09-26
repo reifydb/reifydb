@@ -35,8 +35,6 @@ impl AsString for Value {
 			Value::Uuid4(u) => u.to_string(),
 			Value::Uuid7(u) => u.to_string(),
 			Value::Blob(b) => b.to_string(),
-			Value::Int(bi) => bi.to_string(),
-			Value::Uint(bu) => bu.to_string(),
 			Value::Decimal(bd) => bd.to_string(),
 			Value::DictionaryId(id) => id.to_string(),
 			Value::Type(t) => t.to_string(),

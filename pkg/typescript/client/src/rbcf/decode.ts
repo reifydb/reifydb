@@ -125,7 +125,7 @@ function decodeColumn(r: BinaryReader): WireColumn {
             const digest = decodeDigestPlain(rowCount, dataBytes, offsetsBytes, extraBytes);
             type = digest.type;
             payload = digest.payload;
-        } else if (kind === TYPE_CODE.Int || kind === TYPE_CODE.Uint || kind === TYPE_CODE.Decimal) {
+        } else if (kind === TYPE_CODE.Decimal) {
             const fixed = decodeFixedPointColumn(baseName as FixedPointKind, encoding, rowCount, dataBytes, extraBytes);
             type = fixed.type;
             payload = fixed.payload;
@@ -186,7 +186,6 @@ function decodeFixedPointColumn(
         if (digitCount(value) > precision) {
             throw new Error(`${kind} value ${value} has more digits than precision ${precision}`);
         }
-        if (kind === "Uint" && value < 0n) throw new Error(`Uint value ${value} is negative`);
     }
     return { type, payload: values.map((value) => formatFixedPoint(value, scale)) };
 }

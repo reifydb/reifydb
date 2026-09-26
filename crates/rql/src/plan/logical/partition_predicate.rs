@@ -377,13 +377,6 @@ mod tests {
 	}
 
 	#[test]
-	fn declines_bignum_int() {
-		let columns = vec![col("n", ValueType::INT)];
-		let condition = eq(column_ref("n"), number("1"));
-		assert_eq!(extract_partition(&condition, &columns, &by(&["n"])), None);
-	}
-
-	#[test]
 	fn declines_blob() {
 		// A blob literal is blob::hex(..), an Expression::Call, never a foldable constant.
 		let columns = vec![col("b", ValueType::Blob)];

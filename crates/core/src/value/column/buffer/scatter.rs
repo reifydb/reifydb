@@ -10,10 +10,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
-			decimal_array::{
-				decimal_array, decimals, int_array, int16_array, ints, u128s, uint_array, uint16_array,
-				uints,
-			},
+			decimal_array::{decimal_array, decimals, int16_array, u128s, uint16_array},
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
 				times,
@@ -24,10 +21,8 @@ use reifydb_value::{
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
-		int::Int,
 		is::{IsNumber, IsTemporal, IsUuid},
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -301,8 +296,6 @@ fn scatter_merge_typed(
 	native_kernel!(Uint4, u32);
 	native_kernel!(Uint8, u64);
 	number_kernel!(Uint16, u128, u128s, uint16_array);
-	family_kernel!(Int, Int, ints, |a, data| int_array(a.precision(), data));
-	family_kernel!(Uint, Uint, uints, |a, data| uint_array(a.precision(), data));
 	family_kernel!(Decimal, Decimal, decimals, |a, data| decimal_array(a.precision(), a.scale(), data));
 
 	temporal_kernel!(Date, Date, dates, date_array);

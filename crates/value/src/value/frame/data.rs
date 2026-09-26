@@ -21,9 +21,8 @@ use crate::{
 			any_array, bool_array,
 			decimal_array::{
 				DecimalArray, decimal_as_string, decimal_get_value, deserialize_decimal_array,
-				deserialize_int_array, deserialize_int16s, deserialize_uint_array, deserialize_uint16s,
-				int_as_string, int_get_value, serialize_decimal_array, serialize_uint16s,
-				uint_as_string, uint_get_value, uint16_as_string, uint16_get_value,
+				deserialize_int16s, deserialize_uint16s, serialize_decimal_array, serialize_uint16s,
+				uint16_as_string, uint16_get_value,
 			},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{
@@ -102,14 +101,6 @@ pub enum FrameColumnData {
 			deserialize_with = "varlen_array::deserialize_blob"
 		)]
 		LargeBinaryArray,
-	),
-	Int(
-		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_int_array")]
-		DecimalArray,
-	),
-	Uint(
-		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_uint_array")]
-		DecimalArray,
 	),
 	Decimal(
 		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_decimal_array")]
@@ -201,8 +192,6 @@ impl PartialEq for FrameColumnData {
 			(FrameColumnData::Uuid4(a), FrameColumnData::Uuid4(b)) => uuid4s(a) == uuid4s(b),
 			(FrameColumnData::Uuid7(a), FrameColumnData::Uuid7(b)) => uuid7s(a) == uuid7s(b),
 			(FrameColumnData::Blob(a), FrameColumnData::Blob(b)) => varlen_array::equals(a, b),
-			(FrameColumnData::Int(a), FrameColumnData::Int(b)) => a == b,
-			(FrameColumnData::Uint(a), FrameColumnData::Uint(b)) => a == b,
 			(FrameColumnData::Decimal(a), FrameColumnData::Decimal(b)) => a == b,
 			(
 				FrameColumnData::Any {
@@ -283,8 +272,6 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(_) => ValueType::Uuid4,
 			FrameColumnData::Uuid7(_) => ValueType::Uuid7,
 			FrameColumnData::Blob(_) => ValueType::Blob,
-			FrameColumnData::Int(container) => ValueType::int(container.precision()),
-			FrameColumnData::Uint(container) => ValueType::uint(container.precision()),
 			FrameColumnData::Decimal(container) => {
 				ValueType::decimal(container.precision(), container.scale())
 			}
@@ -334,8 +321,6 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => idx < container.len(),
 			FrameColumnData::Uuid7(container) => idx < container.len(),
 			FrameColumnData::Blob(container) => idx < container.len(),
-			FrameColumnData::Int(container) => idx < container.len(),
-			FrameColumnData::Uint(container) => idx < container.len(),
 			FrameColumnData::Decimal(container) => idx < container.len(),
 			FrameColumnData::Any {
 				container,
@@ -390,8 +375,6 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),
-			FrameColumnData::Int(container) => container.len(),
-			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Any {
 				container,
@@ -452,8 +435,6 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => uuid_array::as_string(uuid4s(container), index),
 			FrameColumnData::Uuid7(container) => uuid_array::as_string(uuid7s(container), index),
 			FrameColumnData::Blob(container) => blob_as_string(container, index),
-			FrameColumnData::Int(container) => int_as_string(container, index),
-			FrameColumnData::Uint(container) => uint_as_string(container, index),
 			FrameColumnData::Decimal(container) => decimal_as_string(container, index),
 			FrameColumnData::Any {
 				container,
@@ -508,8 +489,6 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => uuid_array::get_value(uuid4s(container), index),
 			FrameColumnData::Uuid7(container) => uuid_array::get_value(uuid7s(container), index),
 			FrameColumnData::Blob(container) => blob_get_value(container, index),
-			FrameColumnData::Int(container) => int_get_value(container, index),
-			FrameColumnData::Uint(container) => uint_get_value(container, index),
 			FrameColumnData::Decimal(container) => decimal_get_value(container, index),
 			FrameColumnData::Any {
 				container,

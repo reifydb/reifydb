@@ -178,9 +178,7 @@ impl Arena {
 			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
 			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
 			ColumnBuffer::Uint16(container) => self.marshal_copied_u128s(&u128s(container)),
-			ColumnBuffer::Int(array) | ColumnBuffer::Uint(array) | ColumnBuffer::Decimal(array) => {
-				self.marshal_unscaled(array)
-			}
+			ColumnBuffer::Decimal(array) => self.marshal_unscaled(array),
 
 			ColumnBuffer::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
 			ColumnBuffer::DateTime(container) => {

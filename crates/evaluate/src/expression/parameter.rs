@@ -62,9 +62,7 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::Blob(b) => ColumnBuffer::blob(vec![b.clone(); ctx.row_count]),
 		Value::IdentityId(id) => ColumnBuffer::identity_id(vec![*id; ctx.row_count]),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![*v; ctx.row_count]),
-		Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
-			ColumnBuffer::from_many(value.clone(), ctx.row_count)
-		}
+		Value::Decimal(_) => ColumnBuffer::from_many(value.clone(), ctx.row_count),
 		Value::None {
 			..
 		} => ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),

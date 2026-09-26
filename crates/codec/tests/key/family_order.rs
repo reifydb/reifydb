@@ -7,8 +7,6 @@ use reifydb_value::value::{
 	Value,
 	constraint::{precision::Precision, scale::Scale},
 	decimal::Decimal,
-	int::Int,
-	uint::Uint,
 };
 
 const WIDTHS: [(u8, usize); 2] = [(38, 16), (76, 32)];
@@ -42,18 +40,6 @@ fn signed_ladder(precision: u8) -> Vec<i256> {
 	ladder
 }
 
-fn int_key(value: &Int, precision: u8) -> Vec<u8> {
-	let mut s = KeySerializer::new();
-	s.extend_int(value, Precision::new(precision)).unwrap();
-	s.finish().to_vec()
-}
-
-fn uint_key(value: &Uint, precision: u8) -> Vec<u8> {
-	let mut s = KeySerializer::new();
-	s.extend_uint(value, Precision::new(precision)).unwrap();
-	s.finish().to_vec()
-}
-
 fn decimal_key(value: &Decimal, precision: u8, scale: u8) -> Vec<u8> {
 	let mut s = KeySerializer::new();
 	s.extend_decimal(value, Precision::new(precision), Scale::new(scale)).unwrap();
@@ -63,44 +49,6 @@ fn decimal_key(value: &Decimal, precision: u8, scale: u8) -> Vec<u8> {
 fn assert_descending(label: &str, keys: &[Vec<u8>]) {
 	for (i, pair) in keys.windows(2).enumerate() {
 		assert!(pair[1] < pair[0], "{label}: key {} must encode smaller than key {i}", i + 1);
-	}
-}
-
-#[test]
-fn int_keys_sort_descending_across_the_sign_at_both_widths() {
-	for (precision, width) in WIDTHS {
-		// A sign bit left unflipped sorts every negative before every positive, reversing half the range.
-		let values: Vec<Int> =
-			signed_ladder(precision).into_iter().map(|v| Int::from_i256(v).unwrap()).collect();
-		let keys: Vec<Vec<u8>> = values.iter().map(|v| int_key(v, precision)).collect();
-		assert_descending(&format!("int({precision})"), &keys);
-		for (value, key) in values.iter().zip(&keys) {
-			assert_eq!(key.len(), 1 + width, "int({precision}) key must be fixed width");
-			let mut d = KeyDeserializer::from_bytes(key);
-			assert_eq!(&d.read_int().unwrap(), value);
-			assert!(d.is_empty());
-		}
-	}
-}
-
-#[test]
-fn uint_keys_sort_descending_at_both_widths() {
-	for (precision, width) in WIDTHS {
-		// The top value uses every digit of the precision, so a truncated payload would collide with a smaller
-		// one.
-		let values: Vec<Uint> = signed_ladder(precision)
-			.into_iter()
-			.filter(|v| !v.is_negative())
-			.map(|v| Uint::from_i256(v).unwrap())
-			.collect();
-		let keys: Vec<Vec<u8>> = values.iter().map(|v| uint_key(v, precision)).collect();
-		assert_descending(&format!("uint({precision})"), &keys);
-		for (value, key) in values.iter().zip(&keys) {
-			assert_eq!(key.len(), 1 + width, "uint({precision}) key must be fixed width");
-			let mut d = KeyDeserializer::from_bytes(key);
-			assert_eq!(&d.read_uint().unwrap(), value);
-			assert!(d.is_empty());
-		}
 	}
 }
 
@@ -132,10 +80,9 @@ fn decimal_keys_sort_descending_across_the_sign_at_both_widths() {
 #[test]
 fn value_keys_reverse_under_asc_across_the_sign() {
 	// The value path writes the widest layout, so values past i128 must still flip cleanly under ASC.
-	let ints: Vec<Value> = signed_ladder(76).into_iter().map(|v| Value::Int(Int::from_i256(v).unwrap())).collect();
 	let decimals: Vec<Value> =
 		signed_ladder(76).into_iter().map(|v| Value::Decimal(Decimal::from_parts(v, 3).unwrap())).collect();
-	for values in [ints, decimals] {
+	for values in [decimals] {
 		for pair in values.windows(2) {
 			let asc = |value: &Value| {
 				let mut s = KeySerializer::new();
@@ -157,20 +104,16 @@ fn value_keys_reverse_under_asc_across_the_sign() {
 fn a_value_wider_than_the_key_precision_is_refused() {
 	// Silently truncating 1000 into a precision 3 key would collide it with another value.
 	let mut s = KeySerializer::new();
-	assert!(s.extend_int(&Int::from(1000), Precision::new(3)).is_err());
-	let mut s = KeySerializer::new();
-	assert!(s.extend_uint(&Uint::from(1000u64), Precision::new(3)).is_err());
-	let mut s = KeySerializer::new();
 	assert!(s.extend_decimal(&Decimal::parse("1.25").unwrap(), Precision::new(10), Scale::new(1)).is_err());
 }
 
 #[test]
 fn a_payload_wider_than_its_precision_header_is_rejected_on_read() {
 	// A corrupt header must surface as an error, not as a value past the column's declared precision.
-	let mut key = int_key(&Int::from(1000), 4);
+	let mut key = decimal_key(&Decimal::parse("1000").unwrap(), 4, 0);
 	key[0] = !3u8;
 	let mut d = KeyDeserializer::from_bytes(&key);
-	assert!(d.read_int().is_err());
+	assert!(d.read_decimal().is_err());
 }
 
 #[test]
@@ -192,10 +135,6 @@ fn the_i256_key_layout_is_pinned() {
 #[test]
 fn a_narrow_int_key_is_the_precision_byte_then_the_i128_encoding() {
 	// Precision 38 must reuse the int16 key bytes, so the header is the only difference from an Int16 key.
-	let key = int_key(&Int::from(-1), 38);
-	let mut expected = vec![!38u8];
-	expected.extend_from_slice(&reifydb_codec::key::encode_i128(-1));
-	assert_eq!(key, expected);
 	let key = decimal_key(&Decimal::parse("1.5").unwrap(), 76, 1);
 	let mut expected = vec![!76u8, !1u8];
 	expected.extend_from_slice(&reifydb_codec::key::encode_i256(i256::from_i128(15)));

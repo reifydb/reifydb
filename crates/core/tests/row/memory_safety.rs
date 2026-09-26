@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
+use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 #[test]
 fn test_unaligned_access_all_types() {
@@ -32,8 +32,6 @@ fn test_unaligned_access_all_types() {
 		ValueType::IdentityId,
 		ValueType::Utf8,
 		ValueType::Blob,
-		ValueType::INT,
-		ValueType::UINT,
 		ValueType::DECIMAL,
 	];
 
@@ -106,7 +104,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 			ValueType::Float8, // Static
 			ValueType::Utf8,   // Dynamic
 			ValueType::Blob,   // Dynamic
-			ValueType::INT,    // Static
 		],
 	);
 
@@ -122,7 +119,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 	shape.set_utf8(&mut row, 2, "constant");
 	shape.set_blob(&mut row, 3, &Blob::from(&b"fixed"[..]));
-	shape.set_int(&mut row, 4, &Int::from(123i64));
 
 	let size_after_dynamic = row.len();
 	assert!(size_after_dynamic > initial_size, "Dynamic fields should increase size");
@@ -135,7 +131,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 			shape.set::<f64>(&mut r, 1, 3.14f64);
 			shape.set_utf8(&mut r, 2, "constant");
 			shape.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
-			shape.set_int(&mut r, 4, &Int::from(123i64));
 			r
 		})
 		.collect();

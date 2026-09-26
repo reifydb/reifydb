@@ -10,15 +10,13 @@ use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::decimal_array::{decimals, u128s},
 		decimal::{Decimal, parse::parse_decimal, unscaled},
-		int::Int,
 		is::IsNumber,
 		number::{
 			parse::{parse_float, parse_primitive_int, parse_primitive_uint},
 			safe::convert::SafeConvert,
 		},
-		uint::Uint,
 		value_type::{ValueType, get::GetType},
 	},
 };
@@ -56,7 +54,7 @@ pub fn to_number(
 			ValueType::Decimal {
 				..
 			} => text_to_decimal(data, target, ctx, lazy_fragment),
-			_ => text_to_integer(data, target, ctx, lazy_fragment),
+			_ => text_to_integer(data, target, lazy_fragment),
 		};
 	}
 
@@ -75,7 +73,7 @@ fn boolean_to_number(
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
-	if !matches!(target, ValueType::Int { .. } | ValueType::Uint { .. } | ValueType::Decimal { .. }) {
+	if !matches!(target, ValueType::Decimal { .. }) {
 		return boolean_to_primitive(data, target, lazy_fragment);
 	}
 	let (ones, nulls) = boolean_to_primitive(data, ValueType::Int1, || lazy_fragment.fragment())?.split_nulls();
@@ -193,12 +191,7 @@ macro_rules! parse_and_push {
 	}};
 }
 
-fn text_to_integer(
-	data: &ColumnBuffer,
-	target: ValueType,
-	ctx: impl Convert,
-	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+fn text_to_integer(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
 		ColumnBuffer::Utf8 {
 			container,
@@ -311,49 +304,6 @@ fn text_to_integer(
 								temp_fragment,
 								base_fragment
 							)
-						}
-						ValueType::Int {
-							..
-						} => {
-							let result = parse_primitive_int::<Int>(temp_fragment.clone())
-								.map_err(|mut e| {
-									e.0.with_fragment(base_fragment.clone());
-									Error::from(CastError::InvalidNumber {
-										fragment: base_fragment.clone(),
-										target: target.clone(),
-										cause: e.diagnostic(),
-									})
-								})?;
-							push_fitted(
-								&ctx,
-								&mut out,
-								result,
-								&target,
-								base_fragment.clone(),
-							)?;
-						}
-						ValueType::Uint {
-							..
-						} => {
-							let result =
-								parse_primitive_uint::<Uint>(temp_fragment.clone())
-									.map_err(|mut e| {
-										e.0.with_fragment(
-											base_fragment.clone(),
-										);
-										Error::from(CastError::InvalidNumber {
-											fragment: base_fragment.clone(),
-											target: target.clone(),
-											cause: e.diagnostic(),
-										})
-									})?;
-							push_fitted(
-								&ctx,
-								&mut out,
-								result,
-								&target,
-								base_fragment.clone(),
-							)?;
 						}
 						_ => {
 							let from = data.get_type();
@@ -553,359 +503,63 @@ fn number_to_number(
 
 	cast!(Float4, f32,
 	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Float8, f64,
 	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Int1, i8,
 	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Int2, i16,
 	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Int4, i32,
 	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Int8, i64,
 	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Int16, i128,
 	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint1, u8,
 	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint2, u16,
 	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint4, u32,
 	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint8, u64,
 	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint16 via u128s, u128,
 	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    family => [(Int, Int), (Uint, Uint), (Decimal, Decimal)]
+	    family => [(Decimal, Decimal)]
 	);
-
-	if let ColumnBuffer::Int(container) = data {
-		let container = &ints(container);
-		match target {
-			ValueType::Int1 => {
-				return convert_vec_clone::<Int, i8>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int1,
-					ColumnBuilder::push::<i8>,
-				);
-			}
-			ValueType::Int2 => {
-				return convert_vec_clone::<Int, i16>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int2,
-					ColumnBuilder::push::<i16>,
-				);
-			}
-			ValueType::Int4 => {
-				return convert_vec_clone::<Int, i32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int4,
-					ColumnBuilder::push::<i32>,
-				);
-			}
-			ValueType::Int8 => {
-				return convert_vec_clone::<Int, i64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int8,
-					ColumnBuilder::push::<i64>,
-				);
-			}
-			ValueType::Int16 => {
-				return convert_vec_clone::<Int, i128>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int16,
-					ColumnBuilder::push::<i128>,
-				);
-			}
-			ValueType::Uint1 => {
-				return convert_vec_clone::<Int, u8>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint1,
-					ColumnBuilder::push::<u8>,
-				);
-			}
-			ValueType::Uint2 => {
-				return convert_vec_clone::<Int, u16>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint2,
-					ColumnBuilder::push::<u16>,
-				);
-			}
-			ValueType::Uint4 => {
-				return convert_vec_clone::<Int, u32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint4,
-					ColumnBuilder::push::<u32>,
-				);
-			}
-			ValueType::Uint8 => {
-				return convert_vec_clone::<Int, u64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint8,
-					ColumnBuilder::push::<u64>,
-				);
-			}
-			ValueType::Uint16 => {
-				return convert_vec_clone::<Int, u128>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint16,
-					ColumnBuilder::push::<u128>,
-				);
-			}
-			ValueType::Float4 => {
-				return convert_vec_clone::<Int, f32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Float4,
-					ColumnBuilder::push::<f32>,
-				);
-			}
-			ValueType::Float8 => {
-				return convert_vec_clone::<Int, f64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Float8,
-					ColumnBuilder::push::<f64>,
-				);
-			}
-			ValueType::Int {
-				..
-			} => {
-				return convert_family::<Int, Int>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Int>,
-				);
-			}
-			ValueType::Uint {
-				..
-			} => {
-				return convert_family::<Int, Uint>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Uint>,
-				);
-			}
-			ValueType::Decimal {
-				..
-			} => {
-				return convert_family::<Int, Decimal>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Decimal>,
-				);
-			}
-			_ => {}
-		}
-	}
-
-	if let ColumnBuffer::Uint(container) = data {
-		let container = &uints(container);
-		match target {
-			ValueType::Uint1 => {
-				return convert_vec_clone::<Uint, u8>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint1,
-					ColumnBuilder::push::<u8>,
-				);
-			}
-			ValueType::Uint2 => {
-				return convert_vec_clone::<Uint, u16>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint2,
-					ColumnBuilder::push::<u16>,
-				);
-			}
-			ValueType::Uint4 => {
-				return convert_vec_clone::<Uint, u32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint4,
-					ColumnBuilder::push::<u32>,
-				);
-			}
-			ValueType::Uint8 => {
-				return convert_vec_clone::<Uint, u64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint8,
-					ColumnBuilder::push::<u64>,
-				);
-			}
-			ValueType::Uint16 => {
-				return convert_vec_clone::<Uint, u128>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Uint16,
-					ColumnBuilder::push::<u128>,
-				);
-			}
-			ValueType::Int1 => {
-				return convert_vec_clone::<Uint, i8>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int1,
-					ColumnBuilder::push::<i8>,
-				);
-			}
-			ValueType::Int2 => {
-				return convert_vec_clone::<Uint, i16>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int2,
-					ColumnBuilder::push::<i16>,
-				);
-			}
-			ValueType::Int4 => {
-				return convert_vec_clone::<Uint, i32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int4,
-					ColumnBuilder::push::<i32>,
-				);
-			}
-			ValueType::Int8 => {
-				return convert_vec_clone::<Uint, i64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int8,
-					ColumnBuilder::push::<i64>,
-				);
-			}
-			ValueType::Int16 => {
-				return convert_vec_clone::<Uint, i128>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Int16,
-					ColumnBuilder::push::<i128>,
-				);
-			}
-			ValueType::Float4 => {
-				return convert_vec_clone::<Uint, f32>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Float4,
-					ColumnBuilder::push::<f32>,
-				);
-			}
-			ValueType::Float8 => {
-				return convert_vec_clone::<Uint, f64>(
-					container,
-					ctx,
-					lazy_fragment,
-					ValueType::Float8,
-					ColumnBuilder::push::<f64>,
-				);
-			}
-			ValueType::Uint {
-				..
-			} => {
-				return convert_family::<Uint, Uint>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Uint>,
-				);
-			}
-			ValueType::Int {
-				..
-			} => {
-				return convert_family::<Uint, Int>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Int>,
-				);
-			}
-			ValueType::Decimal {
-				..
-			} => {
-				return convert_family::<Uint, Decimal>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Decimal>,
-				);
-			}
-			_ => {}
-		}
-	}
 
 	if let ColumnBuffer::Decimal(container) = data {
 		let container = &decimals(container);
@@ -1018,28 +672,6 @@ fn number_to_number(
 					ColumnBuilder::push::<f64>,
 				);
 			}
-			ValueType::Int {
-				..
-			} => {
-				return convert_family::<Decimal, Int>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Int>,
-				);
-			}
-			ValueType::Uint {
-				..
-			} => {
-				return convert_family::<Decimal, Uint>(
-					container,
-					ctx,
-					lazy_fragment,
-					target,
-					ColumnBuilder::push::<Uint>,
-				);
-			}
 			ValueType::Decimal {
 				..
 			} => {
@@ -1073,12 +705,6 @@ struct Fit<T> {
 impl<T> Fit<T> {
 	fn new(value: T, target: &ValueType) -> Self {
 		let (precision, scale) = match target {
-			ValueType::Int {
-				precision,
-			}
-			| ValueType::Uint {
-				precision,
-			} => (precision.value(), 0),
 			ValueType::Decimal {
 				precision,
 				scale,
@@ -1100,37 +726,6 @@ impl<T> Fit<T> {
 impl<T: GetType> GetType for Fit<T> {
 	fn get_type() -> ValueType {
 		T::get_type()
-	}
-}
-
-impl SafeConvert<Int> for Fit<Int> {
-	fn checked_convert(self) -> Option<Int> {
-		(self.value.digits() <= self.precision).then_some(self.value)
-	}
-
-	fn saturating_convert(self) -> Int {
-		let bound = self.bound();
-		Int::from_i256(self.value.to_i256().clamp(bound.wrapping_neg(), bound))
-			.expect("a clamped value is an int")
-	}
-
-	fn wrapping_convert(self) -> Int {
-		self.saturating_convert()
-	}
-}
-
-impl SafeConvert<Uint> for Fit<Uint> {
-	fn checked_convert(self) -> Option<Uint> {
-		(self.value.digits() <= self.precision).then_some(self.value)
-	}
-
-	fn saturating_convert(self) -> Uint {
-		let bound = self.bound();
-		Uint::from_i256(self.value.to_i256().min(bound)).expect("a clamped value is a uint")
-	}
-
-	fn wrapping_convert(self) -> Uint {
-		self.saturating_convert()
 	}
 }
 

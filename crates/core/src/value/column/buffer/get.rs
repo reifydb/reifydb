@@ -11,10 +11,7 @@ use reifydb_value::{
 		Value,
 		container::{
 			any_array, bool_array,
-			decimal_array::{
-				decimal_at, decimal_get_value, int_at, int_get_value, u128_at, uint_at, uint_get_value,
-				uint16_get_value,
-			},
+			decimal_array::{decimal_at, decimal_get_value, u128_at, uint16_get_value},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{self, dates, datetimes, durations, times},
 			uuid_array::{self, identity_ids, uuid4s, uuid7s},
@@ -25,9 +22,7 @@ use reifydb_value::{
 		decimal::Decimal,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -68,8 +63,6 @@ impl ColumnBuffer {
 				container,
 				..
 			} => dictionary_array::get_value(container, index),
-			ColumnBuffer::Int(a) => int_get_value(a, index),
-			ColumnBuffer::Uint(a) => uint_get_value(a, index),
 			ColumnBuffer::Decimal(a) => decimal_get_value(a, index),
 			ColumnBuffer::Any {
 				container,
@@ -283,24 +276,6 @@ impl FromColumnBuffer for Uuid7 {
 	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match data {
 			ColumnBuffer::Uuid7(c) => Ok(uuid7s(c).get(index).copied()),
-			_ => wrong_type(),
-		}
-	}
-}
-
-impl FromColumnBuffer for Int {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
-		match data {
-			ColumnBuffer::Int(a) => Ok(int_at(a, index)),
-			_ => wrong_type(),
-		}
-	}
-}
-
-impl FromColumnBuffer for Uint {
-	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
-		match data {
-			ColumnBuffer::Uint(a) => Ok(uint_at(a, index)),
 			_ => wrong_type(),
 		}
 	}

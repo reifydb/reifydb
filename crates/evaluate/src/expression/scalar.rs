@@ -8,13 +8,11 @@ use reifydb_value::{
 	fragment::LazyFragment,
 	value::{
 		decimal::Decimal,
-		int::Int,
 		is::IsNumber,
 		number::{
 			promote::Promote,
 			safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
 		},
-		uint::Uint,
 		value_type::{ValueType, get::GetType},
 	},
 };
@@ -153,18 +151,6 @@ macro_rules! impl_scalar_divisive_op {
 
 pub(crate) trait FitFamily: Sized {
 	fn fit_family(&self, target: &ValueType) -> Option<Self>;
-}
-
-impl FitFamily for Int {
-	fn fit_family(&self, target: &ValueType) -> Option<Self> {
-		target.precision().is_none_or(|precision| self.digits() <= precision.value()).then(|| self.clone())
-	}
-}
-
-impl FitFamily for Uint {
-	fn fit_family(&self, target: &ValueType) -> Option<Self> {
-		target.precision().is_none_or(|precision| self.digits() <= precision.value()).then(|| self.clone())
-	}
 }
 
 impl FitFamily for Decimal {

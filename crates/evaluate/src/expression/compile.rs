@@ -1016,8 +1016,6 @@ fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
 		Value::Uuid7(_) => collect!(Uuid7, uuid7, |x| *x),
 		Value::IdentityId(_) => collect!(IdentityId, identity_id, |x| *x),
 		Value::Blob(_) => collect!(Blob, blob, |x| x.clone()),
-		Value::Int(_) => collect!(Int, int[Precision::MAX], |x| x.clone()),
-		Value::Uint(_) => collect!(Uint, uint[Precision::MAX], |x| x.clone()),
 		Value::Decimal(_) => {
 			let scale = items
 				.iter()

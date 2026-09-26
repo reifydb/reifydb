@@ -92,7 +92,7 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Uint4(c) => reduce_arrow!(c, Uint4),
 		ColumnBuffer::Uint8(c) => reduce_arrow!(c, Uint8),
 		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
-		ColumnBuffer::Int(c) | ColumnBuffer::Uint(c) | ColumnBuffer::Decimal(c) => reduce_family!(c),
+		ColumnBuffer::Decimal(c) => reduce_family!(c),
 		ColumnBuffer::Any {
 			..
 		} => Err(ColumnError::FixedArrayRequired {
@@ -130,7 +130,6 @@ mod tests {
 	use reifydb_value::value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
-		int::Int,
 		value_type::ValueType,
 	};
 
@@ -163,20 +162,6 @@ mod tests {
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int16(i128::MIN));
 		assert_eq!(max, Value::Int16(i128::MAX));
-	}
-
-	#[test]
-	fn min_max_wide_int_across_the_sign() {
-		// An untyped value compare or a truncating read past i128 picks the wrong bounds at 76 digits.
-		let big = Int::parse(&"9".repeat(76)).unwrap();
-		let cd = ColumnBuffer::int(
-			Precision::new(76),
-			[Int::from_i128(-1), big.clone(), big.negate(), Int::zero()],
-		);
-		let ca = Canonical::from_column_buffer(&cd).unwrap();
-		let (min, max) = min_max(&ca).unwrap();
-		assert_eq!(min, Value::Int(big.negate()));
-		assert_eq!(max, Value::Int(big));
 	}
 
 	#[test]

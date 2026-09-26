@@ -160,8 +160,6 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 		}
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
 		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
-		FrameColumnData::Int(c) => encode_unscaled(c, ValueKind::Int),
-		FrameColumnData::Uint(c) => encode_unscaled(c, ValueKind::Uint),
 		FrameColumnData::Decimal(c) => encode_unscaled(c, ValueKind::Decimal),
 		FrameColumnData::Any {
 			container,

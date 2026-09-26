@@ -16,11 +16,9 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -372,114 +370,6 @@ fn test_update_fields_interleaved_order() {
 	assert_eq!(row.len(), fresh.len());
 }
 
-fn huge_int() -> Int {
-	"999999999999999999999999999999999999999999999999".parse::<Int>().unwrap()
-}
-
-fn huge_int2() -> Int {
-	"111111111111111111111111111111111111111111111111".parse::<Int>().unwrap()
-}
-
-fn huge_uint() -> Uint {
-	"999999999999999999999999999999999999999999999999".parse::<Uint>().unwrap()
-}
-
-#[test]
-fn test_int_multiple_transitions() {
-	// Every int up to 76 digits sits in the fixed slot, so the row must never grow past its static size.
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::INT]);
-	let mut row = shape.allocate_pod();
-
-	shape.set_int(&mut row, 0, &Int::from(1));
-	assert_eq!(shape.get_int(&row, 0), Int::from(1));
-	assert_eq!(row.len(), shape.total_static_size());
-
-	shape.set_int(&mut row, 0, &huge_int());
-	assert_eq!(shape.get_int(&row, 0), huge_int());
-	assert_eq!(row.len(), shape.total_static_size());
-
-	shape.set_int(&mut row, 0, &Int::from(42));
-	assert_eq!(shape.get_int(&row, 0), Int::from(42));
-	assert_eq!(row.len(), shape.total_static_size());
-
-	shape.set_int(&mut row, 0, &huge_int2());
-	assert_eq!(shape.get_int(&row, 0), huge_int2());
-	assert_eq!(row.len(), shape.total_static_size());
-
-	let mut fresh = shape.allocate_pod();
-	shape.set_int(&mut fresh, 0, &huge_int2());
-	assert_eq!(row.len(), fresh.len());
-}
-
-#[test]
-fn test_uint_multiple_transitions() {
-	// Every uint up to 76 digits sits in the fixed slot, so the row must never grow past its static size.
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::UINT]);
-	let mut row = shape.allocate_pod();
-
-	shape.set_uint(&mut row, 0, &Uint::from(1u64));
-	assert_eq!(shape.get_uint(&row, 0), Uint::from(1u64));
-	assert_eq!(row.len(), shape.total_static_size());
-
-	shape.set_uint(&mut row, 0, &huge_uint());
-	assert_eq!(shape.get_uint(&row, 0), huge_uint());
-	assert_eq!(row.len(), shape.total_static_size());
-
-	shape.set_uint(&mut row, 0, &Uint::from(99u64));
-	assert_eq!(shape.get_uint(&row, 0), Uint::from(99u64));
-	assert_eq!(row.len(), shape.total_static_size());
-
-	let mut fresh = shape.allocate_pod();
-	shape.set_uint(&mut fresh, 0, &Uint::from(99u64));
-	assert_eq!(row.len(), fresh.len());
-}
-
-#[test]
-fn test_int_transition_with_other_dynamic_fields() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::INT, ValueType::Blob]);
-	let mut row = shape.allocate_pod();
-
-	shape.set_utf8(&mut row, 0, "hello");
-	shape.set_int(&mut row, 1, &huge_int());
-	shape.set_blob(&mut row, 2, &Blob::from_slice(&[1, 2, 3]));
-
-	assert_eq!(shape.get_utf8(&row, 0), "hello");
-	assert_eq!(shape.get_int(&row, 1), huge_int());
-	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
-
-	// Rewriting the fixed int slot must leave the dynamic utf8 and blob neighbours untouched.
-	shape.set_int(&mut row, 1, &Int::from(7));
-	assert_eq!(shape.get_utf8(&row, 0), "hello");
-	assert_eq!(shape.get_int(&row, 1), Int::from(7));
-	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
-
-	shape.set_int(&mut row, 1, &huge_int());
-	assert_eq!(shape.get_utf8(&row, 0), "hello");
-	assert_eq!(shape.get_int(&row, 1), huge_int());
-	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
-
-	let mut fresh = shape.allocate_pod();
-	shape.set_utf8(&mut fresh, 0, "hello");
-	shape.set_int(&mut fresh, 1, &huge_int());
-	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[1, 2, 3]));
-	assert_eq!(row.len(), fresh.len());
-}
-
-#[test]
-fn test_int_dynamic_to_dynamic() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::INT]);
-	let mut row = shape.allocate_pod();
-
-	shape.set_int(&mut row, 0, &huge_int());
-	shape.set_int(&mut row, 0, &huge_int2());
-	assert_eq!(shape.get_int(&row, 0), huge_int2());
-	// Overwriting one wide int with another must reuse the fixed slot, never spill into a dynamic section.
-	assert_eq!(row.len(), shape.total_static_size());
-	let mut fresh = shape.allocate_pod();
-	shape.set_int(&mut fresh, 0, &huge_int2());
-	assert_eq!(row.len(), fresh.len());
-}
-
 #[test]
 fn test_decimal_update_different_sizes() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DECIMAL]);
@@ -720,8 +610,6 @@ fn test_all_dynamic_types_in_one_row() {
 			ValueType::Utf8,
 			ValueType::Blob,
 			ValueType::DECIMAL,
-			ValueType::INT,
-			ValueType::UINT,
 			ValueType::Any,
 			ValueType::Boolean, // static
 			ValueType::Int4,    // static
@@ -732,37 +620,29 @@ fn test_all_dynamic_types_in_one_row() {
 	shape.set_utf8(&mut row, 0, "text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("1.5").unwrap());
-	shape.set_int(&mut row, 3, &Int::from(42));
-	shape.set_uint(&mut row, 4, &Uint::from(100u64));
-	shape.set_any(&mut row, 5, &Value::Int4(7));
-	shape.set::<bool>(&mut row, 6, true);
-	shape.set::<i32>(&mut row, 7, 999i32);
+	shape.set_any(&mut row, 3, &Value::Int4(7));
+	shape.set::<bool>(&mut row, 4, true);
+	shape.set::<i32>(&mut row, 5, 999i32);
 
 	shape.set_utf8(&mut row, 0, "updated text that is longer");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("99999.99").unwrap());
-	shape.set_int(&mut row, 3, &huge_int());
-	shape.set_uint(&mut row, 4, &huge_uint());
-	shape.set_any(&mut row, 5, &Value::Utf8("now a string".to_string()));
+	shape.set_any(&mut row, 3, &Value::Utf8("now a string".to_string()));
 
 	assert_eq!(shape.get_utf8(&row, 0), "updated text that is longer");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10, 20]));
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "99999.9900000000");
-	assert_eq!(shape.get_int(&row, 3), huge_int());
-	assert_eq!(shape.get_uint(&row, 4), huge_uint());
-	assert_eq!(shape.get_any(&row, 5), Value::Utf8("now a string".to_string()));
-	assert_eq!(shape.get::<bool>(&row, 6), true);
-	assert_eq!(shape.get::<i32>(&row, 7), 999);
+	assert_eq!(shape.get_any(&row, 3), Value::Utf8("now a string".to_string()));
+	assert_eq!(shape.get::<bool>(&row, 4), true);
+	assert_eq!(shape.get::<i32>(&row, 5), 999);
 
 	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "updated text that is longer");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_decimal(&mut fresh, 2, &Decimal::from_str("99999.99").unwrap());
-	shape.set_int(&mut fresh, 3, &huge_int());
-	shape.set_uint(&mut fresh, 4, &huge_uint());
-	shape.set_any(&mut fresh, 5, &Value::Utf8("now a string".to_string()));
-	shape.set::<bool>(&mut fresh, 6, true);
-	shape.set::<i32>(&mut fresh, 7, 999i32);
+	shape.set_any(&mut fresh, 3, &Value::Utf8("now a string".to_string()));
+	shape.set::<bool>(&mut fresh, 4, true);
+	shape.set::<i32>(&mut fresh, 5, 999i32);
 	assert_eq!(row.len(), fresh.len());
 }
 
@@ -1142,41 +1022,37 @@ fn test_repeated_set_unset_mixed_dynamic() {
 fn test_set_unset_all_fields_then_reset() {
 	let shape = RowShape::testing(
 		RowFamily::Pod,
-		&[ValueType::Utf8, ValueType::Blob, ValueType::Any, ValueType::INT, ValueType::DECIMAL],
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Any, ValueType::DECIMAL],
 	);
 	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_any(&mut row, 2, &Value::Utf8("any_first".to_string()));
-	shape.set_int(&mut row, 3, &huge_int());
-	shape.set_decimal(&mut row, 4, &Decimal::from_str("123.456").unwrap());
+	shape.set_decimal(&mut row, 3, &Decimal::from_str("123.456").unwrap());
 	assert!(row.len() > shape.total_static_size());
 
-	for i in 0..5 {
+	for i in 0..4 {
 		shape.set_none(&mut row, i);
 	}
 	assert_eq!(row.len(), shape.total_static_size());
-	for i in 0..5 {
+	for i in 0..4 {
 		assert!(!row.is_defined(i));
 	}
 
 	shape.set_utf8(&mut row, 0, "second, much longer text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_any(&mut row, 2, &Value::Boolean(true));
-	shape.set_int(&mut row, 3, &Int::from(42));
-	shape.set_decimal(&mut row, 4, &Decimal::from_str("0.001").unwrap());
+	shape.set_decimal(&mut row, 3, &Decimal::from_str("0.001").unwrap());
 
 	assert_eq!(shape.get_utf8(&row, 0), "second, much longer text");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10, 20]));
 	assert_eq!(shape.get_any(&row, 2), Value::Boolean(true));
-	assert_eq!(shape.get_int(&row, 3), Int::from(42));
 
 	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "second, much longer text");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_any(&mut fresh, 2, &Value::Boolean(true));
-	shape.set_int(&mut fresh, 3, &Int::from(42));
-	shape.set_decimal(&mut fresh, 4, &Decimal::from_str("0.001").unwrap());
+	shape.set_decimal(&mut fresh, 3, &Decimal::from_str("0.001").unwrap());
 	assert_eq!(row.len(), fresh.len());
 }

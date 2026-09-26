@@ -17,9 +17,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -159,12 +157,6 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 		ValueType::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)
 		}
-		ValueType::Int {
-			precision,
-		} => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec, precision),
-		ValueType::Uint {
-			precision,
-		} => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec, precision),
 		ValueType::Any => {
 			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}

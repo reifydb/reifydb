@@ -6,9 +6,8 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::{decimal_array, decimals, int_array, ints, u128_at},
+	container::decimal_array::{decimal_array, decimals, u128_at},
 	decimal::Decimal,
-	int::Int,
 	value_type::ValueType,
 };
 
@@ -255,11 +254,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				}
 				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnBuffer::Int(container) => ColumnBuffer::Int(int_array(
-				container.precision(),
-				ints(container).iter().map(Int::abs),
-			)),
-			ColumnBuffer::Uint(container) => ColumnBuffer::Uint(container.clone()),
 			ColumnBuffer::Decimal(container) => ColumnBuffer::Decimal(decimal_array(
 				container.precision(),
 				container.scale(),
@@ -282,8 +276,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						ValueType::Uint16,
 						ValueType::Float4,
 						ValueType::Float8,
-						ValueType::INT,
-						ValueType::UINT,
 						ValueType::DECIMAL,
 					],
 					actual: other.get_type(),

@@ -182,12 +182,6 @@ fn integer_digits(ty: &ValueType) -> Option<u8> {
 
 pub(crate) fn family_digits(ty: &ValueType) -> Option<(u8, u8)> {
 	match ty {
-		ValueType::Int {
-			precision,
-		}
-		| ValueType::Uint {
-			precision,
-		} => Some((precision.value(), 0)),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -197,7 +191,7 @@ pub(crate) fn family_digits(ty: &ValueType) -> Option<(u8, u8)> {
 }
 
 pub(crate) fn is_family(ty: &ValueType) -> bool {
-	matches!(ty, ValueType::Int { .. } | ValueType::Uint { .. } | ValueType::Decimal { .. })
+	matches!(ty, ValueType::Decimal { .. })
 }
 
 fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
@@ -343,9 +337,7 @@ fn cast_to(column: &ColumnBuffer, target: &ValueType) -> ArrayRef {
 		(ValueType::Uint16, ColumnBuffer::Int16(a)) => {
 			Arc::new(with_uint16_type(a.unary::<_, Decimal256Type>(i256::from_i128)))
 		}
-		(ValueType::Float8, ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a)) => {
-			family_to_float(a)
-		}
+		(ValueType::Float8, ColumnBuffer::Decimal(a)) => family_to_float(a),
 		(
 			ValueType::Decimal {
 				precision,
@@ -387,7 +379,7 @@ fn upscale_or_beyond(value: i256, by: u8) -> i256 {
 
 fn family_scale(column: &ColumnBuffer) -> u8 {
 	match column {
-		ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => a.scale().value(),
+		ColumnBuffer::Decimal(a) => a.scale().value(),
 		_ => 0,
 	}
 }
@@ -406,7 +398,7 @@ macro_rules! rescale256 {
 
 fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> ArrayRef {
 	let data_type = decimal_array::data_type(precision, scale);
-	if let ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) = column
+	if let ColumnBuffer::Decimal(a) = column
 		&& a.data_type() == &data_type
 	{
 		return column.to_array_ref();
@@ -423,9 +415,7 @@ fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> Ar
 			ColumnBuffer::Uint2(a) => rescale128!(a, factor),
 			ColumnBuffer::Uint4(a) => rescale128!(a, factor),
 			ColumnBuffer::Uint8(a) => rescale128!(a, factor),
-			ColumnBuffer::Int(DecimalArray::Decimal128(a))
-			| ColumnBuffer::Uint(DecimalArray::Decimal128(a))
-			| ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => rescale128!(a, factor),
+			ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => rescale128!(a, factor),
 			_ => unreachable!(),
 		};
 		Arc::new(array.with_data_type(data_type))
@@ -441,12 +431,10 @@ fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> Ar
 			ColumnBuffer::Uint4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Uint8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
 			ColumnBuffer::Uint16(a) => rescale256!(a, by, |v| v),
-			ColumnBuffer::Int(DecimalArray::Decimal128(a))
-			| ColumnBuffer::Uint(DecimalArray::Decimal128(a))
-			| ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => rescale256!(a, by, |v| i256::from_i128(v)),
-			ColumnBuffer::Int(DecimalArray::Decimal256(a))
-			| ColumnBuffer::Uint(DecimalArray::Decimal256(a))
-			| ColumnBuffer::Decimal(DecimalArray::Decimal256(a)) => rescale256!(a, by, |v| v),
+			ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => {
+				rescale256!(a, by, |v| i256::from_i128(v))
+			}
+			ColumnBuffer::Decimal(DecimalArray::Decimal256(a)) => rescale256!(a, by, |v| v),
 			_ => unreachable!(),
 		};
 		Arc::new(array.with_data_type(data_type))

@@ -4,9 +4,7 @@
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{
-		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
-	},
+	value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time},
 };
 
 use crate::{
@@ -20,8 +18,8 @@ use crate::{
 		sink::RowSink,
 		writer::{
 			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter, F32Writer,
-			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, IntWriter, TimeWriter,
-			U8Writer, U16Writer, U32Writer, U64Writer, U128Writer, UintWriter, Utf8Writer,
+			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, TimeWriter, U8Writer,
+			U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
 		},
 	},
 };
@@ -51,8 +49,6 @@ enum AnyWriter<'a> {
 	Bool(BoolWriter<'a>),
 	Utf8(Utf8Writer<'a>),
 	Blob(BlobWriter<'a>),
-	Int(IntWriter<'a>),
-	Uint(UintWriter<'a>),
 	Decimal(DecimalWriter<'a>),
 }
 
@@ -70,8 +66,6 @@ impl<'a> AnyWriter<'a> {
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
 		if let Some((precision, scale)) = default_family_params(type_code) {
 			return Ok(match type_code {
-				ValueKind::Int => AnyWriter::Int(builder.int_writer(row_capacity, precision)?),
-				ValueKind::Uint => AnyWriter::Uint(builder.uint_writer(row_capacity, precision)?),
 				_ => AnyWriter::Decimal(builder.decimal_writer(row_capacity, precision, scale)?),
 			});
 		}
@@ -125,8 +119,6 @@ impl<'a> AnyWriter<'a> {
 			AnyWriter::Bool(w) => w.finish(),
 			AnyWriter::Utf8(w) => w.finish(),
 			AnyWriter::Blob(w) => w.finish(),
-			AnyWriter::Int(w) => w.finish(),
-			AnyWriter::Uint(w) => w.finish(),
 			AnyWriter::Decimal(w) => w.finish(),
 		}
 	}
@@ -325,28 +317,6 @@ impl RowSink for ExternCRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_int(&mut self, col: usize, v: &Int) -> Result<(), SdkError> {
-		match &mut self.writers[col] {
-			AnyWriter::Int(w) => w.push(v),
-			_ => {
-				debug_panic("push_int on wrong column type");
-				Ok(())
-			}
-		}
-	}
-
-	#[inline]
-	fn push_uint(&mut self, col: usize, v: &Uint) -> Result<(), SdkError> {
-		match &mut self.writers[col] {
-			AnyWriter::Uint(w) => w.push(v),
-			_ => {
-				debug_panic("push_uint on wrong column type");
-				Ok(())
-			}
-		}
-	}
-
-	#[inline]
 	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Decimal(w) => w.push(v),
@@ -379,8 +349,6 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Bool(w) => w.push_none(),
 			AnyWriter::Utf8(w) => return w.push_none(),
 			AnyWriter::Blob(w) => return w.push_none(),
-			AnyWriter::Int(w) => return w.push_none(),
-			AnyWriter::Uint(w) => return w.push_none(),
 			AnyWriter::Decimal(w) => return w.push_none(),
 		}
 		Ok(())

@@ -14,7 +14,6 @@ use reifydb_value::value::{
 	},
 	date::Date,
 	datetime::DateTime,
-	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
@@ -106,11 +105,11 @@ impl ColumnBuilder {
 						ColumnBuffer::dictionary_id(vec![DictionaryEntryId::default(); len])
 					}
 					Value::Blob(_) => ColumnBuffer::blob(vec![Blob::default(); len]),
-					Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
+					Value::Decimal(_) => {
 						let declared = match (&**inner, &value) {
-							(ColumnBuilder::Int(_), Value::Int(_))
-							| (ColumnBuilder::Uint(_), Value::Uint(_))
-							| (ColumnBuilder::Decimal(_), Value::Decimal(_)) => inner.get_type(),
+							(ColumnBuilder::Decimal(_), Value::Decimal(_)) => {
+								inner.get_type()
+							}
 							_ => value.get_type(),
 						};
 						ColumnBuffer::none_typed(declared, len).split_nulls().0
@@ -180,8 +179,6 @@ impl ColumnBuilder {
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => push_or_promote!(varlen self, v.as_bytes(), Blob),
-			Value::Int(v) => push_or_promote!(decimal self, Decimal::from(v), Int),
-			Value::Uint(v) => push_or_promote!(decimal self, Decimal::from(v), Uint),
 			Value::Decimal(v) => push_or_promote!(decimal self, v, Decimal),
 			Value::None {
 				..

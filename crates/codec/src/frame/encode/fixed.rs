@@ -53,8 +53,6 @@ macro_rules! try_rle_fixed {
 
 fn family(inner: &FrameColumnData) -> Option<(ValueKind, &DecimalArray)> {
 	match inner {
-		FrameColumnData::Int(c) => Some((ValueKind::Int, c)),
-		FrameColumnData::Uint(c) => Some((ValueKind::Uint, c)),
 		FrameColumnData::Decimal(c) => Some((ValueKind::Decimal, c)),
 		_ => None,
 	}
