@@ -3,12 +3,16 @@
 
 use reifydb_codec::row::{
 	envelope::{
-		Envelope, EnvelopeBuilder, EnvelopeError, HAS_CREATED_AT, HAS_FINGERPRINT, HAS_TIME, HAS_UPDATED_AT,
+		Envelope, EnvelopeBuilder, EnvelopeError, HAS_COMMIT_VERSION, HAS_CREATED_AT, HAS_FINGERPRINT,
+		HAS_PARTITION, HAS_TIME, HAS_UPDATED_AT,
 	},
 	pod::EncodedPodRow,
 	shape::fingerprint::RowShapeFingerprint,
 };
-use reifydb_value::{factory::time::at_nanos, value::datetime::DateTime};
+use reifydb_value::{
+	factory::time::at_nanos,
+	value::{datetime::DateTime, partition::Partition},
+};
 
 const ALL_FLAGS: u8 = HAS_CREATED_AT | HAS_UPDATED_AT | HAS_TIME | HAS_FINGERPRINT;
 
@@ -200,4 +204,89 @@ fn a_body_that_opens_with_flag_bytes_is_never_read_as_a_header() {
 	assert_eq!(envelope.header_size(), 9);
 	assert_eq!(envelope.body(), payload.as_slice());
 	assert_eq!(envelope.created_at(), Some(created_at()));
+}
+
+const STAMPED_FLAGS: u8 = ALL_FLAGS | HAS_COMMIT_VERSION | HAS_PARTITION;
+
+const COMMIT_VERSION: u64 = 0x1122_3344_5566_7788;
+
+const PARTITION: Partition = Partition(0x0102_0304_0506_0708_090a_0b0c_0d0e_0f10);
+
+fn stamped_builder_for(flags: u8) -> EnvelopeBuilder {
+	// the commit version and partition carry values no other field holds, so a shifted read is caught
+	let mut builder = builder_for(flags & ALL_FLAGS);
+	if flags & HAS_COMMIT_VERSION != 0 {
+		builder = builder.commit_version(COMMIT_VERSION);
+	}
+	if flags & HAS_PARTITION != 0 {
+		builder = builder.partition(PARTITION);
+	}
+	builder
+}
+
+#[test]
+fn every_combination_with_commit_version_and_partition_places_each_field_where_its_flags_imply() {
+	// the partition is 16 bytes, so a header sized at 8 per flag would read the body as its upper half
+	assert_eq!(stamped_builder_for(STAMPED_FLAGS).build(&[]).len(), 57);
+	for flags in 0..=STAMPED_FLAGS {
+		let row = stamped_builder_for(flags).build(b"payload");
+		let envelope = Envelope::try_view(&row).expect("the builder always writes a complete header");
+		let partition = if flags & HAS_PARTITION != 0 {
+			16
+		} else {
+			0
+		};
+
+		assert_eq!(envelope.flags(), flags, "flags {flags:#08b}");
+		assert_eq!(
+			envelope.header_size(),
+			1 + 8 * (flags & !HAS_PARTITION).count_ones() as usize + partition,
+			"flags {flags:#08b}"
+		);
+
+		assert_eq!(envelope.created_at(), (flags & HAS_CREATED_AT != 0).then(created_at), "flags {flags:#08b}");
+		assert_eq!(envelope.updated_at(), (flags & HAS_UPDATED_AT != 0).then(updated_at), "flags {flags:#08b}");
+		assert_eq!(envelope.time(), (flags & HAS_TIME != 0).then(time), "flags {flags:#08b}");
+		assert_eq!(
+			envelope.fingerprint(),
+			(flags & HAS_FINGERPRINT != 0).then_some(FINGERPRINT),
+			"flags {flags:#08b}"
+		);
+		assert_eq!(
+			envelope.commit_version(),
+			(flags & HAS_COMMIT_VERSION != 0).then_some(COMMIT_VERSION),
+			"flags {flags:#08b}"
+		);
+		assert_eq!(
+			envelope.partition(),
+			(flags & HAS_PARTITION != 0).then_some(PARTITION),
+			"flags {flags:#08b}"
+		);
+
+		assert_eq!(envelope.body(), b"payload", "flags {flags:#08b}");
+		assert_eq!(row.len(), envelope.header_size() + 7, "flags {flags:#08b}");
+	}
+}
+
+#[test]
+fn try_view_rejects_a_buffer_cut_inside_the_partition_field() {
+	// the partition's upper 8 bytes are header too, so a row cut there must never read body bytes as a stamp
+	let full = stamped_builder_for(STAMPED_FLAGS).build(b"payload").as_slice().to_vec();
+	let required = 57;
+
+	for len in required - 16..required {
+		let short = EncodedPodRow::new(&full[..len]);
+		assert_eq!(
+			Envelope::try_view(&short).unwrap_err(),
+			EnvelopeError::Truncated {
+				len,
+				required,
+			}
+		);
+	}
+
+	let complete = EncodedPodRow::new(&full[..required]);
+	let envelope = Envelope::try_view(&complete).expect("the exact header length must be accepted");
+	assert_eq!(envelope.partition(), Some(PARTITION));
+	assert!(envelope.body().is_empty());
 }

@@ -100,11 +100,11 @@ impl JoinedColumnsBuilder {
 			result_columns,
 			SystemColumns::new(
 				row_numbers.to_vec(),
-				Vec::new(),
+				Self::duplicate_timestamp(left.partitions(), left_idx, right_count),
 				Self::duplicate_timestamp(left.created_at(), left_idx, right_count),
 				Self::duplicate_timestamp(left.updated_at(), left_idx, right_count),
 				Self::max_time_broadcast_left(left.time(), left_idx, right.time(), right_count),
-				Vec::new(),
+				Self::duplicate_timestamp(left.system.commit_versions(), left_idx, right_count),
 			),
 		)
 	}
@@ -148,11 +148,11 @@ impl JoinedColumnsBuilder {
 			result_columns,
 			SystemColumns::new(
 				row_numbers.to_vec(),
-				Vec::new(),
+				left.partitions().to_vec(),
 				left.created_at().as_ref().to_vec(),
 				left.updated_at().as_ref().to_vec(),
 				Self::max_time_broadcast_right(left.time(), right.time(), right_idx, left_count),
-				Vec::new(),
+				left.system.commit_versions().to_vec(),
 			),
 		)
 	}
@@ -170,11 +170,11 @@ impl JoinedColumnsBuilder {
 			gathered,
 			SystemColumns::new(
 				keep.iter().map(|&i| columns.row_numbers()[i]).collect(),
-				Vec::new(),
+				Self::extract_timestamps_at_indices(columns.partitions(), keep),
 				pick(columns.created_at()),
 				pick(columns.updated_at()),
 				pick(columns.time()),
-				Vec::new(),
+				Self::extract_timestamps_at_indices(columns.system.commit_versions(), keep),
 			),
 		)
 	}
@@ -225,11 +225,15 @@ impl JoinedColumnsBuilder {
 			result_columns,
 			SystemColumns::new(
 				row_numbers.to_vec(),
-				Vec::new(),
+				Self::expand_timestamps_cartesian(left.partitions(), left_indices, right_count),
 				Self::expand_timestamps_cartesian(left.created_at(), left_indices, right_count),
 				Self::expand_timestamps_cartesian(left.updated_at(), left_indices, right_count),
-				Self::max_time_cartesian(left.time(), left_indices, right.time(), right_count),
-				Vec::new(),
+				Self::max_time_cartesian(left.time(), left_indices, right.time(), right_indices),
+				Self::expand_timestamps_cartesian(
+					left.system.commit_versions(),
+					left_indices,
+					right_count,
+				),
 			),
 		)
 	}
@@ -263,11 +267,11 @@ impl JoinedColumnsBuilder {
 			result_columns,
 			SystemColumns::new(
 				vec![row_number],
-				Vec::new(),
+				Self::extract_single_timestamp(left.partitions(), left_idx),
 				Self::extract_single_timestamp(left.created_at(), left_idx),
 				Self::extract_single_timestamp(left.updated_at(), left_idx),
 				Self::extract_single_timestamp(left.time(), left_idx),
-				Vec::new(),
+				Self::extract_single_timestamp(left.system.commit_versions(), left_idx),
 			),
 		)
 	}
@@ -310,16 +314,16 @@ impl JoinedColumnsBuilder {
 			result_columns,
 			SystemColumns::new(
 				row_numbers.to_vec(),
-				Vec::new(),
+				Self::extract_timestamps_at_indices(left.partitions(), left_indices),
 				Self::extract_timestamps_at_indices(left.created_at(), left_indices),
 				Self::extract_timestamps_at_indices(left.updated_at(), left_indices),
 				Self::extract_timestamps_at_indices(left.time(), left_indices),
-				Vec::new(),
+				Self::extract_timestamps_at_indices(left.system.commit_versions(), left_indices),
 			),
 		)
 	}
 
-	fn extract_single_timestamp(ts: &[DateTime], idx: usize) -> Vec<DateTime> {
+	fn extract_single_timestamp<T: Copy>(ts: &[T], idx: usize) -> Vec<T> {
 		if ts.is_empty() {
 			Vec::new()
 		} else {
@@ -333,11 +337,11 @@ impl JoinedColumnsBuilder {
 		right: &[DateTime],
 		right_count: usize,
 	) -> Vec<DateTime> {
-		if left.is_empty() && right.is_empty() {
+		if left.is_empty() {
 			return Vec::new();
 		}
-		let left_ts = left.get(left_idx).copied().unwrap_or_default();
-		(0..right_count).map(|i| left_ts.max(right.get(i).copied().unwrap_or_default())).collect()
+		let left_ts = left[left_idx];
+		(0..right_count).map(|i| right.get(i).map_or(left_ts, |&right_ts| left_ts.max(right_ts))).collect()
 	}
 
 	fn max_time_broadcast_right(
@@ -346,33 +350,33 @@ impl JoinedColumnsBuilder {
 		right_idx: usize,
 		left_count: usize,
 	) -> Vec<DateTime> {
-		if left.is_empty() && right.is_empty() {
+		if left.is_empty() {
 			return Vec::new();
 		}
-		let right_ts = right.get(right_idx).copied().unwrap_or_default();
-		(0..left_count).map(|i| right_ts.max(left.get(i).copied().unwrap_or_default())).collect()
+		let right_ts = right.get(right_idx).copied();
+		(0..left_count).map(|i| right_ts.map_or(left[i], |right_ts| left[i].max(right_ts))).collect()
 	}
 
 	fn max_time_cartesian(
 		left: &[DateTime],
 		left_indices: &[usize],
 		right: &[DateTime],
-		right_count: usize,
+		right_indices: &[usize],
 	) -> Vec<DateTime> {
-		if left.is_empty() && right.is_empty() {
+		if left.is_empty() {
 			return Vec::new();
 		}
-		let mut out = Vec::with_capacity(left_indices.len() * right_count);
+		let mut out = Vec::with_capacity(left_indices.len() * right_indices.len());
 		for &left_idx in left_indices {
-			let left_ts = left.get(left_idx).copied().unwrap_or_default();
-			for i in 0..right_count {
-				out.push(left_ts.max(right.get(i).copied().unwrap_or_default()));
+			let left_ts = left[left_idx];
+			for &right_idx in right_indices {
+				out.push(right.get(right_idx).map_or(left_ts, |&right_ts| left_ts.max(right_ts)));
 			}
 		}
 		out
 	}
 
-	fn duplicate_timestamp(ts: &[DateTime], idx: usize, count: usize) -> Vec<DateTime> {
+	fn duplicate_timestamp<T: Copy>(ts: &[T], idx: usize, count: usize) -> Vec<T> {
 		if ts.is_empty() {
 			Vec::new()
 		} else {
@@ -380,7 +384,7 @@ impl JoinedColumnsBuilder {
 		}
 	}
 
-	fn expand_timestamps_cartesian(ts: &[DateTime], left_indices: &[usize], right_count: usize) -> Vec<DateTime> {
+	fn expand_timestamps_cartesian<T: Copy>(ts: &[T], left_indices: &[usize], right_count: usize) -> Vec<T> {
 		if ts.is_empty() {
 			return Vec::new();
 		}
@@ -393,7 +397,7 @@ impl JoinedColumnsBuilder {
 		result
 	}
 
-	fn extract_timestamps_at_indices(ts: &[DateTime], indices: &[usize]) -> Vec<DateTime> {
+	fn extract_timestamps_at_indices<T: Copy>(ts: &[T], indices: &[usize]) -> Vec<T> {
 		if ts.is_empty() {
 			Vec::new()
 		} else {

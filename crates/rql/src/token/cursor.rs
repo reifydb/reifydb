@@ -129,8 +129,8 @@ impl<'bump> Cursor<'bump> {
 		let remaining = &self.input[self.pos..];
 		for column in SystemColumn::ALL {
 			let prefixed = column.name();
-			if remaining.starts_with(prefixed) {
-				let next_char = remaining[prefixed.len()..].chars().next();
+			if let Some(stripped) = remaining.strip_prefix(prefixed) {
+				let next_char = stripped.chars().next();
 				if next_char.is_none()
 					|| !(next_char.unwrap().is_alphanumeric() || next_char.unwrap() == '_')
 				{

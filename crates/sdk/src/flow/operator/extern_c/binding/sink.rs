@@ -65,9 +65,7 @@ impl<'a> AnyWriter<'a> {
 		let builder: &mut ColumnsBuilder<'a> =
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
 		if let Some((precision, scale)) = default_family_params(type_code) {
-			return Ok(match type_code {
-				_ => AnyWriter::Decimal(builder.decimal_writer(row_capacity, precision, scale)?),
-			});
+			return Ok(AnyWriter::Decimal(builder.decimal_writer(row_capacity, precision, scale)?));
 		}
 		Ok(match type_code {
 			ValueKind::Uint1 => AnyWriter::U8(builder.u8_writer(row_capacity)?),

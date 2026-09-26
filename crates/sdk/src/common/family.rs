@@ -103,9 +103,7 @@ pub fn decode_family_column(
 		}
 	};
 	let array = DecimalArray::from_unscaled(precision, scale, unscaled);
-	Ok(match kind {
-		_ => ColumnBuffer::Decimal(array),
-	})
+	Ok(ColumnBuffer::Decimal(array))
 }
 
 fn unscaled_cells<'a, T: FamilyValue>(
