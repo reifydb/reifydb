@@ -31,7 +31,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	partition::PartitionError,
+	partition::{PartitionError, partition_of, partition_values},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -56,7 +56,6 @@ use super::{
 use crate::{
 	Result,
 	error::EngineError,
-	partition::partition_values,
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
@@ -391,7 +390,7 @@ fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedB
 			}
 		})
 		.collect();
-	Partition::of(&partition_values(shape, bytes, &indices))
+	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
 }
 
 #[inline]

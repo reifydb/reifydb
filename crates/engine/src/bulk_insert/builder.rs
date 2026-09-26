@@ -32,6 +32,7 @@ use reifydb_core::{
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
+	partition::partition_of,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -484,7 +485,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		let partition = if partition_col_indices.is_empty() {
 			None
 		} else {
-			Some(Partition::of(&partition_key))
+			Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 		};
 
 		let mut row = shape.allocate_ringbuffer();
@@ -736,7 +737,7 @@ fn insert_series_rows<V: ValidationMode>(
 		let partition = if partition_values.is_empty() {
 			Partition::default()
 		} else {
-			Partition::of(&partition_values)
+			partition_of(&series.columns, &series.partition_by, &partition_values)
 		};
 		let metadata = match metadata_by_partition.entry(partition) {
 			Entry::Occupied(entry) => entry.into_mut(),

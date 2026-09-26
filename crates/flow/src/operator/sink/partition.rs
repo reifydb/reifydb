@@ -6,7 +6,9 @@ use std::{collections::HashMap, sync::LazyLock};
 use postcard::to_stdvec;
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
-	interface::catalog::object::ObjectId, key::partition::PartitionKey, partition::PartitionError,
+	interface::catalog::{object::ObjectId, view::View},
+	key::partition::PartitionKey,
+	partition::PartitionError,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -19,9 +21,14 @@ use crate::transaction::FlowTransaction;
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
 
-pub(crate) fn partition_of(indices: &[usize], columns: &Columns, row_idx: usize) -> (Partition, Vec<Value>) {
+pub(crate) fn partition_of(
+	view: &View,
+	indices: &[usize],
+	columns: &Columns,
+	row_idx: usize,
+) -> (Partition, Vec<Value>) {
 	let values: Vec<Value> = indices.iter().map(|&i| columns.data_at(i).get_value(row_idx)).collect();
-	(Partition::of(&values), values)
+	(reifydb_core::partition::partition_of(view.columns(), view.partition_by(), &values), values)
 }
 
 pub(crate) fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post: Partition) -> Result<()> {

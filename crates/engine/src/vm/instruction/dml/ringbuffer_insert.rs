@@ -22,6 +22,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_error,
+	partition::partition_of,
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -31,7 +32,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -168,7 +169,7 @@ fn drive_ringbuffer_insert(
 			let partition = if partition_col_indices.is_empty() {
 				None
 			} else {
-				Some(Partition::of(&partition_key))
+				Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 			};
 			ensure_partition_metadata(
 				services,

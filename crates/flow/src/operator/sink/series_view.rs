@@ -161,7 +161,7 @@ impl SinkSeriesViewOperator {
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, values) = partition_of(&self.partition_indices, source, row_idx);
+				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx);
 				resolve_partition_flow(
 					txn,
 					object_id.into(),
@@ -222,9 +222,9 @@ impl SinkSeriesViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(&self.partition_indices, source_pre, row_idx);
+					partition_of(view, &self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, source_post, row_idx);
+					partition_of(view, &self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -299,7 +299,7 @@ impl SinkSeriesViewOperator {
 			let row_number = coerced.row_numbers()[row_idx];
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, _values) = partition_of(&self.partition_indices, source, row_idx);
+				let (partition, _values) = partition_of(view, &self.partition_indices, source, row_idx);
 				PartitionedSeriesRowKey::encoded(object_id, partition, None, series_key, row_number.0)
 			} else {
 				SeriesRowKey {

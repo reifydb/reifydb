@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
 	key::{any::TaggedKey, partition::PartitionKey, row::PartitionedRowKey},
+	partition::partition_of,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
@@ -12,7 +13,7 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
 
 use crate::{
 	Result,
@@ -112,12 +113,13 @@ pub(crate) fn execute_alter_table(
 				}
 			}
 
-			let partition = Partition::of(&part_values);
+			let partition =
+				interned.then(|| partition_of(&table.columns, &table.partition_by, &part_values));
 			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
 			let mut last_key: Option<TaggedKey> = None;
-			while interned {
+			while let Some(partition) = partition {
 				let batch: Vec<_> = txn
 					.range(
 						PartitionedRowKey::partition_scan_range(
@@ -145,12 +147,14 @@ pub(crate) fn execute_alter_table(
 			}
 
 			let dropped = ids.len() as u64;
-			if !ids.is_empty() {
+			if let Some(partition) = partition
+				&& !ids.is_empty()
+			{
 				let partitions = vec![partition; ids.len()];
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			if remove_registry {
-				if interned {
+				if let Some(partition) = partition {
 					txn.remove(&PartitionKey::new(object, partition))?;
 				}
 				("DROP PARTITION", Value::Uint8(dropped))

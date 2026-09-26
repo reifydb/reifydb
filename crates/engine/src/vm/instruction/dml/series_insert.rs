@@ -36,6 +36,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
+	partition::partition_of,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -232,7 +233,7 @@ fn insert_series_row(
 	let partition = if partition_values.is_empty() {
 		Partition::default()
 	} else {
-		Partition::of(&partition_values)
+		partition_of(&series.columns, &series.partition_by, &partition_values)
 	};
 	let metadata = match metadata_by_partition.entry(partition) {
 		Entry::Occupied(entry) => entry.into_mut(),

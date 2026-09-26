@@ -174,7 +174,8 @@ impl SinkTableViewOperator {
 			let (_, encoded) =
 				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
-				let (partition, values) = partition_of(&self.partition_indices, source, row_idx);
+				let (partition, values) =
+					partition_of(self.view.def(), &self.partition_indices, source, row_idx);
 				resolve_partition_flow(
 					txn,
 					ObjectId::from(self.storage),
@@ -229,9 +230,9 @@ impl SinkTableViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(&self.partition_indices, source_pre, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, source_post, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(
 					ObjectId::from(self.storage),
 					pre_partition,
@@ -324,7 +325,8 @@ impl SinkTableViewOperator {
 			let row_number = source.row_numbers()[row_idx];
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
-				let (partition, _values) = partition_of(&self.partition_indices, source, row_idx);
+				let (partition, _values) =
+					partition_of(self.view.def(), &self.partition_indices, source, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)?
 			} else {
 				self.sorted_view_key(source, row_idx, row_number)?

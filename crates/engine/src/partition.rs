@@ -12,7 +12,7 @@ use reifydb_core::{
 		partition::PartitionKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{PartitionError, partition_col_indices},
+	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, blob::Blob, partition::Partition, row_number::RowNumber, value_type::ValueType};
@@ -22,13 +22,9 @@ use crate::Result;
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
 
-pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
-	indices.iter().map(|&i| shape.get_value(row, i)).collect()
-}
-
 pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Partition {
 	let indices = partition_col_indices(&table.columns, &table.partition_by);
-	Partition::of(&partition_values(shape, row, &indices))
+	partition_of(&table.columns, &table.partition_by, &partition_values(shape, row, &indices))
 }
 
 pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> TaggedKey {
