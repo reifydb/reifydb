@@ -3,8 +3,11 @@
 
 mod census;
 mod checkpoint;
+#[cfg(test)]
+mod fixture;
 mod flush;
 pub mod metrics;
+mod registry;
 mod route;
 pub mod schema;
 pub mod sql;
@@ -27,7 +30,7 @@ use reifydb_store::sqlite::{OpenMessages, open, pool::ReadPool};
 use rusqlite::Connection;
 use tracing::{error, instrument};
 
-use crate::persistent::sqlite::{schema::ensure_schema, state::state_exists};
+use crate::persistent::sqlite::{registry::TableRegistry, schema::ensure_schema};
 
 #[derive(Clone)]
 pub struct SqlitePersistent {
@@ -39,6 +42,7 @@ pub struct SqlitePersistent {
 struct StoreInner {
 	conn: Mutex<Option<Connection>>,
 	readers: ReadPool,
+	tables: TableRegistry,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
@@ -73,10 +77,12 @@ impl SqlitePersistent {
 
 	fn with_connections(conn: Connection, readers: ReadPool) -> Self {
 		ensure_schema(&conn);
-		let state_written = state_exists(&conn);
+		let tables = TableRegistry::load(&conn);
+		let state_written = !tables.is_empty();
 		let inner = Arc::new(StoreInner {
 			conn: Mutex::new(Some(conn)),
 			readers,
+			tables,
 			cache_hits: AtomicU64::new(0),
 			cache_misses: AtomicU64::new(0),
 			state_written: AtomicBool::new(state_written),

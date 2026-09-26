@@ -13,7 +13,6 @@ use reifydb_core::{
 	metrics::scan::record_page,
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
-use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
@@ -28,11 +27,12 @@ impl SqlitePersistent {
 		if keys.is_empty() || !self.state_written() {
 			return sizes;
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return sizes;
 		};
-		for (key, bytes) in route::get_many(conn, operator, keys) {
+		for (key, bytes) in route::get_many(conn, operator, tables, keys) {
 			sizes.insert(key, ByteSize::from_bytes(bytes.len() as u64));
 		}
 		sizes
@@ -44,11 +44,12 @@ impl SqlitePersistent {
 		if keys.is_empty() || !self.state_written() {
 			return found;
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return found;
 		};
-		for (key, bytes) in route::get_many(conn, operator, keys) {
+		for (key, bytes) in route::get_many(conn, operator, tables, keys) {
 			found.insert(key, decode_row(bytes));
 		}
 		found
@@ -59,9 +60,10 @@ impl SqlitePersistent {
 		if !self.state_written() {
 			return None;
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let conn = guard.as_ref()?;
-		route::get(conn, operator, key).map(decode_row)
+		route::get(conn, operator, tables, key).map(decode_row)
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
@@ -69,11 +71,12 @@ impl SqlitePersistent {
 		if !self.state_written() {
 			return false;
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return false;
 		};
-		route::get(conn, operator, key).is_some()
+		route::get(conn, operator, tables, key).is_some()
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
@@ -97,6 +100,7 @@ impl SqlitePersistent {
 		if groups.is_empty() || !self.state_written() {
 			return OperatorBatch::empty();
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return OperatorBatch::empty();
@@ -108,7 +112,7 @@ impl SqlitePersistent {
 			&EncodedKeyRange::all(),
 			batch_size.saturating_add(1),
 			false,
-			mask,
+			mask & tables.bits(),
 		);
 		record_page(rows.len() as u64, 0);
 		let items: Vec<(GroupStateKey, EncodedPodRow)> = rows
@@ -122,11 +126,12 @@ impl SqlitePersistent {
 		if !self.state_written() {
 			return OperatorBatch::empty();
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return OperatorBatch::empty();
 		};
-		let rows = route::bounded(conn, operator, &range, batch_size.saturating_add(1), reverse);
+		let rows = route::bounded(conn, operator, tables, &range, batch_size.saturating_add(1), reverse);
 		record_page(rows.len() as u64, 0);
 		let items: Vec<(GroupStateKey, EncodedPodRow)> = rows
 			.into_iter()
@@ -145,11 +150,12 @@ impl SqlitePersistent {
 		if !self.state_written() {
 			return Vec::new();
 		}
+		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Vec::new();
 		};
-		route::keys_after(conn, operator, keyspace, after, limit)
+		route::keys_after(conn, operator, tables, keyspace, after, limit)
 	}
 }
 
@@ -175,10 +181,6 @@ fn into_batch(mut items: Vec<(GroupStateKey, EncodedPodRow)>, batch: u64) -> Ope
 			resume: None,
 		},
 	}
-}
-
-pub(super) fn state_exists(conn: &Connection) -> bool {
-	route::census(conn).iter().any(|entry| entry.keys > 0)
 }
 
 pub(super) fn decode_row(bytes: Vec<u8>) -> EncodedPodRow {

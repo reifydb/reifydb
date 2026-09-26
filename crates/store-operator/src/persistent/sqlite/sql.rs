@@ -11,3 +11,10 @@ pub(super) const CHECKPOINT_REMOVE_SQL: &str = r#"DELETE FROM "flow_checkpoint" 
 pub(super) const CHECKPOINT_FLOOR_SQL: &str = r#"SELECT MIN("version") FROM "flow_checkpoint""#;
 
 pub(super) const CHECKPOINT_LIST_SQL: &str = r#"SELECT "flow" FROM "flow_checkpoint" ORDER BY "flow" ASC"#;
+
+pub(super) const CHECKPOINT_SCHEMA_SQL: &str = r#"CREATE TABLE IF NOT EXISTS "flow_checkpoint" (
+	"flow" INTEGER NOT NULL PRIMARY KEY,
+	"version" INTEGER NOT NULL
+) WITHOUT ROWID;"#;
+
+pub(super) const TABLE_NAMES_SQL: &str = r#"SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'"#;

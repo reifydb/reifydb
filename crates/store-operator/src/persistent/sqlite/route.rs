@@ -12,20 +12,19 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::{KEYSPACES, KeyspaceVisitor, columns_width, dispatch},
-			state::{GroupId, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
+			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
+			state::{GroupId, KeyspaceId, OperatorStateKey},
 			traits::{Keyspace, group_scoped},
 		},
 		typed::{BoundedKey, layout::KeyLayout, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::byte_size::ByteSize;
 use rusqlite::{Connection, Transaction};
 
 use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
-	persistent::sqlite::typed,
+	persistent::sqlite::{census::Census, registry::TableMask, typed},
 	store::occupancy::occupies,
 	types::OperatorStateCensus,
 };
@@ -79,6 +78,7 @@ fn outside_root_only<K: Keyspace>(start: Option<GroupId>, end: Option<GroupId>) 
 struct Get<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
+	tables: TableMask,
 	group: GroupId,
 	suffix: &'a [u8],
 }
@@ -87,6 +87,9 @@ impl KeyspaceVisitor for Get<'_> {
 	type Output = Option<Vec<u8>>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
+		if !self.tables.holds(K::ID) {
+			return None;
+		}
 		if !const { group_scoped::<K>() } && !self.group.is_root() {
 			return None;
 		}
@@ -99,6 +102,7 @@ type GetManyItem<'a> = (&'a EncodedKey, GroupId, &'a [u8]);
 struct GetMany<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
+	tables: TableMask,
 	items: Vec<GetManyItem<'a>>,
 }
 
@@ -106,6 +110,9 @@ impl KeyspaceVisitor for GetMany<'_> {
 	type Output = Vec<(EncodedKey, Vec<u8>)>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
+		if !self.tables.holds(K::ID) {
+			return Vec::new();
+		}
 		let mut probes = Vec::with_capacity(self.items.len());
 		let mut origin: HashMap<EncodedKey, EncodedKey> = HashMap::with_capacity(self.items.len());
 		for (key, group, suffix) in self.items {
@@ -123,7 +130,12 @@ impl KeyspaceVisitor for GetMany<'_> {
 	}
 }
 
-pub(super) fn get_many(conn: &Connection, operator: OperatorId, keys: &[EncodedKey]) -> Vec<(EncodedKey, Vec<u8>)> {
+pub(super) fn get_many(
+	conn: &Connection,
+	operator: OperatorId,
+	tables: TableMask,
+	keys: &[EncodedKey],
+) -> Vec<(EncodedKey, Vec<u8>)> {
 	let mut grouped: BTreeMap<KeyspaceId, Vec<GetManyItem>> = BTreeMap::new();
 	for key in keys {
 		let (group, keyspace, suffix) = parts(key);
@@ -136,6 +148,7 @@ pub(super) fn get_many(conn: &Connection, operator: OperatorId, keys: &[EncodedK
 			GetMany {
 				conn,
 				operator,
+				tables,
 				items,
 			},
 		)
@@ -145,13 +158,14 @@ pub(super) fn get_many(conn: &Connection, operator: OperatorId, keys: &[EncodedK
 	out
 }
 
-pub(super) fn get(conn: &Connection, operator: OperatorId, key: &EncodedKey) -> Option<Vec<u8>> {
+pub(super) fn get(conn: &Connection, operator: OperatorId, tables: TableMask, key: &EncodedKey) -> Option<Vec<u8>> {
 	let (group, keyspace, suffix) = parts(key);
 	dispatch(
 		keyspace,
 		Get {
 			conn,
 			operator,
+			tables,
 			group,
 			suffix,
 		},
@@ -263,6 +277,7 @@ fn every_keyspace() -> KeyspaceIds {
 pub(super) fn bounded(
 	conn: &Connection,
 	operator: OperatorId,
+	tables: TableMask,
 	range: &EncodedKeyRange,
 	limit: u64,
 	reverse: bool,
@@ -276,6 +291,7 @@ pub(super) fn bounded(
 		true => span(start_at, end_at, end_open),
 		false => every_keyspace(),
 	};
+	ids.retain(|id| tables.holds(*id));
 	if reverse {
 		ids.reverse();
 	}
@@ -440,24 +456,24 @@ pub(super) fn bounded_in(
 	out
 }
 
-struct Drop<'a> {
+struct Clear<'a> {
 	txn: &'a Transaction<'a>,
 	operator: OperatorId,
 }
 
-impl KeyspaceVisitor for Drop<'_> {
+impl KeyspaceVisitor for Clear<'_> {
 	type Output = ();
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		typed::drop_operator_in::<K>(self.txn, self.operator);
+		typed::clear::<K>(self.txn, self.operator)
 	}
 }
 
-pub(super) fn drop_operator(txn: &Transaction, operator: OperatorId) {
-	for spec in KEYSPACES {
+pub(super) fn drop_operator(txn: &Transaction, operator: OperatorId, tables: TableMask) {
+	for keyspace in tables.held() {
 		dispatch(
-			spec.id,
-			Drop {
+			keyspace,
+			Clear {
 				txn,
 				operator,
 			},
@@ -466,41 +482,39 @@ pub(super) fn drop_operator(txn: &Transaction, operator: OperatorId) {
 	}
 }
 
-struct Any<'a> {
+struct Occupied<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
 }
 
-impl KeyspaceVisitor for Any<'_> {
+impl KeyspaceVisitor for Occupied<'_> {
 	type Output = bool;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		typed::any::<K>(self.conn, self.operator)
+		typed::occupied::<K>(self.conn, self.operator)
 	}
 }
 
-pub(super) fn occupied_keyspaces(conn: &Connection, operator: OperatorId) -> Vec<KeyspaceId> {
-	let mut ids = KEYSPACES
-		.iter()
-		.filter(|spec| {
+pub(super) fn occupied_keyspaces(conn: &Connection, operator: OperatorId, tables: TableMask) -> Vec<KeyspaceId> {
+	tables.held()
+		.into_iter()
+		.filter(|keyspace| {
 			dispatch(
-				spec.id,
-				Any {
+				*keyspace,
+				Occupied {
 					conn,
 					operator,
 				},
 			)
-			.unwrap_or(true)
+			.expect("every catalogue entry must dispatch to its own keyspace")
 		})
-		.map(|spec| spec.id)
-		.collect::<Vec<KeyspaceId>>();
-	ids.sort_unstable();
-	ids
+		.collect()
 }
 
 struct KeysAfter<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
+	tables: TableMask,
 	after: Option<&'a EncodedKey>,
 	limit: u64,
 }
@@ -509,6 +523,9 @@ impl KeyspaceVisitor for KeysAfter<'_> {
 	type Output = Vec<EncodedKey>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
+		if !self.tables.holds(K::ID) {
+			return Vec::new();
+		}
 		let cursor = self.after.map(|key| {
 			let (group, _, suffix) = parts(key);
 			typed_key::<K>(group, suffix, lowest::<K>())
@@ -523,6 +540,7 @@ impl KeyspaceVisitor for KeysAfter<'_> {
 pub(super) fn keys_after(
 	conn: &Connection,
 	operator: OperatorId,
+	tables: TableMask,
 	keyspace: KeyspaceId,
 	after: Option<&EncodedKey>,
 	limit: u64,
@@ -532,6 +550,7 @@ pub(super) fn keys_after(
 		KeysAfter {
 			conn,
 			operator,
+			tables,
 			after,
 			limit,
 		},
@@ -539,38 +558,20 @@ pub(super) fn keys_after(
 	.expect("an operator state keyspace must appear in the catalogue")
 }
 
-struct Census<'a> {
-	conn: &'a Connection,
-}
-
-impl KeyspaceVisitor for Census<'_> {
-	type Output = Vec<OperatorStateCensus>;
-
-	fn visit<K: Keyspace>(self) -> Self::Output {
-		let width = (KEYSPACE_INNER_PREFIX_LEN + columns_width(<K::Suffix as KeyLayout>::COLUMNS)) as u64;
-		typed::census::<K>(self.conn)
-			.into_iter()
-			.map(|(operator, keys, value_bytes)| OperatorStateCensus {
-				operator,
-				keyspace: K::ID,
-				keys,
-				key_bytes: ByteSize::from_bytes(keys * width),
-				value_bytes: ByteSize::from_bytes(value_bytes),
-			})
-			.collect()
-	}
-}
-
-pub(super) fn census(conn: &Connection) -> Vec<OperatorStateCensus> {
+pub(super) fn census(conn: &Connection, tables: &HashMap<OperatorId, TableMask>) -> Vec<OperatorStateCensus> {
 	let mut out = Vec::new();
-	for spec in KEYSPACES {
-		out.extend(dispatch(
-			spec.id,
-			Census {
-				conn,
-			},
-		)
-		.expect("every catalogue entry must dispatch to its own keyspace"));
+	for (operator, mask) in tables {
+		for keyspace in mask.held() {
+			let entry = dispatch(
+				keyspace,
+				Census {
+					conn,
+					operator: *operator,
+				},
+			)
+			.expect("every catalogue entry must dispatch to its own keyspace");
+			out.extend(entry);
+		}
 	}
 	out.sort_by_key(|entry| (entry.operator, entry.keyspace));
 	out
@@ -580,7 +581,7 @@ pub(super) fn census(conn: &Connection) -> Vec<OperatorStateCensus> {
 mod tests {
 	use std::cmp::Reverse;
 
-	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
@@ -591,38 +592,24 @@ mod tests {
 					join::{JoinLeft, JoinLeftKey, JoinRight, JoinRightKey},
 				},
 				state::{GroupId, KeyspaceId, group_inner_range},
-				traits::Keyspace,
 			},
 			typed::direction::{Asc, Desc},
 		},
 	};
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
-	use rusqlite::Connection;
 
 	use crate::{
 		bound::parts,
 		persistent::sqlite::{
-			route::{bounded, bounded_in},
-			schema::ensure_schema,
-			typed::set_chunked,
+			SqlitePersistent,
+			fixture::{open, set_one},
 		},
+		types::OperatorBatch,
 	};
 
 	const OPERATOR: OperatorId = OperatorId(1);
 
 	const LIMIT: u64 = 1024;
-
-	fn set_one<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey, bytes: &[u8]) {
-		let txn = conn.unchecked_transaction().expect("begin");
-		set_chunked::<K>(&txn, &[(operator, key.clone(), bytes.to_vec())]);
-		txn.commit().expect("commit");
-	}
-
-	fn db() -> Connection {
-		let conn = Connection::open_in_memory().expect("an in memory sqlite database must open");
-		ensure_schema(&conn);
-		conn
-	}
 
 	fn group(id: u128) -> GroupId {
 		GroupId::hashed(Hash128(id))
@@ -634,11 +621,11 @@ mod tests {
 		ordered
 	}
 
-	fn seed(conn: &Connection, groups: &[GroupId]) {
+	fn seed(store: &SqlitePersistent, groups: &[GroupId]) {
 		for group in groups {
 			for row in [1u64, 2] {
 				set_one::<JoinLeft>(
-					conn,
+					store,
 					OPERATOR,
 					&JoinLeftKey {
 						group: Desc(*group),
@@ -648,7 +635,7 @@ mod tests {
 				);
 			}
 			set_one::<JoinRight>(
-				conn,
+				store,
 				OPERATOR,
 				&JoinRightKey {
 					group: Desc(*group),
@@ -657,7 +644,7 @@ mod tests {
 				b"right",
 			);
 			set_one::<DistinctEntry>(
-				conn,
+				store,
 				OPERATOR,
 				&DistinctEntryKey {
 					group: Desc(*group),
@@ -667,9 +654,9 @@ mod tests {
 		}
 	}
 
-	fn seed_groupless(conn: &Connection) {
+	fn seed_groupless(store: &SqlitePersistent) {
 		set_one::<Expiry>(
-			conn,
+			store,
 			OPERATOR,
 			&ExpiryKey {
 				threshold: Desc(7),
@@ -679,27 +666,27 @@ mod tests {
 		);
 	}
 
-	fn keys(rows: Vec<(EncodedKey, Vec<u8>)>) -> Vec<EncodedKey> {
-		rows.into_iter().map(|(key, _)| key).collect()
+	fn keys(batch: OperatorBatch) -> Vec<EncodedKey> {
+		batch.items.into_iter().map(|(key, _)| key.into_encoded()).collect()
 	}
 
-	fn sweep(conn: &Connection, groups: &[GroupId]) -> Vec<EncodedKey> {
-		keys(bounded_in(conn, OPERATOR, groups, &EncodedKeyRange::all(), LIMIT, false, u64::MAX))
+	fn sweep(store: &SqlitePersistent, groups: &[GroupId]) -> Vec<EncodedKey> {
+		keys(store.group_page(OPERATOR, groups, LIMIT, u64::MAX))
 	}
 
 	#[test]
 	fn a_group_set_sweep_answers_with_exactly_what_the_single_group_sweeps_answer_with() {
 		// a row the per group fan out finds but the set misses leaves the reaper deleting less than it swept
-		let conn = db();
+		let store = open();
 		let groups = [group(11), group(22), group(33)];
-		seed(&conn, &groups);
+		seed(&store, &groups);
 
 		let mut expected: Vec<EncodedKey> = Vec::new();
 		for group in encoded_order(&groups) {
-			expected.extend(keys(bounded(&conn, OPERATOR, &group_inner_range(group), LIMIT, false)));
+			expected.extend(keys(store.range_batch(OPERATOR, group_inner_range(group), LIMIT)));
 		}
 
-		assert_eq!(sweep(&conn, &encoded_order(&groups)), expected);
+		assert_eq!(sweep(&store, &encoded_order(&groups)), expected);
 		assert_eq!(expected.len(), 12, "three groups each hold two join left, one join right and one distinct");
 	}
 
@@ -707,11 +694,11 @@ mod tests {
 	fn a_group_set_sweep_answers_in_encoded_key_order() {
 		// the per keyspace queries arrive keyspace major while the encoded key is group major, so without the
 		// merge sort a caller paging the answer skips whole groups
-		let conn = db();
+		let store = open();
 		let groups = [group(11), group(22), group(33)];
-		seed(&conn, &groups);
+		seed(&store, &groups);
 
-		let swept = sweep(&conn, &groups);
+		let swept = sweep(&store, &groups);
 		let mut sorted = swept.clone();
 		sorted.sort_by(|left, right| left.as_slice().cmp(right.as_slice()));
 
@@ -722,12 +709,12 @@ mod tests {
 	fn a_group_outside_the_set_is_never_answered_with() {
 		// the group predicate is the only thing keeping a neighbour out, and a wrong one hands the reaper rows
 		// of a group that is still live
-		let conn = db();
+		let store = open();
 		let groups = [group(11), group(22), group(33)];
-		seed(&conn, &groups);
+		seed(&store, &groups);
 
 		let asked = [group(11), group(33)];
-		let swept = sweep(&conn, &asked);
+		let swept = sweep(&store, &asked);
 
 		assert!(!swept.is_empty());
 		for key in &swept {
@@ -741,37 +728,37 @@ mod tests {
 	fn a_groupless_keyspace_answers_only_when_root_is_in_the_set() {
 		// a groupless keyspace has no group column to filter on, so any set without root must skip it rather
 		// than hand back the same root rows every sweep
-		let conn = db();
+		let store = open();
 		let groups = [group(11), group(22)];
-		seed(&conn, &groups);
-		seed_groupless(&conn);
+		seed(&store, &groups);
+		seed_groupless(&store);
 
 		let rolling = |key: &EncodedKey| parts(key).1 == KeyspaceId::ROLLING_EXPIRY;
 
-		assert!(!sweep(&conn, &groups).iter().any(rolling));
-		assert!(sweep(&conn, &[GroupId::ROOT, group(11)]).iter().any(rolling));
+		assert!(!sweep(&store, &groups).iter().any(rolling));
+		assert!(sweep(&store, &[GroupId::ROOT, group(11)]).iter().any(rolling));
 	}
 
 	#[test]
 	fn a_one_group_set_sweep_matches_the_single_group_range_sweep() {
 		// a lone group must answer exactly as the range path does, otherwise the collapse changes every sweep
 		// that never batched
-		let conn = db();
+		let store = open();
 		let groups = [group(11), group(22)];
-		seed(&conn, &groups);
+		seed(&store, &groups);
 
-		let expected = keys(bounded(&conn, OPERATOR, &group_inner_range(group(11)), LIMIT, false));
+		let expected = keys(store.range_batch(OPERATOR, group_inner_range(group(11)), LIMIT));
 
-		assert_eq!(sweep(&conn, &[group(11)]), expected);
+		assert_eq!(sweep(&store, &[group(11)]), expected);
 		assert_eq!(expected.len(), 4);
 	}
 
 	#[test]
 	fn an_empty_group_set_answers_with_nothing() {
 		// an unbounded IN list would degrade to a full keyspace scan, so naming no group must name no row
-		let conn = db();
-		seed(&conn, &[group(11)]);
+		let store = open();
+		seed(&store, &[group(11)]);
 
-		assert!(sweep(&conn, &[]).is_empty());
+		assert!(sweep(&store, &[]).is_empty());
 	}
 }

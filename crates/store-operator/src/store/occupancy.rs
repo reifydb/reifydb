@@ -111,7 +111,7 @@ pub fn occupies(mask: u64, keyspace: KeyspaceId) -> bool {
 	}
 }
 
-fn bit(keyspace: KeyspaceId) -> Option<u64> {
+pub(crate) fn bit(keyspace: KeyspaceId) -> Option<u64> {
 	let index = match keyspace.0 {
 		id if id <= KeyspaceId::HIGHEST_DATA => id as u32,
 		id if id >= LOWEST_META => (KeyspaceId::HIGHEST_DATA as u32) + 1 + (id - LOWEST_META) as u32,
