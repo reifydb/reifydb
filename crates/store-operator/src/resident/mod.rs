@@ -75,11 +75,6 @@ pub const TOMBSTONE_LIMIT: u64 = if default::TESTING {
 
 const OPERATOR_LOCAL_FRACTION: u64 = 16;
 
-pub const OPERATOR_LOCAL_BUDGET_BYTES: ByteSize =
-	ByteSize::from_bytes(FLUSH_BUDGET_BYTES.as_bytes() / OPERATOR_LOCAL_FRACTION);
-
-pub const OPERATOR_LOCAL_TOMBSTONE_LIMIT: u64 = TOMBSTONE_LIMIT / OPERATOR_LOCAL_FRACTION;
-
 const SWEEP_STARVATION_LIMIT: u32 = 10;
 
 pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
@@ -188,6 +183,8 @@ pub struct Shared {
 	dirty_bytes: AtomicU64,
 	entry_limit: u64,
 	tombstone_limit: u64,
+	local_budget: ByteSize,
+	local_tombstone_limit: u64,
 	slice: ByteSize,
 	dirty_budget: ByteSize,
 	waker: Mutex<Option<Waker<FlushMessage>>>,
@@ -223,6 +220,8 @@ impl Shared {
 			dirty_bytes: AtomicU64::new(0),
 			entry_limit: limits.entries,
 			tombstone_limit: limits.tombstones,
+			local_budget: ByteSize::from_bytes(limits.budget.as_bytes() / OPERATOR_LOCAL_FRACTION),
+			local_tombstone_limit: limits.tombstones / OPERATOR_LOCAL_FRACTION,
 			slice: limits.slice.min(limits.budget),
 			dirty_budget: limits.dirty_budget,
 			waker: Mutex::new(None),
@@ -557,8 +556,8 @@ impl Resident {
 			self.shared.release_dirty(before.dirty.saturating_sub(after.dirty));
 			self.shared.charge_dirty_bytes(after.dirty_footprint.saturating_sub(before.dirty_footprint));
 			self.shared.release_dirty_bytes(before.dirty_footprint.saturating_sub(after.dirty_footprint));
-			if after.footprint.as_bytes() > OPERATOR_LOCAL_BUDGET_BYTES.as_bytes()
-				|| after.tombstones as u64 > OPERATOR_LOCAL_TOMBSTONE_LIMIT
+			if after.footprint.as_bytes() > self.shared.local_budget.as_bytes()
+				|| after.tombstones as u64 > self.shared.local_tombstone_limit
 			{
 				self.shared.operator_over_local_cap.store(true, Ordering::Release);
 			}
@@ -669,9 +668,9 @@ impl Resident {
 				.buckets
 				.footprint()
 				.as_bytes()
-				.saturating_sub(OPERATOR_LOCAL_BUDGET_BYTES.as_bytes());
+				.saturating_sub(self.shared.local_budget.as_bytes());
 			let local_tombstone_overage =
-				before_tombstones.saturating_sub(OPERATOR_LOCAL_TOMBSTONE_LIMIT as usize);
+				before_tombstones.saturating_sub(self.shared.local_tombstone_limit as usize);
 			let global_deficit_remains = bytes.as_bytes() > 0 || *tombstones > 0;
 			let starved = inner.sweeps_since_swept >= SWEEP_STARVATION_LIMIT;
 			if !global_deficit_remains
@@ -700,8 +699,8 @@ impl Resident {
 				.release_tombstones(before_tombstones.saturating_sub(inner.buckets.tombstone_count()));
 			evicted += count;
 			freed = freed.saturating_add(released);
-			if inner.buckets.footprint().as_bytes() > OPERATOR_LOCAL_BUDGET_BYTES.as_bytes()
-				|| inner.buckets.tombstone_count() > OPERATOR_LOCAL_TOMBSTONE_LIMIT as usize
+			if inner.buckets.footprint().as_bytes() > self.shared.local_budget.as_bytes()
+				|| inner.buckets.tombstone_count() > self.shared.local_tombstone_limit as usize
 			{
 				any_over_local_cap = true;
 			}
