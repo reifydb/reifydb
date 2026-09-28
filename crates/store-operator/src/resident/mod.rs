@@ -183,8 +183,6 @@ pub struct Shared {
 	dirty_bytes: AtomicU64,
 	entry_limit: u64,
 	tombstone_limit: u64,
-	local_budget: ByteSize,
-	local_tombstone_limit: u64,
 	slice: ByteSize,
 	dirty_budget: ByteSize,
 	waker: Mutex<Option<Waker<FlushMessage>>>,
@@ -220,8 +218,6 @@ impl Shared {
 			dirty_bytes: AtomicU64::new(0),
 			entry_limit: limits.entries,
 			tombstone_limit: limits.tombstones,
-			local_budget: ByteSize::from_bytes(limits.budget.as_bytes() / OPERATOR_LOCAL_FRACTION),
-			local_tombstone_limit: limits.tombstones / OPERATOR_LOCAL_FRACTION,
 			slice: limits.slice.min(limits.budget),
 			dirty_budget: limits.dirty_budget,
 			waker: Mutex::new(None),
@@ -336,6 +332,11 @@ impl Shared {
 		let mut operators: Vec<OperatorId> = self.slots.iter().map(|slot| *slot.key()).collect();
 		operators.sort_unstable();
 		operators
+	}
+
+	fn local_caps(&self, live_operators: u64) -> (ByteSize, u64) {
+		let share = live_operators.clamp(1, OPERATOR_LOCAL_FRACTION);
+		(ByteSize::from_bytes(self.budget.limit().as_bytes() / share), self.tombstone_limit / share)
 	}
 
 	pub(crate) fn dropped(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
@@ -537,6 +538,7 @@ impl Resident {
 		for write in writes {
 			grouped.entry(write_operator(write)).or_default().push(write);
 		}
+		let (local_budget, local_tombstone_limit) = self.shared.local_caps(self.shared.slots.len() as u64);
 		for (operator, group) in grouped {
 			let slot = self.shared.slot_or_create(operator);
 			let _accounting = self.shared.accounting.read();
@@ -556,8 +558,8 @@ impl Resident {
 			self.shared.release_dirty(before.dirty.saturating_sub(after.dirty));
 			self.shared.charge_dirty_bytes(after.dirty_footprint.saturating_sub(before.dirty_footprint));
 			self.shared.release_dirty_bytes(before.dirty_footprint.saturating_sub(after.dirty_footprint));
-			if after.footprint.as_bytes() > self.shared.local_budget.as_bytes()
-				|| after.tombstones as u64 > self.shared.local_tombstone_limit
+			if after.footprint.as_bytes() > local_budget.as_bytes()
+				|| after.tombstones as u64 > local_tombstone_limit
 			{
 				self.shared.operator_over_local_cap.store(true, Ordering::Release);
 			}
@@ -654,6 +656,7 @@ impl Resident {
 		}
 		let _accounting = self.shared.accounting.read();
 		let start = self.shared.sweep_cursor.fetch_add(1, Ordering::Relaxed) as usize % operators.len();
+		let (local_budget, local_tombstone_limit) = self.shared.local_caps(operators.len() as u64);
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
 		let mut any_over_local_cap = false;
@@ -664,13 +667,9 @@ impl Resident {
 			};
 			let mut inner = slot.inner.lock();
 			let before_tombstones = inner.buckets.tombstone_count();
-			let local_byte_overage = inner
-				.buckets
-				.footprint()
-				.as_bytes()
-				.saturating_sub(self.shared.local_budget.as_bytes());
-			let local_tombstone_overage =
-				before_tombstones.saturating_sub(self.shared.local_tombstone_limit as usize);
+			let local_byte_overage =
+				inner.buckets.footprint().as_bytes().saturating_sub(local_budget.as_bytes());
+			let local_tombstone_overage = before_tombstones.saturating_sub(local_tombstone_limit as usize);
 			let global_deficit_remains = bytes.as_bytes() > 0 || *tombstones > 0;
 			let starved = inner.sweeps_since_swept >= SWEEP_STARVATION_LIMIT;
 			if !global_deficit_remains
@@ -699,8 +698,8 @@ impl Resident {
 				.release_tombstones(before_tombstones.saturating_sub(inner.buckets.tombstone_count()));
 			evicted += count;
 			freed = freed.saturating_add(released);
-			if inner.buckets.footprint().as_bytes() > self.shared.local_budget.as_bytes()
-				|| inner.buckets.tombstone_count() > self.shared.local_tombstone_limit as usize
+			if inner.buckets.footprint().as_bytes() > local_budget.as_bytes()
+				|| inner.buckets.tombstone_count() > local_tombstone_limit as usize
 			{
 				any_over_local_cap = true;
 			}
