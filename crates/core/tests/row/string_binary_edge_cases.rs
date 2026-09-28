@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
+use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 #[test]
 fn test_utf8_special_sequences() {
@@ -59,34 +59,28 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Adjacent dynamic fields share one growable section, so a bad offset shift corrupts a neighbour.
-	let shape =
-		RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::INT]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8]);
 
 	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from(&b"second"[..]));
 	shape.set_utf8(&mut row, 2, "third");
-	shape.set_int(&mut row, 3, &Int::from(999999999999i64));
 
 	assert_eq!(shape.get_utf8(&row, 0), "first");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from(&b"second"[..]));
 	assert_eq!(shape.get_utf8(&row, 2), "third");
-	assert_eq!(shape.get_int(&row, 3), Int::from(999999999999i64));
 
 	let mut row2 = shape.allocate_pod();
 	shape.set_utf8(&mut row2, 0, "much longer string than before");
 	shape.set_blob(&mut row2, 1, &Blob::from(&b"x"[..]));
 	shape.set_utf8(&mut row2, 2, "");
-	shape.set_int(&mut row2, 3, &Int::from(123i64));
 
 	assert_eq!(shape.get_utf8(&row2, 0), "much longer string than before");
 	assert_eq!(shape.get_blob(&row2, 1), Blob::from(&b"x"[..]));
 	assert_eq!(shape.get_utf8(&row2, 2), "");
-	assert_eq!(shape.get_int(&row2, 3), Int::from(123i64));
 
 	// The first row must be untouched by the second row's larger payloads.
 	assert_eq!(shape.get_utf8(&row, 0), "first");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from(&b"second"[..]));
 	assert_eq!(shape.get_utf8(&row, 2), "third");
-	assert_eq!(shape.get_int(&row, 3), Int::from(999999999999i64));
 }

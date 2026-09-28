@@ -10,10 +10,11 @@ use reifydb_value::{
 	value::{
 		container::{
 			any_array,
-			decimal_array::{DecimalArray, u128s},
+			decimal_array::DecimalArray,
 			dictionary_array, digest_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
+			wide_int_array::wides,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -68,12 +69,12 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 		FrameColumnData::Int2(c) => encode_fixed!(c, ValueType::Int2, i16),
 		FrameColumnData::Int4(c) => encode_fixed!(c, ValueType::Int4, i32),
 		FrameColumnData::Int8(c) => encode_fixed!(c, ValueType::Int8, i64),
-		FrameColumnData::Int16(c) => encode_fixed!(c, ValueType::Int16, i128),
+		FrameColumnData::Int16(c) => encode_fixed!(slice: &wides::<i128>(c), ValueType::Int16, i128),
 		FrameColumnData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, u8),
 		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, u16),
 		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, u32),
 		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, u64),
-		FrameColumnData::Uint16(c) => encode_fixed!(slice: &u128s(c), ValueType::Uint16, u128),
+		FrameColumnData::Uint16(c) => encode_fixed!(slice: &wides::<u128>(c), ValueType::Uint16, u128),
 		FrameColumnData::Date(c) => {
 			let slice: &[Date] = dates(c);
 			let mut buf = Vec::with_capacity(slice.len() * Date::ENCODED_SIZE);
@@ -160,8 +161,6 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 		}
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
 		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
-		FrameColumnData::Int(c) => encode_unscaled(c, ValueKind::Int),
-		FrameColumnData::Uint(c) => encode_unscaled(c, ValueKind::Uint),
 		FrameColumnData::Decimal(c) => encode_unscaled(c, ValueKind::Decimal),
 		FrameColumnData::Any {
 			container,

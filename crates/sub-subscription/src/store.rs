@@ -490,11 +490,11 @@ mod tests {
 		let id = store.next_id();
 		store.register(id);
 
-		let outcome = (|| -> Option<()> {
+		let outcome: Option<()> = {
 			let _hydration = HydrationGuard::new(&store, id);
 			assert!(store.is_hydrating(&id), "the guard marks the subscription before the failure");
 			None
-		})();
+		};
 
 		assert!(outcome.is_none(), "the body must have taken the early-return path");
 		assert!(!store.is_hydrating(&id), "an early return must still clear the hydrating flag");

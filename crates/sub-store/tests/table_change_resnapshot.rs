@@ -57,7 +57,7 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 	let block = entries.into_iter().find(|(id, _)| *id == latest).map(|(_, block)| block)?;
 
 	let mut rows = BTreeMap::new();
-	if block.len() == 0 {
+	if block.is_empty() {
 		return Some(rows);
 	}
 	let mut reader = SnapshotReader::new(block, 100);

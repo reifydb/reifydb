@@ -5,7 +5,7 @@ use reifydb_value::{
 	encoding::LeBytes,
 	error::{Error as ValueError, TypeError},
 	util::cowvec::CowVec,
-	value::datetime::DateTime,
+	value::{datetime::DateTime, partition::Partition},
 };
 use thiserror::Error;
 
@@ -19,13 +19,24 @@ pub const HAS_TIME: u8 = 1 << 2;
 
 pub const HAS_FINGERPRINT: u8 = 1 << 3;
 
+pub const HAS_COMMIT_VERSION: u8 = 1 << 4;
+
+pub const HAS_PARTITION: u8 = 1 << 5;
+
 pub const ENVELOPE_FLAGS_SIZE: usize = 1;
 
 pub const ENVELOPE_FIELD_SIZE: usize = DateTime::ENCODED_SIZE;
 
+pub const ENVELOPE_PARTITION_SIZE: usize = 16;
+
 #[inline]
 pub const fn header_size(flags: u8) -> usize {
-	ENVELOPE_FLAGS_SIZE + ENVELOPE_FIELD_SIZE * flags.count_ones() as usize
+	let partition = if flags & HAS_PARTITION != 0 {
+		ENVELOPE_PARTITION_SIZE
+	} else {
+		0
+	};
+	ENVELOPE_FLAGS_SIZE + ENVELOPE_FIELD_SIZE * (flags & !HAS_PARTITION).count_ones() as usize + partition
 }
 
 #[inline]
@@ -108,20 +119,28 @@ impl Envelope {
 	}
 
 	#[inline]
+	pub fn commit_version(&self) -> Option<u64> {
+		self.field(HAS_COMMIT_VERSION).map(u64::from_le_bytes)
+	}
+
+	#[inline]
+	pub fn partition(&self) -> Option<Partition> {
+		self.field(HAS_PARTITION).map(|bytes| Partition(u128::from_le_bytes(bytes)))
+	}
+
+	#[inline]
 	pub fn body(&self) -> &[u8] {
 		&self.0[self.header_size()..]
 	}
 
 	#[inline]
-	fn field(&self, bit: u8) -> Option<[u8; ENVELOPE_FIELD_SIZE]> {
+	fn field<const N: usize>(&self, bit: u8) -> Option<[u8; N]> {
 		let flags = self.flags();
 		if flags & bit == 0 {
 			return None;
 		}
 		let offset = field_offset(flags, bit);
-		Some(self.0[offset..offset + ENVELOPE_FIELD_SIZE]
-			.try_into()
-			.expect("the envelope header is length-checked"))
+		Some(self.0[offset..offset + N].try_into().expect("the envelope header is length-checked"))
 	}
 }
 
@@ -131,6 +150,8 @@ pub struct EnvelopeBuilder {
 	updated_at: Option<DateTime>,
 	time: Option<DateTime>,
 	fingerprint: Option<RowShapeFingerprint>,
+	commit_version: Option<u64>,
+	partition: Option<Partition>,
 }
 
 impl EnvelopeBuilder {
@@ -158,6 +179,16 @@ impl EnvelopeBuilder {
 		self
 	}
 
+	pub fn commit_version(mut self, commit_version: u64) -> Self {
+		self.commit_version = Some(commit_version);
+		self
+	}
+
+	pub fn partition(mut self, partition: Partition) -> Self {
+		self.partition = Some(partition);
+		self
+	}
+
 	pub fn flags(&self) -> u8 {
 		let mut flags = 0u8;
 		if self.created_at.is_some() {
@@ -172,6 +203,12 @@ impl EnvelopeBuilder {
 		if self.fingerprint.is_some() {
 			flags |= HAS_FINGERPRINT;
 		}
+		if self.commit_version.is_some() {
+			flags |= HAS_COMMIT_VERSION;
+		}
+		if self.partition.is_some() {
+			flags |= HAS_PARTITION;
+		}
 		flags
 	}
 
@@ -184,6 +221,12 @@ impl EnvelopeBuilder {
 		}
 		if let Some(fingerprint) = self.fingerprint {
 			buffer.extend_from_slice(&fingerprint.to_le_bytes());
+		}
+		if let Some(commit_version) = self.commit_version {
+			buffer.extend_from_slice(&commit_version.to_le_bytes());
+		}
+		if let Some(partition) = self.partition {
+			buffer.extend_from_slice(&partition.0.to_le_bytes());
 		}
 		buffer.extend_from_slice(body);
 		EncodedPodRow::from(EncodedBytes(CowVec::new(buffer)))

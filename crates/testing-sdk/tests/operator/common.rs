@@ -18,7 +18,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::{
 		seal::{coord::Coord, domain::SealDomain},
 		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},

@@ -132,6 +132,7 @@ fn partition_value(value_type: &ValueType, fragment: Fragment) -> Option<Value> 
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_core::interface::{
 		catalog::{
@@ -375,13 +376,6 @@ mod tests {
 		let columns = vec![col("d", ValueType::DECIMAL)];
 		let condition = eq(column_ref("d"), number("1.0"));
 		assert_eq!(extract_partition(&condition, &columns, &by(&["d"])), None);
-	}
-
-	#[test]
-	fn declines_bignum_int() {
-		let columns = vec![col("n", ValueType::INT)];
-		let condition = eq(column_ref("n"), number("1"));
-		assert_eq!(extract_partition(&condition, &columns, &by(&["n"])), None);
 	}
 
 	#[test]

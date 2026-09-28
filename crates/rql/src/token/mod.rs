@@ -15,7 +15,7 @@ pub mod variable;
 
 use cursor::Cursor;
 use identifier::{is_identifier_char, is_identifier_start};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::system_columns::SystemColumn};
 use token::{Token, TokenKind};
 use variable::scan_variable;
 
@@ -30,8 +30,6 @@ use crate::{
 		separator::scan_separator,
 	},
 };
-
-pub(crate) const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at", "time", "commit_version"];
 
 fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('#') {
@@ -50,8 +48,7 @@ fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	{
 		cursor.consume_while(is_identifier_char);
 		let fragment = cursor.make_fragment(start_pos, start_line, start_column);
-		let name = &fragment.text()[1..];
-		if SYSTEM_COLUMNS.contains(&name) {
+		if SystemColumn::from_name(fragment.text()).is_some() {
 			return Some(Token {
 				kind: TokenKind::SystemColumn,
 				fragment,

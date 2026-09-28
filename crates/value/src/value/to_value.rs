@@ -8,11 +8,9 @@ use crate::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -100,18 +98,6 @@ impl ToValue for f64 {
 impl ToValue for Decimal {
 	fn to_value(&self) -> Value {
 		Value::Decimal(self.clone())
-	}
-}
-
-impl ToValue for Int {
-	fn to_value(&self) -> Value {
-		Value::Int(self.clone())
-	}
-}
-
-impl ToValue for Uint {
-	fn to_value(&self) -> Value {
-		Value::Uint(self.clone())
 	}
 }
 

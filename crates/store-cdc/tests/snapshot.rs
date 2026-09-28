@@ -9,12 +9,14 @@ use test_each_file::test_each_path;
 mod common;
 use common::{Fixture, runner::Runner};
 
+type Combination = (&'static str, fn() -> Fixture);
+
 test_each_path! { in "crates/store-cdc/tests/scripts/cdc" as cdc => test_every_tier_combination }
 
 fn test_every_tier_combination(path: &Path) {
 	// every combination replays the same script into the same goldenfile, so a tier that answers differently cannot
 	// pass
-	let combinations: [(&str, fn() -> Fixture); 5] = [
+	let combinations: [Combination; 5] = [
 		("memory", common::memory),
 		("memory_cached", common::memory_cached),
 		("sqlite", common::sqlite),

@@ -230,10 +230,10 @@ fn parse_param_value(s: &str) -> Value {
 	if let Ok(i) = s.parse::<i64>() {
 		return Value::Int8(i);
 	}
-	if let Ok(f) = s.parse::<f64>() {
-		if let Ok(ordered) = reifydb_client::OrderedF64::try_from(f) {
-			return Value::Float8(ordered);
-		}
+	if let Ok(f) = s.parse::<f64>()
+		&& let Ok(ordered) = reifydb_client::OrderedF64::try_from(f)
+	{
+		return Value::Float8(ordered);
 	}
 
 	if s == "true" {

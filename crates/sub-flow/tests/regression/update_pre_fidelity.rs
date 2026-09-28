@@ -25,16 +25,14 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		aggregation::operator::AggregateOperator,
-		distinct::operator::DistinctOperator,
-		extend::ExtendOperator,
-		filter::FilterOperator,
-		gate::GateOperator,
-		map::MapOperator,
-		take::TakeOperator,
-		window::operator::{WindowConfig, WindowOperator},
-	},
+	operator::{extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
+};
+use reifydb_flow_async::operator::{
+	aggregation::operator::AggregateOperator,
+	distinct::operator::DistinctOperator,
+	gate::GateOperator,
+	take::TakeOperator,
+	window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -309,10 +307,8 @@ mod join {
 		row::JoinPick,
 		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
-	use reifydb_flow::{
-		context::FlowContext,
-		operator::join::operator::{JoinOperator, JoinSideConfig},
-	};
+	use reifydb_flow::context::FlowContext;
+	use reifydb_flow_async::operator::join::operator::{JoinOperator, JoinSideConfig};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
@@ -436,7 +432,7 @@ mod join {
 			engine.executor().runtime_context.clone(),
 			snapshot,
 			false,
-			latest.then(|| JoinPick::latest()),
+			latest.then(JoinPick::latest),
 			None,
 			None,
 			Arc::new(FlowContext::default()),
@@ -566,7 +562,7 @@ mod source {
 		},
 		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 	};
-	use reifydb_flow::operator::{
+	use reifydb_flow_async::operator::{
 		HostOperator,
 		host::HostContext,
 		scan::{

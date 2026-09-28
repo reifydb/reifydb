@@ -30,6 +30,8 @@ const CHECK_REGIONS: &str = "CALL uptime::check_monitor_regions($monitor_id)";
 
 type Input = Vec<(&'static str, Value)>;
 
+type Cases = Vec<(&'static str, Box<dyn Fn(Input) -> Input>)>;
+
 fn build() -> Database {
 	server::memory().with_flow(|f| f).with_migrations(migration_path()).build().expect("build memory db")
 }
@@ -543,7 +545,7 @@ fn out_of_range_monitor_input_is_rejected_by_create_and_update() {
 	let db = build();
 	let alice = new_user(&db, "alice");
 	let existing = create(&db, alice);
-	let cases: Vec<(&str, Box<dyn Fn(Input) -> Input>)> = vec![
+	let cases: Cases = vec![
 		("name must be between 1 and 200 characters", Box::new(|i| with(i, "name", text("   ")))),
 		("name must be between 1 and 200 characters", Box::new(|i| with(i, "name", text(&"n".repeat(201))))),
 		("target must be between 1 and 500 characters", Box::new(|i| with(i, "target", text("")))),
@@ -594,7 +596,7 @@ fn boundary_monitor_input_is_accepted() {
 	// Off-by-one in any range check would reject values the HTTP route accepted.
 	let db = build();
 	let alice = new_user(&db, "alice");
-	let cases: Vec<(&str, Box<dyn Fn(Input) -> Input>)> = vec![
+	let cases: Cases = vec![
 		("200 character name", Box::new(|i| with(i, "name", text(&"n".repeat(200))))),
 		("500 character target", Box::new(|i| with(i, "target", text(&"t".repeat(500))))),
 		("5s interval equal to timeout", Box::new(|i| with(with(i, "interval", secs(5)), "timeout", secs(5)))),

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_value::value::container::decimal_array::{UINT16_DATA_TYPE, u128s};
+use reifydb_value::value::container::wide_int_array::wides;
 
 use super::common::{assert_column_eq, round_trip_column};
 
@@ -49,7 +48,7 @@ fn uint16_with_undefined() {
 
 #[test]
 fn uint16_past_64_bits_come_back_with_the_uint16_data_type() {
-	// Any hop that narrows the 256 bit native through a 64 bit conversion loses 2^64 and u128::MAX.
+	// Any hop that narrows a row through a 64 bit conversion loses 2^64 and u128::MAX.
 	let values = [1u128 << 64, u128::MAX, (1u128 << 64) - 1, 1u128 << 127];
 	let input = ColumnBuffer::uint16(values);
 	let output = round_trip_column("u", input.clone());
@@ -57,8 +56,7 @@ fn uint16_past_64_bits_come_back_with_the_uint16_data_type() {
 	let ColumnBuffer::Uint16(array) = &output else {
 		panic!("expected a plain Uint16 column, got {:?}", output.get_type())
 	};
-	assert_eq!(array.data_type(), &UINT16_DATA_TYPE);
-	assert_eq!(u128s(array), values);
+	assert_eq!(wides::<u128>(array), values);
 }
 
 #[test]

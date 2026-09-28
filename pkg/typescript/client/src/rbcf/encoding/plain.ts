@@ -236,13 +236,6 @@ export function decodeAnyValue(data: Uint8Array, pos: number): { value: string; 
             const len = readU32(data, pos);
             return { value: formatBlob(data.subarray(pos + 4, pos + 4 + len)), nextPos: pos + 4 + len };
         }
-        case TYPE_CODE.Int:
-            return { value: readI256Checked(data, pos).toString(), nextPos: pos + 32 };
-        case TYPE_CODE.Uint: {
-            const value = readI256Checked(data, pos);
-            if (value < 0n) throw new Error(`RBCF: Uint value ${value} is negative`);
-            return { value: value.toString(), nextPos: pos + 32 };
-        }
         case TYPE_CODE.Decimal: {
             if (pos >= data.length) throw new Error("RBCF: Decimal value truncated");
             const scale = data[pos];

@@ -27,7 +27,7 @@ use serde_json::json;
 
 const ACCURACY: u32 = 10_000;
 
-const SUPPORTED_INNER: [ValueType; 15] = [
+const SUPPORTED_INNER: [ValueType; 13] = [
 	ValueType::Float4,
 	ValueType::Float8,
 	ValueType::Int1,
@@ -41,8 +41,6 @@ const SUPPORTED_INNER: [ValueType; 15] = [
 	ValueType::Uint8,
 	ValueType::Uint16,
 	ValueType::Duration,
-	ValueType::INT,
-	ValueType::UINT,
 ];
 
 fn digest_type(inner: ValueType, accuracy: u32) -> ValueType {
@@ -113,13 +111,13 @@ fn find(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
 }
 
 #[test]
-fn digest_kind_is_appended_last_as_tag_32() {
+fn digest_kind_is_appended_last_as_tag_30() {
 	// Persisted and wire tags must never shift, so a new kind only ever takes the next free number.
-	assert_eq!(ValueKind::Digest.byte(), 32);
-	assert_eq!(ValueKind::ALL.len(), 33);
-	assert_eq!(ValueKind::ALL[32], ValueKind::Digest);
-	assert_eq!(ValueKind::from_byte(32), Some(ValueKind::Digest));
-	assert_eq!(ValueKind::from_byte(33), None);
+	assert_eq!(ValueKind::Digest.byte(), 30);
+	assert_eq!(ValueKind::ALL.len(), 31);
+	assert_eq!(ValueKind::ALL[30], ValueKind::Digest);
+	assert_eq!(ValueKind::from_byte(30), Some(ValueKind::Digest));
+	assert_eq!(ValueKind::from_byte(31), None);
 	assert_eq!(ValueKind::of_type(&digest_type(ValueType::Float8, ACCURACY)), ValueKind::Digest);
 }
 
@@ -137,11 +135,11 @@ fn typeinfo_carries_inner_kind_and_accuracy_ppm_little_endian() {
 	// The TypeScript decoder reads exactly these bytes, so the layout is pinned byte for byte.
 	let mut buf = Vec::new();
 	encode_value_type(&digest_type(ValueType::Duration, 12_345), &mut buf).unwrap();
-	assert_eq!(buf, vec![32, 18, 0x39, 0x30, 0, 0]);
+	assert_eq!(buf, vec![30, 18, 0x39, 0x30, 0, 0]);
 
 	let mut buf = Vec::new();
 	encode_value_type(&ValueType::Option(Box::new(digest_type(ValueType::Float8, ACCURACY))), &mut buf).unwrap();
-	assert_eq!(buf, vec![(1 << 6) | 32, 3, 0x10, 0x27, 0, 0]);
+	assert_eq!(buf, vec![(1 << 6) | 30, 3, 0x10, 0x27, 0, 0]);
 }
 
 #[test]

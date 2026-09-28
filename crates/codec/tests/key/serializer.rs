@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{f64, str::FromStr};
+use std::{f32::consts::PI, f64, str::FromStr};
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer, sort::SortOrder};
 use reifydb_runtime::context::{
@@ -20,12 +20,10 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -68,6 +66,7 @@ fn test_extend_bool() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_extend_f32() {
 	let mut serializer = KeySerializer::new();
 	serializer.extend_f32(3.14f32);
@@ -366,7 +365,7 @@ fn test_extend_bytes() {
 	assert_eq!(result, vec![!b'h', !b'e', !b'l', !b'l', !b'o', 0xff, 0xff]);
 
 	let mut serializer = KeySerializer::new();
-	serializer.extend_bytes(&[0x01, 0x00, 0x02]);
+	serializer.extend_bytes([0x01, 0x00, 0x02]);
 	let result = serializer.finish();
 	assert_eq!(result, vec![0xfe, 0xff, 0x00, 0xfd, 0xff, 0xff]);
 }
@@ -397,7 +396,7 @@ fn test_chaining() {
 	assert!(result.len() >= 13);
 
 	let mut de = KeyDeserializer::from_bytes(&result);
-	assert_eq!(de.read_bool().unwrap(), true);
+	assert!(de.read_bool().unwrap());
 	assert_eq!(de.read_i32().unwrap(), 42);
 	assert_eq!(de.read_str().unwrap(), "test");
 	assert_eq!(de.read_u64().unwrap(), 1000);
@@ -606,7 +605,7 @@ fn test_identity_id() {
 	let id = IdentityId::generate(&clock, &rng);
 	serializer.extend_identity_id(&id);
 	let result = serializer.finish();
-	assert!(result.len() > 0);
+	assert!(!result.is_empty());
 }
 
 #[test]
@@ -638,30 +637,12 @@ fn test_blob() {
 }
 
 #[test]
-fn test_int() {
-	let mut serializer = KeySerializer::new();
-	let int = Int::from(42);
-	serializer.extend_int(&int, Precision::new(38)).unwrap();
-	let result = serializer.finish();
-	assert!(result.len() > 0);
-}
-
-#[test]
-fn test_uint() {
-	let mut serializer = KeySerializer::new();
-	let uint = Uint::from(42u64);
-	serializer.extend_uint(&uint, Precision::new(38)).unwrap();
-	let result = serializer.finish();
-	assert!(result.len() > 0);
-}
-
-#[test]
 fn test_decimal() {
 	let mut serializer = KeySerializer::new();
 	let decimal = Decimal::from_str("3.14").unwrap();
 	serializer.extend_decimal(&decimal, Precision::new(38), Scale::new(2)).unwrap();
 	let result = serializer.finish();
-	assert!(result.len() > 0);
+	assert!(!result.is_empty());
 }
 
 #[test]
@@ -670,7 +651,7 @@ fn test_extend_value() {
 	let mut serializer = KeySerializer::new();
 	serializer.extend_value(&Value::none());
 	let result = serializer.finish();
-	assert_eq!(result, vec![0x00, 0x1a]); // none marker + Any type tag (ValueKind::Any = 26)
+	assert_eq!(result, vec![0x00, 0x18]); // none marker + Any type tag (ValueKind::Any = 24)
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_value(&Value::none_of(ValueType::Int4));
@@ -742,7 +723,7 @@ fn test_roundtrip_boolean_false() {
 
 #[test]
 fn test_roundtrip_float4() {
-	let value = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
+	let value = Value::Float4(OrderedF32::try_from(PI).unwrap());
 	let mut ser = KeySerializer::new();
 	ser.extend_value(&value);
 	let bytes = ser.finish();
@@ -753,7 +734,7 @@ fn test_roundtrip_float4() {
 
 #[test]
 fn test_roundtrip_float8() {
-	let value = Value::Float8(OrderedF64::try_from(3.14).unwrap());
+	let value = Value::Float8(OrderedF64::try_from(f64::consts::PI).unwrap());
 	let mut ser = KeySerializer::new();
 	ser.extend_value(&value);
 	let bytes = ser.finish();
@@ -974,28 +955,6 @@ fn test_roundtrip_blob() {
 }
 
 #[test]
-fn test_roundtrip_int() {
-	let value = Value::Int(Int::from(-42));
-	let mut ser = KeySerializer::new();
-	ser.extend_value(&value);
-	let bytes = ser.finish();
-	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert_eq!(de.read_value().unwrap(), value);
-	assert!(de.is_empty());
-}
-
-#[test]
-fn test_roundtrip_uint() {
-	let value = Value::Uint(Uint::from(42u64));
-	let mut ser = KeySerializer::new();
-	ser.extend_value(&value);
-	let bytes = ser.finish();
-	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert_eq!(de.read_value().unwrap(), value);
-	assert!(de.is_empty());
-}
-
-#[test]
 fn test_roundtrip_decimal() {
 	let value = Value::Decimal(Decimal::from_str("3.14").unwrap());
 	let mut ser = KeySerializer::new();
@@ -1069,8 +1028,8 @@ fn test_roundtrip_all() {
 		Value::none_of(ValueType::Int4),
 		Value::Boolean(true),
 		Value::Boolean(false),
-		Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),
-		Value::Float8(OrderedF64::try_from(3.14).unwrap()),
+		Value::Float4(OrderedF32::try_from(PI).unwrap()),
+		Value::Float8(OrderedF64::try_from(f64::consts::PI).unwrap()),
 		Value::Int1(-42),
 		Value::Int2(-1000),
 		Value::Int4(42),
@@ -1090,8 +1049,6 @@ fn test_roundtrip_all() {
 		Value::Uuid4(Uuid4::generate()),
 		Value::Uuid7(Uuid7::generate(&clock, &rng)),
 		Value::Blob(Blob::from(vec![0x01, 0x02, 0x03])),
-		Value::Int(Int::from(-42)),
-		Value::Uint(Uint::from(42u64)),
 		Value::Decimal(Decimal::from_str("3.14").unwrap()),
 		Value::DictionaryId(DictionaryEntryId::U8(42)),
 	];
@@ -1140,8 +1097,6 @@ fn test_roundtrip_exhaustiveness_guard() {
 		Value::Uuid4(_) => {}
 		Value::Uuid7(_) => {}
 		Value::Blob(_) => {}
-		Value::Int(_) => {}
-		Value::Uint(_) => {}
 		Value::Decimal(_) => {}
 		Value::DictionaryId(_) => {}
 		// Not serializable in keys:

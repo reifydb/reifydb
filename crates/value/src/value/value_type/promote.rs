@@ -33,19 +33,6 @@ impl ValueType {
 			return ValueType::decimal(Precision::MAX, scale);
 		}
 
-		let family = |ty: &ValueType| matches!(ty, Int { .. } | Uint { .. });
-		if (family(&left) && right.is_floating_point()) || (left.is_floating_point() && family(&right)) {
-			return ValueType::DECIMAL;
-		}
-
-		if matches!(left, Int { .. }) || matches!(right, Int { .. }) {
-			return ValueType::INT;
-		}
-
-		if matches!(left, Uint { .. }) || matches!(right, Uint { .. }) {
-			return ValueType::UINT;
-		}
-
 		if left == Float8 || right == Float8 {
 			return Float8;
 		}
@@ -414,8 +401,6 @@ pub mod tests {
 			Blob,
 			IdentityId,
 			DictionaryId,
-			ValueType::INT,
-			ValueType::UINT,
 			ValueType::DECIMAL,
 			Any,
 		];
@@ -457,30 +442,6 @@ pub mod tests {
 		let deep = ValueType::decimal(Precision::new(20), Scale::new(5));
 		assert_eq!(ValueType::promote(narrow.clone(), deep), ValueType::decimal(Precision::MAX, Scale::new(5)));
 		assert_eq!(ValueType::promote(narrow.clone(), Int4), ValueType::decimal(Precision::MAX, Scale::new(2)));
-		assert_eq!(
-			ValueType::promote(ValueType::INT, narrow.clone()),
-			ValueType::decimal(Precision::MAX, Scale::new(2))
-		);
 		assert_eq!(ValueType::promote(Float8, narrow), ValueType::decimal(Precision::MAX, Scale::new(2)));
-		assert_eq!(ValueType::promote(ValueType::int(Precision::new(5)), Int16), ValueType::INT);
-		assert_eq!(ValueType::promote(ValueType::uint(Precision::new(5)), ValueType::INT), ValueType::INT);
-		assert_eq!(ValueType::promote(ValueType::uint(Precision::new(5)), Uint1), ValueType::UINT);
-	}
-
-	#[test]
-	fn promote_int_or_uint_with_a_float_gives_the_default_decimal() {
-		// INT would cast the float operand down and drop its fraction, unlike the decimal every arithmetic path
-		// gives.
-		for family in [
-			ValueType::INT,
-			ValueType::UINT,
-			ValueType::int(Precision::new(5)),
-			ValueType::uint(Precision::new(5)),
-		] {
-			for float in [Float4, Float8] {
-				assert_eq!(ValueType::promote(family.clone(), float.clone()), ValueType::DECIMAL);
-				assert_eq!(ValueType::promote(float, family.clone()), ValueType::DECIMAL);
-			}
-		}
 	}
 }

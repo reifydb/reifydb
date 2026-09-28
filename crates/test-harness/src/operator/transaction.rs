@@ -17,7 +17,7 @@ use reifydb_core::{
 		tag::KeyTag,
 	},
 };
-use reifydb_flow::transaction::{
+use reifydb_flow_async::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},

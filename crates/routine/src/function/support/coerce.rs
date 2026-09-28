@@ -15,7 +15,7 @@ use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	value::{
-		container::decimal_array::u128_at,
+		container::wide_int_array,
 		number::safe::convert::SafeConvert,
 		value_type::{ValueType, get::GetType},
 	},
@@ -37,20 +37,10 @@ fn narrow<T>(
 	fit: impl Fn(i128) -> Option<T>,
 ) -> StdResult<Option<T>, RoutineError> {
 	if let ColumnBuffer::Uint16(container) = data {
-		return match u128_at(container, row) {
+		return match wide_int_array::wide_at::<u128>(container, row) {
 			None => Ok(None),
 			Some(value) => i128::try_from(value)
 				.ok()
-				.and_then(&fit)
-				.map(Some)
-				.ok_or_else(|| out_of_range(function, value, target)),
-		};
-	}
-	if let ColumnBuffer::Int(container) | ColumnBuffer::Uint(container) = data {
-		return match container.unscaled_at(row) {
-			None => Ok(None),
-			Some(value) => value
-				.to_i128()
 				.and_then(&fit)
 				.map(Some)
 				.ok_or_else(|| out_of_range(function, value, target)),
@@ -68,7 +58,7 @@ fn wide_at(data: &ColumnBuffer, row: usize) -> Option<i128> {
 		ColumnBuffer::Int2(c) => c.values().get(row).map(|&v| v as i128),
 		ColumnBuffer::Int4(c) => c.values().get(row).map(|&v| v as i128),
 		ColumnBuffer::Int8(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Int16(c) => c.values().get(row).copied(),
+		ColumnBuffer::Int16(c) => wide_int_array::wide_at::<i128>(c, row),
 		ColumnBuffer::Uint1(c) => c.values().get(row).map(|&v| v as i128),
 		ColumnBuffer::Uint2(c) => c.values().get(row).map(|&v| v as i128),
 		ColumnBuffer::Uint4(c) => c.values().get(row).map(|&v| v as i128),

@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{
 	WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
+use reifydb_value::value::duration::Duration;
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
@@ -35,7 +34,7 @@ fn agg_group(db: &TestDb, region: &str) -> Option<(i64, i32)> {
 }
 
 fn await_agg_group(db: &TestDb, region: &str, want: Option<(i64, i32)>) -> Option<(i64, i32)> {
-	await_value(want, StdDuration::from_secs(5), || agg_group(db, region))
+	await_value(want, Duration::from_seconds_const(5), || agg_group(db, region))
 }
 
 fn create_events_table(db: &TestDb) {

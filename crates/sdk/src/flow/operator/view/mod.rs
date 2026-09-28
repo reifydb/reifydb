@@ -4,8 +4,8 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
-	row_number::RowNumber, time::Time, uint::Uint,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+	row_number::RowNumber, time::Time,
 };
 
 use crate::error::SdkError;
@@ -27,8 +27,6 @@ pub trait RowView {
 	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError>;
 	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError>;
 	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError>;
-	fn int(&self, name: &str) -> Result<Option<Int>, SdkError>;
-	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError>;
 	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError>;
 	fn date(&self, name: &str) -> Result<Option<Date>, SdkError>;
 	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError>;

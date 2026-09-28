@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	container::decimal_array::uint16_array, frame::data::FrameColumnData, value_type::ValueType,
+	container::wide_int_array::wide_array, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<u128>) -> FrameColumnData {
-	FrameColumnData::Uint16(uint16_array(v))
+	FrameColumnData::Uint16(wide_array(v))
 }
 
 crate::nones_tests! {

@@ -85,8 +85,6 @@ describe("RBCF golden vectors", () => {
         ["uuid4_nil.bin", "00000000-0000-0000-0000-000000000000"],
         ["uuid7.bin", "00000000-0000-0000-0123-456789abcdef"],
         ["blob.bin", "0x00ff7f"],
-        ["int_big_negative.bin", "-12345678901234567890"],
-        ["uint_big.bin", "98765432109876543210"],
         ["decimal_pi.bin", "3.14159"],
         ["any_int4.bin", "5"],
         ["any_none_duration.bin", NONE_VALUE],

@@ -18,7 +18,7 @@ use crate::{
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 
-const FORMAT_VERSION: u16 = 2;
+const FORMAT_VERSION: u16 = 1;
 
 #[derive(Serialize, Deserialize)]
 pub enum PersistedArray {

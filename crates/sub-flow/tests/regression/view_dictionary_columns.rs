@@ -5,9 +5,10 @@
 // column. The source table carries no dictionary, so the sink is the only thing that can intern:
 // resolving existing ids instead would materialize nothing, and no decode would return integers.
 
-use std::{thread, time::Instant};
+use std::thread;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::{Value, duration::Duration};
 
 fn make_db() -> TestDb {
@@ -55,13 +56,13 @@ fn read_syms(db: &TestDb) -> Vec<(i32, String)> {
 }
 
 fn await_syms(db: &TestDb, expected_rows: usize) -> Vec<(i32, String)> {
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let rows = read_syms(db);
 		if rows.len() >= expected_rows {
 			return rows;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			return rows;
 		}
 		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());

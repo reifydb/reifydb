@@ -899,6 +899,17 @@ pub fn group_identity_range(operator: OperatorId, group: GroupId) -> TaggedKeyBo
 	}
 }
 
+impl KeyFields for OperatorStateKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UDesc(Width::U64, self.operator.0 as u128),
+			Field::BytesDesc(ByteEncoding::Fixed, Cow::Borrowed(self.group.as_bytes())),
+			Field::UDesc(Width::U8, self.keyspace.0 as u128),
+			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(&self.suffix)),
+		]
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::ops::Bound;
@@ -1494,14 +1505,14 @@ mod tests {
 		             So11111111111111111111111111111111111111112";
 		let hashed = OperatorStateKey::new(
 			OperatorId(17),
-			GroupId::of(&EncodedKey::new(long.to_vec())),
+			GroupId::of(&EncodedKey::new(long)),
 			KeyspaceId::ACCUMULATOR,
 			vec![0; 8],
 		)
 		.encode();
 		let short = OperatorStateKey::new(
 			OperatorId(17),
-			GroupId::of(&EncodedKey::new(b"g".to_vec())),
+			GroupId::of(&EncodedKey::new(b"g")),
 			KeyspaceId::ACCUMULATOR,
 			vec![0; 8],
 		)
@@ -1677,16 +1688,5 @@ mod tests {
 		}
 		let narrow = OperatorStateKey::inner_encoded(group, KeyspaceId::GUEST_ACCUMULATOR, []);
 		assert!(!is_class_framed_inner(OperatorClass::Windowed, narrow.as_slice()));
-	}
-}
-
-impl KeyFields for OperatorStateKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UDesc(Width::U64, self.operator.0 as u128),
-			Field::BytesDesc(ByteEncoding::Fixed, Cow::Borrowed(self.group.as_bytes())),
-			Field::UDesc(Width::U8, self.keyspace.0 as u128),
-			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(&self.suffix)),
-		]
 	}
 }

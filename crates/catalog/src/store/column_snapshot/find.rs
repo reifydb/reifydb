@@ -161,6 +161,7 @@ pub(crate) fn decode_column_snapshot(bytes: &EncodedCatalogRow) -> ColumnSnapsho
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,

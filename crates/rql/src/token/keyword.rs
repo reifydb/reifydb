@@ -508,7 +508,7 @@ pub mod tests {
 		for input_str in test_cases {
 			let input = format!("{input_str} rest");
 			let tokens = tokenize(&bump, &input).unwrap();
-			assert!(tokens.len() >= 1);
+			assert!(!tokens.is_empty());
 			assert_eq!(
 				tokens[0].kind,
 				TokenKind::Identifier,

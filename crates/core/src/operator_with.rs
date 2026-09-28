@@ -31,7 +31,7 @@ pub struct WindowWith {
 	pub immutable: Option<Duration>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct JoinWith {
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,

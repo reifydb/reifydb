@@ -7,12 +7,6 @@ use crate::value::value_type::ValueType;
 
 pub fn value_max(value: ValueType) -> Cow<'static, str> {
 	match value {
-		ValueType::Int {
-			precision,
-		}
-		| ValueType::Uint {
-			precision,
-		} => Cow::Owned(nines(precision.value(), 0)),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -23,15 +17,6 @@ pub fn value_max(value: ValueType) -> Cow<'static, str> {
 
 pub fn value_range(value: ValueType) -> Cow<'static, str> {
 	match value {
-		ValueType::Int {
-			precision,
-		} => {
-			let max = nines(precision.value(), 0);
-			Cow::Owned(format!("-{max} to {max}"))
-		}
-		ValueType::Uint {
-			precision,
-		} => Cow::Owned(format!("0 to {}", nines(precision.value(), 0))),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -89,13 +74,7 @@ fn fixed_max(value: ValueType) -> &'static str {
 		ValueType::Uuid4 => unreachable!(),
 		ValueType::Uuid7 => unreachable!(),
 		ValueType::Blob => unreachable!(),
-		ValueType::Int {
-			..
-		}
-		| ValueType::Uint {
-			..
-		}
-		| ValueType::Decimal {
+		ValueType::Decimal {
 			..
 		} => unreachable!(),
 		ValueType::Option(_) => unreachable!(),
@@ -136,13 +115,7 @@ fn fixed_range(value: ValueType) -> &'static str {
 		ValueType::Uuid4 => unreachable!(),
 		ValueType::Uuid7 => unreachable!(),
 		ValueType::Blob => unreachable!(),
-		ValueType::Int {
-			..
-		}
-		| ValueType::Uint {
-			..
-		}
-		| ValueType::Decimal {
+		ValueType::Decimal {
 			..
 		} => unreachable!(),
 		ValueType::Option(_) => unreachable!(),
@@ -240,10 +213,7 @@ pub mod tests {
 			let decimal = ValueType::decimal(Precision::new(10), Scale::new(2));
 			assert_eq!(value_max(decimal.clone()), "99_999_999.99");
 			assert_eq!(value_range(decimal), "-99_999_999.99 to 99_999_999.99");
-			assert_eq!(value_range(ValueType::int(Precision::new(4))), "-9_999 to 9_999");
-			assert_eq!(value_range(ValueType::uint(Precision::new(3))), "0 to 999");
 			assert_eq!(value_max(ValueType::decimal(Precision::new(2), Scale::new(2))), "0.99");
-			assert_eq!(value_max(ValueType::INT).matches('9').count(), 76);
 		}
 	}
 }

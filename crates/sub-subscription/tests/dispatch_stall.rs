@@ -14,7 +14,6 @@ use std::{
 		mpsc::{Receiver, Sender, channel},
 	},
 	thread::{self, JoinHandle, sleep},
-	time::Instant,
 };
 
 use reifydb::{
@@ -35,7 +34,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex};
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, value_type::ValueType};
 
 const STALL_CHILD_ENV: &str = "REIFYDB_SUBSCRIPTION_STALL_CHILD";
@@ -225,13 +224,13 @@ fn run_child_with_limit(test_name: &str, limit: Duration) -> ChildOutput {
 	let stdout = read_in_background(child.stdout.take().expect("child stdout is piped"));
 	let stderr = read_in_background(child.stderr.take().expect("child stderr is piped"));
 
-	let deadline = Instant::now() + limit.to_std();
+	let deadline = Clock::Real.instant() + limit.to_std();
 	let mut timed_out = false;
 	let status = loop {
 		if let Some(status) = child.try_wait().expect("Failed to poll child process") {
 			break status;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			timed_out = true;
 			child.kill().expect("Failed to kill child past its wall-clock limit");
 			break child.wait().expect("Failed to reap killed child");

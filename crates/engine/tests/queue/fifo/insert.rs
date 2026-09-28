@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::RowChange,
@@ -20,7 +21,7 @@ impl RecordedChanges {
 		t.add_interceptor_factory(Arc::new(move |interceptors: &mut Interceptors| {
 			let sink = sink.clone();
 			interceptors.post_commit.add(Arc::new(post_commit(move |ctx| {
-				sink.lock().unwrap().extend(ctx.row_changes.iter().cloned());
+				sink.lock().extend(ctx.row_changes.iter().cloned());
 				Ok(())
 			})));
 		}));
@@ -28,7 +29,6 @@ impl RecordedChanges {
 
 	fn queue_inserts(&self) -> Vec<reifydb_transaction::change::QueueRowInsertion> {
 		self.0.lock()
-			.unwrap()
 			.iter()
 			.filter_map(|change| match change {
 				RowChange::QueueInsert(insertion) => Some(insertion.clone()),
@@ -267,7 +267,7 @@ fn test_a_queue_insert_does_not_emit_a_table_row_change() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let table_inserts =
-		recorded.0.lock().unwrap().iter().filter(|change| matches!(change, RowChange::TableInsert(_))).count();
+		recorded.0.lock().iter().filter(|change| matches!(change, RowChange::TableInsert(_))).count();
 	assert_eq!(table_inserts, 0, "a queue insert must not report itself as a table insert");
 }
 
@@ -312,7 +312,7 @@ fn test_every_declared_column_round_trips_through_the_shape() {
 	let row = frames[0].rows().next().unwrap();
 	assert_eq!(row.get::<i32>("a").unwrap().unwrap(), 42);
 	assert_eq!(row.get::<String>("b").unwrap().unwrap(), "text");
-	assert_eq!(row.get::<bool>("c").unwrap().unwrap(), true);
+	assert!(row.get::<bool>("c").unwrap().unwrap());
 }
 
 #[test]

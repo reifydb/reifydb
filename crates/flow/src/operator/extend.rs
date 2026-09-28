@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -21,10 +20,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{HostOperator, host::HostContext, map::schema_column},
-};
+use crate::{context::FlowContext, operator::map::schema_column};
 
 pub struct ExtendOperator {
 	parent_schema: Option<Columns>,
@@ -62,7 +58,7 @@ impl ExtendOperator {
 		})
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<Columns> {
 		let parent = self.parent_schema.as_ref()?;
 		let mut columns: Vec<ColumnWithName> =
 			parent.iter().map(|col| ColumnWithName::new(col.name().clone(), col.data().clone())).collect();
@@ -126,16 +122,12 @@ impl ExtendOperator {
 	}
 }
 
-impl HostOperator for ExtendOperator {
-	fn id(&self) -> OperatorId {
+impl ExtendOperator {
+	pub fn id(&self) -> OperatorId {
 		self.operator
 	}
 
-	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
-	}
-
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {
@@ -175,9 +167,5 @@ impl HostOperator for ExtendOperator {
 		}
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
-	}
-
-	fn output_schema(&self) -> Option<Columns> {
-		self.output_schema()
 	}
 }

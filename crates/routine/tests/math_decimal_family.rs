@@ -15,7 +15,6 @@ use reifydb_routine::function::math::{
 	mul::basic::Mul,
 	power::Power,
 	round::Round,
-	sub::none::SubNone,
 	sum::Sum,
 	truncate::Truncate,
 };
@@ -27,8 +26,6 @@ use reifydb_value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
 		identity::IdentityId,
-		int::Int,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -82,7 +79,11 @@ fn decimal_type(precision: u8, scale: u8) -> ValueType {
 }
 
 fn int(precision: u8, values: &[i64]) -> ColumnBuffer {
-	ColumnBuffer::int(Precision::new(precision), values.iter().map(|&value| Int::from_i64(value)))
+	ColumnBuffer::decimal(
+		Precision::new(precision),
+		Scale::new(0),
+		values.iter().map(|&value| Decimal::from_i64(value)),
+	)
 }
 
 fn error_code(err: RoutineError) -> String {
@@ -119,28 +120,22 @@ fn div_keeps_at_least_six_fraction_digits() {
 
 #[test]
 fn saturating_div_by_zero_stays_within_the_result_precision() {
-	// A saturated row wider than int(3) would panic in the column builder instead of being clamped.
+	// A saturated row wider than decimal(9, 6) would panic in the column builder instead of being clamped.
 	let out = call(DivSaturate::new(), vec![int(3, &[5, -5, 9]), int(3, &[0, 0, 3])]).unwrap();
-	assert_eq!(out.get_type(), ValueType::int(Precision::new(3)));
+	assert_eq!(out.get_type(), decimal_type(9, 6));
 	assert!(out.is_defined(0) && out.is_defined(1));
-	assert!(out.as_string(0).len() <= 3 && out.as_string(1).trim_start_matches('-').len() <= 3);
-	assert_eq!(out.as_string(2), "3");
-}
-
-#[test]
-fn uint_below_zero_is_none_under_the_none_policy() {
-	// N5: uint 1 - 2 must become a none row, never a wrapped or negative value.
-	let one = ColumnBuffer::uint(Precision::new(5), [Uint::from(1u64), Uint::from(5u64)]);
-	let two = ColumnBuffer::uint(Precision::new(5), [Uint::from(2u64), Uint::from(2u64)]);
-	let out = call(SubNone::new(), vec![one, two]).unwrap();
-	assert!(!out.is_defined(0));
-	assert_eq!(out.as_string(1), "3");
+	for row in 0..2 {
+		let text = out.as_string(row);
+		assert!(text.trim_start_matches('-').split('.').next().unwrap().len() <= 3, "row {row}: {text}");
+	}
+	assert_eq!(out.as_string(2), "3.000000");
 }
 
 #[test]
 fn sum_past_seventy_six_digits_is_an_error() {
 	// The old bignum sum had no bound; two 76-digit maxima must raise NUMBER_002, not wrap or clamp.
-	let err = aggregate(Sum::new(), ColumnBuffer::int(Precision::MAX, [Int::MAX, Int::MAX])).unwrap_err();
+	let max = "9".repeat(76);
+	let err = aggregate(Sum::new(), decimal(76, 0, &[&max, &max])).unwrap_err();
 	assert_eq!(error_code(err), "NUMBER_002");
 }
 
@@ -200,9 +195,9 @@ fn round_to_negative_digits_rounds_to_tens_at_the_column_scale() {
 }
 
 #[test]
-fn round_reads_a_precision_from_an_int_family_column() {
-	// An int(p) digit count read as none would round to 0 digits and give 1.00.
-	let out = call(Round::new(), vec![decimal(4, 2, &["1.25"]), int(5, &[1])]).unwrap();
+fn round_reads_a_precision_from_an_int_column() {
+	// A digit count read from a column as none would round to 0 digits and give 1.00.
+	let out = call(Round::new(), vec![decimal(4, 2, &["1.25"]), ColumnBuffer::int4([1])]).unwrap();
 	assert_eq!(out.as_string(0), "1.30");
 }
 

@@ -224,14 +224,6 @@ pub enum ConstraintKind {
 		actual: usize,
 		max: usize,
 	},
-	IntPrecision {
-		actual: u8,
-		max: u8,
-	},
-	UintPrecision {
-		actual: u8,
-		max: u8,
-	},
 	DecimalPrecision {
 		actual: u8,
 		max: u8,

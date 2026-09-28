@@ -27,35 +27,7 @@ macro_rules! impl_safe_sub {
 
 impl_safe_sub!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use crate::value::{decimal::Decimal, int::Int, uint::Uint};
-
-impl SafeSub for Int {
-	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		Int::checked_sub(self, r)
-	}
-
-	fn saturating_sub(&self, r: &Self) -> Self {
-		Int::saturating_sub(self, r)
-	}
-
-	fn wrapping_sub(&self, r: &Self) -> Self {
-		Int::saturating_sub(self, r)
-	}
-}
-
-impl SafeSub for Uint {
-	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		Uint::checked_sub(self, r)
-	}
-
-	fn saturating_sub(&self, r: &Self) -> Self {
-		Uint::saturating_sub(self, r)
-	}
-
-	fn wrapping_sub(&self, r: &Self) -> Self {
-		Uint::saturating_sub(self, r)
-	}
-}
+use crate::value::decimal::Decimal;
 
 impl SafeSub for Decimal {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {

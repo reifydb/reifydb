@@ -6,7 +6,7 @@ use core::{ffi::c_void, ptr};
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{decimal::Decimal, int::Int, row_number::RowNumber, uint::Uint},
+	value::{decimal::Decimal, row_number::RowNumber},
 };
 
 use crate::{
@@ -245,14 +245,6 @@ impl<'a> ColumnBuilder<'a> {
 			assert_eq!(self.type_code, ValueKind::Blob, "write_blob requires a Blob ColumnBuilder");
 		}
 		write_var_len(self, values.iter().map(|b| b.as_ref()))
-	}
-
-	pub fn write_int(self, values: &[Int]) -> Result<CommittedColumn, SdkError> {
-		write_family(self, values)
-	}
-
-	pub fn write_uint(self, values: &[Uint]) -> Result<CommittedColumn, SdkError> {
-		write_family(self, values)
 	}
 
 	pub fn write_decimal(self, values: &[Decimal]) -> Result<CommittedColumn, SdkError> {

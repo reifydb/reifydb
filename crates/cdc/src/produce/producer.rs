@@ -320,7 +320,6 @@ pub mod tests {
 	use std::{
 		sync::atomic::{AtomicUsize, Ordering},
 		thread::sleep,
-		time::{Duration as StdDuration, Instant},
 	};
 
 	use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKey};
@@ -481,7 +480,7 @@ pub mod tests {
 			})
 			.unwrap();
 
-		let deadline = Instant::now() + StdDuration::from_secs(10);
+		let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 		let items = loop {
 			match backlog.pull(CommitVersion(0), CommitVersion(2), ByteSize::from_mib(1)) {
 				BacklogPull::Hit {
@@ -490,8 +489,8 @@ pub mod tests {
 					..
 				} if advance_to == CommitVersion(2) && !items.is_empty() => break items,
 				_ => {
-					assert!(Instant::now() < deadline, "producer never fed the backlog");
-					sleep(StdDuration::from_millis(5));
+					assert!(Clock::Real.instant() < deadline, "producer never fed the backlog");
+					sleep(Duration::from_milliseconds(5).unwrap().to_std());
 				}
 			}
 		};

@@ -3617,7 +3617,7 @@ pub mod tests {
 				assert!(as_clause.is_some());
 
 				if let Some(as_statement) = as_clause {
-					assert!(as_statement.len() > 0);
+					assert!(!as_statement.is_empty());
 				}
 			}
 			_ => unreachable!(),

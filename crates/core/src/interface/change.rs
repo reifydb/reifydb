@@ -29,7 +29,7 @@ pub enum ChangeOrigin {
 	Flow(OperatorId),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Diff {
 	Insert {
 		post: Columns,

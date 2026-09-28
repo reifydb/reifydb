@@ -1,0 +1,872 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	operator::state::{decode, encode},
+	pod::EncodedPodRow,
+};
+use reifydb_core::{
+	interface::change::Diff,
+	key::{
+		operator::{
+			keyspace::join::{JoinPin, JoinPinSuffix, JoinPublished},
+			state::{GroupId, GroupStateKey},
+		},
+		typed::direction::Asc,
+	},
+	state::{join::ContentVersion, typed::typed_key},
+	value::column::columns::Columns,
+};
+use reifydb_macro::operator_state;
+use reifydb_value::{
+	Result,
+	error::Error,
+	reifydb_assertions,
+	util::{cowvec::CowVec, hash::Hash128},
+	value::row_number::RowNumber,
+};
+
+use crate::{
+	error::FlowStateError,
+	operator::{
+		host::HostContext,
+		join::{
+			Identity,
+			operator::JoinOperator,
+			store::Store,
+			strategy::{
+				UpdateKeys,
+				hash::{columns_from_block, stream_join_blocks_encoded},
+				latest::winning_right_row,
+			},
+		},
+		state::store::{state_get, state_remove, state_set},
+		state_access::mint_row_numbers,
+	},
+};
+
+const TAG_JOINED: u8 = 0;
+const TAG_UNMATCHED: u8 = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PublishedRight {
+	Row(RowNumber),
+	Unmatched,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Published {
+	pub(crate) right: PublishedRight,
+	pub(crate) version: ContentVersion,
+	pub(crate) row_number: RowNumber,
+}
+
+#[operator_state]
+struct Pin {
+	refs: u64,
+
+	retired: Option<Vec<u8>>,
+}
+
+#[operator_state]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PublishedEntry {
+	tag: u8,
+
+	right: u64,
+
+	version: u64,
+
+	row_number: u64,
+}
+
+#[operator_state]
+#[derive(Clone, Debug, Default, PartialEq)]
+struct PublishedSet {
+	entries: Vec<PublishedEntry>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Numbering {
+	Pair,
+	LeftRow,
+}
+
+pub(crate) struct SnapshotLedger {
+	numbering: Numbering,
+}
+
+impl SnapshotLedger {
+	pub(crate) fn new(numbering: Numbering) -> Self {
+		Self {
+			numbering,
+		}
+	}
+
+	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
+		typed_key::<JoinPublished>(group, &Asc(left))
+	}
+
+	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
+		match state_get(host, &self.published_key(group, left))? {
+			Some(row) => decode_published_set(&row),
+			None => Ok(PublishedSet::default()),
+		}
+	}
+
+	fn write_published_set(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		set: &PublishedSet,
+	) -> Result<()> {
+		let key = self.published_key(group, left);
+		if set.entries.is_empty() {
+			return state_remove(host, &key);
+		}
+		reifydb_assertions! {
+			const MAX_PUBLISHED_FAN_OUT: usize = 1024;
+			assert!(
+				set.entries.len() <= MAX_PUBLISHED_FAN_OUT,
+				"a left row published {} rights; the ledger stores them as one value, so every publish \
+				 rewrites the whole list and the join degrades quadratically past {MAX_PUBLISHED_FAN_OUT}",
+				set.entries.len()
+			);
+		}
+		state_set(host, &key, encode_published_set(set)?)
+	}
+
+	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
+		typed_key::<JoinPin>(
+			group,
+			&JoinPinSuffix {
+				row: Asc(right),
+				version: Asc(version),
+			},
+		)
+	}
+
+	pub(crate) fn publish(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		right: RowNumber,
+		content: &EncodedBytes,
+	) -> Result<(RowNumber, bool)> {
+		let version = ContentVersion::of(content);
+		let mut set = self.published_set(host, group, left)?;
+		let published =
+			match set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0) {
+				Some(index) => {
+					let previous = ContentVersion(set.entries[index].version);
+					let row_number = RowNumber(set.entries[index].row_number);
+					if previous == version {
+						return Ok((row_number, false));
+					}
+					self.unpin(host, group, right, previous)?;
+					set.entries[index].version = version.0;
+					(row_number, false)
+				}
+				None => {
+					let row_number = match self.numbering {
+						Numbering::LeftRow => left,
+						Numbering::Pair => mint_row_numbers(host, 1)?,
+					};
+					set.entries.push(PublishedEntry {
+						tag: TAG_JOINED,
+						right: right.0,
+						version: version.0,
+						row_number: row_number.0,
+					});
+					(row_number, true)
+				}
+			};
+		sort_entries(&mut set);
+		self.write_published_set(host, group, left, &set)?;
+		self.pin(host, group, right, version)?;
+		Ok(published)
+	}
+
+	pub(crate) fn published(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+	) -> Result<Vec<Published>> {
+		Ok(self.published_set(host, group, left)?
+			.entries
+			.iter()
+			.filter_map(|entry| {
+				right_of(entry).map(|right| Published {
+					right,
+					version: ContentVersion(entry.version),
+					row_number: RowNumber(entry.row_number),
+				})
+			})
+			.collect())
+	}
+
+	pub(crate) fn publish_unmatched(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+	) -> Result<(RowNumber, bool)> {
+		let mut set = self.published_set(host, group, left)?;
+		if let Some(entry) = set.entries.iter().find(|entry| entry.tag == TAG_UNMATCHED) {
+			return Ok((RowNumber(entry.row_number), false));
+		}
+		let row_number = match self.numbering {
+			Numbering::LeftRow => left,
+			Numbering::Pair => mint_row_numbers(host, 1)?,
+		};
+		set.entries.push(PublishedEntry {
+			tag: TAG_UNMATCHED,
+			right: 0,
+			version: 0,
+			row_number: row_number.0,
+		});
+		sort_entries(&mut set);
+		self.write_published_set(host, group, left, &set)?;
+		Ok((row_number, true))
+	}
+
+	pub(crate) fn release_unmatched(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+	) -> Result<()> {
+		let mut set = self.published_set(host, group, left)?;
+		set.entries.retain(|entry| entry.tag != TAG_UNMATCHED);
+		self.write_published_set(host, group, left, &set)
+	}
+
+	pub(crate) fn release_all(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<()> {
+		let mut set = self.published_set(host, group, left)?;
+		let held = set.entries.len();
+		let mut joined: Vec<(RowNumber, ContentVersion)> = Vec::new();
+		set.entries.retain(|entry| match right_of(entry) {
+			Some(PublishedRight::Row(right)) => {
+				joined.push((right, ContentVersion(entry.version)));
+				false
+			}
+			Some(PublishedRight::Unmatched) => false,
+			None => true,
+		});
+		if set.entries.len() == held {
+			return Ok(());
+		}
+		self.write_published_set(host, group, left, &set)?;
+		for (right, version) in joined {
+			self.unpin(host, group, right, version)?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn release(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		right: RowNumber,
+	) -> Result<Option<EncodedBytes>> {
+		let mut set = self.published_set(host, group, left)?;
+		let Some(index) =
+			set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0)
+		else {
+			return Ok(None);
+		};
+		let version = ContentVersion(set.entries.remove(index).version);
+		self.write_published_set(host, group, left, &set)?;
+		self.unpin(host, group, right, version)
+	}
+
+	pub(crate) fn retire(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		right: RowNumber,
+		content: &EncodedBytes,
+	) -> Result<()> {
+		let version = ContentVersion::of(content);
+		let key = self.pin_key(group, right, version);
+		let Some(existing) = state_get(host, &key)? else {
+			return Ok(());
+		};
+		let mut pin = decode_pin(&existing)?;
+		if pin.retired.is_some() {
+			return Ok(());
+		}
+		pin.retired = Some(content.0.to_vec());
+		let row = encode_pin(&pin)?;
+		state_set(host, &key, row)
+	}
+
+	fn pin(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		right: RowNumber,
+		version: ContentVersion,
+	) -> Result<()> {
+		let key = self.pin_key(group, right, version);
+		let mut pin = match state_get(host, &key)? {
+			Some(existing) => decode_pin(&existing)?,
+			None => Pin {
+				refs: 0,
+				retired: None,
+			},
+		};
+		pin.refs += 1;
+		let row = encode_pin(&pin)?;
+		state_set(host, &key, row)
+	}
+
+	fn unpin(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		right: RowNumber,
+		version: ContentVersion,
+	) -> Result<Option<EncodedBytes>> {
+		let key = self.pin_key(group, right, version);
+		let Some(existing) = state_get(host, &key)? else {
+			return Ok(None);
+		};
+		let mut pin = decode_pin(&existing)?;
+		pin.refs = pin.refs.saturating_sub(1);
+		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
+		match pin.refs {
+			0 => state_remove(host, &key)?,
+			_ => {
+				let row = encode_pin(&pin)?;
+				state_set(host, &key, row)?
+			}
+		}
+		Ok(content)
+	}
+}
+
+fn right_of(entry: &PublishedEntry) -> Option<PublishedRight> {
+	match entry.tag {
+		TAG_UNMATCHED => Some(PublishedRight::Unmatched),
+		TAG_JOINED => Some(PublishedRight::Row(RowNumber(entry.right))),
+		_ => None,
+	}
+}
+
+fn sort_entries(set: &mut PublishedSet) {
+	set.entries.sort_by_key(|entry| (entry.tag, entry.right));
+}
+
+fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
+	encode(set).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state: "snapshot published set",
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
+	decode::<PublishedSet>(row).map_err(|e| {
+		Error::from(FlowStateError::Decode {
+			state: "snapshot published set",
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
+	encode(pin).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state: "snapshot pin",
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn decode_pin(row: &EncodedPodRow) -> Result<Pin> {
+	decode::<Pin>(row).map_err(|e| {
+		Error::from(FlowStateError::Decode {
+			state: "snapshot pin",
+			cause: e.to_string(),
+		})
+	})
+}
+
+pub(crate) struct SnapshotJoinContext<'a> {
+	pub(crate) ledger: &'a SnapshotLedger,
+	pub(crate) operator: &'a JoinOperator,
+	pub(crate) right_store: &'a Store,
+}
+
+pub(crate) fn publish_joined(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	key_hash: &Hash128,
+	left: &Columns,
+	left_indices: &[usize],
+	outer: bool,
+) -> Result<Vec<Diff>> {
+	if left_indices.is_empty() {
+		return Ok(Vec::new());
+	}
+	let group = ctx.right_store.group_of(key_hash);
+	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
+
+	let mut diffs =
+		stream_join_blocks_encoded(host, ctx.right_store, key_hash, true, |host, opposite, encoded| {
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			if opposite_indices.is_empty() {
+				return Ok(Vec::new());
+			}
+			reifydb_assertions! {
+				assert!(
+					encoded.len() == opposite_indices.len(),
+					"the ledger walks {} encoded rights while the cartesian walks {} opposite rows; \
+					 the two must stay positionally aligned or every published pair takes another \
+					 pair's row number",
+					encoded.len(),
+					opposite_indices.len()
+				);
+			}
+			let mut carried = Vec::with_capacity(left_numbers.len() * encoded.len());
+			for left_number in &left_numbers {
+				for (right_number, content) in encoded {
+					carried.push(ctx.ledger.publish(
+						host,
+						group,
+						*left_number,
+						*right_number,
+						content,
+					)?);
+				}
+			}
+			let joined = ctx.operator.join_columns_cartesian(
+				host,
+				left,
+				left_indices,
+				opposite,
+				&opposite_indices,
+				Identity::Carried(&carried),
+			)?;
+			Ok(joined.published())
+		})?;
+
+	if !diffs.is_empty() || !outer {
+		return Ok(diffs);
+	}
+	let mut carried = Vec::with_capacity(left_numbers.len());
+	for left_number in &left_numbers {
+		carried.push(ctx.ledger.publish_unmatched(host, group, *left_number)?);
+	}
+	diffs.extend(ctx
+		.operator
+		.unmatched_left_columns_batch(host, left, left_indices, Identity::Carried(&carried))?
+		.published());
+	Ok(diffs)
+}
+
+pub(crate) fn withdraw_joined(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	key_hash: &Hash128,
+	left: &Columns,
+	left_idx: usize,
+) -> Result<Vec<Diff>> {
+	let group = ctx.right_store.group_of(key_hash);
+	let left_number = left.row_numbers()[left_idx];
+	let mut out = Vec::new();
+	for entry in ctx.ledger.published(host, group, left_number)? {
+		let carried = [(entry.row_number, false)];
+		let right_number = match entry.right {
+			PublishedRight::Unmatched => {
+				ctx.ledger.release_unmatched(host, group, left_number)?;
+				let unmatched = ctx.operator.unmatched_left_columns(
+					host,
+					left,
+					left_idx,
+					Identity::Carried(&carried),
+				)?;
+				out.extend(unmatched.withdrawn());
+				continue;
+			}
+			PublishedRight::Row(right_number) => right_number,
+		};
+		let released = ctx.ledger.release(host, group, left_number, right_number)?;
+		let content = match released {
+			Some(retired) => Some(retired),
+			None => ctx.right_store.get_row_in(host, group, right_number)?,
+		};
+		let Some(content) = content else {
+			continue;
+		};
+		let opposite = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
+		let joined = ctx.operator.join_columns_cartesian(
+			host,
+			left,
+			&[left_idx],
+			&opposite,
+			&[0],
+			Identity::Carried(&carried),
+		)?;
+		out.extend(joined.withdrawn());
+	}
+	Ok(out)
+}
+
+pub(crate) fn resync_joined(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	keys: UpdateKeys,
+	pre: &Columns,
+	post: &Columns,
+	left_idx: usize,
+	outer: bool,
+) -> Result<Vec<Diff>> {
+	let mut out = withdraw_joined(host, ctx, keys.pre, pre, left_idx)?;
+	out.extend(publish_joined(host, ctx, keys.post, post, &[left_idx], outer)?);
+	Ok(out)
+}
+
+pub(crate) fn publish_slot(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	key_hash: &Hash128,
+	left: &Columns,
+	left_indices: &[usize],
+	outer: bool,
+) -> Result<Option<Columns>> {
+	if left_indices.is_empty() {
+		return Ok(None);
+	}
+	let group = ctx.right_store.group_of(key_hash);
+	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
+
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
+		if !outer {
+			return Ok(None);
+		}
+		for left_number in &left_numbers {
+			ctx.ledger.publish_unmatched(host, group, *left_number)?;
+		}
+		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices)));
+	};
+
+	for left_number in &left_numbers {
+		ctx.ledger.publish(host, group, *left_number, number, &content)?;
+	}
+	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
+}
+
+pub(crate) fn withdraw_slot(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	group: GroupId,
+	left: &Columns,
+	left_idx: usize,
+) -> Result<Option<Columns>> {
+	let left_number = left.row_numbers()[left_idx];
+	for entry in ctx.ledger.published(host, group, left_number)? {
+		let right_number = match entry.right {
+			PublishedRight::Unmatched => {
+				ctx.ledger.release_unmatched(host, group, left_number)?;
+				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])));
+			}
+			PublishedRight::Row(right_number) => right_number,
+		};
+		let released = ctx.ledger.release(host, group, left_number, right_number)?;
+		let content = match released {
+			Some(retired) => Some(retired),
+			None => match winning_right_row(host, ctx.right_store, group)? {
+				Some((held, content, _)) if held == right_number => Some(content),
+				_ => None,
+			},
+		};
+		let Some(content) = content else {
+			continue;
+		};
+		let slot = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
+		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)));
+	}
+	Ok(None)
+}
+
+pub(crate) fn retain_published_slot(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	group: GroupId,
+	left: RowNumber,
+) -> Result<Option<Columns>> {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
+		return Ok(None);
+	};
+	let mut records = ctx.ledger.published(host, group, left)?;
+	let Some(entry) = records.pop() else {
+		return Ok(None);
+	};
+	if !records.is_empty()
+		|| entry.right != PublishedRight::Row(number)
+		|| entry.version != ContentVersion::of(&content)
+	{
+		return Ok(None);
+	}
+	Ok(Some(slot))
+}
+
+pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
+	let group = ctx.right_store.group_of(key_hash);
+	match winning_right_row(host, ctx.right_store, group)? {
+		Some((number, content, _)) => ctx.ledger.retire(host, group, number, &content),
+		None => Ok(()),
+	}
+}
+
+pub(crate) fn retire_right(
+	host: &mut dyn HostContext,
+	ctx: &SnapshotJoinContext,
+	key_hash: &Hash128,
+	row_number: RowNumber,
+) -> Result<()> {
+	let group = ctx.right_store.group_of(key_hash);
+	let Some(content) = ctx.right_store.get_row_in(host, group, row_number)? else {
+		return Ok(());
+	};
+	ctx.ledger.retire(host, group, row_number, &content)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_test_harness::engine::TestEngine;
+
+	use super::*;
+	use crate::{
+		operator::host::TxnHostContext,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+	};
+
+	const NODE: OperatorId = OperatorId(90);
+
+	fn group() -> GroupId {
+		GroupId::hashed(Hash128(3))
+	}
+
+	fn ledger() -> SnapshotLedger {
+		SnapshotLedger::new(Numbering::Pair)
+	}
+
+	fn b(txn: &mut DeferredTransaction) -> TxnHostContext<'_, DeferredTransaction> {
+		TxnHostContext::new(txn, NODE)
+	}
+
+	fn encoded_bytes(payload: &[u8]) -> EncodedBytes {
+		EncodedBytes(CowVec::new(payload.to_vec()))
+	}
+
+	fn rn(v: u64) -> RowNumber {
+		RowNumber(v)
+	}
+
+	fn published_order(right: &PublishedRight) -> (u8, u64) {
+		match right {
+			PublishedRight::Unmatched => (0, 0),
+			PublishedRight::Row(number) => (1, number.0),
+		}
+	}
+
+	#[test]
+	fn a_released_pair_reads_back_the_version_it_was_published_against() {
+		// The right row moves on after the left row read it, and the withdrawal still has to carry
+		// what was actually published - not what the right side holds now, and not nothing.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let published_against = encoded_bytes(b"v1");
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &published_against).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &published_against).unwrap();
+
+		let released = ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
+		assert_eq!(released, Some(published_against), "the retired version must come back verbatim");
+	}
+
+	#[test]
+	fn a_version_still_live_on_the_right_side_is_not_copied() {
+		// A snapshot join whose right side never changes must store no row copies at all - only the
+		// counts. Copying eagerly would make the ledger cost a duplicate of the whole right side.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
+
+		assert_eq!(
+			ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(),
+			None,
+			"an un-retired version must send the caller to the right side rather than duplicate it"
+		);
+	}
+
+	#[test]
+	fn one_retired_version_serves_every_left_row_that_published_against_it() {
+		// The pin is keyed on the version rather than the pair so a right row matched by many
+		// left rows is stored once, not once per match.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let shared = encoded_bytes(b"shared");
+
+		for left in 1..=3u64 {
+			ledger.publish(&mut b(&mut txn), group(), rn(left), rn(7), &shared).unwrap();
+		}
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &shared).unwrap();
+
+		for left in 1..=3u64 {
+			assert_eq!(
+				ledger.release(&mut b(&mut txn), group(), rn(left), rn(7)).unwrap(),
+				Some(shared.clone()),
+				"left row {left} must still see the version it published against"
+			);
+		}
+	}
+
+	#[test]
+	fn a_pin_outlives_every_reference_and_no_longer() {
+		// A record that lingered past its last reference would leave one retired copy per right
+		// row the join ever changed, for the life of the operator.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let content = encoded_bytes(b"v1");
+		let version = ContentVersion::of(&content);
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &content).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &content).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
+
+		ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
+		let key = ledger.pin_key(group(), rn(7), version);
+		assert!(
+			state_get(&mut b(&mut txn), &key).unwrap().is_some(),
+			"a version another left row still references must stay"
+		);
+
+		ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap();
+		assert!(
+			state_get(&mut b(&mut txn), &key).unwrap().is_none(),
+			"the last release must take the record with it"
+		);
+	}
+
+	#[test]
+	fn two_versions_of_one_right_row_are_pinned_apart() {
+		// Different left rows can hold different versions of one right row, so a single slot per
+		// row would let the second retirement overwrite the first and a left row would withdraw
+		// content it never published.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let first = encoded_bytes(b"v1");
+		let second = encoded_bytes(b"v2");
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &second).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &second).unwrap();
+
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(), Some(first));
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap(), Some(second));
+	}
+
+	#[test]
+	fn republishing_a_left_row_moves_its_reference_to_the_new_version() {
+		// A left row touched again reads the right side afresh, so its old reference has to go or
+		// the version it used to hold is pinned for the left row's whole life.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let first = encoded_bytes(b"v1");
+		let second = encoded_bytes(b"v2");
+		let stale = ledger.pin_key(group(), rn(7), ContentVersion::of(&first));
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &second).unwrap();
+
+		assert!(
+			state_get(&mut b(&mut txn), &stale).unwrap().is_none(),
+			"the version the left row no longer holds must be released"
+		);
+		assert_eq!(
+			ledger.published(&mut b(&mut txn), group(), rn(1))
+				.unwrap()
+				.into_iter()
+				.map(|entry| (entry.right, entry.version))
+				.collect::<Vec<_>>(),
+			vec![(PublishedRight::Row(rn(7)), ContentVersion::of(&second))],
+			"and the pair must now name the version it was republished against"
+		);
+	}
+
+	#[test]
+	fn the_published_set_is_scoped_to_one_left_row() {
+		// Withdrawal walks this set by left row, so a scan that reached a neighbour would withdraw
+		// rows belonging to a left row that is still live.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
+
+		let mut rights: Vec<PublishedRight> = ledger
+			.published(&mut b(&mut txn), group(), rn(1))
+			.unwrap()
+			.into_iter()
+			.map(|entry| entry.right)
+			.collect();
+		rights.sort_by_key(published_order);
+		assert_eq!(rights, vec![PublishedRight::Row(rn(7)), PublishedRight::Row(rn(8))]);
+		assert_eq!(
+			ledger.published(&mut b(&mut txn), group(), rn(2))
+				.unwrap()
+				.into_iter()
+				.map(|entry| entry.right)
+				.collect::<Vec<_>>(),
+			vec![PublishedRight::Row(rn(9))]
+		);
+	}
+
+	#[test]
+	fn releasing_a_pair_that_was_never_published_changes_nothing() {
+		// Withdrawal also runs for left rows that published nothing (an inner join whose key had
+		// no matches), so it must be a no-op rather than an error or a phantom diff.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(), None);
+		assert!(ledger.published(&mut b(&mut txn), group(), rn(1)).unwrap().is_empty());
+	}
+
+	#[test]
+	fn retiring_a_version_nothing_published_against_stores_nothing() {
+		// On a busy right side rows change before any left row reads them; copying there would
+		// make the ledger cost track right-side churn instead of what was published.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let content = encoded_bytes(b"v1");
+
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
+
+		let key = ledger.pin_key(group(), rn(7), ContentVersion::of(&content));
+		assert!(state_get(&mut b(&mut txn), &key).unwrap().is_none());
+	}
+}

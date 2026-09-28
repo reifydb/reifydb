@@ -54,11 +54,11 @@ pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::operator::state::{seal, sealing};
+pub use reifydb_flow_async::operator::state::{seal, sealing};
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::operator::{BoxedHostOperator, HostOperator};
+pub use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator};
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::window;
+pub use reifydb_flow_async::window;
 pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;

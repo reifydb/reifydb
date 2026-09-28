@@ -16,14 +16,12 @@ use crate::{
 		decimal::Decimal,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
 	},
@@ -377,30 +375,6 @@ impl TryFromValue for IdentityId {
 			Value::IdentityId(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: ValueType::IdentityId,
-				found: value.get_type(),
-			}),
-		}
-	}
-}
-
-impl TryFromValue for Int {
-	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::Int(v) => Ok(v.clone()),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: ValueType::INT,
-				found: value.get_type(),
-			}),
-		}
-	}
-}
-
-impl TryFromValue for Uint {
-	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::Uint(v) => Ok(v.clone()),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: ValueType::UINT,
 				found: value.get_type(),
 			}),
 		}

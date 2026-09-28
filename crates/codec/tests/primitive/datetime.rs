@@ -9,8 +9,8 @@ fn test_set_get_datetime() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
 	let mut row = shape.allocate_pod();
 
-	let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
-	shape.set::<DateTime>(&mut row, 0, value.clone());
+	let value = DateTime::new(2024, 9, 9, 8, 17, 0, 1234).unwrap();
+	shape.set::<DateTime>(&mut row, 0, value);
 	assert_eq!(shape.get::<DateTime>(&row, 0), value);
 }
 
@@ -22,7 +22,7 @@ fn test_try_get_datetime() {
 	assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 
 	let test_datetime = DateTime::from_epoch_secs(1642694400).unwrap();
-	shape.set::<DateTime>(&mut row, 0, test_datetime.clone());
+	shape.set::<DateTime>(&mut row, 0, test_datetime);
 	assert_eq!(shape.try_get::<DateTime>(&row, 0), Some(test_datetime));
 }
 
@@ -32,7 +32,7 @@ fn test_epoch() {
 	let mut row = shape.allocate_pod();
 
 	let epoch = DateTime::default(); // Unix epoch
-	shape.set::<DateTime>(&mut row, 0, epoch.clone());
+	shape.set::<DateTime>(&mut row, 0, epoch);
 	assert_eq!(shape.get::<DateTime>(&row, 0), epoch);
 }
 
@@ -42,7 +42,7 @@ fn test_with_nanoseconds() {
 	let mut row = shape.allocate_pod();
 
 	let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
-	shape.set::<DateTime>(&mut row, 0, precise_datetime.clone());
+	shape.set::<DateTime>(&mut row, 0, precise_datetime);
 	assert_eq!(shape.get::<DateTime>(&row, 0), precise_datetime);
 }
 
@@ -59,7 +59,7 @@ fn test_various_timestamps() {
 
 	for datetime in test_datetimes {
 		let mut row = shape.allocate_pod();
-		shape.set::<DateTime>(&mut row, 0, datetime.clone());
+		shape.set::<DateTime>(&mut row, 0, datetime);
 		assert_eq!(shape.get::<DateTime>(&row, 0), datetime);
 	}
 }
@@ -75,13 +75,13 @@ fn test_mixed_with_other_types() {
 	let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
 	let datetime2 = DateTime::new(1995, 3, 22, 18, 30, 45, 500000000).unwrap();
 
-	shape.set::<DateTime>(&mut row, 0, datetime1.clone());
+	shape.set::<DateTime>(&mut row, 0, datetime1);
 	shape.set::<bool>(&mut row, 1, true);
-	shape.set::<DateTime>(&mut row, 2, datetime2.clone());
+	shape.set::<DateTime>(&mut row, 2, datetime2);
 	shape.set::<i64>(&mut row, 3, 1234567890i64);
 
 	assert_eq!(shape.get::<DateTime>(&row, 0), datetime1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<DateTime>(&row, 2), datetime2);
 	assert_eq!(shape.get::<i64>(&row, 3), 1234567890);
 }
@@ -92,7 +92,7 @@ fn test_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
-	shape.set::<DateTime>(&mut row, 0, datetime.clone());
+	shape.set::<DateTime>(&mut row, 0, datetime);
 
 	assert_eq!(shape.try_get::<DateTime>(&row, 0), Some(datetime));
 	assert_eq!(shape.try_get::<DateTime>(&row, 1), None);
@@ -108,7 +108,7 @@ fn test_precision_preservation() {
 
 	// The slot holds u64 nanos, so no sub-second digit may be rounded away.
 	let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
-	shape.set::<DateTime>(&mut row, 0, high_precision.clone());
+	shape.set::<DateTime>(&mut row, 0, high_precision);
 
 	let retrieved = shape.get::<DateTime>(&row, 0);
 	assert_eq!(retrieved, high_precision);
@@ -125,7 +125,7 @@ fn test_year_2038_problem() {
 
 	// Past i32 seconds since the epoch, which is where a 32-bit timestamp would wrap.
 	let post_2038 = DateTime::from_epoch_secs(2147483648).unwrap(); // 2038-01-19
-	shape.set::<DateTime>(&mut row, 0, post_2038.clone());
+	shape.set::<DateTime>(&mut row, 0, post_2038);
 	assert_eq!(shape.get::<DateTime>(&row, 0), post_2038);
 }
 
@@ -135,7 +135,7 @@ fn test_far_future() {
 	let mut row = shape.allocate_pod();
 
 	let far_future = DateTime::from_epoch_secs(4102444800).unwrap(); // 2100-01-01
-	shape.set::<DateTime>(&mut row, 0, far_future.clone());
+	shape.set::<DateTime>(&mut row, 0, far_future);
 	assert_eq!(shape.get::<DateTime>(&row, 0), far_future);
 }
 
@@ -145,7 +145,7 @@ fn test_microsecond_precision() {
 	let mut row = shape.allocate_pod();
 
 	let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
-	shape.set::<DateTime>(&mut row, 0, microsecond_precision.clone());
+	shape.set::<DateTime>(&mut row, 0, microsecond_precision);
 	assert_eq!(shape.get::<DateTime>(&row, 0), microsecond_precision);
 }
 

@@ -4,11 +4,11 @@
 use std::{
 	sync::atomic::{AtomicBool, Ordering},
 	thread,
-	time::{Duration as StdDuration, Instant},
 };
 
 use reifydb_core::{execution::ExecutionResult, interface::catalog::id::QueueId};
 use reifydb_engine::{queue::lookup::find_queue_id, session::Session};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::duration::Duration;
 
@@ -45,10 +45,10 @@ fn await_parked(t: &TestEngine, count: usize) {
 	// Advancing before the worker is on the registry expires the budget before it ever parks.
 	let registry = t.inner().queue_wake();
 	let queue = queue_id(t);
-	let deadline = Instant::now() + StdDuration::from_secs(5);
+	let deadline = Clock::Real.instant() + Duration::from_seconds(5).unwrap();
 
 	while registry.parked(queue) < count {
-		assert!(Instant::now() < deadline, "{count} worker(s) never parked");
+		assert!(Clock::Real.instant() < deadline, "{count} worker(s) never parked");
 		thread::yield_now();
 	}
 }
@@ -62,10 +62,10 @@ fn test_a_parked_claim_is_released_by_a_concurrent_insert() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let parked = thread::scope(|scope| {
 		let handle = scope.spawn(|| claim_wait(&worker, Duration::from_seconds(5).unwrap()));
-		thread::sleep(StdDuration::from_millis(100));
+		thread::sleep(millis(100).to_std());
 		t.command("INSERT test::jobs [{ id: 1 }]");
 		handle.join().unwrap()
 	});
@@ -74,7 +74,7 @@ fn test_a_parked_claim_is_released_by_a_concurrent_insert() {
 	assert!(parked.error.is_none(), "a woken claim must not fault: {:?}", parked.error);
 	assert_eq!(rows(&parked), 1, "the parked worker must receive the item that woke it");
 	assert!(
-		elapsed < StdDuration::from_secs(2),
+		elapsed < Duration::from_seconds(2).unwrap().to_std(),
 		"the claim must return on the wake, not on the {}s budget; took {elapsed:?}",
 		5
 	);
@@ -97,7 +97,7 @@ fn test_a_claim_that_waits_out_its_budget_returns_zero_rows_as_a_success() {
 
 		await_parked(&t, 1);
 		clock.advance_millis(299);
-		thread::sleep(StdDuration::from_millis(50));
+		thread::sleep(millis(50).to_std());
 		assert!(
 			!returned.load(Ordering::SeqCst),
 			"the claim must not return one millisecond short of its budget"
@@ -118,12 +118,12 @@ fn test_a_zero_budget_claim_never_parks() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = claim_wait(&worker, Duration::zero());
 
 	assert!(result.error.is_none());
 	assert_eq!(rows(&result), 0);
-	assert!(started.elapsed() < StdDuration::from_millis(200), "a zero budget must not park at all");
+	assert!(started.elapsed() < millis(200).to_std(), "a zero budget must not park at all");
 }
 
 #[test]
@@ -134,11 +134,11 @@ fn test_a_claim_finds_work_that_is_already_waiting_without_parking() {
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = claim_wait(&worker, Duration::from_seconds(30).unwrap());
 
 	assert_eq!(rows(&result), 2, "both waiting items must come back on the first scan");
-	assert!(started.elapsed() < StdDuration::from_millis(500), "existing work must not wait for a nudge");
+	assert!(started.elapsed() < millis(500).to_std(), "existing work must not wait for a nudge");
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn test_an_unknown_queue_faults_instead_of_parking() {
 	let t = engine();
 	let worker = session(&t);
 
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = worker.claim_wait(
 		"test::missing",
 		"w1",
@@ -158,7 +158,7 @@ fn test_an_unknown_queue_faults_instead_of_parking() {
 	);
 
 	assert!(result.error.is_some(), "an unknown queue must fault");
-	assert!(started.elapsed() < StdDuration::from_millis(500), "an error must not be delayed by the budget");
+	assert!(started.elapsed() < millis(500).to_std(), "an error must not be delayed by the budget");
 }
 
 #[test]

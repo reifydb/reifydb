@@ -714,8 +714,8 @@ pub mod tests {
 		fn max_is_normalised() {
 			// A denormalised constant would compare wrongly against durations built through
 			// the constructors, which all keep nanos inside a single day.
-			assert!(Duration::MAX.nanos < NANOS_PER_DAY);
-			assert!(Duration::MAX.nanos >= 0);
+			const { assert!(Duration::MAX.nanos < NANOS_PER_DAY) };
+			const { assert!(Duration::MAX.nanos >= 0) };
 		}
 	}
 
@@ -828,7 +828,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_iso_string_combined_time() {
-		let d = Duration::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000).unwrap();
+		let d = Duration::new(0, 0, (60 * 60 + 30 * 60) * 1_000_000_000).unwrap();
 		assert_eq!(d.to_iso_string(), "PT1H30M");
 
 		let d = Duration::new(0, 0, (5 * 60 + 45) * 1_000_000_000).unwrap();
@@ -878,7 +878,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_iso_string_fractional_seconds() {
-		let d = Duration::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000).unwrap();
+		let d = Duration::new(0, 0, 1_000_000_000 + 500 * 1_000_000).unwrap();
 		assert_eq!(d.to_iso_string(), "PT1.5S");
 
 		let d = Duration::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000).unwrap();
@@ -1002,7 +1002,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_display_combined_time() {
-		let d = Duration::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000).unwrap();
+		let d = Duration::new(0, 0, (60 * 60 + 30 * 60) * 1_000_000_000).unwrap();
 		assert_eq!(format!("{}", d), "1h30m");
 
 		let d = Duration::new(0, 0, (5 * 60 + 45) * 1_000_000_000).unwrap();
@@ -1064,7 +1064,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_display_sub_second_decomposition() {
-		let d = Duration::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000).unwrap();
+		let d = Duration::new(0, 0, 1_000_000_000 + 500 * 1_000_000).unwrap();
 		assert_eq!(format!("{}", d), "1s500ms");
 
 		let d = Duration::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000).unwrap();

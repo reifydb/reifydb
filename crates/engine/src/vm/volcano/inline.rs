@@ -665,12 +665,6 @@ impl InlineDataNode {
 
 	fn widen_numeric(wide: ValueType, fractional: ValueType) -> ValueType {
 		match wide {
-			ValueType::Int {
-				..
-			}
-			| ValueType::Uint {
-				..
-			} if fractional.is_floating_point() => ValueType::Float8,
 			ValueType::Decimal {
 				..
 			} if matches!(fractional, ValueType::Decimal { .. }) => common_key_type(&wide, &fractional).unwrap_or(wide),
@@ -758,12 +752,6 @@ impl InlineDataNode {
 	) -> Result<ColumnBuffer> {
 		let wide_type = first_value_type.map(|fvt| {
 			let first = match fvt {
-				ValueType::Int {
-					..
-				}
-				| ValueType::Uint {
-					..
-				} => fvt,
 				_ if fvt.is_integer() => ValueType::Int16,
 				_ if fvt.is_floating_point() => ValueType::Float8,
 				_ => fvt,

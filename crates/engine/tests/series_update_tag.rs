@@ -17,10 +17,10 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().command_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

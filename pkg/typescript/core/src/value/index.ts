@@ -9,7 +9,7 @@ export {DigestValue, digestType, digestTypeName} from './digest';
 export {
     DECIMAL_DEFAULT_SCALE, FIXED_POINT_MAX_PRECISION, FIXED_POINT_NARROW_PRECISION,
     decimalType, fixedPointKind, fixedPointPrecision, fixedPointScale, fixedPointType, fixedPointTypeName,
-    intType, isFixedPointType, uintType,
+    isFixedPointType,
 } from './fixed-point';
 export {Float4Value} from './float4';
 export {Float8Value} from './float8';
@@ -54,15 +54,12 @@ export type DigestInnerType =
     | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
-    | "Duration"
-    | "Int" | "Uint";
+    | "Duration";
 
 export interface DigestType { Digest: { inner: DigestInnerType; accuracy: number } }
-export type FixedPointKind = "Int" | "Uint" | "Decimal";
-export interface IntType { Int: { precision: number } }
-export interface UintType { Uint: { precision: number } }
+export type FixedPointKind = "Decimal";
 export interface DecimalType { Decimal: { precision: number; scale: number } }
-export type FixedPointType = IntType | UintType | DecimalType;
+export type FixedPointType = DecimalType;
 export interface RecordField { name: string; type: Type }
 export interface ListType { List: Type }
 export interface RecordType { Record: RecordField[] }

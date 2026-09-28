@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow_async::transaction::substrate::FlowSubstrate;
 
 use crate::progress::output_frontier;
 

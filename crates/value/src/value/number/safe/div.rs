@@ -65,49 +65,7 @@ macro_rules! impl_safe_div_unsigned {
 impl_safe_div_signed!(i8, i16, i32, i64, i128);
 impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 
-use crate::value::{decimal::Decimal, int::Int, uint::Uint};
-
-impl SafeDiv for Int {
-	fn checked_div(&self, r: &Self) -> Option<Self> {
-		Int::checked_div(self, r)
-	}
-
-	fn saturating_div(&self, r: &Self) -> Self {
-		if r.is_zero() {
-			return Int::zero();
-		}
-		Int::checked_div(self, r).unwrap_or(Int::MAX)
-	}
-
-	fn wrapping_div(&self, r: &Self) -> Self {
-		Int::checked_div(self, r).unwrap_or_default()
-	}
-
-	fn is_zero(&self) -> bool {
-		Int::is_zero(self)
-	}
-}
-
-impl SafeDiv for Uint {
-	fn checked_div(&self, r: &Self) -> Option<Self> {
-		Uint::checked_div(self, r)
-	}
-
-	fn saturating_div(&self, r: &Self) -> Self {
-		if r.is_zero() {
-			return Uint::zero();
-		}
-		Uint::checked_div(self, r).unwrap_or(Uint::MAX)
-	}
-
-	fn wrapping_div(&self, r: &Self) -> Self {
-		Uint::checked_div(self, r).unwrap_or_default()
-	}
-
-	fn is_zero(&self) -> bool {
-		Uint::is_zero(self)
-	}
-}
+use crate::value::decimal::Decimal;
 
 impl SafeDiv for Decimal {
 	fn checked_div(&self, r: &Self) -> Option<Self> {

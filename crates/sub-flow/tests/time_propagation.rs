@@ -10,11 +10,10 @@
 // and every bucket was discarded. A declaration check could not see that; only reading the value
 // back at the end of the chain can.
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 const BLOCK_TIME: &str = "2020-01-01T00:00:00Z";
 
 fn setup() -> TestDb {

@@ -23,7 +23,7 @@ const DURATION_DAYS_HEX = "0x0112a08d060000000002c202010301";
 const RUST_FRAME = [
     0x52, 0x42, 0x43, 0x46, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x6c, 0x00, 0x00, 0x00,
     0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5c, 0x00, 0x00, 0x00,
-    0x60, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+    0x5e, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
     0x1a, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
     0x64, 0x00, 0x00, 0x00,
     0x05,
@@ -115,16 +115,16 @@ describe("RBCF digest column", () => {
 
 describe("RBCF digest typeinfo", () => {
     it("reads the typeinfo bytes pinned by the Rust codec", () => {
-        expect(decodeTypeInfo(new Uint8Array([32, 18, 0x39, 0x30, 0, 0]), 0))
+        expect(decodeTypeInfo(new Uint8Array([30, 18, 0x39, 0x30, 0, 0]), 0))
             .toEqual({ name: "Digest(Duration, 0.012345)", nextPos: 6 });
-        expect(decodeTypeInfo(new Uint8Array([(1 << 6) | 32, 3, 0x10, 0x27, 0, 0]), 0))
+        expect(decodeTypeInfo(new Uint8Array([(1 << 6) | 30, 3, 0x10, 0x27, 0, 0]), 0))
             .toEqual({ name: "Option(Digest(Float8, 0.01))", nextPos: 6 });
     });
 
     it("rejects an unsupported inner type, an accuracy out of range and truncated params", () => {
-        expect(() => decodeTypeInfo(new Uint8Array([32, 9, 0x10, 0x27, 0, 0]), 0)).toThrow("digest does not support Utf8 input");
-        expect(() => decodeTypeInfo(new Uint8Array([32, 3, 0xe7, 0x03, 0, 0]), 0)).toThrow("whole number of ppm");
-        expect(() => decodeTypeInfo(new Uint8Array([32, 3, 0x10]), 0)).toThrow("RBCF: digest params truncated");
+        expect(() => decodeTypeInfo(new Uint8Array([30, 9, 0x10, 0x27, 0, 0]), 0)).toThrow("digest does not support Utf8 input");
+        expect(() => decodeTypeInfo(new Uint8Array([30, 3, 0xe7, 0x03, 0, 0]), 0)).toThrow("whole number of ppm");
+        expect(() => decodeTypeInfo(new Uint8Array([30, 3, 0x10]), 0)).toThrow("RBCF: digest params truncated");
     });
 });
 

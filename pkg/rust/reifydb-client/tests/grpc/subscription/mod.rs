@@ -3,6 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc};
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
@@ -22,8 +23,7 @@ mod stress;
 
 /// Create a unique test table name to avoid conflicts between tests
 pub fn unique_table_name(prefix: &str) -> String {
-	use std::time::{SystemTime, UNIX_EPOCH};
-	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+	let timestamp = Clock::Real.now().to_nanos();
 	format!("{}_{}", prefix, timestamp % 1_000_000_000)
 }
 
@@ -43,10 +43,7 @@ pub async fn create_test_table(
 }
 
 pub async fn recv_with_timeout(sub: &mut GrpcSubscription, timeout_ms: u64) -> Option<GrpcChange> {
-	match timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), sub.recv()).await {
-		Ok(result) => result,
-		Err(_) => None,
-	}
+	timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), sub.recv()).await.ok().flatten()
 }
 
 pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize, timeout_ms: u64) -> Vec<GrpcChange> {

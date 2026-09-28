@@ -160,7 +160,7 @@ pub mod tests {
 		assert_eq!(result.id, ColumnId(16386));
 		assert_eq!(result.name, "col_2");
 		assert_eq!(result.constraint.get_type(), ValueType::Int2);
-		assert_eq!(result.auto_increment, false);
+		assert!(!result.auto_increment);
 	}
 
 	#[test]

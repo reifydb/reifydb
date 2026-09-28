@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow::transaction::{FlowTransaction, state::StateExtension};
+use reifydb_flow_async::transaction::{FlowTransaction, state::StateExtension};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 
 fn assert_update_replaces_the_row_wholesale<T: FlowTransaction>(txn: &mut T) {

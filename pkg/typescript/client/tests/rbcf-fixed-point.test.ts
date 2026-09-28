@@ -67,30 +67,30 @@ describe("RBCF fixed-point columns", () => {
         expect(col.payload).toEqual(["-123.456000000", "0.000000001", "99999999999999999999999999999.999999999"]);
     });
 
-    it("reads a precision 39 int from 32 byte slots across the full 256 bit sign range", () => {
+    it("reads a precision 39 decimal from 32 byte slots across the full 256 bit sign range", () => {
         // Precision 39 must read 32 byte slots, otherwise the sign in the last byte is lost.
         const col = decodeColumn({
-            kind: TYPE_CODE.Int,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.Plain,
             rowCount: 3,
             data: [...le(-(10n ** 39n - 1n), 32), ...le(0n, 32), ...le(10n ** 39n - 1n, 32)],
             extra: [39, 0],
         });
-        expect(col.type).toEqual({ Int: { precision: 39 } });
+        expect(col.type).toEqual({ Decimal: { precision: 39, scale: 0 } });
         expect(col.payload).toEqual([`-${10n ** 39n - 1n}`, "0", `${10n ** 39n - 1n}`]);
     });
 
-    it("reads a default uint at 76 digits and keeps a none row as the none marker", () => {
+    it("reads a precision 76 decimal and keeps a none row as the none marker", () => {
         // A none row still occupies a slot; skipping it would misalign the defined rows after it.
         const col = decodeColumn({
-            kind: TYPE_CODE.Uint,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.Plain,
             rowCount: 3,
             data: [...le(MAX76, 32), ...le(0n, 32), ...le(7n, 32)],
             extra: [76, 0],
             nones: [0b101],
         });
-        expect(col.type).toEqual({ Option: { Uint: { precision: 76 } } });
+        expect(col.type).toEqual({ Option: { Decimal: { precision: 76, scale: 0 } } });
         expect(col.payload).toEqual([`${MAX76}`, NONE_VALUE, "7"]);
     });
 
@@ -109,7 +109,7 @@ describe("RBCF fixed-point columns", () => {
 
     it("reads RLE runs of 16 byte values", () => {
         const col = decodeColumn({
-            kind: TYPE_CODE.Int,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.Rle,
             rowCount: 3,
             data: [...le(-5n, 16), ...u32(1), ...le(MAX38, 16), ...u32(2)],
@@ -121,7 +121,7 @@ describe("RBCF fixed-point columns", () => {
     it("reads delta with an i128 baseline for a narrow column", () => {
         // A narrow column must use the int16 delta layout with a 16 byte baseline, never 32.
         const col = decodeColumn({
-            kind: TYPE_CODE.Int,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.Delta,
             rowCount: 4,
             data: [1, ...le(-MAX38, 16), 10, 0xf6, 5],
@@ -148,7 +148,7 @@ describe("RBCF fixed-point columns", () => {
 
     it("reads delta rle with an i256 baseline", () => {
         const col = decodeColumn({
-            kind: TYPE_CODE.Uint,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.DeltaRle,
             rowCount: 4,
             data: [16, ...le(10n ** 60n, 32), ...le(10n ** 30n, 16), ...u32(3)],
@@ -185,14 +185,13 @@ describe("RBCF fixed-point columns", () => {
         ["three extra bytes", { extra: [10, 0, 0] }, "precision and scale in 2 extra bytes"],
         ["precision 0", { extra: [0, 0] }, "precision"],
         ["precision 77", { extra: [77, 0] }, "precision"],
-        ["int with a scale", { extra: [10, 1] }, "scale 0"],
         ["dict encoding", { encoding: ColumnEncoding.Dict }, "Dict encoding not supported"],
         ["bitpack encoding", { encoding: ColumnEncoding.BitPack }, "BitPack encoding not supported"],
         ["more digits than the precision", { data: le(1000n, 16), extra: [3, 0] }, "more digits than precision 3"],
-    ])("rejects an int column with %s", (_, override, message) => {
+    ])("rejects a decimal column with %s", (_, override, message) => {
         // A decoder that accepts these would render values the server never wrote.
         const spec: ColumnSpec = {
-            kind: TYPE_CODE.Int,
+            kind: TYPE_CODE.Decimal,
             encoding: ColumnEncoding.Plain,
             rowCount: 1,
             data: le(1n, 16),
@@ -208,25 +207,15 @@ describe("RBCF fixed-point columns", () => {
         ).toThrow("scale");
     });
 
-    it("rejects a negative uint", () => {
-        // A set sign bit on a uint must be rejected as corrupt, never read as a large number.
-        expect(() =>
-            decodeColumn({ kind: TYPE_CODE.Uint, encoding: ColumnEncoding.Plain, rowCount: 1, data: le(-1n, 16), extra: [10, 0] })
-        ).toThrow("negative");
-    });
-
     it("rejects plain data shorter than the rows need", () => {
         expect(() =>
-            decodeColumn({ kind: TYPE_CODE.Int, encoding: ColumnEncoding.Plain, rowCount: 2, data: le(1n, 32), extra: [76, 0] })
+            decodeColumn({ kind: TYPE_CODE.Decimal, encoding: ColumnEncoding.Plain, rowCount: 2, data: le(1n, 32), extra: [76, 0] })
         ).toThrow("do not hold 2 values of 32 bytes");
     });
 });
 
 describe("RBCF fixed-point typeinfo", () => {
     it.each([
-        [[TYPE_CODE.Int, 76], "Int"],
-        [[TYPE_CODE.Int, 38], "Int(38)"],
-        [[TYPE_CODE.Uint, 1], "Uint(1)"],
         [[TYPE_CODE.Decimal, 76, 10], "Decimal"],
         [[TYPE_CODE.Decimal, 38, 9], "Decimal(38, 9)"],
         [[TYPE_CODE.Decimal, 76, 0], "Decimal(76, 0)"],
@@ -238,29 +227,20 @@ describe("RBCF fixed-point typeinfo", () => {
 
     it("rejects typeinfo cut off before its parameters", () => {
         expect(() => decodeTypeInfo(new Uint8Array([TYPE_CODE.Decimal, 38]), 0)).toThrow("truncated");
-        expect(() => decodeTypeInfo(new Uint8Array([TYPE_CODE.Int]), 0)).toThrow("truncated");
     });
 });
 
 describe("RBCF fixed-point Any values", () => {
-    it("reads int and uint as 32 byte values", () => {
-        const int = [TYPE_CODE.Int, ...le(-MAX76, 32)];
-        expect(decodeAnyValue(new Uint8Array(int), 0)).toEqual({ value: `${-MAX76}`, nextPos: 33 });
-        const uint = [TYPE_CODE.Uint, ...le(MAX76, 32)];
-        expect(decodeAnyValue(new Uint8Array(uint), 0)).toEqual({ value: `${MAX76}`, nextPos: 33 });
-    });
-
     it("reads a decimal as a scale byte and a 32 byte unscaled value", () => {
         const bytes = [TYPE_CODE.Decimal, 3, ...le(-1500n, 32)];
         expect(decodeAnyValue(new Uint8Array(bytes), 0)).toEqual({ value: "-1.500", nextPos: 34 });
     });
 
-    it("rejects a negative uint and a value beyond 76 digits", () => {
-        expect(() => decodeAnyValue(new Uint8Array([TYPE_CODE.Uint, ...le(-1n, 32)]), 0)).toThrow("negative");
-        expect(() => decodeAnyValue(new Uint8Array([TYPE_CODE.Int, ...le(MAX76 + 1n, 32)]), 0)).toThrow("76 digits");
+    it("rejects a value beyond 76 digits", () => {
+        expect(() => decodeAnyValue(new Uint8Array([TYPE_CODE.Decimal, 0, ...le(MAX76 + 1n, 32)]), 0)).toThrow("76 digits");
     });
 
     it("rejects a truncated value", () => {
-        expect(() => decodeAnyValue(new Uint8Array([TYPE_CODE.Int, ...le(1n, 16)]), 0)).toThrow("truncated");
+        expect(() => decodeAnyValue(new Uint8Array([TYPE_CODE.Decimal, 0, ...le(1n, 16)]), 0)).toThrow("truncated");
     });
 });

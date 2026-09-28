@@ -9,9 +9,6 @@ impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
 
 impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 
-impl_safe_convert_float_to_int!(f64);
-impl_safe_convert_float_to_uint!(f64);
-
 impl_safe_convert_to_decimal_from_float!(f64 => from_f64);
 
 #[cfg(test)]
@@ -637,6 +634,8 @@ pub mod tests {
 	}
 
 	mod decimal {
+		use std::f64::consts::PI;
+
 		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
@@ -759,7 +758,7 @@ pub mod tests {
 
 		#[test]
 		fn test_wrapping_convert_with_decimal() {
-			let x: f64 = 3.14159;
+			let x: f64 = PI;
 			let y: Decimal = x.wrapping_convert();
 			let str_repr = y.to_string();
 			assert!(str_repr.starts_with("3.141"), "actual: {}", str_repr);

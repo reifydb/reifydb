@@ -79,8 +79,8 @@ fn a_vectorized_udf_over_an_empty_result_has_the_type_a_populated_result_has() {
 
 	assert_same_type_as_populated(
 		&t,
-		"UDF twice ($x: int) { RETURN $x * 2 }; FROM test::t | filter { g == 1 } | map { x: twice(a) }",
-		"UDF twice ($x: int) { RETURN $x * 2 }; FROM test::t | filter { a > 1000 } | map { x: twice(a) }",
+		"UDF twice ($x: int4) { RETURN $x * 2 }; FROM test::t | filter { g == 1 } | map { x: twice(a) }",
+		"UDF twice ($x: int4) { RETURN $x * 2 }; FROM test::t | filter { a > 1000 } | map { x: twice(a) }",
 		0,
 	);
 }

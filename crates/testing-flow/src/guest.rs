@@ -14,7 +14,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,

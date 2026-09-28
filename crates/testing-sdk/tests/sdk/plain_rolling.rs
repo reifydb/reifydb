@@ -10,7 +10,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	state::timer::TimerKind,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
@@ -143,7 +143,7 @@ macro_rules! sum_operator {
 			fn build_output(
 				&self,
 				group: &String,
-				span: reifydb_flow::window::span::WindowSpan<DateTime>,
+				span: reifydb_flow_async::window::span::WindowSpan<DateTime>,
 				value: &f64,
 			) -> Option<SumOut> {
 				Some(SumOut {

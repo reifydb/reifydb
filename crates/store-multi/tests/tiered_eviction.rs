@@ -5,9 +5,9 @@
 //! persists the latest-<=W value of persistent objects and drops all <=W versions from the commit tier,
 //! so snapshots older than W are deliberately not preserved.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -24,7 +24,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
+use reifydb_store_commit::{MultiVersionScope, TierBatch, VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{
 	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	flush::ObjectPersistence,
@@ -131,10 +131,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 		if persistent_object && !to_persist.is_empty() {
 			let persistent = store.persistent().expect("persistent tier configured");
-			let mut by_version: HashMap<
-				CommitVersion,
-				HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
-			> = HashMap::new();
+			let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
 			for (key, version, value) in &to_persist {
 				by_version
 					.entry(*version)
@@ -169,7 +166,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	// Reads must stay correct across the tier boundary the sweep introduces.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -224,7 +221,7 @@ fn persistent_false_object_is_dropped_without_persisting() {
 	// A persistent:false object is RAM-only: skipping its eviction would leave RAM unbounded, and
 	// persisting it would write data that was never meant to be durable.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -294,7 +291,7 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 fn versions_above_w_are_left_entirely_resident() {
 	// With W below every committed version, an over-eager sweep would surface here.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 	commit(&store, &k, 5, "v5");
 
@@ -336,7 +333,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	// version-guarded upsert, so the sweep must persist the latest-<=W value (v2); anything writing the
 	// current v3 out-of-band makes a read at the W snapshot return NotFound.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -348,7 +345,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let versions = stored_versions(commit_tier, kind, &k, 1..=3);
 		let evicted_gone = matches!(
@@ -358,7 +355,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 		if versions == 1 && evicted_gone {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!(
 				"flush actor sweep did not evict <= W within the timeout (versions={versions}, evicted_gone={evicted_gone})"
 			);
@@ -392,7 +389,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	// Deleting the persistent row after eviction isolates the read tier as the only possible source, so a
 	// successful read proves the sweep seeded rather than invalidated.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -403,7 +400,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
 			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)),
@@ -412,7 +409,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 		if evicted {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!("flush actor sweep did not evict v2 from the commit tier within the timeout");
 		}
 		std::thread::yield_now();
@@ -435,7 +432,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier;
 	// deleting the persistent row isolates the seed as the only source of v2.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -447,7 +444,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
 			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)),
@@ -456,7 +453,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 		if evicted {
 			break;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			panic!("flush actor sweep did not evict <= W (v2) from the commit tier within the timeout");
 		}
 		std::thread::yield_now();
@@ -484,7 +481,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	// Read-tier invalidation after a persistent TTL delete is load-bearing for correctness, not a
 	// cache-freshness nicety: without it a stale entry resurrects the deleted row.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
 
 	let persistent = store.persistent().unwrap();

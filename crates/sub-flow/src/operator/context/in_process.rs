@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	state::timer::TimerKind,
 };
-use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
+use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
@@ -445,7 +445,7 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_flow::operator::host::TxnHostContext;
+	use reifydb_flow_async::operator::host::TxnHostContext;
 	use reifydb_sdk::flow::operator::context::Windowed;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 

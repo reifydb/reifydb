@@ -14,7 +14,7 @@ use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
 		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		int::Int, row_number::RowNumber, time::Time, uint::Uint,
+		row_number::RowNumber, time::Time,
 	},
 };
 
@@ -124,14 +124,6 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError> {
-		self.typed(name)
-	}
-
-	fn int(&self, name: &str) -> Result<Option<Int>, SdkError> {
-		self.typed(name)
-	}
-
-	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError> {
 		self.typed(name)
 	}
 

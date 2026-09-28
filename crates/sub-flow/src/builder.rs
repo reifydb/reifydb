@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::operator::BoxedHostOperator;
+use reifydb_flow_async::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{
 	ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, UnmanagedMount,

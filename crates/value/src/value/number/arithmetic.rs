@@ -4,14 +4,12 @@
 use crate::value::{
 	Value,
 	decimal::Decimal,
-	int::Int,
 	is::IsNumber,
 	number::{
 		promote::Promote,
 		safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
 	},
 	to_value::ToValue,
-	uint::Uint,
 	value_type::ValueType,
 };
 
@@ -47,8 +45,6 @@ fn value_is_zero(v: &Value) -> bool {
 		Value::Uint16(x) => SafeDiv::is_zero(x),
 		Value::Float4(x) => SafeDiv::is_zero(&x.value()),
 		Value::Float8(x) => SafeDiv::is_zero(&x.value()),
-		Value::Int(x) => SafeDiv::is_zero(x),
-		Value::Uint(x) => SafeDiv::is_zero(x),
 		Value::Decimal(x) => SafeDiv::is_zero(x),
 		_ => false,
 	}
@@ -117,7 +113,7 @@ macro_rules! impl_div_to_value_via_decimal {
 	};
 }
 
-impl_div_to_value_via_decimal!(i128, u128, Int, Uint);
+impl_div_to_value_via_decimal!(i128, u128);
 
 impl DivToValue for f64 {
 	fn checked_div_to_value(&self, r: &Self) -> Option<Value> {
@@ -186,8 +182,6 @@ macro_rules! right_arms {
 			Value::Uint4(b) => $op($la, b),
 			Value::Uint8(b) => $op($la, b),
 			Value::Uint16(b) => $op($la, b),
-			Value::Int(b) => $op($la, b),
-			Value::Uint(b) => $op($la, b),
 			Value::Decimal(b) => $op($la, b),
 			Value::Float4(b) => $op($la, &b.value()),
 			Value::Float8(b) => $op($la, &b.value()),
@@ -209,8 +203,6 @@ macro_rules! value_arith_dispatch {
 			Value::Uint4(a) => right_arms!($r, a, $op, $fallback),
 			Value::Uint8(a) => right_arms!($r, a, $op, $fallback),
 			Value::Uint16(a) => right_arms!($r, a, $op, $fallback),
-			Value::Int(a) => right_arms!($r, a, $op, $fallback),
-			Value::Uint(a) => right_arms!($r, a, $op, $fallback),
 			Value::Decimal(a) => right_arms!($r, a, $op, $fallback),
 			Value::Float4(a) => right_arms!($r, &a.value(), $op, $fallback),
 			Value::Float8(a) => right_arms!($r, &a.value(), $op, $fallback),
@@ -486,13 +478,7 @@ mod tests {
 	fn retraction_invariant_exact_for_integers() {
 		// Window and aggregate accumulators retract by subtracting what they added, so for
 		// non-float operands checked_sub must invert checked_add exactly.
-		let cases = [
-			(int4(100), int4(7)),
-			(int2(30), int4(9)),
-			(uint4(50), uint4(8)),
-			(dec(1000), dec(123)),
-			(Value::Int(Int::from_i64(99)), Value::Int(Int::from_i64(40))),
-		];
+		let cases = [(int4(100), int4(7)), (int2(30), int4(9)), (uint4(50), uint4(8)), (dec(1000), dec(123))];
 		for (r, x) in cases {
 			let added = r.checked_add(&x).unwrap();
 			let restored = added.checked_sub(&x).unwrap();

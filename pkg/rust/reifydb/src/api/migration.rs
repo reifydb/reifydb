@@ -170,19 +170,15 @@ fn load_directory(path: &Path) -> Result<Vec<MigrationStatement>> {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		env::temp_dir,
-		fs,
-		path::PathBuf,
-		process::id,
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::{env::temp_dir, fs, path::PathBuf, process::id};
+
+	use reifydb_runtime::context::clock::Clock;
 
 	use super::*;
 
 	fn unique_dir(label: &str) -> PathBuf {
 		let mut p = temp_dir();
-		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+		let nanos = Clock::Real.now().to_nanos();
 		p.push(format!("reifydb_migsrc_{}_{}_{}", label, id(), nanos));
 		fs::create_dir_all(&p).unwrap();
 		p

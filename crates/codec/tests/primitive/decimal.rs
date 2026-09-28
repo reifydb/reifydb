@@ -221,7 +221,7 @@ fn test_mixed_with_other_types() {
 
 	shape.set::<i32>(&mut row, 4, -42i32);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get_decimal(&row, 1).to_string(), "99.99");
 	assert_eq!(shape.get_utf8(&row, 2), "test");
 	assert_eq!(shape.get_decimal(&row, 3).to_string(), "123456789.987654321");

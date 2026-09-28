@@ -134,8 +134,7 @@ impl testscript::runner::Runner for Runner {
 				let key =
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value: Option<SingleVersionRow> =
-					self.store.get(&script_key(&key).encode())?.into();
+				let value: Option<SingleVersionRow> = self.store.get(&script_key(&key).encode())?;
 				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}

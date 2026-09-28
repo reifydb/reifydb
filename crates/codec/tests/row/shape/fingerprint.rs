@@ -119,88 +119,6 @@ fn test_fingerprint_utf8_different_max_bytes() {
 }
 
 #[test]
-fn test_fingerprint_int_constrained_vs_unconstrained() {
-	let unconstrained = vec![make_field("num", ValueType::INT)];
-	let constrained =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(8))))];
-
-	assert_ne!(
-		compute_fingerprint(RowFamily::Table, &unconstrained),
-		compute_fingerprint(RowFamily::Table, &constrained),
-		"Int unconstrained should differ from Int(8)"
-	);
-}
-
-#[test]
-fn test_fingerprint_int_same_constraint_deterministic() {
-	let fields1 =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(16))))];
-	let fields2 =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(16))))];
-
-	assert_eq!(
-		compute_fingerprint(RowFamily::Table, &fields1),
-		compute_fingerprint(RowFamily::Table, &fields2),
-		"Int(16) should produce same fingerprint"
-	);
-}
-
-#[test]
-fn test_fingerprint_int_different_max_bytes() {
-	let small =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(4))))];
-	let large =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::int(Precision::new(32))))];
-
-	assert_ne!(
-		compute_fingerprint(RowFamily::Table, &small),
-		compute_fingerprint(RowFamily::Table, &large),
-		"Int(4) should differ from Int(32)"
-	);
-}
-
-#[test]
-fn test_fingerprint_uint_constrained_vs_unconstrained() {
-	let unconstrained = vec![make_field("num", ValueType::UINT)];
-	let constrained =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(8))))];
-
-	assert_ne!(
-		compute_fingerprint(RowFamily::Table, &unconstrained),
-		compute_fingerprint(RowFamily::Table, &constrained),
-		"Uint unconstrained should differ from Uint(8)"
-	);
-}
-
-#[test]
-fn test_fingerprint_uint_same_constraint_deterministic() {
-	let fields1 =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(64))))];
-	let fields2 =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(64))))];
-
-	assert_eq!(
-		compute_fingerprint(RowFamily::Table, &fields1),
-		compute_fingerprint(RowFamily::Table, &fields2),
-		"Uint(64) should produce same fingerprint"
-	);
-}
-
-#[test]
-fn test_fingerprint_uint_different_max_bytes() {
-	let small =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(2))))];
-	let large =
-		vec![make_constrained_field("num", TypeConstraint::unconstrained(ValueType::uint(Precision::new(38))))];
-
-	assert_ne!(
-		compute_fingerprint(RowFamily::Table, &small),
-		compute_fingerprint(RowFamily::Table, &large),
-		"Uint(2) should differ from Uint(38)"
-	);
-}
-
-#[test]
 fn test_fingerprint_blob_constrained_vs_unconstrained() {
 	let unconstrained = vec![make_field("data", ValueType::Blob)];
 	let constrained = vec![make_constrained_field(
@@ -349,26 +267,18 @@ fn test_fingerprint_different_types_same_max_bytes() {
 		"field",
 		TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(100))),
 	)];
-	let int = vec![make_constrained_field(
+	let decimal = vec![make_constrained_field(
 		"field",
-		TypeConstraint::unconstrained(ValueType::int(Precision::new(38))),
-	)];
-	let uint = vec![make_constrained_field(
-		"field",
-		TypeConstraint::unconstrained(ValueType::uint(Precision::new(38))),
+		TypeConstraint::unconstrained(ValueType::decimal(Precision::new(38), Scale::new(0))),
 	)];
 
 	let fp_utf8 = compute_fingerprint(RowFamily::Table, &utf8);
 	let fp_blob = compute_fingerprint(RowFamily::Table, &blob);
-	let fp_int = compute_fingerprint(RowFamily::Table, &int);
-	let fp_uint = compute_fingerprint(RowFamily::Table, &uint);
+	let fp_decimal = compute_fingerprint(RowFamily::Table, &decimal);
 
 	assert_ne!(fp_utf8, fp_blob, "Utf8(100) should differ from Blob(100)");
-	assert_ne!(fp_utf8, fp_int, "Utf8(100) should differ from Int(38)");
-	assert_ne!(fp_utf8, fp_uint, "Utf8(100) should differ from Uint(38)");
-	assert_ne!(fp_blob, fp_int, "Blob(100) should differ from Int(38)");
-	assert_ne!(fp_blob, fp_uint, "Blob(100) should differ from Uint(38)");
-	assert_ne!(fp_int, fp_uint, "Int(38) should differ from Uint(38)");
+	assert_ne!(fp_utf8, fp_decimal, "Utf8(100) should differ from Decimal(38, 0)");
+	assert_ne!(fp_blob, fp_decimal, "Blob(100) should differ from Decimal(38, 0)");
 }
 
 #[test]

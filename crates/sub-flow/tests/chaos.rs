@@ -16,7 +16,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_flow::operator::HostOperator;
+use reifydb_flow_async::operator::HostOperator;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
 	operator::{

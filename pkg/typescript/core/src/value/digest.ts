@@ -15,7 +15,6 @@ const INNER_TYPES: readonly DigestInnerType[] = [
     "Int1", "Int2", "Int4", "Int8", "Int16",
     "Uint1", "Uint2", "Uint4", "Uint8", "Uint16",
     "Duration",
-    "Int", "Uint",
 ];
 
 export function digestType(inner: string, accuracy: number): DigestType {

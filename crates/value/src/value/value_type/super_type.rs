@@ -59,8 +59,6 @@ mod tests {
 			Blob,
 			IdentityId,
 			DictionaryId,
-			ValueType::INT,
-			ValueType::UINT,
 			ValueType::DECIMAL,
 			Any,
 			opt(Int4),
@@ -293,8 +291,6 @@ mod tests {
 			IdentityId,
 			DictionaryId,
 			ValueType::DECIMAL,
-			ValueType::INT,
-			ValueType::UINT,
 		];
 		for ty in cases {
 			let got = ValueType::super_type_of([ty.clone(), ty.clone()]);
@@ -329,7 +325,7 @@ mod tests {
 	#[test]
 	fn large_input_stable() {
 		// The fold must saturate rather than keep widening, so a long input is stable.
-		let input: Vec<ValueType> = iter::repeat(Int1).take(1000).collect();
+		let input: Vec<ValueType> = iter::repeat_n(Int1, 1000).collect();
 		assert_eq!(ValueType::super_type_of(input), Int16);
 	}
 }

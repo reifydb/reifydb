@@ -366,7 +366,7 @@ mod projection_tests {
 		view.columns = vec!["g".to_string(), "total".to_string()];
 		for number in 1..=2u64 {
 			view.insert(
-				OutputKey::new(vec![Value::Uint8(number.into())]),
+				OutputKey::new(vec![Value::Uint8(number)]),
 				row(&[("g", Value::Int4(1)), ("total", Value::Int4(5))]),
 			);
 		}

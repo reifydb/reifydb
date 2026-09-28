@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OperatorDef {
 	SourceInlineData {},
 	SourceTable {
@@ -352,7 +352,7 @@ impl OperatorDef {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlowNode {
 	pub id: OperatorId,
 	pub ty: OperatorDef,

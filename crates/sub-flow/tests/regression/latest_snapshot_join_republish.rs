@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb::{Value, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_seconds_const(5);
 
 fn make_db() -> TestDb {
 	// The aggregate sits in the same pipeline as the join, with no view between them. That placement

@@ -151,7 +151,7 @@ fn a_malformed_persisted_key_fails_the_load_instead_of_being_skipped() {
 	store.put(ColumnSnapshotId(1), &[1]).expect("put a well-formed block");
 	execute_on_column_db(&config, "INSERT INTO column_blocks (snapshot_id, data) VALUES (x'010203', x'00')");
 
-	let err = store.load_all().err().expect("a 3-byte snapshot_id key must fail the load");
+	let err = store.load_all().expect_err("a 3-byte snapshot_id key must fail the load");
 
 	assert!(err.to_string().contains("malformed 3-byte snapshot_id key"), "unexpected error: {err}");
 }

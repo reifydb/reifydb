@@ -3,7 +3,10 @@
 
 use std::{error::Error, future::Future, sync::Arc};
 
-use reifydb::{Database, runtime::context::clock::MockClock};
+use reifydb::{
+	Database,
+	runtime::context::clock::{Clock, MockClock},
+};
 use reifydb_client::{ChangePayload, SubscriptionConfig, WireFormat, WsClient};
 use reifydb_codec::json::wire_type::from_json as type_from_json;
 use reifydb_value::value::duration::Duration;
@@ -27,8 +30,7 @@ mod stress;
 
 /// Create a unique test table name to avoid conflicts between tests
 pub fn unique_table_name(prefix: &str) -> String {
-	use std::time::{SystemTime, UNIX_EPOCH};
-	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+	let timestamp = Clock::Real.now().to_nanos();
 	format!("{}_{}", prefix, timestamp % 1_000_000_000)
 }
 
@@ -44,10 +46,7 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 }
 
 pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
-	match timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await {
-		Ok(result) => result,
-		Err(_) => None,
-	}
+	timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await.ok().flatten()
 }
 
 pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {

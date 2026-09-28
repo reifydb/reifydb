@@ -180,7 +180,7 @@ pub mod tests {
 	#[test]
 	fn test_function_with_typed_params() {
 		let bump = Bump::new();
-		let source = "UDF add ($a: int, $b: int) { $a + $b }";
+		let source = "UDF add ($a: int4, $b: int4) { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -194,13 +194,13 @@ pub mod tests {
 
 		assert_eq!(def.parameters[0].variable.name(), "a");
 		match &def.parameters[0].type_annotation {
-			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int4"),
 			_ => panic!("Expected unconstrained type"),
 		}
 
 		assert_eq!(def.parameters[1].variable.name(), "b");
 		match &def.parameters[1].type_annotation {
-			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int4"),
 			_ => panic!("Expected unconstrained type"),
 		}
 	}
@@ -208,7 +208,7 @@ pub mod tests {
 	#[test]
 	fn test_function_with_return_type() {
 		let bump = Bump::new();
-		let source = "UDF add ($a: int, $b: int) : int { $a + $b }";
+		let source = "UDF add ($a: int4, $b: int4) : int4 { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -219,7 +219,7 @@ pub mod tests {
 
 		assert_eq!(def.name.text(), "add");
 		match &def.return_type {
-			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int4"),
 			_ => panic!("Expected unconstrained return type"),
 		}
 	}
@@ -227,7 +227,7 @@ pub mod tests {
 	#[test]
 	fn test_function_mixed_typed_params() {
 		let bump = Bump::new();
-		let source = "UDF example ($x, $y: int) { $x + $y }";
+		let source = "UDF example ($x, $y: int4) { $x + $y }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);

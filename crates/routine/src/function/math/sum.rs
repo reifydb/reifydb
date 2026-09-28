@@ -23,10 +23,8 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::{precision::Precision, scale::Scale},
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
@@ -95,12 +93,6 @@ impl Function for Sum {
 
 fn sum_type<'a>(input: ValueType, sums: impl Iterator<Item = &'a Value>) -> ValueType {
 	match input {
-		ValueType::Int {
-			..
-		} => ValueType::INT,
-		ValueType::Uint {
-			..
-		} => ValueType::UINT,
 		ValueType::Decimal {
 			scale,
 			..
@@ -342,7 +334,8 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				sum_arm!(self, column, groups, container.values(), i128, Int16);
+				let values = wides::<i128>(container);
+				sum_arm!(self, column, groups, values, i128, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -362,7 +355,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				sum_arm!(self, column, groups, values, u128, Uint16);
 				Ok(())
 			}
@@ -372,16 +365,6 @@ impl Accumulator for SumAccumulator {
 			}
 			ColumnBuffer::Float8(container) => {
 				sum_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
-				Ok(())
-			}
-			ColumnBuffer::Int(container) => {
-				let values = ints(container);
-				sum_family_arm!(self, column, groups, values, Int::zero(), Int, ValueType::INT);
-				Ok(())
-			}
-			ColumnBuffer::Uint(container) => {
-				let values = uints(container);
-				sum_family_arm!(self, column, groups, values, Uint::zero(), Uint, ValueType::UINT);
 				Ok(())
 			}
 			ColumnBuffer::Decimal(container) => {
@@ -443,7 +426,8 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				sub_arm!(self, column, groups, container.values(), i128, Int16);
+				let values = wides::<i128>(container);
+				sub_arm!(self, column, groups, values, i128, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -463,7 +447,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				let values = u128s(container);
+				let values = wides::<u128>(container);
 				sub_arm!(self, column, groups, values, u128, Uint16);
 				Ok(())
 			}
@@ -473,16 +457,6 @@ impl Accumulator for SumAccumulator {
 			}
 			ColumnBuffer::Float8(container) => {
 				sub_arm_float!(self, column, groups, container.values(), f64, Float8, Value::float8);
-				Ok(())
-			}
-			ColumnBuffer::Int(container) => {
-				let values = ints(container);
-				sub_family_arm!(self, column, groups, values, Int::zero(), Int, ValueType::INT);
-				Ok(())
-			}
-			ColumnBuffer::Uint(container) => {
-				let values = uints(container);
-				sub_family_arm!(self, column, groups, values, Uint::zero(), Uint, ValueType::UINT);
 				Ok(())
 			}
 			ColumnBuffer::Decimal(container) => {

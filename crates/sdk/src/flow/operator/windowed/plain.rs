@@ -14,8 +14,8 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_flow::operator::state::reaper::queued;
-use reifydb_flow::{
+use reifydb_flow_async::operator::state::reaper::queued;
+use reifydb_flow_async::{
 	operator::{
 		state::{
 			reaper::{drain, drain_groups, enqueue},
@@ -1278,17 +1278,18 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::{marker::PhantomData, sync::Mutex};
+	use std::marker::PhantomData;
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::{WindowKind, WindowSize, WindowSizeDomain},
 		operator_with::WithSpan,
 	};
-	use reifydb_flow::window::{
+	use reifydb_flow_async::window::{
 		accumulator::invertible::last_value::LastValue,
 		coord::{OrdinalCoord, RowSpan},
 	};
+	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
@@ -1347,7 +1348,7 @@ mod tests {
 				}
 
 				fn new_accumulator(&self, settings: &WindowSettings<$coord>) -> LastValue<i64> {
-					self.settings_seen.lock().unwrap().push($seen(settings));
+					self.settings_seen.lock().push($seen(settings));
 					LastValue::default()
 				}
 			}
@@ -1438,8 +1439,8 @@ mod tests {
 		declared.aggregator.new_accumulator(&declared.settings);
 		omitted.aggregator.new_accumulator(&omitted.settings);
 
-		assert_eq!(*declared.aggregator.settings_seen.lock().unwrap(), vec![Some(secs(15))]);
-		assert_eq!(*omitted.aggregator.settings_seen.lock().unwrap(), vec![None]);
+		assert_eq!(*declared.aggregator.settings_seen.lock(), vec![Some(secs(15))]);
+		assert_eq!(*omitted.aggregator.settings_seen.lock(), vec![None]);
 		assert_eq!(declared.settings.lateness, secs(20));
 	}
 

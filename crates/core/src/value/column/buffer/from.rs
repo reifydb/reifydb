@@ -34,8 +34,6 @@ impl ColumnBuffer {
 			Value::Uuid4(v) => ColumnBuffer::uuid4(vec![v; row_count]),
 			Value::Uuid7(v) => ColumnBuffer::uuid7(vec![v; row_count]),
 			Value::Blob(v) => ColumnBuffer::blob(vec![v; row_count]),
-			Value::Int(v) => ColumnBuffer::int(Precision::MAX, vec![v; row_count]),
-			Value::Uint(v) => ColumnBuffer::uint(Precision::MAX, vec![v; row_count]),
 			Value::Decimal(v) => {
 				ColumnBuffer::decimal(Precision::MAX, Scale::new(v.scale()), vec![v; row_count])
 			}

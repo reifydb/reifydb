@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::f64::consts::E;
+use std::{f32::consts::PI, f64::consts::E};
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time};
@@ -13,8 +13,8 @@ fn test_read_bool() {
 	let bytes = ser.finish();
 
 	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert_eq!(de.read_bool().unwrap(), true);
-	assert_eq!(de.read_bool().unwrap(), false);
+	assert!(de.read_bool().unwrap());
+	assert!(!de.read_bool().unwrap());
 	assert!(de.is_empty());
 }
 
@@ -49,11 +49,11 @@ fn test_read_unsigned() {
 #[test]
 fn test_read_floats() {
 	let mut ser = KeySerializer::new();
-	ser.extend_f32(3.14).extend_f64(E);
+	ser.extend_f32(PI).extend_f64(E);
 	let bytes = ser.finish();
 
 	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert!((de.read_f32().unwrap() - 3.14).abs() < 0.001);
+	assert!((de.read_f32().unwrap() - PI).abs() < 0.001);
 	assert!((de.read_f64().unwrap() - E).abs() < 0.000001);
 	assert!(de.is_empty());
 }
@@ -61,7 +61,7 @@ fn test_read_floats() {
 #[test]
 fn test_read_bytes() {
 	let mut ser = KeySerializer::new();
-	ser.extend_bytes(b"hello").extend_bytes(&[0x01, 0xff, 0x02]);
+	ser.extend_bytes(b"hello").extend_bytes([0x01, 0xff, 0x02]);
 	let bytes = ser.finish();
 
 	let mut de = KeyDeserializer::from_bytes(&bytes);
@@ -161,7 +161,7 @@ fn test_keycode_different_durations_produce_different_keys() {
 #[test]
 fn test_keycode_duration_ordering_preserved() {
 	// Keycode is descending: a larger Duration encodes to smaller bytes.
-	let durations = vec![
+	let durations = [
 		Duration::new(0, 0, 0).unwrap(),
 		Duration::new(0, 0, 1_000_000_000).unwrap(),
 		Duration::new(0, 1, 0).unwrap(),
@@ -238,7 +238,7 @@ fn test_chaining() {
 	let bytes = ser.finish();
 
 	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert_eq!(de.read_bool().unwrap(), true);
+	assert!(de.read_bool().unwrap());
 	assert_eq!(de.read_i32().unwrap(), 42);
 	assert_eq!(de.read_str().unwrap(), "test");
 	assert_eq!(de.read_u64().unwrap(), 1000);

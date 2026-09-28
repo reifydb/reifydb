@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "common/mod.rs"]
+mod common;
 #[path = "coverage_precondition.rs"]
 mod coverage_precondition;
 #[path = "coverage_serve.rs"]

@@ -13,7 +13,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	state::timer::TimerKind,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{

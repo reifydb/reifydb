@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{container::decimal_array::int16_array, frame::data::FrameColumnData};
+use std::iter::repeat_n;
+
+use reifydb_value::value::{container::wide_int_array::wide_array, frame::data::FrameColumnData};
 
 fn make(v: Vec<i128>) -> FrameColumnData {
-	FrameColumnData::Int16(int16_array(v))
+	FrameColumnData::Int16(wide_array(v))
 }
 
 crate::rle_tests! {
 	repeated: {
 		let mut v = Vec::new();
 		for val in [1_000_000_000_000i128, 2_000_000_000_000, 3_000_000_000_000, 4_000_000_000_000, 5_000_000_000_000] {
-			v.extend(std::iter::repeat(val).take(100));
+			v.extend(repeat_n(val, 100));
 		}
 		v
 	},

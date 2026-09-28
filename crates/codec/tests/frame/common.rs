@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+use std::slice::from_ref;
+
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions};
 use reifydb_value::value::{
 	Value,
@@ -43,7 +45,7 @@ pub fn round_trip_column_with(name: &str, data: FrameColumnData, options: &Encod
 		name: name.to_string(),
 		data,
 	}]);
-	let encoded = encode_frames(&[frame.clone()], options).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), options).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);
 	assert_frame_eq(&frame, &decoded[0]);
@@ -55,7 +57,7 @@ pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
 		name: name.to_string(),
 		data,
 	}]);
-	let compressed = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let compressed = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let plain = encode_frames(&[frame], &EncodeOptions::none()).expect("encode failed");
 	assert!(
 		compressed.len() < plain.len(),
@@ -70,8 +72,8 @@ pub fn assert_forced_round_trip_beats_plain(name: &str, data: FrameColumnData, e
 		name: name.to_string(),
 		data,
 	}]);
-	let forced = encode_frames(&[frame.clone()], &EncodeOptions::forced(encoding)).expect("encode failed");
-	let plain = encode_frames(&[frame.clone()], &EncodeOptions::none()).expect("encode failed");
+	let forced = encode_frames(from_ref(&frame), &EncodeOptions::forced(encoding)).expect("encode failed");
+	let plain = encode_frames(from_ref(&frame), &EncodeOptions::none()).expect("encode failed");
 	assert!(
 		forced.len() < plain.len(),
 		"expected {:?} to beat plain: forced={} >= plain={}",
@@ -94,22 +96,22 @@ macro_rules! plain_tests {
 	(typical: $typical:expr, boundary: $boundary:expr, single: $single:expr $(,)?) => {
 		#[test]
 		fn round_trip() {
-			crate::common::round_trip_column("test", make($typical));
+			$crate::common::round_trip_column("test", make($typical));
 		}
 
 		#[test]
 		fn empty_column() {
-			crate::common::round_trip_column("test", make(vec![]));
+			$crate::common::round_trip_column("test", make(vec![]));
 		}
 
 		#[test]
 		fn single_element() {
-			crate::common::round_trip_column("test", make(vec![$single]));
+			$crate::common::round_trip_column("test", make(vec![$single]));
 		}
 
 		#[test]
 		fn boundary_values() {
-			crate::common::round_trip_column("test", make($boundary));
+			$crate::common::round_trip_column("test", make($boundary));
 		}
 
 		#[test]
@@ -117,7 +119,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -131,7 +133,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined = vec![false; len];
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -145,7 +147,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined = vec![true; len];
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -156,7 +158,7 @@ macro_rules! plain_tests {
 
 		#[test]
 		fn compression_none_round_trip() {
-			crate::common::round_trip_column_with(
+			$crate::common::round_trip_column_with(
 				"test",
 				make($typical),
 				&reifydb_codec::frame::options::EncodeOptions::none(),
@@ -170,17 +172,17 @@ macro_rules! dict_tests {
 	(low_cardinality: $low:expr, high_cardinality: $high:expr $(,)?) => {
 		#[test]
 		fn low_cardinality_round_trip() {
-			crate::common::round_trip_column("test", make($low));
+			$crate::common::round_trip_column("test", make($low));
 		}
 
 		#[test]
 		fn low_cardinality_compresses() {
-			crate::common::assert_compresses_well("test", make($low));
+			$crate::common::assert_compresses_well("test", make($low));
 		}
 
 		#[test]
 		fn high_cardinality_round_trip() {
-			crate::common::round_trip_column("test", make($high));
+			$crate::common::round_trip_column("test", make($high));
 		}
 
 		#[test]
@@ -188,7 +190,7 @@ macro_rules! dict_tests {
 			let values = $low;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 3 != 0).collect();
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -202,12 +204,12 @@ macro_rules! dict_tests {
 			let values = $low;
 			let first = values[0].clone();
 			let repeated = vec![first; 100];
-			crate::common::round_trip_column("test", make(repeated));
+			$crate::common::round_trip_column("test", make(repeated));
 		}
 
 		#[test]
 		fn empty_column() {
-			crate::common::round_trip_column("test", make(vec![]));
+			$crate::common::round_trip_column("test", make(vec![]));
 		}
 	};
 }
@@ -217,17 +219,17 @@ macro_rules! rle_tests {
 	(repeated: $repeated:expr, unique: $unique:expr $(,)?) => {
 		#[test]
 		fn repeated_values_round_trip() {
-			crate::common::round_trip_column("test", make($repeated));
+			$crate::common::round_trip_column("test", make($repeated));
 		}
 
 		#[test]
 		fn repeated_values_compresses() {
-			crate::common::assert_compresses_well("test", make($repeated));
+			$crate::common::assert_compresses_well("test", make($repeated));
 		}
 
 		#[test]
 		fn unique_values_round_trip() {
-			crate::common::round_trip_column("test", make($unique));
+			$crate::common::round_trip_column("test", make($unique));
 		}
 
 		#[test]
@@ -235,7 +237,7 @@ macro_rules! rle_tests {
 			let values = $repeated;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -249,7 +251,7 @@ macro_rules! rle_tests {
 			let values = $repeated;
 			let first = values[0].clone();
 			let single_run = vec![first; 200];
-			crate::common::round_trip_column("test", make(single_run));
+			$crate::common::round_trip_column("test", make(single_run));
 		}
 	};
 }
@@ -259,27 +261,27 @@ macro_rules! delta_tests {
 	(ascending: $asc:expr, descending: $desc:expr, unsorted: $unsorted:expr $(,)?) => {
 		#[test]
 		fn ascending_round_trip() {
-			crate::common::round_trip_column("test", make($asc));
+			$crate::common::round_trip_column("test", make($asc));
 		}
 
 		#[test]
 		fn ascending_compresses() {
-			crate::common::assert_compresses_well("test", make($asc));
+			$crate::common::assert_compresses_well("test", make($asc));
 		}
 
 		#[test]
 		fn descending_round_trip() {
-			crate::common::round_trip_column("test", make($desc));
+			$crate::common::round_trip_column("test", make($desc));
 		}
 
 		#[test]
 		fn descending_compresses() {
-			crate::common::assert_compresses_well("test", make($desc));
+			$crate::common::assert_compresses_well("test", make($desc));
 		}
 
 		#[test]
 		fn unsorted_round_trip() {
-			crate::common::round_trip_column("test", make($unsorted));
+			$crate::common::round_trip_column("test", make($unsorted));
 		}
 
 		#[test]
@@ -287,7 +289,7 @@ macro_rules! delta_tests {
 			let values = $asc;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
@@ -305,7 +307,7 @@ pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Value
 		name: "test".to_string(),
 		data: col.clone(),
 	}]);
-	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let decoded_frames = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded_frames.len(), 1, "expected one frame");
 
@@ -362,14 +364,14 @@ macro_rules! nones_tests {
 		fn all_defined() {
 			let values = $values;
 			let defined = vec![true; values.len()];
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
 		fn all_none() {
 			let values = $values;
 			let defined = vec![false; values.len()];
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
@@ -378,7 +380,7 @@ macro_rules! nones_tests {
 			assert!(values.len() >= 2, "nones_tests: values must have at least 2 elements");
 			let mut defined = vec![true; values.len()];
 			defined[0] = false;
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
@@ -387,21 +389,21 @@ macro_rules! nones_tests {
 			assert!(values.len() >= 2, "nones_tests: values must have at least 2 elements");
 			let mut defined = vec![true; values.len()];
 			*defined.last_mut().unwrap() = false;
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
 		fn alternating_from_none() {
 			let values = $values;
 			let defined: Vec<bool> = (0..values.len()).map(|i| i % 2 == 1).collect();
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
 		fn alternating_from_defined() {
 			let values = $values;
 			let defined: Vec<bool> = (0..values.len()).map(|i| i % 2 == 0).collect();
-			crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+			$crate::common::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
 		}
 
 		#[test]
@@ -416,7 +418,7 @@ macro_rules! nones_tests {
 					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				}
 			};
-			crate::common::assert_option_round_trip(col, $inner_type, &defined);
+			$crate::common::assert_option_round_trip(col, $inner_type, &defined);
 		}
 
 		#[test]
@@ -431,7 +433,7 @@ macro_rules! nones_tests {
 					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
 				}
 			};
-			crate::common::assert_option_round_trip(col, $inner_type, &defined);
+			$crate::common::assert_option_round_trip(col, $inner_type, &defined);
 		}
 
 		#[test]
@@ -446,12 +448,12 @@ macro_rules! nones_tests {
 				},
 			]);
 			let encoded = reifydb_codec::frame::encode::encode_frames(
-				&[frame.clone()],
+				std::slice::from_ref(&frame),
 				&reifydb_codec::frame::options::EncodeOptions::none(),
 			)
 			.expect("encode failed");
 			let decoded = reifydb_codec::frame::decode::decode_frames(&encoded).expect("decode failed");
-			crate::common::assert_frame_eq(&frame, &decoded[0]);
+			$crate::common::assert_frame_eq(&frame, &decoded[0]);
 		}
 	};
 }
@@ -461,22 +463,22 @@ macro_rules! delta_rle_tests {
 	(constant_stride: $cs:expr, descending_stride: $ds:expr $(,)?) => {
 		#[test]
 		fn constant_stride_round_trip() {
-			crate::common::round_trip_column("test", make($cs));
+			$crate::common::round_trip_column("test", make($cs));
 		}
 
 		#[test]
 		fn constant_stride_compresses() {
-			crate::common::assert_compresses_well("test", make($cs));
+			$crate::common::assert_compresses_well("test", make($cs));
 		}
 
 		#[test]
 		fn descending_stride_round_trip() {
-			crate::common::round_trip_column("test", make($ds));
+			$crate::common::round_trip_column("test", make($ds));
 		}
 
 		#[test]
 		fn descending_stride_compresses() {
-			crate::common::assert_compresses_well("test", make($ds));
+			$crate::common::assert_compresses_well("test", make($ds));
 		}
 
 		#[test]
@@ -484,7 +486,7 @@ macro_rules! delta_rle_tests {
 			let values = $cs;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			crate::common::round_trip_column(
+			$crate::common::round_trip_column(
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),

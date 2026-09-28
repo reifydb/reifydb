@@ -29,6 +29,7 @@ impl From<u128> for Partition {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use super::*;
 

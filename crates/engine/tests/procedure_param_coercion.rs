@@ -28,10 +28,10 @@ fn named(entries: Vec<(&str, Value)>) -> Params {
 	Params::from(map)
 }
 
-fn call(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Diagnostic> {
+fn call(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().command_as(TestEngine::identity(), rql, params);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

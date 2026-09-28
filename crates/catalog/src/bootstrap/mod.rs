@@ -179,6 +179,56 @@ pub fn read_configs(
 	Ok(out)
 }
 
+pub(crate) fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
+	SeriesColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}
+
+pub(crate) fn table_col(name: &str, ty: ValueType) -> TableColumnToCreate {
+	TableColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}
+
+pub(crate) fn ensure_namespace(
+	catalog_api: &Catalog,
+	admin: &mut AdminTransaction,
+	id: NamespaceId,
+	path: &str,
+	local_name: &str,
+	parent_id: NamespaceId,
+) -> Result<NamespaceId> {
+	if let Some(ns) = catalog_api.find_namespace_by_path(&mut Transaction::Admin(admin), path)? {
+		return Ok(ns.id());
+	}
+
+	let ns = catalog_api.create_namespace_with_id(
+		admin,
+		id,
+		NamespaceToCreate {
+			namespace_fragment: None,
+			name: path.to_string(),
+			local_name: local_name.to_string(),
+			parent_id,
+			token: None,
+			grpc: None,
+		},
+	)?;
+	info!("Created {} namespace", path);
+	Ok(ns.id())
+}
+
 #[cfg(test)]
 mod read_configs_tests {
 	use std::collections::HashMap;
@@ -325,54 +375,4 @@ mod read_configs_tests {
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(5));
 	}
-}
-
-pub(crate) fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
-	SeriesColumnToCreate {
-		name: Fragment::internal(name),
-		fragment: Fragment::internal(name),
-		constraint: TypeConstraint::unconstrained(ty),
-		properties: vec![],
-		auto_increment: false,
-		dictionary_id: None,
-	}
-}
-
-pub(crate) fn table_col(name: &str, ty: ValueType) -> TableColumnToCreate {
-	TableColumnToCreate {
-		name: Fragment::internal(name),
-		fragment: Fragment::internal(name),
-		constraint: TypeConstraint::unconstrained(ty),
-		properties: vec![],
-		auto_increment: false,
-		dictionary_id: None,
-	}
-}
-
-pub(crate) fn ensure_namespace(
-	catalog_api: &Catalog,
-	admin: &mut AdminTransaction,
-	id: NamespaceId,
-	path: &str,
-	local_name: &str,
-	parent_id: NamespaceId,
-) -> Result<NamespaceId> {
-	if let Some(ns) = catalog_api.find_namespace_by_path(&mut Transaction::Admin(admin), path)? {
-		return Ok(ns.id());
-	}
-
-	let ns = catalog_api.create_namespace_with_id(
-		admin,
-		id,
-		NamespaceToCreate {
-			namespace_fragment: None,
-			name: path.to_string(),
-			local_name: local_name.to_string(),
-			parent_id,
-			token: None,
-			grpc: None,
-		},
-	)?;
-	info!("Created {} namespace", path);
-	Ok(ns.id())
 }

@@ -5,7 +5,7 @@
 // deferred flow pulls, computes and commits on its own actor, so an operator blocked in compute
 // holds back only its own view. A shared barrier would stall the fast view alongside it.
 
-use std::{thread, time::Duration as StdDuration};
+use std::thread;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
@@ -26,10 +26,10 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
+	value::{constraint::TypeConstraint, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
 
-const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
+const SLOW_APPLY: Duration = Duration::from_seconds_const(5);
 
 // Sleeps SLOW_APPLY inside apply, then tallies the rows it has seen. The sleep blocks only this
 // flow's actor; the fast view's actor runs elsewhere.
@@ -73,7 +73,7 @@ impl UnmanagedOperator for SlowCounter {
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
-		thread::sleep(SLOW_APPLY);
+		thread::sleep(SLOW_APPLY.to_std());
 
 		let mut seen = 0i64;
 		for i in 0..change.diff_count() {
@@ -114,7 +114,7 @@ fn slow_flow_does_not_stall_fast_flow() {
 	db.command("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	// The fast view must materialize all three rows well before the slow operator's 5s sleep finishes.
-	let fast = db.await_row_count("FROM app::fast", 3, StdDuration::from_secs(3));
+	let fast = db.await_row_count("FROM app::fast", 3, Duration::from_seconds_const(3));
 	assert_eq!(
 		fast, 3,
 		"fast deferred view must materialize all 3 rows within 3s even though an independent slow flow \
@@ -132,6 +132,6 @@ fn slow_flow_does_not_stall_fast_flow() {
 	);
 
 	// And the slow flow must still eventually catch up on its own once its sleep completes.
-	let slow_final = db.await_row_count("FROM app::slow", 1, StdDuration::from_secs(15));
+	let slow_final = db.await_row_count("FROM app::slow", 1, Duration::from_seconds_const(15));
 	assert!(slow_final >= 1, "the slow view must eventually materialize its tally row; got {slow_final}");
 }

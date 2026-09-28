@@ -251,15 +251,6 @@ fn uuid_column_with_an_uncastable_text_row_is_an_error_with_its_fragment() {
 }
 
 #[test]
-fn integer_column_with_an_int_row_too_large_for_int16_is_an_error_with_its_fragment() {
-	// An arbitrary precision int beyond the widest fixed integer must not vanish into a none.
-	let err =
-		query_err("from [{ v: 1 }, { v: cast('170141183460469231731687303715884105728', int) }]", Params::None);
-
-	assert!(err.fragment.text().contains("170141183460469231731687303715884105728"), "got: {err:?}");
-}
-
-#[test]
 fn digest_rows_with_different_accuracy_are_an_error_with_the_second_fragment() {
 	// Two digests of different accuracy cannot share a column, so the second must fail loud, not become none.
 	let mut other = Digest::new(ValueType::Float8, 20_000).unwrap();
@@ -390,22 +381,6 @@ fn int16_sized_integer_with_a_float_row_is_an_error_with_its_fragment() {
 
 	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
 	assert_eq!(err.fragment.text(), "170141183460469231731687303715884105727", "got: {err:?}");
-}
-
-#[test]
-fn arbitrary_int_with_a_float_row_widens_to_float8_not_int() {
-	// Promoting to int would truncate 1.5 to 1, so an arbitrary int with a float must widen to float8.
-	let frames = query("from [{ v: cast(5, int) }, { v: cast(1.5, float8) }]", Params::None);
-
-	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(5.0), Value::float8(1.5)]));
-}
-
-#[test]
-fn float_then_arbitrary_int_rows_widen_to_float8_not_int() {
-	// The arbitrary int rule must hold when the float row comes first.
-	let frames = query("from [{ v: cast(1.5, float8) }, { v: cast(5, int) }]", Params::None);
-
-	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(5.0)]));
 }
 
 #[test]

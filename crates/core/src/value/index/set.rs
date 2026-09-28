@@ -1035,8 +1035,8 @@ pub mod tests {
 			let uuid1 = Uuid4::generate();
 			let uuid2 = Uuid4::generate();
 
-			layout.set_uuid4(&mut key1, 0, uuid1.clone());
-			layout.set_uuid4(&mut key2, 0, uuid2.clone());
+			layout.set_uuid4(&mut key1, 0, uuid1);
+			layout.set_uuid4(&mut key2, 0, uuid2);
 
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
@@ -1055,7 +1055,7 @@ pub mod tests {
 			let mut key = layout.allocate_key();
 
 			let uuid = Uuid4::generate();
-			layout.set_uuid4(&mut key, 0, uuid.clone());
+			layout.set_uuid4(&mut key, 0, uuid);
 
 			let offset = layout.fields[0].offset;
 			let mut expected_bytes = uuid.as_bytes().to_vec();
@@ -1095,8 +1095,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let uuid2 = Uuid7::generate(&clock, &rng);
 
-			layout.set_uuid7(&mut key1, 0, uuid1.clone());
-			layout.set_uuid7(&mut key2, 0, uuid2.clone());
+			layout.set_uuid7(&mut key1, 0, uuid1);
+			layout.set_uuid7(&mut key2, 0, uuid2);
 
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
@@ -1124,8 +1124,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let uuid2 = Uuid7::generate(&clock, &rng);
 
-			layout.set_uuid7(&mut key1, 0, uuid1.clone());
-			layout.set_uuid7(&mut key2, 0, uuid2.clone());
+			layout.set_uuid7(&mut key1, 0, uuid1);
+			layout.set_uuid7(&mut key2, 0, uuid2);
 
 			let offset = layout.fields[0].offset;
 			let mut expected_bytes1 = uuid1.as_bytes().to_vec();
@@ -1172,8 +1172,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
-			layout.set_identity_id(&mut key1, 0, id1.clone());
-			layout.set_identity_id(&mut key2, 0, id2.clone());
+			layout.set_identity_id(&mut key1, 0, id1);
+			layout.set_identity_id(&mut key2, 0, id2);
 
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
@@ -1203,8 +1203,8 @@ pub mod tests {
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
-			layout.set_identity_id(&mut key1, 0, id1.clone());
-			layout.set_identity_id(&mut key2, 0, id2.clone());
+			layout.set_identity_id(&mut key1, 0, id1);
+			layout.set_identity_id(&mut key2, 0, id2);
 
 			let offset = layout.fields[0].offset;
 			let uuid7_1: Uuid7 = id1.into();

@@ -151,7 +151,7 @@ impl TryFrom<f32> for OrderedF32 {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{collections::HashSet, convert::TryFrom};
+	use std::{collections::HashSet, convert::TryFrom, f32::consts::PI};
 
 	use super::*;
 
@@ -211,7 +211,7 @@ pub mod tests {
 	#[test]
 	fn test_sorting_with_negatives() {
 		let mut values = vec![
-			OrderedF32::try_from(3.14).unwrap(),
+			OrderedF32::try_from(PI).unwrap(),
 			OrderedF32::try_from(-1.5).unwrap(),
 			OrderedF32::try_from(0.0).unwrap(),
 			OrderedF32::try_from(99999.0).unwrap(),
@@ -219,6 +219,6 @@ pub mod tests {
 		];
 		values.sort();
 		let sorted: Vec<f32> = values.into_iter().map(|v| v.0).collect();
-		assert_eq!(sorted, vec![-100.0, -1.5, 0.0, 3.14, 99999.0]);
+		assert_eq!(sorted, vec![-100.0, -1.5, 0.0, PI, 99999.0]);
 	}
 }

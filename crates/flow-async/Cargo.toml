@@ -1,0 +1,68 @@
+
+[package]
+name = "reifydb-flow-async"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Flow execution substrate: the flow transaction/state layer and the operator contract"
+
+[lib]
+doctest = false
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[features]
+default = []
+runtime = [
+    "dep:reifydb-catalog",
+    "dep:reifydb-flow",
+    "reifydb-flow/runtime",
+    "dep:reifydb-evaluate",
+    "dep:reifydb-routine-abi",
+    "dep:reifydb-rql",
+    "dep:reifydb-runtime",
+    "dep:reifydb-store-operator",
+    "dep:reifydb-transaction",
+    "dep:dashmap",
+    "dep:indexmap",
+    "dep:postcard",
+    "dep:smallvec",
+]
+
+[dependencies]
+reifydb-catalog = { workspace = true, optional = true }
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-evaluate = { workspace = true, optional = true }
+reifydb-flow = { workspace = true, optional = true }
+reifydb-routine-abi = { workspace = true, optional = true }
+reifydb-rql = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true, optional = true }
+reifydb-store-operator = { workspace = true, optional = true }
+reifydb-transaction = { workspace = true, optional = true }
+reifydb-value = { workspace = true }
+reifydb-macro = { workspace = true }
+
+dashmap = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
+rustc-hash = { workspace = true }
+postcard = { workspace = true, optional = true }
+smallvec = { workspace = true, optional = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_bytes = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+arrow-array = { workspace = true }
+reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-test-harness = { workspace = true, features = ["operator"] }
+reifydb-sdk = { workspace = true }
+reifydb-testing-sdk = { workspace = true }
+
+[[test]]
+name = "operator"
+path = "tests/operator.rs"

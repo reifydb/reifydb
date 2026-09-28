@@ -8,13 +8,13 @@ use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
 		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time,
-		uint::Uint, value_type::ValueType,
+		ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time,
+		value_type::ValueType,
 	},
 };
 
 use crate::{
-	common::family::{FamilyValue, family_params},
+	common::family::family_params,
 	error::SdkError,
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
@@ -50,16 +50,6 @@ impl<'a> ExternCRowView<'a> {
 			return None;
 		}
 		Some(col)
-	}
-
-	fn family<T: FamilyValue>(&self, name: &str) -> Result<Option<T>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
-			return Ok(None);
-		};
-		if col.type_code() != T::KIND {
-			return Err(read_error::<T>(&col, ColumnReadReason::WrongType));
-		}
-		col.family_cell_at(self.index)
 	}
 
 	fn temporal<T: Copy>(&self, name: &str, kind: ValueKind) -> Result<Option<T>, SdkError> {
@@ -171,14 +161,6 @@ impl<'a> RowView for ExternCRowView<'a> {
 		widening_read!(self, name, f64 => [Float4: f32, Float8: f64])
 	}
 
-	fn int(&self, name: &str) -> Result<Option<Int>, SdkError> {
-		self.family(name)
-	}
-
-	fn uint(&self, name: &str) -> Result<Option<Uint>, SdkError> {
-		self.family(name)
-	}
-
 	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
 		let Some(col) = self.column_defined(name) else {
 			return Ok(None);
@@ -272,14 +254,10 @@ fn type_for_column(col: &BorrowedColumn<'_>) -> ValueType {
 		ValueKind::Uint8 => ValueType::Uint8,
 		ValueKind::Uint16 => ValueType::Uint16,
 		ValueKind::Utf8 => ValueType::Utf8,
-		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal => {
-			match family_params(code, col.precision(), col.scale()) {
-				Some((precision, _)) if code == ValueKind::Int => ValueType::int(precision),
-				Some((precision, _)) if code == ValueKind::Uint => ValueType::uint(precision),
-				Some((precision, scale)) => ValueType::decimal(precision, scale),
-				None => ValueType::Any,
-			}
-		}
+		ValueKind::Decimal => match family_params(code, col.precision(), col.scale()) {
+			Some((precision, scale)) => ValueType::decimal(precision, scale),
+			None => ValueType::Any,
+		},
 		ValueKind::Blob => ValueType::Blob,
 		_ => ValueType::Any,
 	}
@@ -324,8 +302,6 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 		ValueKind::Utf8 => {
 			col.iter_str().nth(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
 		}
-		ValueKind::Int => col.expect_family_cell_at(index).map(Value::Int).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint => col.expect_family_cell_at(index).map(Value::Uint).unwrap_or_else(|| none_value(col)),
 		ValueKind::Decimal => {
 			col.expect_family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col))
 		}

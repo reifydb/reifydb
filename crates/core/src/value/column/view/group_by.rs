@@ -262,22 +262,6 @@ pub fn common_key_type(left: &ValueType, right: &ValueType) -> Option<ValueType>
 	match (left, right) {
 		_ if left == right => Some(left.clone()),
 		(
-			ValueType::Int {
-				precision: l,
-			},
-			ValueType::Int {
-				precision: r,
-			},
-		) => Some(ValueType::int((*l).max(*r))),
-		(
-			ValueType::Uint {
-				precision: l,
-			},
-			ValueType::Uint {
-				precision: r,
-			},
-		) => Some(ValueType::uint((*l).max(*r))),
-		(
 			ValueType::Decimal {
 				precision: lp,
 				scale: ls,
@@ -304,14 +288,6 @@ pub fn cast_key<'a>(column: &'a ColumnBuffer, target: &ValueType) -> (Cow<'a, Co
 		return (Cow::Borrowed(column), 0);
 	}
 	match column {
-		ColumnBuffer::Int(array) => {
-			let (array, dropped) = rescale_exact(array, precision, scale);
-			(Cow::Owned(ColumnBuffer::Int(array)), dropped)
-		}
-		ColumnBuffer::Uint(array) => {
-			let (array, dropped) = rescale_exact(array, precision, scale);
-			(Cow::Owned(ColumnBuffer::Uint(array)), dropped)
-		}
 		ColumnBuffer::Decimal(array) => {
 			let (array, dropped) = rescale_exact(array, precision, scale);
 			(Cow::Owned(ColumnBuffer::Decimal(array)), dropped)

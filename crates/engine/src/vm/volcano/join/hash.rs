@@ -21,7 +21,7 @@ use reifydb_value::{
 	error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{row_number::RowNumber, value_type::ValueType},
+	value::{system_columns::SystemColumns, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -164,6 +164,7 @@ struct HashJoinState {
 	current_match_idx: usize,
 	current_row_matched: bool,
 	probe_exhausted: bool,
+	emitted: u64,
 
 	compiled_residual: Vec<CompiledExpr>,
 }
@@ -229,15 +230,16 @@ impl HashJoinNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::materialize")]
 	fn materialize(
-		state: &HashJoinState,
+		state: &mut HashJoinState,
 		probe_slots: &[ProbeSlot],
 		build_picks: &[usize],
-		result_row_numbers: Vec<RowNumber>,
 		has_row_numbers: bool,
 	) -> Result<Columns> {
+		let no_system = SystemColumns::empty();
 		let slots: Vec<JoinSlot<'_>> = if probe_slots.is_empty() {
 			vec![JoinSlot {
 				columns: &state.probe_shells,
+				system: &no_system,
 				picks: &[],
 			}]
 		} else {
@@ -245,18 +247,22 @@ impl HashJoinNode {
 				.iter()
 				.map(|slot| JoinSlot {
 					columns: &slot.columns,
+					system: &slot.system,
 					picks: &slot.picks,
 				})
 				.collect()
 		};
-		materialize_join(
+		let columns = materialize_join(
 			&state.resolved_names,
 			&slots,
 			&state.build_columns.columns,
 			build_picks,
-			result_row_numbers,
+			state.build_columns.time(),
 			has_row_numbers,
-		)
+			state.emitted,
+		)?;
+		state.emitted += columns.row_count() as u64;
+		Ok(columns)
 	}
 
 	fn resolve_without_probe(alias: &Option<Fragment>, state: &mut HashJoinState) {
@@ -305,6 +311,7 @@ impl HashJoinNode {
 			current_match_idx: 0,
 			current_row_matched: false,
 			probe_exhausted: false,
+			emitted: 0,
 			compiled_residual,
 		});
 
@@ -314,6 +321,7 @@ impl HashJoinNode {
 
 struct ProbeSlot {
 	columns: Vec<ColumnBuffer>,
+	system: SystemColumns,
 	picks: Vec<usize>,
 }
 
@@ -417,7 +425,7 @@ impl QueryNode for HashJoinNode {
 			}
 			Self::resolve_without_probe(&self.alias, &mut state);
 			let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
-			let columns = Self::materialize(&state, &[], &[], Vec::new(), left_rownum)?;
+			let columns = Self::materialize(&mut state, &[], &[], left_rownum)?;
 			self.headers = Some(ColumnHeaders::from_columns(&columns));
 			self.state = Some(state);
 			return Ok(Some(columns));
@@ -425,11 +433,11 @@ impl QueryNode for HashJoinNode {
 
 		let mut probe_slots: Vec<ProbeSlot> = Vec::new();
 		let mut build_picks: Vec<usize> = Vec::new();
-		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		if let Some(batch) = state.probe_batch.as_ref() {
 			probe_slots.push(ProbeSlot {
 				columns: batch.columns.clone(),
+				system: batch.system.clone(),
 				picks: Vec::new(),
 			});
 		}
@@ -487,6 +495,7 @@ impl QueryNode for HashJoinNode {
 						}
 						probe_slots.push(ProbeSlot {
 							columns: probe.columns.clone(),
+							system: probe.system.clone(),
 							picks: Vec::new(),
 						});
 						state.probe_keys = probe_key_rows(
@@ -517,9 +526,6 @@ impl QueryNode for HashJoinNode {
 				if self.mode == HashJoinMode::Left && !state.current_row_matched {
 					picked(&mut probe_slots).push(state.probe_row_idx);
 					build_picks.push(NO_MATCH);
-					if !probe.row_numbers().is_empty() {
-						result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
-					}
 				}
 
 				state.probe_row_idx += 1;
@@ -560,9 +566,6 @@ impl QueryNode for HashJoinNode {
 			state.current_row_matched = true;
 			picked(&mut probe_slots).push(state.probe_row_idx);
 			build_picks.push(build_idx);
-			if !probe.row_numbers().is_empty() {
-				result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
-			}
 		}
 
 		self.state = Some(state);
@@ -576,14 +579,13 @@ impl QueryNode for HashJoinNode {
 				return Ok(None);
 			};
 			Self::resolve_without_probe(&self.alias, state);
-			let columns =
-				Self::materialize(state, &probe_slots, &build_picks, result_row_numbers, left_rownum)?;
+			let columns = Self::materialize(state, &probe_slots, &build_picks, left_rownum)?;
 			self.headers = Some(ColumnHeaders::from_columns(&columns));
 			return Ok(Some(columns));
 		}
 
-		let state = self.state.as_ref().unwrap();
-		let columns = Self::materialize(state, &probe_slots, &build_picks, result_row_numbers, left_rownum)?;
+		let state = self.state.as_mut().unwrap();
+		let columns = Self::materialize(state, &probe_slots, &build_picks, left_rownum)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))

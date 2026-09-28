@@ -12,9 +12,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
-		int::Int,
 		time::Time,
-		uint::Uint,
 	},
 };
 
@@ -396,8 +394,6 @@ pub type TimeWriter<'a> = ScalarWriter<'a, Time>;
 pub type DurationWriter<'a> = ScalarWriter<'a, Duration>;
 pub type Utf8Writer<'a> = VarLenWriter<'a>;
 pub type BlobWriter<'a> = VarLenWriter<'a>;
-pub type IntWriter<'a> = FamilyWriter<'a, Int>;
-pub type UintWriter<'a> = FamilyWriter<'a, Uint>;
 pub type DecimalWriter<'a> = FamilyWriter<'a, Decimal>;
 
 impl<'a> ColumnsBuilder<'a> {
@@ -457,12 +453,6 @@ impl<'a> ColumnsBuilder<'a> {
 	}
 	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, SdkError> {
 		VarLenWriter::new(self.acquire(ValueKind::Blob, capacity)?, capacity, expected_bytes)
-	}
-	pub fn int_writer(&mut self, capacity: usize, precision: Precision) -> Result<IntWriter<'_>, SdkError> {
-		self.family_writer(capacity, precision, Scale::MIN)
-	}
-	pub fn uint_writer(&mut self, capacity: usize, precision: Precision) -> Result<UintWriter<'_>, SdkError> {
-		self.family_writer(capacity, precision, Scale::MIN)
 	}
 	pub fn decimal_writer(
 		&mut self,

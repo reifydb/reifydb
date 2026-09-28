@@ -87,12 +87,7 @@ impl ColumnBuilder {
 }
 
 fn same_family(value: &Value, declared: &ValueType) -> bool {
-	matches!(
-		(value, declared),
-		(Value::Int(_), ValueType::Int { .. })
-			| (Value::Uint(_), ValueType::Uint { .. })
-			| (Value::Decimal(_), ValueType::Decimal { .. })
-	)
+	matches!((value, declared), (Value::Decimal(_), ValueType::Decimal { .. }))
 }
 
 fn coerced(mut value: Value, declared: &ValueType) -> Result<Value> {

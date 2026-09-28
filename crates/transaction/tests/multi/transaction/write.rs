@@ -73,7 +73,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	// The GC cutoff advances past our own commit version while its post-commit phase is still open.
 	engine.advance_version_to(CommitVersion(version.0 + 1));
 	assert!(
-		engine.query_done_until().0 >= version.0 + 1,
+		engine.query_done_until().0 > version.0,
 		"precondition: query watermark must be advanced past the commit version to exercise the eviction path"
 	);
 

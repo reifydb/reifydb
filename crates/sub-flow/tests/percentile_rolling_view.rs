@@ -5,7 +5,6 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	ops::Range,
 	sync::Arc,
-	time::Duration as StdDuration,
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
@@ -19,10 +18,8 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
-	context::FlowContext,
-	operator::window::operator::{WindowConfig, WindowOperator},
-};
+use reifydb_flow::context::FlowContext;
+use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
 	procedure::default_in_process_procedures,
@@ -40,7 +37,7 @@ const PPM: u32 = 10_000;
 const BASE_MS: i64 = 1_000_000;
 const SIZE_MS: i64 = 10_000;
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_seconds_const(60);
 const SEED: u64 = 0xD16E_5744_0E2E;
 const CHUNK: usize = 200;
 const PER_STEP: usize = 4;

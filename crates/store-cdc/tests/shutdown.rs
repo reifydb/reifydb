@@ -183,12 +183,9 @@ mod cases {
 			Err(_) => {}
 		}
 
-		match fixture.store.read_range(Bound::Unbounded, Bound::Unbounded, 100) {
-			Ok(batch) => {
-				let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
-				assert_eq!(versions, vec![1, 2, 3], "read_range after shutdown dropped sealed records");
-			}
-			Err(_) => {}
+		if let Ok(batch) = fixture.store.read_range(Bound::Unbounded, Bound::Unbounded, 100) {
+			let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
+			assert_eq!(versions, vec![1, 2, 3], "read_range after shutdown dropped sealed records");
 		}
 
 		match fixture.store.min_version() {

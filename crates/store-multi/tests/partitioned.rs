@@ -4,6 +4,8 @@
 // Storage-layer coverage for the PartitionedSource keyspace: a partitioned row must route to its owner's own partsource
 // table, never to the multi table.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::sync::Arc;
 
 use reifydb_codec::row::bytes::EncodedBytes;

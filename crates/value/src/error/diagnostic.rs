@@ -370,20 +370,6 @@ impl IntoDiagnostic for TypeError {
 							max
 						),
 					),
-					ConstraintKind::IntPrecision { max, .. } => (
-						"CONSTRAINT_003",
-						format!(
-							"The INT field is constrained to a maximum precision of {} digits. Consider using a smaller value or increasing the precision.",
-							max
-						),
-					),
-					ConstraintKind::UintPrecision { max, .. } => (
-						"CONSTRAINT_004",
-						format!(
-							"The UINT field is constrained to a maximum precision of {} digits. Consider using a smaller value or increasing the precision.",
-							max
-						),
-					),
 					ConstraintKind::DecimalPrecision { max, .. } => (
 						"CONSTRAINT_005",
 						format!(

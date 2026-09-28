@@ -22,10 +22,10 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().admin_as(TestEngine::identity(), rql, Params::None);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }
@@ -33,7 +33,7 @@ fn admin(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
 fn create_table_err(column_type: &str) -> Diagnostic {
 	let t = engine();
 	let rql = format!("CREATE TABLE test::bad {{ c: {column_type} }}");
-	admin(&t, &rql).expect_err(&format!("{rql} must fail"))
+	*admin(&t, &rql).expect_err(&format!("{rql} must fail"))
 }
 
 fn digest(inner: ValueType, accuracy: u32) -> ValueType {
@@ -347,7 +347,7 @@ fn a_digest_primary_key_error_names_the_digest() {
 	]));
 
 	let err = match admin(&t, "CREATE PRIMARY KEY ON test::latency { lat }") {
-		Err(err) => err,
+		Err(err) => *err,
 		Ok(_) => {
 			let insert = "INSERT test::latency [{ service: 'a', lat: $lat, opt: none, padded: $padded }]";
 			let r = t.inner().admin_as(TestEngine::identity(), insert, params);

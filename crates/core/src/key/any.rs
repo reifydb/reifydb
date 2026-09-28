@@ -1421,7 +1421,7 @@ mod tests {
 	fn test_cross_kind_order_reverses_the_discriminant() {
 		// Deriving Ord sorts by declaration index, which is the exact inverse of the encoded order
 		// for every cross-kind pair; PendingWrites then merges backwards and raises no error.
-		let mut probes = vec![
+		let mut probes = [
 			probe(NamespaceKey {
 				namespace: NamespaceId(1),
 			}),
@@ -2366,17 +2366,14 @@ mod tests {
 			}
 		}
 
-		if let Some(Field::RawAsc(RawEncoding::Verbatim, bytes)) = fields.last() {
-			if bytes.len() > 1 {
-				let mut head: SmallVec<[OwnedField; 6]> =
-					fields[..fields.len() - 1].iter().map(owned_field).collect();
-				head.push(Field::RawAsc(
-					RawEncoding::Verbatim,
-					Cow::Owned(bytes[..bytes.len() - 1].to_vec()),
-				));
-				out.push(TaggedKeyBound::Prefix(key.kind(), head.clone()));
-				out.push(TaggedKeyBound::PrefixEnd(key.kind(), head));
-			}
+		if let Some(Field::RawAsc(RawEncoding::Verbatim, bytes)) = fields.last()
+			&& bytes.len() > 1
+		{
+			let mut head: SmallVec<[OwnedField; 6]> =
+				fields[..fields.len() - 1].iter().map(owned_field).collect();
+			head.push(Field::RawAsc(RawEncoding::Verbatim, Cow::Owned(bytes[..bytes.len() - 1].to_vec())));
+			out.push(TaggedKeyBound::Prefix(key.kind(), head.clone()));
+			out.push(TaggedKeyBound::PrefixEnd(key.kind(), head));
 		}
 
 		out

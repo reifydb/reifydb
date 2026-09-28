@@ -11,7 +11,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 	decode_value_codec(bytes).unwrap()
 }
 
-use std::f64::consts::E;
+use std::{f32::consts::PI, f64::consts::E};
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
@@ -73,7 +73,7 @@ fn test_any_integers() {
 fn test_any_floats() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
 
-	let f4 = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
+	let f4 = Value::Float4(OrderedF32::try_from(PI).unwrap());
 	let mut row = shape.allocate_pod();
 	shape.set_any(&mut row, 0, &f4);
 	assert_eq!(shape.get_any(&row, 0), f4);

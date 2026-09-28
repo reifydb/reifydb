@@ -171,14 +171,14 @@ fn oracle(inner: ValueType, accuracy: u32, values: &[Value]) -> Option<Digest> {
 	Some(digest)
 }
 
-fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	query_with(t, rql, Params::None)
 }
 
-fn query_with(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Diagnostic> {
+fn query_with(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().query_as(TestEngine::identity(), rql, params);
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

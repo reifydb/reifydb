@@ -403,6 +403,7 @@ pub trait SingleVersionStore:
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};

@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_flow::operator::{
+use reifydb_flow_async::operator::{
 	HostOperator,
 	host::HostContext,
 	scan::{

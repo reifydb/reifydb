@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use arrow_array::{BooleanArray, Int32Array, Int64Array, LargeStringArray};
 use arrow_buffer::BooleanBuffer;
 use reifydb_codec::{
@@ -42,7 +44,7 @@ fn assert_frame_eq(a: &Frame, b: &Frame) {
 }
 
 fn round_trip(frame: Frame) {
-	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);
 	assert_frame_eq(&frame, &decoded[0]);
@@ -134,7 +136,7 @@ fn empty_frame_keeps_the_row_numbers_flag() {
 		}],
 	};
 
-	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 
 	assert_eq!(decoded.len(), 1);
@@ -306,7 +308,7 @@ fn compression_none_forces_plain() {
 		name: "seq".to_string(),
 		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}]);
-	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::none()).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::none()).expect("encode failed");
 	// A sequence this regular would delta-encode to a fraction of its size, so exceeding the raw
 	// 500 * 4 bytes proves compression really was disabled.
 	assert!(encoded.len() > 2000, "expected plain (no compression), got {} bytes", encoded.len());
@@ -322,7 +324,7 @@ fn compression_max_round_trip() {
 		name: "seq".to_string(),
 		data: FrameColumnData::Int4(Int32Array::from(values)),
 	}]);
-	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::max()).expect("encode failed");
+	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::max()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);
 	assert_frame_eq(&frame, &decoded[0]);

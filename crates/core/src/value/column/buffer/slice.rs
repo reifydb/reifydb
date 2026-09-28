@@ -78,7 +78,6 @@ impl_as_slice!(i8, Int1 native);
 impl_as_slice!(i16, Int2 native);
 impl_as_slice!(i32, Int4 native);
 impl_as_slice!(i64, Int8 native);
-impl_as_slice!(i128, Int16 native);
 impl_as_slice!(u8, Uint1 native);
 impl_as_slice!(u16, Uint2 native);
 impl_as_slice!(u32, Uint4 native);

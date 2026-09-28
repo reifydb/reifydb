@@ -18,9 +18,9 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::Constraint,
-		datetime::{CREATED_AT_COLUMN_NAME, DateTime, TIME_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
+		datetime::DateTime,
 		partition::Partition,
-		row_number::{ROW_NUMBER_COLUMN_NAME, RowNumber},
+		row_number::RowNumber,
 		system_columns::{RowStamps, SystemColumn, SystemColumns},
 		value_type::ValueType,
 	},
@@ -34,7 +34,7 @@ use crate::{
 	value::column::{ColumnBuffer, ColumnWithName, builder::ColumnBuilder},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Columns {
 	pub system: SystemColumns,
 	pub columns: Vec<ColumnBuffer>,
@@ -68,28 +68,32 @@ impl Columns {
 	}
 
 	pub fn system_column(&self, name: &str) -> Option<ColumnBuffer> {
-		let name = name.strip_prefix('#').unwrap_or(name);
+		let bare = name.strip_prefix('#').unwrap_or(name);
+		let column = SystemColumn::ALL.into_iter().find(|column| &column.name()[1..] == bare)?;
 		let row_count = self.row_count();
-
-		if name == ROW_NUMBER_COLUMN_NAME && self.row_numbers().len() == row_count {
-			let values: Vec<u64> = self.row_numbers().iter().map(|r| r.value()).collect();
-			return Some(ColumnBuffer::uint8(values));
+		match column {
+			SystemColumn::RowNumbers if self.row_numbers().len() == row_count => Some(ColumnBuffer::uint8(
+				self.row_numbers().iter().map(|r| r.value()).collect::<Vec<u64>>(),
+			)),
+			SystemColumn::Partitions if self.system.partitions().len() == row_count => {
+				Some(ColumnBuffer::uint16(
+					self.system.partitions().iter().map(|p| p.0).collect::<Vec<u128>>(),
+				))
+			}
+			SystemColumn::CreatedAt if self.created_at().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.created_at().to_vec()))
+			}
+			SystemColumn::UpdatedAt if self.updated_at().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.updated_at().to_vec()))
+			}
+			SystemColumn::Time if self.time().len() == row_count => {
+				Some(ColumnBuffer::datetime(self.time().to_vec()))
+			}
+			SystemColumn::CommitVersion if self.system.commit_versions().len() == row_count => {
+				Some(ColumnBuffer::uint8(self.system.commit_versions().to_vec()))
+			}
+			_ => None,
 		}
-		if name == CREATED_AT_COLUMN_NAME && self.created_at().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.created_at().to_vec()));
-		}
-		if name == UPDATED_AT_COLUMN_NAME && self.updated_at().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.updated_at().to_vec()));
-		}
-		if name == TIME_COLUMN_NAME && self.time().len() == row_count {
-			return Some(ColumnBuffer::datetime(self.time().to_vec()));
-		}
-		if name == SystemColumn::CommitVersion.name().trim_start_matches('#')
-			&& self.system.commit_versions().len() == row_count
-		{
-			return Some(ColumnBuffer::uint8(self.system.commit_versions().to_vec()));
-		}
-		None
 	}
 }
 
@@ -161,7 +165,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
 		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
 		Value::Blob(v) => ColumnBuffer::blob([v]),
-		value @ (Value::Int(_) | Value::Uint(_) | Value::Decimal(_)) => ColumnBuffer::from(value),
+		value @ Value::Decimal(_) => ColumnBuffer::from(value),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
 		Value::Any(v) => ColumnBuffer::any(vec![*v]),
 		Value::Type(v) => ColumnBuffer::any(vec![Value::Type(v)]),
@@ -623,9 +627,7 @@ impl Columns {
 				Value::None {
 					..
 				} => field.constraint.get_type(),
-				Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => {
-					field.constraint.get_type().inner_type().clone()
-				}
+				Value::Decimal(_) => field.constraint.get_type().inner_type().clone(),
 				_ => value.get_type(),
 			};
 
@@ -663,9 +665,7 @@ pub mod tests {
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	};
 	use uuid::{Timestamp, Uuid};
@@ -841,18 +841,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn extract_by_indices_preserves_int_values() {
-		let data = [Int::from(-1i64), Int::from(2i64), Int::from(-3i64), Int::from(4i64)];
-		assert_extract_preserves_values(ColumnBuffer::int(Precision::MAX, data), &[3, 1, 2]);
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_uint_values() {
-		let data = [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64), Uint::from(4u64)];
-		assert_extract_preserves_values(ColumnBuffer::uint(Precision::MAX, data), &[3, 1, 2]);
-	}
-
-	#[test]
 	fn extract_by_indices_preserves_decimal_values() {
 		let data = [
 			Decimal::from_str("1.50").unwrap(),
@@ -991,15 +979,15 @@ pub mod tests {
 
 		let extracted = original.extract_by_indices(&[3, 0]);
 
-		let rns: Vec<RowNumber> = extracted.row_numbers().iter().cloned().collect();
+		let rns: Vec<RowNumber> = extracted.row_numbers().to_vec();
 		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
 		assert_eq!(
-			extracted.created_at().iter().cloned().collect::<Vec<_>>(),
+			extracted.created_at().to_vec(),
 			vec![DateTime::from_epoch_secs(4000).unwrap(), DateTime::from_epoch_secs(1000).unwrap()],
 			"created_at must follow indices"
 		);
 		assert_eq!(
-			extracted.updated_at().iter().cloned().collect::<Vec<_>>(),
+			extracted.updated_at().to_vec(),
 			vec![DateTime::from_epoch_secs(4400).unwrap(), DateTime::from_epoch_secs(1100).unwrap()],
 			"updated_at must follow indices"
 		);
@@ -1090,45 +1078,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn extract_by_indices_preserves_int_precision_metadata() {
-		let buffer = ColumnBuffer::int(Precision::new(16), [Int::from(1i64), Int::from(2i64), Int::from(3i64)]);
-
-		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
-
-		match extracted.data_at(0) {
-			ColumnBuffer::Int(array) => {
-				assert_eq!(
-					array.precision(),
-					Precision::new(16),
-					"Int precision must survive extraction"
-				)
-			}
-			other => panic!("expected Int buffer, got {:?}", other.get_type()),
-		}
-	}
-
-	#[test]
-	fn extract_by_indices_preserves_uint_precision_metadata() {
-		let buffer =
-			ColumnBuffer::uint(Precision::new(8), [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64)]);
-
-		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
-
-		match extracted.data_at(0) {
-			ColumnBuffer::Uint(array) => {
-				assert_eq!(
-					array.precision(),
-					Precision::new(8),
-					"Uint precision must survive extraction"
-				)
-			}
-			other => panic!("expected Uint buffer, got {:?}", other.get_type()),
-		}
-	}
-
-	#[test]
 	fn extract_by_indices_preserves_decimal_precision_and_scale_metadata() {
 		let buffer = ColumnBuffer::decimal(
 			Precision::new(10),
@@ -1164,10 +1113,10 @@ pub mod tests {
 		let duration = Duration::from_days(30).unwrap();
 
 		let columns = Columns::single_row([
-			("date_col", Value::Date(date.clone())),
-			("datetime_col", Value::DateTime(datetime.clone())),
-			("time_col", Value::Time(time.clone())),
-			("interval_col", Value::Duration(duration.clone())),
+			("date_col", Value::Date(date)),
+			("datetime_col", Value::DateTime(datetime)),
+			("time_col", Value::Time(time)),
+			("interval_col", Value::Duration(duration)),
 		]);
 
 		assert_eq!(columns.len(), 4);
@@ -1188,8 +1137,8 @@ pub mod tests {
 			("bool_col", Value::Boolean(true)),
 			("int_col", Value::Int4(42)),
 			("str_col", Value::Utf8("hello".to_string())),
-			("date_col", Value::Date(date.clone())),
-			("time_col", Value::Time(time.clone())),
+			("date_col", Value::Date(date)),
+			("time_col", Value::Time(time)),
 			("none_col", Value::none()),
 		]);
 

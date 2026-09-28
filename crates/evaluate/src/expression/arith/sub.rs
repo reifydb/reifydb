@@ -8,8 +8,9 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		container::{
-			decimal_array::{decimals, ints, u128s, uints},
+			decimal_array::decimals,
 			temporal_array::{duration_array, durations},
+			wide_int_array::wides,
 		},
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},

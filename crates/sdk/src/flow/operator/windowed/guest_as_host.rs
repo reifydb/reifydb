@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
 };
-use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
+use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
 	Result,
 	util::hash::xxh3_128,

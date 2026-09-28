@@ -6,7 +6,7 @@ pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_flow::operator::aggregation::operator::AggregateOperator;
+use reifydb_flow_async::operator::aggregation::operator::AggregateOperator;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{

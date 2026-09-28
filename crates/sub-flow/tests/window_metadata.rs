@@ -4,13 +4,11 @@
 // window::start, window::end, window::duration and window::last name the bucket a windowed row
 // aggregated. These tests pin what each one answers and which window kinds may ask.
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{column_values, timed_rows};
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))

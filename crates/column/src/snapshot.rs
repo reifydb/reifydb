@@ -6,57 +6,6 @@ use std::sync::Arc;
 use reifydb_core::value::column::data::Column;
 use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SystemColumn {
-	RowNumber = 0,
-	CreatedAt = 1,
-	UpdatedAt = 2,
-	Time = 3,
-	CommitVersion = 4,
-}
-
-impl SystemColumn {
-	pub const ALL: [SystemColumn; 5] = [
-		SystemColumn::RowNumber,
-		SystemColumn::CreatedAt,
-		SystemColumn::UpdatedAt,
-		SystemColumn::Time,
-		SystemColumn::CommitVersion,
-	];
-
-	pub const fn name(self) -> &'static str {
-		match self {
-			SystemColumn::RowNumber => "#rownum",
-			SystemColumn::CreatedAt => "#created_at",
-			SystemColumn::UpdatedAt => "#updated_at",
-			SystemColumn::Time => "#time",
-			SystemColumn::CommitVersion => "#commit_version",
-		}
-	}
-
-	pub const fn ty(self) -> ValueType {
-		match self {
-			SystemColumn::RowNumber => ValueType::Uint8,
-			SystemColumn::CreatedAt => ValueType::DateTime,
-			SystemColumn::UpdatedAt => ValueType::DateTime,
-			SystemColumn::Time => ValueType::DateTime,
-			SystemColumn::CommitVersion => ValueType::Uint8,
-		}
-	}
-
-	pub fn from_name(name: &str) -> Option<SystemColumn> {
-		match name {
-			"#rownum" => Some(SystemColumn::RowNumber),
-			"#created_at" => Some(SystemColumn::CreatedAt),
-			"#updated_at" => Some(SystemColumn::UpdatedAt),
-			"#time" => Some(SystemColumn::Time),
-			"#commit_version" => Some(SystemColumn::CommitVersion),
-			_ => None,
-		}
-	}
-}
-
 #[derive(Clone)]
 pub struct ColumnChunks {
 	pub ty: ValueType,

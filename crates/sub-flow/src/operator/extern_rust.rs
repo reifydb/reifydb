@@ -14,7 +14,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_extension::loader::extern_load::ExternLoad;
-use reifydb_flow::operator::BoxedHostOperator;
+use reifydb_flow_async::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, config::ExtensionParams, error::Error, value::constraint::TypeConstraint};
 

@@ -22,8 +22,6 @@ pub fn literal(value: &Value) -> String {
 		| Value::Uint4(_)
 		| Value::Uint8(_)
 		| Value::Uint16(_)
-		| Value::Int(_)
-		| Value::Uint(_)
 		| Value::Decimal(_) => value.to_string(),
 		other => panic!("scenario rows cannot render a {:?} literal", other.get_type()),
 	}

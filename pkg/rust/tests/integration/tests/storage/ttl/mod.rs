@@ -5,17 +5,17 @@ mod ring_buffer;
 mod series;
 mod table;
 
-use std::{thread::sleep, time::Duration};
+use std::thread::sleep;
 
-use reifydb::{ConfigKey, SqliteConfig, Value, embedded, testing::db::TestDb};
+use reifydb::{ConfigKey, SqliteConfig, Value, embedded, testing::db::TestDb, value::value::duration::Duration};
 
 pub const TTL_SECS: u64 = 1;
 
 pub const STRADDLE_TTL_SECS: u64 = 10;
 
-pub const EVICT_TIMEOUT: Duration = Duration::from_secs(30);
+pub const EVICT_TIMEOUT: Duration = Duration::from_seconds_const(30);
 
-pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(90);
+pub const DRAIN_TIMEOUT: Duration = Duration::from_seconds_const(90);
 
 pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item = (ConfigKey, Value)>) -> TestDb {
 	// These drains are timed against a wall clock, so the evict budget must be the production one; the testing
@@ -72,7 +72,7 @@ pub fn age_past_ttl() {
 }
 
 pub fn age_past(secs: u64) {
-	sleep(Duration::from_millis(secs * 1000 + 500));
+	sleep(Duration::from_milliseconds_const((secs * 1000 + 500) as i64).to_std());
 }
 
 pub fn await_evicted(db: &TestDb, rql: &str, want: usize) {
@@ -91,6 +91,6 @@ pub fn assert_evictor_ran(db: &TestDb) {
 }
 
 pub fn await_survivor(db: &TestDb, rql: &str, want: usize) {
-	let got = db.await_exact_row_count(rql, want, Duration::from_secs(STRADDLE_TTL_SECS / 2));
+	let got = db.await_exact_row_count(rql, want, Duration::from_seconds_const((STRADDLE_TTL_SECS / 2) as i64));
 	assert_eq!(got, want, "`{rql}` must settle at {want} rows while the younger write is still inside its ttl");
 }

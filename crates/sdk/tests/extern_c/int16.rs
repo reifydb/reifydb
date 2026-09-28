@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_value::value::container::decimal_array::INT16_DATA_TYPE;
+use reifydb_value::value::container::wide_int_array::wides;
 
 use super::common::{assert_column_eq, round_trip_column};
 
@@ -50,15 +49,14 @@ fn int16_with_undefined() {
 
 #[test]
 fn int16_min_max_come_back_with_the_int16_data_type() {
-	// A guest-built column left on the arrow default scale 10 reads every value 10^10 off at export.
+	// A guest-built column that skips the ordered row encoding reads every value wrong at export.
 	let input = ColumnBuffer::int16([i128::MIN, i128::MAX]);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int16_min_max_data_type", &input, &output);
 	let ColumnBuffer::Int16(array) = &output else {
 		panic!("expected a plain Int16 column, got {:?}", output.get_type())
 	};
-	assert_eq!(array.data_type(), &INT16_DATA_TYPE);
-	assert_eq!(&array.values()[..], &[i128::MIN, i128::MAX]);
+	assert_eq!(wides::<i128>(array), [i128::MIN, i128::MAX]);
 }
 
 #[test]

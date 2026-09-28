@@ -191,9 +191,9 @@ macro_rules! impl_generator {
 				fn a_row_of_the_wrong_width_is_rejected_rather_than_misread() {
 					// The 33-byte shape row this replaced decodes as a plausible counter and
 					// silently rewinds id issuance.
-					assert!(decode(&EncodedPodRow::new(&vec![0u8; WIDTH + 1])).is_err());
-					assert!(decode(&EncodedPodRow::new(&vec![0u8; WIDTH - 1])).is_err());
-					assert!(decode(&EncodedPodRow::new(&vec![0u8; 33])).is_err());
+					assert!(decode(&EncodedPodRow::new(&[0u8; WIDTH + 1])).is_err());
+					assert!(decode(&EncodedPodRow::new(&[0u8; WIDTH - 1])).is_err());
+					assert!(decode(&EncodedPodRow::new(&[0u8; 33])).is_err());
 				}
 
 				#[test]

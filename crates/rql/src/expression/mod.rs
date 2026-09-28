@@ -54,7 +54,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Result, ast::ast::AstBlock, diagnostic::AstError};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AliasExpression {
 	pub alias: IdentExpression,
 	pub expression: Box<Expression>,
@@ -67,7 +67,7 @@ impl Display for AliasExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expression {
 	AccessSource(AccessObjectExpression),
 
@@ -236,7 +236,7 @@ impl Expression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CastExpression {
 	pub fragment: Fragment,
 	pub expression: Box<Expression>,
@@ -257,7 +257,7 @@ impl CastExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypeExpression {
 	pub fragment: Fragment,
 	pub ty: ValueType,
@@ -273,42 +273,42 @@ impl TypeExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AddExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DivExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MulExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GreaterThanExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -325,7 +325,7 @@ impl GreaterThanExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GreaterThanEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -342,7 +342,7 @@ impl GreaterThanEqExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LessThanExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -359,7 +359,7 @@ impl LessThanExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LessThanEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -376,7 +376,7 @@ impl LessThanEqExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -393,7 +393,7 @@ impl EqExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NotEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -410,7 +410,7 @@ impl NotEqExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BetweenExpression {
 	pub value: Box<Expression>,
 	pub lower: Box<Expression>,
@@ -429,7 +429,7 @@ impl BetweenExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AndExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -446,7 +446,7 @@ impl AndExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -463,7 +463,7 @@ impl OrExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct XorExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
@@ -480,7 +480,7 @@ impl XorExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InExpression {
 	pub value: Box<Expression>,
 	pub list: Box<Expression>,
@@ -498,7 +498,7 @@ impl InExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContainsExpression {
 	pub value: Box<Expression>,
 	pub list: Box<Expression>,
@@ -515,7 +515,7 @@ impl ContainsExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnExpression(pub ColumnIdentifier);
 
 impl ColumnExpression {
@@ -741,7 +741,7 @@ impl Display for Expression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CallExpression {
 	pub func: IdentExpression,
 	pub args: Vec<Expression>,
@@ -773,10 +773,10 @@ impl Display for CallExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdentExpression(pub Fragment);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ParameterExpression {
 	Positional {
 		fragment: Fragment,
@@ -822,7 +822,7 @@ impl VariableExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IfExpression {
 	pub condition: Box<Expression>,
 	pub then_expr: Box<Expression>,
@@ -831,7 +831,7 @@ pub struct IfExpression {
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ElseIfExpression {
 	pub condition: Box<Expression>,
 	pub then_expr: Box<Expression>,
@@ -876,7 +876,7 @@ impl Display for IdentExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PrefixOperator {
 	Minus(Fragment),
 	Plus(Fragment),
@@ -903,7 +903,7 @@ impl Display for PrefixOperator {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrefixExpression {
 	pub operator: PrefixOperator,
 	pub expression: Box<Expression>,
@@ -922,7 +922,7 @@ impl Display for PrefixExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TupleExpression {
 	pub expressions: Vec<Expression>,
 	pub fragment: Fragment,
@@ -935,7 +935,7 @@ impl Display for TupleExpression {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ListExpression {
 	pub expressions: Vec<Expression>,
 	pub fragment: Fragment,
@@ -1980,19 +1980,19 @@ impl ExpressionCompiler {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapExpression {
 	pub expressions: Vec<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtendExpression {
 	pub expressions: Vec<Expression>,
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SumTypeConstructorExpression {
 	pub namespace: Fragment,
 	pub sumtype_name: Fragment,
@@ -2001,7 +2001,7 @@ pub struct SumTypeConstructorExpression {
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IsVariantExpression {
 	pub expression: Box<Expression>,
 	pub namespace: Option<Fragment>,
@@ -2011,7 +2011,7 @@ pub struct IsVariantExpression {
 	pub fragment: Fragment,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldAccessExpression {
 	pub object: Box<Expression>,
 	pub field: Fragment,

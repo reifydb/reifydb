@@ -25,7 +25,7 @@ reifydb-sqlite = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true, optional = true }
 reifydb-testing-sdk = { workspace = true, optional = true }
-reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
+reifydb-flow-async = { workspace = true, optional = true, features = ["runtime"] }
 reifydb-cdc = { workspace = true, optional = true }
 reifydb-extension = { workspace = true, optional = true }
 reifydb-routine = { workspace = true, optional = true }
@@ -60,7 +60,7 @@ operator = [
     "dep:reifydb-runtime",
     "dep:reifydb-codec",
     "dep:reifydb-testing-sdk",
-    "dep:reifydb-flow",
+    "dep:reifydb-flow-async",
 ]
 
 [dev-dependencies]

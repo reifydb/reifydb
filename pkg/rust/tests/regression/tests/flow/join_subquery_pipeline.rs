@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration as StdDuration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().unwrap())
@@ -12,7 +11,7 @@ fn setup() -> TestDb {
 fn settled_row_count(db: &TestDb, rql: &str) -> usize {
 	// The views are deferred, so the count is only meaningful once every flow has consumed the
 	// inserts; waiting for a target count instead could pass on a transient state.
-	assert!(db.await_all_flows(StdDuration::from_secs(10)), "flows must catch up before asserting");
+	assert!(db.await_all_flows(Duration::from_seconds_const(10)), "flows must catch up before asserting");
 	db.row_count(rql)
 }
 

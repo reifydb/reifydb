@@ -12,12 +12,7 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	error,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{row_number::RowNumber, value_type::ValueType},
-};
+use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
 use super::common::{
@@ -102,7 +97,6 @@ impl QueryNode for NaturalJoinNode {
 		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let left_rows = left_columns.row_count();
-		let left_row_numbers = left_columns.row_numbers().to_vec();
 
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
@@ -135,14 +129,13 @@ impl QueryNode for NaturalJoinNode {
 
 		let (converter, hash_table) = Self::build(&right_columns, &right_col_indices, &targets)?;
 
-		let (left_picks, right_picks, result_row_numbers) = self.probe(
+		let (left_picks, right_picks) = self.probe(
 			&left_columns,
 			&ProbeContext {
 				converter: &converter,
 				hash_table: &hash_table,
 				left_col_indices: &left_col_indices,
 				targets: &targets,
-				left_row_numbers: &left_row_numbers,
 				left_rows,
 			},
 		)?;
@@ -160,12 +153,14 @@ impl QueryNode for NaturalJoinNode {
 			&resolved.qualified_names,
 			&[JoinSlot {
 				columns: &left_columns.columns,
+				system: &left_columns.system,
 				picks: &left_picks,
 			}],
 			&kept_right,
 			&right_picks,
-			result_row_numbers,
+			right_columns.time(),
 			left_rownum,
+			0,
 		)?;
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
@@ -184,7 +179,6 @@ struct ProbeContext<'a> {
 	hash_table: &'a KeyIndex,
 	left_col_indices: &'a [usize],
 	targets: &'a [ValueType],
-	left_row_numbers: &'a [RowNumber],
 	left_rows: usize,
 }
 
@@ -218,17 +212,12 @@ impl NaturalJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::probe")]
-	fn probe(
-		&self,
-		left_columns: &Columns,
-		probe_ctx: &ProbeContext,
-	) -> Result<(Vec<usize>, Vec<usize>, Vec<RowNumber>)> {
+	fn probe(&self, left_columns: &Columns, probe_ctx: &ProbeContext) -> Result<(Vec<usize>, Vec<usize>)> {
 		let ProbeContext {
 			converter,
 			hash_table,
 			left_col_indices,
 			targets,
-			left_row_numbers,
 			left_rows,
 		} = probe_ctx;
 		let key_columns: Vec<&ColumnBuffer> = left_col_indices.iter().map(|&idx| &left_columns[idx]).collect();
@@ -239,7 +228,6 @@ impl NaturalJoinNode {
 
 		let mut left_picks: Vec<usize> = Vec::new();
 		let mut right_picks: Vec<usize> = Vec::new();
-		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..*left_rows {
 			let mut matched = false;
@@ -255,21 +243,15 @@ impl NaturalJoinNode {
 					left_picks.push(i);
 					right_picks.push(j);
 					matched = true;
-					if !left_row_numbers.is_empty() {
-						result_row_numbers.push(left_row_numbers[i]);
-					}
 				}
 			}
 
 			if !matched && matches!(self.join_type, JoinType::Left) {
 				left_picks.push(i);
 				right_picks.push(NO_MATCH);
-				if !left_row_numbers.is_empty() {
-					result_row_numbers.push(left_row_numbers[i]);
-				}
 			}
 		}
 
-		Ok((left_picks, right_picks, result_row_numbers))
+		Ok((left_picks, right_picks))
 	}
 }

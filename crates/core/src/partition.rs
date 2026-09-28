@@ -151,7 +151,10 @@ impl From<PartitionError> for Error {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_value::value::{
 		constraint::TypeConstraint,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -176,7 +179,7 @@ mod tests {
 	fn a_dictionary_partition_column_hashes_its_entry_id() {
 		// The helper must hash the stored id unchanged, otherwise it disagrees with the rows it addresses.
 		let id = DictionaryEntryId::U4(7).to_value();
-		let partition = partition_of(&pool(Some(DictionaryId(1))), &["pool".to_string()], &[id.clone()]);
+		let partition = partition_of(&pool(Some(DictionaryId(1))), &["pool".to_string()], from_ref(&id));
 		assert_eq!(partition, Partition::of(&[id]));
 	}
 
@@ -184,7 +187,7 @@ mod tests {
 	fn a_plain_partition_column_hashes_its_plain_value() {
 		// The check must only guard dictionary columns, otherwise every plain partitioned write fails.
 		let value = Value::Utf8("aa".to_string());
-		let partition = partition_of(&pool(None), &["pool".to_string()], &[value.clone()]);
+		let partition = partition_of(&pool(None), &["pool".to_string()], from_ref(&value));
 		assert_eq!(partition, Partition::of(&[value]));
 	}
 
@@ -192,7 +195,8 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is dictionary-encoded but was hashed from")]
 	fn a_plain_value_on_a_dictionary_partition_column_is_refused() {
-		// A site hashing the plain value puts the row in another partition than its stored twins, so it must fail loudly.
+		// A site hashing the plain value puts the row in another partition than its stored twins, so it must
+		// fail loudly.
 		partition_of(&pool(Some(DictionaryId(1))), &["pool".to_string()], &[Value::Utf8("aa".to_string())]);
 	}
 }

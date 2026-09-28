@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());

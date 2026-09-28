@@ -1,0 +1,286 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+mod config;
+mod sink;
+mod source;
+#[cfg(test)]
+mod tests;
+mod transform;
+
+use std::{mem, sync::Arc};
+
+use reifydb_core::{
+	interface::catalog::flow::{FlowId, OperatorId},
+	value::column::columns::Columns,
+};
+use reifydb_flow::{context::FlowContext, error::FlowGraphError};
+use reifydb_rql::flow::{
+	flow::FlowDag,
+	operator::{
+		FlowNode,
+		OperatorDef::{
+			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
+			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceInlineData, SourceRingBuffer,
+			SourceSeries, SourceTable, SourceView, Take, Window,
+		},
+	},
+	time_domain::{check_join_retention_requirements, check_window_time_requirements},
+};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_value::{Result, error::Error, reifydb_assertions};
+use tracing::{info, instrument};
+
+use crate::{
+	engine::FlowEngineInner,
+	operator::BoxedHostOperator,
+	timer::{TimerDue, wheel::TimerWheel},
+};
+
+impl FlowEngineInner {
+	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
+		self.register_with_transaction(&mut Transaction::Command(txn), flow)
+	}
+
+	#[instrument(name = "flow::register_with_transaction", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
+	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
+		reifydb_assertions! {
+			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
+			assert!(
+				self.flows.values().all(|registered| registered.ephemeral == flow.ephemeral),
+				"an engine holding both durable and ephemeral flows keys two different operators \
+				 under the same flow and operator id, and dropping one takes the other's state"
+			);
+		}
+
+		check_window_time_requirements(&self.catalog, txn, &flow)?;
+		check_join_retention_requirements(&self.catalog, txn, &flow)?;
+
+		if !flow.has_timed_source() {
+			info!(
+				flow_id = flow.id.0,
+				"no temporal sources; no timers will fire and no window can seal in this flow, so its \
+				 rows propagate but never age"
+			);
+		}
+
+		let mut added: Vec<OperatorId> = Vec::new();
+		let ctx = Arc::new(FlowContext::default());
+		for operator_id in flow.topological_order() {
+			let operator = flow.get_operator(operator_id).unwrap();
+			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
+				for id in &added {
+					self.operators.remove(&(flow.id, *id));
+					self.durable_sinks.remove(&(flow.id, *id));
+				}
+				for entries in self.sources.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sources.retain(|_, v| !v.is_empty());
+				for entries in self.sinks.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sinks.retain(|_, v| !v.is_empty());
+				self.sinks_by_flow.remove(&flow.id);
+				return Err(err);
+			}
+			added.push(*operator_id);
+		}
+
+		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|operator_id| TimerWheel::next_due_stored(operator_id, store))
+			.collect();
+		self.timers.rebuild(flow.id, armed);
+
+		self.analyzer.add(flow.clone());
+		self.flows.insert(flow.id, flow.clone());
+
+		Ok(())
+	}
+
+	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, operator_id = ?operator.id, node_type = ?mem::discriminant(&operator.ty)))]
+	pub fn add(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator: &FlowNode,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
+		let operator_id = operator.id;
+		let inputs = operator.inputs.clone();
+
+		match operator.ty.clone() {
+			SinkTableView {
+				view,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
+				}
+				self.add_sink_table_view(txn, flow, operator_id, &inputs, view)
+			}
+			SinkRingBufferView {
+				view,
+				capacity,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
+				}
+				self.add_sink_ringbuffer_view(txn, flow, operator_id, &inputs, view, capacity)
+			}
+			SinkSeriesView {
+				view,
+				key,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
+				}
+				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, key)
+			}
+			_ => self.add_core(txn, flow, operator, ctx),
+		}
+	}
+
+	#[instrument(name = "flow::add_core", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, operator_id = ?operator.id, node_type = ?mem::discriminant(&operator.ty)))]
+	pub fn add_core(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator: &FlowNode,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
+		reifydb_assertions! {
+			assert!(!self.operators.contains_key(&(flow.id, operator.id)), "Operator already registered");
+		}
+		let flow_id = flow.id;
+		let operator = operator.clone();
+		let operator_id = operator.id;
+		let inputs = operator.inputs;
+
+		match operator.ty {
+			SourceInlineData {
+				..
+			} => unimplemented!(),
+			SourceTable {
+				table,
+				..
+			} => self.add_source_table(txn, flow, operator_id, table)?,
+			SourceView {
+				view,
+			} => self.add_source_view(txn, flow, operator_id, view)?,
+			SourceRingBuffer {
+				ringbuffer,
+				..
+			} => self.add_source_ringbuffer(txn, flow, operator_id, ringbuffer)?,
+			SourceSeries {
+				series,
+				..
+			} => self.add_source_series(txn, flow, operator_id, series)?,
+			SinkTableView {
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkTableView",
+				}));
+			}
+			SinkRingBufferView {
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkRingBufferView",
+				}));
+			}
+			SinkSeriesView {
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkSeriesView",
+				}));
+			}
+			SinkSubscription {
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkSubscription",
+				}));
+			}
+			Filter {
+				conditions,
+			} => self.add_filter(flow_id, operator_id, &inputs, conditions, ctx)?,
+			Gate {
+				conditions,
+			} => self.add_gate(flow_id, operator_id, &inputs, conditions, ctx)?,
+			Map {
+				expressions,
+			} => self.add_map(flow_id, operator_id, &inputs, expressions, ctx)?,
+			Extend {
+				expressions,
+			} => self.add_extend(flow_id, operator_id, &inputs, expressions, ctx)?,
+			Sort {
+				by: _,
+			} => self.add_sort(flow_id, operator_id, &inputs)?,
+			Take {
+				limit,
+			} => self.add_take(flow_id, operator_id, &inputs, limit)?,
+			Join {
+				join_type,
+				left,
+				right,
+				alias,
+				natural,
+				with,
+			} => self.add_join(
+				flow_id,
+				operator_id,
+				&inputs,
+				join_type,
+				left,
+				right,
+				alias,
+				natural,
+				with,
+				ctx,
+			)?,
+			Distinct {
+				expressions,
+				with,
+			} => self.add_distinct(flow_id, operator_id, &inputs, expressions, with, ctx)?,
+			Append {} => self.add_append(flow, flow_id, operator_id, &inputs)?,
+			Apply {
+				operator,
+				params,
+				with,
+			} => self.add_apply(flow_id, operator_id, &inputs, operator, params, with)?,
+			Aggregate {
+				by,
+				map,
+				with,
+			} => self.add_aggregate(flow_id, operator_id, &inputs, by, map, with)?,
+			Window {
+				group_by,
+				aggregations,
+				with,
+			} => self.add_window(flow_id, operator_id, &inputs, group_by, aggregations, with, ctx)?,
+		}
+
+		Ok(())
+	}
+
+	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator> {
+		self.operators.get(&(flow_id, input)).ok_or_else(|| {
+			Error::from(FlowGraphError::ParentOperatorNotFound {
+				input: format!("{:?}", input),
+			})
+		})
+	}
+
+	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<Columns>> {
+		Ok(self.require_parent(flow_id, input)?.output_schema())
+	}
+}
+
+fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
+	inputs.first().copied().ok_or_else(|| Error::from(FlowGraphError::MissingInputEdge))
+}

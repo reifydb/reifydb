@@ -2,45 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_value::{
-	Result,
-	value::{constraint::precision::Precision, decimal::Decimal, int::Int, uint::Uint},
-};
-
-fn sixty_digits() -> String {
-	format!("1{}", "0".repeat(59))
-}
+use reifydb_value::{Result, value::decimal::Decimal};
 
 fn assert_read_error<T: std::fmt::Debug>(read: Result<Option<T>>, reason: &str) {
 	let err = read.unwrap_err();
 	assert_eq!(err.code, "CONV_004");
 	assert!(err.message.contains(reason), "expected '{reason}' in '{}'", err.message);
-}
-
-#[test]
-fn an_int_column_never_reads_as_a_float() {
-	// A float read would silently round a 60 digit int, so only the exact type may read it.
-	let value = Int::parse(&sixty_digits()).unwrap();
-	let buffer = ColumnBuffer::int(Precision::new(76), [value.clone()]);
-	assert_read_error(buffer.get_as::<f64>(0), "wrong type");
-	assert_eq!(buffer.get_as::<Int>(0), Ok(Some(value)));
-}
-
-#[test]
-fn a_uint_column_never_reads_as_a_float() {
-	// Same as for int: a float would drop digits the column holds exactly.
-	let value = Uint::parse(&sixty_digits()).unwrap();
-	let buffer = ColumnBuffer::uint(Precision::new(76), [value.clone()]);
-	assert_read_error(buffer.get_as::<f64>(0), "wrong type");
-	assert_eq!(buffer.get_as::<Uint>(0), Ok(Some(value)));
-}
-
-#[test]
-fn an_int_column_never_reads_as_a_native_integer() {
-	// An int column may hold values past any native width, so no native read is lossless.
-	let buffer = ColumnBuffer::int(Precision::new(39), [Int::from_u128(u128::MAX)]);
-	assert_read_error(buffer.get_as::<u128>(0), "wrong type");
-	assert_read_error(buffer.get_as::<i128>(0), "wrong type");
 }
 
 #[test]
@@ -86,7 +53,6 @@ fn reading_the_wrong_column_type_is_an_error() {
 	// A schema mistake must fail loudly instead of reading as none.
 	assert_read_error(ColumnBuffer::utf8(["a"]).get_as::<i32>(0), "wrong type");
 	assert_read_error(ColumnBuffer::int4([1]).get_as::<String>(0), "wrong type");
-	assert_read_error(ColumnBuffer::int4([1]).get_as::<Int>(0), "wrong type");
 	assert_read_error(ColumnBuffer::utf8(["a"]).get_as::<Vec<u8>>(0), "wrong type");
 }
 

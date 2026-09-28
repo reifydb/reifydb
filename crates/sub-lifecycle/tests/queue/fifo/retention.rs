@@ -72,9 +72,9 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 fn attempt_count(t: &TestEngine, queue: QueueId) -> usize {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
+	let stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
 	let mut count = 0;
-	while let Some(item) = stream.next() {
+	for item in stream {
 		item.unwrap();
 		count += 1;
 	}
@@ -84,9 +84,9 @@ fn attempt_count(t: &TestEngine, queue: QueueId) -> usize {
 fn deduplication_count(t: &TestEngine, queue: QueueId) -> usize {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn.range(QueueDeduplicationKey::full_scan(queue), RangeScope::All, 1024).unwrap();
+	let stream = txn.range(QueueDeduplicationKey::full_scan(queue), RangeScope::All, 1024).unwrap();
 	let mut count = 0;
-	while let Some(item) = stream.next() {
+	for item in stream {
 		item.unwrap();
 		count += 1;
 	}

@@ -6,7 +6,7 @@ use std::fmt::{self, Display, Formatter};
 use arrow_buffer::BooleanBuffer;
 use serde::{Deserialize, Serialize};
 
-use crate::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
+use crate::value::{datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SystemColumns {
@@ -40,6 +40,15 @@ pub enum SystemColumn {
 }
 
 impl SystemColumn {
+	pub const ALL: [SystemColumn; 6] = [
+		SystemColumn::RowNumbers,
+		SystemColumn::Partitions,
+		SystemColumn::CreatedAt,
+		SystemColumn::UpdatedAt,
+		SystemColumn::Time,
+		SystemColumn::CommitVersion,
+	];
+
 	pub const fn name(self) -> &'static str {
 		match self {
 			SystemColumn::RowNumbers => "#rownum",
@@ -49,6 +58,21 @@ impl SystemColumn {
 			SystemColumn::Time => "#time",
 			SystemColumn::CommitVersion => "#commit_version",
 		}
+	}
+
+	pub const fn ty(self) -> ValueType {
+		match self {
+			SystemColumn::RowNumbers => ValueType::Uint8,
+			SystemColumn::Partitions => ValueType::Uint16,
+			SystemColumn::CreatedAt => ValueType::DateTime,
+			SystemColumn::UpdatedAt => ValueType::DateTime,
+			SystemColumn::Time => ValueType::DateTime,
+			SystemColumn::CommitVersion => ValueType::Uint8,
+		}
+	}
+
+	pub fn from_name(name: &str) -> Option<SystemColumn> {
+		SystemColumn::ALL.into_iter().find(|column| column.name() == name)
 	}
 }
 

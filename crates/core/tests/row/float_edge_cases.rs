@@ -69,6 +69,7 @@ fn test_float_special_values_preservation() {
 }
 
 #[test]
+#[allow(clippy::excessive_precision)]
 fn test_float_precision_boundaries() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4, ValueType::Float8]);
 	let mut row = shape.allocate_pod();

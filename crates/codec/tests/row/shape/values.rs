@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::approx_constant)]
-use std::f64::consts::E;
+use std::{f32::consts::PI, f64::consts::E};
 
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_runtime::context::{
@@ -59,16 +58,16 @@ fn test_set_values_with_mixed_dynamic_content() {
 	let values = vec![
 		Value::Boolean(true),
 		Value::Utf8("first_string".to_string()),
-		Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),
+		Value::Float4(OrderedF32::try_from(PI).unwrap()),
 		Value::Utf8("second_string".to_string()),
 		Value::Int2(-100),
 	];
 
 	shape.set_values(&mut row, &values);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get_utf8(&row, 1), "first_string");
-	assert_eq!(shape.get::<f32>(&row, 2), 3.14f32);
+	assert_eq!(shape.get::<f32>(&row, 2), PI);
 	assert_eq!(shape.get_utf8(&row, 3), "second_string");
 	assert_eq!(shape.get::<i16>(&row, 4), -100);
 }
@@ -139,7 +138,7 @@ fn test_set_none_with_utf8_fields() {
 	assert!(row.is_defined(1));
 	assert!(!row.is_defined(2));
 
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 }
 
 #[test]
@@ -241,7 +240,7 @@ fn test_static_fields_only_no_dynamic_with_values() {
 	assert_eq!(shape.dynamic_section_size(&row), 0);
 	assert_eq!(row.len(), shape.total_static_size());
 
-	assert_eq!(shape.get::<bool>(&row, 0), false);
+	assert!(!shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get::<i32>(&row, 1), 999);
 	assert_eq!(shape.get::<f64>(&row, 2), E);
 }
@@ -517,8 +516,8 @@ fn test_all_types_comprehensive() {
 		Value::Uint4(4294967295),
 		Value::Uint8(18446744073709551615),
 		Value::Uint16(340282366920938463463374607431768211455),
-		Value::Float4(OrderedF32::try_from(3.14159f32).unwrap()),
-		Value::Float8(OrderedF64::try_from(2.718281828459045).unwrap()),
+		Value::Float4(OrderedF32::try_from(PI).unwrap()),
+		Value::Float8(OrderedF64::try_from(E).unwrap()),
 		Value::Utf8("comprehensive test".to_string()),
 		Value::Date(Date::new(2025, 12, 31).unwrap()),
 		Value::DateTime(DateTime::new(2025, 1, 1, 0, 0, 0, 0).unwrap()),

@@ -22,7 +22,7 @@ fn test_set_get_identity_id() {
 	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	assert_eq!(shape.get::<IdentityId>(&row, 0), id);
 }
 
@@ -35,7 +35,7 @@ fn test_try_get_identity_id() {
 	assert_eq!(shape.try_get::<IdentityId>(&row, 0), None);
 
 	let id = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	assert_eq!(shape.try_get::<IdentityId>(&row, 0), Some(id));
 }
 
@@ -48,7 +48,7 @@ fn test_multiple_generations() {
 	for _ in 0..10 {
 		let mut row = shape.allocate_pod();
 		let id = IdentityId::generate(&clock, &rng);
-		shape.set::<IdentityId>(&mut row, 0, id.clone());
+		shape.set::<IdentityId>(&mut row, 0, id);
 		let retrieved = shape.get::<IdentityId>(&row, 0);
 		assert_eq!(retrieved, id);
 		ids.push(id);
@@ -69,7 +69,7 @@ fn test_uuid7_properties() {
 	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	let retrieved = shape.get::<IdentityId>(&row, 0);
 
 	// The version nibble must survive the row slot, since ordering depends on UUID7 layout.
@@ -88,7 +88,7 @@ fn test_timestamp_ordering() {
 	for _ in 0..5 {
 		let mut row = shape.allocate_pod();
 		let id = IdentityId::generate(&clock, &rng);
-		shape.set::<IdentityId>(&mut row, 0, id.clone());
+		shape.set::<IdentityId>(&mut row, 0, id);
 		let retrieved = shape.get::<IdentityId>(&row, 0);
 		assert_eq!(retrieved, id);
 		ids.push(id);
@@ -114,13 +114,13 @@ fn test_mixed_with_other_types() {
 	mock.advance_millis(1);
 	let id2 = IdentityId::generate(&clock, &rng);
 
-	shape.set::<IdentityId>(&mut row, 0, id1.clone());
+	shape.set::<IdentityId>(&mut row, 0, id1);
 	shape.set::<bool>(&mut row, 1, true);
-	shape.set::<IdentityId>(&mut row, 2, id2.clone());
+	shape.set::<IdentityId>(&mut row, 2, id2);
 	shape.set::<i32>(&mut row, 3, 42i32);
 
 	assert_eq!(shape.get::<IdentityId>(&row, 0), id1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<IdentityId>(&row, 2), id2);
 	assert_eq!(shape.get::<i32>(&row, 3), 42);
 }
@@ -132,7 +132,7 @@ fn test_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 
 	assert_eq!(shape.try_get::<IdentityId>(&row, 0), Some(id));
 	assert_eq!(shape.try_get::<IdentityId>(&row, 1), None);
@@ -150,7 +150,7 @@ fn test_persistence() {
 	let id = IdentityId::generate(&clock, &rng);
 	let id_string = id.to_string();
 
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	let retrieved = shape.get::<IdentityId>(&row, 0);
 
 	assert_eq!(retrieved, id);
@@ -165,7 +165,7 @@ fn test_clone_consistency() {
 	let mut row = shape.allocate_pod();
 
 	let original_id = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, original_id.clone());
+	shape.set::<IdentityId>(&mut row, 0, original_id);
 
 	let retrieved_id = shape.get::<IdentityId>(&row, 0);
 	assert_eq!(retrieved_id, original_id);
@@ -188,9 +188,9 @@ fn test_multiple_fields() {
 	mock.advance_millis(1);
 	let id3 = IdentityId::generate(&clock, &rng);
 
-	shape.set::<IdentityId>(&mut row, 0, id1.clone());
-	shape.set::<IdentityId>(&mut row, 1, id2.clone());
-	shape.set::<IdentityId>(&mut row, 2, id3.clone());
+	shape.set::<IdentityId>(&mut row, 0, id1);
+	shape.set::<IdentityId>(&mut row, 1, id2);
+	shape.set::<IdentityId>(&mut row, 2, id3);
 
 	assert_eq!(shape.get::<IdentityId>(&row, 0), id1);
 	assert_eq!(shape.get::<IdentityId>(&row, 1), id2);
@@ -210,7 +210,7 @@ fn test_format_consistency() {
 	let id = IdentityId::generate(&clock, &rng);
 	let original_string = id.to_string();
 
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	let retrieved = shape.get::<IdentityId>(&row, 0);
 	let retrieved_string = retrieved.to_string();
 
@@ -230,7 +230,7 @@ fn test_byte_level_storage() {
 	let id = IdentityId::generate(&clock, &rng);
 	let original_bytes = *id.as_bytes();
 
-	shape.set::<IdentityId>(&mut row, 0, id.clone());
+	shape.set::<IdentityId>(&mut row, 0, id);
 	let retrieved = shape.get::<IdentityId>(&row, 0);
 	let retrieved_bytes = *retrieved.as_bytes();
 
@@ -252,8 +252,8 @@ fn test_time_based_properties() {
 	let mut row1 = shape.allocate_pod();
 	let mut row2 = shape.allocate_pod();
 
-	shape.set::<IdentityId>(&mut row1, 0, id1.clone());
-	shape.set::<IdentityId>(&mut row2, 0, id2.clone());
+	shape.set::<IdentityId>(&mut row1, 0, id1);
+	shape.set::<IdentityId>(&mut row2, 0, id2);
 
 	let retrieved1 = shape.get::<IdentityId>(&row1, 0);
 	let retrieved2 = shape.get::<IdentityId>(&row2, 0);
@@ -276,7 +276,7 @@ fn test_as_primary_key() {
 	let mut row = shape.allocate_pod();
 
 	let primary_key = IdentityId::generate(&clock, &rng);
-	shape.set::<IdentityId>(&mut row, 0, primary_key.clone());
+	shape.set::<IdentityId>(&mut row, 0, primary_key);
 	shape.set_utf8(&mut row, 1, "John Doe");
 	shape.set::<i32>(&mut row, 2, 30i32);
 

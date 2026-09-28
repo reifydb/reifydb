@@ -761,7 +761,7 @@ mod join_row_expiry_guard_tests {
 		},
 		state::timer::{StateStore, TimerStore},
 	};
-	use reifydb_flow::{
+	use reifydb_flow_async::{
 		operator::{
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},

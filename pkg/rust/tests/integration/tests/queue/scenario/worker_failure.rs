@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::{Barrier, Mutex},
-	thread,
-	thread::sleep,
-	time::Duration,
-};
+use std::{mem::take, sync::Barrier, thread, thread::sleep};
 
 use reifydb::{
 	ConfigKey, Frame, IdentityId, Params, Value, embedded,
+	runtime::sync::mutex::Mutex,
 	testing::db::{TestDb, poll_until},
+	value::value::duration::Duration,
 };
 use reifydb_test_harness::engine::AsEngine;
 
@@ -120,7 +117,7 @@ fn a_late_ack_after_lease_expiry_and_reassignment_is_rejected_as_stale() {
 	assert_eq!(uint4(&first, "attempt"), 1);
 
 	// the reaper (sped up above) must return the expired lease to the ready set on its own.
-	let second = poll_until(|| try_claim(&db, "worker-b", 30_000), Duration::from_secs(5))
+	let second = poll_until(|| try_claim(&db, "worker-b", 30_000), Duration::from_seconds_const(5))
 		.expect("the reaper must return the expired lease within the timeout");
 	assert_eq!(uint4(&second, "attempt"), 2, "reassignment must be recorded as a fresh attempt");
 
@@ -147,13 +144,14 @@ fn repeated_crashes_exhaust_the_retry_budget_and_an_operator_replays_the_dead_it
 	let first = try_claim(&db, "doomed-1", 100).expect("must claim the only item");
 	let item = uint8(&first, "item");
 	assert_eq!(uint4(&first, "attempt"), 1);
-	let second = poll_until(|| try_claim(&db, "doomed-2", 100), Duration::from_secs(5))
+	let second = poll_until(|| try_claim(&db, "doomed-2", 100), Duration::from_seconds_const(5))
 		.expect("the first crash must be reaped and redelivered");
 	assert_eq!(uint4(&second, "attempt"), 2);
 
 	// attempt 2 crashes too - the budget of 2 is spent, so the reaper must bury the item, not retry again.
 	assert!(
-		poll_until(|| (depth_and_in_flight(&db) == (0, 0)).then_some(()), Duration::from_secs(5)).is_some(),
+		poll_until(|| (depth_and_in_flight(&db) == (0, 0)).then_some(()), Duration::from_seconds_const(5))
+			.is_some(),
 		"the second crash must spend the last of the retry budget"
 	);
 	assert!(try_claim(&db, "prober", 30_000).is_none(), "a dead item must never be redelivered on its own");
@@ -163,7 +161,7 @@ fn repeated_crashes_exhaust_the_retry_budget_and_an_operator_replays_the_dead_it
 	assert_eq!(utf8(&replayed, "state"), "ready", "a replayed item must return to the ready set");
 
 	// a third worker now completes it normally, proving the replay is a real second chance.
-	let third = poll_until(|| try_claim(&db, "worker-final", 30_000), Duration::from_secs(5))
+	let third = poll_until(|| try_claim(&db, "worker-final", 30_000), Duration::from_seconds_const(5))
 		.expect("the replayed item must be claimable again");
 	assert_eq!(ack(&db, &utf8(&third, "token")), "ok");
 	assert_eq!(depth_and_in_flight(&db), (0, 0));
@@ -179,7 +177,7 @@ fn a_worker_that_extends_before_the_deadline_survives_the_reaper_sweep() {
 	extend(&db, &token, 5_000);
 
 	// several reap sweeps must cross the ORIGINAL deadline without touching the extended lease.
-	sleep(Duration::from_millis(400));
+	sleep(Duration::from_milliseconds_const(400).to_std());
 	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "an extended lease must never be reclaimed early");
 
 	// worker-a finishes normally, proving the lease and its attempt count survived untouched.
@@ -224,16 +222,16 @@ fn several_workers_racing_a_reclaimed_lease_receive_it_exactly_once() {
 							Some(r.frames)
 						}
 					},
-					Duration::from_secs(2),
+					Duration::from_seconds_const(2),
 				);
 				if let Some(frames) = won {
-					winners.lock().unwrap().push(uint4(&frames, "attempt"));
+					winners.lock().push(uint4(&frames, "attempt"));
 				}
 			});
 		}
 	});
 
-	let winners = winners.into_inner().unwrap();
+	let winners = take(&mut *winners.lock());
 	assert_eq!(winners.len(), 1, "the reclaimed lease must go to exactly one racer, never zero and never many");
 	assert_eq!(winners[0], 2, "the winning claim must be recorded as a fresh attempt");
 }
@@ -249,14 +247,14 @@ fn a_crashed_worker_holding_the_head_of_a_key_keeps_its_sibling_parked_until_rea
 	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "a parked sibling must never bypass a live head lease");
 
 	// the reaper reclaims the crashed head - redelivery, not promotion, since the head never finished.
-	let redelivered = poll_until(|| try_claim(&db, "worker-c", 30_000), Duration::from_secs(5))
+	let redelivered = poll_until(|| try_claim(&db, "worker-c", 30_000), Duration::from_seconds_const(5))
 		.expect("the reaper must return the head's expired lease");
 	assert_eq!(uint4(&redelivered, "attempt"), 2, "redelivery of the head must be recorded as a fresh attempt");
 	assert_eq!(int4(&redelivered, "id"), 1, "the redelivered item must be the original head, never its sibling");
 
 	// only a terminal transition on the head may promote the parked sibling.
 	assert_eq!(ack(&db, &utf8(&redelivered, "token")), "ok");
-	let sibling = poll_until(|| try_claim(&db, "worker-d", 30_000), Duration::from_secs(5))
+	let sibling = poll_until(|| try_claim(&db, "worker-d", 30_000), Duration::from_seconds_const(5))
 		.expect("the sibling must be promoted once the head is done");
 	assert_eq!(int4(&sibling, "id"), 2, "the promoted item must be the previously parked sibling");
 }

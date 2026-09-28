@@ -78,7 +78,7 @@ fn cdc_at(version: u64) -> Cdc {
 		DateTime::from_nanos(expected_nanos(version)),
 		(0..changes_for(version))
 			.map(|i| CdcChange::Insert {
-				key: EncodedKey::new(KEY.to_vec()),
+				key: EncodedKey::new(KEY),
 				post: EncodedBytes(CowVec::new(vec![version as u8, i as u8])),
 			})
 			.collect(),

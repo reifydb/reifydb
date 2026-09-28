@@ -114,7 +114,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	let block = poll_until(
 		|| {
 			let entries = block_store.entries();
-			entries.into_iter().map(|(_, b)| b).find(|b| b.len() > 0)
+			entries.into_iter().map(|(_, b)| b).find(|b| !b.is_empty())
 		},
 		Duration::from_seconds(5).unwrap().to_std(),
 	)

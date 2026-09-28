@@ -35,20 +35,18 @@ pub enum ValueKind {
 	Uuid4 = 20,
 	Uuid7 = 21,
 	Blob = 22,
-	Int = 23,
-	Uint = 24,
-	Decimal = 25,
-	Any = 26,
-	DictionaryId = 27,
-	Type = 28,
-	List = 29,
-	Record = 30,
-	Tuple = 31,
-	Digest = 32,
+	Decimal = 23,
+	Any = 24,
+	DictionaryId = 25,
+	Type = 26,
+	List = 27,
+	Record = 28,
+	Tuple = 29,
+	Digest = 30,
 }
 
 impl ValueKind {
-	pub const ALL: [ValueKind; 33] = [
+	pub const ALL: [ValueKind; 31] = [
 		ValueKind::None,
 		ValueKind::Boolean,
 		ValueKind::Float4,
@@ -72,8 +70,6 @@ impl ValueKind {
 		ValueKind::Uuid4,
 		ValueKind::Uuid7,
 		ValueKind::Blob,
-		ValueKind::Int,
-		ValueKind::Uint,
 		ValueKind::Decimal,
 		ValueKind::Any,
 		ValueKind::DictionaryId,
@@ -123,8 +119,6 @@ impl ValueKind {
 			Value::Uuid4(_) => ValueKind::Uuid4,
 			Value::Uuid7(_) => ValueKind::Uuid7,
 			Value::Blob(_) => ValueKind::Blob,
-			Value::Int(_) => ValueKind::Int,
-			Value::Uint(_) => ValueKind::Uint,
 			Value::Decimal(_) => ValueKind::Decimal,
 			Value::Any(_) => ValueKind::Any,
 			Value::DictionaryId(_) => ValueKind::DictionaryId,
@@ -161,12 +155,6 @@ impl ValueKind {
 			ValueType::Uuid4 => ValueKind::Uuid4,
 			ValueType::Uuid7 => ValueKind::Uuid7,
 			ValueType::Blob => ValueKind::Blob,
-			ValueType::Int {
-				..
-			} => ValueKind::Int,
-			ValueType::Uint {
-				..
-			} => ValueKind::Uint,
 			ValueType::Decimal {
 				..
 			} => ValueKind::Decimal,
@@ -277,8 +265,6 @@ impl TypeTag {
 			ValueKind::Uuid4 => ValueType::Uuid4,
 			ValueKind::Uuid7 => ValueType::Uuid7,
 			ValueKind::Blob => ValueType::Blob,
-			ValueKind::Int => ValueType::INT,
-			ValueKind::Uint => ValueType::UINT,
 			ValueKind::Decimal => ValueType::DECIMAL,
 			ValueKind::Any => ValueType::Any,
 			ValueKind::DictionaryId => ValueType::DictionaryId,

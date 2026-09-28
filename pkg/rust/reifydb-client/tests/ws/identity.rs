@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::Arc,
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{Frame, Value, WireFormat, WsClient};
 use reifydb_value::params::Params;
 use tokio::runtime::Runtime;
@@ -27,7 +25,7 @@ fn call_observes_the_authenticated_caller_identity() {
 	let mut server = create_server_instance(&runtime);
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
-	let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+	let suffix = Clock::Real.now().to_nanos();
 	let ns = format!("ident_ws_{suffix}");
 	let binding = format!("whoami_ws_{suffix}");
 	let alice = format!("alice_{suffix}");

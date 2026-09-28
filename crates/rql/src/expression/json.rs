@@ -783,8 +783,6 @@ fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
 		text.trim().parse::<u8>().map_err(|_| Error(Box::new(internal!("Invalid type parameter: {}", s))))
 	};
 	Ok(match (name, params.split_once(',')) {
-		("int", None) => Some(ValueType::int(Precision::try_new(param(params)?)?)),
-		("uint", None) => Some(ValueType::uint(Precision::try_new(param(params)?)?)),
 		("decimal", Some((p, sc))) => {
 			let precision = Precision::try_new(param(p)?)?;
 			Some(ValueType::decimal(precision, Scale::try_new_with_precision(param(sc)?, precision)?))
@@ -827,8 +825,6 @@ fn parse_type(s: &str) -> Result<ValueType> {
 		"datetime" => ValueType::DateTime,
 		"duration" => ValueType::Duration,
 		"identityid" => ValueType::IdentityId,
-		"int" => ValueType::INT,
-		"uint" => ValueType::UINT,
 		"decimal" => ValueType::DECIMAL,
 		_ => {
 			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
@@ -1553,14 +1549,7 @@ pub mod tests {
 	#[test]
 	fn test_family_type_expression_keeps_its_parameters() {
 		// A round trip that drops precision or scale would re-plan a cast to a different type.
-		for ty in [
-			ValueType::INT,
-			ValueType::UINT,
-			ValueType::DECIMAL,
-			ValueType::int(Precision::new(20)),
-			ValueType::uint(Precision::new(39)),
-			ValueType::decimal(Precision::new(10), Scale::new(2)),
-		] {
+		for ty in [ValueType::DECIMAL, ValueType::decimal(Precision::new(10), Scale::new(2))] {
 			let expr = Expression::Type(TypeExpression {
 				ty: ty.clone(),
 				fragment: internal_fragment("t"),

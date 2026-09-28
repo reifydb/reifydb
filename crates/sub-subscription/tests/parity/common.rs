@@ -153,9 +153,9 @@ pub fn normalize_aggregated(batches: Vec<StagedBatch>) -> Vec<Vec<(String, Strin
 		let mut row_records: Vec<Vec<(String, String)>> = vec![Vec::new(); cols.row_count()];
 		for col in cols.iter() {
 			let name = col.name().text().to_string();
-			for i in 0..cols.row_count() {
+			for (i, record) in row_records.iter_mut().enumerate() {
 				let v = format!("{:?}", col.data().get_value(i));
-				row_records[i].push((name.clone(), v.clone()));
+				record.push((name.clone(), v.clone()));
 			}
 		}
 		for mut rec in row_records {

@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::sync::Arc;
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{GrpcClient, QueueClaimRequest, WireFormat};
+use reifydb_value::value::duration::Duration;
 use tokio::runtime::Runtime;
 
 use super::{QUEUE, row_count};
@@ -54,10 +53,10 @@ fn parked_grpc_claim_is_released_by_a_concurrent_insert() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		inserter.authenticate("mysecrettoken");
 
-		let started = Instant::now();
+		let started = Clock::Real.instant();
 		let parked = tokio::spawn(async move { client.queue_claim(claim("w1", Some("10s"))).await });
 
-		tokio::time::sleep(Duration::from_millis(200)).await;
+		tokio::time::sleep(Duration::from_milliseconds_const(200).to_std()).await;
 		inserter.command("INSERT app::jobs [{ id: 1 }]", None).await.unwrap();
 
 		let frames = parked.await.unwrap().unwrap();
@@ -65,7 +64,7 @@ fn parked_grpc_claim_is_released_by_a_concurrent_insert() {
 
 		assert_eq!(row_count(&frames), 1, "the parked claim must receive the inserted item");
 		assert!(
-			elapsed < Duration::from_secs(3),
+			elapsed < Duration::from_seconds_const(3).to_std(),
 			"the claim must return on the wake, not the budget: {elapsed:?}"
 		);
 	});
@@ -76,11 +75,14 @@ fn a_grpc_claim_that_times_out_returns_zero_rows_without_an_error_status() {
 	// A timed-out long-poll must not surface as a gRPC error status; workers re-poll on it and a
 	// DEADLINE_EXCEEDED would make every idle cycle look like a transport failure.
 	run(|client, _| async move {
-		let started = Instant::now();
+		let started = Clock::Real.instant();
 		let frames = client.queue_claim(claim("w1", Some("1s"))).await.unwrap();
 
 		assert_eq!(row_count(&frames), 0);
-		assert!(started.elapsed() >= Duration::from_secs(1), "the claim must wait out its budget");
+		assert!(
+			started.elapsed() >= Duration::from_seconds_const(1).to_std(),
+			"the claim must wait out its budget"
+		);
 	});
 }
 

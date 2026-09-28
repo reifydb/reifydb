@@ -3,11 +3,10 @@
 
 use std::{
 	sync::{
-		Arc, Condvar, Mutex,
+		Arc, LazyLock,
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
-	time::{Duration, Instant},
 };
 
 use reifydb::{
@@ -17,7 +16,10 @@ use reifydb::{
 		operator_with::ApplyWith,
 	},
 	embedded,
-	runtime::context::clock::{Clock, MockClock},
+	runtime::{
+		context::clock::{Clock, MockClock},
+		sync::{condvar::Condvar, mutex::Mutex},
+	},
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
@@ -33,11 +35,11 @@ use reifydb::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-const TICK: Duration = Duration::from_millis(20);
+const TICK: ValueDuration = ValueDuration::from_milliseconds_const(20);
 
-const JUMP: Duration = Duration::from_secs(31);
+const JUMP: ValueDuration = ValueDuration::from_seconds_const(31);
 
-static GATE: Gate = Gate::new();
+static GATE: LazyLock<Gate> = LazyLock::new(Gate::new);
 
 struct Gate {
 	state: Mutex<GateState>,
@@ -50,7 +52,7 @@ struct GateState {
 }
 
 impl Gate {
-	const fn new() -> Self {
+	fn new() -> Self {
 		Self {
 			state: Mutex::new(GateState {
 				entered: false,
@@ -61,22 +63,29 @@ impl Gate {
 	}
 
 	fn pass(&self) {
-		let mut state = self.state.lock().unwrap();
+		let mut state = self.state.lock();
 		state.entered = true;
 		self.changed.notify_all();
 		while !state.open {
-			state = self.changed.wait(state).unwrap();
+			self.changed.wait(&mut state);
 		}
 	}
 
-	fn await_entered(&self, timeout: Duration) -> bool {
-		let state = self.state.lock().unwrap();
-		let (state, _) = self.changed.wait_timeout_while(state, timeout, |state| !state.entered).unwrap();
+	fn await_entered(&self, timeout: ValueDuration) -> bool {
+		let mut state = self.state.lock();
+		let deadline = Clock::Real.instant() + timeout;
+		while !state.entered {
+			let now = Clock::Real.instant();
+			if now >= deadline {
+				break;
+			}
+			self.changed.wait_for(&mut state, (&deadline - &now).into());
+		}
 		state.entered
 	}
 
 	fn open(&self) {
-		self.state.lock().unwrap().open = true;
+		self.state.lock().open = true;
 		self.changed.notify_all();
 	}
 }
@@ -132,7 +141,10 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 	db.admin("create table test::src { id: int4 }");
 	db.admin("create deferred view test::wedged { id: int4 } as { from test::src apply wedged{} }");
 	db.command("insert test::src [{ id: 1 }]");
-	assert!(GATE.await_entered(Duration::from_secs(10)), "the flow never reached the wedged operator");
+	assert!(
+		GATE.await_entered(ValueDuration::from_seconds(10).unwrap()),
+		"the flow never reached the wedged operator"
+	);
 
 	// the watch must see the flow waiting before a jump counts, so one jump taken too early would never expire
 	let ticking = Arc::new(AtomicBool::new(true));
@@ -141,21 +153,24 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 		let clock = clock.clone();
 		thread::spawn(move || {
 			while ticking.load(Ordering::SeqCst) {
-				clock.advance_millis(JUMP.as_millis() as u64);
-				thread::sleep(TICK);
+				clock.advance_millis(JUMP.to_std().as_millis() as u64);
+				thread::sleep(TICK.to_std());
 			}
 		})
 	};
 
 	let target = db.watermarks().tx().current().unwrap();
-	let started = Instant::now();
+	let started = Clock::Real.instant();
 	let result = db.watermarks().cdc().wait_for_flow_consumer(target, ValueDuration::from_seconds(30).unwrap());
 	let elapsed = started.elapsed();
 	ticking.store(false, Ordering::SeqCst);
 	ticker.join().unwrap();
 
 	let err = result.expect_err("a wedged flow must make the wait an error, never a plain timeout");
-	assert!(elapsed < Duration::from_secs(10), "the wait must fail soon after the stall, took {elapsed:?}");
+	assert!(
+		elapsed < ValueDuration::from_seconds(10).unwrap().to_std(),
+		"the wait must fail soon after the stall, took {elapsed:?}"
+	);
 	let message = format!("{err}");
 	assert!(
 		message.contains("stalled with input pending"),

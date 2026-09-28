@@ -53,8 +53,6 @@ impl From<ColumnBuffer> for FrameColumnData {
 				container,
 				..
 			} => FrameColumnData::Blob(container),
-			ColumnBuffer::Int(container) => FrameColumnData::Int(container),
-			ColumnBuffer::Uint(container) => FrameColumnData::Uint(container),
 			ColumnBuffer::Decimal(container) => FrameColumnData::Decimal(container),
 			ColumnBuffer::Any {
 				container,
@@ -142,8 +140,6 @@ impl From<FrameColumnData> for ColumnBuffer {
 				container,
 				max_bytes: MaxBytes::MAX,
 			},
-			FrameColumnData::Int(container) => ColumnBuffer::Int(container),
-			FrameColumnData::Uint(container) => ColumnBuffer::Uint(container),
 			FrameColumnData::Decimal(container) => ColumnBuffer::Decimal(container),
 			FrameColumnData::Any {
 				container,

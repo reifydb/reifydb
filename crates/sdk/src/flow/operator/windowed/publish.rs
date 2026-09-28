@@ -9,7 +9,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::engine::{PublishKey, publish::PublishState},
 };

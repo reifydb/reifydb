@@ -41,9 +41,9 @@ fn test_mixed_with_other_types() {
 	shape.set::<i32>(&mut row, 1, 42i32);
 	shape.set::<bool>(&mut row, 2, false);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get::<i32>(&row, 1), 42);
-	assert_eq!(shape.get::<bool>(&row, 2), false);
+	assert!(!shape.get::<bool>(&row, 2));
 }
 
 #[test]

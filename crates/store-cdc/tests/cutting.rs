@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::Bound,
-	thread::sleep,
-	time::{Duration as StdDuration, Instant},
-};
+use std::{collections::Bound, thread::sleep};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_cdc::{
 	storage::CdcStorage,
@@ -19,7 +16,11 @@ use reifydb_store_cdc::{
 	tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadConfig},
 	types::cdc_resident_bytes,
 };
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{
+	byte_size::ByteSize,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 mod common;
 
@@ -35,7 +36,7 @@ const SUMMARY_LIMIT: usize = 1024;
 
 const TIMESTAMP_BASE: u64 = 1_700_000_000_000_000_000;
 
-const AUTO_CUT_TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const AUTO_CUT_TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 /// Byte cost of the smallest record these tests write; every other record is an exact multiple of it, so a block
 /// boundary is arithmetic rather than a guess.
@@ -255,9 +256,9 @@ mod cases {
 
 		// the flush interval is an hour away and no explicit flush has been issued, so a sealed block proves
 		// the byte trigger fired on its own
-		let deadline = Instant::now() + AUTO_CUT_TIMEOUT;
-		while layout(&fixture).is_empty() && Instant::now() < deadline {
-			sleep(StdDuration::from_millis(5));
+		let deadline = Clock::Real.instant() + AUTO_CUT_TIMEOUT;
+		while layout(&fixture).is_empty() && Clock::Real.instant() < deadline {
+			sleep(Duration::from_milliseconds_const(5).to_std());
 		}
 		assert!(
 			!layout(&fixture).is_empty(),

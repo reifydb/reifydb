@@ -12,7 +12,9 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{Value, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+	},
 };
 
 use crate::{
@@ -47,6 +49,7 @@ pub(crate) const NO_MATCH: usize = usize::MAX;
 
 pub(crate) struct JoinSlot<'a> {
 	pub columns: &'a [ColumnBuffer],
+	pub system: &'a SystemColumns,
 	pub picks: &'a [usize],
 }
 
@@ -55,8 +58,9 @@ pub(crate) fn materialize_join(
 	left_slots: &[JoinSlot<'_>],
 	right_columns: &[ColumnBuffer],
 	right_picks: &[usize],
-	row_numbers: Vec<RowNumber>,
+	right_time: &[DateTime],
 	has_row_numbers: bool,
+	emitted: u64,
 ) -> Result<Columns> {
 	let left_width = left_slots.first().map_or(0, |slot| slot.columns.len());
 	let mut picked: Vec<ColumnWithName> = Vec::with_capacity(left_width + right_columns.len());
@@ -73,15 +77,43 @@ pub(crate) fn materialize_join(
 		picked.push(ColumnWithName::new(name, column.extract_rows(right_picks)));
 	}
 
-	let mut columns = if row_numbers.is_empty() {
-		Columns::new(picked)
-	} else {
-		Columns::new(picked).with_row_numbers(row_numbers)
-	};
-	if has_row_numbers {
-		columns.system.mark_row_numbers();
+	let mut left = SystemColumns::empty();
+	for slot in left_slots {
+		left.append_indices(slot.system, slot.picks);
 	}
-	Ok(columns)
+	let numbered = has_row_numbers || !left.row_numbers().is_empty();
+	let row_numbers = if numbered {
+		(1..=right_picks.len() as u64).map(|i| RowNumber(emitted + i)).collect()
+	} else {
+		Vec::new()
+	};
+	let time = if left.time().is_empty() || right_time.is_empty() {
+		left.time().to_vec()
+	} else {
+		left.time()
+			.iter()
+			.zip(right_picks)
+			.map(|(&time, &pick)| {
+				if pick == NO_MATCH {
+					time
+				} else {
+					time.max(right_time[pick])
+				}
+			})
+			.collect()
+	};
+	let mut system = SystemColumns::new(
+		row_numbers,
+		left.partitions().to_vec(),
+		left.created_at().to_vec(),
+		left.updated_at().to_vec(),
+		time,
+		left.commit_versions().to_vec(),
+	);
+	if numbered {
+		system.mark_row_numbers();
+	}
+	Ok(Columns::with_system(picked, system))
 }
 
 pub struct ResolvedColumnNames {

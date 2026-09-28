@@ -13,8 +13,9 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{HostOperator, extend::ExtendOperator, filter::FilterOperator, host::HostContext, map::MapOperator},
+	operator::{extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
 };
+use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -164,9 +165,9 @@ impl HostOperator for Rowwise {
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		match self {
-			Rowwise::Filter(op) => op.apply(host, change),
-			Rowwise::Map(op) => op.apply(host, change),
-			Rowwise::Extend(op) => op.apply(host, change),
+			Rowwise::Filter(op) => HostOperator::apply(op, host, change),
+			Rowwise::Map(op) => HostOperator::apply(op, host, change),
+			Rowwise::Extend(op) => HostOperator::apply(op, host, change),
 		}
 	}
 

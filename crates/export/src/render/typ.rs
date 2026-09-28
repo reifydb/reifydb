@@ -88,21 +88,9 @@ pub fn render_value_type(ty: &ValueType, object: &str) -> Result<String, ExportE
 		ValueType::Uuid4 => "uuid4".to_string(),
 		ValueType::Uuid7 => "uuid7".to_string(),
 		ValueType::Blob => "blob".to_string(),
-		ValueType::Int {
-			..
-		} if *ty == ValueType::INT => "int".to_string(),
-		ValueType::Uint {
-			..
-		} if *ty == ValueType::UINT => "uint".to_string(),
 		ValueType::Decimal {
 			..
 		} if *ty == ValueType::DECIMAL => "decimal".to_string(),
-		ValueType::Int {
-			precision,
-		} => format!("int({})", precision),
-		ValueType::Uint {
-			precision,
-		} => format!("uint({})", precision),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -187,11 +175,7 @@ mod tests {
 		let render = |ty: ValueType| {
 			render_column_type(&TypeConstraint::unconstrained(ty), &r, "s").unwrap().type_text
 		};
-		assert_eq!(render(ValueType::INT), "int");
-		assert_eq!(render(ValueType::UINT), "uint");
 		assert_eq!(render(ValueType::DECIMAL), "decimal");
-		assert_eq!(render(ValueType::int(Precision::new(20))), "int(20)");
-		assert_eq!(render(ValueType::uint(Precision::new(39))), "uint(39)");
 		assert_eq!(render(ValueType::decimal(Precision::new(76), Scale::new(0))), "decimal(76,0)");
 	}
 

@@ -79,6 +79,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,

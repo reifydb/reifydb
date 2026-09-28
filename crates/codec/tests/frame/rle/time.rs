@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::repeat_n;
+
 use reifydb_value::value::{container::temporal_array::time_array, frame::data::FrameColumnData, time::Time};
 
 fn make(v: Vec<Time>) -> FrameColumnData {
@@ -12,7 +14,7 @@ crate::rle_tests! {
 		let mut v = Vec::new();
 		for nanos in [0u64, 10_000_000_000, 20_000_000_000, 30_000_000_000, 40_000_000_000] {
 			let t = Time::from_nanos_since_midnight(nanos).unwrap();
-			v.extend(std::iter::repeat(t).take(100));
+			v.extend(repeat_n(t, 100));
 		}
 		v
 	},

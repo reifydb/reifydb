@@ -6,10 +6,7 @@ use reifydb::{ConfigKey, GetConfig, Value, embedded, value::value::duration::Dur
 #[test]
 fn test_with_config_applied_at_bootstrap() {
 	let one_hour = Duration::from_hours(1).unwrap();
-	let db = embedded::memory()
-		.with_config(ConfigKey::CdcTtlDuration, Value::Duration(one_hour.clone()))
-		.build()
-		.unwrap();
+	let db = embedded::memory().with_config(ConfigKey::CdcTtlDuration, Value::Duration(one_hour)).build().unwrap();
 
 	let value = db.catalog().get_config(ConfigKey::CdcTtlDuration);
 	assert!(matches!(value, Value::Duration(d) if d == one_hour));

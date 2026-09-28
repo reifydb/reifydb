@@ -59,10 +59,10 @@ fn paths(param_type: &str, arg: &str) -> Vec<Path> {
 	]
 }
 
-fn run(t: &TestEngine, rql: &str) -> Result<FrameColumn, Diagnostic> {
+fn run(t: &TestEngine, rql: &str) -> Result<FrameColumn, Box<Diagnostic>> {
 	let result = t.inner().query_as(TestEngine::identity(), rql, Params::None);
 	if let Some(err) = result.error {
-		return Err(err.diagnostic());
+		return Err(err.0);
 	}
 	assert_eq!(result.frames.len(), 1, "expected one frame for {rql}, got {:?}", result.frames);
 	let column = result.frames[0].columns.iter().find(|c| c.name == "v").cloned();

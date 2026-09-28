@@ -11,7 +11,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
@@ -64,13 +64,13 @@ struct Probe;
 
 impl Probe {
 	fn output(
-		group: &String,
+		group: &str,
 		span: WindowSpan<DateTime>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
 		(!value.is_empty()).then(|| CarryOut {
-			group: group.clone(),
+			group: group.to_owned(),
 			window_start: span.start.to_order(),
 			sum: value.values().sum(),
 			carry_in: prev_carry.copied().unwrap_or(0.0),

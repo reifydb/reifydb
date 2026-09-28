@@ -62,7 +62,7 @@ fn test_mixed_with_other_types() {
 	shape.set::<i8>(&mut row, 2, 75i8);
 
 	assert_eq!(shape.get::<i8>(&row, 0), -50i8);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<i8>(&row, 2), 75i8);
 }
 

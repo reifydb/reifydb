@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
 const TABLES: &str = "from system::metrics::storage::current filter { object_kind == 'table' }";
 

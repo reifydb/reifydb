@@ -110,7 +110,7 @@ impl AsyncWrite for PermittedStream {
 
 #[cfg(test)]
 mod tests {
-	use std::io::{Error, ErrorKind};
+	use std::io::Error;
 
 	use libc::ECONNABORTED;
 
@@ -126,6 +126,6 @@ mod tests {
 	fn ignores_other_errors() {
 		assert!(!is_fd_exhausted(&Error::from_raw_os_error(ECONNABORTED)));
 		// An error with no OS code (e.g. a synthesized one) must not be treated as fd exhaustion.
-		assert!(!is_fd_exhausted(&Error::new(ErrorKind::Other, "boom")));
+		assert!(!is_fd_exhausted(&Error::other("boom")));
 	}
 }

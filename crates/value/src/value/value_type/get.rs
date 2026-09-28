@@ -7,9 +7,7 @@ use crate::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -141,18 +139,6 @@ impl GetType for IdentityId {
 impl GetType for Uuid7 {
 	fn get_type() -> ValueType {
 		ValueType::Uuid7
-	}
-}
-
-impl GetType for Int {
-	fn get_type() -> ValueType {
-		ValueType::INT
-	}
-}
-
-impl GetType for Uint {
-	fn get_type() -> ValueType {
-		ValueType::UINT
 	}
 }
 

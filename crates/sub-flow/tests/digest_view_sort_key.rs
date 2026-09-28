@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::HealthStatus;
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 fn setup() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
@@ -19,7 +18,7 @@ fn setup() -> TestDb {
 }
 
 fn poisoned_flows(db: &TestDb, expected: usize) -> String {
-	let deadline = Instant::now() + TIMEOUT;
+	let deadline = Clock::Real.instant() + TIMEOUT;
 	loop {
 		let status =
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
@@ -31,10 +30,10 @@ fn poisoned_flows(db: &TestDb, expected: usize) -> String {
 			return description.clone();
 		}
 		assert!(
-			Instant::now() < deadline,
+			Clock::Real.instant() < deadline,
 			"{expected} flows must fail their sink write, last status: {status:?}"
 		);
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds_const(20).to_std());
 	}
 }
 

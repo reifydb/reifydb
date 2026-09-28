@@ -7,8 +7,7 @@ use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
-		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, int::Int,
-		time::Time, uint::Uint,
+		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, time::Time,
 	},
 };
 
@@ -480,22 +479,6 @@ impl<'a> BorrowedColumn<'a> {
 		// SAFETY: the Int16 check above means the buffer is a marshalled &[i128], so it carries i128's
 		// 16-byte alignment and is initialized.
 		unsafe { self.as_slice::<i128>()?.get(index).copied() }
-	}
-
-	#[inline]
-	pub fn int_at(&self, index: usize) -> Option<Int> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		self.expect_family_cell_at(index)
-	}
-
-	#[inline]
-	pub fn uint_at(&self, index: usize) -> Option<Uint> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		self.expect_family_cell_at(index)
 	}
 
 	#[inline]

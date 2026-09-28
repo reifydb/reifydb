@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_column::snapshot::{Schema, SystemColumn};
+use reifydb_column::snapshot::Schema;
 use reifydb_core::{
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::resolved::ResolvedTable,
@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, fragment::Fragment};
+use reifydb_value::{error::Error, fragment::Fragment, value::system_columns::SystemColumn};
 
 use crate::{
 	Result,

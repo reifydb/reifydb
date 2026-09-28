@@ -5,7 +5,7 @@ use core::ffi::c_void;
 use std::marker::PhantomData;
 
 use reifydb_core::{common::OperatorClass, interface::catalog::flow::OperatorId};
-use reifydb_flow::operator::host::HostContext;
+use reifydb_flow_async::operator::host::HostContext;
 use reifydb_sdk::flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContextRaw};
 
 pub struct ExternCHostContext<'a> {

@@ -336,8 +336,8 @@ mod tests {
 	fn every_implementor_round_trips_through_its_bytes() {
 		// Multi-field types like Duration only round-trip if every component sits at the offset
 		// the reader expects.
-		assert_eq!(bool::from_le_bytes(LeBytes::to_le_bytes(&true)), true);
-		assert_eq!(bool::from_le_bytes(LeBytes::to_le_bytes(&false)), false);
+		assert!(bool::from_le_bytes(LeBytes::to_le_bytes(&true)));
+		assert!(!bool::from_le_bytes(LeBytes::to_le_bytes(&false)));
 
 		let dt = DateTime::from_nanos(1_700_000_123_456_789);
 		assert_eq!(DateTime::from_le_bytes(LeBytes::to_le_bytes(&dt)), dt);

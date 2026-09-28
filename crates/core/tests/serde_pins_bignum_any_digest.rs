@@ -18,9 +18,7 @@ use reifydb_value::value::{
 	duration::Duration,
 	frame::data::FrameColumnData,
 	identity::IdentityId,
-	int::Int,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
@@ -140,14 +138,6 @@ fn decimal_value(text: &str) -> Value {
 	Value::Decimal(text.parse::<Decimal>().unwrap())
 }
 
-fn big_int(text: &str) -> Int {
-	text.parse::<Int>().unwrap()
-}
-
-fn big_uint(text: &str) -> Uint {
-	text.parse::<Uint>().unwrap()
-}
-
 fn digest_type() -> ValueType {
 	ValueType::Digest {
 		inner: Box::new(ValueType::Float8),
@@ -172,9 +162,9 @@ fn decimal_mixed_input_scales_read_back_at_the_column_scale() {
 		decimals(["1.5", "1.50", "1.500", "0", "0.00", "-0.0", "0.0000001", "1E+3", "-123.4500", "100"]),
 	);
 	let pin = Pin {
-		column_postcard: "18000c070a8087a70e8087a70e8087a70e000000028090dfc04abfe6a7990980a8d6b907",
+		column_postcard: "16000c070a8087a70e8087a70e8087a70e000000028090dfc04abfe6a7990980a8d6b907",
 		column_json: "{\"Decimal\":{\"Decimal128\":{\"precision\":12,\"scale\":7,\"data\":[15000000,15000000,15000000,0,0,0,1,10000000000,-1234500000,1000000000]}}}",
-		frame_postcard: "18000c070a8087a70e8087a70e8087a70e000000028090dfc04abfe6a7990980a8d6b907",
+		frame_postcard: "16000c070a8087a70e8087a70e8087a70e000000028090dfc04abfe6a7990980a8d6b907",
 		frame_json: "{\"Decimal\":{\"Decimal128\":{\"precision\":12,\"scale\":7,\"data\":[15000000,15000000,15000000,0,0,0,1,10000000000,-1234500000,1000000000]}}}",
 	};
 	assert_pinned(buffer, &pin);
@@ -204,112 +194,10 @@ fn decimal_declared_precision_and_scale_are_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "18000a0202fa0163",
+			column_postcard: "16000a0202fa0163",
 			column_json: "{\"Decimal\":{\"Decimal128\":{\"precision\":10,\"scale\":2,\"data\":[125,-50]}}}",
-			frame_postcard: "18000a0202fa0163",
+			frame_postcard: "16000a0202fa0163",
 			frame_json: "{\"Decimal\":{\"Decimal128\":{\"precision\":10,\"scale\":2,\"data\":[125,-50]}}}",
-		},
-	);
-}
-
-#[test]
-fn int_declared_precision_is_pinned() {
-	// A declared precision must survive storage, otherwise a reloaded Int column accepts wider values.
-	let buffer = ColumnBuffer::int(Precision::new(19), [Int::from(-7i64), Int::from(i64::MAX)]);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "16001300020dfeffffffffffffffff01",
-			column_json: "{\"Int\":{\"Decimal128\":{\"precision\":19,\"scale\":0,\"data\":[-7,9223372036854775807]}}}",
-			frame_postcard: "16001300020dfeffffffffffffffff01",
-			frame_json: "{\"Int\":{\"Decimal128\":{\"precision\":19,\"scale\":0,\"data\":[-7,9223372036854775807]}}}",
-		},
-	);
-}
-
-#[test]
-fn uint_declared_precision_is_pinned() {
-	// A declared precision must survive storage, otherwise a reloaded Uint column accepts wider values.
-	let buffer = ColumnBuffer::uint(Precision::new(20), [Uint::from(7u64), Uint::from(u64::MAX)]);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "17001400020efeffffffffffffffff03",
-			column_json: "{\"Uint\":{\"Decimal128\":{\"precision\":20,\"scale\":0,\"data\":[7,18446744073709551615]}}}",
-			frame_postcard: "17001400020efeffffffffffffffff03",
-			frame_json: "{\"Uint\":{\"Decimal128\":{\"precision\":20,\"scale\":0,\"data\":[7,18446744073709551615]}}}",
-		},
-	);
-}
-
-#[test]
-fn int_sign_and_length_edges_are_pinned() {
-	// Each row must keep its exact sign across both i256 halves, otherwise a value near a 64 bit boundary shifts.
-	let two_pow_64 = 1i128 << 64;
-	let buffer = ColumnBuffer::int(
-		Precision::MAX,
-		[-two_pow_64, -256, -255, -1, 0, 1, 255, 256, two_pow_64].map(Int::from),
-	);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "16014c0009808080808080808080feffffffffffffffff030180feffffffffffffffffffffffffffffffff030181feffffffffffffffffffffffffffffffff0301ffffffffffffffffffffffffffffffffffff030100000100ff01008002008080808080808080800200",
-			column_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463444927863358058659840,-1],[340282366920938463463374607431768211200,-1],[340282366920938463463374607431768211201,-1],[340282366920938463463374607431768211455,-1],[0,0],[1,0],[255,0],[256,0],[18446744073709551616,0]]}}}",
-			frame_postcard: "16014c0009808080808080808080feffffffffffffffff030180feffffffffffffffffffffffffffffffff030181feffffffffffffffffffffffffffffffff0301ffffffffffffffffffffffffffffffffffff030100000100ff01008002008080808080808080800200",
-			frame_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463444927863358058659840,-1],[340282366920938463463374607431768211200,-1],[340282366920938463463374607431768211201,-1],[340282366920938463463374607431768211455,-1],[0,0],[1,0],[255,0],[256,0],[18446744073709551616,0]]}}}",
-		},
-	);
-}
-
-#[test]
-fn uint_length_edges_are_pinned() {
-	// Each row must keep its exact value across both i256 halves, otherwise a value near a 64 bit boundary shifts.
-	let buffer = ColumnBuffer::uint(Precision::MAX, [0u128, 255, 256, 1u128 << 64].map(Uint::from));
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "17014c00040000ff01008002008080808080808080800200",
-			column_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[255,0],[256,0],[18446744073709551616,0]]}}}",
-			frame_postcard: "17014c00040000ff01008002008080808080808080800200",
-			frame_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[0,0],[255,0],[256,0],[18446744073709551616,0]]}}}",
-		},
-	);
-}
-
-#[test]
-fn option_int_with_none_row_is_pinned() {
-	// The none row must stay a zero placeholder with a cleared bit, otherwise optional Int columns drift.
-	let buffer = ColumnBuffer::int_with_bitvec(
-		Precision::MAX,
-		[big_int("-12345678901234567890123"), Int::default()],
-		vec![true, false],
-	);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "1b16014c0002b5f6f6f598b1eca4bdc5f5ffffffffffffff03010000010102",
-			column_json: "{\"Option\":{\"inner\":{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938451117695706197200321333,-1],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "1b16014c0002b5f6f6f598b1eca4bdc5f5ffffffffffffff03010000010102",
-			frame_json: "{\"Option\":{\"inner\":{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938451117695706197200321333,-1],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-		},
-	);
-}
-
-#[test]
-fn option_uint_with_none_row_is_pinned() {
-	// The none row must stay a zero placeholder with a cleared bit, otherwise optional Uint columns drift.
-	let buffer = ColumnBuffer::uint_with_bitvec(
-		Precision::MAX,
-		[big_uint("98765432109876543210987"), Uint::default()],
-		vec![true, false],
-	);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "1b17014c0002eb8bfff2f1c7e9da95d453000000010102",
-			column_json: "{\"Option\":{\"inner\":{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[98765432109876543210987,0],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "1b17014c0002eb8bfff2f1c7e9da95d453000000010102",
-			frame_json: "{\"Option\":{\"inner\":{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[98765432109876543210987,0],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 		},
 	);
 }
@@ -326,9 +214,9 @@ fn option_decimal_with_none_row_keeps_scale() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1b18014c02029601000000010102",
+			column_postcard: "1916014c02029601000000010102",
 			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":2,\"data\":[[150,0],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "1b18014c02029601000000010102",
+			frame_postcard: "1916014c02029601000000010102",
 			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":2,\"data\":[[150,0],[0,0]]}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 		},
 	);
@@ -341,40 +229,10 @@ fn option_any_with_none_row_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1b1902090161001a00010102",
+			column_postcard: "191702090161001800010102",
 			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "1b1902090161001a00010102",
+			frame_postcard: "191702090161001800010102",
 			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-		},
-	);
-}
-
-#[test]
-fn sliced_int_is_pinned() {
-	// A sliced Int must serialize exactly like a fresh column, otherwise the wire format depends on slicing.
-	let buffer = ColumnBuffer::int(Precision::MAX, [1i128, -(1i128 << 64), 3, 4].map(Int::from)).slice(1, 3);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "16014c0002808080808080808080feffffffffffffffff03010300",
-			column_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463444927863358058659840,-1],[3,0]]}}}",
-			frame_postcard: "16014c0002808080808080808080feffffffffffffffff03010300",
-			frame_json: "{\"Int\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463444927863358058659840,-1],[3,0]]}}}",
-		},
-	);
-}
-
-#[test]
-fn sliced_uint_is_pinned() {
-	// A sliced Uint must serialize exactly like a fresh column, otherwise the wire format depends on slicing.
-	let buffer = ColumnBuffer::uint(Precision::MAX, [1u128, u128::MAX, 3, 4].map(Uint::from)).slice(1, 3);
-	assert_pinned(
-		buffer,
-		&Pin {
-			column_postcard: "17014c0002ffffffffffffffffffffffffffffffffffff03000300",
-			column_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463463374607431768211455,0],[3,0]]}}}",
-			frame_postcard: "17014c0002ffffffffffffffffffffffffffffffffffff03000300",
-			frame_json: "{\"Uint\":{\"Decimal256\":{\"precision\":76,\"scale\":0,\"data\":[[340282366920938463463374607431768211455,0],[3,0]]}}}",
 		},
 	);
 }
@@ -387,9 +245,9 @@ fn sliced_decimal_keeps_the_column_scale() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "18014c0302c41300c8e8ffffffffffffffffffffffffffffffff0301",
+			column_postcard: "16014c0302c41300c8e8ffffffffffffffffffffffffffffffff0301",
 			column_json: "{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":3,\"data\":[[2500,0],[340282366920938463463374607431768208456,-1]]}}}",
-			frame_postcard: "18014c0302c41300c8e8ffffffffffffffffffffffffffffffff0301",
+			frame_postcard: "16014c0302c41300c8e8ffffffffffffffffffffffffffffffff0301",
 			frame_json: "{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":3,\"data\":[[2500,0],[340282366920938463463374607431768208456,-1]]}}}",
 		},
 	);
@@ -404,9 +262,9 @@ fn sliced_any_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "19020901621904312e353000",
+			column_postcard: "17020901621704312e353000",
 			column_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
-			frame_postcard: "19020901621904312e353000",
+			frame_postcard: "17020901621704312e353000",
 			frame_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
 		},
 	);
@@ -423,9 +281,9 @@ fn sliced_digest_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1c02010d0103904e000000010001017e01010e0103904e0000000002e80101220102904e",
+			column_postcard: "1a02010d0103904e000000010001017e01010e0103904e0000000002e80101220102904e",
 			column_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,0,1,1,126,1],[1,3,144,78,0,0,0,0,2,232,1,1,34,1]]},\"inner\":\"Float8\",\"accuracy\":10000}}",
-			frame_postcard: "1c02010d0103904e000000010001017e01010e0103904e0000000002e80101220102904e",
+			frame_postcard: "1a02010d0103904e000000010001017e01010e0103904e0000000002e80101220102904e",
 			frame_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,0,1,1,126,1],[1,3,144,78,0,0,0,0,2,232,1,1,34,1]]},\"inner\":\"Float8\",\"accuracy\":10000}}",
 		},
 	);
@@ -443,9 +301,9 @@ fn digest_with_none_slot_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1c0201100103904e000000018c01010200012e010002904e",
+			column_postcard: "1a0201100103904e000000018c01010200012e010002904e",
 			column_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}}",
-			frame_postcard: "1c0201100103904e000000018c01010200012e010002904e",
+			frame_postcard: "1a0201100103904e000000018c01010200012e010002904e",
 			frame_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}}",
 		},
 	);
@@ -467,9 +325,9 @@ fn record_typed_any_with_placeholder_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "19021e020161060201620901781e00011d02016105016208",
+			column_postcard: "17021c020161060201620901781c00011b02016105016208",
 			column_json: "{\"Any\":{\"data\":[{\"Record\":[[\"a\",{\"Int4\":1}],[\"b\",{\"Utf8\":\"x\"}]]},{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"],[\"b\",\"Utf8\"]]}}}",
-			frame_postcard: "19021e020161060201620901781e00011d02016105016208",
+			frame_postcard: "17021c020161060201620901781c00011b02016105016208",
 			frame_json: "{\"Any\":{\"data\":[{\"Record\":[[\"a\",{\"Int4\":1}],[\"b\",{\"Utf8\":\"x\"}]]},{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"],[\"b\",\"Utf8\"]]}}}",
 		},
 	);
@@ -483,9 +341,9 @@ fn tuple_column_is_pinned() {
 	assert_pinned(
 		builder.finish(),
 		&Pin {
-			column_postcard: "19011f02060209017900",
+			column_postcard: "17011d02060209017900",
 			column_json: "{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]}],\"declared_type\":null}}",
-			frame_postcard: "19011f02060209017900",
+			frame_postcard: "17011d02060209017900",
 			frame_json: "{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]}],\"declared_type\":null}}",
 		},
 	);
@@ -500,18 +358,14 @@ fn any_with_nested_and_typed_none_values_is_pinned() {
 		decimal_value("1.50"),
 		Value::Type(ValueType::Int4),
 		Value::Digest(Box::new(digest_of(&[1.0, 2.5, -4.0]))),
-		Value::Record(vec![(
-			"k".to_string(),
-			Value::Uint(big_uint("98765432109876543210987654321098765432109876")),
-		)]),
 	]);
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "190600051d02060200051904312e35301c0520100103904e000000018c01010200012e011e01016b182c393837363534333231303938373635343332313039383736353433323130393837363534333231303938373600",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":\"98765432109876543210987654321098765432109876\"}]]}],\"declared_type\":null}}",
-			frame_postcard: "190600051d02060200051904312e35301c0520100103904e000000018c01010200012e011e01016b182c393837363534333231303938373635343332313039383736353433323130393837363534333231303938373600",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]},{\"Record\":[[\"k\",{\"Uint\":\"98765432109876543210987654321098765432109876\"}]]}],\"declared_type\":null}}",
+			column_postcard: "170500051b02060200051704312e35301a051e100103904e000000018c01010200012e0100",
+			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			frame_postcard: "170500051b02060200051704312e35301a051e100103904e000000018c01010200012e0100",
+			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
 		},
 	);
 }
@@ -522,9 +376,9 @@ fn none_typed_list_is_pinned() {
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::List(Box::new(ValueType::Int4)), 2),
 		&Pin {
-			column_postcard: "1b19021d001d00011c05010002",
+			column_postcard: "1917021b001b00011a05010002",
 			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
-			frame_postcard: "1b19021d001d00011c05010002",
+			frame_postcard: "1917021b001b00011a05010002",
 			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
 		},
 	);
@@ -536,9 +390,9 @@ fn none_typed_record_is_pinned() {
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::Record(vec![("a".to_string(), ValueType::Int4)]), 1),
 		&Pin {
-			column_postcard: "1b19011e00011d01016105010001",
+			column_postcard: "1917011c00011b01016105010001",
 			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
-			frame_postcard: "1b19011e00011d01016105010001",
+			frame_postcard: "1917011c00011b01016105010001",
 			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
 		},
 	);
@@ -550,9 +404,9 @@ fn none_typed_decimal_is_pinned() {
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::DECIMAL, 2),
 		&Pin {
-			column_postcard: "1b18014c0a0200000000010002",
+			column_postcard: "1916014c0a0200000000010002",
 			column_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":10,\"data\":[[0,0],[0,0]]}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
-			frame_postcard: "1b18014c0a0200000000010002",
+			frame_postcard: "1916014c0a0200000000010002",
 			frame_json: "{\"Option\":{\"inner\":{\"Decimal\":{\"Decimal256\":{\"precision\":76,\"scale\":10,\"data\":[[0,0],[0,0]]}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
 		},
 	);
@@ -564,9 +418,9 @@ fn none_typed_digest_is_pinned() {
 	assert_pinned(
 		ColumnBuffer::none_typed(digest_type(), 2),
 		&Pin {
-			column_postcard: "1b1c02000002904e010002",
+			column_postcard: "191a02000002904e010002",
 			column_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[null,null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
-			frame_postcard: "1b1c02000002904e010002",
+			frame_postcard: "191a02000002904e010002",
 			frame_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[null,null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
 		},
 	);
@@ -599,8 +453,6 @@ fn any_with_every_value_variant_is_pinned() {
 		Value::Uuid4(Uuid4(Uuid::from_u128(0x0123_4567_89ab_4cde_8f01_2345_6789_abcd))),
 		Value::Uuid7(Uuid7(Uuid::from_u128(0x0000_0000_0002_7000_8000_0000_0000_0000))),
 		Value::Blob(Blob::new(vec![0, 255, 7])),
-		Value::Int(big_int("-1234567890123456789012345678901234567890123")),
-		Value::Uint(big_uint("98765432109876543210987654321098765432109876")),
 		decimal_value("-123.4500"),
 		Value::Any(Box::new(Value::Int4(5))),
 		Value::DictionaryId(DictionaryEntryId::U4(3)),
@@ -613,10 +465,10 @@ fn any_with_every_value_variant_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff07172c2d31323334353637383930313233343536373839303132333435363738393031323334353637383930313233182c393837363534333231303938373635343332313039383736353433323130393837363534333231303938373619092d3132332e343530301a060a1b02031c184c0a1d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":\"-1234567890123456789012345678901234567890123\"},{\"Uint\":\"98765432109876543210987654321098765432109876\"},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
-			frame_postcard: "192100080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff07172c2d31323334353637383930313233343536373839303132333435363738393031323334353637383930313233182c393837363534333231303938373635343332313039383736353433323130393837363534333231303938373619092d3132332e343530301a060a1b02031c184c0a1d02060209017a1e01016601001f020602010120100103904e000000018c01010200012e0100",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Int\":\"-1234567890123456789012345678901234567890123\"},{\"Uint\":\"98765432109876543210987654321098765432109876\"},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			column_postcard: "171f00080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717092d3132332e3435303018060a1902031a164c0a1b02060209017a1c01016601001d02060201011e100103904e000000018c01010200012e0100",
+			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			frame_postcard: "171f00080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717092d3132332e3435303018060a1902031a164c0a1b02060209017a1c01016601001d02060201011e100103904e000000018c01010200012e0100",
+			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
 		},
 	);
 }

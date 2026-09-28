@@ -13,11 +13,9 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	duration::Duration,
 	identity::IdentityId,
-	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
 use uuid::Uuid;
@@ -61,40 +59,10 @@ fn a_zero_byte_sorts_last_within_a_position() {
 const KEY_PRECISION: Precision = Precision::new(38);
 const KEY_SCALE: Scale = Scale::new(5);
 
-fn enc_int(v: i64) -> Vec<u8> {
-	let mut s = KeySerializer::new();
-	s.extend_int(&Int::from(v), KEY_PRECISION).unwrap();
-	s.to_encoded_key().to_vec()
-}
-
-fn enc_uint(v: u64) -> Vec<u8> {
-	let mut s = KeySerializer::new();
-	s.extend_uint(&Uint::from(v), KEY_PRECISION).unwrap();
-	s.to_encoded_key().to_vec()
-}
-
 fn enc_dec(s: &str) -> Vec<u8> {
 	let mut ser = KeySerializer::new();
 	ser.extend_decimal(&Decimal::from_str(s).unwrap(), KEY_PRECISION, KEY_SCALE).unwrap();
 	ser.to_encoded_key().to_vec()
-}
-
-#[test]
-fn uint_sorts_descending_by_value() {
-	// a uint key column must order like every other numeric column or range scans skip rows.
-	assert!(enc_uint(2) < enc_uint(1));
-	assert!(enc_uint(256) < enc_uint(255), "must hold across a magnitude-length boundary");
-	assert!(enc_uint(1) < enc_uint(0));
-}
-
-#[test]
-fn int_sorts_descending_by_value() {
-	// negatives must trail positives; a wrong sign byte silently reverses half the range.
-	assert!(enc_int(1) < enc_int(0));
-	assert!(enc_int(0) < enc_int(-1));
-	assert!(enc_int(-1) < enc_int(-2));
-	assert!(enc_int(-255) < enc_int(-256), "must hold across a magnitude-length boundary");
-	assert!(enc_int(256) < enc_int(255));
 }
 
 #[test]
@@ -111,16 +79,6 @@ fn decimal_sorts_by_value_not_by_text() {
 #[test]
 fn int_uint_decimal_round_trip_the_awkward_cases() {
 	// ordering rewrites are worthless if a negative or a trailing-zero scale cannot be read back.
-	for v in [0i64, 1, -1, 255, -256, i64::MIN, i64::MAX] {
-		let b = enc_int(v);
-		let mut d = KeyDeserializer::from_bytes(&b);
-		assert_eq!(d.read_int().unwrap(), Int::from(v), "int {v}");
-	}
-	for v in [0u64, 1, 255, 256, u64::MAX] {
-		let b = enc_uint(v);
-		let mut d = KeyDeserializer::from_bytes(&b);
-		assert_eq!(d.read_uint().unwrap(), Uint::from(v), "uint {v}");
-	}
 	for s in ["0", "0.00", "1.0", "1.00", "-3.14159", "1e10", "-0.0001"] {
 		let b = enc_dec(s);
 		let mut d = KeyDeserializer::from_bytes(&b);
@@ -174,20 +132,6 @@ fn ascending_samples() -> Vec<(&'static str, Vec<Value>)> {
 			[vec![], vec![0x00], vec![0x00, 0x00], vec![0x01], vec![0x01, 0x00], vec![0xff]]
 				.into_iter()
 				.map(|b| Value::Blob(Blob::from(b)))
-				.collect(),
-		),
-		(
-			"Int",
-			[-300i64, -256, -255, -1, 0, 1, 255, 256, 300]
-				.into_iter()
-				.map(|v| Value::Int(Int::from(v)))
-				.collect(),
-		),
-		(
-			"Uint",
-			[0u128, 1, 255, 256, u64::MAX as u128, u128::MAX]
-				.into_iter()
-				.map(|v| Value::Uint(Uint::from(v)))
 				.collect(),
 		),
 		(

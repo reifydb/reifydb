@@ -3,7 +3,7 @@
 
 use std::iter::repeat_n;
 
-use arrow_array::{Decimal128Array, Decimal256Array, FixedSizeBinaryArray};
+use arrow_array::FixedSizeBinaryArray;
 use arrow_buffer::BooleanBuffer;
 use reifydb_codec::frame::{
 	decode::decode_frames,
@@ -14,9 +14,9 @@ use reifydb_codec::frame::{
 use reifydb_value::value::{
 	Value,
 	container::{
-		decimal_array::{int16_array, u128s, uint16_array},
 		dictionary_array::{self, dictionary_array},
-		primitive,
+		fixed_array,
+		wide_int_array::{wide_array, wides},
 	},
 	dictionary::DictionaryEntryId,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -80,14 +80,14 @@ fn uint16_shapes(encoding: Encoding) -> Vec<Vec<u128>> {
 	}
 }
 
-fn int16s(data: &FrameColumnData) -> &Decimal128Array {
+fn int16s(data: &FrameColumnData) -> &FixedSizeBinaryArray {
 	match data {
 		FrameColumnData::Int16(array) => array,
 		other => panic!("expected an Int16 column, found {:?}", other.get_type()),
 	}
 }
 
-fn uint16s(data: &FrameColumnData) -> &Decimal256Array {
+fn uint16s(data: &FrameColumnData) -> &FixedSizeBinaryArray {
 	match data {
 		FrameColumnData::Uint16(array) => array,
 		other => panic!("expected a Uint16 column, found {:?}", other.get_type()),
@@ -128,8 +128,8 @@ fn int16_extremes_round_trip_through_every_encoding() {
 	// A narrowing or wrapping encoder would change a value only a 128 bit column can hold.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Int16(int16_array(values.clone())), encoding);
-			assert_eq!(&int16s(&decoded).values()[..], values.as_slice(), "{encoding:?}");
+			let decoded = round_trip(FrameColumnData::Int16(wide_array(values.clone())), encoding);
+			assert_eq!(wides::<i128>(int16s(&decoded)), values, "{encoding:?}");
 		}
 	}
 }
@@ -139,25 +139,8 @@ fn uint16_width_boundaries_round_trip_through_every_encoding() {
 	// Rows at 2^64, 2^127 or u128::MAX would be clipped or pick up a sign through the signed 256 bit native.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in uint16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Uint16(uint16_array(values.clone())), encoding);
-			assert_eq!(u128s(uint16s(&decoded)), values, "{encoding:?}");
-		}
-	}
-}
-
-#[test]
-fn decoded_int16_and_uint16_keep_the_exact_decimal_type() {
-	// A decoder that rebuilds with the arrow default scale 10 would misread every value by 10^10.
-	for encoding in NUMERIC_ENCODINGS {
-		for values in int16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Int16(int16_array(values)), encoding);
-			let array = int16s(&decoded);
-			assert_eq!((array.precision(), array.scale()), (38, 0), "{encoding:?}");
-		}
-		for values in uint16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Uint16(uint16_array(values)), encoding);
-			let array = uint16s(&decoded);
-			assert_eq!((array.precision(), array.scale()), (39, 0), "{encoding:?}");
+			let decoded = round_trip(FrameColumnData::Uint16(wide_array(values.clone())), encoding);
+			assert_eq!(wides::<u128>(uint16s(&decoded)), values, "{encoding:?}");
 		}
 	}
 }
@@ -206,12 +189,12 @@ fn option_wrapped_columns_keep_their_none_row_through_every_encoding() {
 	// Dropping the none row, or losing its inner type, would shift a value or return an untyped none.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
-			let column = with_none_at_row_one(FrameColumnData::Int16(int16_array(values)));
+			let column = with_none_at_row_one(FrameColumnData::Int16(wide_array(values)));
 			let decoded = round_trip(column.clone(), encoding);
 			assert_eq!(row_values(&decoded), row_values(&column), "{encoding:?}");
 		}
 		for values in uint16_shapes(encoding) {
-			let column = with_none_at_row_one(FrameColumnData::Uint16(uint16_array(values)));
+			let column = with_none_at_row_one(FrameColumnData::Uint16(wide_array(values)));
 			let decoded = round_trip(column.clone(), encoding);
 			assert_eq!(row_values(&decoded), row_values(&column), "{encoding:?}");
 		}
@@ -227,19 +210,19 @@ fn sliced_columns_round_trip_only_their_window() {
 	// An encoder reading from the start of the shared buffer instead of the slice offset would emit the padding.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
-			let sliced = primitive::slice(&int16_array(padded(42, &values)), PAD, PAD + values.len());
+			let sliced = fixed_array::slice(&wide_array(padded(42, &values)), PAD, PAD + values.len());
 			let decoded = round_trip(FrameColumnData::Int16(sliced), encoding);
-			assert_eq!(&int16s(&decoded).values()[..], values.as_slice(), "{encoding:?}");
+			assert_eq!(wides::<i128>(int16s(&decoded)), values, "{encoding:?}");
 		}
 		for values in uint16_shapes(encoding) {
-			let sliced = primitive::slice(&uint16_array(padded(42, &values)), PAD, PAD + values.len());
+			let sliced = fixed_array::slice(&wide_array(padded(42, &values)), PAD, PAD + values.len());
 			let decoded = round_trip(FrameColumnData::Uint16(sliced), encoding);
-			assert_eq!(u128s(uint16s(&decoded)), values, "{encoding:?}");
+			assert_eq!(wides::<u128>(uint16s(&decoded)), values, "{encoding:?}");
 		}
 	}
 	let entries = [DictionaryEntryId::U1(0), DictionaryEntryId::U1(u8::MAX), DictionaryEntryId::U1(7)];
 	let all = dictionary_array(padded(DictionaryEntryId::U16(u128::MAX), &entries));
-	let sliced = dictionary_array::slice(&all, PAD, PAD + entries.len());
+	let sliced = fixed_array::slice(&all, PAD, PAD + entries.len());
 	let decoded = round_trip(dictionary_column(sliced), Encoding::Plain);
 	assert_eq!(dictionary_entries(&decoded), entries);
 }

@@ -92,7 +92,6 @@ describe('DigestValue', () => {
         const pinned: Array<[string, bigint]> = [
             ['Float4', 2n], ['Float8', 3n], ['Int1', 4n], ['Int2', 5n], ['Int4', 6n], ['Int8', 7n], ['Int16', 8n],
             ['Uint1', 10n], ['Uint2', 11n], ['Uint4', 12n], ['Uint8', 13n], ['Uint16', 14n], ['Duration', 18n],
-            ['Int', 23n], ['Uint', 24n],
         ];
         for (const [inner, tag] of pinned) {
             const digest = new DigestValue(new Uint8Array(varints([1n, tag, 10_000n, 0n, 0n, 0n, 0n, 0n])));
@@ -258,7 +257,6 @@ describe('digest type', () => {
         expect(digestTypeName({Digest: {inner: 'Float8', accuracy: 10_000}})).toBe('Digest(Float8, 0.01)');
         expect(digestTypeName({Digest: {inner: 'Duration', accuracy: 12_345}})).toBe('Digest(Duration, 0.012345)');
         expect(digestTypeName({Digest: {inner: 'Int4', accuracy: 1_000}})).toBe('Digest(Int4, 0.001)');
-        expect(digestTypeName({Digest: {inner: 'Uint', accuracy: 100_000}})).toBe('Digest(Uint, 0.1)');
     });
 
     it('rejects an inner type or accuracy a digest cannot have', () => {

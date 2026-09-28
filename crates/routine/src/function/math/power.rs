@@ -9,11 +9,9 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::decimal_array::{decimals, ints, u128s, uints},
+		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
-		int::Int,
 		is::IsNumber,
-		uint::Uint,
 		value_type::ValueType,
 	},
 };
@@ -135,7 +133,20 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			ValueType::Int2 => run!(Int2, int2_with_bitvec, signed_pow_op!()),
 			ValueType::Int4 => run!(Int4, int4_with_bitvec, signed_pow_op!()),
 			ValueType::Int8 => run!(Int8, int8_with_bitvec, signed_pow_op!()),
-			ValueType::Int16 => run!(Int16, int16_with_bitvec, signed_pow_op!()),
+			ValueType::Int16 => {
+				let (ColumnBuffer::Int16(b), ColumnBuffer::Int16(e)) = (base_inner, exp_inner) else {
+					unreachable!()
+				};
+				let (values, bits) = pow_rows(
+					&wides::<i128>(b),
+					base_bv,
+					&wides::<i128>(e),
+					exp_bv,
+					signed_pow_op!(),
+					&overflow,
+				)?;
+				ColumnBuffer::int16_with_bitvec(values, bits)
+			}
 			ValueType::Uint1 => run!(Uint1, uint1_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint2 => run!(Uint2, uint2_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint4 => run!(Uint4, uint4_with_bitvec, unsigned_pow_op!()),
@@ -144,38 +155,18 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				let (ColumnBuffer::Uint16(b), ColumnBuffer::Uint16(e)) = (base_inner, exp_inner) else {
 					unreachable!()
 				};
-				let (values, bits) =
-					pow_rows(&u128s(b), base_bv, &u128s(e), exp_bv, unsigned_pow_op!(), &overflow)?;
+				let (values, bits) = pow_rows(
+					&wides::<u128>(b),
+					base_bv,
+					&wides::<u128>(e),
+					exp_bv,
+					unsigned_pow_op!(),
+					&overflow,
+				)?;
 				ColumnBuffer::uint16_with_bitvec(values, bits)
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
-			ValueType::Int {
-				precision,
-			} => run!(
-				Int(..),
-				ints,
-				|values, bits| ColumnBuffer::int_with_bitvec(precision, values, bits),
-				|b: &Int, e: &Int| {
-					if e.is_negative() {
-						Some(Int::zero())
-					} else {
-						family_exponent(e.to_i256())
-							.and_then(|exp| b.to_i256().checked_pow(exp))
-							.and_then(Int::from_i256)
-					}
-				}
-			),
-			ValueType::Uint {
-				precision,
-			} => run!(
-				Uint(..),
-				uints,
-				|values, bits| ColumnBuffer::uint_with_bitvec(precision, values, bits),
-				|b: &Uint, e: &Uint| family_exponent(e.to_i256())
-					.and_then(|exp| b.to_i256().checked_pow(exp))
-					.and_then(Uint::from_i256)
-			),
 			ValueType::Decimal {
 				precision,
 				scale,

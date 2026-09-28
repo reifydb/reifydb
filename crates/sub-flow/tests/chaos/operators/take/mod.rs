@@ -6,7 +6,7 @@ pub mod workload;
 
 use rand::RngExt;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_flow::operator::take::TakeOperator;
+use reifydb_flow_async::operator::take::TakeOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

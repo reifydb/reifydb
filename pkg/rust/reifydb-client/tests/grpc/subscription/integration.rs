@@ -8,9 +8,9 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{SystemTime, UNIX_EPOCH},
 };
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{ChangeKind, GrpcClient, SubscriptionConfig, Value, WireFormat};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::sleep};
@@ -420,10 +420,7 @@ fn test_error_nonexistent_table() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let non_existent_table = format!(
-			"table_that_does_not_exist_{}",
-			SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
-		);
+		let non_existent_table = format!("table_that_does_not_exist_{}", Clock::Real.now().to_epoch_millis());
 
 		let result =
 			client.subscribe(&format!("from {}", non_existent_table), SubscriptionConfig::default()).await;
@@ -689,7 +686,6 @@ fn test_stress_many_concurrent_clients() {
 
 		let mut handles = Vec::new();
 		for client_idx in 0..NUM_CLIENTS {
-			let port = port;
 			let table = shared_table.clone();
 			let counter = Arc::clone(&received_count);
 
@@ -875,9 +871,8 @@ fn test_stress_concurrent_connect_disconnect() {
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		let mut handles = Vec::new();
-		for task_idx in 0..NUM_TASKS {
-			let port = port;
-			let table = tables[task_idx].clone();
+		for (task_idx, table) in tables.iter().enumerate() {
+			let table = table.clone();
 			let counter = Arc::clone(&success_count);
 
 			let handle = tokio::spawn(async move {

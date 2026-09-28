@@ -386,7 +386,7 @@ pub mod tests {
 
 		assert_eq!(found.columns.len(), 2);
 		assert_eq!(found.columns[0].name, "id");
-		assert_eq!(found.columns[0].auto_increment, true);
+		assert!(found.columns[0].auto_increment);
 		assert_eq!(found.columns[1].name, "value");
 		assert!(found.primary_key.is_some());
 		assert_eq!(found.primary_key.unwrap().id, pk_id);

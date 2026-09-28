@@ -10,7 +10,7 @@ fn test_set_get_time() {
 	let mut row = shape.allocate_pod();
 
 	let value = Time::new(20, 50, 0, 0).unwrap();
-	shape.set::<Time>(&mut row, 0, value.clone());
+	shape.set::<Time>(&mut row, 0, value);
 	assert_eq!(shape.get::<Time>(&row, 0), value);
 }
 
@@ -22,7 +22,7 @@ fn test_try_get_time() {
 	assert_eq!(shape.try_get::<Time>(&row, 0), None);
 
 	let test_time = Time::from_hms(14, 30, 45).unwrap();
-	shape.set::<Time>(&mut row, 0, test_time.clone());
+	shape.set::<Time>(&mut row, 0, test_time);
 	assert_eq!(shape.try_get::<Time>(&row, 0), Some(test_time));
 }
 
@@ -32,7 +32,7 @@ fn test_time_midnight() {
 	let mut row = shape.allocate_pod();
 
 	let midnight = Time::default(); // 00:00:00
-	shape.set::<Time>(&mut row, 0, midnight.clone());
+	shape.set::<Time>(&mut row, 0, midnight);
 	assert_eq!(shape.get::<Time>(&row, 0), midnight);
 }
 
@@ -42,7 +42,7 @@ fn test_time_with_nanoseconds() {
 	let mut row = shape.allocate_pod();
 
 	let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
-	shape.set::<Time>(&mut row, 0, precise_time.clone());
+	shape.set::<Time>(&mut row, 0, precise_time);
 	assert_eq!(shape.get::<Time>(&row, 0), precise_time);
 }
 
@@ -60,7 +60,7 @@ fn test_time_various_times() {
 
 	for time in test_times {
 		let mut row = shape.allocate_pod();
-		shape.set::<Time>(&mut row, 0, time.clone());
+		shape.set::<Time>(&mut row, 0, time);
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
 }
@@ -79,7 +79,7 @@ fn test_time_boundary_cases() {
 
 	for time in boundary_times {
 		let mut row = shape.allocate_pod();
-		shape.set::<Time>(&mut row, 0, time.clone());
+		shape.set::<Time>(&mut row, 0, time);
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
 }
@@ -95,13 +95,13 @@ fn test_time_mixed_with_other_types() {
 	let time1 = Time::new(9, 15, 30, 0).unwrap();
 	let time2 = Time::new(21, 45, 0, 250000000).unwrap();
 
-	shape.set::<Time>(&mut row, 0, time1.clone());
+	shape.set::<Time>(&mut row, 0, time1);
 	shape.set::<bool>(&mut row, 1, false);
-	shape.set::<Time>(&mut row, 2, time2.clone());
+	shape.set::<Time>(&mut row, 2, time2);
 	shape.set::<i32>(&mut row, 3, -999i32);
 
 	assert_eq!(shape.get::<Time>(&row, 0), time1);
-	assert_eq!(shape.get::<bool>(&row, 1), false);
+	assert!(!shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<Time>(&row, 2), time2);
 	assert_eq!(shape.get::<i32>(&row, 3), -999);
 }
@@ -112,7 +112,7 @@ fn test_time_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let time = Time::new(16, 20, 45, 333000000).unwrap();
-	shape.set::<Time>(&mut row, 0, time.clone());
+	shape.set::<Time>(&mut row, 0, time);
 
 	assert_eq!(shape.try_get::<Time>(&row, 0), Some(time));
 	assert_eq!(shape.try_get::<Time>(&row, 1), None);
@@ -128,7 +128,7 @@ fn test_time_precision_preservation() {
 
 	// The slot holds nanos since midnight, so no sub-second digit may be rounded away.
 	let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
-	shape.set::<Time>(&mut row, 0, high_precision.clone());
+	shape.set::<Time>(&mut row, 0, high_precision);
 
 	let retrieved = shape.get::<Time>(&row, 0);
 	assert_eq!(retrieved, high_precision);
@@ -141,7 +141,7 @@ fn test_time_microsecond_precision() {
 	let mut row = shape.allocate_pod();
 
 	let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
-	shape.set::<Time>(&mut row, 0, microsecond_precision.clone());
+	shape.set::<Time>(&mut row, 0, microsecond_precision);
 	assert_eq!(shape.get::<Time>(&row, 0), microsecond_precision);
 }
 
@@ -151,7 +151,7 @@ fn test_time_millisecond_precision() {
 	let mut row = shape.allocate_pod();
 
 	let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
-	shape.set::<Time>(&mut row, 0, millisecond_precision.clone());
+	shape.set::<Time>(&mut row, 0, millisecond_precision);
 	assert_eq!(shape.get::<Time>(&row, 0), millisecond_precision);
 }
 
@@ -169,7 +169,7 @@ fn test_time_common_times() {
 
 	for time in common_times {
 		let mut row = shape.allocate_pod();
-		shape.set::<Time>(&mut row, 0, time.clone());
+		shape.set::<Time>(&mut row, 0, time);
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
 }

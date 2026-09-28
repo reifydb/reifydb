@@ -359,6 +359,6 @@ mod tests {
 
 	#[test]
 	fn test_catalog_keys_are_skipped() {
-		assert!(row_target(&EncodedKey::new(b"not a row key".to_vec())).is_none());
+		assert!(row_target(&EncodedKey::new(b"not a row key")).is_none());
 	}
 }

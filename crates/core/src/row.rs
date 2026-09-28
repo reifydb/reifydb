@@ -58,7 +58,7 @@ pub struct JoinRetention {
 	pub right: Option<OperatorRetention>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JoinPick {
 	pub keys: Vec<SortKey>,
 }

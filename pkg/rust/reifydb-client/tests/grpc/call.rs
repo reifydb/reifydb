@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::Arc,
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, sync::Arc};
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{GrpcClient, Params, Value, WireFormat};
 use tokio::runtime::Runtime;
 
@@ -30,7 +27,7 @@ where
 
 	// Binding names are globally unique, so a per-run suffix keeps repeated runs against
 	// a reused server from colliding.
-	let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+	let suffix = Clock::Real.now().to_nanos();
 	let ns = format!("call_grpc_{suffix}");
 	let fixture = Fixture {
 		greet: format!("greet_{suffix}"),

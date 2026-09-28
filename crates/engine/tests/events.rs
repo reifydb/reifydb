@@ -12,7 +12,7 @@ fn test_create_event_basic() {
 	let frame = &frames[0];
 	assert_eq!(frame.get::<String>("namespace", 0).unwrap().unwrap(), "ns");
 	assert_eq!(frame.get::<String>("event", 0).unwrap().unwrap(), "order_event");
-	assert_eq!(frame.get::<bool>("created", 0).unwrap().unwrap(), true);
+	assert!(frame.get::<bool>("created", 0).unwrap().unwrap());
 }
 
 #[test]
@@ -23,7 +23,7 @@ fn test_create_event_multiple_variants() {
 
 	let frame = &frames[0];
 	assert_eq!(frame.get::<String>("event", 0).unwrap().unwrap(), "order_event");
-	assert_eq!(frame.get::<bool>("created", 0).unwrap().unwrap(), true);
+	assert!(frame.get::<bool>("created", 0).unwrap().unwrap());
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn test_create_handler_basic() {
 	let frame = &frames[0];
 	assert_eq!(frame.get::<String>("namespace", 0).unwrap().unwrap(), "ns");
 	assert_eq!(frame.get::<String>("handler", 0).unwrap().unwrap(), "on_placed");
-	assert_eq!(frame.get::<bool>("created", 0).unwrap().unwrap(), true);
+	assert!(frame.get::<bool>("created", 0).unwrap().unwrap());
 }
 
 #[test]

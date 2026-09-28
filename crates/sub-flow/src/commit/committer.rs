@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::substrate::{apply_operator_state, apply_operator_state_with_checkpoints};
+use reifydb_flow_async::transaction::substrate::{apply_operator_state, apply_operator_state_with_checkpoints};
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},

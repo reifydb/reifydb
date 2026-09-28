@@ -73,12 +73,6 @@ mod uuid7;
 #[path = "extern_c/dictionary.rs"]
 mod dictionary;
 
-#[path = "extern_c/bigint.rs"]
-mod bigint;
-
-#[path = "extern_c/biguint.rs"]
-mod biguint;
-
 #[path = "extern_c/decimal.rs"]
 mod decimal;
 

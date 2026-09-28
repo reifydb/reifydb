@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use reifydb_catalog::cache::CatalogCache;
 use reifydb_cdc::testing::TestCdcHost;
@@ -19,6 +19,7 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 	pool::Pools,
+	sync::mutex::Mutex,
 };
 use reifydb_store_cdc::{config::CdcStoreConfig, storage::CdcStorage, store::CdcStore};
 use reifydb_sub_lifecycle::cdc::ttl::task::CdcTtlTask;
@@ -109,7 +110,7 @@ impl EventListener<CdcEvictedEvent> for EvictionRecorder {
 		// Entries are per-source aggregates, so the number of CDC entries evicted is the sum of
 		// their counts, not the number of entries.
 		let total: u64 = event.entries().iter().map(|e| e.count.as_u64()).sum();
-		self.events.lock().unwrap().push((*event.version(), total as usize));
+		self.events.lock().push((*event.version(), total as usize));
 	}
 }
 
@@ -252,7 +253,7 @@ fn ttl_emits_evicted_event_with_correct_cutoff() {
 	f.cleanup();
 	f.event_bus.wait_for_completion();
 
-	let received = recorder.events.lock().unwrap().clone();
+	let received = recorder.events.lock().clone();
 	assert_eq!(received.len(), 1, "expected exactly one CdcEvictedEvent");
 	let (cutoff_version, dropped_count) = received[0];
 	assert_eq!(cutoff_version, CommitVersion(3), "cutoff should be the first kept version");
@@ -272,7 +273,7 @@ fn ttl_does_not_emit_event_when_nothing_is_evicted() {
 	f.cleanup();
 	f.event_bus.wait_for_completion();
 
-	assert!(recorder.events.lock().unwrap().is_empty());
+	assert!(recorder.events.lock().is_empty());
 }
 
 #[test]

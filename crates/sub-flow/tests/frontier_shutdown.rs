@@ -6,16 +6,15 @@
 //! running-flow observable - a hydrated entry resolves as withheld until its producer republishes - so
 //! this suite reads the persisted keys directly rather than through the query surface.
 
-use std::time::Duration;
-
 use reifydb::{
 	SqliteConfig, WithSubsystem,
 	core::{common::CommitVersion, interface::store::SingleVersionRange, key::output_frontier::OutputFrontierKey},
 	embedded,
 	testing::db::{TempDbPath, TestDb},
 };
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 const SCAN_BATCH: u64 = 1024;
 
 fn open(path: &TempDbPath) -> TestDb {

@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
-use reifydb_flow::operator::{HostOperator, host::HostContext};
+use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result, reifydb_assertions,

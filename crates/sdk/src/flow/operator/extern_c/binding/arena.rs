@@ -83,8 +83,8 @@ pub mod tests {
 		// SAFETY: copy_bytes returned a non-null arena block holding all 5 bytes of data, and the arena
 		// outlives these reads.
 		unsafe {
-			for i in 0..5 {
-				assert_eq!(*ptr.add(i), data[i]);
+			for (i, byte) in data.iter().enumerate().take(5) {
+				assert_eq!(*ptr.add(i), *byte);
 			}
 		}
 	}

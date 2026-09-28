@@ -111,15 +111,13 @@ macro_rules! define_event {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		sync::{Arc, Mutex},
-		thread,
-	};
+	use std::{sync::Arc, thread};
 
 	use reifydb_runtime::{
 		actor::system::ActorSystem,
 		context::clock::Clock,
 		pool::{PoolConfig, Pools},
+		sync::mutex::Mutex,
 	};
 
 	use crate::event::{Event, EventBus, EventListener};
@@ -169,8 +167,7 @@ mod tests {
 		let event = EmptyDefineEvent::new();
 		let clone = event.clone();
 
-		drop(event);
-		drop(clone);
+		let _ = clone;
 	}
 
 	#[test]
@@ -213,7 +210,7 @@ mod tests {
 
 		impl EventListener<DefineTestEvent> for DefineTestListener {
 			fn on(&self, event: &DefineTestEvent) {
-				let mut c = self.counter.lock().unwrap();
+				let mut c = self.counter.lock();
 				*c += event.data().len() as i32;
 			}
 		}
@@ -226,10 +223,10 @@ mod tests {
 
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3], "test".to_string()));
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.counter.lock().unwrap(), 3);
+		assert_eq!(*listener.counter.lock(), 3);
 
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3, 4, 5], "test2".to_string()));
 		event_bus.wait_for_completion();
-		assert_eq!(*listener.counter.lock().unwrap(), 8);
+		assert_eq!(*listener.counter.lock(), 8);
 	}
 }

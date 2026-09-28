@@ -15,10 +15,9 @@ pub mod write;
 use std::fmt;
 
 use arrow_array::{
-	Array, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float32Array,
-	Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray,
-	LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array,
-	UInt64Array, builder::LargeBinaryBuilder,
+	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, Float32Array, Float64Array, Int8Array, Int16Array,
+	Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray, LargeStringArray, Time64NanosecondArray,
+	TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, builder::LargeBinaryBuilder,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_value::{
@@ -29,11 +28,9 @@ use reifydb_value::{
 		container::{
 			any_array, bool_array,
 			decimal_array::{
-				DecimalArray, decimal_as_string, deserialize_decimal_array, deserialize_int_array,
-				deserialize_int16s, deserialize_uint_array, deserialize_uint16s, int_as_string,
-				serialize_decimal_array, serialize_uint16s, uint_as_string, uint16_as_string,
+				DecimalArray, decimal_as_string, deserialize_decimal_array, serialize_decimal_array,
 			},
-			dictionary_array, digest_array, primitive,
+			dictionary_array, digest_array, fixed_array, primitive,
 			temporal_array::{
 				self, dates, datetimes, deserialize_dates, deserialize_datetimes,
 				deserialize_durations, deserialize_times, durations, serialize_dates,
@@ -43,7 +40,7 @@ use reifydb_value::{
 				self, deserialize_identity_ids, deserialize_uuid4s, deserialize_uuid7s, identity_ids,
 				serialize_identity_ids, serialize_uuid4s, serialize_uuid7s, uuid4s, uuid7s,
 			},
-			varlen_array,
+			varlen_array, wide_int_array,
 		},
 		dictionary::DictionaryId,
 		digest::Digest,
@@ -62,12 +59,12 @@ pub enum ColumnBuffer {
 	Int2(Int16Array),
 	Int4(Int32Array),
 	Int8(Int64Array),
-	Int16(Decimal128Array),
+	Int16(FixedSizeBinaryArray),
 	Uint1(UInt8Array),
 	Uint2(UInt16Array),
 	Uint4(UInt32Array),
 	Uint8(UInt64Array),
-	Uint16(Decimal256Array),
+	Uint16(FixedSizeBinaryArray),
 	Utf8 {
 		container: LargeStringArray,
 		max_bytes: MaxBytes,
@@ -83,8 +80,6 @@ pub enum ColumnBuffer {
 		container: LargeBinaryArray,
 		max_bytes: MaxBytes,
 	},
-	Int(DecimalArray),
-	Uint(DecimalArray),
 	Decimal(DecimalArray),
 
 	Any {
@@ -141,8 +136,6 @@ impl Clone for ColumnBuffer {
 				container: container.clone(),
 				max_bytes: *max_bytes,
 			},
-			ColumnBuffer::Int(c) => ColumnBuffer::Int(c.clone()),
-			ColumnBuffer::Uint(c) => ColumnBuffer::Uint(c.clone()),
 			ColumnBuffer::Decimal(c) => ColumnBuffer::Decimal(c.clone()),
 			ColumnBuffer::Any {
 				container,
@@ -219,9 +212,9 @@ impl PartialEq for ColumnBuffer {
 					max_bytes: bm,
 				},
 			) => varlen_array::equals(a, b) && am == bm,
-			(ColumnBuffer::Int(a), ColumnBuffer::Int(b))
-			| (ColumnBuffer::Uint(a), ColumnBuffer::Uint(b))
-			| (ColumnBuffer::Decimal(a), ColumnBuffer::Decimal(b)) => a.data_type() == b.data_type() && a == b,
+			(ColumnBuffer::Decimal(a), ColumnBuffer::Decimal(b)) => {
+				a.data_type() == b.data_type() && a == b
+			}
 			(
 				ColumnBuffer::Any {
 					container: a,
@@ -297,8 +290,6 @@ impl fmt::Debug for ColumnBuffer {
 				container,
 				max_bytes,
 			} => f.debug_struct("Blob").field("container", container).field("max_bytes", max_bytes).finish(),
-			ColumnBuffer::Int(c) => f.debug_tuple("Int").field(c).finish(),
-			ColumnBuffer::Uint(c) => f.debug_tuple("Uint").field(c).finish(),
 			ColumnBuffer::Decimal(c) => f.debug_tuple("Decimal").field(c).finish(),
 			ColumnBuffer::Any {
 				container,
@@ -338,12 +329,18 @@ impl Serialize for ColumnBuffer {
 			Int2(#[serde(serialize_with = "primitive::serialize")] &'a Int16Array),
 			Int4(#[serde(serialize_with = "primitive::serialize")] &'a Int32Array),
 			Int8(#[serde(serialize_with = "primitive::serialize")] &'a Int64Array),
-			Int16(#[serde(serialize_with = "primitive::serialize")] &'a Decimal128Array),
+			Int16(
+				#[serde(serialize_with = "wide_int_array::serialize::<i128, _>")]
+				&'a FixedSizeBinaryArray,
+			),
 			Uint1(#[serde(serialize_with = "primitive::serialize")] &'a UInt8Array),
 			Uint2(#[serde(serialize_with = "primitive::serialize")] &'a UInt16Array),
 			Uint4(#[serde(serialize_with = "primitive::serialize")] &'a UInt32Array),
 			Uint8(#[serde(serialize_with = "primitive::serialize")] &'a UInt64Array),
-			Uint16(#[serde(serialize_with = "serialize_uint16s")] &'a Decimal256Array),
+			Uint16(
+				#[serde(serialize_with = "wide_int_array::serialize::<u128, _>")]
+				&'a FixedSizeBinaryArray,
+			),
 			Utf8 {
 				#[serde(serialize_with = "varlen_array::serialize")]
 				container: &'a LargeStringArray,
@@ -361,8 +358,6 @@ impl Serialize for ColumnBuffer {
 				container: &'a LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
-			Int(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
-			Uint(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
 			Decimal(#[serde(serialize_with = "serialize_decimal_array")] &'a DecimalArray),
 			Any(AnyShape<'a>),
 			DictionaryId {
@@ -426,8 +421,6 @@ impl Serialize for ColumnBuffer {
 						container,
 						max_bytes: *max_bytes,
 					},
-					ColumnBuffer::Int(c) => Helper::Int(c),
-					ColumnBuffer::Uint(c) => Helper::Uint(c),
 					ColumnBuffer::Decimal(c) => Helper::Decimal(c),
 					ColumnBuffer::Any {
 						container,
@@ -478,12 +471,18 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 			Int2(#[serde(deserialize_with = "primitive::deserialize")] Int16Array),
 			Int4(#[serde(deserialize_with = "primitive::deserialize")] Int32Array),
 			Int8(#[serde(deserialize_with = "primitive::deserialize")] Int64Array),
-			Int16(#[serde(deserialize_with = "deserialize_int16s")] Decimal128Array),
+			Int16(
+				#[serde(deserialize_with = "wide_int_array::deserialize::<i128, _>")]
+				FixedSizeBinaryArray,
+			),
 			Uint1(#[serde(deserialize_with = "primitive::deserialize")] UInt8Array),
 			Uint2(#[serde(deserialize_with = "primitive::deserialize")] UInt16Array),
 			Uint4(#[serde(deserialize_with = "primitive::deserialize")] UInt32Array),
 			Uint8(#[serde(deserialize_with = "primitive::deserialize")] UInt64Array),
-			Uint16(#[serde(deserialize_with = "deserialize_uint16s")] Decimal256Array),
+			Uint16(
+				#[serde(deserialize_with = "wide_int_array::deserialize::<u128, _>")]
+				FixedSizeBinaryArray,
+			),
 			Utf8 {
 				#[serde(deserialize_with = "varlen_array::deserialize_utf8")]
 				container: LargeStringArray,
@@ -501,8 +500,6 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				container: LargeBinaryArray,
 				max_bytes: MaxBytes,
 			},
-			Int(#[serde(deserialize_with = "deserialize_int_array")] DecimalArray),
-			Uint(#[serde(deserialize_with = "deserialize_uint_array")] DecimalArray),
 			Decimal(#[serde(deserialize_with = "deserialize_decimal_array")] DecimalArray),
 			Any(AnyShape),
 			DictionaryId {
@@ -565,8 +562,6 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				container,
 				max_bytes,
 			},
-			Helper::Int(c) => ColumnBuffer::Int(c),
-			Helper::Uint(c) => ColumnBuffer::Uint(c),
 			Helper::Decimal(c) => ColumnBuffer::Decimal(c),
 			Helper::Any(AnyShape {
 				data,
@@ -634,7 +629,6 @@ macro_rules! with_container {
 			ColumnBuffer::Uint2($a) => $native,
 			ColumnBuffer::Uint4($a) => $native,
 			ColumnBuffer::Uint8($a) => $native,
-			ColumnBuffer::Int16($a) => $native,
 			ColumnBuffer::Date($t) => $temporal,
 			ColumnBuffer::DateTime($t) => $temporal,
 			ColumnBuffer::Time($t) => $temporal,
@@ -642,6 +636,12 @@ macro_rules! with_container {
 			ColumnBuffer::IdentityId($u) => $fixed,
 			ColumnBuffer::Uuid4($u) => $fixed,
 			ColumnBuffer::Uuid7($u) => $fixed,
+			ColumnBuffer::Int16($u) => $fixed,
+			ColumnBuffer::Uint16($u) => $fixed,
+			ColumnBuffer::DictionaryId {
+				container: $u,
+				..
+			} => $fixed,
 			ColumnBuffer::Utf8 {
 				container: $v,
 				..
@@ -663,21 +663,9 @@ macro_rules! with_container {
 					"with_container! must not be called on Bool variant directly; handle it explicitly"
 				)
 			}
-			ColumnBuffer::Uint16(_) => {
-				unreachable!(
-					"with_container! must not be called on Uint16 variant directly; handle it explicitly"
-				)
-			}
-			ColumnBuffer::Int(_) | ColumnBuffer::Uint(_) | ColumnBuffer::Decimal(_) => {
+			ColumnBuffer::Decimal(_) => {
 				unreachable!(
 					"with_container! must not be called on a decimal backed variant directly; handle it explicitly"
-				)
-			}
-			ColumnBuffer::DictionaryId {
-				..
-			} => {
-				unreachable!(
-					"with_container! must not be called on DictionaryId variant directly; handle it explicitly"
 				)
 			}
 		}
@@ -716,14 +704,9 @@ impl ColumnBuffer {
 	pub fn nulls(&self) -> Option<&NullBuffer> {
 		match self {
 			ColumnBuffer::Bool(a) => a.nulls(),
-			ColumnBuffer::Uint16(a) => a.nulls(),
-			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => {
+			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| d.nulls())
 			}
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => container.nulls(),
 			_ => with_container!(self, |a| a.nulls(), |t| t.nulls(), |u| u.nulls(), |v| v.nulls()),
 		}
 	}
@@ -754,12 +737,12 @@ impl ColumnBuffer {
 			ColumnBuffer::Int2(a) => ColumnBuffer::Int2(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Int4(a) => ColumnBuffer::Int4(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Int8(a) => ColumnBuffer::Int8(primitive::attach_nulls(a, nulls)),
-			ColumnBuffer::Int16(a) => ColumnBuffer::Int16(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Int16(a) => ColumnBuffer::Int16(fixed_array::attach_nulls(a, nulls)),
 			ColumnBuffer::Uint1(a) => ColumnBuffer::Uint1(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Uint2(a) => ColumnBuffer::Uint2(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Uint4(a) => ColumnBuffer::Uint4(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Uint8(a) => ColumnBuffer::Uint8(primitive::attach_nulls(a, nulls)),
-			ColumnBuffer::Uint16(a) => ColumnBuffer::Uint16(primitive::attach_nulls(a, nulls)),
+			ColumnBuffer::Uint16(a) => ColumnBuffer::Uint16(fixed_array::attach_nulls(a, nulls)),
 			ColumnBuffer::Utf8 {
 				container,
 				max_bytes,
@@ -771,9 +754,9 @@ impl ColumnBuffer {
 			ColumnBuffer::DateTime(a) => ColumnBuffer::DateTime(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Time(a) => ColumnBuffer::Time(primitive::attach_nulls(a, nulls)),
 			ColumnBuffer::Duration(a) => ColumnBuffer::Duration(primitive::attach_nulls(a, nulls)),
-			ColumnBuffer::IdentityId(a) => ColumnBuffer::IdentityId(uuid_array::attach_nulls(a, nulls)),
-			ColumnBuffer::Uuid4(a) => ColumnBuffer::Uuid4(uuid_array::attach_nulls(a, nulls)),
-			ColumnBuffer::Uuid7(a) => ColumnBuffer::Uuid7(uuid_array::attach_nulls(a, nulls)),
+			ColumnBuffer::IdentityId(a) => ColumnBuffer::IdentityId(fixed_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid4(a) => ColumnBuffer::Uuid4(fixed_array::attach_nulls(a, nulls)),
+			ColumnBuffer::Uuid7(a) => ColumnBuffer::Uuid7(fixed_array::attach_nulls(a, nulls)),
 			ColumnBuffer::Blob {
 				container,
 				max_bytes,
@@ -781,12 +764,6 @@ impl ColumnBuffer {
 				container: varlen_array::attach_nulls(container, nulls),
 				max_bytes,
 			},
-			ColumnBuffer::Int(a) => {
-				ColumnBuffer::Int(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
-			}
-			ColumnBuffer::Uint(a) => {
-				ColumnBuffer::Uint(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
-			}
 			ColumnBuffer::Decimal(a) => {
 				ColumnBuffer::Decimal(map_decimal!(a, |d| primitive::attach_nulls(d, nulls)))
 			}
@@ -801,7 +778,7 @@ impl ColumnBuffer {
 				container,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: uuid_array::attach_nulls(container, nulls),
+				container: fixed_array::attach_nulls(container, nulls),
 				dictionary_id,
 			},
 			ColumnBuffer::Digest {
@@ -855,8 +832,6 @@ impl ColumnBuffer {
 			ColumnBuffer::Blob {
 				..
 			} => ValueType::Blob,
-			ColumnBuffer::Int(a) => ValueType::int(a.precision()),
-			ColumnBuffer::Uint(a) => ValueType::uint(a.precision()),
 			ColumnBuffer::Decimal(a) => ValueType::decimal(a.precision(), a.scale()),
 			ColumnBuffer::DictionaryId {
 				..
@@ -913,8 +888,6 @@ impl ColumnBuffer {
 				container: c,
 				..
 			} => idx < c.len(),
-			ColumnBuffer::Int(c) => idx < c.len(),
-			ColumnBuffer::Uint(c) => idx < c.len(),
 			ColumnBuffer::Decimal(c) => idx < c.len(),
 			ColumnBuffer::DictionaryId {
 				container: c,
@@ -954,8 +927,6 @@ impl ColumnBuffer {
 				| ValueType::Uint4
 				| ValueType::Uint8
 				| ValueType::Uint16
-				| ValueType::Int { .. }
-				| ValueType::Uint { .. }
 				| ValueType::Decimal { .. }
 		)
 	}
@@ -983,12 +954,7 @@ impl ColumnBuffer {
 	pub fn len(&self) -> usize {
 		match self {
 			ColumnBuffer::Bool(a) => a.len(),
-			ColumnBuffer::Uint16(a) => a.len(),
-			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => a.len(),
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => container.len(),
+			ColumnBuffer::Decimal(a) => a.len(),
 			_ => with_container!(self, |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
 		}
 	}
@@ -1011,19 +977,14 @@ impl ColumnBuffer {
 						.sum::<usize>()
 			}
 			ColumnBuffer::Bool(a) => bool_array::heap_size(a),
-			ColumnBuffer::Uint16(a) => primitive::heap_size(a),
-			ColumnBuffer::Int(a) | ColumnBuffer::Uint(a) | ColumnBuffer::Decimal(a) => {
+			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| primitive::heap_size(d))
 			}
-			ColumnBuffer::DictionaryId {
-				container,
-				..
-			} => dictionary_array::heap_size(container),
 			_ => with_container!(
 				self,
 				|a| primitive::heap_size(a),
 				|t| primitive::heap_size(t),
-				|u| uuid_array::heap_size(u),
+				|u| fixed_array::heap_size(u),
 				|v| varlen_array::heap_size(v)
 			),
 		}
@@ -1032,9 +993,6 @@ impl ColumnBuffer {
 	pub(crate) fn freeze(&mut self) {
 		match self {
 			ColumnBuffer::Bool(_)
-			| ColumnBuffer::Uint16(_)
-			| ColumnBuffer::Int(_)
-			| ColumnBuffer::Uint(_)
 			| ColumnBuffer::Decimal(_)
 			| ColumnBuffer::DictionaryId {
 				..
@@ -1064,13 +1022,12 @@ impl ColumnBuffer {
 				container,
 				..
 			} => varlen_array::blob_as_string(container, index),
-			ColumnBuffer::Uint16(a) => uint16_as_string(a, index),
+			ColumnBuffer::Int16(a) => wide_int_array::as_string::<i128>(a, index),
+			ColumnBuffer::Uint16(a) => wide_int_array::as_string::<u128>(a, index),
 			ColumnBuffer::DictionaryId {
 				container,
 				..
 			} => dictionary_array::as_string(container, index),
-			ColumnBuffer::Int(a) => int_as_string(a, index),
-			ColumnBuffer::Uint(a) => uint_as_string(a, index),
 			ColumnBuffer::Decimal(a) => decimal_as_string(a, index),
 			ColumnBuffer::Any {
 				container,
@@ -1110,12 +1067,6 @@ impl ColumnBuffer {
 			ValueType::Uuid4 => Self::uuid4_with_capacity(capacity),
 			ValueType::Uuid7 => Self::uuid7_with_capacity(capacity),
 			ValueType::Blob => Self::blob_with_capacity(capacity),
-			ValueType::Int {
-				precision,
-			} => Self::int_with_capacity(precision, capacity),
-			ValueType::Uint {
-				precision,
-			} => Self::uint_with_capacity(precision, capacity),
 			ValueType::Decimal {
 				precision,
 				scale,

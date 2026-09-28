@@ -1055,7 +1055,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-flow"
+name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
  "reifydb-build",
@@ -1173,7 +1173,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
- "reifydb-flow",
+ "reifydb-flow-async",
  "reifydb-macro",
  "reifydb-runtime",
  "reifydb-value",

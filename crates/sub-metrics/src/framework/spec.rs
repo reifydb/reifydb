@@ -241,45 +241,6 @@ fn long_spec(domain: MetricsDomain, namespace: NamespaceId, has_total: bool) -> 
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use reifydb_core::metrics::sample::MetricKind;
-
-	use super::{MetricsDomain, Surface};
-
-	#[test]
-	fn no_current_surface_declares_a_counter_column() {
-		// The enforced rule of the redesign: ::current holds levels, deltas and distributions
-		// only; a Counter column there is the summed-up-in-current disease coming back.
-		for domain in MetricsDomain::ALL {
-			let spec = domain.spec();
-			for column in spec.columns(Surface::Current) {
-				assert!(
-					column.kind != MetricKind::Counter,
-					"{:?} declares Counter column '{}' in its ::current surface",
-					domain,
-					column.name
-				);
-			}
-		}
-	}
-
-	#[test]
-	fn counter_measures_publish_as_delta_in_current_and_counter_in_total() {
-		// The same measure name serves both surfaces; only the kind differs, which is what
-		// makes the boot-time column check enforceable.
-		let spec = MetricsDomain::StoreMultiRange.spec();
-		let current = spec.columns(Surface::Current);
-		let in_current = current.iter().find(|c| c.name == "materializes").expect("column");
-		assert_eq!(in_current.kind, MetricKind::Delta);
-
-		let total = spec.columns(Surface::Total);
-		let in_total = total.iter().find(|c| c.name == "materializes").expect("column");
-		assert_eq!(in_total.kind, MetricKind::Counter);
-		assert!(!total.iter().any(|c| c.name == "used"), "levels must not appear in a ::total surface");
-	}
-}
-
 impl MetricsDomain {
 	pub const ALL: [MetricsDomain; 28] = [
 		MetricsDomain::RuntimeMemory,
@@ -821,5 +782,44 @@ impl MetricsDomain {
 				has_total: true,
 			},
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::metrics::sample::MetricKind;
+
+	use super::{MetricsDomain, Surface};
+
+	#[test]
+	fn no_current_surface_declares_a_counter_column() {
+		// The enforced rule of the redesign: ::current holds levels, deltas and distributions
+		// only; a Counter column there is the summed-up-in-current disease coming back.
+		for domain in MetricsDomain::ALL {
+			let spec = domain.spec();
+			for column in spec.columns(Surface::Current) {
+				assert!(
+					column.kind != MetricKind::Counter,
+					"{:?} declares Counter column '{}' in its ::current surface",
+					domain,
+					column.name
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn counter_measures_publish_as_delta_in_current_and_counter_in_total() {
+		// The same measure name serves both surfaces; only the kind differs, which is what
+		// makes the boot-time column check enforceable.
+		let spec = MetricsDomain::StoreMultiRange.spec();
+		let current = spec.columns(Surface::Current);
+		let in_current = current.iter().find(|c| c.name == "materializes").expect("column");
+		assert_eq!(in_current.kind, MetricKind::Delta);
+
+		let total = spec.columns(Surface::Total);
+		let in_total = total.iter().find(|c| c.name == "materializes").expect("column");
+		assert_eq!(in_total.kind, MetricKind::Counter);
+		assert!(!total.iter().any(|c| c.name == "used"), "levels must not appear in a ::total surface");
 	}
 }

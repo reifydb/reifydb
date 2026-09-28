@@ -5,11 +5,12 @@
 // the flow watermark, not a clock, so the ttl means the same thing replaying last month's data as
 // it does live. A version-anchored eviction instead ages rows by how recently they were ingested.
 
-use std::{thread::sleep, time::Duration as StdDuration};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
@@ -67,7 +68,7 @@ fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 	insert(&db, 1, 10, "2026-01-01T00:00:00Z");
 	db.await_row_count("FROM app::rb", 1, TIMEOUT);
 
-	sleep(StdDuration::from_secs(3));
+	sleep(Duration::from_seconds_const(3).to_std());
 
 	assert_eq!(
 		db.await_exact_row_count("FROM app::rb FILTER { id == 1 }", 1, TIMEOUT),
@@ -101,7 +102,7 @@ fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	// Wall time blows past the 1s ttl with no input. The sleep is not a race - the assertion is
 	// that nothing was evicted, so a longer sleep is only stricter. It also guarantees the next
 	// arrival is stamped more than one ttl after the head row.
-	sleep(StdDuration::from_secs(2));
+	sleep(Duration::from_seconds_const(2).to_std());
 	assert_eq!(
 		db.await_exact_row_count("FROM app::drained FILTER { id == 1 }", 1, TIMEOUT),
 		1,

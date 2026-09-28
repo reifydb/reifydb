@@ -21,7 +21,6 @@ pub mod digest;
 pub mod duration;
 pub mod frame;
 pub mod identity;
-pub mod int;
 pub mod into;
 pub mod is;
 pub mod iso;
@@ -37,7 +36,6 @@ pub mod temporal;
 pub mod time;
 pub mod to_value;
 pub mod try_from;
-pub mod uint;
 pub mod uuid;
 pub mod value_type;
 
@@ -52,11 +50,9 @@ use dictionary::DictionaryEntryId;
 use digest::Digest;
 use duration::Duration;
 use identity::IdentityId;
-use int::Int;
 use ordered_f32::OrderedF32;
 use ordered_f64::OrderedF64;
 use time::Time;
-use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 use value_type::ValueType;
 
@@ -109,10 +105,6 @@ pub enum Value {
 	Uuid7(Uuid7),
 
 	Blob(Blob),
-
-	Int(Int),
-
-	Uint(Uint),
 
 	Decimal(Decimal),
 
@@ -300,13 +292,7 @@ impl Value {
 					None
 				}
 			}
-			Value::Int(v) => Uint::from_i256(v.to_i256())
-				.and_then(|n| n.to_u128())
-				.and_then(|n| usize::try_from(n).ok()),
-			Value::Uint(v) => v.to_u128().and_then(|n| usize::try_from(n).ok()),
-			Value::Decimal(v) => Uint::from_i256(v.trunc())
-				.and_then(|n| n.to_u128())
-				.and_then(|n| usize::try_from(n).ok()),
+			Value::Decimal(v) => v.trunc().to_i128().and_then(|n| usize::try_from(n).ok()),
 			Value::Utf8(s) => {
 				let s = s.trim();
 				if let Ok(n) = s.parse::<u64>() {
@@ -359,8 +345,6 @@ impl PartialEq for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l == r,
 			(Value::Uuid7(l), Value::Uuid7(r)) => l == r,
 			(Value::Blob(l), Value::Blob(r)) => l == r,
-			(Value::Int(l), Value::Int(r)) => l == r,
-			(Value::Uint(l), Value::Uint(r)) => l == r,
 			(Value::Decimal(l), Value::Decimal(r)) => l == r,
 			(Value::Any(l), Value::Any(r)) => l == r,
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l == r,
@@ -428,8 +412,6 @@ impl hash::Hash for Value {
 			Value::Uuid4(v) => v.hash(state),
 			Value::Uuid7(v) => v.hash(state),
 			Value::Blob(v) => v.hash(state),
-			Value::Int(v) => v.hash(state),
-			Value::Uint(v) => v.hash(state),
 			Value::Decimal(v) => v.hash(state),
 			Value::Any(v) => v.hash(state),
 			Value::DictionaryId(v) => v.hash(state),
@@ -498,8 +480,6 @@ impl Ord for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
-			(Value::Int(l), Value::Int(r)) => l.cmp(r),
-			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.cmp(r),
@@ -539,8 +519,6 @@ impl Display for Value {
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
 			Value::Blob(value) => Display::fmt(value, f),
-			Value::Int(value) => Display::fmt(value, f),
-			Value::Uint(value) => Display::fmt(value, f),
 			Value::Decimal(value) => Display::fmt(value, f),
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
@@ -611,8 +589,6 @@ impl Value {
 			Value::Uuid4(_) => ValueType::Uuid4,
 			Value::Uuid7(_) => ValueType::Uuid7,
 			Value::Blob(_) => ValueType::Blob,
-			Value::Int(_) => ValueType::INT,
-			Value::Uint(_) => ValueType::UINT,
 			Value::Decimal(v) => ValueType::decimal(Precision::MAX, Scale::new(v.scale())),
 			Value::Any(_) => ValueType::Any,
 			Value::DictionaryId(_) => ValueType::DictionaryId,
@@ -657,11 +633,9 @@ mod tests {
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	};
 
@@ -726,16 +700,6 @@ mod tests {
 	}
 
 	#[test]
-	fn to_usize_int_bigint() {
-		assert_eq!(Value::Int(Int::from_i64(42)).to_usize(), Some(42));
-	}
-
-	#[test]
-	fn to_usize_uint_bigint() {
-		assert_eq!(Value::Uint(Uint::from_u64(42)).to_usize(), Some(42));
-	}
-
-	#[test]
 	fn to_usize_decimal() {
 		assert_eq!(Value::Decimal(Decimal::from_i64(42)).to_usize(), Some(42));
 	}
@@ -773,11 +737,6 @@ mod tests {
 	#[test]
 	fn to_usize_float8_negative() {
 		assert_eq!(Value::float8(-1.0f64).to_usize(), None);
-	}
-
-	#[test]
-	fn to_usize_int_bigint_negative() {
-		assert_eq!(Value::Int(Int::from_i64(-5)).to_usize(), None);
 	}
 
 	#[test]
@@ -911,8 +870,6 @@ mod tests {
 			Value::Uuid4(Uuid4(StdUuid::from_u128(4))),
 			Value::Uuid7(Uuid7(StdUuid::from_u128(77))),
 			Value::Blob(Blob::new(vec![1, 2, 3])),
-			Value::Int(Int::from_i128(i128::MIN)),
-			Value::Uint(Uint::from_u128(u128::MAX)),
 			Value::Decimal(Decimal::from_parts(i256::from_i128(-12345), 3).unwrap()),
 			Value::Any(Box::new(Value::Boolean(false))),
 			Value::DictionaryId(DictionaryEntryId::U16(u128::MAX)),

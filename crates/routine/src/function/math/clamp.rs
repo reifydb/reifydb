@@ -9,7 +9,7 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::{decimals, ints, u128s, uints},
+	container::{decimal_array::decimals, wide_int_array::wides},
 	is::IsNumber,
 	value_type::ValueType,
 };
@@ -123,7 +123,20 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				ColumnBuffer::int8_with_bitvec(values, bits)
 			}
 			ValueType::Int16 => {
-				let (values, bits) = run!(Int16);
+				let (ColumnBuffer::Int16(v), ColumnBuffer::Int16(lo), ColumnBuffer::Int16(hi)) =
+					(v_inner, lo_inner, hi_inner)
+				else {
+					unreachable!()
+				};
+				let (values, bits) = clamp_rows(
+					ctx,
+					&wides::<i128>(v),
+					v_bv,
+					&wides::<i128>(lo),
+					lo_bv,
+					&wides::<i128>(hi),
+					hi_bv,
+				)?;
 				ColumnBuffer::int16_with_bitvec(values, bits)
 			}
 			ValueType::Uint1 => {
@@ -148,8 +161,15 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				else {
 					unreachable!()
 				};
-				let (values, bits) =
-					clamp_rows(ctx, &u128s(v), v_bv, &u128s(lo), lo_bv, &u128s(hi), hi_bv)?;
+				let (values, bits) = clamp_rows(
+					ctx,
+					&wides::<u128>(v),
+					v_bv,
+					&wides::<u128>(lo),
+					lo_bv,
+					&wides::<u128>(hi),
+					hi_bv,
+				)?;
 				ColumnBuffer::uint16_with_bitvec(values, bits)
 			}
 			ValueType::Float4 => {
@@ -159,18 +179,6 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 			ValueType::Float8 => {
 				let (values, bits) = run!(Float8);
 				ColumnBuffer::float8_with_bitvec(values, bits)
-			}
-			ValueType::Int {
-				precision,
-			} => {
-				let (values, bits) = run!(Int(..), ints);
-				ColumnBuffer::int_with_bitvec(precision, values, bits)
-			}
-			ValueType::Uint {
-				precision,
-			} => {
-				let (values, bits) = run!(Uint(..), uints);
-				ColumnBuffer::uint_with_bitvec(precision, values, bits)
 			}
 			ValueType::Decimal {
 				precision,

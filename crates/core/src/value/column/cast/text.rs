@@ -11,9 +11,10 @@ use reifydb_value::{
 	value::{
 		blob::Blob,
 		container::{
-			decimal_array::{decimals, ints, u128s, uints},
+			decimal_array::decimals,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
+			wide_int_array::wides,
 		},
 		identity::IdentityId,
 		is::{IsNumber, IsTemporal, IsUuid},
@@ -35,16 +36,14 @@ pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 		ColumnBuffer::Int2(container) => from_number(container.values()),
 		ColumnBuffer::Int4(container) => from_number(container.values()),
 		ColumnBuffer::Int8(container) => from_number(container.values()),
-		ColumnBuffer::Int16(container) => from_number(container.values()),
+		ColumnBuffer::Int16(container) => from_number(&wides::<i128>(container)),
 		ColumnBuffer::Uint1(container) => from_number(container.values()),
 		ColumnBuffer::Uint2(container) => from_number(container.values()),
 		ColumnBuffer::Uint4(container) => from_number(container.values()),
 		ColumnBuffer::Uint8(container) => from_number(container.values()),
-		ColumnBuffer::Uint16(container) => from_number(&u128s(container)),
+		ColumnBuffer::Uint16(container) => from_number(&wides::<u128>(container)),
 		ColumnBuffer::Float4(container) => from_number(container.values()),
 		ColumnBuffer::Float8(container) => from_number(container.values()),
-		ColumnBuffer::Int(container) => from_number(&ints(container)),
-		ColumnBuffer::Uint(container) => from_number(&uints(container)),
 		ColumnBuffer::Decimal(container) => from_number(&decimals(container)),
 		ColumnBuffer::Date(container) => from_temporal(dates(container)),
 		ColumnBuffer::DateTime(container) => from_temporal(datetimes(container)),
@@ -154,13 +153,11 @@ pub mod tests {
 
 	#[test]
 	fn test_from_blob() {
-		let blobs = vec![
-			Blob::from_utf8(Fragment::internal("Hello")),
-			Blob::from_utf8(Fragment::internal("World")),
-		];
+		let blobs =
+			[Blob::from_utf8(Fragment::internal("Hello")), Blob::from_utf8(Fragment::internal("World"))];
 		let container = LargeBinaryArray::from_iter_values(blobs.iter().map(|blob| blob.as_bytes()));
 
-		let result = from_blob(&container, || Fragment::testing_empty()).unwrap();
+		let result = from_blob(&container, Fragment::testing_empty).unwrap();
 
 		match result {
 			ColumnBuffer::Utf8 {
@@ -176,12 +173,12 @@ pub mod tests {
 
 	#[test]
 	fn test_from_blob_invalid() {
-		let blobs = vec![
+		let blobs = [
 			Blob::new(vec![0xFF, 0xFE]), // Invalid UTF-8
 		];
 		let container = LargeBinaryArray::from_iter_values(blobs.iter().map(|blob| blob.as_bytes()));
 
-		let result = from_blob(&container, || Fragment::testing_empty());
+		let result = from_blob(&container, Fragment::testing_empty);
 		assert!(result.is_err());
 	}
 }

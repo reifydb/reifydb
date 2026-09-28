@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::thread::sleep;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::HealthStatus;
+use reifydb_value::value::duration::Duration;
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_seconds_const(5);
 
 const TWICE: &str = "UDF twice ($x: int4): int4 { RETURN $x * 2 }";
 
@@ -102,7 +101,7 @@ fn unknown_function_fails_loud(view: &str) {
 	}
 
 	db.command("INSERT app::t [{ g: 1, a: 2 }]");
-	let deadline = Instant::now() + SETTLE;
+	let deadline = Clock::Real.instant() + SETTLE;
 	let description = loop {
 		let status =
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
@@ -112,8 +111,8 @@ fn unknown_function_fails_loud(view: &str) {
 		{
 			break description.clone();
 		}
-		assert!(Instant::now() < deadline, "the view flow must be poisoned, last status: {status:?}");
-		sleep(Duration::from_millis(20));
+		assert!(Clock::Real.instant() < deadline, "the view flow must be poisoned, last status: {status:?}");
+		sleep(Duration::from_milliseconds_const(20).to_std());
 	};
 	assert!(
 		description.contains("FUNCTION_001") && description.contains("no_such_fn"),

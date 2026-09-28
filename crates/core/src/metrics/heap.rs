@@ -308,7 +308,7 @@ impl HeapSize for Value {
 		match self {
 			Value::Utf8(text) => text.capacity(),
 			Value::Blob(blob) => blob.as_bytes().len(),
-			Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => BIGNUM_APPROX_HEAP,
+			Value::Decimal(_) => BIGNUM_APPROX_HEAP,
 			Value::Any(inner) => mem::size_of::<Value>() + inner.heap_size(),
 			Value::Digest(digest) => digest.heap_size(),
 			Value::List(items) | Value::Tuple(items) => items.heap_size(),

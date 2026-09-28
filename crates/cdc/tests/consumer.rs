@@ -7,11 +7,10 @@ use std::{
 	os::unix::process::ExitStatusExt,
 	process::{Command, ExitStatus, Stdio},
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread::{self, JoinHandle, sleep},
-	time::Instant,
 };
 
 use reifydb_cdc::consume::{
@@ -37,6 +36,7 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	sync::mutex::Mutex,
 };
 use reifydb_store_cdc::storage::{CdcStorage, Cutoff};
 use reifydb_test_harness::engine::TestEngine;
@@ -348,13 +348,13 @@ fn run_child_with_limit(test_name: &str, child_env: &str, limit: Duration) -> Ch
 	let stdout = read_in_background(child.stdout.take().expect("child stdout is piped"));
 	let stderr = read_in_background(child.stderr.take().expect("child stderr is piped"));
 
-	let deadline = Instant::now() + limit.to_std();
+	let deadline = Clock::Real.instant() + limit;
 	let mut timed_out = false;
 	let status = loop {
 		if let Some(status) = child.try_wait().expect("Failed to poll child process") {
 			break status;
 		}
-		if Instant::now() >= deadline {
+		if Clock::Real.instant() >= deadline {
 			timed_out = true;
 			child.kill().expect("Failed to kill child past its wall-clock limit");
 			break child.wait().expect("Failed to reap killed child");
@@ -921,11 +921,11 @@ impl TestConsumer {
 	}
 
 	fn get_transactions(&self) -> Vec<Cdc> {
-		self.cdc_received.lock().unwrap().clone()
+		self.cdc_received.lock().clone()
 	}
 
 	fn get_total_changes(&self) -> usize {
-		self.cdc_received.lock().unwrap().iter().map(|cdc| cdc.changes.len()).sum()
+		self.cdc_received.lock().iter().map(|cdc| cdc.changes.len()).sum()
 	}
 
 	fn get_process_count(&self) -> usize {
@@ -996,7 +996,7 @@ impl CdcConsume for TestConsumer {
 			}
 		}
 
-		let mut received = self.cdc_received.lock().unwrap();
+		let mut received = self.cdc_received.lock();
 		received.extend(transactions);
 		self.process_count.fetch_add(1, Ordering::SeqCst);
 		(reply)(Ok(()));
@@ -1015,15 +1015,15 @@ fn poll_interval() -> Duration {
 }
 
 fn await_until<F: Fn() -> bool>(label: &str, check: F) {
-	let timeout = poll_timeout().to_std();
-	let deadline = Instant::now() + timeout;
-	while Instant::now() < deadline {
+	let timeout = poll_timeout();
+	let deadline = Clock::Real.instant() + timeout;
+	while Clock::Real.instant() < deadline {
 		if check() {
 			return;
 		}
 		sleep(poll_interval().to_std());
 	}
-	panic!("await_until({label}) timed out after {timeout:?}");
+	panic!("await_until({label}) timed out after {timeout}");
 }
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {
@@ -1052,11 +1052,11 @@ impl ResyncConsumer {
 	}
 
 	fn received_versions(&self) -> Vec<CommitVersion> {
-		self.cdc_received.lock().unwrap().iter().map(|c| c.version.commit).collect()
+		self.cdc_received.lock().iter().map(|c| c.version.commit).collect()
 	}
 
 	fn overtaken_calls(&self) -> Vec<(CommitVersion, CommitVersion)> {
-		self.overtaken_calls.lock().unwrap().clone()
+		self.overtaken_calls.lock().clone()
 	}
 }
 
@@ -1072,7 +1072,7 @@ impl Clone for ResyncConsumer {
 
 impl CdcConsume for ResyncConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
-		self.cdc_received.lock().unwrap().extend(transactions);
+		self.cdc_received.lock().extend(transactions);
 		(reply)(Ok(()));
 	}
 
@@ -1086,7 +1086,7 @@ impl CdcConsume for ResyncConsumer {
 		truncated_before: CommitVersion,
 		reply: Box<dyn FnOnce(reifydb_value::Result<CommitVersion>) + Send>,
 	) {
-		self.overtaken_calls.lock().unwrap().push((cursor, truncated_before));
+		self.overtaken_calls.lock().push((cursor, truncated_before));
 		let head = self.host.current_version().unwrap();
 		(reply)(Ok(head));
 	}

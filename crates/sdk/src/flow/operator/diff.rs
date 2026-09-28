@@ -6,8 +6,7 @@ use std::{collections::HashMap, thread};
 
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::value::{
-	Value, constraint::precision::Precision, decimal::Decimal, int::Int, row_number::RowNumber, uint::Uint,
-	value_type::ValueType,
+	Value, constraint::precision::Precision, decimal::Decimal, row_number::RowNumber, value_type::ValueType,
 };
 
 use crate::{
@@ -413,7 +412,6 @@ fn emit_column(
 
 fn family_column_params(type_code: ValueKind, values: &[Value]) -> Result<(u8, u8), SdkError> {
 	match type_code {
-		ValueKind::Int | ValueKind::Uint => Ok((Precision::MAX.value(), 0)),
 		ValueKind::Decimal => {
 			let mut scale = 0;
 			for value in values {
@@ -492,14 +490,6 @@ fn write_column(col: ColumnBuilder<'_>, type_code: ValueKind, values: &[Value]) 
 			let buf: Vec<Vec<u8>> = values.iter().map(value_to_blob).collect::<Result<_, _>>()?;
 			col.write_blob(&buf)
 		}
-		ValueKind::Int => {
-			let buf: Vec<Int> = values.iter().map(value_to_int).collect::<Result<_, _>>()?;
-			col.write_int(&buf)
-		}
-		ValueKind::Uint => {
-			let buf: Vec<Uint> = values.iter().map(value_to_uint).collect::<Result<_, _>>()?;
-			col.write_uint(&buf)
-		}
 		ValueKind::Decimal => {
 			let buf: Vec<Decimal> = values.iter().map(value_to_decimal).collect::<Result<_, _>>()?;
 			col.write_decimal(&buf)
@@ -524,8 +514,6 @@ fn value_to_type_code(value: &Value) -> Option<ValueKind> {
 		Value::Uint8(_) => ValueKind::Uint8,
 		Value::Uint16(_) => ValueKind::Uint16,
 		Value::Utf8(_) => ValueKind::Utf8,
-		Value::Int(_) => ValueKind::Int,
-		Value::Uint(_) => ValueKind::Uint,
 		Value::Decimal(_) => ValueKind::Decimal,
 		Value::Blob(_) => ValueKind::Blob,
 		Value::None {
@@ -552,12 +540,6 @@ fn type_to_column_code(ty: ValueType) -> Option<ValueKind> {
 		ValueType::Uint8 => ValueKind::Uint8,
 		ValueType::Uint16 => ValueKind::Uint16,
 		ValueType::Utf8 => ValueKind::Utf8,
-		ValueType::Int {
-			..
-		} => ValueKind::Int,
-		ValueType::Uint {
-			..
-		} => ValueKind::Uint,
 		ValueType::Decimal {
 			..
 		} => ValueKind::Decimal,
@@ -643,26 +625,6 @@ fn value_to_blob(v: &Value) -> Result<Vec<u8>, SdkError> {
 			..
 		} => Ok(Vec::new()),
 		_ => Err(type_mismatch_err("Blob", v)),
-	}
-}
-
-fn value_to_int(v: &Value) -> Result<Int, SdkError> {
-	match v {
-		Value::Int(x) => Ok(x.clone()),
-		Value::None {
-			..
-		} => Ok(Int::zero()),
-		_ => Err(type_mismatch_err("Int", v)),
-	}
-}
-
-fn value_to_uint(v: &Value) -> Result<Uint, SdkError> {
-	match v {
-		Value::Uint(x) => Ok(x.clone()),
-		Value::None {
-			..
-		} => Ok(Uint::zero()),
-		_ => Err(type_mismatch_err("Uint", v)),
 	}
 }
 

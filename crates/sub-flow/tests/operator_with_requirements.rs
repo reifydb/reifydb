@@ -10,7 +10,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{
+use reifydb_flow_async::window::{
 	accumulator::invertible::last_value::LastValue, coord::OrdinalCoord, settings::WindowSettings, span::WindowSpan,
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, time::Duration};
+use std::ops::Bound;
 
 use reifydb::{
 	SqliteConfig, Value, WithSubsystem, embedded,
@@ -17,8 +17,9 @@ use reifydb_core::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_store_cdc::storage::CdcStorage;
+use reifydb_value::value::duration::Duration;
 
-const SETTLE: Duration = Duration::from_secs(10);
+const SETTLE: Duration = Duration::from_seconds_const(10);
 const LIVE_ROUNDS: usize = 50;
 
 fn disarmed() -> RuntimeConfig {

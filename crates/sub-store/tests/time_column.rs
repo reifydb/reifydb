@@ -202,7 +202,7 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 		let mut keys = BTreeSet::new();
 		for block in blocks {
 			assert_eq!(schema_names(&block), expected_schema, "test::{name}");
-			assert!(block.len() > 0, "test::{name}: a closed bucket must hold rows");
+			assert!(!block.is_empty(), "test::{name}: a closed bucket must hold rows");
 
 			let len = block.len();
 			let mut reader = SnapshotReader::new(block, 100);
@@ -261,7 +261,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
-	schema.extend(system_column_schema(&TimeSource::Processing));
+	schema.extend(system_column_schema(&TimeSource::Processing, false));
 
 	let err = column_block_from_batches(
 		schema,
@@ -291,7 +291,7 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
-	schema.extend(system_column_schema(&TimeSource::None));
+	schema.extend(system_column_schema(&TimeSource::None, false));
 
 	let err = column_block_from_batches(
 		schema,

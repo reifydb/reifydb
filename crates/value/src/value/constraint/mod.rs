@@ -140,46 +140,6 @@ impl TypeConstraint {
 				}
 			}
 			(
-				ValueType::Int {
-					precision,
-				},
-				_,
-			) => {
-				if let Value::Int(int) = value
-					&& int.digits() > precision.value()
-				{
-					return Err(precision_violation(
-						ConstraintKind::IntPrecision {
-							actual: int.digits(),
-							max: precision.value(),
-						},
-						"INT",
-						int.digits(),
-						precision.value(),
-					));
-				}
-			}
-			(
-				ValueType::Uint {
-					precision,
-				},
-				_,
-			) => {
-				if let Value::Uint(uint) = value
-					&& uint.digits() > precision.value()
-				{
-					return Err(precision_violation(
-						ConstraintKind::UintPrecision {
-							actual: uint.digits(),
-							max: precision.value(),
-						},
-						"UINT",
-						uint.digits(),
-						precision.value(),
-					));
-				}
-			}
-			(
 				ValueType::Decimal {
 					precision,
 					scale,
@@ -251,22 +211,6 @@ impl TypeConstraint {
 fn same_family(value_type: &ValueType, column_type: &ValueType) -> bool {
 	match (value_type, column_type) {
 		(
-			ValueType::Int {
-				..
-			},
-			ValueType::Int {
-				..
-			},
-		)
-		| (
-			ValueType::Uint {
-				..
-			},
-			ValueType::Uint {
-				..
-			},
-		)
-		| (
 			ValueType::Decimal {
 				..
 			},
@@ -295,8 +239,6 @@ pub mod tests {
 	use crate::value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 	};
 
 	#[test]
@@ -406,19 +348,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn int_and_uint_writes_are_bounded_by_the_declared_precision() {
-		// Precision replaces the old byte limit, so a value with one digit too many must be refused.
-		let int3 = TypeConstraint::unconstrained(ValueType::int(Precision::new(3)));
-		let mut fits = Value::Int(Int::from(-999));
-		assert!(int3.coerce(&mut fits).is_ok());
-		let mut too_wide = Value::Int(Int::from(-1000));
-		assert_eq!(int3.coerce(&mut too_wide).unwrap_err().code, "CONSTRAINT_003");
-		let uint3 = TypeConstraint::unconstrained(ValueType::uint(Precision::new(3)));
-		let mut fits = Value::Uint(Uint::from(999u16));
-		assert!(uint3.coerce(&mut fits).is_ok());
-		let mut too_wide = Value::Uint(Uint::from(1000u16));
-		assert_eq!(uint3.coerce(&mut too_wide).unwrap_err().code, "CONSTRAINT_004");
-		let mut widest = Value::Int(Int::MAX);
-		assert!(TypeConstraint::unconstrained(ValueType::INT).coerce(&mut widest).is_ok());
+	fn decimal_writes_are_bounded_by_the_declared_precision() {
+		// A value with one digit too many must be refused, while the widest column must still take 76 nines.
+		let decimal_3_0 = ValueType::decimal(Precision::new(3), Scale::new(0));
+		assert_eq!(coerce_decimal(decimal_3_0.clone(), "-999").unwrap().to_string(), "-999");
+		assert_eq!(coerce_decimal(decimal_3_0, "-1000").unwrap_err().code, "CONSTRAINT_005");
+		let widest = ValueType::decimal(Precision::MAX, Scale::new(0));
+		assert!(coerce_decimal(widest, &"9".repeat(76)).is_ok());
 	}
 }

@@ -8,7 +8,6 @@ use std::{
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	thread::{self, JoinHandle},
-	time::{Duration as StdDuration, Instant},
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -62,7 +61,7 @@ const WATCHDOG: Duration = Duration::from_seconds_const(120);
 
 const JOIN: Duration = Duration::from_seconds_const(30);
 
-const CONDITION: StdDuration = StdDuration::from_secs(30);
+const CONDITION: Duration = Duration::from_seconds_const(30);
 
 fn record(version: u64) -> Cdc {
 	// every record must cost exactly the same, otherwise a ceiling in records is not a ceiling in bytes
@@ -73,7 +72,7 @@ fn record(version: u64) -> Cdc {
 				.expect("test record timestamp fits in i64 nanos"),
 		),
 		vec![CdcChange::Insert {
-			key: EncodedKey::new(version.to_be_bytes().to_vec()),
+			key: EncodedKey::new(version.to_be_bytes()),
 			post: EncodedBytes(CowVec::new(vec![7u8; PAYLOAD_BYTES])),
 		}],
 	)
@@ -164,9 +163,9 @@ where
 
 fn wait_for(label: &str, mut ready: impl FnMut() -> bool) {
 	// spins rather than sleeps so no ordering depends on a duration, and gives up so a lost wakeup fails
-	let deadline = Instant::now() + CONDITION;
+	let deadline = Clock::Real.instant() + CONDITION;
 	while !ready() {
-		assert!(Instant::now() < deadline, "{label}");
+		assert!(Clock::Real.instant() < deadline, "{label}");
 		thread::yield_now();
 	}
 }

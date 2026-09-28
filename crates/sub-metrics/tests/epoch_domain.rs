@@ -5,11 +5,10 @@
 //! keyspace belongs to the lifecycle subsystem, so the figure crosses on the event bus. Driven end to end because a
 //! missing emit, an unregistered listener and an unwired gauge all leave the column reading zero.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
 #[test]
 fn epoch_current_reports_the_durable_sample_count_over_the_event_bus() {

@@ -318,7 +318,7 @@ mod queue_deduplication_key_tests {
 	fn test_encode_decode_roundtrip() {
 		// A lossy codec either resurrects a claimed key or fails to recognise one, and both turn a
 		// duplicate enqueue into a second work item.
-		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42".to_vec());
+		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42");
 		let decoded = QueueDeduplicationKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.tail.as_slice(), b"invoice-42");
@@ -345,8 +345,8 @@ mod queue_deduplication_key_tests {
 	fn test_the_same_key_in_two_queues_encodes_differently() {
 		// Two queues may legitimately use the same dedup key, so without the queue id discriminating,
 		// enqueueing "invoice-1" on one queue would suppress it on every other queue.
-		let a = QueueDeduplicationKey::encoded(QueueId(1), b"same".to_vec());
-		let b = QueueDeduplicationKey::encoded(QueueId(2), b"same".to_vec());
+		let a = QueueDeduplicationKey::encoded(QueueId(1), b"same");
+		let b = QueueDeduplicationKey::encoded(QueueId(2), b"same");
 		assert_ne!(a, b);
 	}
 
@@ -373,7 +373,7 @@ mod queue_deduplication_key_tests {
 		}
 
 		for queue in [QueueId(2), QueueId(4)] {
-			let neighbour = QueueDeduplicationKey::encoded(queue, b"a".to_vec());
+			let neighbour = QueueDeduplicationKey::encoded(queue, b"a");
 			assert!(
 				neighbour.as_slice() < start.as_slice() || neighbour.as_slice() >= end.as_slice(),
 				"queue {queue:?} must fall outside queue 3's scan range"
@@ -384,7 +384,7 @@ mod queue_deduplication_key_tests {
 	#[test]
 	fn test_a_foreign_or_truncated_key_does_not_decode() {
 		// A partial record would collapse every key in the queue onto one dedup slot.
-		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42".to_vec());
+		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42");
 
 		let mut wrong_kind = encoded.as_slice().to_vec();
 		wrong_kind[0] = KeyTag::Queue as u8;
@@ -701,7 +701,7 @@ mod queue_partition_key_tests {
 
 		assert_eq!(QueuePartitionKey::decode(&encoded), None);
 		assert_eq!(QueueDueKey::decode(&encoded), None);
-		assert_eq!(QueueKeyActiveKey::decode(&EncodedKey::new(encoded.as_slice()[..3].to_vec())), None);
+		assert_eq!(QueueKeyActiveKey::decode(&EncodedKey::new(&encoded.as_slice()[..3])), None);
 	}
 
 	#[test]

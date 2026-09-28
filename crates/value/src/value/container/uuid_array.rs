@@ -4,20 +4,16 @@
 use std::{mem::ManuallyDrop, ops::Deref, result::Result as StdResult, slice};
 
 use arrow_array::{Array, FixedSizeBinaryArray};
-use arrow_buffer::{BooleanBuffer, Buffer, MutableBuffer, NullBuffer};
-use arrow_select::filter::FilterPredicate;
+use arrow_buffer::Buffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::{
-	util::{bitmap, kernel},
-	value::{
-		Value,
-		identity::IdentityId,
-		is::IsUuid,
-		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
-	},
+use crate::value::{
+	Value,
+	identity::IdentityId,
+	is::IsUuid,
+	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 pub const UUID_WIDTH: usize = 16;
@@ -59,10 +55,6 @@ fn collect_rows<T: IsUuid + Copy>(values: impl IntoIterator<Item = T>) -> FixedS
 	FixedSizeBinaryArray::new(UUID_WIDTH as i32, Buffer::from_vec(bytes), None)
 }
 
-pub fn from_buffer(buffer: MutableBuffer) -> FixedSizeBinaryArray {
-	FixedSizeBinaryArray::new(UUID_WIDTH as i32, buffer.into(), None)
-}
-
 pub fn uuid4_array(values: impl IntoIterator<Item = Uuid4>) -> FixedSizeBinaryArray {
 	collect_rows(values)
 }
@@ -100,58 +92,6 @@ pub fn as_string<T: IsUuid>(values: &[T], index: usize) -> String {
 	} else {
 		"none".to_string()
 	}
-}
-
-pub fn slice(array: &FixedSizeBinaryArray, start: usize, end: usize) -> FixedSizeBinaryArray {
-	let end = end.min(array.len());
-	let start = start.min(end);
-	array.slice(start, end - start)
-}
-
-pub fn take(array: &FixedSizeBinaryArray, num: usize) -> FixedSizeBinaryArray {
-	slice(array, 0, num)
-}
-
-pub fn filter(array: &FixedSizeBinaryArray, mask: &BooleanBuffer) -> FixedSizeBinaryArray {
-	filter_with(array, &kernel::predicate(mask, array.len()))
-}
-
-pub fn filter_with(array: &FixedSizeBinaryArray, predicate: &FilterPredicate) -> FixedSizeBinaryArray {
-	let selected = kernel::filtered(array, predicate);
-	let nulls = kernel::kept_nulls(array, &selected);
-	attach_nulls(selected, nulls)
-}
-
-pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBinaryArray {
-	let bytes = rows(array);
-	let mut reordered = MutableBuffer::with_capacity(indices.len() * UUID_WIDTH);
-	for &idx in indices {
-		if idx < array.len() {
-			reordered.extend_from_slice(&bytes[idx * UUID_WIDTH..(idx + 1) * UUID_WIDTH]);
-		} else {
-			reordered.extend_zeros(UUID_WIDTH);
-		}
-	}
-	attach_nulls(from_buffer(reordered), bitmap::reorder_nulls(array.nulls(), indices))
-}
-
-pub fn attach_nulls(array: FixedSizeBinaryArray, nulls: Option<NullBuffer>) -> FixedSizeBinaryArray {
-	bitmap::assert_nulls_len(nulls.as_ref(), array.len());
-	let (width, values, _) = array.into_parts();
-	FixedSizeBinaryArray::new(width, values, nulls)
-}
-
-pub fn capacity(array: &FixedSizeBinaryArray) -> usize {
-	let buffer = array.values();
-	if buffer.strong_count() == 1 {
-		buffer.capacity() / UUID_WIDTH
-	} else {
-		array.len()
-	}
-}
-
-pub fn heap_size(array: &FixedSizeBinaryArray) -> usize {
-	capacity(array) * UUID_WIDTH
 }
 
 fn serialize_values<T, Ser>(data: &[T], serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>

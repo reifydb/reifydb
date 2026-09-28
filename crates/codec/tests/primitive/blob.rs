@@ -95,7 +95,7 @@ fn test_mixed_with_static_fields() {
 	shape.set::<i32>(&mut row, 2, -12345i32);
 	shape.set_blob(&mut row, 3, &blob2);
 
-	assert_eq!(shape.get::<bool>(&row, 0), true);
+	assert!(shape.get::<bool>(&row, 0));
 	assert_eq!(shape.get_blob(&row, 1), blob1);
 	assert_eq!(shape.get::<i32>(&row, 2), -12345);
 	assert_eq!(shape.get_blob(&row, 3), blob2);

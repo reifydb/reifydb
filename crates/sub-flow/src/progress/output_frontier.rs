@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::{catalog::object::ObjectId, store::SingleVersionRange},
 	key::output_frontier::OutputFrontierKey,
 };
-use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
+use reifydb_flow_async::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{Result, value::datetime::DateTime};

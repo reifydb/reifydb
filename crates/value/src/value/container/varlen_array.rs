@@ -313,7 +313,7 @@ mod tests {
 		fn test_empty_strings() {
 			// An empty row must read back as a defined empty string, never as a missing row.
 			let mut builder = LargeStringBuilder::with_capacity(2, 0);
-			builder.append_value("".to_string());
+			builder.append_value("");
 			builder.append_value("");
 			let container = builder.finish();
 

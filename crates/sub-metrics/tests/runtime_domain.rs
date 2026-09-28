@@ -7,11 +7,10 @@
 //! and an engine with no flow state exposes an empty `operators::current`. `::current` stays empty until a sampler
 //! tick runs, so the positive assertions poll; the absence assertions hold regardless of timing.
 
-use std::time::Duration;
-
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
+use reifydb_value::value::duration::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn db_with_runtime_refresh() -> TestDb {
 	TestDb::from(

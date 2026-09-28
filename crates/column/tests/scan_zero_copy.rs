@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_column::{
 	reader::SnapshotReader,
-	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
@@ -13,7 +13,8 @@ use reifydb_core::value::column::{
 	data::{Column, canonical::Canonical},
 };
 use reifydb_value::value::{
-	Value, container::varlen_array::compact_parts, datetime::DateTime, row_number::RowNumber, value_type::ValueType,
+	Value, container::varlen_array::compact_parts, datetime::DateTime, row_number::RowNumber,
+	system_columns::SystemColumn, value_type::ValueType,
 };
 
 const ROWS: usize = 10_007;
@@ -90,7 +91,7 @@ struct Fixture {
 
 fn schema() -> Vec<(String, ValueType, bool)> {
 	vec![
-		(SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false),
+		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		("value".to_string(), ValueType::Int4, false),
 		(SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false),
 		("label".to_string(), ValueType::Utf8, false),

@@ -10,14 +10,19 @@ use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
 	util::bitmap,
-	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+	value::{
+		datetime::DateTime,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, SystemColumns},
+	},
 };
 
 use crate::{
 	compute,
 	predicate::{self, Predicate},
 	selection::Selection,
-	snapshot::{ColumnBlock, ColumnChunks, Schema, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks, Schema},
 };
 
 pub struct SnapshotReader {
@@ -94,6 +99,7 @@ fn evaluate_and_materialize(
 fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuffer>) -> Result<Columns> {
 	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
+	let mut partitions: Vec<Partition> = Vec::new();
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
 	let mut time: Vec<DateTime> = Vec::new();
@@ -101,7 +107,8 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		let data = fetch(i)?;
 		match SystemColumn::from_name(name) {
-			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
+			Some(SystemColumn::RowNumbers) => row_numbers = Some(extract_row_numbers(&data)),
+			Some(SystemColumn::Partitions) => partitions = extract_partitions(&data),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::Time) => time = extract_datetimes(&data),
@@ -113,8 +120,8 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 	Ok(Columns::with_system(
 		columns,
 		SystemColumns::new(
-			row_numbers.unwrap_or_else(|| panic!("{}", missing(SystemColumn::RowNumber))),
-			Vec::new(),
+			row_numbers.unwrap_or_else(|| panic!("{}", missing(SystemColumn::RowNumbers))),
+			partitions,
 			created_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::CreatedAt))),
 			updated_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::UpdatedAt))),
 			time,
@@ -157,6 +164,19 @@ fn extract_commit_versions(data: &ColumnBuffer) -> Vec<u64> {
 				.ok()
 				.flatten()
 				.expect("#commit_version column must be Uint8 with no nones")
+		})
+		.collect()
+}
+
+fn extract_partitions(data: &ColumnBuffer) -> Vec<Partition> {
+	(0..data.len())
+		.map(|i| {
+			Partition(
+				data.get_as::<u128>(i)
+					.ok()
+					.flatten()
+					.expect("#partition column must be Uint16 with no nones"),
+			)
 		})
 		.collect()
 }
@@ -255,7 +275,7 @@ mod tests {
 		let updated_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
 		let time_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
 		vec![
-			((SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false), row_number_chunk),
+			((SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false), row_number_chunk),
 			((SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false), created_chunk),
 			((SystemColumn::UpdatedAt.name().to_string(), ValueType::DateTime, false), updated_chunk),
 			((SystemColumn::Time.name().to_string(), ValueType::DateTime, false), time_chunk),

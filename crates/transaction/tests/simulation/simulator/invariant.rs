@@ -120,16 +120,16 @@ impl Invariant for NoDirtyReads {
 					}
 				}
 				Op::Commit => {
-					if let OpResult::Committed = &result.result {
-						if let Some(writes) = pending_writes.remove(&tx_id) {
-							for (key, val) in writes {
-								match val {
-									Some(bytes) => {
-										committed_state.insert(key, bytes);
-									}
-									None => {
-										committed_state.remove(&key);
-									}
+					if let OpResult::Committed = &result.result
+						&& let Some(writes) = pending_writes.remove(&tx_id)
+					{
+						for (key, val) in writes {
+							match val {
+								Some(bytes) => {
+									committed_state.insert(key, bytes);
+								}
+								None => {
+									committed_state.remove(&key);
 								}
 							}
 						}
@@ -204,7 +204,7 @@ impl Invariant for NoLostUpdates {
 					continue;
 				}
 
-				for key in keys_a.intersection(keys_b) {
+				if let Some(key) = keys_a.intersection(keys_b).next() {
 					return Err(InvariantViolation {
 						invariant_name: "NoLostUpdates".into(),
 						message: format!(
@@ -220,10 +220,12 @@ impl Invariant for NoLostUpdates {
 	}
 }
 
+type Predicate = Box<dyn Fn(&BTreeMap<String, String>, &ExecutionTrace) -> Result<(), String>>;
+
 /// User-supplied predicate on the final state.
 pub struct FinalStateConsistency {
 	pub name: String,
-	pub predicate: Box<dyn Fn(&BTreeMap<String, String>, &ExecutionTrace) -> Result<(), String>>,
+	pub predicate: Predicate,
 }
 
 impl std::fmt::Debug for FinalStateConsistency {
@@ -280,47 +282,41 @@ impl Invariant for ReadYourOwnWrites {
 				Op::Get {
 					key,
 				} => {
-					if let OpResult::Value(read_val) = &result.result {
-						if let Some(expected) =
+					if let OpResult::Value(read_val) = &result.result
+						&& let Some(expected) =
 							pending_writes.get(&tx_id).and_then(|w| w.get(key))
-						{
-							match (read_val, expected) {
-								(None, None) => {}
-								(Some(read_bytes), Some(expected_bytes)) => {
-									if read_bytes != expected_bytes {
-										return Err(InvariantViolation {
-											invariant_name:
-												"ReadYourOwnWrites"
-													.into(),
-											message: format!(
-												"tx {:?} wrote key '{}' but read back different value at step {}",
-												tx_id,
-												key,
-												result.step_index
-											),
-										});
-									}
-								}
-								(Some(_), None) => {
+					{
+						match (read_val, expected) {
+							(None, None) => {}
+							(Some(read_bytes), Some(expected_bytes)) => {
+								if read_bytes != expected_bytes {
 									return Err(InvariantViolation {
 										invariant_name: "ReadYourOwnWrites"
 											.into(),
 										message: format!(
-											"tx {:?} removed key '{}' but read back a value at step {}",
+											"tx {:?} wrote key '{}' but read back different value at step {}",
 											tx_id, key, result.step_index
 										),
 									});
 								}
-								(None, Some(_)) => {
-									return Err(InvariantViolation {
-										invariant_name: "ReadYourOwnWrites"
-											.into(),
-										message: format!(
-											"tx {:?} wrote key '{}' but read back None at step {}",
-											tx_id, key, result.step_index
-										),
-									});
-								}
+							}
+							(Some(_), None) => {
+								return Err(InvariantViolation {
+									invariant_name: "ReadYourOwnWrites".into(),
+									message: format!(
+										"tx {:?} removed key '{}' but read back a value at step {}",
+										tx_id, key, result.step_index
+									),
+								});
+							}
+							(None, Some(_)) => {
+								return Err(InvariantViolation {
+									invariant_name: "ReadYourOwnWrites".into(),
+									message: format!(
+										"tx {:?} wrote key '{}' but read back None at step {}",
+										tx_id, key, result.step_index
+									),
+								});
 							}
 						}
 					}
@@ -413,16 +409,16 @@ impl Invariant for SnapshotConsistency {
 					}
 				}
 				Op::Commit => {
-					if let OpResult::Committed = &result.result {
-						if let Some(writes) = pending_writes.remove(&tx_id) {
-							for (key, val) in writes {
-								match val {
-									Some(v) => {
-										committed_state.insert(key, v);
-									}
-									None => {
-										committed_state.remove(&key);
-									}
+					if let OpResult::Committed = &result.result
+						&& let Some(writes) = pending_writes.remove(&tx_id)
+					{
+						for (key, val) in writes {
+							match val {
+								Some(v) => {
+									committed_state.insert(key, v);
+								}
+								None => {
+									committed_state.remove(&key);
 								}
 							}
 						}

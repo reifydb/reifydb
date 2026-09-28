@@ -11,12 +11,8 @@ use reifydb_value::{
 	value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
-		int::Int,
-		uint::Uint,
 	},
 };
-
-const WIDTHS: [Precision; 2] = [Precision::new(38), Precision::MAX];
 
 fn assert_wasm_round_trip(label: &str, input: ColumnBuffer, precision: u8, scale: u8, cell_width: usize) {
 	// The descriptor must carry precision and scale and the data must be one fixed cell per row, or the guest
@@ -36,60 +32,8 @@ fn assert_wasm_round_trip(label: &str, input: ColumnBuffer, precision: u8, scale
 	assert_eq!(output.get_type(), input.get_type(), "{label}: type");
 }
 
-fn width(precision: Precision) -> usize {
-	if precision.value() <= 38 {
-		16
-	} else {
-		32
-	}
-}
-
 fn decimals(texts: &[&str]) -> Vec<Decimal> {
 	texts.iter().map(|t| Decimal::parse(t).unwrap()).collect()
-}
-
-#[test]
-fn int_round_trips_through_wasm_at_both_widths() {
-	// A lost sign extension or a narrow read of a wide cell changes the values at each width edge.
-	let edge = Int::parse("99999999999999999999999999999999999999").unwrap();
-	for precision in WIDTHS {
-		let values = [edge.clone(), edge.negate(), Int::zero(), Int::from_i64(-1)];
-		let label = format!("int at precision {}", precision.value());
-		assert_wasm_round_trip(
-			&label,
-			ColumnBuffer::int(precision, values),
-			precision.value(),
-			0,
-			width(precision),
-		);
-		let optional =
-			ColumnBuffer::int_with_bitvec(precision, [edge.clone(), Int::default()], vec![true, false]);
-		assert_wasm_round_trip(&format!("optional {label}"), optional, precision.value(), 0, width(precision));
-	}
-	let wide = ColumnBuffer::int(Precision::MAX, [Int::MAX, Int::MIN, Int::from_i128(i128::MIN)]);
-	assert_wasm_round_trip("int past i128", wide, 76, 0, 32);
-}
-
-#[test]
-fn uint_round_trips_through_wasm_at_both_widths() {
-	// A signed read of an unsigned cell or a narrow read of a wide cell changes the top values.
-	let edge = Uint::parse("99999999999999999999999999999999999999").unwrap();
-	for precision in WIDTHS {
-		let values = [edge.clone(), Uint::from_u64(u64::MAX), Uint::zero()];
-		let label = format!("uint at precision {}", precision.value());
-		assert_wasm_round_trip(
-			&label,
-			ColumnBuffer::uint(precision, values),
-			precision.value(),
-			0,
-			width(precision),
-		);
-		let optional =
-			ColumnBuffer::uint_with_bitvec(precision, [Uint::default(), edge.clone()], vec![false, true]);
-		assert_wasm_round_trip(&format!("optional {label}"), optional, precision.value(), 0, width(precision));
-	}
-	let wide = ColumnBuffer::uint(Precision::MAX, [Uint::MAX, Uint::from_u128(u128::MAX)]);
-	assert_wasm_round_trip("uint past u128", wide, 76, 0, 32);
 }
 
 #[test]

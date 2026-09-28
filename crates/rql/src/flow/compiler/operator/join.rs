@@ -9,14 +9,7 @@ use reifydb_core::{
 	row::JoinPick,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	Result, error,
-	fragment::Fragment,
-	value::{
-		datetime::{CREATED_AT_COLUMN_NAME, TIME_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
-		row_number::ROW_NUMBER_COLUMN_NAME,
-	},
-};
+use reifydb_value::{Result, error, fragment::Fragment, value::system_columns::SystemColumn};
 
 use crate::{
 	expression::{Expression, name::display_label},
@@ -158,11 +151,11 @@ fn ensure_pick_columns_exist(pick: Option<&JoinPick>, right: &QueryPlan, right_n
 	let (Some(pick), Some(right_names)) = (pick, output_column_names(right)) else {
 		return Ok(());
 	};
-	let system = [ROW_NUMBER_COLUMN_NAME, CREATED_AT_COLUMN_NAME, UPDATED_AT_COLUMN_NAME, TIME_COLUMN_NAME];
+	let system = [SystemColumn::RowNumbers, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
 	for key in &pick.keys {
 		let name = key.column.text();
 		if right_names.iter().any(|column| column == name)
-			|| system.contains(&name.strip_prefix('#').unwrap_or(name))
+			|| system.iter().any(|column| column.name()[1..] == *name.strip_prefix('#').unwrap_or(name))
 		{
 			continue;
 		}

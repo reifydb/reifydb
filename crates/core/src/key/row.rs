@@ -435,6 +435,7 @@ impl PartitionedSortedViewRowKey {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod sorted_view_row_key_tests {
 	use std::ops::RangeBounds;
 
@@ -1115,6 +1116,7 @@ impl KeyRangeCodec for PartitionedRowKeyRange {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod partitioned_row_key_tests {
 	use std::ops::RangeBounds;
 
@@ -1352,7 +1354,7 @@ mod sorted_view_run_tests {
 	fn test_ord_matches_the_encoded_byte_order() {
 		// A view is read by a plain forward scan, so the struct order and the byte order must agree
 		// everywhere or the scan returns rows in an order the planner never asked for.
-		let mut keys = vec![
+		let mut keys = [
 			SortedViewRowKey::new(StorageId::table(3), run(&[0x10]), RowNumber(1)),
 			SortedViewRowKey::new(StorageId::view(3), run(&[0x10]), RowNumber(1)),
 			SortedViewRowKey::new(StorageId::view(4), run(&[0x10]), RowNumber(1)),
@@ -1372,7 +1374,7 @@ mod sorted_view_run_tests {
 
 	#[test]
 	fn test_partitioned_ord_matches_the_encoded_byte_order() {
-		let mut keys = vec![
+		let mut keys = [
 			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(1), run(&[0x10]), RowNumber(1)),
 			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(2), run(&[0x10]), RowNumber(1)),
 			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(2), run(&[0x00]), RowNumber(1)),

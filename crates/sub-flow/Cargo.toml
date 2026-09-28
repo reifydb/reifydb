@@ -28,6 +28,7 @@ reifydb-engine = { workspace = true }
 reifydb-evaluate = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }
+reifydb-flow-async = { workspace = true, features = ["runtime"] }
 reifydb-store-operator = { workspace = true }
 reifydb-store-cdc = { workspace = true }
 reifydb-store-single = { workspace = true }

@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	internal_err,
 	value::column::columns::Columns,
@@ -25,10 +24,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{HostOperator, host::HostContext},
-};
+use crate::context::FlowContext;
 
 pub struct FilterOperator {
 	parent_schema: Option<Columns>,
@@ -125,16 +121,12 @@ impl FilterOperator {
 	}
 }
 
-impl HostOperator for FilterOperator {
-	fn id(&self) -> OperatorId {
+impl FilterOperator {
+	pub fn id(&self) -> OperatorId {
 		self.operator
 	}
 
-	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
-	}
-
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -157,15 +149,11 @@ impl HostOperator for FilterOperator {
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
-
-	fn output_schema(&self) -> Option<Columns> {
-		self.output_schema()
-	}
 }
 
 impl FilterOperator {
 	#[inline]
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<Columns> {
 		self.parent_schema.clone()
 	}
 

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, thread::spawn, time::Instant};
+use std::{sync::Arc, thread::spawn};
 
 use reifydb_codec::{key::serializer::KeySerializer, row::bytes::EncodedBytes};
 use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -46,7 +47,7 @@ pub fn oracle_performance_benchmark() {
 
 		let engine = MultiTransaction::testing();
 
-		let start = Instant::now();
+		let start = Clock::Real.instant();
 
 		for i in 0..num_txns {
 			let mut tx = engine.begin_command().unwrap();
@@ -80,7 +81,7 @@ pub fn concurrent_oracle_benchmark() {
 		);
 
 		let engine = Arc::new(MultiTransaction::testing());
-		let start = Instant::now();
+		let start = Clock::Real.instant();
 
 		let mut handles = vec![];
 
@@ -130,7 +131,7 @@ pub fn conflict_detection_benchmark() {
 	println!("Pre-populated with 1000 transactions across 100 keys");
 
 	let num_conflict_txns = 10000;
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut conflicts = 0;
 
 	for i in 0..num_conflict_txns {

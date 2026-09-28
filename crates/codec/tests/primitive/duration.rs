@@ -10,7 +10,7 @@ fn test_set_get_duration() {
 	let mut row = shape.allocate_pod();
 
 	let value = Duration::from_seconds(-7200).unwrap();
-	shape.set::<Duration>(&mut row, 0, value.clone());
+	shape.set::<Duration>(&mut row, 0, value);
 	assert_eq!(shape.get::<Duration>(&row, 0), value);
 }
 
@@ -22,7 +22,7 @@ fn test_try_get_duration() {
 	assert_eq!(shape.try_get::<Duration>(&row, 0), None);
 
 	let test_duration = Duration::from_days(30).unwrap();
-	shape.set::<Duration>(&mut row, 0, test_duration.clone());
+	shape.set::<Duration>(&mut row, 0, test_duration);
 	assert_eq!(shape.try_get::<Duration>(&row, 0), Some(test_duration));
 }
 
@@ -32,7 +32,7 @@ fn test_zero() {
 	let mut row = shape.allocate_pod();
 
 	let zero = Duration::default(); // Zero duration
-	shape.set::<Duration>(&mut row, 0, zero.clone());
+	shape.set::<Duration>(&mut row, 0, zero);
 	assert_eq!(shape.get::<Duration>(&row, 0), zero);
 }
 
@@ -52,7 +52,7 @@ fn test_various_durations() {
 
 	for duration in test_durations {
 		let mut row = shape.allocate_pod();
-		shape.set::<Duration>(&mut row, 0, duration.clone());
+		shape.set::<Duration>(&mut row, 0, duration);
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
 }
@@ -71,7 +71,7 @@ fn test_negative_durations() {
 
 	for duration in negative_durations {
 		let mut row = shape.allocate_pod();
-		shape.set::<Duration>(&mut row, 0, duration.clone());
+		shape.set::<Duration>(&mut row, 0, duration);
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
 }
@@ -88,7 +88,7 @@ fn test_complex_parts() {
 		123456789, // nanoseconds
 	)
 	.unwrap();
-	shape.set::<Duration>(&mut row, 0, complex_duration.clone());
+	shape.set::<Duration>(&mut row, 0, complex_duration);
 	assert_eq!(shape.get::<Duration>(&row, 0), complex_duration);
 }
 
@@ -103,13 +103,13 @@ fn test_mixed_with_other_types() {
 	let duration1 = Duration::from_hours(24).unwrap();
 	let duration2 = Duration::from_minutes(-30).unwrap();
 
-	shape.set::<Duration>(&mut row, 0, duration1.clone());
+	shape.set::<Duration>(&mut row, 0, duration1);
 	shape.set::<bool>(&mut row, 1, true);
-	shape.set::<Duration>(&mut row, 2, duration2.clone());
+	shape.set::<Duration>(&mut row, 2, duration2);
 	shape.set::<i64>(&mut row, 3, 987654321i64);
 
 	assert_eq!(shape.get::<Duration>(&row, 0), duration1);
-	assert_eq!(shape.get::<bool>(&row, 1), true);
+	assert!(shape.get::<bool>(&row, 1));
 	assert_eq!(shape.get::<Duration>(&row, 2), duration2);
 	assert_eq!(shape.get::<i64>(&row, 3), 987654321);
 }
@@ -120,7 +120,7 @@ fn test_undefined_handling() {
 	let mut row = shape.allocate_pod();
 
 	let duration = Duration::from_days(100).unwrap();
-	shape.set::<Duration>(&mut row, 0, duration.clone());
+	shape.set::<Duration>(&mut row, 0, duration);
 
 	assert_eq!(shape.try_get::<Duration>(&row, 0), Some(duration));
 	assert_eq!(shape.try_get::<Duration>(&row, 1), None);
@@ -140,7 +140,7 @@ fn test_large_values() {
 		123456789012345, // Large nanosecond value
 	)
 	.unwrap();
-	shape.set::<Duration>(&mut row, 0, large_duration.clone());
+	shape.set::<Duration>(&mut row, 0, large_duration);
 	assert_eq!(shape.get::<Duration>(&row, 0), large_duration);
 }
 
@@ -155,7 +155,7 @@ fn test_precision_preservation() {
 		999999999, // 999,999,999 nanoseconds
 	)
 	.unwrap();
-	shape.set::<Duration>(&mut row, 0, precise_duration.clone());
+	shape.set::<Duration>(&mut row, 0, precise_duration);
 
 	let retrieved = shape.get::<Duration>(&row, 0);
 	assert_eq!(retrieved, precise_duration);
@@ -189,7 +189,7 @@ fn test_common_durations() {
 
 	for duration in common_durations {
 		let mut row = shape.allocate_pod();
-		shape.set::<Duration>(&mut row, 0, duration.clone());
+		shape.set::<Duration>(&mut row, 0, duration);
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
 }
@@ -210,7 +210,7 @@ fn test_boundary_values() {
 
 	for duration in boundary_durations {
 		let mut row = shape.allocate_pod();
-		shape.set::<Duration>(&mut row, 0, duration.clone());
+		shape.set::<Duration>(&mut row, 0, duration);
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
 }

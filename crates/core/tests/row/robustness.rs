@@ -4,7 +4,7 @@
 use std::str::FromStr;
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::ValueType};
+use reifydb_value::value::{blob::Blob, decimal::Decimal, value_type::ValueType};
 
 #[test]
 fn test_massive_field_count() {
@@ -95,16 +95,12 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let shape = RowShape::testing(
-		RowFamily::Pod,
-		&[ValueType::Utf8, ValueType::Blob, ValueType::INT, ValueType::DECIMAL],
-	);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::DECIMAL]);
 
 	let mut original = shape.allocate_pod();
-	shape.set_utf8(&mut original, 0, &"x".repeat(1000));
+	shape.set_utf8(&mut original, 0, "x".repeat(1000));
 	shape.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
-	shape.set_int(&mut original, 2, &Int::from(i128::MAX));
-	shape.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
+	shape.set_decimal(&mut original, 2, &Decimal::from_str("99999.99999").unwrap());
 
 	let mut current = original.clone();
 
@@ -115,7 +111,6 @@ fn test_repeated_clone_stability() {
 		// Verify data is still intact
 		assert_eq!(shape.get_utf8(&next, 0), "x".repeat(1000));
 		assert_eq!(shape.get_blob(&next, 1), Blob::from(vec![42u8; 1000]));
-		assert_eq!(shape.get_int(&next, 2), Int::from(i128::MAX));
 
 		current = next;
 	}
@@ -215,9 +210,9 @@ fn test_concurrent_field_updates() {
 
 		// Set all fields for this encoded
 		shape.set::<i64>(&mut row, 0, (i * 4) as i64);
-		shape.set_utf8(&mut row, 1, &(i * 4 + 1).to_string());
+		shape.set_utf8(&mut row, 1, (i * 4 + 1).to_string());
 		shape.set::<i64>(&mut row, 2, (i * 4 + 2) as i64);
-		shape.set_utf8(&mut row, 3, &(i * 4 + 3).to_string());
+		shape.set_utf8(&mut row, 3, (i * 4 + 3).to_string());
 
 		rows.push(row);
 	}
@@ -265,7 +260,7 @@ fn test_row_size_stability() {
 
 	for size in sizes {
 		let mut row = shape.allocate_pod();
-		shape.set_utf8(&mut row, 0, &"x".repeat(size));
+		shape.set_utf8(&mut row, 0, "x".repeat(size));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
 		row_sizes.push(row.len());
@@ -285,7 +280,7 @@ fn test_row_size_stability() {
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
 		let mut row = shape.allocate_pod();
-		shape.set_utf8(&mut row, 0, &"x".repeat(50));
+		shape.set_utf8(&mut row, 0, "x".repeat(50));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());
 	}

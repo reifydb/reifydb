@@ -5,7 +5,7 @@ use arrow_arith::aggregate::{max, min};
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_value::{
 	Result,
-	value::{Value, container::decimal_array::u128s},
+	value::{Value, container::wide_int_array::wides},
 };
 
 use crate::error::ColumnError;
@@ -86,13 +86,13 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Int2(c) => reduce_arrow!(c, Int2),
 		ColumnBuffer::Int4(c) => reduce_arrow!(c, Int4),
 		ColumnBuffer::Int8(c) => reduce_arrow!(c, Int8),
-		ColumnBuffer::Int16(_) => reduce_int!(array.buffer.as_slice::<i128>(), Int16),
+		ColumnBuffer::Int16(c) => reduce_int!(wides::<i128>(c), Int16),
 		ColumnBuffer::Uint1(c) => reduce_arrow!(c, Uint1),
 		ColumnBuffer::Uint2(c) => reduce_arrow!(c, Uint2),
 		ColumnBuffer::Uint4(c) => reduce_arrow!(c, Uint4),
 		ColumnBuffer::Uint8(c) => reduce_arrow!(c, Uint8),
-		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
-		ColumnBuffer::Int(c) | ColumnBuffer::Uint(c) | ColumnBuffer::Decimal(c) => reduce_family!(c),
+		ColumnBuffer::Uint16(c) => reduce_int!(wides::<u128>(c), Uint16),
+		ColumnBuffer::Decimal(c) => reduce_family!(c),
 		ColumnBuffer::Any {
 			..
 		} => Err(ColumnError::FixedArrayRequired {
@@ -130,7 +130,6 @@ mod tests {
 	use reifydb_value::value::{
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
-		int::Int,
 		value_type::ValueType,
 	};
 
@@ -163,20 +162,6 @@ mod tests {
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int16(i128::MIN));
 		assert_eq!(max, Value::Int16(i128::MAX));
-	}
-
-	#[test]
-	fn min_max_wide_int_across_the_sign() {
-		// An untyped value compare or a truncating read past i128 picks the wrong bounds at 76 digits.
-		let big = Int::parse(&"9".repeat(76)).unwrap();
-		let cd = ColumnBuffer::int(
-			Precision::new(76),
-			[Int::from_i128(-1), big.clone(), big.negate(), Int::zero()],
-		);
-		let ca = Canonical::from_column_buffer(&cd).unwrap();
-		let (min, max) = min_max(&ca).unwrap();
-		assert_eq!(min, Value::Int(big.negate()));
-		assert_eq!(max, Value::Int(big));
 	}
 
 	#[test]

@@ -216,36 +216,6 @@ impl RowShape {
 			) => self.set_none(row, index),
 
 			(
-				ValueType::Int {
-					..
-				},
-				Value::Int(v),
-			) => self.set_int(row, index, v),
-			(
-				ValueType::Int {
-					..
-				},
-				Value::None {
-					..
-				},
-			) => self.set_none(row, index),
-
-			(
-				ValueType::Uint {
-					..
-				},
-				Value::Uint(v),
-			) => self.set_uint(row, index, v),
-			(
-				ValueType::Uint {
-					..
-				},
-				Value::None {
-					..
-				},
-			) => self.set_none(row, index),
-
-			(
 				ValueType::Decimal {
 					..
 				},
@@ -341,12 +311,6 @@ impl RowShape {
 			ValueType::Uuid4 => Value::Uuid4(self.get::<Uuid4>(row, index)),
 			ValueType::Uuid7 => Value::Uuid7(self.get::<Uuid7>(row, index)),
 			ValueType::Blob => Value::Blob(self.get_blob(row, index)),
-			ValueType::Int {
-				..
-			} => Value::Int(self.get_int(row, index)),
-			ValueType::Uint {
-				..
-			} => Value::Uint(self.get_uint(row, index)),
 			ValueType::Decimal {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),

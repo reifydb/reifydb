@@ -9,7 +9,6 @@ use std::{
 	},
 	thread,
 	thread::JoinHandle,
-	time::{Duration, Instant},
 };
 
 use hdrhistogram::Histogram;
@@ -36,7 +35,10 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{duration::Duration, row_number::RowNumber},
+};
 
 set_global_allocator!();
 
@@ -144,7 +146,7 @@ fn spawn_readers(
 				let mut histogram = latency_histogram();
 				let mut ops = 0u64;
 				while running.load(Ordering::Relaxed) {
-					let begin_start = Instant::now();
+					let begin_start = Clock::Real.instant();
 					let txn = multi.begin_query().expect("begin_query must succeed");
 					histogram
 						.record(begin_start.elapsed().as_nanos() as u64)
@@ -166,7 +168,7 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 	let reader_handles = spawn_readers(&multi, readers, &running);
 	let stall_handle = (stall_keys > 0).then(|| spawn_stall_writer(&multi, stall_keys, &running));
 
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for thread_id in 0..threads as u64 {
 		let multi = multi.clone();
@@ -174,14 +176,14 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 			let mut begin_histogram = latency_histogram();
 			let mut commit_histogram = latency_histogram();
 			for index in 0..iterations {
-				let begin_start = Instant::now();
+				let begin_start = Clock::Real.instant();
 				let mut txn = multi.begin_command().expect("begin_command must succeed");
 				begin_histogram
 					.record(begin_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");
 				txn.set(&encoded_key(layout, thread_id, index), encoded_bytes(index))
 					.expect("set must succeed");
-				let commit_start = Instant::now();
+				let commit_start = Clock::Real.instant();
 				txn.commit(vec![]).expect("disjoint keys must not conflict");
 				commit_histogram
 					.record(commit_start.elapsed().as_nanos() as u64)
@@ -192,7 +194,7 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 	}
 	let (begin_histograms, commit_histograms): (Vec<_>, Vec<_>) =
 		handles.into_iter().map(|handle| handle.join().expect("bench thread panicked")).unzip();
-	let elapsed = start.elapsed();
+	let elapsed = start.elapsed().into();
 
 	running.store(false, Ordering::Relaxed);
 	if let Some(handle) = stall_handle {
@@ -222,16 +224,26 @@ fn write_txns(
 ) {
 	let samples: Vec<Sample> =
 		(0..repeats).map(|_| run_once(threads, layout, iterations, readers, stall_keys)).collect();
-	let median = median_by_throughput(&samples, |s| (s.ops, s.elapsed));
+	let median = median_by_throughput(&samples, |s| (s.ops, s.elapsed.to_std()));
 
 	let label = layout.label();
-	report.record(&format!("txn_begin/{label} threads={threads}"), median.ops, median.elapsed, &median.begin);
-	report.record(&format!("txn_commit/{label} threads={threads}"), median.ops, median.elapsed, &median.commit);
+	report.record(
+		&format!("txn_begin/{label} threads={threads}"),
+		median.ops,
+		median.elapsed.to_std(),
+		&median.begin,
+	);
+	report.record(
+		&format!("txn_commit/{label} threads={threads}"),
+		median.ops,
+		median.elapsed.to_std(),
+		&median.commit,
+	);
 	if readers > 0 {
 		report.record(
 			&format!("txn_query_begin/{label} threads={threads} readers={readers} stall_keys={stall_keys}"),
 			median.query_ops,
-			median.elapsed,
+			median.elapsed.to_std(),
 			&median.query_begin,
 		);
 	}

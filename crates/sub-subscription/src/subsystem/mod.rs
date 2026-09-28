@@ -35,7 +35,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	engine::FlowEngineInner,
 	operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 	transaction::substrate::FlowSubstrate,

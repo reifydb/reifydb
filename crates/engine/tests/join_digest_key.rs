@@ -31,10 +31,10 @@ fn with_digest() -> Params {
 	Params::from(map)
 }
 
-fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Diagnostic> {
+fn query(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 	let r = t.inner().query_as(TestEngine::identity(), rql, with_digest());
 	match r.error {
-		Some(e) => Err(e.diagnostic()),
+		Some(e) => Err(e.0),
 		None => Ok(r.frames),
 	}
 }

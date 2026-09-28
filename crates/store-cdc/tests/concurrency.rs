@@ -71,7 +71,7 @@ fn cdc_at(version: u64) -> Cdc {
 			i64::try_from(BASE_TIMESTAMP + version).expect("test timestamp fits in i64 nanos"),
 		),
 		vec![CdcChange::Insert {
-			key: EncodedKey::new(version.to_be_bytes().to_vec()),
+			key: EncodedKey::new(version.to_be_bytes()),
 			post: EncodedBytes(CowVec::new(version.to_be_bytes().to_vec())),
 		}],
 	)
@@ -731,6 +731,7 @@ mod cases {
 		flusher.join().expect("the flushing thread must not panic");
 		assert!(store.flush_pending(), "the duel must be drained before the log is checked");
 
+		#[allow(clippy::needless_range_loop)]
 		for index in 0..DUEL_VERSIONS as usize {
 			let left = results[0][index];
 			let right = results[1][index];

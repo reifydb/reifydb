@@ -23,10 +23,10 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		HostOperator, aggregation::operator::AggregateOperator, filter::FilterOperator, gate::GateOperator,
-		host::HostContext, map::MapOperator,
-	},
+	operator::{filter::FilterOperator, map::MapOperator},
+};
+use reifydb_flow_async::operator::{
+	HostOperator, aggregation::operator::AggregateOperator, gate::GateOperator, host::HostContext,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;

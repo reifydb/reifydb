@@ -65,8 +65,6 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 		"uuid7" => ValueType::Uuid7,
 		"identityid" | "identity_id" => ValueType::IdentityId,
 		"blob" => ValueType::Blob,
-		"int" => ValueType::INT,
-		"uint" => ValueType::UINT,
 		"decimal" => ValueType::DECIMAL,
 		_ => {
 			return Err(AstError::UnrecognizedType {
@@ -106,18 +104,6 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 						Constraint::MaxBytes(max_bytes.into()),
 					)
 				}
-				(
-					ValueType::Int {
-						..
-					},
-					[AstTypeParameter::Literal(AstLiteral::Number(n))],
-				) => TypeConstraint::unconstrained(ValueType::int(parse_precision(n.value())?)),
-				(
-					ValueType::Uint {
-						..
-					},
-					[AstTypeParameter::Literal(AstLiteral::Number(n))],
-				) => TypeConstraint::unconstrained(ValueType::uint(parse_precision(n.value())?)),
 				(
 					ValueType::Decimal {
 						..

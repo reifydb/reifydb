@@ -283,14 +283,14 @@ pub mod test {
 		assert_eq!(column_1.id, 16385);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), ValueType::Boolean);
-		assert_eq!(column_1.auto_increment, false);
+		assert!(!column_1.auto_increment);
 
 		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
 		assert_eq!(column_2.id, 16386);
 		assert_eq!(column_2.name, "col_2");
 		assert_eq!(column_2.constraint.get_type(), ValueType::Int2);
-		assert_eq!(column_2.auto_increment, false);
+		assert!(!column_2.auto_increment);
 	}
 
 	#[test]
@@ -320,7 +320,7 @@ pub mod test {
 		assert_eq!(column.id, ColumnId(16385));
 		assert_eq!(column.name, "id");
 		assert_eq!(column.constraint.get_type(), ValueType::Uint8);
-		assert_eq!(column.auto_increment, true);
+		assert!(column.auto_increment);
 	}
 
 	#[test]
@@ -479,10 +479,10 @@ pub mod test {
 			})),
 		);
 
-		assert_eq!(stored_type_and_constraint(&mut txn, plain), (32, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
+		assert_eq!(stored_type_and_constraint(&mut txn, plain), (30, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
 		assert_eq!(
 			stored_type_and_constraint(&mut txn, optional),
-			(0x40 | 32, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
+			(0x40 | 30, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
 		);
 	}
 }

@@ -6,9 +6,11 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::{decimal_array, decimals, int_array, ints, u128_at},
+	container::{
+		decimal_array::{decimal_array, decimals},
+		wide_int_array::wide_at,
+	},
 	decimal::Decimal,
-	int::Int,
 	value_type::ValueType,
 };
 
@@ -140,7 +142,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(value) = wide_at::<i128>(container, i) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -217,7 +219,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = u128_at(container, i) {
+					if let Some(value) = wide_at::<u128>(container, i) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -255,11 +257,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				}
 				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnBuffer::Int(container) => ColumnBuffer::Int(int_array(
-				container.precision(),
-				ints(container).iter().map(Int::abs),
-			)),
-			ColumnBuffer::Uint(container) => ColumnBuffer::Uint(container.clone()),
 			ColumnBuffer::Decimal(container) => ColumnBuffer::Decimal(decimal_array(
 				container.precision(),
 				container.scale(),
@@ -282,8 +279,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						ValueType::Uint16,
 						ValueType::Float4,
 						ValueType::Float8,
-						ValueType::INT,
-						ValueType::UINT,
 						ValueType::DECIMAL,
 					],
 					actual: other.get_type(),

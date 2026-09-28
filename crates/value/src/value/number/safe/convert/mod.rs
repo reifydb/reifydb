@@ -234,7 +234,7 @@ macro_rules! impl_safe_convert_float_to_unsigned {
 
 use arrow_buffer::i256;
 
-use crate::value::{decimal::Decimal, int::Int, uint::Uint};
+use crate::value::decimal::Decimal;
 
 fn narrow_i256<T: TryFrom<i128> + TryFrom<u128>>(value: i256) -> Option<T> {
 	match value.to_i128() {
@@ -244,110 +244,6 @@ fn narrow_i256<T: TryFrom<i128> + TryFrom<u128>>(value: i256) -> Option<T> {
 			_ => None,
 		},
 	}
-}
-
-macro_rules! impl_safe_convert_to_int {
-    ($($from:ty),*) => {
-        $(
-            impl SafeConvert<Int> for $from {
-                fn checked_convert(self) -> Option<Int> {
-                    Some(Int::from(self))
-                }
-
-                fn saturating_convert(self) -> Int {
-                    Int::from(self)
-                }
-
-                fn wrapping_convert(self) -> Int {
-                    Int::from(self)
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_unsigned_to_uint {
-    ($($from:ty),*) => {
-        $(
-            impl SafeConvert<Uint> for $from {
-                fn checked_convert(self) -> Option<Uint> {
-                    Some(Uint::from(self))
-                }
-
-                fn saturating_convert(self) -> Uint {
-                    Uint::from(self)
-                }
-
-                fn wrapping_convert(self) -> Uint {
-                    Uint::from(self)
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_float_to_int {
-    ($($from:ty),*) => {
-        $(
-            impl SafeConvert<Int> for $from {
-                fn checked_convert(self) -> Option<Int> {
-                    Int::from_f64(self as f64)
-                }
-
-                fn saturating_convert(self) -> Int {
-                    if self.is_nan() {
-                        Int::zero()
-                    } else if self.is_sign_negative() {
-                        Int::from_f64(self as f64).unwrap_or(Int::MIN)
-                    } else {
-                        Int::from_f64(self as f64).unwrap_or(Int::MAX)
-                    }
-                }
-
-                fn wrapping_convert(self) -> Int {
-                    if self.is_finite() {
-                        Int::from(self.trunc() as i64)
-                    } else {
-                        Int::zero()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_float_to_uint {
-    ($($from:ty),*) => {
-        $(
-            impl SafeConvert<Uint> for $from {
-                fn checked_convert(self) -> Option<Uint> {
-                    if self >= 0.0 {
-                        Uint::from_f64(self as f64)
-                    } else {
-                        None
-                    }
-                }
-
-                fn saturating_convert(self) -> Uint {
-                    if self.is_nan() || self < 0.0 {
-                        Uint::zero()
-                    } else {
-                        Uint::from_f64(self as f64).unwrap_or(Uint::MAX)
-                    }
-                }
-
-                fn wrapping_convert(self) -> Uint {
-                    if self.is_finite() && self >= 0.0 {
-                        Uint::from(self.trunc() as u64)
-                    } else if self.is_finite() && self < 0.0 {
-                        Uint::from(self.trunc() as i64 as u64)
-                    } else {
-                        Uint::zero()
-                    }
-                }
-            }
-        )*
-    };
 }
 
 macro_rules! impl_safe_convert_promote {
@@ -555,7 +451,7 @@ macro_rules! impl_safe_convert_to_decimal_from_float {
 }
 
 impl_safe_convert_self!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64);
-impl_safe_convert_self!(Int, Uint, Decimal);
+impl_safe_convert_self!(Decimal);
 
 pub mod decimal;
 pub mod f32;
@@ -565,10 +461,8 @@ pub mod i16;
 pub mod i32;
 pub mod i64;
 pub mod i8;
-pub mod int;
 pub mod u128;
 pub mod u16;
 pub mod u32;
 pub mod u64;
 pub mod u8;
-pub mod uint;

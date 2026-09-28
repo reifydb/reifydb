@@ -86,6 +86,36 @@ impl QueryNode for Box<dyn QueryNode> {
 	}
 }
 
+pub fn eval_context_from_query<'a>(ctx: &'a QueryContext) -> EvalContext<'a> {
+	EvalContext {
+		target: None,
+		columns: Columns::empty(),
+		row_count: 1,
+		take: None,
+		params: &ctx.params,
+		symbols: &ctx.symbols,
+		is_aggregate_context: false,
+		routines: &ctx.services.routines,
+		runtime_context: &ctx.services.runtime_context,
+		identity: ctx.identity,
+	}
+}
+
+pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'a QueryContext) -> EvalContext<'a> {
+	EvalContext {
+		target: None,
+		columns: Columns::empty(),
+		row_count: 1,
+		take: None,
+		params: ctx.params,
+		symbols: &stored.symbols,
+		is_aggregate_context: false,
+		routines: &stored.services.routines,
+		runtime_context: ctx.runtime_context,
+		identity: stored.identity,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
@@ -118,35 +148,5 @@ mod tests {
 		let mut big_charged = 0usize;
 		let err = charge_query_memory(&budget, &mut big_charged, &big).unwrap_err();
 		assert_eq!(err.0.code, "QUERY_006", "an over-budget charge must raise the memory-limit diagnostic");
-	}
-}
-
-pub fn eval_context_from_query<'a>(ctx: &'a QueryContext) -> EvalContext<'a> {
-	EvalContext {
-		target: None,
-		columns: Columns::empty(),
-		row_count: 1,
-		take: None,
-		params: &ctx.params,
-		symbols: &ctx.symbols,
-		is_aggregate_context: false,
-		routines: &ctx.services.routines,
-		runtime_context: &ctx.services.runtime_context,
-		identity: ctx.identity,
-	}
-}
-
-pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'a QueryContext) -> EvalContext<'a> {
-	EvalContext {
-		target: None,
-		columns: Columns::empty(),
-		row_count: 1,
-		take: None,
-		params: ctx.params,
-		symbols: &stored.symbols,
-		is_aggregate_context: false,
-		routines: &stored.services.routines,
-		runtime_context: ctx.runtime_context,
-		identity: stored.identity,
 	}
 }

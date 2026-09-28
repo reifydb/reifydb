@@ -6,7 +6,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{accumulator::WindowAccumulator, settings::WindowSettings, span::WindowSpan};
+use reifydb_flow_async::window::{accumulator::WindowAccumulator, settings::WindowSettings, span::WindowSpan};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::f64::consts::PI;
+
 use reifydb_value::value::{
 	Value, container::any_array::any_array, frame::data::FrameColumnData, ordered_f64::OrderedF64,
 };
@@ -17,7 +19,7 @@ crate::plain_tests! {
 		Value::Int4(42),
 		Value::Utf8("hello".to_string()),
 		Value::Boolean(true),
-		Value::Float8(OrderedF64::try_from(3.14).unwrap()),
+		Value::Float8(OrderedF64::try_from(PI).unwrap()),
 	],
 	boundary: vec![
 		Value::Int8(i64::MAX),

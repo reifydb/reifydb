@@ -4,13 +4,14 @@
 use std::result::Result as StdResult;
 
 use arrow_array::{Array, FixedSizeBinaryArray};
-use arrow_buffer::{BooleanBuffer, MutableBuffer};
-use arrow_select::filter::FilterPredicate;
+use arrow_buffer::MutableBuffer;
 use serde::{Deserialize, Deserializer, Serializer};
 
-use crate::{
-	util::{bitmap, kernel},
-	value::{Value, container::uuid_array::attach_nulls, dictionary::DictionaryEntryId, value_type::ValueType},
+use crate::value::{
+	Value,
+	container::fixed_array::{assert_whole_rows, from_buffer},
+	dictionary::DictionaryEntryId,
+	value_type::ValueType,
 };
 
 pub const DICTIONARY_ENTRY_WIDTH: usize = 17;
@@ -42,14 +43,6 @@ pub fn decode(row: &[u8; DICTIONARY_ENTRY_WIDTH]) -> DictionaryEntryId {
 	}
 }
 
-fn assert_whole_rows(bytes: usize) {
-	assert_eq!(
-		bytes % DICTIONARY_ENTRY_WIDTH,
-		0,
-		"dictionary id buffer of {bytes} bytes is not a whole number of {DICTIONARY_ENTRY_WIDTH} byte rows"
-	);
-}
-
 fn rows(array: &FixedSizeBinaryArray) -> &[[u8; DICTIONARY_ENTRY_WIDTH]] {
 	assert_eq!(
 		array.value_length() as usize,
@@ -57,17 +50,12 @@ fn rows(array: &FixedSizeBinaryArray) -> &[[u8; DICTIONARY_ENTRY_WIDTH]] {
 		"dictionary id column must hold {DICTIONARY_ENTRY_WIDTH} byte values, found {}",
 		array.value_length()
 	);
-	assert_whole_rows(array.value_data().len());
+	assert_whole_rows(DICTIONARY_ENTRY_WIDTH, array.value_data().len());
 	array.value_data()[..array.len() * DICTIONARY_ENTRY_WIDTH].as_chunks::<DICTIONARY_ENTRY_WIDTH>().0
 }
 
 pub fn push_entry(buffer: &mut MutableBuffer, entry: DictionaryEntryId) {
 	buffer.extend_from_slice(&encode(entry));
-}
-
-pub fn from_buffer(buffer: MutableBuffer) -> FixedSizeBinaryArray {
-	assert_whole_rows(buffer.len());
-	FixedSizeBinaryArray::new(DICTIONARY_ENTRY_WIDTH as i32, buffer.into(), None)
 }
 
 pub fn dictionary_array(values: impl IntoIterator<Item = DictionaryEntryId>) -> FixedSizeBinaryArray {
@@ -76,7 +64,7 @@ pub fn dictionary_array(values: impl IntoIterator<Item = DictionaryEntryId>) -> 
 	for entry in values {
 		push_entry(&mut buffer, entry);
 	}
-	from_buffer(buffer)
+	from_buffer(DICTIONARY_ENTRY_WIDTH, buffer)
 }
 
 pub fn iter(array: &FixedSizeBinaryArray) -> impl ExactSizeIterator<Item = DictionaryEntryId> + '_ {
@@ -95,51 +83,6 @@ pub fn as_string(array: &FixedSizeBinaryArray, index: usize) -> String {
 	get(array, index).map(|id| id.to_string()).unwrap_or_else(|| "none".to_string())
 }
 
-pub fn slice(array: &FixedSizeBinaryArray, start: usize, end: usize) -> FixedSizeBinaryArray {
-	let end = end.min(array.len());
-	let start = start.min(end);
-	array.slice(start, end - start)
-}
-
-pub fn take(array: &FixedSizeBinaryArray, num: usize) -> FixedSizeBinaryArray {
-	slice(array, 0, num)
-}
-
-pub fn filter(array: &FixedSizeBinaryArray, mask: &BooleanBuffer) -> FixedSizeBinaryArray {
-	filter_with(array, &kernel::predicate(mask, array.len()))
-}
-
-pub fn filter_with(array: &FixedSizeBinaryArray, predicate: &FilterPredicate) -> FixedSizeBinaryArray {
-	let selected = kernel::filtered(array, predicate);
-	let nulls = kernel::kept_nulls(array, &selected);
-	attach_nulls(selected, nulls)
-}
-
-pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> FixedSizeBinaryArray {
-	let rows = rows(array);
-	let mut reordered = MutableBuffer::with_capacity(indices.len() * DICTIONARY_ENTRY_WIDTH);
-	for &idx in indices {
-		match rows.get(idx) {
-			Some(row) => reordered.extend_from_slice(row),
-			None => reordered.extend_zeros(DICTIONARY_ENTRY_WIDTH),
-		}
-	}
-	attach_nulls(from_buffer(reordered), bitmap::reorder_nulls(array.nulls(), indices))
-}
-
-pub fn capacity(array: &FixedSizeBinaryArray) -> usize {
-	let buffer = array.values();
-	if buffer.strong_count() == 1 {
-		buffer.capacity() / DICTIONARY_ENTRY_WIDTH
-	} else {
-		array.len()
-	}
-}
-
-pub fn heap_size(array: &FixedSizeBinaryArray) -> usize {
-	capacity(array) * DICTIONARY_ENTRY_WIDTH
-}
-
 pub fn serialize<Ser: Serializer>(array: &FixedSizeBinaryArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 	serializer.collect_seq(iter(array))
 }
@@ -155,6 +98,7 @@ mod tests {
 	use serde_json::{from_str, to_string};
 
 	use super::*;
+	use crate::value::container::fixed_array::slice;
 
 	#[derive(Serialize, Deserialize)]
 	struct DictionaryColumn(
@@ -212,7 +156,7 @@ mod tests {
 		assert_eq!(decode(&[0; DICTIONARY_ENTRY_WIDTH]), DictionaryEntryId::default());
 		let mut buffer = MutableBuffer::new(0);
 		buffer.extend_zeros(DICTIONARY_ENTRY_WIDTH * 2);
-		let array = from_buffer(buffer);
+		let array = from_buffer(DICTIONARY_ENTRY_WIDTH, buffer);
 		assert_eq!(iter(&array).collect::<Vec<_>>(), [DictionaryEntryId::U1(0); 2]);
 	}
 
@@ -232,7 +176,7 @@ mod tests {
 		let mut buffer = MutableBuffer::new(0);
 		push_entry(&mut buffer, DictionaryEntryId::U2(7));
 		buffer.push(0u8);
-		from_buffer(buffer);
+		from_buffer(DICTIONARY_ENTRY_WIDTH, buffer);
 	}
 
 	#[test]
@@ -241,33 +185,6 @@ mod tests {
 		// A 16 byte uuid array read as dictionary rows would shift every entry.
 		let array = FixedSizeBinaryArray::new(16, vec![0u8; 32].into(), None);
 		get(&array, 0);
-	}
-
-	#[test]
-	fn filter_reorder_slice_take_keep_the_rows() {
-		// Each op must move whole 17 byte rows; a byte offset slip decodes garbage widths.
-		let entries = boundaries();
-		let array = dictionary_array(entries.clone());
-		let mask = BooleanBuffer::from((0..entries.len()).map(|i| i % 2 == 1).collect::<Vec<_>>());
-		let filtered = filter(&array, &mask);
-		assert_eq!(
-			iter(&filtered).collect::<Vec<_>>(),
-			entries.iter().skip(1).step_by(2).copied().collect::<Vec<_>>()
-		);
-		let reordered = reorder(&array, &[9, 0, 42, 3]);
-		assert_eq!(
-			iter(&reordered).collect::<Vec<_>>(),
-			[entries[9], entries[0], DictionaryEntryId::default(), entries[3]]
-		);
-		let sliced = slice(&array, 7, 9);
-		assert_eq!(iter(&sliced).collect::<Vec<_>>(), &entries[7..9]);
-		assert_eq!(iter(&slice(&array, 8, 100)).collect::<Vec<_>>(), &entries[8..]);
-		assert_eq!(slice(&array, 20, 30).len(), 0);
-		assert_eq!(iter(&take(&array, 3)).collect::<Vec<_>>(), &entries[..3]);
-		assert_eq!(
-			iter(&filter(&sliced, &BooleanBuffer::from(vec![false, true]))).collect::<Vec<_>>(),
-			[entries[8]]
-		);
 	}
 
 	#[test]

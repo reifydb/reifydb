@@ -12,11 +12,12 @@ use reifydb_value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
 			any_array::any_array,
-			decimal_array::{decimal_array, int_array, int16_array, uint_array, uint16_array},
+			decimal_array::decimal_array,
 			digest_array::{push_digest, push_none_slot},
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 			varlen_array::blob_array,
+			wide_int_array::wide_array,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -26,7 +27,6 @@ use reifydb_value::{
 		duration::Duration,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		identity::IdentityId,
-		int::{Int, parse::parse_int},
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
@@ -35,7 +35,6 @@ use reifydb_value::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
 		time::Time,
-		uint::{Uint, parse::parse_uint},
 		uuid::{
 			Uuid4, Uuid7,
 			parse::{parse_uuid4, parse_uuid7},
@@ -50,7 +49,7 @@ use crate::{
 	error::DecodeError,
 	json::{excerpt, none_marker_depth, types::ResponseFrame},
 	tag::peel_options,
-	unscaled::{decimal_unscaled, int_unscaled, uint_unscaled},
+	unscaled::decimal_unscaled,
 };
 
 pub fn frames_from_json(json: &str) -> Result<Vec<Frame>, Error> {
@@ -229,12 +228,6 @@ fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 		ValueType::Uuid7 => parse_uuid7_text(text).map(Value::Uuid7),
 		ValueType::IdentityId => parse_identity_id(text).map(Value::IdentityId),
 		ValueType::Blob => parse_blob(text).map(Value::Blob),
-		ValueType::Int {
-			precision,
-		} => parse_int_text(text, *precision).map(Value::Int),
-		ValueType::Uint {
-			precision,
-		} => parse_uint_text(text, *precision).map(Value::Uint),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -298,16 +291,6 @@ fn parse_digest_text(inner: &ValueType, accuracy: u32, text: &str) -> Option<Dig
 	let bytes = decode(text.strip_prefix("0x")?).ok()?;
 	let digest = Digest::decode(&bytes).ok()?;
 	(*digest.inner() == *inner && digest.accuracy() == accuracy).then_some(digest)
-}
-
-fn parse_int_text(text: &str, precision: Precision) -> Option<Int> {
-	let value = parse_int(Fragment::internal(text)).ok()?;
-	int_unscaled(&value, precision).map(|_| value)
-}
-
-fn parse_uint_text(text: &str, precision: Precision) -> Option<Uint> {
-	let value = parse_uint(Fragment::internal(text)).ok()?;
-	uint_unscaled(&value, precision).map(|_| value)
 }
 
 fn parse_decimal_text(text: &str, precision: Precision, scale: Scale) -> Option<Decimal> {
@@ -457,14 +440,14 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		ValueType::Int4 => FrameColumnData::Int4(cells(name, base, rows, 0i32, |s| s.parse().ok())?.into()),
 		ValueType::Int8 => FrameColumnData::Int8(cells(name, base, rows, 0i64, |s| s.parse().ok())?.into()),
 		ValueType::Int16 => {
-			FrameColumnData::Int16(int16_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
+			FrameColumnData::Int16(wide_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
 		}
 		ValueType::Uint1 => FrameColumnData::Uint1(cells(name, base, rows, 0u8, |s| s.parse().ok())?.into()),
 		ValueType::Uint2 => FrameColumnData::Uint2(cells(name, base, rows, 0u16, |s| s.parse().ok())?.into()),
 		ValueType::Uint4 => FrameColumnData::Uint4(cells(name, base, rows, 0u32, |s| s.parse().ok())?.into()),
 		ValueType::Uint8 => FrameColumnData::Uint8(cells(name, base, rows, 0u64, |s| s.parse().ok())?.into()),
 		ValueType::Uint16 => {
-			FrameColumnData::Uint16(uint16_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
+			FrameColumnData::Uint16(wide_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
 		}
 		ValueType::Date => FrameColumnData::Date(date_array(cells(
 			name,
@@ -518,18 +501,6 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		ValueType::Blob => {
 			FrameColumnData::Blob(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?))
 		}
-		ValueType::Int {
-			precision,
-		} => FrameColumnData::Int(int_array(
-			*precision,
-			cells(name, base, rows, Int::zero(), |text| parse_int_text(text, *precision))?,
-		)),
-		ValueType::Uint {
-			precision,
-		} => FrameColumnData::Uint(uint_array(
-			*precision,
-			cells(name, base, rows, Uint::zero(), |text| parse_uint_text(text, *precision))?,
-		)),
 		ValueType::Decimal {
 			precision,
 			scale,

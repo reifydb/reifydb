@@ -4,9 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
-};
+use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
 	error::SdkError,
@@ -112,30 +110,6 @@ impl Cell for Vec<u8> {
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
 		Ok(view.blob(name)?.map(<[u8]>::to_vec))
-	}
-}
-
-impl Cell for Int {
-	const COLUMN_TYPE: ValueKind = ValueKind::Int;
-	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_int(col, self)
-	}
-	#[inline]
-	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
-		view.int(name)
-	}
-}
-
-impl Cell for Uint {
-	const COLUMN_TYPE: ValueKind = ValueKind::Uint;
-	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_uint(col, self)
-	}
-	#[inline]
-	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
-		view.uint(name)
 	}
 }
 

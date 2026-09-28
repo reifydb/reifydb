@@ -5,10 +5,9 @@
 //! stage admits, whose total is the sum of those rows' contributions.
 //!
 //! The oracle composes two independent statements - which rows get through, and what each contributes
-//! - and never runs either operator's logic. It also never models the intermediate change stream,
-//! which is the point: a pipeline is correct when its end state is right, whatever diffs crossed the
-//! boundary to get there. That is what makes it able to catch a defect in those diffs that a
-//! single-operator view comparison cannot see.
+//! - and never runs either operator's logic. It also never models the intermediate change stream, which is the point: a
+//!   pipeline is correct when its end state is right, whatever diffs crossed the boundary to get there. That is what
+//!   makes it able to catch a defect in those diffs that a single-operator view comparison cannot see.
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -11,9 +11,6 @@ impl_safe_unsigned_convert!(u16 => i8, i16, i32, i64, i128);
 impl_safe_convert_unsigned_to_float!(24; u16 => f32);
 impl_safe_convert_unsigned_to_float!(53; u16 => f64);
 
-impl_safe_convert_to_int!(u16);
-impl_safe_convert_unsigned_to_uint!(u16);
-
 impl_safe_convert_to_decimal_from_int!(u16);
 
 #[cfg(test)]
@@ -362,60 +359,6 @@ pub mod tests {
 			let x: u16 = 1000;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "1000");
-		}
-	}
-
-	mod int {
-		use super::*;
-		use crate::value::int::Int;
-
-		#[test]
-		fn test_checked_convert() {
-			let x: u16 = u16::MAX;
-			let y: Option<Int> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "65535");
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x: u16 = 32767;
-			let y: Int = x.saturating_convert();
-			assert_eq!(y.to_string(), "32767");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x: u16 = 0;
-			let y: Int = x.wrapping_convert();
-			assert_eq!(y.to_string(), "0");
-		}
-	}
-
-	mod uint {
-		use super::*;
-		use crate::value::uint::Uint;
-
-		#[test]
-		fn test_checked_convert() {
-			let x: u16 = 42;
-			let y: Option<Uint> = x.checked_convert();
-			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "42");
-		}
-
-		#[test]
-		fn test_saturating_convert() {
-			let x: u16 = u16::MAX;
-			let y: Uint = x.saturating_convert();
-			assert_eq!(y.to_string(), "65535");
-		}
-
-		#[test]
-		fn test_wrapping_convert() {
-			let x: u16 = 1234;
-			let y: Uint = x.wrapping_convert();
-			assert_eq!(y.to_string(), "1234");
 		}
 	}
 }

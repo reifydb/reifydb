@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
@@ -25,10 +24,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{HostOperator, host::HostContext},
-};
+use crate::context::FlowContext;
 
 pub struct MapOperator {
 	parent_schema: Option<Columns>,
@@ -66,7 +62,7 @@ impl MapOperator {
 		})
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<Columns> {
 		Some(Columns::new(
 			self.expressions.iter().map(|expr| schema_column(self.parent_schema.as_ref(), expr)).collect(),
 		))
@@ -127,7 +123,7 @@ impl MapOperator {
 	}
 }
 
-pub(crate) fn schema_column(parent: Option<&Columns>, expression: &Expression) -> ColumnWithName {
+pub fn schema_column(parent: Option<&Columns>, expression: &Expression) -> ColumnWithName {
 	let source = match expression {
 		Expression::Alias(alias) => alias.expression.as_ref(),
 		other => other,
@@ -144,16 +140,12 @@ pub(crate) fn schema_column(parent: Option<&Columns>, expression: &Expression) -
 	)
 }
 
-impl HostOperator for MapOperator {
-	fn id(&self) -> OperatorId {
+impl MapOperator {
+	pub fn id(&self) -> OperatorId {
 		self.operator
 	}
 
-	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
-	}
-
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {
@@ -193,9 +185,5 @@ impl HostOperator for MapOperator {
 		}
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
-	}
-
-	fn output_schema(&self) -> Option<Columns> {
-		self.output_schema()
 	}
 }

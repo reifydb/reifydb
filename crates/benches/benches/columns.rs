@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration;
 use std::{
 	alloc::{GlobalAlloc, Layout},
 	hint::black_box,
@@ -10,7 +8,6 @@ use std::{
 		Arc,
 		atomic::{AtomicU64, Ordering::Relaxed},
 	},
-	time::Instant,
 };
 
 use arrow_buffer::BooleanBuffer;
@@ -19,7 +16,7 @@ use reifydb_allocator::backend::ALLOCATOR as BACKEND;
 use reifydb_benches::{BenchReport, env_flag, env_usize};
 use reifydb_column::{
 	reader::SnapshotReader,
-	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -28,7 +25,11 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	data::{Column, canonical::Canonical},
 };
-use reifydb_value::value::{Value, datetime::DateTime, decimal::Decimal, int::Int, uuid::Uuid7, value_type::ValueType};
+use reifydb_runtime::context::clock::Clock;
+use reifydb_value::value::{
+	Value, datetime::DateTime, decimal::Decimal, duration::Duration, system_columns::SystemColumn, uuid::Uuid7,
+	value_type::ValueType,
+};
 use uuid::Uuid;
 
 struct Counting;
@@ -78,7 +79,6 @@ const CONCAT_BATCHES: usize = 16;
 const INSERT_BATCH: usize = 1_000;
 const GROUPS: u64 = 1_000;
 
-#[allow(clippy::disallowed_types)]
 struct Sample {
 	elapsed: Duration,
 	allocations: u64,
@@ -91,9 +91,9 @@ fn measure<S, T>(repeats: usize, mut setup: impl FnMut() -> S, mut run: impl FnM
 			let input = setup();
 			let allocations = ALLOCATIONS.load(Relaxed);
 			let bytes = ALLOCATED_BYTES.load(Relaxed);
-			let started = Instant::now();
+			let started = Clock::Real.instant();
 			let output = run(input);
-			let elapsed = started.elapsed();
+			let elapsed = started.elapsed().into();
 			let sample = Sample {
 				elapsed,
 				allocations: ALLOCATIONS.load(Relaxed) - allocations,
@@ -109,7 +109,7 @@ fn measure<S, T>(repeats: usize, mut setup: impl FnMut() -> S, mut run: impl FnM
 
 fn record(report: &mut BenchReport, label: &str, rows: usize, sample: Sample) {
 	let label = format!("{label} allocs={} alloc_bytes={}", sample.allocations, sample.bytes);
-	report.record_throughput(&label, rows as u64, sample.elapsed);
+	report.record_throughput(&label, rows as u64, sample.elapsed.to_std());
 }
 
 fn mix(i: usize) -> u64 {
@@ -132,7 +132,7 @@ fn name(i: usize) -> String {
 }
 
 fn maybe(i: usize) -> Option<i32> {
-	(i % 7 != 0).then_some(i as i32)
+	(!i.is_multiple_of(7)).then_some(i as i32)
 }
 
 fn uuid7(i: usize) -> Uuid7 {
@@ -157,7 +157,6 @@ fn value_sets(rows: usize) -> Vec<(&'static str, ValueType, Vec<Value>)> {
 		),
 		("uuid7", ValueType::Uuid7, values(|i| Value::Uuid7(uuid7(i)))),
 		("utf8", ValueType::Utf8, values(|i| Value::Utf8(name(i)))),
-		("int", ValueType::INT, values(|i| Value::Int(Int::from(mix(i) as i64)))),
 		("decimal", ValueType::DECIMAL, values(|i| Value::Decimal(Decimal::from((mix(i) % 1_000_000) as i64)))),
 		(
 			"option_int4",
@@ -181,7 +180,7 @@ fn columns_fixture(start: usize, end: usize) -> Columns {
 
 fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 	let schema = vec![
-		(SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false),
+		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		("id".to_string(), ValueType::Int8, false),
 		("g".to_string(), ValueType::Int4, false),
 		("v".to_string(), ValueType::Float8, false),

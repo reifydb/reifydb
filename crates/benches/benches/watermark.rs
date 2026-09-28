@@ -7,7 +7,6 @@ use std::{
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	thread,
-	time::Instant,
 };
 
 use hdrhistogram::Histogram;
@@ -25,7 +24,7 @@ fn pipeline(report: &mut BenchReport, threads: usize) {
 	let watermark = Arc::new(WaterMark::new("bench-pipeline".into()));
 	let counter = Arc::new(AtomicU64::new(0));
 
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for _ in 0..threads {
 		let watermark = watermark.clone();
@@ -37,7 +36,7 @@ fn pipeline(report: &mut BenchReport, threads: usize) {
 				if version > *PIPELINE_OPS {
 					break;
 				}
-				let op_start = Instant::now();
+				let op_start = Clock::Real.instant();
 				watermark.register_in_flight(CommitVersion(version));
 				watermark.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
@@ -72,7 +71,7 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 	let watermark = Arc::new(WaterMark::with_advancer("bench-pipeline-advancer".into(), &system.spawner()));
 	let counter = Arc::new(AtomicU64::new(0));
 
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for _ in 0..threads {
 		let watermark = watermark.clone();
@@ -84,7 +83,7 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 				if version > *PIPELINE_OPS {
 					break;
 				}
-				let op_start = Instant::now();
+				let op_start = Clock::Real.instant();
 				watermark.register_in_flight(CommitVersion(version));
 				watermark.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
@@ -107,7 +106,7 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 fn burst_against(report: &mut BenchReport, threads: usize, label: &str, watermark: Arc<WaterMark>) {
 	let total = *BURST_OPS_PER_THREAD * threads as u64;
 
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for thread_id in 0..threads as u64 {
 		let watermark = watermark.clone();
@@ -116,7 +115,7 @@ fn burst_against(report: &mut BenchReport, threads: usize, label: &str, watermar
 			let first = thread_id * *BURST_OPS_PER_THREAD + 1;
 			let last = (thread_id + 1) * *BURST_OPS_PER_THREAD;
 			for version in first..=last {
-				let op_start = Instant::now();
+				let op_start = Clock::Real.instant();
 				watermark.register_in_flight(CommitVersion(version));
 				watermark.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
@@ -144,9 +143,9 @@ fn wait_fast_path(report: &mut BenchReport) {
 
 	let timeout = ValueDuration::from_seconds(1).unwrap();
 	let mut histogram = latency_histogram();
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	for _ in 0..*WAIT_FAST_PATH_OPS {
-		let op_start = Instant::now();
+		let op_start = Clock::Real.instant();
 		let reached = watermark.wait_for_mark_timeout(CommitVersion(1_000), timeout);
 		histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 		assert!(reached, "fast path wait must succeed for an already reached mark");
@@ -174,7 +173,7 @@ fn mixed_poll(report: &mut BenchReport, worker_threads: usize) {
 		})
 	};
 
-	let start = Instant::now();
+	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(worker_threads);
 	for _ in 0..worker_threads {
 		let watermark = watermark.clone();
@@ -186,7 +185,7 @@ fn mixed_poll(report: &mut BenchReport, worker_threads: usize) {
 				if version > *PIPELINE_OPS {
 					break;
 				}
-				let op_start = Instant::now();
+				let op_start = Clock::Real.instant();
 				watermark.register_in_flight(CommitVersion(version));
 				watermark.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");

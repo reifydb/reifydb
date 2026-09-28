@@ -16,7 +16,7 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	state::timer::{StateStore, TimerStore},
 };
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::seal::{
 		coord::Coord,
 		domain::SealDomain,

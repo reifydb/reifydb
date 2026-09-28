@@ -69,8 +69,6 @@ fn percentile_at(ctx: &FunctionContext, p: &ColumnBuffer, row: usize) -> Result<
 		Value::Uint4(v) => Some(f64::from(*v)),
 		Value::Uint8(v) => Some(*v as f64),
 		Value::Uint16(v) => Some(*v as f64),
-		Value::Int(v) => Some(v.to_f64()),
-		Value::Uint(v) => Some(v.to_f64()),
 		Value::Decimal(v) => Some(v.to_f64()),
 		_ => None,
 	};

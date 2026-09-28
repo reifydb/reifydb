@@ -3,7 +3,6 @@
 
 use std::fmt::{Debug, Display};
 
-use super::{int::Int, uint::Uint};
 use crate::value::{
 	date::Date,
 	datetime::DateTime,
@@ -61,12 +60,6 @@ impl IsUint for u64 {}
 
 impl IsNumber for u128 {}
 impl IsUint for u128 {}
-
-impl IsNumber for Int {}
-impl IsInt for Int {}
-
-impl IsNumber for Uint {}
-impl IsUint for Uint {}
 
 impl IsNumber for Decimal {}
 impl IsFloat for Decimal {}

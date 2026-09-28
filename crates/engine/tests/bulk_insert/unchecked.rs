@@ -91,7 +91,7 @@ fn test_unchecked_mode_large_batch() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::large { n: int4 }");
 
-	let rows: Vec<_> = (1..=1000).map(|n| params! { n: n as i32 }).collect();
+	let rows: Vec<_> = (1..=1000).map(|n| params! { n: n }).collect();
 
 	let mut builder = t.bulk_insert_unchecked(identity);
 	builder.table("test::large").rows(rows).done();

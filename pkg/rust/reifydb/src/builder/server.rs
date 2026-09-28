@@ -64,7 +64,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::value::{Value, duration::Duration};
-#[cfg(feature = "sub_metric_profiler")]
+#[cfg(all(feature = "sub_metric_profiler", feature = "sub_tracing"))]
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::system::raise_fd_limit;

@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb::{Params, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::interface::catalog::{
 	id::SubscriptionId,
 	subscription::{SubscribeOptions, SubscribeOutcome},
 };
 use reifydb_engine::subscription::SubscriptionServiceRef;
-use reifydb_value::{byte_size::ByteSize, value::identity::IdentityId};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{duration::Duration, identity::IdentityId},
+};
 
 fn subscription_id(outcome: SubscribeOutcome) -> SubscriptionId {
 	match outcome {
@@ -27,7 +28,7 @@ fn subscription_id(outcome: SubscribeOutcome) -> SubscriptionId {
 fn dropping_a_subscription_leaves_a_views_operator_state_intact() {
 	// A view's operators and a subscription's both number from 1, so an unsubscribe that drops state by operator id
 	// alone resets the view's limit.
-	let timeout = Duration::from_secs(10);
+	let timeout = Duration::from_seconds_const(10);
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("memory db with flow"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");

@@ -27,35 +27,7 @@ macro_rules! impl_safe_add {
 
 impl_safe_add!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use crate::value::{decimal::Decimal, int::Int, uint::Uint};
-
-impl SafeAdd for Int {
-	fn checked_add(&self, r: &Self) -> Option<Self> {
-		Int::checked_add(self, r)
-	}
-
-	fn saturating_add(&self, r: &Self) -> Self {
-		Int::saturating_add(self, r)
-	}
-
-	fn wrapping_add(&self, r: &Self) -> Self {
-		Int::saturating_add(self, r)
-	}
-}
-
-impl SafeAdd for Uint {
-	fn checked_add(&self, r: &Self) -> Option<Self> {
-		Uint::checked_add(self, r)
-	}
-
-	fn saturating_add(&self, r: &Self) -> Self {
-		Uint::saturating_add(self, r)
-	}
-
-	fn wrapping_add(&self, r: &Self) -> Self {
-		Uint::saturating_add(self, r)
-	}
-}
+use crate::value::decimal::Decimal;
 
 impl SafeAdd for Decimal {
 	fn checked_add(&self, r: &Self) -> Option<Self> {

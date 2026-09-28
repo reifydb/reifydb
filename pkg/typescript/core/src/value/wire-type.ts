@@ -5,7 +5,7 @@ import {BaseType, Type, WireCellValue, isDigestType, isListType, isOptionType, i
 import {digestType} from './digest';
 import {
     DECIMAL_DEFAULT_SCALE, FIXED_POINT_MAX_PRECISION, decimalType, fixedPointKind, fixedPointPrecision,
-    fixedPointScale, fixedPointType, isFixedPointType,
+    fixedPointScale, isFixedPointType,
 } from './fixed-point';
 
 function peelOption(type: Type): Type {
@@ -71,11 +71,9 @@ export function typeFromWire(wire: WireType): Type {
         }
         return digestType(inner, wire.accuracy);
     }
-    if (wire.id === 'Int' || wire.id === 'Uint' || wire.id === 'Decimal') {
+    if (wire.id === 'Decimal') {
         const precision = wire.precision ?? FIXED_POINT_MAX_PRECISION;
-        return wire.id === 'Decimal'
-            ? decimalType(precision, wire.scale ?? DECIMAL_DEFAULT_SCALE)
-            : fixedPointType(wire.id, precision, 0);
+        return decimalType(precision, wire.scale ?? DECIMAL_DEFAULT_SCALE);
     }
     if (wire.id === 'List') {
         if (!wire.underlying || Array.isArray(wire.underlying)) {

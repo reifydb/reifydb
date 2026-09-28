@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use arrow_array::Int32Array;
 use futures_util::{SinkExt, StreamExt};
 use reifydb_client::{BatchPushEvent, BatchSubscribeItem, HttpClient, SubscriptionConfig, WireFormat, ws::WsClient};
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
-use reifydb_value::value::frame::{column::FrameColumn, data::FrameColumnData, frame::Frame};
+use reifydb_value::value::{
+	duration::Duration,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+};
 use rustls::crypto::ring::default_provider;
 use serde_json::{Value, from_str, json};
 use tokio::{net::TcpListener, spawn, time::timeout};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
-const WAIT: Duration = Duration::from_secs(5);
+const WAIT: Duration = Duration::from_seconds_const(5);
 
 async fn ws_server_sending(replies: impl FnOnce(&str) -> Vec<Message> + Send + 'static) -> String {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -83,7 +84,7 @@ async fn a_ws_text_reply_the_client_cannot_parse_fails_the_request_instead_of_ha
 	.await;
 	let client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
-	let result = timeout(WAIT, client.query("from test::t", None)).await;
+	let result = timeout(WAIT.to_std(), client.query("from test::t", None)).await;
 
 	assert!(matches!(result, Ok(Err(_))), "expected the request to fail, got {result:?}");
 }
@@ -94,8 +95,9 @@ async fn a_ws_binary_reply_with_malformed_meta_fails_the_request_instead_of_drop
 	let url = ws_server_replying(|id| binary_query_reply(id, "not json")).await;
 	let client = WsClient::connect(&url, WireFormat::Rbcf).await.unwrap();
 
-	let result =
-		timeout(WAIT, client.query_with_meta("from test::t", None)).await.map(|reply| reply.map(|r| r.meta));
+	let result = timeout(WAIT.to_std(), client.query_with_meta("from test::t", None))
+		.await
+		.map(|reply| reply.map(|r| r.meta));
 
 	assert!(matches!(result, Ok(Err(_))), "expected the request to fail, got {result:?}");
 }
@@ -107,7 +109,10 @@ async fn a_ws_binary_reply_to_a_json_only_request_fails_the_request_instead_of_p
 	let mut client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result =
-		spawn(async move { timeout(WAIT, client.authenticate("token")).await.map(|auth| auth.is_err()) }).await;
+		spawn(
+			async move { timeout(WAIT.to_std(), client.authenticate("token")).await.map(|auth| auth.is_err()) },
+		)
+		.await;
 
 	assert!(matches!(result, Ok(Ok(true))), "expected the request to fail, got {result:?}");
 }
@@ -124,7 +129,7 @@ async fn a_ws_binary_reply_cut_short_inside_its_meta_fails_the_request_instead_o
 	.await;
 	let client = WsClient::connect(&url, WireFormat::Rbcf).await.unwrap();
 
-	let result = timeout(WAIT, client.query("from test::t", None)).await;
+	let result = timeout(WAIT.to_std(), client.query("from test::t", None)).await;
 
 	assert!(matches!(result, Ok(Err(_))), "expected the request to fail, got {result:?}");
 }
@@ -147,7 +152,7 @@ async fn a_ws_batch_change_cut_short_inside_an_entry_reaches_the_subscriber_as_a
 	let item = BatchSubscribeItem::new("from test::t", SubscriptionConfig::default());
 	let mut batch = client.batch_subscribe(&[item]).await.unwrap();
 
-	let event = timeout(WAIT, batch.recv()).await;
+	let event = timeout(WAIT.to_std(), batch.recv()).await;
 
 	assert!(
 		matches!(&event, Ok(Some(BatchPushEvent::Change(change))) if change.entries.iter().any(|entry| entry.decode_error.is_some())),

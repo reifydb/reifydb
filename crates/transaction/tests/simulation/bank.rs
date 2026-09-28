@@ -67,23 +67,24 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 
 		transfer_writes.push((from_key.clone(), to_key.clone(), from_value.clone(), to_value.clone()));
 
-		let mut ops = Vec::new();
-		ops.push(Op::BeginCommand);
-		ops.push(Op::Get {
-			key: from_key.clone(),
-		});
-		ops.push(Op::Get {
-			key: to_key.clone(),
-		});
-		ops.push(Op::Set {
-			key: from_key,
-			value: from_value,
-		});
-		ops.push(Op::Set {
-			key: to_key,
-			value: to_value,
-		});
-		ops.push(Op::Commit);
+		let ops = vec![
+			Op::BeginCommand,
+			Op::Get {
+				key: from_key.clone(),
+			},
+			Op::Get {
+				key: to_key.clone(),
+			},
+			Op::Set {
+				key: from_key,
+				value: from_value,
+			},
+			Op::Set {
+				key: to_key,
+				value: to_value,
+			},
+			Op::Commit,
+		];
 
 		tx_ops.push(ops);
 	}

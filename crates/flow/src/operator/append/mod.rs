@@ -5,26 +5,18 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
-		flow::OperatorCapability,
 	},
-	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::row_number::RowNumber};
 use tracing::instrument;
 
-use crate::{
-	error::FlowGraphError,
-	operator::{HostOperator, append::lane::AppendLanes, host::HostContext},
-	timer::Timer,
-};
+use crate::{error::FlowGraphError, operator::append::lane::AppendLanes};
 
 pub mod lane;
 
 #[cfg(test)]
 mod tests;
-
-const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 pub struct AppendOperator {
 	operator: OperatorId,
@@ -69,7 +61,7 @@ impl AppendOperator {
 		}
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<Columns> {
 		self.parent_schema.clone()
 	}
 
@@ -85,20 +77,12 @@ impl AppendOperator {
 	}
 }
 
-impl HostOperator for AppendOperator {
-	fn id(&self) -> OperatorId {
+impl AppendOperator {
+	pub fn id(&self) -> OperatorId {
 		self.operator
 	}
 
-	fn capabilities(&self) -> &[OperatorCapability] {
-		CAPABILITIES
-	}
-
-	fn sample(&self) -> Option<OperatorSample> {
-		None
-	}
-
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
@@ -140,14 +124,6 @@ impl HostOperator for AppendOperator {
 		}
 
 		Ok(Change::from_flow(self.operator, change.version, result_diffs, change.changed_at))
-	}
-
-	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
-		Ok(None)
-	}
-
-	fn output_schema(&self) -> Option<Columns> {
-		self.output_schema()
 	}
 }
 

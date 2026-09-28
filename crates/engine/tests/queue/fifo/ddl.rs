@@ -156,7 +156,7 @@ fn test_drop_queue_removes_the_definition() {
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let frames = t.admin("DROP QUEUE test::jobs");
-	assert_eq!(frames[0].rows().next().unwrap().get::<bool>("dropped").unwrap().unwrap(), true);
+	assert!(frames[0].rows().next().unwrap().get::<bool>("dropped").unwrap().unwrap());
 
 	assert!(find_queue(&t, "test", "jobs").is_none());
 	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
@@ -185,7 +185,7 @@ fn test_drop_missing_queue_honours_if_exists() {
 	t.admin("CREATE NAMESPACE test");
 
 	let frames = t.admin("DROP QUEUE IF EXISTS test::nope");
-	assert_eq!(frames[0].rows().next().unwrap().get::<bool>("dropped").unwrap().unwrap(), false);
+	assert!(!frames[0].rows().next().unwrap().get::<bool>("dropped").unwrap().unwrap());
 
 	let err = t.admin_err("DROP QUEUE test::nope");
 	assert!(err.contains("CA_096"), "missing queue should report queue_not_found, got: {err}");

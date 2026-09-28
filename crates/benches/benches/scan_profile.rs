@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(clippy::disallowed_types)]
-use std::time::Duration;
-use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Instant};
+use std::{cell::RefCell, cmp::Reverse, collections::HashMap, sync::Arc};
 
 use rand::{SeedableRng, rngs::StdRng};
 use reifydb::{Database, embedded};
 use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{BenchReport, env_opt, env_u64};
 use reifydb_core::interface::catalog::config::ConfigKey;
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	sync::mutex::Mutex,
+};
 use reifydb_testing_scenario::{query::OperationKind, registry::by_name, scenario::Scenario};
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration as ValueDuration};
 use tracing::{Id, Subscriber, subscriber::set_default};
 use tracing_subscriber::{
 	Registry,
@@ -30,18 +31,16 @@ const DEFAULT_ITERATIONS: u64 = 20;
 const DEFAULT_WARMUP: u64 = 3;
 
 #[derive(Default, Clone, Copy)]
-#[allow(clippy::disallowed_types)]
 struct Stat {
-	inclusive: Duration,
-	exclusive: Duration,
+	inclusive: ValueDuration,
+	exclusive: ValueDuration,
 	calls: u64,
 }
 
-#[allow(clippy::disallowed_types)]
 struct Frame {
 	name: &'static str,
 	entered: Instant,
-	child: Duration,
+	child: ValueDuration,
 }
 
 thread_local! {
@@ -67,7 +66,7 @@ impl Timing {
 	fn snapshot(&self) -> Vec<(&'static str, Stat)> {
 		let mut rows: Vec<(&'static str, Stat)> =
 			self.stats.lock().iter().map(|(name, stat)| (*name, *stat)).collect();
-		rows.sort_by(|a, b| b.1.exclusive.cmp(&a.1.exclusive));
+		rows.sort_by_key(|b| Reverse(b.1.exclusive));
 		rows
 	}
 }
@@ -84,8 +83,8 @@ where
 		STACK.with(|stack| {
 			stack.borrow_mut().push(Frame {
 				name,
-				entered: Instant::now(),
-				child: Duration::ZERO,
+				entered: Clock::Real.instant(),
+				child: ValueDuration::zero(),
 			})
 		});
 	}
@@ -96,9 +95,12 @@ where
 			let frame = stack.pop()?;
 			let inclusive = frame.entered.elapsed();
 			if let Some(parent) = stack.last_mut() {
-				parent.child += inclusive;
+				parent.child = parent
+					.child
+					.try_add(inclusive.into())
+					.expect("accumulated child time is a representable duration");
 			}
-			Some((frame.name, inclusive, inclusive.saturating_sub(frame.child)))
+			Some((frame.name, inclusive, inclusive.saturating_sub(frame.child.to_std())))
 		});
 
 		let Some((name, inclusive, exclusive)) = finished else {
@@ -107,8 +109,14 @@ where
 
 		let mut stats = self.stats.lock();
 		let entry = stats.entry(name).or_default();
-		entry.inclusive += inclusive;
-		entry.exclusive += exclusive;
+		entry.inclusive = entry
+			.inclusive
+			.try_add(inclusive.into())
+			.expect("accumulated inclusive time is a representable duration");
+		entry.exclusive = entry
+			.exclusive
+			.try_add(exclusive.into())
+			.expect("accumulated exclusive time is a representable duration");
 		entry.calls += 1;
 	}
 }
@@ -124,13 +132,12 @@ fn seed(db: &Database, scenario: &Scenario, scale: u64) {
 	}
 }
 
-#[allow(clippy::disallowed_types)]
-fn run(db: &Database, rql: &str, iterations: u64) -> Duration {
-	let started = Instant::now();
+fn run(db: &Database, rql: &str, iterations: u64) -> ValueDuration {
+	let started = Clock::Real.instant();
 	for _ in 0..iterations {
 		db.query_as_root(rql, ()).expect("profiled query executes");
 	}
-	started.elapsed()
+	started.elapsed().into()
 }
 
 fn main() {
@@ -169,8 +176,8 @@ fn main() {
 	timing.reset();
 	let observed = run(&db, &rql, iterations);
 
-	let baseline_per_query = baseline / iterations as u32;
-	let observed_per_query = observed / iterations as u32;
+	let baseline_per_query = baseline.to_std() / iterations as u32;
+	let observed_per_query = observed.to_std() / iterations as u32;
 	let overhead = observed_per_query.saturating_sub(baseline_per_query);
 
 	println!(
@@ -184,9 +191,9 @@ fn main() {
 	let rows = timing.snapshot();
 
 	for (name, stat) in &rows {
-		let exclusive_per_query = stat.exclusive / iterations as u32;
-		let inclusive_per_query = stat.inclusive / iterations as u32;
-		let share = stat.exclusive.as_secs_f64() / baseline.as_secs_f64() * 100.0;
+		let exclusive_per_query = stat.exclusive.to_std() / iterations as u32;
+		let inclusive_per_query = stat.inclusive.to_std() / iterations as u32;
+		let share = stat.exclusive.to_std().as_secs_f64() / baseline.to_std().as_secs_f64() * 100.0;
 
 		report.record_throughput(
 			&format!(
@@ -198,7 +205,7 @@ fn main() {
 				share
 			),
 			stat.calls,
-			stat.exclusive,
+			stat.exclusive.to_std(),
 		);
 	}
 

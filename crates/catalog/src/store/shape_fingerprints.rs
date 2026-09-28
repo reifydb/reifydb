@@ -139,7 +139,7 @@ fn pinned() -> Vec<Pin> {
 				"stats",
 			],
 		),
-		("config::config", &*CONFIG_SHAPE, 0xefc802db77165323, &["value"]),
+		("config::config", &*CONFIG_SHAPE, 0x1b6097b4d09a7c76, &["value"]),
 		(
 			"dictionary::dictionary",
 			&*DICTIONARY_SHAPE,

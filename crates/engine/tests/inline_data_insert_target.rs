@@ -50,7 +50,7 @@ fn series_insert_with_an_integer_in_a_column_not_in_the_series_is_column_not_fou
 	let err = command_err(&t, "INSERT s::x [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1.0, extra: 5 }]");
 
 	assert_column_not_found(&err, "extra");
-	assert!(t.query("FROM s::x").iter().all(|f| f.columns.iter().all(|c| c.data.len() == 0)));
+	assert!(t.query("FROM s::x").iter().all(|f| f.columns.iter().all(|c| c.data.is_empty())));
 }
 
 #[test]

@@ -678,6 +678,12 @@ fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -
 	})
 }
 
+impl MetricsCollector for MultiRangeTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.tier.collect(out);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
@@ -1561,11 +1567,5 @@ mod tests {
 				"a row of {other:?} names no key of {storage:?}, so reaching Top retracts nothing of it"
 			);
 		}
-	}
-}
-
-impl MetricsCollector for MultiRangeTier {
-	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		self.tier.collect(out);
 	}
 }

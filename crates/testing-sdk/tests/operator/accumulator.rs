@@ -5,7 +5,7 @@
 //! `#[cfg(test)]` suite does not already cover.
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
-use reifydb_flow::{
+use reifydb_flow_async::{
 	operator::state::sealing::{endpoint::SealingEndpoint, min::SealingMin},
 	window::accumulator::{
 		WindowAccumulator,

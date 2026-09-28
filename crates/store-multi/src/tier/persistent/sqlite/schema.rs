@@ -378,6 +378,7 @@ pub(super) fn series_range_bounds(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod series_bound_tests {
 	use std::ops::RangeBounds;
 

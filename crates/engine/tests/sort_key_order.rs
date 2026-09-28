@@ -6,7 +6,7 @@ use std::{collections::HashMap, str::FromStr};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, decimal::Decimal, duration::Duration, identity::IdentityId, int::Int, time::Time},
+	value::{Value, decimal::Decimal, duration::Duration, identity::IdentityId, time::Time},
 };
 
 fn ids(rql: &str, params: Params) -> Vec<String> {
@@ -83,15 +83,6 @@ fn sort_uuid7_byte_order() {
 	];
 
 	assert_eq!(sorted_ids(values, "sort { v: ASC }"), vec!["1", "2", "0"]);
-}
-
-#[test]
-fn sort_int_bignum_crosses_the_sign_and_length_boundaries() {
-	// An arbitrary precision int is stored as bytes, and those bytes must still order negatives below positives.
-	let int = |value: i64| Value::Int(Int::from_i64(value));
-	let values = vec![int(-100), int(9), int(-9), int(100), int(0)];
-
-	assert_eq!(sorted_ids(values, "sort { v: ASC }"), vec!["0", "2", "4", "1", "3"]);
 }
 
 #[test]

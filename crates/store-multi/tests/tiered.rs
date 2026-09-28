@@ -19,9 +19,7 @@ use reifydb_store_multi::{
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
-#[path = "common/mod.rs"]
-mod common;
-use common::Runner;
+use crate::common::Runner;
 
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_tiered => test_tiered }
 test_each_path! { in "crates/store-multi/tests/scripts/historical" as store_multi_tiered_historical => test_tiered }

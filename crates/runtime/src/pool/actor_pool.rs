@@ -291,8 +291,9 @@ mod tests {
 	use std::{
 		sync::mpsc::{Sender as StdSender, channel},
 		thread,
-		time::Duration,
 	};
+
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 
@@ -334,7 +335,7 @@ mod tests {
 
 		let (ran_tx, ran_rx) = channel();
 		group.pin(blocked).push(job(report_thread(ran_tx)));
-		let ran_on = ran_rx.recv_timeout(Duration::from_secs(10));
+		let ran_on = ran_rx.recv_timeout(Duration::from_seconds_const(10).to_std());
 
 		let _ = release_tx.send(());
 		group.shutdown_and_join();
@@ -356,7 +357,7 @@ mod tests {
 
 		let (ran_tx, ran_rx) = channel();
 		group.pin(0).push(job(report_thread(ran_tx)));
-		let ran_on = ran_rx.recv_timeout(Duration::from_secs(10));
+		let ran_on = ran_rx.recv_timeout(Duration::from_seconds_const(10).to_std());
 
 		group.shutdown_and_join();
 		assert!(

@@ -9,7 +9,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::{
+use reifydb_flow_async::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator, invertible::moments::Moments},
 	settings::WindowSettings,
 	span::WindowSpan,

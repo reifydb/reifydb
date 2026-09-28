@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::sync::Arc;
 
+use reifydb::runtime::context::clock::Clock;
 use reifydb_client::{HttpClient, QueueClaimRequest, WireFormat};
+use reifydb_value::value::duration::Duration;
 use tokio::runtime::Runtime;
 
 use super::{QUEUE, row_count};
@@ -55,10 +54,10 @@ fn parked_http_claim_is_released_by_a_concurrent_insert() {
 			HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		inserter.authenticate("mysecrettoken");
 
-		let started = Instant::now();
+		let started = Clock::Real.instant();
 		let parked = tokio::spawn(async move { client.queue_claim(claim("w1", Some("10s"))).await });
 
-		tokio::time::sleep(Duration::from_millis(200)).await;
+		tokio::time::sleep(Duration::from_milliseconds_const(200).to_std()).await;
 		inserter.command("INSERT app::jobs [{ id: 1 }]", None).await.unwrap();
 
 		let frames = parked.await.unwrap().unwrap();
@@ -66,7 +65,7 @@ fn parked_http_claim_is_released_by_a_concurrent_insert() {
 
 		assert_eq!(row_count(&frames), 1, "the parked claim must receive the inserted item");
 		assert!(
-			elapsed < Duration::from_secs(3),
+			elapsed < Duration::from_seconds_const(3).to_std(),
 			"the claim must return on the wake, not the budget: {elapsed:?}"
 		);
 	});
@@ -77,12 +76,15 @@ fn an_http_claim_that_times_out_returns_zero_rows_with_a_success_status() {
 	// Clients re-poll on empty, so a timeout has to be an ordinary 200 with no rows. Turning it
 	// into an error (or a 504) would make every idle worker log a failure once a second.
 	run(|client, _| async move {
-		let started = Instant::now();
+		let started = Clock::Real.instant();
 		let frames = client.queue_claim(claim("w1", Some("1s"))).await.unwrap();
 		let elapsed = started.elapsed();
 
 		assert_eq!(row_count(&frames), 0);
-		assert!(elapsed >= Duration::from_secs(1), "the claim must wait out its budget: {elapsed:?}");
+		assert!(
+			elapsed >= Duration::from_seconds_const(1).to_std(),
+			"the claim must wait out its budget: {elapsed:?}"
+		);
 	});
 }
 
@@ -91,10 +93,13 @@ fn an_http_claim_without_wait_for_does_not_park() {
 	// The default has to stay non-blocking: an absent wait_for is the shape every plain poller
 	// sends, and parking it would stall callers that never asked to wait.
 	run(|client, _| async move {
-		let started = Instant::now();
+		let started = Clock::Real.instant();
 		let frames = client.queue_claim(claim("w1", None)).await.unwrap();
 
 		assert_eq!(row_count(&frames), 0);
-		assert!(started.elapsed() < Duration::from_millis(500), "an absent wait_for must return at once");
+		assert!(
+			started.elapsed() < Duration::from_milliseconds_const(500).to_std(),
+			"an absent wait_for must return at once"
+		);
 	});
 }

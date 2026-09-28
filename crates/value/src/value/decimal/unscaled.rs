@@ -200,15 +200,6 @@ impl Parsed {
 		Ok((unscaled, MAX_DIGITS))
 	}
 
-	pub fn to_integer(&self) -> Result<i256, ParseError> {
-		if self.exponent >= 0 {
-			return self.to_decimal().map(|(unscaled, _)| unscaled);
-		}
-		let drop = usize::try_from(self.exponent.unsigned_abs()).unwrap_or(usize::MAX);
-		let kept = &self.digits[..self.digits.len().saturating_sub(drop)];
-		self.unscaled(kept)
-	}
-
 	fn unscaled(&self, digits: &[u8]) -> Result<i256, ParseError> {
 		if digits.len() > MAX_DIGITS as usize {
 			return Err(ParseError::OutOfRange);
@@ -323,17 +314,6 @@ mod tests {
 		assert_eq!(parse(&format!("0.{}1", "0".repeat(76))), Err(ParseError::OutOfRange));
 		assert_eq!(parse(&"9".repeat(76)), Ok((MAX, 0)));
 		assert_eq!(parse(&format!("0.{}", "0".repeat(80))), Ok((i256::ZERO, 76)));
-	}
-
-	#[test]
-	fn to_integer_truncates_toward_zero() {
-		// Rounding here would turn 123.789 into 124 where every integer parse truncates.
-		let integer = |text: &str| Parsed::parse(text).and_then(|parsed| parsed.to_integer());
-		assert_eq!(integer("123.789"), Ok(i256::from_i128(123)));
-		assert_eq!(integer("-123.789"), Ok(i256::from_i128(-123)));
-		assert_eq!(integer("-1.5e3"), Ok(i256::from_i128(-1500)));
-		assert_eq!(integer("0.999"), Ok(i256::ZERO));
-		assert_eq!(integer("1e-400"), Ok(i256::ZERO));
 	}
 
 	#[test]
