@@ -298,7 +298,7 @@ impl WasmDB {
 				transforms: Transforms::empty(),
 				ioc,
 				auth_registry: auth_registry.clone(),
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 		);

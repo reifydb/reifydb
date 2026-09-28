@@ -7,6 +7,7 @@
 use reifydb_flow_async::operator::apply::ApplyOperator;
 
 pub mod generator;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod guest;
 pub mod harness;
 pub mod state;

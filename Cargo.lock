@@ -4483,6 +4483,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "reifydb-auth",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-codec",

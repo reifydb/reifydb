@@ -10,16 +10,21 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{
-		catalog::{flow::OperatorId, object::ObjectId},
+		catalog::object::ObjectId,
 		change::{Change, Diff},
-		flow::OperatorCapability,
 	},
 	key::{any::TaggedKey, tag::KeyTag},
-	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
+};
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_flow_async::operator::apply::ApplyOperator;
 use reifydb_flow_async::{
-	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
+	operator::{HostOperator, host::TxnHostContext, sink::DurableSink},
 	timer::{Timer, wheel::TimerWheel},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -32,7 +37,9 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
@@ -148,6 +155,7 @@ impl<O: DurableSink> Harness<O> {
 	}
 }
 
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 impl Harness<ApplyOperator> {
 	pub fn guest<C: MountedOperator + OperatorMetadata + 'static>(
 		logic: C,
