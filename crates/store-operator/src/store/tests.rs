@@ -27,12 +27,13 @@ use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 use crate::{
 	actor::resident_flush::flush_now,
-	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
 	error::{OperatorError, Result},
 	persistent::{
 		PersistentTier, filter::OperatorStateKeySource, sqlite::SqlitePersistent, testing::PersistentHooks,
 	},
 	range::OperatorRangeConfig,
+	resident::{Resident, ResidentLimits},
 	store::{CheckpointInterlock, StandardOperatorStore},
 	types::{LayeredPre, OperatorWrite},
 };
@@ -41,12 +42,16 @@ const FLOW_A: FlowId = FlowId(1);
 const FLOW_B: FlowId = FlowId(2);
 
 fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
+	store_fixture_with(ResidentConfig::default())
+}
+
+fn store_fixture_with(resident: ResidentConfig) -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
-		resident: Default::default(),
+		resident,
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -402,8 +407,17 @@ fn probe(store: &StandardOperatorStore, batch_size: u64) -> (u64, usize) {
 
 #[test]
 fn an_emptiness_probe_crosses_a_tombstone_wall_in_pages_not_in_handfuls() {
-	let (store, _guard) = store_fixture();
 	let dead = 4096;
+	let (store, _guard) = store_fixture_with(ResidentConfig {
+		storage: Resident::with_limits(ResidentLimits {
+			budget: ByteSize::from_mib(16),
+			entries: dead * 2,
+			tombstones: dead * 2,
+			dirty_budget: ByteSize::from_mib(16),
+			..ResidentLimits::default()
+		}),
+		..ResidentConfig::default()
+	});
 	tombstone_wall(&store, dead);
 
 	let (pages_at_one, items_at_one) = probe(&store, 1);
