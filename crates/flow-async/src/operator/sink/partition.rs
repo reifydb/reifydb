@@ -62,6 +62,7 @@ pub(crate) fn resolve_partition_flow<T: FlowTransaction>(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_core::interface::catalog::id::TableId;
 	use reifydb_test_harness::engine::TestEngine;

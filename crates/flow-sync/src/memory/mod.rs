@@ -146,6 +146,17 @@ impl Intern for MemoryTxn {
 		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())
 	}
 
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		let Some(position) = self
+			.dictionary_values
+			.get(&dictionary.id)
+			.and_then(|values| values.iter().position(|existing| existing == value))
+		else {
+			return Ok(None);
+		};
+		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
+	}
+
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		let Some(offset) = id.to_u128().checked_sub(1) else {
 			return Ok(None);

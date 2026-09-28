@@ -208,6 +208,7 @@ impl CatalogCache {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_value::value::Value;

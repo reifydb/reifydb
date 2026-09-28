@@ -10,6 +10,10 @@ description = "Commit buffer holding committed multi-version rows before they ar
 [lib]
 doctest = false
 
+[features]
+default = []
+testing = []
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

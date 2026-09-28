@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use arrow_array::{Array, BooleanArray, PrimitiveArray};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, ScalarBuffer};
 use reifydb_value::{
+	Result,
 	util::{bitmap, kernel},
 	value::{
 		Value,
@@ -35,20 +36,35 @@ use crate::value::column::{
 };
 
 impl ColumnBuffer {
-	pub fn merge_rows(&self, other: &ColumnBuffer, mask: &BooleanBuffer, len: usize) -> ColumnBuffer {
+	pub fn merge_rows(&self, other: &ColumnBuffer, mask: &BooleanBuffer, len: usize) -> Result<ColumnBuffer> {
+		match (self.is_none(), other.is_none()) {
+			(true, true) => return Ok(ColumnBuffer::none(len)),
+			(true, false) => {
+				return ColumnBuffer::none_typed(other.get_type(), self.len())
+					.merge_rows(other, mask, len);
+			}
+			(false, true) => {
+				return self.merge_rows(
+					&ColumnBuffer::none_typed(self.get_type(), other.len()),
+					mask,
+					len,
+				);
+			}
+			(false, false) => {}
+		}
 		if !alignable(self, other, len) || mask.len() < len {
-			return merge_rows_by_value(self, other, mask, len);
+			return Ok(merge_rows_by_value(self, other, mask, len));
 		}
 
-		let old = normalized(self, len);
-		let new = normalized(other, len);
+		let old = normalized(self, len)?;
+		let new = normalized(other, len)?;
 		let picker = BooleanArray::new(bitmap::resize(mask, len), None);
 		let merged = kernel::merged(&picker, as_array(&new), as_array(&old));
 		let valid = BooleanBuffer::collect_bool(len, |row| match picker.value(row) {
 			true => !new.none_at(row),
 			false => !old.none_at(row),
 		});
-		finish_merge(self, merged.as_ref(), valid)
+		Ok(finish_merge(self, merged.as_ref(), valid))
 	}
 
 	pub fn scatter_merge(
@@ -57,12 +73,28 @@ impl ColumnBuffer {
 		then_mask: &BooleanBuffer,
 		else_mask: &BooleanBuffer,
 		total_len: usize,
-	) -> ColumnBuffer {
+	) -> Result<ColumnBuffer> {
+		match (self.is_none(), other.is_none()) {
+			(true, true) => return Ok(ColumnBuffer::none(total_len)),
+			(true, false) => {
+				return ColumnBuffer::none_typed(other.get_type(), self.len())
+					.scatter_merge(other, then_mask, else_mask, total_len);
+			}
+			(false, true) => {
+				return self.scatter_merge(
+					&ColumnBuffer::none_typed(self.get_type(), other.len()),
+					then_mask,
+					else_mask,
+					total_len,
+				);
+			}
+			(false, false) => {}
+		}
 		match (self.nulls(), other.nulls()) {
-			(Some(a_nulls), Some(b_nulls)) => {
+			(Some(a_nulls), Some(b_nulls)) if !self.keeps_own_nulls() && !other.keeps_own_nulls() => {
 				let (a_inner, _) = self.clone().split_nulls();
 				let (b_inner, _) = other.clone().split_nulls();
-				let merged_inner = a_inner.scatter_merge(&b_inner, then_mask, else_mask, total_len);
+				let merged_inner = a_inner.scatter_merge(&b_inner, then_mask, else_mask, total_len)?;
 				let merged = merge_validity_bitvecs(
 					a_nulls.inner(),
 					b_nulls.inner(),
@@ -70,19 +102,19 @@ impl ColumnBuffer {
 					else_mask,
 					total_len,
 				);
-				return merged_inner.with_nulls(NullBuffer::new(merged));
+				return Ok(merged_inner.with_nulls(NullBuffer::new(merged)));
 			}
 			(None, None) => {
 				if let Some(result) = scatter_merge_typed(self, other, then_mask, else_mask, total_len)
 				{
-					return result;
+					return Ok(result);
 				}
 			}
 			_ => {}
 		}
 
-		let merged = scatter_merge_generic(self, other, then_mask, else_mask, total_len);
-		carry_dictionary_id(merged, self, other)
+		let merged = scatter_merge_generic(self, other, then_mask, else_mask, total_len)?;
+		Ok(carry_dictionary_id(merged, self, other))
 	}
 }
 
@@ -110,13 +142,13 @@ fn scatter_merge_generic(
 	then_mask: &BooleanBuffer,
 	else_mask: &BooleanBuffer,
 	total_len: usize,
-) -> ColumnBuffer {
+) -> Result<ColumnBuffer> {
 	if !alignable(self_col, other, total_len) || then_mask.len() < total_len || else_mask.len() < total_len {
-		return scatter_merge_by_value(self_col, other, then_mask, else_mask, total_len);
+		return Ok(scatter_merge_by_value(self_col, other, then_mask, else_mask, total_len));
 	}
 
-	let then_side = normalized(self_col, total_len);
-	let else_side = normalized(other, total_len);
+	let then_side = normalized(self_col, total_len)?;
+	let else_side = normalized(other, total_len)?;
 	let filler = default_row(&then_side);
 	let pairs: Vec<(usize, usize)> = (0..total_len)
 		.map(|row| match (then_mask.value(row), else_mask.value(row)) {
@@ -131,7 +163,7 @@ fn scatter_merge_generic(
 		(false, true) => !else_side.none_at(row),
 		(false, false) => false,
 	});
-	finish_merge(self_col, merged.as_ref(), valid)
+	Ok(finish_merge(self_col, merged.as_ref(), valid))
 }
 
 fn scatter_merge_by_value(
@@ -171,10 +203,10 @@ fn alignable(old: &ColumnBuffer, new: &ColumnBuffer, len: usize) -> bool {
 	old.len() == len && new.len() == len && as_array(old).data_type() == as_array(new).data_type()
 }
 
-fn normalized(source: &ColumnBuffer, len: usize) -> ColumnBuffer {
+fn normalized(source: &ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
 	match source.nulls().is_some_and(|nulls| nulls.null_count() > 0) {
 		true => source.extract_rows(&(0..len).collect::<Vec<_>>()),
-		false => source.clone(),
+		false => Ok(source.clone()),
 	}
 }
 
@@ -478,7 +510,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true, false]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false, true]);
 
-		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4);
+		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4).unwrap();
 		assert!(matches!(merged, ColumnBuffer::Int4(_)));
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(80));
@@ -494,7 +526,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true]);
 		let else_mask = BooleanBuffer::from(vec![false, false, false]);
 
-		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
+		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3).unwrap();
 		assert!(merged.nulls().is_some());
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::none_of(ValueType::Int4));
@@ -508,7 +540,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true, false]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false, true]);
 
-		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4);
+		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4).unwrap();
 		assert!(matches!(merged, ColumnBuffer::Bool(_)));
 		assert_eq!(merged.get_value(0), Value::Boolean(true));
 		assert_eq!(merged.get_value(1), Value::Boolean(false));
@@ -523,7 +555,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false]);
 
-		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
+		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3).unwrap();
 		assert_eq!(merged.get_value(0), Value::Utf8("a".to_string()));
 		assert_eq!(merged.get_value(1), Value::Utf8("y".to_string()));
 		assert_eq!(merged.get_value(2), Value::Utf8("c".to_string()));
@@ -535,7 +567,7 @@ mod tests {
 		let new = ColumnBuffer::utf8(["fresh", "other"]);
 		let mask = BooleanBuffer::from(vec![false, false]);
 
-		let merged = old.merge_rows(&new, &mask, 2);
+		let merged = old.merge_rows(&new, &mask, 2).unwrap();
 
 		let ColumnBuffer::Utf8 {
 			container,
@@ -556,7 +588,7 @@ mod tests {
 		let new = ColumnBuffer::int4([8, 9]);
 		let mask = BooleanBuffer::from(vec![true, false]);
 
-		let merged = old.merge_rows(&new, &mask, 2);
+		let merged = old.merge_rows(&new, &mask, 2).unwrap();
 
 		assert!(merged.nulls().is_some());
 		assert_eq!(merged.get_value(0), Value::Int4(8));
@@ -572,7 +604,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false]);
 
-		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
+		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3).unwrap();
 
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(80));

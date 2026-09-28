@@ -38,10 +38,8 @@ fn collect_rows_to_columns(
 	coercer: &RowCoercer,
 ) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnBuilder> = columns
-		.iter()
-		.map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0).into_builder())
-		.collect();
+	let mut column_data: Vec<ColumnBuilder> =
+		columns.iter().map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), rows.len())).collect();
 
 	for (row_idx, params) in rows.iter().enumerate() {
 		match params {

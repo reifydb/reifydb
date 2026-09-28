@@ -8,6 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+pub mod field;
 pub mod get;
 pub mod input_types;
 pub mod promote;

@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	expression::Expression,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	},
 };
 use reifydb_evaluate::{
 	expression::{
@@ -17,7 +19,7 @@ use reifydb_evaluate::{
 };
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, frame::frame::Frame, value_type::ValueType};
+use reifydb_value::value::{Value, frame::frame::Frame};
 use tracing::instrument;
 
 use crate::{
@@ -138,7 +140,7 @@ impl UdfEvalNode {
 				ColumnWithName::new(name, data)
 			}
 			_ => {
-				let data = ColumnBuffer::none_typed(ValueType::Any, row_count);
+				let data = ColumnBuffer::none(row_count);
 				ColumnWithName {
 					name: call.udf.result_column.clone(),
 					data,
@@ -425,7 +427,7 @@ pub(crate) fn evaluate_udfs_no_input(
 				&udf.fragment,
 			)?,
 			None => {
-				let mut data = ColumnBuffer::none_typed(value.get_type(), 0).into_builder();
+				let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
 				data.push_value(value);
 				data.finish()
 			}

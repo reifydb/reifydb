@@ -1,36 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
-
-use arrow_buffer::BooleanBufferBuilder;
-
 use crate::value::column::builder::ColumnBuilder;
 
 impl ColumnBuilder {
 	pub fn push_none(&mut self) {
-		match self {
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push_default();
-				bitvec.append(false);
-			}
-			_ => {
-				let len = self.len();
-				let mut bitvec = BooleanBufferBuilder::new(len + 1);
-				bitvec.append_n(len, true);
-				let mut inner = mem::replace(self, ColumnBuilder::Bool(BooleanBufferBuilder::new(0)));
-
-				inner.push_default();
-				bitvec.append(false);
-				*self = ColumnBuilder::Option {
-					inner: Box::new(inner),
-					bitvec,
-				};
-			}
-		}
+		self.inner.append_null();
+		self.optional = true;
 	}
 }
 
@@ -55,7 +31,7 @@ pub mod tests {
 	fn test_bool() {
 		let mut col = ColumnBuffer::bool(vec![true]).into_builder();
 		col.push_none();
-		// push_none promotes a bare column to Option-wrapped
+		// push_none must add a null row and make the bare column optional, never a default value.
 		let col = col.finish();
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));

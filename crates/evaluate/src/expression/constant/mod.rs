@@ -13,7 +13,6 @@ use reifydb_value::{
 		decimal::parse::parse_decimal,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
 		temporal::parse::duration::parse_duration,
-		value_type::ValueType,
 	},
 };
 use temporal::TemporalParser;
@@ -44,7 +43,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		} => ColumnBuffer::duration(vec![parse_duration(fragment.clone())?; row_count]),
 		ConstantExpression::None {
 			..
-		} => ColumnBuffer::none_typed(ValueType::Any, row_count),
+		} => ColumnBuffer::none(row_count),
 	})
 }
 
@@ -78,4 +77,25 @@ fn number_value(fragment: &Fragment, row_count: usize) -> Result<ColumnBuffer> {
 	let precision = Precision::new(value.digits().max(value.scale()));
 	let scale = Scale::new(value.scale());
 	Ok(ColumnBuffer::decimal(precision, scale, vec![value; row_count]))
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::expression::ConstantExpression;
+	use reifydb_value::fragment::Fragment;
+
+	use super::constant_value;
+
+	#[test]
+	fn a_none_literal_is_a_none_column() {
+		// Otherwise a none literal is an any column and a typed branch beside it can not merge with it.
+		let none = ConstantExpression::None {
+			fragment: Fragment::internal("none"),
+		};
+
+		let column = constant_value(&none, 3).unwrap();
+
+		assert!(column.is_none(), "got {:?}", column.get_type());
+		assert_eq!(column.len(), 3);
+	}
 }

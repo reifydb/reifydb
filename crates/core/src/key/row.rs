@@ -435,6 +435,7 @@ impl PartitionedSortedViewRowKey {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod sorted_view_row_key_tests {
 	use std::ops::RangeBounds;
 
@@ -1115,6 +1116,7 @@ impl KeyRangeCodec for PartitionedRowKeyRange {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod partitioned_row_key_tests {
 	use std::ops::RangeBounds;
 

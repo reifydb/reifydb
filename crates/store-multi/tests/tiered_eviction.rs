@@ -81,6 +81,22 @@ fn commit(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) 
 	.unwrap();
 }
 
+fn stored_versions(
+	commit: &CommitStore,
+	kind: EntryKind,
+	k: &TaggedKey,
+	written: impl IntoIterator<Item = u64>,
+) -> usize {
+	written.into_iter()
+		.filter(|v| {
+			matches!(
+				commit.get(kind, k.encode().as_ref(), CommitVersion(*v)),
+				VersionedGetResult::Value { version, .. } if version == CommitVersion(*v)
+			)
+		})
+		.count()
+}
+
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
@@ -105,10 +121,10 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	// keys invalidated, persistent keys left resident) so store-level read-through can be asserted
 	// without racing the actor.
 	let commit = store.commit();
-	let kinds = commit.list_all_entry_kinds().unwrap();
+	let kinds = commit.list_all_entry_kinds();
 	for kind in kinds {
 		let (to_persist, to_compact, _, _) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
 		if to_compact.is_empty() {
 			continue;
 		}
@@ -130,13 +146,12 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 		}
 
 		if !persistent_object {
-			for evicted in &to_compact {
-				store.invalidate_read_key(kind, &evicted.key);
+			for (key, _) in &to_compact {
+				store.invalidate_read_key(kind, key);
 			}
 		}
 
-		commit.compact(HashMap::from([(kind, to_compact.into_iter().map(|e| (e.key, e.version)).collect())]))
-			.unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)]));
 
 		if persistent_object {
 			for (key, version, _) in &to_persist {
@@ -159,8 +174,8 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	commit(&store, &k, 3, "v3");
 
 	let commit_tier = store.commit();
-	let current_before = commit_tier.estimated_current_count(kind).unwrap();
-	let versions_before = commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len();
+	let current_before = commit_tier.estimated_current_count(kind);
+	let versions_before = stored_versions(commit_tier, kind, &k, 1..=3);
 	assert_eq!(current_before, 1, "v3 is the current version");
 	assert_eq!(versions_before, 3, "v1 and v2 are historical behind the current v3");
 
@@ -175,22 +190,19 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 		"v2 must be persisted"
 	);
 
-	assert_eq!(commit_tier.estimated_current_count(kind).unwrap(), 1, "v3 still current");
+	assert_eq!(commit_tier.estimated_current_count(kind), 1, "v3 still current");
 	assert_eq!(
-		commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len(),
+		stored_versions(commit_tier, kind, &k, 1..=3),
 		1,
 		"v1/v2 dropped from the commit tier's history, leaving only the current v3"
 	);
 	assert!(
-		matches!(
-			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
-			VersionedGetResult::NotFound
-		),
+		matches!(commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 		"the commit tier must not answer for an evicted version"
 	);
 
 	assert_eq!(
-		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).value().as_deref(),
 		Some(b"v3".as_slice()),
 		"v3 (> W) stays in the commit tier"
 	);
@@ -219,10 +231,7 @@ fn persistent_false_object_is_dropped_without_persisting() {
 
 	let commit_tier = store.commit();
 	assert!(
-		matches!(
-			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
-			VersionedGetResult::NotFound
-		),
+		matches!(commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
 		"a persistent:false object must still be evicted from the commit tier below W"
 	);
 
@@ -290,7 +299,7 @@ fn versions_above_w_are_left_entirely_resident() {
 
 	let commit_tier = store.commit();
 	assert_eq!(
-		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(5)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(5)).value().as_deref(),
 		Some(b"v5".as_slice()),
 		"v5 (> W) must stay resident"
 	);
@@ -338,9 +347,9 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let commit_tier = store.commit();
 	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
-		let versions = commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len();
+		let versions = stored_versions(commit_tier, kind, &k, 1..=3);
 		let evicted_gone = matches!(
-			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)),
 			VersionedGetResult::NotFound
 		);
 		if versions == 1 && evicted_gone {
@@ -355,7 +364,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	}
 
 	assert_eq!(
-		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).value().as_deref(),
 		Some(b"v3".as_slice()),
 		"v3 (> W) stays resident in the commit tier after the sweep"
 	);
@@ -394,7 +403,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
-			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)),
 			VersionedGetResult::NotFound
 		);
 		if evicted {
@@ -438,7 +447,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
 	loop {
 		let evicted = matches!(
-			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)),
 			VersionedGetResult::NotFound
 		);
 		if evicted {

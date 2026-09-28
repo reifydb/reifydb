@@ -269,7 +269,7 @@ fn bench_columns(report: &mut BenchReport, rows: usize, repeats: usize) {
 	record(report, "filter/half", rows, sample);
 
 	let indices: Vec<usize> = (0..rows / 10).map(|i| (mix(i) % rows as u64) as usize).collect();
-	let sample = measure(repeats, || (), |()| columns.extract_by_indices(&indices));
+	let sample = measure(repeats, || (), |()| columns.extract_by_indices(&indices).unwrap());
 	record(report, "take/random_tenth", indices.len(), sample);
 
 	let per_batch = rows.div_ceil(CONCAT_BATCHES);

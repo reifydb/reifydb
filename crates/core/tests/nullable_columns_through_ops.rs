@@ -132,12 +132,12 @@ fn filter(kind: &Kind, defined: &[bool]) -> Case {
 
 fn reorder(kind: &Kind, defined: &[bool]) -> Case {
 	let mut column = source(kind, defined);
-	column.reorder(&[2, 1, 3, 0]);
+	column.reorder(&[2, 1, 3, 0]).unwrap();
 	case(kind, defined, column, &[2, 1, 3, 0])
 }
 
 fn gather(kind: &Kind, defined: &[bool]) -> Case {
-	case(kind, defined, source(kind, defined).gather(&[3, 1, 1, 0]), &[3, 1, 1, 0])
+	case(kind, defined, source(kind, defined).gather(&[3, 1, 1, 0]).unwrap(), &[3, 1, 1, 0])
 }
 
 fn extend(kind: &Kind, defined: &[bool]) -> Case {
@@ -150,7 +150,7 @@ fn scatter(kind: &Kind, defined: &[bool]) -> Case {
 	let rotated = mapped(kind, defined, &[2, 3, 0, 1]);
 	let then_mask = BooleanBuffer::from(vec![true, true, false, false]);
 	let else_mask = BooleanBuffer::from(vec![false, false, true, true]);
-	let merged = source(kind, defined).scatter_merge(&rotated, &then_mask, &else_mask, 4);
+	let merged = source(kind, defined).scatter_merge(&rotated, &then_mask, &else_mask, 4).unwrap();
 	case(kind, defined, merged, &[0, 1, 0, 1])
 }
 

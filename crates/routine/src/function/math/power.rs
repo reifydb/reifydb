@@ -65,7 +65,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		let promoted = promote_pair(base_data.get_type(), exp_data.get_type());
 		if promoted == ValueType::Any {
 			if all_rows_none(&args[0]) && all_rows_none(&args[1]) {
-				let result = ColumnBuffer::none_typed(ValueType::Any, base_data.len());
+				let result = ColumnBuffer::none(base_data.len());
 				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {

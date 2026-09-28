@@ -13,6 +13,7 @@ use reifydb_core::{
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
+		builder::ColumnBuilder,
 		columns::Columns,
 		headers::ColumnHeaders,
 		view::group_by::{GroupId, GroupKeyDict, GroupRows},
@@ -34,7 +35,7 @@ use reifydb_value::{
 	error::{Error, FunctionErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{digest::DigestError, value_type::ValueType},
+	value::{Value, digest::DigestError, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -228,11 +229,17 @@ impl AggregateNode {
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-					let first_key_type = dict.values(GroupId(0)).map(|key| key[col_idx].get_type());
-					let key_type = first_key_type
+					let first_key_type = dict
+						.iter()
+						.map(|(_, key)| &key[col_idx])
+						.find(|value| !matches!(value, Value::None { .. }))
+						.map(Value::get_type);
+					let mut data = match first_key_type
 						.or_else(|| key_types.get(col_idx).cloned().flatten())
-						.unwrap_or(ValueType::Boolean);
-					let mut data = ColumnBuffer::none_typed(key_type, 0).into_builder();
+					{
+						Some(key_type) => ColumnBuilder::with_capacity(key_type, dict.len()),
+						None => ColumnBuffer::none(0).into_builder(),
+					};
 					for (_, key) in dict.iter() {
 						data.push_value(key[col_idx].clone());
 					}
@@ -603,8 +610,7 @@ fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut Colum
 		})
 		.collect::<Result<Vec<_>>>()?;
 
-	data.reorder(&reorder_indices);
-	Ok(())
+	data.reorder(&reorder_indices)
 }
 
 #[cfg(test)]

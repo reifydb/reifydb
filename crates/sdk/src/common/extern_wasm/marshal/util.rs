@@ -58,5 +58,8 @@ pub(crate) fn column_data_to_type_code(data: &ColumnBuffer) -> ValueKind {
 		ColumnBuffer::Digest {
 			..
 		} => ValueKind::Digest,
+		ColumnBuffer::None {
+			..
+		} => ValueKind::None,
 	}
 }

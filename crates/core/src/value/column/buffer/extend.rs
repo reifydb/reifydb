@@ -12,26 +12,16 @@ use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffe
 use reifydb_value::{
 	Result,
 	util::kernel,
-	value::{
-		Value,
-		container::{
-			any_array::push_any, decimal_array::DecimalArray, dictionary_array::DICTIONARY_ENTRY_WIDTH,
-			fixed_array, uuid_array::UUID_WIDTH, varlen_array, wide_int_array,
-		},
-	},
+	value::container::{decimal_array::DecimalArray, fixed_array, varlen_array},
 };
 
 use crate::{
 	internal_err, return_internal_error,
 	value::column::{
 		ColumnBuffer,
-		buffer::{
-			take::{as_array, wrap_array},
-			with_container,
-		},
+		buffer::take::{as_array, wrap_array},
 		builder::{
-			DecimalBuilder, append_varlen, boolean_builder, fixed_builder, primitive_builder,
-			varlen_builder,
+			DecimalBuilder, append_varlen, assert_bare, boolean_builder, primitive_builder, varlen_builder,
 		},
 	},
 };
@@ -60,7 +50,18 @@ fn extend_bool(array: &mut BooleanArray, append: impl FnOnce(&mut BooleanBufferB
 
 fn extend_fixed(array: &mut FixedSizeBinaryArray, append: impl FnOnce(&mut MutableBuffer)) {
 	let width = array.value_length() as usize;
-	let mut buffer = fixed_builder(mem::replace(array, fixed_array::from_buffer(width, MutableBuffer::new(0))));
+	let taken = mem::replace(array, fixed_array::from_buffer(width, MutableBuffer::new(0)));
+	assert_bare(taken.nulls());
+	let bytes = taken.len() * width;
+	let (_, values, _) = taken.into_parts();
+	let mut buffer = match values.into_mutable() {
+		Ok(buffer) => buffer,
+		Err(values) => {
+			let mut buffer = MutableBuffer::with_capacity(bytes);
+			buffer.extend_from_slice(&values.as_slice()[..bytes]);
+			buffer
+		}
+	};
 	append(&mut buffer);
 	*array = fixed_array::from_buffer(width, buffer);
 }
@@ -82,60 +83,12 @@ fn extend_decimal(array: &mut DecimalArray, append: impl FnOnce(&mut DecimalBuil
 	*array = builder.finish();
 }
 
-fn push_defaults(buffer: &mut ColumnBuffer, count: usize) {
-	match buffer {
-		ColumnBuffer::Bool(a) => extend_bool(a, |b| b.append_n(count, false)),
-		ColumnBuffer::Int16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<i128>(b, count)),
-		ColumnBuffer::Uint16(a) => extend_fixed(a, |b| wide_int_array::push_defaults::<u128>(b, count)),
-		ColumnBuffer::DictionaryId {
-			container,
-			..
-		} => extend_fixed(container, |b| b.extend_zeros(count * DICTIONARY_ENTRY_WIDTH)),
-		ColumnBuffer::Decimal(a) => extend_decimal(a, |b| {
-			for _ in 0..count {
-				b.append_default();
-			}
-		}),
-		ColumnBuffer::Any {
-			container,
-			..
-		} => extend_varlen(container, |b| {
-			for _ in 0..count {
-				push_any(b, &Value::none());
-			}
-		}),
-		_ => with_container!(
-			buffer,
-			|a| extend_native(a, |b| b.append_value_n(Default::default(), count)),
-			|t| extend_native(t, |b| b.append_value_n(Default::default(), count)),
-			|u| extend_fixed(u, |b| b.extend_zeros(count * UUID_WIDTH)),
-			|v| extend_varlen(v, |b| append_empty(b, count))
-		),
-	}
-}
-
-fn retyped(right: ColumnBuffer, len: usize) -> Result<ColumnBuffer> {
-	let (mut retyped, _) = ColumnBuffer::none_typed(right.get_type(), len).split_nulls();
-	retyped.extend_bare(right)?;
-	Ok(retyped)
-}
-
 fn same_family(left: &ColumnBuffer, right: &ColumnBuffer) -> bool {
 	matches!((left, right), (ColumnBuffer::Decimal(_), ColumnBuffer::Decimal(_)))
 }
 
 fn joinable(first: &ColumnBuffer, part: &ColumnBuffer) -> bool {
 	as_array(part).data_type() == as_array(first).data_type() && part.base_type() == first.base_type()
-}
-
-fn append_empty<T>(builder: &mut GenericByteBuilder<T>, count: usize)
-where
-	T: ByteArrayType<Offset = i64>,
-	for<'a> &'a T::Native: Default,
-{
-	for _ in 0..count {
-		builder.append_value(<&T::Native>::default());
-	}
 }
 
 impl ColumnBuffer {
@@ -162,26 +115,24 @@ impl ColumnBuffer {
 	}
 
 	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
+		match (self.is_untyped_none(), other.is_untyped_none()) {
+			(true, true) => {
+				*self = ColumnBuffer::none(self.len() + other.len());
+				return Ok(());
+			}
+			(true, false) => *self = ColumnBuffer::none_typed(other.get_type(), self.len()),
+			(false, true) => return self.extend(ColumnBuffer::none_typed(self.get_type(), other.len())),
+			(false, false) => {}
+		}
 		if self.nulls().is_none() && other.nulls().is_none() {
 			return self.extend_bare(other);
 		}
 		let (mut left, l_nulls) = mem::replace(self, ColumnBuffer::bool(vec![])).split_nulls();
 		let (right, r_nulls) = other.split_nulls();
 		let (l_len, r_len) = (left.len(), right.len());
-		let l_all_none = l_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
-		let r_all_none = r_nulls.as_ref().is_some_and(|nulls| nulls.null_count() == nulls.len());
 		let same_type = left.get_type() == right.get_type() || same_family(&left, &right);
 		let merged = match (l_nulls.is_some(), r_nulls.is_some()) {
-			(true, true) if !same_type && r_all_none => {
-				push_defaults(&mut left, r_len);
-				Ok(())
-			}
-			(true, _) if !same_type && l_all_none => retyped(right, l_len).map(|column| left = column),
 			(true, true) if !same_type => internal_err!("column type mismatch in Option extend"),
-			(false, true) if !same_type && r_all_none => {
-				push_defaults(&mut left, r_len);
-				Ok(())
-			}
 			_ => left.extend_bare(right),
 		};
 		if let Err(error) = merged {

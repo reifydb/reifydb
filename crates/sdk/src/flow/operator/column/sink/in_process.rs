@@ -122,78 +122,95 @@ fn code_to_type(code: ValueKind) -> Result<ValueType, SdkError> {
 
 impl RowSink for InProcessRowSink {
 	#[inline]
-	fn push_u8(&mut self, col: usize, v: u8) {
+	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
 		self.push(col, Value::Uint1(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_u16(&mut self, col: usize, v: u16) {
+	fn push_u16(&mut self, col: usize, v: u16) -> Result<(), SdkError> {
 		self.push(col, Value::Uint2(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_u32(&mut self, col: usize, v: u32) {
+	fn push_u32(&mut self, col: usize, v: u32) -> Result<(), SdkError> {
 		self.push(col, Value::Uint4(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_u64(&mut self, col: usize, v: u64) {
+	fn push_u64(&mut self, col: usize, v: u64) -> Result<(), SdkError> {
 		self.push(col, Value::Uint8(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_u128(&mut self, col: usize, v: u128) {
+	fn push_u128(&mut self, col: usize, v: u128) -> Result<(), SdkError> {
 		self.push(col, Value::Uint16(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_i8(&mut self, col: usize, v: i8) {
+	fn push_i8(&mut self, col: usize, v: i8) -> Result<(), SdkError> {
 		self.push(col, Value::Int1(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_i16(&mut self, col: usize, v: i16) {
+	fn push_i16(&mut self, col: usize, v: i16) -> Result<(), SdkError> {
 		self.push(col, Value::Int2(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_i32(&mut self, col: usize, v: i32) {
+	fn push_i32(&mut self, col: usize, v: i32) -> Result<(), SdkError> {
 		self.push(col, Value::Int4(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_i64(&mut self, col: usize, v: i64) {
+	fn push_i64(&mut self, col: usize, v: i64) -> Result<(), SdkError> {
 		self.push(col, Value::Int8(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_i128(&mut self, col: usize, v: i128) {
+	fn push_i128(&mut self, col: usize, v: i128) -> Result<(), SdkError> {
 		self.push(col, Value::Int16(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_f32(&mut self, col: usize, v: f32) {
+	fn push_f32(&mut self, col: usize, v: f32) -> Result<(), SdkError> {
 		let value = OrderedF32::try_from(v).map(Value::Float4).unwrap_or(Value::None {
 			inner: ValueType::Float4,
 		});
 		self.push(col, value);
+		Ok(())
 	}
 	#[inline]
-	fn push_f64(&mut self, col: usize, v: f64) {
+	fn push_f64(&mut self, col: usize, v: f64) -> Result<(), SdkError> {
 		let value = OrderedF64::try_from(v).map(Value::Float8).unwrap_or(Value::None {
 			inner: ValueType::Float8,
 		});
 		self.push(col, value);
+		Ok(())
 	}
 	#[inline]
-	fn push_date(&mut self, col: usize, v: Date) {
+	fn push_date(&mut self, col: usize, v: Date) -> Result<(), SdkError> {
 		self.push(col, Value::Date(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_datetime(&mut self, col: usize, v: DateTime) {
+	fn push_datetime(&mut self, col: usize, v: DateTime) -> Result<(), SdkError> {
 		self.push(col, Value::DateTime(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_time(&mut self, col: usize, v: Time) {
+	fn push_time(&mut self, col: usize, v: Time) -> Result<(), SdkError> {
 		self.push(col, Value::Time(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_duration(&mut self, col: usize, v: Duration) {
+	fn push_duration(&mut self, col: usize, v: Duration) -> Result<(), SdkError> {
 		self.push(col, Value::Duration(v));
+		Ok(())
 	}
 	#[inline]
-	fn push_bool(&mut self, col: usize, v: bool) {
+	fn push_bool(&mut self, col: usize, v: bool) -> Result<(), SdkError> {
 		self.push(col, Value::Boolean(v));
+		Ok(())
 	}
 	#[inline]
 	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {

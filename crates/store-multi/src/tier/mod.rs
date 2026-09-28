@@ -56,21 +56,20 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	) -> Result<RangeBatch>;
 
 	fn ensure_table(&self, table: EntryKind) -> Result<()>;
-
-	fn clear_table(&self, table: EntryKind) -> Result<()>;
 }
 
 impl TierStorage for CommitStore {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		CommitStore::get(self, table, key, version)
+		Ok(CommitStore::get(self, table, key, version))
 	}
 
 	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
-		CommitStore::contains(self, table, key, version)
+		Ok(CommitStore::contains(self, table, key, version))
 	}
 
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
-		CommitStore::set(self, version, batches)
+		CommitStore::set(self, version, batches);
+		Ok(())
 	}
 
 	fn range_next(
@@ -82,7 +81,7 @@ impl TierStorage for CommitStore {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		CommitStore::range_next(self, table, cursor, start, end, scope, batch_size)
+		Ok(CommitStore::range_next(self, table, cursor, start, end, scope, batch_size))
 	}
 
 	fn range_rev_next(
@@ -94,14 +93,11 @@ impl TierStorage for CommitStore {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		CommitStore::range_rev_next(self, table, cursor, start, end, scope, batch_size)
+		Ok(CommitStore::range_rev_next(self, table, cursor, start, end, scope, batch_size))
 	}
 
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
-		CommitStore::ensure_table(self, table)
-	}
-
-	fn clear_table(&self, table: EntryKind) -> Result<()> {
-		CommitStore::clear_table(self, table)
+		CommitStore::ensure_table(self, table);
+		Ok(())
 	}
 }

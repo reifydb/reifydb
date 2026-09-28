@@ -45,7 +45,7 @@ fn advance_far_past_every_input(db: &TestDb) {
 
 fn append_operator(db: &TestDb) -> u64 {
 	let rql = "FROM system::flow::operators FILTER { kind == 'Append' } MAP { id }";
-	let frames = db.query(&rql);
+	let frames = db.query(rql);
 	let values = column_values(frames.first().expect("system::flow::operators returned no frame"), "id");
 	match values.as_slice() {
 		[Value::Uint8(id)] => *id,

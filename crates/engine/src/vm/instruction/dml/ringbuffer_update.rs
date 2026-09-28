@@ -29,7 +29,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{PartitionError, partition_col_indices},
+	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -39,7 +39,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
 use super::{
@@ -50,7 +50,6 @@ use super::{
 };
 use crate::{
 	Result,
-	partition::partition_values,
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
@@ -169,7 +168,11 @@ pub(crate) fn update_ringbuffer(
 
 			if !ringbuffer.partition_by.is_empty() {
 				let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-				let new_partition = Partition::of(&partition_values(&shape, &row, &indices));
+				let new_partition = partition_of(
+					&ringbuffer.columns,
+					&ringbuffer.partition_by,
+					&partition_values(&shape, &row, &indices),
+				);
 				if Some(new_partition) != partition {
 					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::ringbuffer(ringbuffer.id),

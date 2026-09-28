@@ -1169,7 +1169,9 @@ fn execute_if_multi(
 
 	let mut layout: Option<BranchLayout> = None;
 	for columns in evaluated.iter().flatten() {
-		let named_types = columns.iter().map(|col| (col.name.text(), col.data().get_type()));
+		let named_types = columns
+			.iter()
+			.map(|col| (col.name.text(), col.data().get_type(), col.data().is_untyped_none()));
 		let Some(expected) = layout.as_mut() else {
 			layout = Some(BranchLayout::new(named_types));
 			continue;
@@ -1237,7 +1239,7 @@ fn execute_if_multi(
 	if result.is_empty() {
 		Ok(vec![ColumnWithName {
 			name: Fragment::internal("none"),
-			data: ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),
+			data: ColumnBuffer::none(ctx.row_count),
 		}])
 	} else {
 		Ok(result)

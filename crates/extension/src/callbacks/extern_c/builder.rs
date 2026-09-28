@@ -28,7 +28,7 @@ use reifydb_value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any_array::any_array,
+			any_array::any_array_optional,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 		},
@@ -622,14 +622,6 @@ fn finalize_buffer(
 	bitvec: Option<Vec<u8>>,
 	written_count: usize,
 ) -> Result<ColumnBuffer, i32> {
-	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
-		Some(mut bytes) => {
-			bytes.truncate(written_count.div_ceil(8));
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count)))
-		}
-		None => inner,
-	};
-
 	let inner = match type_code {
 		ValueKind::Boolean => {
 			data.truncate(written_count.div_ceil(8));
@@ -739,8 +731,21 @@ fn finalize_buffer(
 				decode_any_cell(bytes).ok()
 			})
 			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let values = values
+				.into_iter()
+				.enumerate()
+				.map(|(row, value)| match value {
+					Value::None {
+						..
+					} if defined_at(&bitvec, row) => Err(EXTERN_C_ERROR_MARSHAL),
+					Value::None {
+						..
+					} => Ok(None),
+					value => Ok(Some(value)),
+				})
+				.collect::<Result<Vec<Option<Value>>, i32>>()?;
 			ColumnBuffer::Any {
-				container: any_array(values),
+				container: any_array_optional(values),
 				declared_type: None,
 			}
 		}
@@ -754,6 +759,14 @@ fn finalize_buffer(
 		}
 		_ => return Err(EXTERN_C_ERROR_INTERNAL),
 	};
+	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
+		Some(mut bytes) => {
+			bytes.truncate(written_count.div_ceil(8));
+			inner.with_nulls(NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count)))
+		}
+		None => inner,
+	};
+
 	Ok(make_option_wrapped(inner))
 }
 
@@ -805,6 +818,10 @@ fn numeric_bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 		v.set_len(count);
 	}
 	Some(v)
+}
+
+fn defined_at(bitvec: &Option<Vec<u8>>, row: usize) -> bool {
+	bitvec.as_ref().is_some_and(|bytes| bytes.get(row / 8).is_some_and(|byte| byte & (1 << (row % 8)) != 0))
 }
 
 #[cfg(test)]

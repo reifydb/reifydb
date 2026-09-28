@@ -40,7 +40,7 @@ pub struct Params {
 	pub max_batch: u64,
 }
 
-fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
+fn ttl_sweep(store: &StandardMultiStore, oracle: &Oracle, rows: &[u64], cutoff_version: CommitVersion) {
 	// Deterministic stand-in for version-anchored TTL eviction, in the same buffer-then-persistent,
 	// mutate-then-invalidate order the actor uses.
 	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
@@ -48,15 +48,15 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for key in &keys {
-			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
-				if v <= cutoff_version {
-					batch.push((key.clone(), v));
+		for (row, key) in rows.iter().zip(&keys) {
+			for v in oracle.versions(*row) {
+				if CommitVersion(v) <= cutoff_version {
+					batch.push((key.clone(), CommitVersion(v)));
 				}
 			}
 		}
 		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)]));
 		}
 	}
 	for key in &keys {
@@ -70,7 +70,7 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 	}
 }
 
-fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
+fn physical_delete(store: &StandardMultiStore, oracle: &Oracle, rows: &[u64]) {
 	// Delete-then-invalidate is the order that stops a stale complete page from resurrecting the row.
 	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
@@ -80,13 +80,13 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for key in &keys {
-			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
-				batch.push((key.clone(), v));
+		for (row, key) in rows.iter().zip(&keys) {
+			for v in oracle.versions(*row) {
+				batch.push((key.clone(), CommitVersion(v)));
 			}
 		}
 		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)]));
 		}
 	}
 	for key in &keys {
@@ -99,11 +99,8 @@ fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 	let buffer = store.commit();
 	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	loop {
-		let sweep = buffer.sweep_historical_below(kind, cutoff, 64).unwrap();
-		if !sweep.entries.is_empty() {
-			buffer.compact(HashMap::from([(kind, sweep.entries)])).unwrap();
-		}
-		if sweep.remaining == 0 {
+		let (_, remaining) = buffer.gc(kind, cutoff, 64);
+		if remaining == 0 {
 			break;
 		}
 	}
@@ -181,7 +178,7 @@ pub fn drive(seed: u64, p: Params) {
 				.map(|(&row, _)| row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep(store, &expired, CommitVersion(cutoff_version));
+				ttl_sweep(store, &oracle, &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove_key(row);
@@ -191,7 +188,7 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store) in &configs {
-				physical_delete(store, &rows);
+				physical_delete(store, &oracle, &rows);
 			}
 			for row in rows {
 				oracle.remove_key(row);

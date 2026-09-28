@@ -3,13 +3,10 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::Variable;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::{Result, vm::vm::Vm};
 
@@ -84,9 +81,17 @@ impl<'a> Vm<'a> {
 			let mut row_columns = Vec::new();
 			for (name, col) in columns.names.iter().zip(columns.columns.iter()) {
 				let value = col.get_value(index);
-				let mut data = ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder();
-				data.push_value(value);
-				row_columns.push(ColumnWithName::new(name.clone(), data.finish()));
+				let data = match value {
+					Value::None {
+						..
+					} => ColumnBuffer::from_many(value, 1),
+					_ => {
+						let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
+						data.push_value(value);
+						data.finish()
+					}
+				};
+				row_columns.push(ColumnWithName::new(name.clone(), data));
 			}
 			let row_frame = Columns::new(row_columns);
 			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;

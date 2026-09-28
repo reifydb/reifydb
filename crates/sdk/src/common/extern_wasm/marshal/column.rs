@@ -155,6 +155,9 @@ impl Arena {
 			| ColumnBuffer::DictionaryId {
 				..
 			} => self.marshal_column_data_serialize(data),
+			ColumnBuffer::None {
+				..
+			} => (ExternCBuffer::empty(), ExternCBuffer::empty()),
 			_ => self.marshal_column_data_zerocopy(data),
 		}
 	}

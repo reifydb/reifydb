@@ -214,7 +214,7 @@ impl GateOperator {
 			let passing_indices: Vec<usize> =
 				mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
 			if !passing_indices.is_empty() {
-				result.push(Diff::insert(post.extract_by_indices(&passing_indices)));
+				result.push(Diff::insert(post.extract_by_indices(&passing_indices)?));
 			}
 			return Ok(());
 		}
@@ -229,7 +229,7 @@ impl GateOperator {
 			}
 		}
 		if !passing_indices.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&passing_indices)));
+			result.push(Diff::insert(post.extract_by_indices(&passing_indices)?));
 		}
 		Ok(())
 	}
@@ -267,12 +267,12 @@ impl GateOperator {
 
 		if !update_indices.is_empty() {
 			result.push(Diff::update(
-				pre.extract_by_indices(&update_indices),
-				post.extract_by_indices(&update_indices),
+				pre.extract_by_indices(&update_indices)?,
+				post.extract_by_indices(&update_indices)?,
 			));
 		}
 		if !insert_indices.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&insert_indices)));
+			result.push(Diff::insert(post.extract_by_indices(&insert_indices)?));
 		}
 		Ok(())
 	}
@@ -303,7 +303,7 @@ impl GateOperator {
 		}
 
 		if !remove_indices.is_empty() {
-			result.push(Diff::remove(pre.extract_by_indices(&remove_indices)));
+			result.push(Diff::remove(pre.extract_by_indices(&remove_indices)?));
 		}
 		Ok(())
 	}

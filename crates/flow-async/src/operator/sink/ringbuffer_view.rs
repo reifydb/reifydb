@@ -72,8 +72,9 @@ use reifydb_value::{
 };
 
 use super::{
-	DurableSink, decode_dictionary_columns, emit_view_change, partition::resolve_partition_flow,
-	view::dictionary_encode_view_columns,
+	DurableSink, decode_dictionary_columns, emit_view_change,
+	partition::resolve_partition_flow,
+	view::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
 };
 use crate::{
 	error::FlowStateError,
@@ -126,6 +127,7 @@ fn note_touched(touched: &mut Vec<Vec<Value>>, partition_values: Vec<Value>) {
 	}
 }
 
+#[allow(clippy::disallowed_methods)]
 fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
 	(!partition_values.is_empty()).then(|| Partition::of(partition_values))
 }
@@ -862,7 +864,7 @@ impl SinkRingBufferViewOperator {
 			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
 			let mut group_index: HashMap<Partition, usize> = HashMap::new();
 			for row_idx in 0..row_count {
-				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx);
 				match group_index.get(&partition) {
 					Some(&group) => groups[group].2.push(row_idx),
 					None => {
@@ -1055,9 +1057,10 @@ impl SinkRingBufferViewOperator {
 			let post_source_rn = source_post.row_numbers()[row_idx];
 
 			let partition = if self.is_partitioned() {
-				let (pre_partition, _) = partition_of(&self.partition_indices, &coerced_pre, row_idx);
+				let (pre_partition, _) =
+					partition_of(view, &self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, &coerced_post, row_idx);
+					partition_of(view, &self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -1094,8 +1097,8 @@ impl SinkRingBufferViewOperator {
 				txn,
 				view,
 				Diff::update(
-					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied),
-					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied),
+					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied)?,
+					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied)?,
 				),
 			);
 		}
@@ -1115,6 +1118,8 @@ impl SinkRingBufferViewOperator {
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
+		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
+		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.row_count();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
@@ -1125,7 +1130,7 @@ impl SinkRingBufferViewOperator {
 
 			let (partition, partition_values) = if self.is_partitioned() {
 				let (partition, partition_values) =
-					partition_of(&self.partition_indices, &coerced, row_idx);
+					partition_of(view, &self.partition_indices, source, row_idx);
 				note_touched(touched, partition_values.clone());
 				(Some(partition), Some(partition_values))
 			} else {
@@ -1160,7 +1165,7 @@ impl SinkRingBufferViewOperator {
 			emit_view_change(
 				txn,
 				view,
-				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)),
+				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)?),
 			);
 		}
 		Ok(())
@@ -1168,6 +1173,7 @@ impl SinkRingBufferViewOperator {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,

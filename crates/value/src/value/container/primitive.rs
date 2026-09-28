@@ -9,6 +9,7 @@ use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	util::{bitmap, kernel},
 	value::{Value, is::IsNumber, to_value::ToValue, value_type::get::GetType},
 };
@@ -100,15 +101,15 @@ where
 	PrimitiveArray::new(values, nulls).with_data_type(data_type)
 }
 
-pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> PrimitiveArray<A>
+pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> Result<PrimitiveArray<A>>
 where
 	A: ArrowPrimitiveType,
 {
+	kernel::rows_in_range(indices, array.len())?;
 	let values = array.values();
-	let reordered: Vec<A::Native> =
-		indices.iter().map(|&idx| values.get(idx).copied().unwrap_or_default()).collect();
-	PrimitiveArray::new(ScalarBuffer::from(reordered), bitmap::reorder_nulls(array.nulls(), indices))
-		.with_data_type(array.data_type().clone())
+	let reordered: Vec<A::Native> = indices.iter().map(|&idx| values[idx]).collect();
+	Ok(PrimitiveArray::new(ScalarBuffer::from(reordered), bitmap::reorder_nulls(array.nulls(), indices))
+		.with_data_type(array.data_type().clone()))
 }
 
 pub fn attach_nulls<A>(array: PrimitiveArray<A>, nulls: Option<NullBuffer>) -> PrimitiveArray<A>

@@ -112,7 +112,7 @@ impl Transform for SortNode {
 				.collect::<Result<Vec<_>>>()?;
 
 		let indices = rank_rows(&key_refs, columns.row_count(), None)?;
-		Self::permute(&mut columns, &indices);
+		Self::permute(&mut columns, &indices)?;
 
 		Ok(columns)
 	}
@@ -120,12 +120,13 @@ impl Transform for SortNode {
 
 impl SortNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
-	fn permute(columns: &mut Columns, indices: &[usize]) {
+	fn permute(columns: &mut Columns, indices: &[usize]) -> Result<()> {
 		columns.system.permute_in_place(indices);
 
 		let cols = &mut columns.columns;
 		for col in cols.iter_mut() {
-			col.reorder(indices);
+			col.reorder(indices)?;
 		}
+		Ok(())
 	}
 }

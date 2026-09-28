@@ -6,10 +6,7 @@ use std::str;
 use arrow_array::{LargeStringArray, builder::LargeBinaryBuilder};
 use reifydb_value::value::{
 	blob::Blob,
-	container::{
-		digest_array::{push_digest, push_none_slot},
-		varlen_array::blob_array,
-	},
+	container::{digest_array::push_digest, varlen_array::blob_array},
 	digest::Digest,
 	frame::data::FrameColumnData,
 	value_type::ValueType,
@@ -76,7 +73,7 @@ pub(crate) fn decode_digest_plain(
 		let start = offset_arr[i];
 		let end = offset_arr[i + 1];
 		if start == end {
-			push_none_slot(&mut builder);
+			builder.append_null();
 			continue;
 		}
 		let digest = Digest::decode(checked_span(data, start, end)?)

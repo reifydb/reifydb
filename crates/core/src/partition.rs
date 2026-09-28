@@ -1,13 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::shape::RowShape;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	reifydb_assertions,
+	value::{Value, partition::Partition, value_type::ValueType},
 };
 
 use crate::interface::catalog::{column::Column, object::ObjectId};
+
+pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
+	indices.iter().map(|&i| shape.get_value(row, i)).collect()
+}
+
+#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+#[allow(clippy::disallowed_methods)]
+pub fn partition_of(columns: &[Column], partition_by: &[String], values: &[Value]) -> Partition {
+	reifydb_assertions! {
+		assert_eq!(
+			partition_by.len(),
+			values.len(),
+			"one value per partition column, otherwise the dictionary check skips columns"
+		);
+		for (name, value) in partition_by.iter().zip(values) {
+			let column = columns
+				.iter()
+				.find(|c| c.name == *name)
+				.expect("partition column must exist (validated during planning)");
+			assert!(
+				column.dictionary_id.is_none() || matches!(value, Value::DictionaryId(_) | Value::None { .. }),
+				"partition column '{}' is dictionary-encoded but was hashed from {:?}: stored rows hash the \
+				 entry id, so a plain value lands in a different partition",
+				name,
+				value
+			);
+		}
+	}
+	Partition::of(values)
+}
 
 pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec<usize> {
 	partition_by
@@ -115,5 +147,56 @@ impl IntoDiagnostic for PartitionError {
 impl From<PartitionError> for Error {
 	fn from(err: PartitionError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+	use std::slice::from_ref;
+
+	use reifydb_value::value::{
+		constraint::TypeConstraint,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	};
+
+	use super::*;
+	use crate::interface::catalog::{column::ColumnIndex, id::ColumnId};
+
+	fn pool(dictionary_id: Option<DictionaryId>) -> Vec<Column> {
+		vec![Column {
+			id: ColumnId(1),
+			name: "pool".to_string(),
+			constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+			properties: vec![],
+			index: ColumnIndex(0),
+			auto_increment: false,
+			dictionary_id,
+		}]
+	}
+
+	#[test]
+	fn a_dictionary_partition_column_hashes_its_entry_id() {
+		// The helper must hash the stored id unchanged, otherwise it disagrees with the rows it addresses.
+		let id = DictionaryEntryId::U4(7).to_value();
+		let partition = partition_of(&pool(Some(DictionaryId(1))), &["pool".to_string()], from_ref(&id));
+		assert_eq!(partition, Partition::of(&[id]));
+	}
+
+	#[test]
+	fn a_plain_partition_column_hashes_its_plain_value() {
+		// The check must only guard dictionary columns, otherwise every plain partitioned write fails.
+		let value = Value::Utf8("aa".to_string());
+		let partition = partition_of(&pool(None), &["pool".to_string()], from_ref(&value));
+		assert_eq!(partition, Partition::of(&[value]));
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is dictionary-encoded but was hashed from")]
+	fn a_plain_value_on_a_dictionary_partition_column_is_refused() {
+		// A site hashing the plain value puts the row in another partition than its stored twins, so it must
+		// fail loudly.
+		partition_of(&pool(Some(DictionaryId(1))), &["pool".to_string()], &[Value::Utf8("aa".to_string())]);
 	}
 }

@@ -11,10 +11,6 @@ pub(crate) fn is_all_none(nulls: Option<&NullBuffer>) -> bool {
 	nulls.is_some_and(|nulls| nulls.null_count() == nulls.len())
 }
 
-pub(crate) fn is_untyped_none(data: &ColumnBuffer, nulls: Option<&NullBuffer>) -> bool {
-	is_all_none(nulls) && matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
-}
-
 pub(crate) fn combine_option_bitvecs(a: Option<&NullBuffer>, b: Option<&NullBuffer>) -> Option<NullBuffer> {
 	match (a, b) {
 		(Some(a), Some(b)) => Some(and_nulls(a, b)),
@@ -32,13 +28,11 @@ pub(crate) fn arith_op_unwrap_option(
 ) -> Result<ColumnWithName> {
 	let (left_data, left_nulls) = left.data().clone().split_nulls();
 	let (right_data, right_nulls) = right.data().clone().split_nulls();
-	let typed = match (
-		is_untyped_none(&left_data, left_nulls.as_ref()),
-		is_untyped_none(&right_data, right_nulls.as_ref()),
-	) {
+	let typed = match (left.data().is_untyped_none(), right.data().is_untyped_none()) {
+		(true, true) => return Ok(ColumnWithName::new(fragment, ColumnBuffer::none(left_data.len()))),
 		(true, false) => Some(&right_data),
 		(false, true) => Some(&left_data),
-		_ => None,
+		(false, false) => None,
 	};
 	if let Some(typed) = typed {
 		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(typed.get_type(), left_data.len())));
@@ -94,9 +88,7 @@ pub(crate) fn binary_op_unwrap_option(
 	let (right_data, right_nulls) = right.data().clone().split_nulls();
 
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
-		let ty = if is_untyped_none(&left_data, left_nulls.as_ref())
-			|| is_untyped_none(&right_data, right_nulls.as_ref())
-		{
+		let ty = if left.data().is_untyped_none() || right.data().is_untyped_none() {
 			ValueType::Boolean
 		} else {
 			let l = ColumnWithName::new(left.name().clone(), ColumnBuilder::like(&left_data, 0).finish());
@@ -126,7 +118,7 @@ pub(crate) fn unary_op_unwrap_option(
 	let (inner_data, nulls) = col.data().clone().split_nulls();
 
 	if is_all_none(nulls.as_ref()) {
-		let ty = if is_untyped_none(&inner_data, nulls.as_ref()) {
+		let ty = if col.data().is_untyped_none() {
 			ValueType::Boolean
 		} else {
 			inner(&ColumnWithName::new(col.name().clone(), ColumnBuilder::like(&inner_data, 0).finish()))?

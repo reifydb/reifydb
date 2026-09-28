@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
 	key::{any::TaggedKey, partition::PartitionKey, row::PartitionedRowKey},
+	partition::partition_of,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
@@ -12,9 +13,13 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
 
-use crate::{Result, transaction::operation::table::TableOperations, vm::services::Services};
+use crate::{
+	Result,
+	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
+	vm::services::Services,
+};
 
 pub(crate) fn execute_alter_table(
 	services: &Services,
@@ -66,6 +71,7 @@ pub(crate) fn execute_alter_table(
 			}
 
 			let mut part_values = Vec::with_capacity(table.partition_by.len());
+			let mut interned = true;
 			for col_name in &table.partition_by {
 				let Some((_, text)) = values.iter().find(|(c, _)| c == col_name) else {
 					return Err(internal_error!(
@@ -85,15 +91,35 @@ pub(crate) fn execute_alter_table(
 						col_name
 					));
 				}
-				part_values.push(Value::Utf8(text.clone()));
+				let value = Value::Utf8(text.clone());
+				match table.columns.iter().find(|c| &c.name == col_name).and_then(|c| c.dictionary_id) {
+					Some(dict_id) => {
+						let dictionary = services
+							.catalog
+							.find_dictionary(&mut Transaction::Admin(txn), dict_id)?
+							.ok_or_else(|| {
+								internal_error!(
+									"Dictionary {:?} not found for column {}",
+									dict_id,
+									col_name
+								)
+							})?;
+						match txn.find_in_dictionary(&dictionary, &value)? {
+							Some(entry_id) => part_values.push(entry_id.to_value()),
+							None => interned = false,
+						}
+					}
+					None => part_values.push(value),
+				}
 			}
 
-			let partition = Partition::of(&part_values);
+			let partition =
+				interned.then(|| partition_of(&table.columns, &table.partition_by, &part_values));
 			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
 			let mut last_key: Option<TaggedKey> = None;
-			loop {
+			while let Some(partition) = partition {
 				let batch: Vec<_> = txn
 					.range(
 						PartitionedRowKey::partition_scan_range(
@@ -121,12 +147,16 @@ pub(crate) fn execute_alter_table(
 			}
 
 			let dropped = ids.len() as u64;
-			if !ids.is_empty() {
+			if let Some(partition) = partition
+				&& !ids.is_empty()
+			{
 				let partitions = vec![partition; ids.len()];
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			if remove_registry {
-				txn.remove(&PartitionKey::new(object, partition))?;
+				if let Some(partition) = partition {
+					txn.remove(&PartitionKey::new(object, partition))?;
+				}
 				("DROP PARTITION", Value::Uint8(dropped))
 			} else {
 				("TRUNCATE PARTITION", Value::Uint8(dropped))

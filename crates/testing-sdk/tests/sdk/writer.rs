@@ -10,7 +10,8 @@ use reifydb_sdk::{
 	flow::operator::{
 		OperatorMetadata,
 		change::BorrowedChange,
-		column::{batch::InsertBatch, operator::OperatorColumn},
+		column::{batch::InsertBatch, operator::OperatorColumn, sink::RowSink},
+		context::{GuestEmit, GuestEmitContext},
 		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 	},
 	row,
@@ -950,4 +951,60 @@ fn scalar_duration_roundtrip() {
 	assert_eq!(post.row_ref(0).expect("r0").duration("v"), Some(Duration::default()));
 	assert_eq!(post.row_ref(1).expect("r1").duration("v"), Duration::new(13, 5, 3_600_000_000_000).ok());
 	assert_eq!(post.row_ref(2).expect("r2").duration("v"), Duration::from_seconds(-30).ok());
+}
+
+struct OpUtf8IntoU64;
+impl OperatorMetadata for OpUtf8IntoU64 {
+	const NAME: &'static str = "writer_utf8_into_u64";
+	const VERSION: &'static str = "1.0.0";
+	const DESCRIPTION: &'static str = "test fixture";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+impl ExternCOperator for OpUtf8IntoU64 {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+		Ok(Self)
+	}
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+		let mut emit = ctx.insert_emit::<U64Row>(1)?;
+		emit.sink().push_utf8(0, "x")?;
+		emit.finish(&[RowNumber(1)])
+	}
+}
+
+#[test]
+fn push_utf8_on_a_u64_column_fails_the_apply() {
+	// Otherwise a release build drops the value and the push reports success for a row it never wrote.
+	let mut h = ExternCOperatorHarnessBuilder::<OpUtf8IntoU64>::new().build().expect("harness");
+	let err = h.apply(TestChangeBuilder::new().build()).expect_err("a utf8 push into a u64 column must fail");
+	assert!(err.to_string().contains("column 0 is Uint8, cannot push utf8"), "got {err}");
+}
+
+struct OpU8IntoUtf8;
+impl OperatorMetadata for OpU8IntoUtf8 {
+	const NAME: &'static str = "writer_u8_into_utf8";
+	const VERSION: &'static str = "1.0.0";
+	const DESCRIPTION: &'static str = "test fixture";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+impl ExternCOperator for OpU8IntoUtf8 {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+		Ok(Self)
+	}
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+		let mut emit = ctx.insert_emit::<Utf8Row>(1)?;
+		emit.sink().push_u8(0, 7)?;
+		emit.finish(&[RowNumber(1)])
+	}
+}
+
+#[test]
+fn push_u8_on_a_utf8_column_fails_the_apply() {
+	// A fixed-width push must fail like the varlen ones, otherwise the value is dropped with no error.
+	let mut h = ExternCOperatorHarnessBuilder::<OpU8IntoUtf8>::new().build().expect("harness");
+	let err = h.apply(TestChangeBuilder::new().build()).expect_err("a u8 push into a utf8 column must fail");
+	assert!(err.to_string().contains("column 0 is Utf8, cannot push u8"), "got {err}");
 }

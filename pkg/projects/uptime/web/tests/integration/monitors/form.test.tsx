@@ -84,6 +84,7 @@ describe('monitor form target checks', () => {
     await waitFor(() => expect(client.command).toHaveBeenCalledTimes(1))
     expect(vi.mocked(client.command).mock.calls[0][1].target.value).toBe(target)
     expect(vi.mocked(client.command).mock.calls[0][1].kind.value).toBe(kind)
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1))
   })
 })
 

@@ -79,7 +79,7 @@ impl QueryNode for TopKNode {
 			self.by.iter().map(|key| Self::resolve_key(&columns, key)).collect::<Result<Vec<_>>>()?;
 
 		let indices = rank_rows(&key_cols, row_count, Some(self.limit))?;
-		Self::permute(&mut columns, &indices);
+		Self::permute(&mut columns, &indices)?;
 
 		Ok(Some(columns))
 	}
@@ -126,12 +126,13 @@ impl TopKNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::permute")]
-	fn permute(columns: &mut Columns, indices: &[usize]) {
+	fn permute(columns: &mut Columns, indices: &[usize]) -> Result<()> {
 		columns.system.permute_in_place(indices);
 
 		let cols = &mut columns.columns;
 		for col in cols.iter_mut() {
-			col.reorder(indices);
+			col.reorder(indices)?;
 		}
+		Ok(())
 	}
 }

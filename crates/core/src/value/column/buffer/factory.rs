@@ -11,7 +11,7 @@ use reifydb_value::value::{
 	blob::Blob,
 	constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 	container::{
-		any_array::any_array,
+		any_array::{any_array, any_array_optional},
 		decimal_array::{DecimalArray, decimal_array},
 		dictionary_array::{DICTIONARY_ENTRY_WIDTH, dictionary_array},
 		digest_array::digest_array,
@@ -399,37 +399,17 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn any_with_bitvec(data: impl IntoIterator<Item = Value>, bitvec: impl Into<BooleanBuffer>) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		let bitvec = bitvec.into();
-		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Any {
-			container: any_array(&data),
+	pub fn any_optional(data: impl IntoIterator<Item = Option<Value>>) -> Self {
+		ColumnBuffer::Any {
+			container: any_array_optional(data),
 			declared_type: None,
-		};
-		if !bitvec.has_false() {
-			inner
-		} else {
-			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
-	pub fn any_with_bitvec_typed(
-		data: impl IntoIterator<Item = Value>,
-		bitvec: impl Into<BooleanBuffer>,
-		declared_type: ValueType,
-	) -> Self {
-		let data = data.into_iter().collect::<Vec<_>>();
-		let bitvec = bitvec.into();
-		assert_eq!(bitvec.len(), data.len());
-		let inner = ColumnBuffer::Any {
-			container: any_array(&data),
+	pub fn any_optional_typed(data: impl IntoIterator<Item = Option<Value>>, declared_type: ValueType) -> Self {
+		ColumnBuffer::Any {
+			container: any_array_optional(data),
 			declared_type: Some(declared_type),
-		};
-		if !bitvec.has_false() {
-			inner
-		} else {
-			inner.with_nulls(NullBuffer::new(bitvec))
 		}
 	}
 
@@ -504,7 +484,7 @@ impl ColumnBuffer {
 				precision,
 				scale,
 			} => Self::decimal(precision, scale, vec![Decimal::default(); len]),
-			ValueType::Any => Self::any(vec![Value::none(); len]),
+			ValueType::Any => Self::any_optional(vec![None; len]),
 			ValueType::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
 			list_ty @ ValueType::List(_) => Self::any_typed(vec![Value::List(vec![]); len], list_ty),
 			record_ty @ ValueType::Record(_) => {

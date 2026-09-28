@@ -219,6 +219,7 @@ fn delete_ringbuffer_partitions(
 		let partition = partition_info.metadata;
 		let mut min_remaining_row: Option<u64> = None;
 		let mut partition_deleted = 0u64;
+		#[allow(clippy::disallowed_methods)]
 		let partition_hash = if partition_col_indices.is_empty() {
 			None
 		} else {

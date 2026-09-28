@@ -14,6 +14,7 @@ use serde::{Deserialize, Deserializer, Serializer, de::Error as DeError, ser::Se
 use serde_bytes::{ByteBuf, Bytes};
 
 use crate::{
+	Result,
 	util::{bitmap, kernel},
 	value::{Value, blob::Blob, value_type::ValueType},
 };
@@ -110,19 +111,16 @@ where
 	attach_nulls(selected, nulls)
 }
 
-pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> GenericByteArray<T>
+pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> Result<GenericByteArray<T>>
 where
 	T: ByteArrayType<Offset = i64>,
-	for<'a> &'a T::Native: Default,
 {
+	kernel::rows_in_range(indices, array.len())?;
 	let mut builder = GenericByteBuilder::<T>::with_capacity(indices.len(), data_byte_len(array));
 	for &idx in indices {
-		match get(array, idx) {
-			Some(value) => builder.append_value(value),
-			None => builder.append_value(<&T::Native>::default()),
-		}
+		builder.append_value(array.value(idx));
 	}
-	attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices))
+	Ok(attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices)))
 }
 
 pub fn attach_nulls<T>(array: GenericByteArray<T>, nulls: Option<NullBuffer>) -> GenericByteArray<T>
@@ -287,7 +285,7 @@ mod tests {
 			]);
 			let indices = [2, 0, 1];
 
-			let container = reorder(&container, &indices);
+			let container = reorder(&container, &indices).unwrap();
 
 			assert_eq!(container.len(), 3);
 			assert_eq!(get(&container, 0), Some("third"));
@@ -297,16 +295,10 @@ mod tests {
 
 		#[test]
 		fn test_reorder_with_out_of_bounds() {
-			// An out of range index must yield an empty row, never panic or shift the other rows.
+			// An out of range index must fail, never yield an empty row that reads as a real value.
 			let container = LargeStringArray::from(vec!["a".to_string(), "b".to_string()]);
-			let indices = [1, 5, 0];
-
-			let container = reorder(&container, &indices);
-
-			assert_eq!(container.len(), 3);
-			assert_eq!(get(&container, 0), Some("b"));
-			assert_eq!(get(&container, 1), Some(""));
-			assert_eq!(get(&container, 2), Some("a"));
+			let error = reorder(&container, &[1, 5, 0]).unwrap_err();
+			assert_eq!(error.diagnostic().message, "row index 5 out of range for a column of 2 rows");
 		}
 
 		#[test]
@@ -388,14 +380,11 @@ mod tests {
 		}
 
 		#[test]
-		fn reorder_in_place_handles_oob_as_empty() {
-			// An out of range index must yield an empty row, never panic or shift the other rows.
+		fn reorder_refuses_an_out_of_range_index() {
+			// An out of range index must fail, never yield an empty row that reads as a real value.
 			let c = LargeBinaryArray::from_iter_values([b"a".as_slice(), b"b"]);
-			let c = reorder(&c, &[1, 100, 0]);
-			assert_eq!(c.len(), 3);
-			assert_eq!(get(&c, 0), Some(b"b".as_slice()));
-			assert_eq!(get(&c, 1), Some(b"".as_slice()));
-			assert_eq!(get(&c, 2), Some(b"a".as_slice()));
+			let error = reorder(&c, &[1, 100, 0]).unwrap_err();
+			assert_eq!(error.diagnostic().message, "row index 100 out of range for a column of 2 rows");
 		}
 
 		#[test]

@@ -353,7 +353,7 @@ pub mod tests {
 			return Columns::new(vec![column]);
 		}
 
-		let mut builder = ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder();
+		let mut builder = ColumnBuffer::none_typed(values[0].get_type(), 0).into_builder();
 		for value in values {
 			builder.push_value(value);
 		}

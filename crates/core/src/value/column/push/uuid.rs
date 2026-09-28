@@ -6,19 +6,15 @@ use reifydb_value::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use crate::value::column::{builder::ColumnBuilder, push::Push};
+use crate::value::column::{
+	builder::{ColumnBuilder, TypedBuilder, append_fixed},
+	push::Push,
+};
 
 impl Push<Uuid4> for ColumnBuilder {
 	fn push(&mut self, value: Uuid4) {
-		match self {
-			ColumnBuilder::Uuid4(buffer) => buffer.extend_from_slice(value.as_bytes()),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+		match &mut self.inner {
+			TypedBuilder::Uuid4(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
 				panic!("called `push::<Uuid4>()` on incompatible ColumnBuffer::{:?}", other.get_type());
 			}
@@ -28,15 +24,8 @@ impl Push<Uuid4> for ColumnBuilder {
 
 impl Push<Uuid7> for ColumnBuilder {
 	fn push(&mut self, value: Uuid7) {
-		match self {
-			ColumnBuilder::Uuid7(buffer) => buffer.extend_from_slice(value.as_bytes()),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+		match &mut self.inner {
+			TypedBuilder::Uuid7(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
 				panic!("called `push::<Uuid7>()` on incompatible ColumnBuffer::{:?}", other.get_type());
 			}
@@ -46,15 +35,8 @@ impl Push<Uuid7> for ColumnBuilder {
 
 impl Push<IdentityId> for ColumnBuilder {
 	fn push(&mut self, value: IdentityId) {
-		match self {
-			ColumnBuilder::IdentityId(buffer) => buffer.extend_from_slice(value.as_bytes()),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+		match &mut self.inner {
+			TypedBuilder::IdentityId(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
 				panic!(
 					"called `push::<IdentityId>()` on incompatible ColumnBuffer::{:?}",

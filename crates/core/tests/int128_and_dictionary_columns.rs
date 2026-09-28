@@ -83,12 +83,17 @@ fn dictionary_id_survives_every_buffer_op() {
 	assert_eq!(dictionary_parts(&filtered), (vec![ENTRIES[0], ENTRIES[2], ENTRIES[3]], id));
 
 	let mut reordered = buffer.clone();
-	reordered.reorder(&[3, 1, 9]);
-	assert_eq!(dictionary_parts(&reordered), (vec![ENTRIES[3], ENTRIES[1], DictionaryEntryId::default()], id));
+	reordered.reorder(&[3, 1]).unwrap();
+	assert_eq!(dictionary_parts(&reordered), (vec![ENTRIES[3], ENTRIES[1]], id));
+	let error = buffer.clone().reorder(&[3, 1, 9]).unwrap_err();
+	assert_eq!(error.diagnostic().message, "row index 9 out of range for a column of 4 rows");
 
 	assert_eq!(dictionary_parts(&buffer.slice(1, 3)), (ENTRIES[1..3].to_vec(), id));
 	assert_eq!(dictionary_parts(&buffer.take(2)), (ENTRIES[..2].to_vec(), id));
-	assert_eq!(dictionary_parts(&buffer.gather(&[2, 2, 0])), (vec![ENTRIES[2], ENTRIES[2], ENTRIES[0]], id));
+	assert_eq!(
+		dictionary_parts(&buffer.gather(&[2, 2, 0]).unwrap()),
+		(vec![ENTRIES[2], ENTRIES[2], ENTRIES[0]], id)
+	);
 
 	for decoded in round_trips(&buffer) {
 		assert_eq!(dictionary_parts(&decoded), (ENTRIES.to_vec(), id));
@@ -134,7 +139,7 @@ fn option_wrapped_dictionary_column_keeps_its_id() {
 	assert_eq!(dictionary_parts(&filtered), (ENTRIES[1..].to_vec(), id));
 
 	let mut reordered = buffer.clone();
-	reordered.reorder(&[3, 0]);
+	reordered.reorder(&[3, 0]).unwrap();
 	assert_eq!(dictionary_parts(&reordered), (vec![ENTRIES[3], ENTRIES[0]], id));
 
 	assert_eq!(dictionary_parts(&buffer.slice(0, 2)), (ENTRIES[..2].to_vec(), id));
@@ -190,23 +195,27 @@ fn int16_keeps_its_values_and_data_type_through_every_op() {
 	assert_int16(&filtered, &[i128::MIN, i128::MAX]);
 
 	let mut reordered = buffer.clone();
-	reordered.reorder(&[2, 0, 7]);
-	assert_int16(&reordered, &[i128::MAX, i128::MIN, 0]);
+	reordered.reorder(&[2, 0]).unwrap();
+	assert_int16(&reordered, &[i128::MAX, i128::MIN]);
+	let error = buffer.clone().reorder(&[2, 0, 7]).unwrap_err();
+	assert_eq!(error.diagnostic().message, "row index 7 out of range for a column of 3 rows");
 
 	assert_int16(&buffer.slice(1, 3), &INTS[1..]);
 	assert_int16(&buffer.take(1), &INTS[..1]);
-	assert_int16(&buffer.gather(&[2, 2]), &[i128::MAX, i128::MAX]);
+	assert_int16(&buffer.gather(&[2, 2]).unwrap(), &[i128::MAX, i128::MAX]);
 
 	let mut extended = buffer.clone();
 	extended.extend(ColumnBuffer::int16([1])).unwrap();
 	assert_int16(&extended, &[i128::MIN, 0, i128::MAX, 1]);
 
-	let merged = buffer.scatter_merge(
-		&ColumnBuffer::int16([1, 2, 3]),
-		&BooleanBuffer::from(vec![true, false, true]),
-		&BooleanBuffer::from(vec![false, true, false]),
-		3,
-	);
+	let merged = buffer
+		.scatter_merge(
+			&ColumnBuffer::int16([1, 2, 3]),
+			&BooleanBuffer::from(vec![true, false, true]),
+			&BooleanBuffer::from(vec![false, true, false]),
+			3,
+		)
+		.unwrap();
 	assert_int16(&merged, &[i128::MIN, 2, i128::MAX]);
 
 	for decoded in round_trips(&buffer) {
@@ -240,23 +249,27 @@ fn uint16_keeps_values_above_i128_max_and_its_data_type() {
 	assert_uint16(&filtered, &[1 << 64, u128::MAX]);
 
 	let mut reordered = buffer.clone();
-	reordered.reorder(&[3, 2, 8]);
-	assert_uint16(&reordered, &[u128::MAX, 1 << 127, 0]);
+	reordered.reorder(&[3, 2]).unwrap();
+	assert_uint16(&reordered, &[u128::MAX, 1 << 127]);
+	let error = buffer.clone().reorder(&[3, 2, 8]).unwrap_err();
+	assert_eq!(error.diagnostic().message, "row index 8 out of range for a column of 4 rows");
 
 	assert_uint16(&buffer.slice(2, 4), &UINTS[2..]);
 	assert_uint16(&buffer.take(2), &UINTS[..2]);
-	assert_uint16(&buffer.gather(&[3, 0]), &[u128::MAX, 0]);
+	assert_uint16(&buffer.gather(&[3, 0]).unwrap(), &[u128::MAX, 0]);
 
 	let mut extended = buffer.clone();
 	extended.extend(ColumnBuffer::uint16([u128::MAX - 1])).unwrap();
 	assert_uint16(&extended, &[0, 1 << 64, 1 << 127, u128::MAX, u128::MAX - 1]);
 
-	let merged = buffer.scatter_merge(
-		&ColumnBuffer::uint16([5, 6, 7, 8]),
-		&BooleanBuffer::from(vec![false, true, false, true]),
-		&BooleanBuffer::from(vec![true, false, true, false]),
-		4,
-	);
+	let merged = buffer
+		.scatter_merge(
+			&ColumnBuffer::uint16([5, 6, 7, 8]),
+			&BooleanBuffer::from(vec![false, true, false, true]),
+			&BooleanBuffer::from(vec![true, false, true, false]),
+			4,
+		)
+		.unwrap();
 	assert_uint16(&merged, &[5, 1 << 64, 7, u128::MAX]);
 
 	for decoded in round_trips(&buffer) {

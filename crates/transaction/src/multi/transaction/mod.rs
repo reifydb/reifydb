@@ -189,7 +189,7 @@ where
 	}
 
 	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
-		self.inner.leases.try_acquire(version, self.inner.query.done_until())
+		self.inner.leases.try_acquire_at(version, &self.inner.query)
 	}
 
 	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {

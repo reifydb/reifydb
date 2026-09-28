@@ -23,6 +23,10 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => *a = bool_array::filter_with(a, predicate),
 			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::filter_with(a, predicate)),
+			ColumnBuffer::None {
+				nulls,
+				..
+			} => *self = ColumnBuffer::none_sized(predicate.count(), nulls.is_none()),
 			_ => with_container!(
 				self,
 				|a| *a = primitive::filter_with(a, predicate),

@@ -251,14 +251,14 @@ mod read_configs_tests {
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze_bytes().0))]);
-		buffer.set(version, batches).unwrap();
+		buffer.set(version, batches);
 	}
 
 	fn delete_config(buffer: &CommitStore, key: ConfigKey, version: CommitVersion) {
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, None)]);
-		buffer.set(version, batches).unwrap();
+		buffer.set(version, batches);
 	}
 
 	#[test]
@@ -370,7 +370,7 @@ mod read_configs_tests {
 		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsCoordination);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze_bytes().0))]);
-		buffer.set(CommitVersion(1), batches).unwrap();
+		buffer.set(CommitVersion(1), batches);
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(5));

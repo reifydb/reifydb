@@ -62,10 +62,15 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 
 		for i in 0..row_count {
 			let val1 = args[0].get_value(i);
-			results.push(val1);
+			results.push(match val1 {
+				Value::None {
+					..
+				} => None,
+				value => Some(value),
+			});
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any(results))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any_optional(results))]))
 	}
 }
 

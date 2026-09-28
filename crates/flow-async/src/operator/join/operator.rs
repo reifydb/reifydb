@@ -24,7 +24,7 @@ use reifydb_core::{
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	row::JoinPick,
 	state::timer::TimerKind,
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -565,9 +565,7 @@ impl JoinOperator {
 			let col: ColumnWithName = if let Some(col_name) = compiled_expr.access_column_name() {
 				columns.column(col_name)
 					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
-					.unwrap_or_else(|| {
-						ColumnWithName::undefined_typed(col_name, ValueType::Boolean, row_count)
-					})
+					.unwrap_or_else(|| ColumnWithName::new(col_name, ColumnBuffer::none(row_count)))
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};
@@ -630,7 +628,7 @@ impl JoinOperator {
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema);
-		Ok(Self::split(built, &fresh, &existing))
+		Self::split(built, &fresh, &existing)
 	}
 
 	fn identities(
@@ -670,11 +668,11 @@ impl JoinOperator {
 		}
 	}
 
-	fn split(built: Columns, fresh: &[usize], existing: &[usize]) -> Emitted {
-		Emitted {
-			fresh: JoinedColumnsBuilder::retain_rows(&built, fresh),
-			existing: JoinedColumnsBuilder::retain_rows(&built, existing),
-		}
+	fn split(built: Columns, fresh: &[usize], existing: &[usize]) -> Result<Emitted> {
+		Ok(Emitted {
+			fresh: JoinedColumnsBuilder::retain_rows(&built, fresh)?,
+			existing: JoinedColumnsBuilder::retain_rows(&built, existing)?,
+		})
 	}
 
 	pub(crate) fn unmatched_left_columns_batch(
@@ -695,7 +693,7 @@ impl JoinOperator {
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema);
-		Ok(Self::split(built, &fresh, &existing))
+		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn cleanup_left_row_joins(&self, host: &mut dyn HostContext, left_number: u64) -> Result<()> {
@@ -749,7 +747,7 @@ impl JoinOperator {
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right);
-		Ok(Self::split(built, &fresh, &existing))
+		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn join_columns_many_to_one(
@@ -778,7 +776,7 @@ impl JoinOperator {
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx);
-		Ok(Self::split(built, &fresh, &existing))
+		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn join_columns_cartesian(
@@ -811,7 +809,7 @@ impl JoinOperator {
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices);
-		Ok(Self::split(built, &fresh, &existing))
+		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn pick(&self) -> &JoinPick {

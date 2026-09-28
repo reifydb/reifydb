@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::container::{
-	any_array, bool_array, fixed_array, primitive, varlen_array, wide_int_array::wide_array,
+use reifydb_value::{
+	Result,
+	util::kernel,
+	value::container::{any_array, bool_array, fixed_array, primitive, varlen_array},
 };
 
 use crate::value::column::{
@@ -11,25 +13,30 @@ use crate::value::column::{
 };
 
 impl ColumnBuffer {
-	pub fn reorder(&mut self, indices: &[usize]) {
+	pub fn reorder(&mut self, indices: &[usize]) -> Result<()> {
 		match self {
-			ColumnBuffer::Bool(a) => *a = bool_array::reorder(a, indices),
-			ColumnBuffer::Int16(a) => {
-				*a = fixed_array::reorder(a, indices, wide_array([0i128]).value_data())
-			}
-			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::reorder(a, indices)),
+			ColumnBuffer::Bool(a) => *a = bool_array::reorder(a, indices)?,
+			ColumnBuffer::Int16(a) => *a = fixed_array::reorder(a, indices)?,
+			ColumnBuffer::Decimal(d) => *d = map_decimal!(&*d, |a| primitive::reorder(a, indices)?),
 			ColumnBuffer::Any {
 				container,
 				..
-			} => *container = any_array::reorder(container, indices),
+			} => *container = any_array::reorder(container, indices)?,
+			ColumnBuffer::None {
+				..
+			} => {
+				kernel::rows_in_range(indices, self.len())?;
+				*self = ColumnBuffer::none_sized(indices.len(), self.nulls().is_none())
+			}
 			_ => with_container!(
 				self,
-				|a| *a = primitive::reorder(a, indices),
-				|t| *t = primitive::reorder(t, indices),
-				|u| *u = fixed_array::reorder(u, indices, &vec![0; u.value_length() as usize]),
-				|v| *v = varlen_array::reorder(v, indices)
+				|a| *a = primitive::reorder(a, indices)?,
+				|t| *t = primitive::reorder(t, indices)?,
+				|u| *u = fixed_array::reorder(u, indices)?,
+				|v| *v = varlen_array::reorder(v, indices)?
 			),
 		}
+		Ok(())
 	}
 }
 
@@ -53,7 +60,7 @@ pub mod tests {
 	#[test]
 	fn test_reorder_bool() {
 		let mut col = ColumnBuffer::bool([true, false, true]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		assert_eq!(col.get_value(0), Value::Boolean(true));
@@ -64,7 +71,7 @@ pub mod tests {
 	#[test]
 	fn test_reorder_float4() {
 		let mut col = ColumnBuffer::float4([1.0, 2.0, 3.0]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		match col.get_value(0) {
@@ -84,7 +91,7 @@ pub mod tests {
 	#[test]
 	fn test_reorder_int4() {
 		let mut col = ColumnBuffer::int4([1, 2, 3]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		assert_eq!(col.get_value(0), Value::Int4(3));
@@ -95,7 +102,7 @@ pub mod tests {
 	#[test]
 	fn test_reorder_string() {
 		let mut col = ColumnBuffer::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		assert_eq!(col.get_value(0), Value::Utf8("c".to_string()));
@@ -106,10 +113,10 @@ pub mod tests {
 	#[test]
 	fn test_reorder_none() {
 		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 3);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 		assert_eq!(col.len(), 3);
 
-		col.reorder(&[1, 0]);
+		col.reorder(&[1, 0]).unwrap();
 		assert_eq!(col.len(), 2);
 	}
 
@@ -123,7 +130,7 @@ pub mod tests {
 		let id3 = IdentityId::generate(&clock, &rng);
 
 		let mut col = ColumnBuffer::identity_id([id1, id2, id3]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		assert_eq!(col.get_value(0), Value::IdentityId(id3));
@@ -138,7 +145,7 @@ pub mod tests {
 		let e3 = DictionaryEntryId::U4(30);
 
 		let mut col = ColumnBuffer::dictionary_id([e1, e2, e3]);
-		col.reorder(&[2, 0, 1]);
+		col.reorder(&[2, 0, 1]).unwrap();
 
 		assert_eq!(col.len(), 3);
 		assert_eq!(col.get_value(0), Value::DictionaryId(e3));

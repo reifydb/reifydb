@@ -73,6 +73,10 @@ pub const TOMBSTONE_LIMIT: u64 = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_TOMBSTONES
 };
 
+const OPERATOR_LOCAL_FRACTION: u64 = 16;
+
+const SWEEP_STARVATION_LIMIT: u32 = 10;
+
 pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_DIRTY_BUDGET_TESTING
 } else {
@@ -187,6 +191,7 @@ pub struct Shared {
 	triggered: AtomicBool,
 	evict_pending: AtomicBool,
 	evict_parked: AtomicBool,
+	operator_over_local_cap: AtomicBool,
 	filter: Arc<AdaptiveKeyFilter>,
 	filter_decided: AtomicBool,
 	sweep_cursor: AtomicU64,
@@ -221,6 +226,7 @@ impl Shared {
 			triggered: AtomicBool::new(false),
 			evict_pending: AtomicBool::new(false),
 			evict_parked: AtomicBool::new(false),
+			operator_over_local_cap: AtomicBool::new(false),
 			filter: Arc::new(AdaptiveKeyFilter::new()),
 			filter_decided: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
@@ -326,6 +332,11 @@ impl Shared {
 		let mut operators: Vec<OperatorId> = self.slots.iter().map(|slot| *slot.key()).collect();
 		operators.sort_unstable();
 		operators
+	}
+
+	fn local_caps(&self, live_operators: u64) -> (ByteSize, u64) {
+		let share = live_operators.clamp(1, OPERATOR_LOCAL_FRACTION);
+		(ByteSize::from_bytes(self.budget.limit().as_bytes() / share), self.tombstone_limit / share)
 	}
 
 	pub(crate) fn dropped(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
@@ -527,6 +538,7 @@ impl Resident {
 		for write in writes {
 			grouped.entry(write_operator(write)).or_default().push(write);
 		}
+		let (local_budget, local_tombstone_limit) = self.shared.local_caps(self.shared.slots.len() as u64);
 		for (operator, group) in grouped {
 			let slot = self.shared.slot_or_create(operator);
 			let _accounting = self.shared.accounting.read();
@@ -546,6 +558,11 @@ impl Resident {
 			self.shared.release_dirty(before.dirty.saturating_sub(after.dirty));
 			self.shared.charge_dirty_bytes(after.dirty_footprint.saturating_sub(before.dirty_footprint));
 			self.shared.release_dirty_bytes(before.dirty_footprint.saturating_sub(after.dirty_footprint));
+			if after.footprint.as_bytes() > local_budget.as_bytes()
+				|| after.tombstones as u64 > local_tombstone_limit
+			{
+				self.shared.operator_over_local_cap.store(true, Ordering::Release);
+			}
 			if flow.is_some() {
 				inner.flow = flow;
 			}
@@ -601,7 +618,10 @@ impl Resident {
 		let mut freed = ByteSize::ZERO;
 		for _ in 0..CLOCK_PASSES {
 			let (mut bytes, mut entries) = self.overshoot();
-			if bytes.as_bytes() == 0 && entries == 0 {
+			if bytes.as_bytes() == 0
+				&& entries == 0
+				&& !self.shared.operator_over_local_cap.load(Ordering::Acquire)
+			{
 				break;
 			}
 			let (count, released) = self.sweep(&mut bytes, &mut entries);
@@ -636,26 +656,55 @@ impl Resident {
 		}
 		let _accounting = self.shared.accounting.read();
 		let start = self.shared.sweep_cursor.fetch_add(1, Ordering::Relaxed) as usize % operators.len();
+		let (local_budget, local_tombstone_limit) = self.shared.local_caps(operators.len() as u64);
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
+		let mut any_over_local_cap = false;
 		for offset in 0..operators.len() {
-			if bytes.as_bytes() == 0 && *tombstones == 0 {
-				break;
-			}
 			let operator = operators[(start + offset) % operators.len()];
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
 			let mut inner = slot.inner.lock();
 			let before_tombstones = inner.buckets.tombstone_count();
-			let (count, released) = inner.buckets.evict_clean(bytes, tombstones);
+			let local_byte_overage =
+				inner.buckets.footprint().as_bytes().saturating_sub(local_budget.as_bytes());
+			let local_tombstone_overage = before_tombstones.saturating_sub(local_tombstone_limit as usize);
+			let global_deficit_remains = bytes.as_bytes() > 0 || *tombstones > 0;
+			let starved = inner.sweeps_since_swept >= SWEEP_STARVATION_LIMIT;
+			if !global_deficit_remains
+				&& local_byte_overage == 0
+				&& local_tombstone_overage == 0
+				&& !starved
+			{
+				inner.sweeps_since_swept += 1;
+				continue;
+			}
+			inner.sweeps_since_swept = 0;
+			let (count, released) = if global_deficit_remains {
+				inner.buckets.evict_clean(bytes, tombstones)
+			} else if local_byte_overage > 0 || local_tombstone_overage > 0 {
+				let mut local_bytes = ByteSize::from_bytes(local_byte_overage);
+				let mut local_tombstones = local_tombstone_overage;
+				inner.buckets.evict_clean(&mut local_bytes, &mut local_tombstones)
+			} else {
+				let mut unlimited_bytes = ByteSize::from_bytes(u64::MAX);
+				let mut unlimited_tombstones = usize::MAX;
+				inner.buckets.evict_clean(&mut unlimited_bytes, &mut unlimited_tombstones)
+			};
 			self.shared.budget.release(released);
 			self.shared.release_entries(count);
 			self.shared
 				.release_tombstones(before_tombstones.saturating_sub(inner.buckets.tombstone_count()));
 			evicted += count;
 			freed = freed.saturating_add(released);
+			if inner.buckets.footprint().as_bytes() > local_budget.as_bytes()
+				|| inner.buckets.tombstone_count() > local_tombstone_limit as usize
+			{
+				any_over_local_cap = true;
+			}
 		}
+		self.shared.operator_over_local_cap.store(any_over_local_cap, Ordering::Release);
 		(evicted, freed)
 	}
 
@@ -1015,7 +1064,10 @@ impl Resident {
 	}
 
 	fn wake_evictor(&self) {
-		if !self.shared.budget.over_budget() && !self.shared.over_tombstone_limit() {
+		if !self.shared.budget.over_budget()
+			&& !self.shared.over_tombstone_limit()
+			&& !self.shared.operator_over_local_cap.load(Ordering::Acquire)
+		{
 			return;
 		}
 		if self.shared.evict_parked.load(Ordering::Acquire) {

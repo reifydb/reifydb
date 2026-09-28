@@ -9,6 +9,7 @@ use arrow_select::filter::FilterPredicate;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	util::{bitmap, kernel},
 	value::{Value, value_type::ValueType},
 };
@@ -47,8 +48,9 @@ pub fn filter_with(array: &BooleanArray, predicate: &FilterPredicate) -> Boolean
 	BooleanArray::new(selected.into_parts().0, nulls)
 }
 
-pub fn reorder(array: &BooleanArray, indices: &[usize]) -> BooleanArray {
-	BooleanArray::new(bitmap::reorder(array.values(), indices), bitmap::reorder_nulls(array.nulls(), indices))
+pub fn reorder(array: &BooleanArray, indices: &[usize]) -> Result<BooleanArray> {
+	kernel::rows_in_range(indices, array.len())?;
+	Ok(BooleanArray::new(bitmap::reorder(array.values(), indices), bitmap::reorder_nulls(array.nulls(), indices)))
 }
 
 pub fn attach_nulls(array: BooleanArray, nulls: Option<NullBuffer>) -> BooleanArray {
@@ -128,12 +130,13 @@ mod tests {
 	}
 
 	#[test]
-	fn filter_and_reorder_clamp_out_of_range_rows() {
-		// A long mask must not read past len, and an out of range index must give false.
+	fn filter_ignores_a_long_mask_and_reorder_refuses_an_out_of_range_row() {
+		// A long mask must not read past len, and an out of range index must fail, never read as false.
 		let array = BooleanArray::from(vec![true, false, true]);
 		let mask = BooleanArray::from(vec![true, false, true, true, true]);
 		assert_eq!(values(&filter(&array, mask.values())), vec![true, true]);
-		assert_eq!(values(&reorder(&array, &[2, 7, 1])), vec![true, false, false]);
+		let error = reorder(&array, &[2, 7, 1]).unwrap_err();
+		assert_eq!(error.diagnostic().message, "row index 7 out of range for a column of 3 rows");
 	}
 
 	#[test]

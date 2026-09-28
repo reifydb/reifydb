@@ -218,7 +218,7 @@ fn execute_arith<Op: ArithOp>(
 	let promoted = promote_pair(a_data.get_type(), b_data.get_type());
 	if promoted == ValueType::Any {
 		if all_rows_none(a_col) && all_rows_none(b_col) {
-			let result = ColumnBuffer::none_typed(ValueType::Any, a_data.len());
+			let result = ColumnBuffer::none(a_data.len());
 			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
 		}
 		return Err(RoutineError::FunctionInvalidArgumentType {

@@ -1,52 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::{BooleanBufferBuilder, bit_chunk_iterator::UnalignedBitChunk};
 use reifydb_value::value::{
 	Value,
-	blob::Blob,
 	container::{
 		any_array::push_any,
-		dictionary_array::push_entry,
+		dictionary_array,
 		digest_array::push_digest,
 		temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 	},
-	date::Date,
-	datetime::DateTime,
-	dictionary::DictionaryEntryId,
-	duration::Duration,
-	identity::IdentityId,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
 };
 
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use crate::value::column::builder::{ColumnBuilder, TypedBuilder, append_fixed};
 
 macro_rules! push_or_promote {
 	(native $self:expr, $val:expr, $col_variant:ident) => {
-		match $self {
-			ColumnBuilder::$col_variant(builder) => builder.append_value($val),
+		match &mut $self.inner {
+			TypedBuilder::$col_variant(builder) => builder.append_value($val),
 			_ => unimplemented!(),
 		}
 	};
 
 	(temporal $self:expr, $val:expr, $col_variant:ident, $to_native:ident) => {
-		match $self {
-			ColumnBuilder::$col_variant(builder) => builder.append_value($to_native($val)),
+		match &mut $self.inner {
+			TypedBuilder::$col_variant(builder) => builder.append_value($to_native($val)),
 			_ => unimplemented!(),
 		}
 	};
 
 	(fixed $self:expr, $val:expr, $col_variant:ident) => {
-		match $self {
-			ColumnBuilder::$col_variant(buffer) => buffer.extend_from_slice($val.as_bytes()),
+		match &mut $self.inner {
+			TypedBuilder::$col_variant(builder) => append_fixed(builder, $val.as_bytes()),
 			_ => unimplemented!(),
 		}
 	};
 
 	(varlen $self:expr, $val:expr, $col_variant:ident) => {
-		match $self {
-			ColumnBuilder::$col_variant {
+		match &mut $self.inner {
+			TypedBuilder::$col_variant {
 				builder,
 				..
 			} => builder.append_value($val),
@@ -55,8 +46,8 @@ macro_rules! push_or_promote {
 	};
 
 	(decimal $self:expr, $val:expr, $col_variant:ident) => {
-		match $self {
-			ColumnBuilder::$col_variant(builder) => builder.push(&$val),
+		match &mut $self.inner {
+			TypedBuilder::$col_variant(builder) => builder.push(&$val),
 			_ => unimplemented!(),
 		}
 	};
@@ -64,90 +55,12 @@ macro_rules! push_or_promote {
 
 impl ColumnBuilder {
 	pub fn push_value(&mut self, value: Value) {
-		if let ColumnBuilder::Option {
-			inner,
-			bitvec,
-		} = self
-		{
-			if matches!(value, Value::None { .. }) {
-				inner.push_default();
-				bitvec.append(false);
-			} else if UnalignedBitChunk::new(bitvec.as_slice(), 0, bitvec.len()).count_ones() == 0 {
-				let len = inner.len();
-				let dictionary_id = inner.dictionary_id();
-
-				let mut new_inner = match &value {
-					Value::Boolean(_) => ColumnBuffer::bool(vec![false; len]),
-					Value::Float4(_) => ColumnBuffer::float4(vec![0.0f32; len]),
-					Value::Float8(_) => ColumnBuffer::float8(vec![0.0f64; len]),
-					Value::Int1(_) => ColumnBuffer::int1(vec![0i8; len]),
-					Value::Int2(_) => ColumnBuffer::int2(vec![0i16; len]),
-					Value::Int4(_) => ColumnBuffer::int4(vec![0i32; len]),
-					Value::Int8(_) => ColumnBuffer::int8(vec![0i64; len]),
-					Value::Int16(_) => ColumnBuffer::int16(vec![0i128; len]),
-					Value::Uint1(_) => ColumnBuffer::uint1(vec![0u8; len]),
-					Value::Uint2(_) => ColumnBuffer::uint2(vec![0u16; len]),
-					Value::Uint4(_) => ColumnBuffer::uint4(vec![0u32; len]),
-					Value::Uint8(_) => ColumnBuffer::uint8(vec![0u64; len]),
-					Value::Uint16(_) => ColumnBuffer::uint16(vec![0u128; len]),
-					Value::Utf8(_) => ColumnBuffer::utf8(vec![String::new(); len]),
-					Value::Date(_) => ColumnBuffer::date(vec![Date::default(); len]),
-					Value::DateTime(_) => ColumnBuffer::datetime(vec![DateTime::default(); len]),
-					Value::Time(_) => ColumnBuffer::time(vec![Time::default(); len]),
-					Value::Duration(_) => ColumnBuffer::duration(vec![Duration::default(); len]),
-					Value::Uuid4(_) => ColumnBuffer::uuid4(vec![Uuid4::default(); len]),
-					Value::Uuid7(_) => ColumnBuffer::uuid7(vec![Uuid7::default(); len]),
-					Value::IdentityId(_) => {
-						ColumnBuffer::identity_id(vec![IdentityId::default(); len])
-					}
-					Value::DictionaryId(_) => {
-						ColumnBuffer::dictionary_id(vec![DictionaryEntryId::default(); len])
-					}
-					Value::Blob(_) => ColumnBuffer::blob(vec![Blob::default(); len]),
-					Value::Decimal(_) => {
-						let declared = match (&**inner, &value) {
-							(ColumnBuilder::Decimal(_), Value::Decimal(_)) => {
-								inner.get_type()
-							}
-							_ => value.get_type(),
-						};
-						ColumnBuffer::none_typed(declared, len).split_nulls().0
-					}
-					Value::Any(_) => ColumnBuffer::any(vec![Value::none(); len]),
-					Value::Record(_) => ColumnBuffer::any(vec![Value::none(); len]),
-					Value::Tuple(_) => ColumnBuffer::any(vec![Value::none(); len]),
-					Value::List(_) => ColumnBuffer::any(vec![Value::none(); len]),
-					Value::Type(_) => ColumnBuffer::any(vec![Value::none(); len]),
-					Value::Digest(_) => {
-						ColumnBuffer::none_typed(value.get_type(), len).split_nulls().0
-					}
-					_ => unreachable!(),
-				}
-				.into_builder();
-				if let Some(id) = dictionary_id {
-					new_inner.set_dictionary_id(id);
-				}
-				new_inner.push_value(value);
-				if len > 0 {
-					let mut new_bitvec = BooleanBufferBuilder::new(len + 1);
-					new_bitvec.append_n(len, false);
-					new_bitvec.append(true);
-					*self = ColumnBuilder::Option {
-						inner: Box::new(new_inner),
-						bitvec: new_bitvec,
-					};
-				} else {
-					*self = new_inner;
-				}
-			} else {
-				inner.push_value(value);
-				bitvec.append(true);
-			}
-			return;
+		if matches!(self.inner, TypedBuilder::None(_)) && !matches!(value, Value::None { .. }) {
+			panic!("the untyped none column can not take a value of type {:?}", value.get_type());
 		}
 		match value {
-			Value::Boolean(v) => match self {
-				ColumnBuilder::Bool(builder) => builder.append(v),
+			Value::Boolean(v) => match &mut self.inner {
+				TypedBuilder::Bool(builder) => builder.append_value(v),
 				_ => unimplemented!(),
 			},
 			Value::Float4(v) => push_or_promote!(native self, v.value(), Float4),
@@ -170,11 +83,11 @@ impl ColumnBuilder {
 			Value::Uuid4(v) => push_or_promote!(fixed self, v, Uuid4),
 			Value::Uuid7(v) => push_or_promote!(fixed self, v, Uuid7),
 			Value::IdentityId(v) => push_or_promote!(fixed self, v, IdentityId),
-			Value::DictionaryId(v) => match self {
-				ColumnBuilder::DictionaryId {
-					buffer,
+			Value::DictionaryId(v) => match &mut self.inner {
+				TypedBuilder::DictionaryId {
+					builder,
 					..
-				} => push_entry(buffer, v),
+				} => append_fixed(builder, &dictionary_array::encode(v)),
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => push_or_promote!(varlen self, v.as_bytes(), Blob),
@@ -186,15 +99,15 @@ impl ColumnBuilder {
 			Value::List(v) => self.push_value(Value::Any(Box::new(Value::List(v)))),
 			Value::Record(v) => self.push_value(Value::Any(Box::new(Value::Record(v)))),
 			Value::Tuple(v) => self.push_value(Value::Any(Box::new(Value::Tuple(v)))),
-			Value::Any(v) => match self {
-				ColumnBuilder::Any {
+			Value::Any(v) => match &mut self.inner {
+				TypedBuilder::Any {
 					builder,
 					..
 				} => push_any(builder, &v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),
 			},
-			Value::Digest(digest) => match self {
-				ColumnBuilder::Digest {
+			Value::Digest(digest) => match &mut self.inner {
+				TypedBuilder::Digest {
 					builder,
 					inner,
 					accuracy,
@@ -242,7 +155,7 @@ pub mod tests {
 		value_type::ValueType,
 	};
 
-	use crate::value::column::ColumnBuffer;
+	use crate::value::column::{ColumnBuffer, builder::ColumnBuilder};
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -266,7 +179,7 @@ pub mod tests {
 	fn test_undefined_bool() {
 		let mut col = ColumnBuffer::bool(vec![true]).into_builder();
 		col.push_value(Value::none());
-		// Pushing none promotes the bare column to Option-wrapped.
+		// Pushing none must add a null row and make the bare column optional, never a false.
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
@@ -308,7 +221,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_float4() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Float4, 1).into_builder();
 		col.push_value(Value::Float4(OrderedF32::try_from(3.14).unwrap()));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -339,7 +252,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_float8() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Float8, 1).into_builder();
 		col.push_value(Value::Float8(OrderedF64::try_from(2.718).unwrap()));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -370,7 +283,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int1() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Int1, 1).into_builder();
 		col.push_value(Value::Int1(5));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -402,7 +315,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int2() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Int2, 1).into_builder();
 		col.push_value(Value::Int2(10));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -434,7 +347,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int4() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Int4, 1).into_builder();
 		col.push_value(Value::Int4(20));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -466,7 +379,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int8() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Int8, 1).into_builder();
 		col.push_value(Value::Int8(30));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -498,7 +411,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int16() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Int16, 1).into_builder();
 		col.push_value(Value::Int16(40));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -530,7 +443,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint1() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uint1, 1).into_builder();
 		col.push_value(Value::Uint1(1));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -562,7 +475,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint2() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uint2, 1).into_builder();
 		col.push_value(Value::Uint2(2));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -594,7 +507,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint4() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uint4, 1).into_builder();
 		col.push_value(Value::Uint4(3));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -626,7 +539,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint8() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uint8, 1).into_builder();
 		col.push_value(Value::Uint8(4));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -658,7 +571,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint16() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uint16, 1).into_builder();
 		col.push_value(Value::Uint16(5));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -695,7 +608,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_utf8() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Utf8, 1).into_builder();
 		col.push_value(Value::Utf8("ok".to_string()));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -741,7 +654,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_date() {
 		let date = Date::from_ymd(2023, 6, 15).unwrap();
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Date, 1).into_builder();
 		col.push_value(Value::Date(date));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -777,7 +690,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_datetime() {
 		let dt = DateTime::from_epoch_secs(1672531200).unwrap();
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::DateTime, 1).into_builder();
 		col.push_value(Value::DateTime(dt));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -813,7 +726,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_time() {
 		let time = Time::from_hms(15, 20, 10).unwrap();
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Time, 1).into_builder();
 		col.push_value(Value::Time(time));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -849,7 +762,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_duration() {
 		let duration = Duration::from_minutes(90).unwrap();
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Duration, 1).into_builder();
 		col.push_value(Value::Duration(duration));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -889,7 +802,7 @@ pub mod tests {
 	fn test_push_value_to_none_identity_id() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let id = IdentityId::generate(&clock, &rng);
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::IdentityId, 1).into_builder();
 		col.push_value(Value::IdentityId(id));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -925,7 +838,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_uuid4() {
 		let uuid = Uuid4::generate();
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uuid4, 1).into_builder();
 		col.push_value(Value::Uuid4(uuid));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -965,7 +878,7 @@ pub mod tests {
 	fn test_push_value_to_none_uuid7() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let uuid = Uuid7::generate(&clock, &rng);
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::Uuid7, 1).into_builder();
 		col.push_value(Value::Uuid7(uuid));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -1005,7 +918,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_dictionary_id() {
 		let e = DictionaryEntryId::U4(42);
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuffer::none_typed(ValueType::DictionaryId, 1).into_builder();
 		col.push_value(Value::DictionaryId(e));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -1019,7 +932,8 @@ pub mod tests {
 		// A list arriving after only none rows must widen the column like a record does, never hit an
 		// unreachable arm.
 		let list = Value::List(vec![Value::Int4(1), Value::Int4(2)]);
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuilder::with_capacity(ValueType::Option(Box::new(ValueType::Any)), 2);
+		col.push_none();
 		col.push_value(list.clone());
 		let col = col.finish();
 		assert_eq!(col.len(), 2);
@@ -1032,7 +946,8 @@ pub mod tests {
 	fn test_push_value_to_none_type() {
 		// A type value arriving after only none rows must widen the column like a record does, never hit an
 		// unreachable arm.
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1).into_builder();
+		let mut col = ColumnBuilder::with_capacity(ValueType::Option(Box::new(ValueType::Any)), 2);
+		col.push_none();
 		col.push_value(Value::Type(ValueType::Int4));
 		let col = col.finish();
 		assert_eq!(col.len(), 2);

@@ -102,7 +102,7 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::extract")]
-	fn extract(all_columns: &Columns, kept_indices: &[usize]) -> Columns {
+	fn extract(all_columns: &Columns, kept_indices: &[usize]) -> Result<Columns> {
 		all_columns.extract_by_indices(kept_indices)
 	}
 }
@@ -135,7 +135,7 @@ impl QueryNode for DistinctNode {
 		let result = if kept_indices.is_empty() {
 			all_columns
 		} else {
-			Self::extract(&all_columns, &kept_indices)
+			Self::extract(&all_columns, &kept_indices)?
 		};
 		self.headers = Some(ColumnHeaders::from_columns(&result));
 

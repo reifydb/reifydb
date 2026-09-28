@@ -16,7 +16,7 @@ use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::value_
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, JoinSlot, NO_MATCH, ensure_join_keyable, join_key_types, load_and_merge_all, materialize_join,
+	JoinContext, JoinSlot, ensure_join_keyable, join_key_types, load_and_merge_all, materialize_join,
 	resolve_column_names,
 };
 use crate::{
@@ -212,7 +212,7 @@ impl NaturalJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::probe")]
-	fn probe(&self, left_columns: &Columns, probe_ctx: &ProbeContext) -> Result<(Vec<usize>, Vec<usize>)> {
+	fn probe(&self, left_columns: &Columns, probe_ctx: &ProbeContext) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
 		let ProbeContext {
 			converter,
 			hash_table,
@@ -227,7 +227,7 @@ impl NaturalJoinNode {
 			.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
 
 		let mut left_picks: Vec<usize> = Vec::new();
-		let mut right_picks: Vec<usize> = Vec::new();
+		let mut right_picks: Vec<Option<usize>> = Vec::new();
 
 		for i in 0..*left_rows {
 			let mut matched = false;
@@ -241,14 +241,14 @@ impl NaturalJoinNode {
 			if let Some(indices) = candidates {
 				for &j in indices {
 					left_picks.push(i);
-					right_picks.push(j);
+					right_picks.push(Some(j));
 					matched = true;
 				}
 			}
 
 			if !matched && matches!(self.join_type, JoinType::Left) {
 				left_picks.push(i);
-				right_picks.push(NO_MATCH);
+				right_picks.push(None);
 			}
 		}
 

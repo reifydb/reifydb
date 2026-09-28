@@ -175,6 +175,7 @@ fn lease_due_items(
 	now: DateTime,
 ) -> Result<Vec<Lease>, RoutineError> {
 	let partitions = queue.partitions();
+	#[allow(clippy::disallowed_methods)]
 	let start = (Partition::of(&[Value::Utf8(worker.to_string())]).0 % u128::from(partitions)) as u16;
 
 	let mut leases = Vec::new();

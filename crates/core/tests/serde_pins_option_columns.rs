@@ -278,17 +278,17 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "option_tuple",
-		column_postcard: "1917021d020602090179001800010102",
-		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-		frame_postcard: "1917021d020602090179001800010102",
-		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		column_postcard: "191702011d0206020901790000010102",
+		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		frame_postcard: "191702011d0206020901790000010102",
+		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 	},
 	Pin {
 		name: "option_typed_list",
-		column_postcard: "1917021b02060206040018011a05010102",
-		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-		frame_postcard: "1917021b02060206040018011a05010102",
-		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		column_postcard: "191702011b020602060400011a05010102",
+		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},null],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		frame_postcard: "191702011b020602060400011a05010102",
+		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},null],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 	},
 	Pin {
 		name: "option_dictionary_id_with_dictionary",
@@ -327,10 +327,10 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "sliced_option_any_at_offset_3",
-		column_postcard: "19170300180101070c00010603",
-		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Any\"}},{\"Boolean\":true},{\"Int8\":6}],\"declared_type\":null}},\"bitvec\":{\"bits\":[6],\"len\":3}}}",
-		frame_postcard: "19170300180101070c00010603",
-		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Any\"}},{\"Boolean\":true},{\"Int8\":6}],\"declared_type\":null}},\"bitvec\":{\"bits\":[6],\"len\":3}}}",
+		column_postcard: "1917030001010101070c00010603",
+		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null,{\"Boolean\":true},{\"Int8\":6}],\"declared_type\":null}},\"bitvec\":{\"bits\":[6],\"len\":3}}}",
+		frame_postcard: "1917030001010101070c00010603",
+		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null,{\"Boolean\":true},{\"Int8\":6}],\"declared_type\":null}},\"bitvec\":{\"bits\":[6],\"len\":3}}}",
 	},
 	Pin {
 		name: "placeholder_int4",
@@ -368,13 +368,6 @@ const PINS: &[Pin] = &[
 		frame_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[4,99,1]}},\"bitvec\":{\"bits\":[5],\"len\":3}}}",
 	},
 	Pin {
-		name: "placeholder_int4_reorder_out_of_range",
-		column_postcard: "1905030200c601010103",
-		column_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[1,0,99]}},\"bitvec\":{\"bits\":[1],\"len\":3}}}",
-		frame_postcard: "1905030200c601010103",
-		frame_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[1,0,99]}},\"bitvec\":{\"bits\":[1],\"len\":3}}}",
-	},
-	Pin {
 		name: "placeholder_int4_extend_by_bare",
 		column_postcard: "19050602c60106080a0c013d06",
 		column_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[1,99,3,4,5,6]}},\"bitvec\":{\"bits\":[61],\"len\":6}}}",
@@ -389,25 +382,18 @@ const PINS: &[Pin] = &[
 		frame_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[5,6,1,99,3,4]}},\"bitvec\":{\"bits\":[55],\"len\":6}}}",
 	},
 	Pin {
-		name: "all_none_utf8_extend_by_int4",
+		name: "untyped_none_extend_by_int4",
 		column_postcard: "19050400000a0c010c04",
 		column_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[0,0,5,6]}},\"bitvec\":{\"bits\":[12],\"len\":4}}}",
 		frame_postcard: "19050400000a0c010c04",
 		frame_json: "{\"Option\":{\"inner\":{\"Int4\":{\"data\":[0,0,5,6]}},\"bitvec\":{\"bits\":[12],\"len\":4}}}",
 	},
 	Pin {
-		name: "option_digest_defined_bit_over_empty_slot",
-		column_postcard: "191a0201100103904e000000018c01010200012e010002904e010302",
-		column_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[3],\"len\":2}}}",
-		frame_postcard: "191a0201100103904e000000018c01010200012e010002904e010302",
-		frame_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[3],\"len\":2}}}",
-	},
-	Pin {
-		name: "option_digest_cleared_bit_over_real_digest",
-		column_postcard: "191a0201100103904e000000018c01010200012e01010c0103904e0000000001d0010102904e010102",
-		column_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],[1,3,144,78,0,0,0,0,1,208,1,1]]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-		frame_postcard: "191a0201100103904e000000018c01010200012e01010c0103904e0000000001d0010102904e010102",
-		frame_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],[1,3,144,78,0,0,0,0,1,208,1,1]]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		name: "option_digest_null_slot",
+		column_postcard: "191a0201100103904e000000018c01010200012e010002904e010102",
+		column_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+		frame_postcard: "191a0201100103904e000000018c01010200012e010002904e010102",
+		frame_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 	},
 ];
 
@@ -779,17 +765,14 @@ fn sliced_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		),
 		(
 			"sliced_option_any_at_offset_3",
-			ColumnBuffer::any_with_bitvec(
-				[
-					Value::Int4(1),
-					Value::none(),
-					Value::Utf8("c".to_string()),
-					Value::none(),
-					Value::Boolean(true),
-					Value::Int8(6),
-				],
-				bits(&[true, false, true, false, true, true]),
-			)
+			ColumnBuffer::any_optional([
+				Some(Value::Int4(1)),
+				None,
+				Some(Value::Utf8("c".to_string())),
+				None,
+				Some(Value::Boolean(true)),
+				Some(Value::Int8(6)),
+			])
 			.slice(3, 6),
 		),
 	]
@@ -803,12 +786,7 @@ fn placeholder_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 	};
 	let reordered = {
 		let mut buffer = placeholder_int4();
-		buffer.reorder(&[3, 1, 0]);
-		buffer
-	};
-	let reordered_out_of_range = {
-		let mut buffer = placeholder_int4();
-		buffer.reorder(&[0, 9, 1]);
+		buffer.reorder(&[3, 1, 0]).unwrap();
 		buffer
 	};
 	let extended_by_bare = {
@@ -821,8 +799,8 @@ fn placeholder_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		buffer.extend(placeholder_int4()).unwrap();
 		buffer
 	};
-	let all_none_extended = {
-		let mut buffer = ColumnBuffer::none_typed(ValueType::Utf8, 2);
+	let untyped_none_extended = {
+		let mut buffer = ColumnBuffer::none(2);
 		buffer.extend(ColumnBuffer::int4([5, 6])).unwrap();
 		buffer
 	};
@@ -832,31 +810,23 @@ fn placeholder_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 		("placeholder_int4_take", placeholder_int4().take(3)),
 		("placeholder_int4_filter", filtered),
 		("placeholder_int4_reorder", reordered),
-		("placeholder_int4_reorder_out_of_range", reordered_out_of_range),
 		("placeholder_int4_extend_by_bare", extended_by_bare),
 		("bare_int4_extend_by_placeholder", bare_extended),
-		("all_none_utf8_extend_by_int4", all_none_extended),
+		("untyped_none_extend_by_int4", untyped_none_extended),
 	]
 }
 
 fn digest_fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 	let first = digest_of(&[1.0, 2.5, -4.0]);
-	let second = digest_of(&[8.0]);
 	let digest_column = |slots: [Option<&Digest>; 2]| ColumnBuffer::Digest {
 		container: digest_array(slots),
 		inner: ValueType::Float8,
 		accuracy: 10_000,
 	};
-	vec![
-		(
-			"option_digest_defined_bit_over_empty_slot",
-			digest_column([Some(&first), None]).with_nulls(NullBuffer::new(bits(&[true, true]))),
-		),
-		(
-			"option_digest_cleared_bit_over_real_digest",
-			digest_column([Some(&first), Some(&second)]).with_nulls(NullBuffer::new(bits(&[true, false]))),
-		),
-	]
+	vec![(
+		"option_digest_null_slot",
+		digest_column([Some(&first), None]).with_nulls(NullBuffer::new(bits(&[true, true]))),
+	)]
 }
 
 fn nested_frame_fixtures() -> Vec<(&'static str, FrameColumnData)> {
@@ -934,11 +904,13 @@ fn sliced_option_columns_repack_the_bitmap_from_the_slice_start() {
 fn values_under_none_rows_survive_serde_and_row_operations() {
 	// A value stored under a none row must be written as stored, never replaced by a default.
 	assert_columns_pinned(placeholder_fixtures());
+	let error = placeholder_int4().reorder(&[0, 9, 1]).unwrap_err();
+	assert_eq!(error.diagnostic().message, "row index 9 out of range for a column of 4 rows");
 }
 
 #[test]
 fn option_digest_bits_and_slots_are_pinned_independently() {
-	// The Option bit and the Digest empty slot are separate nones and must both be written exactly.
+	// A Digest none must be the null bit, never an empty slot, otherwise the wire carries two kinds of none.
 	assert_columns_pinned(digest_fixtures());
 }
 

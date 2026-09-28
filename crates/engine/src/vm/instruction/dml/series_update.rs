@@ -32,7 +32,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	partition::PartitionError,
+	partition::{PartitionError, partition_of, partition_values},
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -57,7 +57,6 @@ use super::{
 use crate::{
 	Result,
 	error::EngineError,
-	partition::partition_values,
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
@@ -319,13 +318,6 @@ fn build_series_updates_to_apply(
 
 		let key: TaggedKey = if partitioned {
 			let old_partition = columns.partitions()[row_idx];
-			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
-			if new_partition != old_partition {
-				return Err(PartitionError::ImmutablePartitionColumn {
-					object: ObjectId::series(series.id),
-				}
-				.into());
-			}
 			PartitionedSeriesRowKey::new(
 				StorageId::series(series.id),
 				old_partition,
@@ -399,20 +391,7 @@ fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedB
 			}
 		})
 		.collect();
-	Partition::of(&partition_values(shape, bytes, &indices))
-}
-
-#[inline]
-fn series_partition_of_columns(series: &Series, columns: &Columns, row_idx: usize) -> Result<Partition> {
-	let mut part_values = Vec::with_capacity(series.partition_by.len());
-	for name in &series.partition_by {
-		let idx =
-			columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
-				internal_error!("partition column {} missing from series update input", name)
-			})?;
-		part_values.push(columns[idx].get_value(row_idx));
-	}
-	Ok(Partition::of(&part_values))
+	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
 }
 
 #[inline]

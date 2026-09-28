@@ -69,6 +69,10 @@ pub trait SyncHooks: Send + Sync {
 		Outcome::Land
 	}
 
+	fn on_find(&self, _dictionary: DictionaryId) -> Outcome {
+		Outcome::Land
+	}
+
 	fn on_resolve(&self, _dictionary: DictionaryId) -> Outcome {
 		Outcome::Land
 	}
@@ -203,6 +207,13 @@ impl<T: Intern> Intern for TestingTxn<T> {
 		self.call();
 		match self.hooks.on_intern(dictionary.id) {
 			Outcome::Land => self.txn.intern(dictionary, value),
+			Outcome::Err(error) => Err(error),
+		}
+	}
+
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		match self.hooks.on_find(dictionary.id) {
+			Outcome::Land => self.txn.find(dictionary, value),
 			Outcome::Err(error) => Err(error),
 		}
 	}

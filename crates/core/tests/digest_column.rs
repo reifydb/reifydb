@@ -89,14 +89,14 @@ fn take_slice_gather_filter_and_reorder_keep_digests_equal() {
 
 	assert_eq!(values(&column.take(2)), all[..2].to_vec());
 	assert_eq!(values(&column.slice(1, 4)), all[1..4].to_vec());
-	assert_eq!(values(&column.gather(&[3, 0, 1])), vec![all[3].clone(), all[0].clone(), all[1].clone()]);
+	assert_eq!(values(&column.gather(&[3, 0, 1]).unwrap()), vec![all[3].clone(), all[0].clone(), all[1].clone()]);
 
 	let mut filtered = column.clone();
 	filtered.filter(&BooleanBuffer::from(vec![true, true, false, true])).unwrap();
 	assert_eq!(values(&filtered), vec![all[0].clone(), all[1].clone(), all[3].clone()]);
 
 	let mut reordered = column.clone();
-	reordered.reorder(&[2, 3, 1, 0]);
+	reordered.reorder(&[2, 3, 1, 0]).unwrap();
 	assert_eq!(values(&reordered), vec![all[2].clone(), all[3].clone(), all[1].clone(), all[0].clone()]);
 	assert_eq!(reordered.get_type(), column.get_type(), "transforms must keep the digest params");
 }

@@ -253,6 +253,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn is_shut_down(&self) -> bool {
+		match self {
+			Self::Sqlite(s) => s.is_shut_down(),
+		}
+	}
+
 	pub fn install_floor(&self) -> Result<CommitVersion> {
 		match self {
 			Self::Sqlite(s) => s.install_floor(),
@@ -292,6 +298,10 @@ impl MultiPersistentTier {
 	}
 
 	pub fn persist_sweep(&self, _batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+		match *self {}
+	}
+
+	pub fn is_shut_down(&self) -> bool {
 		match *self {}
 	}
 
@@ -358,12 +368,6 @@ impl TierStorage for MultiPersistentTier {
 			Self::Sqlite(s) => s.ensure_table(table),
 		}
 	}
-
-	fn clear_table(&self, table: EntryKind) -> Result<()> {
-		match self {
-			Self::Sqlite(s) => s.clear_table(table),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -401,10 +405,6 @@ impl TierStorage for MultiPersistentTier {
 	}
 
 	fn ensure_table(&self, _table: EntryKind) -> Result<()> {
-		match *self {}
-	}
-
-	fn clear_table(&self, _table: EntryKind) -> Result<()> {
 		match *self {}
 	}
 }

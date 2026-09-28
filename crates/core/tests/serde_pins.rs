@@ -199,16 +199,16 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "any",
-		column_postcard: "1703060e090178001800",
-		column_json: "{\"Any\":{\"data\":[{\"Int4\":7},{\"Utf8\":\"x\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}}",
-		frame_postcard: "1703060e090178001800",
-		frame_json: "{\"Any\":{\"data\":[{\"Int4\":7},{\"Utf8\":\"x\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}}",
+		column_postcard: "19170301060e010901780000010303",
+		column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Int4\":7},{\"Utf8\":\"x\"},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[3],\"len\":3}}}",
+		frame_postcard: "19170301060e010901780000010303",
+		frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Int4\":7},{\"Utf8\":\"x\"},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[3],\"len\":3}}}",
 	},
 	Pin {
 		name: "any_typed_list",
-		column_postcard: "17021b02060206041b00011a05",
+		column_postcard: "1702011b0206020604011b00011a05",
 		column_json: "{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}}",
-		frame_postcard: "17021b02060206041b00011a05",
+		frame_postcard: "1702011b0206020604011b00011a05",
 		frame_json: "{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"Int4\":2}]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}}",
 	},
 	Pin {
@@ -369,7 +369,7 @@ fn fixtures() -> Vec<(&'static str, ColumnBuffer)> {
 					.map(|s| s.parse::<Decimal>().unwrap()),
 			),
 		),
-		("any", ColumnBuffer::any([Value::Int4(7), Value::Utf8("x".to_string()), Value::none()])),
+		("any", ColumnBuffer::any_optional([Some(Value::Int4(7)), Some(Value::Utf8("x".to_string())), None])),
 		(
 			"any_typed_list",
 			ColumnBuffer::any_typed(
@@ -614,7 +614,7 @@ fn frame_serde_matches_pins_and_decodes() {
 fn untyped_any_column_round_trips_through_postcard() {
 	// Skipping an absent declared type drops a field postcard cannot detect, so the reader runs past the column.
 	let columns = Columns::new(vec![
-		ColumnWithName::new("value", ColumnBuffer::any([Value::Int4(1), Value::none()])),
+		ColumnWithName::new("value", ColumnBuffer::any_optional([Some(Value::Int4(1)), None])),
 		ColumnWithName::new("after", ColumnBuffer::int4([9, 10])),
 	]);
 	let decoded: Columns = from_bytes(&to_stdvec(&columns).unwrap()).unwrap();

@@ -430,6 +430,14 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 	)
 }
 
+pub fn flow_sink_dictionary_entry_not_found(dictionary_id: String, column: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_084",
+		format!("dictionary {} has no entry for a value removed from view column '{}'", dictionary_id, column),
+		"A view sink removed a row whose dictionary-encoded value was never interned, so the stored row cannot exist.",
+	)
+}
+
 pub fn flow_sink_not_a_source_family(family: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_047",

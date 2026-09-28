@@ -84,16 +84,16 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 				Diff::Insert {
 					post,
 					..
-				} => plan.apply_insert(state, post),
+				} => plan.apply_insert(state, post)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => plan.apply_update(state, pre, post),
+				} => plan.apply_update(state, pre, post)?,
 				Diff::Remove {
 					pre,
 					..
-				} => plan.apply_remove(state, pre),
+				} => plan.apply_remove(state, pre)?,
 			}
 		}
 
@@ -102,7 +102,7 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) {
+	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) -> Result<()> {
 		let row_count = post.row_count();
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
@@ -121,12 +121,13 @@ impl EphemeralSinkPlan {
 		if new_indices.len() == row_count {
 			self.stage(post, DiffType::Insert);
 		} else if !new_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&new_indices);
+			let sub_post = post.extract_by_indices(&new_indices)?;
 			self.stage(&sub_post, DiffType::Insert);
 		}
+		Ok(())
 	}
 
-	fn apply_update(&self, state: &mut DeliveredState, pre: &Columns, post: &Columns) {
+	fn apply_update(&self, state: &mut DeliveredState, pre: &Columns, post: &Columns) -> Result<()> {
 		let row_count = post.row_count();
 		let mut update_indices: Vec<usize> = Vec::new();
 		let mut insert_indices: Vec<usize> = Vec::new();
@@ -161,16 +162,17 @@ impl EphemeralSinkPlan {
 			);
 		}
 		if !update_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&update_indices);
+			let sub_post = post.extract_by_indices(&update_indices)?;
 			self.stage(&sub_post, DiffType::Update);
 		}
 		if !insert_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&insert_indices);
+			let sub_post = post.extract_by_indices(&insert_indices)?;
 			self.stage(&sub_post, DiffType::Insert);
 		}
+		Ok(())
 	}
 
-	fn apply_remove(&self, state: &mut DeliveredState, pre: &Columns) {
+	fn apply_remove(&self, state: &mut DeliveredState, pre: &Columns) -> Result<()> {
 		let row_count = pre.row_count();
 		let mut remove_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
@@ -180,8 +182,9 @@ impl EphemeralSinkPlan {
 			}
 		}
 		if !remove_indices.is_empty() {
-			let sub_pre = pre.extract_by_indices(&remove_indices);
+			let sub_pre = pre.extract_by_indices(&remove_indices)?;
 			self.stage(&sub_pre, DiffType::Remove);
 		}
+		Ok(())
 	}
 }

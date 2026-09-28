@@ -194,7 +194,7 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 					apply_insert(
 						&mut states,
 						(origin.clone(), post.row_numbers()[i]),
-						post.extract_row(i),
+						post.extract_row(i)?,
 					);
 				}
 			}
@@ -218,8 +218,8 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 					apply_update(
 						&mut states,
 						(origin.clone(), post.row_numbers()[i]),
-						pre.extract_row(i),
-						post.extract_row(i),
+						pre.extract_row(i)?,
+						post.extract_row(i)?,
 					);
 				}
 			}
@@ -231,7 +231,7 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 					apply_remove(
 						&mut states,
 						(origin.clone(), pre.row_numbers()[i]),
-						pre.extract_row(i),
+						pre.extract_row(i)?,
 					);
 				}
 			}

@@ -109,12 +109,12 @@ impl FilterOperator {
 	}
 
 	#[instrument(name = "flow::operator::filter::passing", level = "trace", skip_all, fields(rows = columns.row_count()))]
-	fn filter_passing(&self, columns: &Columns, mask: &[bool]) -> Columns {
+	fn filter_passing(&self, columns: &Columns, mask: &[bool]) -> Result<Columns> {
 		let passing_indices: Vec<usize> =
 			mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
 
 		if passing_indices.is_empty() {
-			Columns::empty()
+			Ok(Columns::empty())
 		} else {
 			columns.extract_by_indices(&passing_indices)
 		}
@@ -160,7 +160,7 @@ impl FilterOperator {
 	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_filter_insert(&self, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(post)?;
-		let passing = self.filter_passing(post, &mask);
+		let passing = self.filter_passing(post, &mask)?;
 		if !passing.is_empty() {
 			result.push(Diff::insert(passing));
 		}
@@ -171,7 +171,7 @@ impl FilterOperator {
 	#[instrument(name = "flow::operator::filter::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_filter_remove(&self, pre: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(pre)?;
-		let passing = self.filter_passing(pre, &mask);
+		let passing = self.filter_passing(pre, &mask)?;
 		if !passing.is_empty() {
 			result.push(Diff::remove(passing));
 		}
@@ -200,15 +200,15 @@ impl FilterOperator {
 
 		if !updated_idx.is_empty() {
 			result.push(Diff::update(
-				pre.extract_by_indices(&updated_idx),
-				post.extract_by_indices(&updated_idx),
+				pre.extract_by_indices(&updated_idx)?,
+				post.extract_by_indices(&updated_idx)?,
 			));
 		}
 		if !inserted_idx.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&inserted_idx)));
+			result.push(Diff::insert(post.extract_by_indices(&inserted_idx)?));
 		}
 		if !removed_idx.is_empty() {
-			result.push(Diff::remove(pre.extract_by_indices(&removed_idx)));
+			result.push(Diff::remove(pre.extract_by_indices(&removed_idx)?));
 		}
 		Ok(())
 	}

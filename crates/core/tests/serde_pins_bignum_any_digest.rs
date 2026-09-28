@@ -224,15 +224,15 @@ fn option_decimal_with_none_row_keeps_scale() {
 
 #[test]
 fn option_any_with_none_row_is_pinned() {
-	// The none row must stay an untyped none placeholder with a cleared bit, otherwise optional Any columns drift.
-	let buffer = ColumnBuffer::any_with_bitvec([Value::Utf8("a".to_string()), Value::none()], vec![true, false]);
+	// The none row is a null row with no encoded value, otherwise optional Any columns drift.
+	let buffer = ColumnBuffer::any_optional([Some(Value::Utf8("a".to_string())), None]);
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "191702090161001800010102",
-			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
-			frame_postcard: "191702090161001800010102",
-			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},{\"None\":{\"inner\":\"Any\"}}],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+			column_postcard: "191702010901610000010102",
+			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+			frame_postcard: "191702010901610000010102",
+			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Utf8\":\"a\"},null],\"declared_type\":null}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 		},
 	);
 }
@@ -256,15 +256,19 @@ fn sliced_decimal_keeps_the_column_scale() {
 #[test]
 fn sliced_any_is_pinned() {
 	// A sliced Any must serialize exactly like a fresh column, otherwise the wire format depends on slicing.
-	let buffer =
-		ColumnBuffer::any([Value::Int4(1), Value::Utf8("b".to_string()), decimal_value("1.50"), Value::none()])
-			.slice(1, 3);
+	let buffer = ColumnBuffer::any([
+		Value::Int4(1),
+		Value::Utf8("b".to_string()),
+		decimal_value("1.50"),
+		Value::Int4(4),
+	])
+	.slice(1, 3);
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "17020901621704312e353000",
+			column_postcard: "170201090162011704312e353000",
 			column_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
-			frame_postcard: "17020901621704312e353000",
+			frame_postcard: "170201090162011704312e353000",
 			frame_json: "{\"Any\":{\"data\":[{\"Utf8\":\"b\"},{\"Decimal\":\"1.50\"}],\"declared_type\":null}}",
 		},
 	);
@@ -291,7 +295,7 @@ fn sliced_digest_is_pinned() {
 
 #[test]
 fn digest_with_none_slot_is_pinned() {
-	// A plain Digest none slot must stay a none entry, never an empty digest, otherwise aggregates count it.
+	// A plain Digest none must be a null row, never an empty digest, otherwise aggregates count it.
 	let digest = digest_of(&[1.0, 2.5, -4.0]);
 	let buffer = ColumnBuffer::Digest {
 		container: digest_array([Some(&digest), None]),
@@ -301,10 +305,10 @@ fn digest_with_none_slot_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "1a0201100103904e000000018c01010200012e010002904e",
-			column_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}}",
-			frame_postcard: "1a0201100103904e000000018c01010200012e010002904e",
-			frame_json: "{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}}",
+			column_postcard: "191a0201100103904e000000018c01010200012e010002904e010102",
+			column_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
+			frame_postcard: "191a0201100103904e000000018c01010200012e010002904e010102",
+			frame_json: "{\"Option\":{\"inner\":{\"Digest\":{\"container\":{\"data\":[[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1],null]},\"inner\":\"Float8\",\"accuracy\":10000}},\"bitvec\":{\"bits\":[1],\"len\":2}}}",
 		},
 	);
 }
@@ -325,9 +329,9 @@ fn record_typed_any_with_placeholder_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "17021c020161060201620901781c00011b02016105016208",
+			column_postcard: "1702011c02016106020162090178011c00011b02016105016208",
 			column_json: "{\"Any\":{\"data\":[{\"Record\":[[\"a\",{\"Int4\":1}],[\"b\",{\"Utf8\":\"x\"}]]},{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"],[\"b\",\"Utf8\"]]}}}",
-			frame_postcard: "17021c020161060201620901781c00011b02016105016208",
+			frame_postcard: "1702011c02016106020162090178011c00011b02016105016208",
 			frame_json: "{\"Any\":{\"data\":[{\"Record\":[[\"a\",{\"Int4\":1}],[\"b\",{\"Utf8\":\"x\"}]]},{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"],[\"b\",\"Utf8\"]]}}}",
 		},
 	);
@@ -341,9 +345,9 @@ fn tuple_column_is_pinned() {
 	assert_pinned(
 		builder.finish(),
 		&Pin {
-			column_postcard: "17011d02060209017900",
+			column_postcard: "1701011d02060209017900",
 			column_json: "{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]}],\"declared_type\":null}}",
-			frame_postcard: "17011d02060209017900",
+			frame_postcard: "1701011d02060209017900",
 			frame_json: "{\"Any\":{\"data\":[{\"Tuple\":[{\"Int4\":1},{\"Utf8\":\"y\"}]}],\"declared_type\":null}}",
 		},
 	);
@@ -353,7 +357,6 @@ fn tuple_column_is_pinned() {
 fn any_with_nested_and_typed_none_values_is_pinned() {
 	// Typed none values and nested rows must keep their inner types and scales, never collapse to untyped none.
 	let buffer = ColumnBuffer::any([
-		Value::none_of(ValueType::Int4),
 		Value::List(vec![Value::Int4(1), Value::none_of(ValueType::Int4)]),
 		decimal_value("1.50"),
 		Value::Type(ValueType::Int4),
@@ -362,38 +365,38 @@ fn any_with_nested_and_typed_none_values_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "170500051b02060200051704312e35301a051e100103904e000000018c01010200012e0100",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
-			frame_postcard: "170500051b02060200051704312e35301a051e100103904e000000018c01010200012e0100",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Int4\"}},{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			column_postcard: "1704011b0206020005011704312e3530011a05011e100103904e000000018c01010200012e0100",
+			column_json: "{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			frame_postcard: "1704011b0206020005011704312e3530011a05011e100103904e000000018c01010200012e0100",
+			frame_json: "{\"Any\":{\"data\":[{\"List\":[{\"Int4\":1},{\"None\":{\"inner\":\"Int4\"}}]},{\"Decimal\":\"1.50\"},{\"Type\":\"Int4\"},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
 		},
 	);
 }
 
 #[test]
 fn none_typed_list_is_pinned() {
-	// A none-typed List column must keep its declared type and empty List placeholders exactly.
+	// A none-typed List column must keep its declared type over null rows, never List placeholders.
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::List(Box::new(ValueType::Int4)), 2),
 		&Pin {
-			column_postcard: "1917021b001b00011a05010002",
-			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
-			frame_postcard: "1917021b001b00011a05010002",
-			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"List\":[]},{\"List\":[]}],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
+			column_postcard: "1917020000011a05010002",
+			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null,null],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
+			frame_postcard: "1917020000011a05010002",
+			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null,null],\"declared_type\":{\"List\":\"Int4\"}}},\"bitvec\":{\"bits\":[0],\"len\":2}}}",
 		},
 	);
 }
 
 #[test]
 fn none_typed_record_is_pinned() {
-	// A none-typed Record column must keep its declared fields and exactly today's placeholder row.
+	// A none-typed Record column must keep its declared fields over a null row, never a placeholder row.
 	assert_pinned(
 		ColumnBuffer::none_typed(ValueType::Record(vec![("a".to_string(), ValueType::Int4)]), 1),
 		&Pin {
-			column_postcard: "1917011c00011b01016105010001",
-			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
-			frame_postcard: "1917011c00011b01016105010001",
-			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[{\"Record\":[]}],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
+			column_postcard: "19170100011b01016105010001",
+			column_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
+			frame_postcard: "19170100011b01016105010001",
+			frame_json: "{\"Option\":{\"inner\":{\"Any\":{\"data\":[null],\"declared_type\":{\"Record\":[[\"a\",\"Int4\"]]}}},\"bitvec\":{\"bits\":[0],\"len\":1}}}",
 		},
 	);
 }
@@ -430,7 +433,7 @@ fn none_typed_digest_is_pinned() {
 fn any_with_every_value_variant_is_pinned() {
 	// Every Value variant must round trip through an Any column without changing a single byte.
 	let buffer = ColumnBuffer::any([
-		Value::none_of(ValueType::Utf8),
+		Value::List(vec![Value::none_of(ValueType::Utf8)]),
 		Value::Boolean(true),
 		Value::float4(1.5f32),
 		Value::float8(-0.0),
@@ -465,10 +468,10 @@ fn any_with_every_value_variant_is_pinned() {
 	assert_pinned(
 		buffer,
 		&Pin {
-			column_postcard: "171f00080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717092d3132332e3435303018060a1902031a164c0a1b02060209017a1c01016601001d02060201011e100103904e000000018c01010200012e0100",
-			column_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
-			frame_postcard: "171f00080101020000c03f030000000000000000048005ffff0306ffffffff0f07ffffffffffffffffff0108ffffffffffffffffffffffffffffffffffff03090668c3a96c6c6f0aff0bffff030cffffffff0f0dffffffffffffffffff010effffffffffffffffffffffffffffffffffff030fdcc30210aab490cedc9bb9e73011ffffbb8ac9d2131202040613100000000000017000800000000000000014100123456789ab4cde8f0123456789abcd151000000000000270008000000000000000160300ff0717092d3132332e3435303018060a1902031a164c0a1b02060209017a1c01016601001d02060201011e100103904e000000018c01010200012e0100",
-			frame_json: "{\"Any\":{\"data\":[{\"None\":{\"inner\":\"Utf8\"}},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"h\u{e9}llo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			column_postcard: "171f011b01000801010101020000c03f010300000000000000000104800105ffff030106ffffffff0f0107ffffffffffffffffff010108ffffffffffffffffffffffffffffffffffff0301090668c3a96c6c6f010aff010bffff03010cffffffff0f010dffffffffffffffffff01010effffffffffffffffffffffffffffffffffff03010fdcc3020110aab490cedc9bb9e7300111ffffbb8ac9d2130112020406011310000000000001700080000000000000000114100123456789ab4cde8f0123456789abcd0115100000000000027000800000000000000001160300ff070117092d3132332e343530300118060a01190203011a164c0a011b02060209017a011c0101660100011d0206020101011e100103904e000000018c01010200012e0100",
+			column_json: "{\"Any\":{\"data\":[{\"List\":[{\"None\":{\"inner\":\"Utf8\"}}]},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"héllo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
+			frame_postcard: "171f011b01000801010101020000c03f010300000000000000000104800105ffff030106ffffffff0f0107ffffffffffffffffff010108ffffffffffffffffffffffffffffffffffff0301090668c3a96c6c6f010aff010bffff03010cffffffff0f010dffffffffffffffffff01010effffffffffffffffffffffffffffffffffff03010fdcc3020110aab490cedc9bb9e7300111ffffbb8ac9d2130112020406011310000000000001700080000000000000000114100123456789ab4cde8f0123456789abcd0115100000000000027000800000000000000001160300ff070117092d3132332e343530300118060a01190203011a164c0a011b02060209017a011c0101660100011d0206020101011e100103904e000000018c01010200012e0100",
+			frame_json: "{\"Any\":{\"data\":[{\"List\":[{\"None\":{\"inner\":\"Utf8\"}}]},{\"Boolean\":true},{\"Float4\":1.5},{\"Float8\":0.0},{\"Int1\":-128},{\"Int2\":-32768},{\"Int4\":-2147483648},{\"Int8\":-9223372036854775808},{\"Int16\":-170141183460469231731687303715884105728},{\"Utf8\":\"héllo\"},{\"Uint1\":255},{\"Uint2\":65535},{\"Uint4\":4294967295},{\"Uint8\":18446744073709551615},{\"Uint16\":340282366920938463463374607431768211455},{\"Date\":20718},{\"DateTime\":1758500000123456789},{\"Time\":86399999999999},{\"Duration\":{\"months\":1,\"days\":2,\"nanos\":3}},{\"IdentityId\":\"00000000-0001-7000-8000-000000000000\"},{\"Uuid4\":\"01234567-89ab-4cde-8f01-23456789abcd\"},{\"Uuid7\":\"00000000-0002-7000-8000-000000000000\"},{\"Blob\":[0,255,7]},{\"Decimal\":\"-123.4500\"},{\"Any\":{\"Int4\":5}},{\"DictionaryId\":{\"U4\":3}},{\"Type\":{\"Decimal\":{\"precision\":76,\"scale\":10}}},{\"List\":[{\"Int4\":1},{\"Utf8\":\"z\"}]},{\"Record\":[[\"f\",{\"Boolean\":false}]]},{\"Tuple\":[{\"Int4\":1},{\"Boolean\":true}]},{\"Digest\":[1,3,144,78,0,0,0,1,140,1,1,2,0,1,46,1]}],\"declared_type\":null}}",
 		},
 	);
 }

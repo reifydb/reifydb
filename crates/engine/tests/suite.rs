@@ -152,6 +152,8 @@ mod percentile_aggregate_errors;
 mod plan_cache;
 #[path = "positional_insert.rs"]
 mod positional_insert;
+#[path = "present_rows_keep_the_plain_type.rs"]
+mod present_rows_keep_the_plain_type;
 #[path = "procedure_body_pipe.rs"]
 mod procedure_body_pipe;
 #[path = "procedure_list_param.rs"]

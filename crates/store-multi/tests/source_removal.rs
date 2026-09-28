@@ -5,6 +5,8 @@
 //! so it hides the key only from readers at or above the tombstone's version; snapshot isolation below
 //! that version is preserved, and these tests exist to keep it that way.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::collections::HashMap;
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};

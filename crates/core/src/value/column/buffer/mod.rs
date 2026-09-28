@@ -16,8 +16,9 @@ use std::fmt;
 
 use arrow_array::{
 	Array, BooleanArray, Date32Array, FixedSizeBinaryArray, Float32Array, Float64Array, Int8Array, Int16Array,
-	Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray, LargeStringArray, Time64NanosecondArray,
-	TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, builder::LargeBinaryBuilder,
+	Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray, LargeStringArray, NullArray,
+	Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+	builder::LargeBinaryBuilder,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_value::{
@@ -97,6 +98,11 @@ pub enum ColumnBuffer {
 		inner: ValueType,
 		accuracy: u32,
 	},
+
+	None {
+		array: NullArray,
+		nulls: Option<NullBuffer>,
+	},
 }
 
 impl Clone for ColumnBuffer {
@@ -159,6 +165,13 @@ impl Clone for ColumnBuffer {
 				container: container.clone(),
 				inner: inner.clone(),
 				accuracy: *accuracy,
+			},
+			ColumnBuffer::None {
+				array,
+				nulls,
+			} => ColumnBuffer::None {
+				array: array.clone(),
+				nulls: nulls.clone(),
 			},
 		}
 	}
@@ -247,6 +260,16 @@ impl PartialEq for ColumnBuffer {
 					accuracy: ba,
 				},
 			) => varlen_array::equals(a, b) && ai == bi && aa == ba,
+			(
+				ColumnBuffer::None {
+					array: a,
+					nulls: an,
+				},
+				ColumnBuffer::None {
+					array: b,
+					nulls: bn,
+				},
+			) => a.len() == b.len() && an.is_some() == bn.is_some(),
 			_ => false,
 		}
 	}
@@ -254,7 +277,16 @@ impl PartialEq for ColumnBuffer {
 
 impl fmt::Debug for ColumnBuffer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if let Some(nulls) = self.nulls() {
+		if let ColumnBuffer::None {
+			array,
+			..
+		} = self
+		{
+			return f.debug_struct("None").field("len", &array.len()).finish();
+		}
+		if let Some(nulls) = self.nulls()
+			&& !self.keeps_own_nulls()
+		{
 			let (inner, _) = self.clone().split_nulls();
 			return f.debug_struct("Option")
 				.field("inner", &inner)
@@ -314,6 +346,9 @@ impl fmt::Debug for ColumnBuffer {
 				.field("inner", inner)
 				.field("accuracy", accuracy)
 				.finish(),
+			ColumnBuffer::None {
+				..
+			} => unreachable!("an untyped none column is formatted before its null buffer is read"),
 		}
 	}
 }
@@ -375,6 +410,9 @@ impl Serialize for ColumnBuffer {
 				container: &'a LargeBinaryArray,
 				inner: &'a ValueType,
 				accuracy: u32,
+			},
+			None {
+				len: usize,
 			},
 		}
 		#[derive(Serialize)]
@@ -445,17 +483,23 @@ impl Serialize for ColumnBuffer {
 						inner,
 						accuracy: *accuracy,
 					},
+					ColumnBuffer::None {
+						array,
+						..
+					} => Helper::None {
+						len: array.len(),
+					},
 				};
 				helper.serialize(serializer)
 			}
 		}
 		match self.nulls() {
-			Some(nulls) => Helper::Option {
+			Some(nulls) if !matches!(self, ColumnBuffer::None { .. }) => Helper::Option {
 				inner: Bare(self),
 				bitvec: nulls.inner(),
 			}
 			.serialize(serializer),
-			None => Bare(self).serialize(serializer),
+			_ => Bare(self).serialize(serializer),
 		}
 	}
 }
@@ -517,6 +561,9 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				container: LargeBinaryArray,
 				inner: ValueType,
 				accuracy: u32,
+			},
+			None {
+				len: usize,
 			},
 		}
 		#[derive(Deserialize)]
@@ -599,6 +646,9 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				inner,
 				accuracy,
 			},
+			Helper::None {
+				len,
+			} => ColumnBuffer::none(len),
 		})
 	}
 }
@@ -668,6 +718,13 @@ macro_rules! with_container {
 					"with_container! must not be called on a decimal backed variant directly; handle it explicitly"
 				)
 			}
+			ColumnBuffer::None {
+				..
+			} => {
+				unreachable!(
+					"with_container! must not be called on the None variant directly; handle it explicitly"
+				)
+			}
 		}
 	};
 }
@@ -701,9 +758,24 @@ macro_rules! map_decimal {
 pub(crate) use map_decimal;
 
 impl ColumnBuffer {
+	pub fn none(len: usize) -> Self {
+		Self::none_sized(len, false)
+	}
+
+	pub(crate) fn none_sized(len: usize, bare: bool) -> Self {
+		ColumnBuffer::None {
+			array: NullArray::new(len),
+			nulls: (!bare).then(|| NullBuffer::new_null(len)),
+		}
+	}
+
 	pub fn nulls(&self) -> Option<&NullBuffer> {
 		match self {
 			ColumnBuffer::Bool(a) => a.nulls(),
+			ColumnBuffer::None {
+				nulls,
+				..
+			} => nulls.as_ref(),
 			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| d.nulls())
 			}
@@ -713,9 +785,14 @@ impl ColumnBuffer {
 
 	pub fn split_nulls(self) -> (ColumnBuffer, Option<NullBuffer>) {
 		match self.nulls().cloned() {
+			Some(nulls) if self.keeps_own_nulls() => (self, Some(nulls)),
 			Some(nulls) => (self.replace_nulls(None), Some(nulls)),
 			None => (self, None),
 		}
+	}
+
+	pub(crate) fn keeps_own_nulls(&self) -> bool {
+		matches!(self, ColumnBuffer::Any { .. } | ColumnBuffer::Digest { .. })
 	}
 
 	pub fn with_nulls(self, nulls: NullBuffer) -> ColumnBuffer {
@@ -790,6 +867,10 @@ impl ColumnBuffer {
 				inner,
 				accuracy,
 			},
+			ColumnBuffer::None {
+				array,
+				..
+			} => ColumnBuffer::none_sized(array.len(), nulls.is_none()),
 		}
 	}
 
@@ -848,6 +929,9 @@ impl ColumnBuffer {
 				inner: Box::new(inner.clone()),
 				accuracy: *accuracy,
 			},
+			ColumnBuffer::None {
+				..
+			} => ValueType::Any,
 		};
 		match self.nulls() {
 			Some(_) => ValueType::Option(Box::new(base)),
@@ -901,6 +985,26 @@ impl ColumnBuffer {
 				container,
 				..
 			} => digest_array::is_defined(container, idx),
+			ColumnBuffer::None {
+				..
+			} => false,
+		}
+	}
+
+	pub fn is_none(&self) -> bool {
+		matches!(self, ColumnBuffer::None { .. })
+	}
+
+	pub fn is_untyped_none(&self) -> bool {
+		match self {
+			ColumnBuffer::None {
+				..
+			} => true,
+			ColumnBuffer::Any {
+				declared_type: None,
+				..
+			} => self.nulls().is_some_and(|nulls| nulls.null_count() == nulls.len()),
+			_ => false,
 		}
 	}
 
@@ -955,6 +1059,10 @@ impl ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => a.len(),
 			ColumnBuffer::Decimal(a) => a.len(),
+			ColumnBuffer::None {
+				array,
+				..
+			} => array.len(),
 			_ => with_container!(self, |a| a.len(), |t| t.len(), |u| u.len(), |v| v.len()),
 		}
 	}
@@ -980,6 +1088,9 @@ impl ColumnBuffer {
 			ColumnBuffer::Decimal(a) => {
 				on_decimal!(a, |d| primitive::heap_size(d))
 			}
+			ColumnBuffer::None {
+				..
+			} => 0,
 			_ => with_container!(
 				self,
 				|a| primitive::heap_size(a),
@@ -995,6 +1106,9 @@ impl ColumnBuffer {
 			ColumnBuffer::Bool(_)
 			| ColumnBuffer::Decimal(_)
 			| ColumnBuffer::DictionaryId {
+				..
+			}
+			| ColumnBuffer::None {
 				..
 			} => {}
 			_ => with_container!(self, |_a| {}, |_t| {}, |_u| {}, |_v| {}),
@@ -1037,6 +1151,9 @@ impl ColumnBuffer {
 				container,
 				..
 			} => digest_array::as_string(container, index),
+			ColumnBuffer::None {
+				..
+			} => "none".to_string(),
 			_ => with_container!(self, |a| primitive::as_string(a, index)),
 		}
 	}
@@ -1090,6 +1207,12 @@ impl ColumnBuffer {
 	}
 
 	pub(crate) fn empty_like(&self, capacity: usize) -> Self {
+		if let ColumnBuffer::None {
+			..
+		} = self
+		{
+			return ColumnBuffer::none(0);
+		}
 		let mut buffer = Self::with_capacity(self.get_type(), capacity);
 		match (self, &mut buffer) {
 			(

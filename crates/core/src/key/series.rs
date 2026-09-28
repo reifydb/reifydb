@@ -1004,6 +1004,7 @@ impl DenseKey for StoragePartitionedSeriesKey {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod partitioned_row_key_tests {
 	use std::ops::RangeBounds;
 

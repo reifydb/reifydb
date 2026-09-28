@@ -125,6 +125,9 @@ macro_rules! prefix_not_error {
 }
 
 pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment: &Fragment) -> Result<ColumnWithName> {
+	if column.data().is_untyped_none() && !matches!(operator, PrefixOperator::Not(_)) {
+		return Ok(column.clone());
+	}
 	unary_op_unwrap_option(column, |column| match column.data() {
 		ColumnBuffer::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
@@ -300,6 +303,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		ColumnBuffer::Uuid7(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "uuid7")
 		}
+
+		ColumnBuffer::None {
+			..
+		} => Ok(column.clone()),
 
 		ColumnBuffer::Blob {
 			container: _,

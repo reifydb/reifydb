@@ -14,7 +14,7 @@ use reifydb_value::{fragment::Fragment, reifydb_assertions, value::Value};
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, JoinSlot, NO_MATCH, build_eval_columns, load_and_merge_all, materialize_join, resolve_column_names,
+	JoinContext, JoinSlot, build_eval_columns, load_and_merge_all, materialize_join, resolve_column_names,
 };
 use crate::{
 	Result,
@@ -143,9 +143,9 @@ impl NestedLoopJoinNode {
 		right_columns: &Columns,
 		left_rows: usize,
 		right_rows: usize,
-	) -> Result<(Vec<usize>, Vec<usize>)> {
+	) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
 		let mut left_picks: Vec<usize> = Vec::new();
-		let mut right_picks: Vec<usize> = Vec::new();
+		let mut right_picks: Vec<Option<usize>> = Vec::new();
 
 		for i in 0..left_rows {
 			let left_row = left_columns.get_row(i);
@@ -172,14 +172,14 @@ impl NestedLoopJoinNode {
 
 				if all_true {
 					left_picks.push(i);
-					right_picks.push(j);
+					right_picks.push(Some(j));
 					matched = true;
 				}
 			}
 
 			if self.mode == NestedLoopMode::Left && !matched {
 				left_picks.push(i);
-				right_picks.push(NO_MATCH);
+				right_picks.push(None);
 			}
 		}
 

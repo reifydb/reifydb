@@ -3,9 +3,9 @@
 
 use reifydb_core::error::diagnostic::flow::{
 	flow_extern_unsupported_on_wasm, flow_missing_input_edge, flow_operator_input_arity,
-	flow_parent_operator_not_found, flow_sink_dictionary_not_found, flow_sink_missing_series_key,
-	flow_sink_missing_system_column, flow_sink_not_a_source_family, flow_span_on_unageable_node,
-	flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator,
+	flow_parent_operator_not_found, flow_sink_dictionary_entry_not_found, flow_sink_dictionary_not_found,
+	flow_sink_missing_series_key, flow_sink_missing_system_column, flow_sink_not_a_source_family,
+	flow_span_on_unageable_node, flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
@@ -103,6 +103,12 @@ pub enum FlowSinkError {
 		column: String,
 	},
 
+	#[error("dictionary {dictionary_id} has no entry for a value removed from view column '{column}'")]
+	DictionaryEntryNotFound {
+		dictionary_id: String,
+		column: String,
+	},
+
 	#[error("a view sink cannot encode a row of the {family} family")]
 	NotASourceFamily {
 		family: String,
@@ -127,6 +133,10 @@ impl IntoDiagnostic for FlowSinkError {
 				dictionary_id,
 				column,
 			} => flow_sink_dictionary_not_found(dictionary_id, &column),
+			FlowSinkError::DictionaryEntryNotFound {
+				dictionary_id,
+				column,
+			} => flow_sink_dictionary_entry_not_found(dictionary_id, &column),
 			FlowSinkError::NotASourceFamily {
 				family,
 			} => flow_sink_not_a_source_family(&family),

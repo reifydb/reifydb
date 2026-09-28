@@ -265,6 +265,13 @@ pub fn from_any(
 					let value = casted_column.get_value(0);
 					result.push_value(value);
 				}
+				ColumnBuffer::None {
+					..
+				} => {
+					unreachable!(
+						"a none column carries a null buffer, so it takes the null buffer arm"
+					)
+				}
 			},
 		}
 	}

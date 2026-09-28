@@ -132,7 +132,7 @@ fn setup() -> TestDb {
 
 fn guest_operator(db: &TestDb) -> u64 {
 	let rql = "FROM system::flow::operators FILTER { kind == 'Apply(tumbling_guest)' } MAP { id }";
-	let frames = db.query(&rql);
+	let frames = db.query(rql);
 	let values = column_values(frames.first().expect("system::flow::operators returned no frame"), "id");
 	match values.as_slice() {
 		[Value::Uint8(id)] => *id,

@@ -22,7 +22,7 @@ pub fn digest_array<B: Borrow<Digest>>(values: impl IntoIterator<Item = Option<B
 	for value in values {
 		match value {
 			Some(digest) => push_digest(&mut builder, digest.borrow()),
-			None => push_none_slot(&mut builder),
+			None => builder.append_null(),
 		}
 	}
 	builder.finish()
@@ -32,15 +32,8 @@ pub fn push_digest(builder: &mut LargeBinaryBuilder, digest: &Digest) {
 	builder.append_value(digest.encode());
 }
 
-pub fn push_none_slot(builder: &mut LargeBinaryBuilder) {
-	builder.append_value(b"");
-}
-
 pub fn get(array: &LargeBinaryArray, index: usize) -> Option<Digest> {
-	match varlen_array::get(array, index) {
-		Some(row) if !row.is_empty() => Some(decode(row)),
-		_ => None,
-	}
+	varlen_array::get(array, index).filter(|_| array.is_valid(index)).map(decode)
 }
 
 pub fn iter(array: &LargeBinaryArray) -> impl Iterator<Item = Option<Digest>> + '_ {
@@ -48,7 +41,7 @@ pub fn iter(array: &LargeBinaryArray) -> impl Iterator<Item = Option<Digest>> + 
 }
 
 pub fn is_defined(array: &LargeBinaryArray, index: usize) -> bool {
-	varlen_array::get(array, index).is_some_and(|row| !row.is_empty())
+	index < array.len() && array.is_valid(index)
 }
 
 pub fn get_value(array: &LargeBinaryArray, index: usize) -> Value {
@@ -68,11 +61,10 @@ impl Serialize for Rows<'_> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
 		for index in 0..self.0.len() {
-			let row = self.0.value(index);
-			if row.is_empty() {
+			if self.0.is_null(index) {
 				seq.serialize_element(&None::<&Bytes>)?;
 			} else {
-				seq.serialize_element(&Some(Bytes::new(row)))?;
+				seq.serialize_element(&Some(Bytes::new(self.0.value(index))))?;
 			}
 		}
 		seq.end()
@@ -96,7 +88,7 @@ pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Larg
 	for row in rows {
 		match row {
 			Some(bytes) => push_digest(&mut builder, &Digest::decode(&bytes).map_err(DeError::custom)?),
-			None => push_none_slot(&mut builder),
+			None => builder.append_null(),
 		}
 	}
 	Ok(builder.finish())
@@ -118,8 +110,8 @@ mod tests {
 		// Aggregates skip undefined digests; an empty row read as a digest would crash or count twice.
 		let digest = built(10_000, &[1.0, 2.5, -4.0]);
 		let array = digest_array([Some(&digest), None]);
-		assert!(array.nulls().is_none());
-		assert_eq!(array.value(1), b"");
+		assert!(array.is_null(1));
+		assert_eq!(array.null_count(), 1);
 		assert!(is_defined(&array, 0));
 		assert!(!is_defined(&array, 1));
 		assert!(!is_defined(&array, 2));
@@ -132,11 +124,10 @@ mod tests {
 	}
 
 	#[test]
-	fn reorder_past_the_end_gives_the_none_slot() {
-		// Out of range rows must be the none slot, never a zero digest.
-		let array = varlen_array::reorder(&digest_array([Some(built(10_000, &[1.0]))]), &[4, 0]);
-		assert!(!is_defined(&array, 0));
-		assert!(is_defined(&array, 1));
+	fn reorder_past_the_end_fails() {
+		// An out of range row is a bug, so it must fail naming the row and length, never read as a none digest.
+		let error = varlen_array::reorder(&digest_array([Some(built(10_000, &[1.0]))]), &[4, 0]).unwrap_err();
+		assert_eq!(error.diagnostic().message, "row index 4 out of range for a column of 1 rows");
 	}
 
 	#[test]

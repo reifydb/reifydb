@@ -73,10 +73,10 @@ impl DistinctPlan {
 		)
 	}
 
-	fn published(columns: &Columns, rows: &[(usize, RowNumber)]) -> Columns {
+	fn published(columns: &Columns, rows: &[(usize, RowNumber)]) -> Result<Columns> {
 		let indices: Vec<usize> = rows.iter().map(|&(row_idx, _)| row_idx).collect();
-		let source = columns.extract_by_indices(&indices);
-		Columns::with_system(
+		let source = columns.extract_by_indices(&indices)?;
+		Ok(Columns::with_system(
 			source.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
 			SystemColumns::new(
 				rows.iter().map(|&(_, stable_rn)| stable_rn).collect(),
@@ -86,7 +86,7 @@ impl DistinctPlan {
 				source.time().to_vec(),
 				Vec::new(),
 			),
-		)
+		))
 	}
 
 	pub(super) fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
@@ -199,10 +199,10 @@ impl DistinctPlan {
 			}
 		}
 		if !minted.is_empty() {
-			result.push(Diff::insert(Self::published(columns, &minted)));
+			result.push(Diff::insert(Self::published(columns, &minted)?));
 		}
 		if !republished.is_empty() {
-			let output = Self::published(columns, &republished);
+			let output = Self::published(columns, &republished)?;
 			result.push(Diff::update(output.clone(), output));
 		}
 
@@ -212,7 +212,8 @@ impl DistinctPlan {
 			for ((old_serialized, new_idx, _), (stable_rn, _)) in swap_pairs.into_iter().zip(stable_rns) {
 				let pre_cols =
 					Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
-				let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
+				let post_cols =
+					Self::with_stable_rn(columns.extract_by_indices(&[new_idx])?, stable_rn);
 				result.push(Diff::update(pre_cols, post_cols));
 			}
 		}
@@ -265,11 +266,11 @@ impl DistinctPlan {
 						.next()
 						.unwrap();
 					let pre_out = Self::with_stable_rn(
-						pre_columns.extract_by_indices(&[row_idx]),
+						pre_columns.extract_by_indices(&[row_idx])?,
 						stable_rn,
 					);
 					let post_out = Self::with_stable_rn(
-						post_columns.extract_by_indices(&[row_idx]),
+						post_columns.extract_by_indices(&[row_idx])?,
 						stable_rn,
 					);
 					result.push(Diff::update(pre_out, post_out));
@@ -341,13 +342,13 @@ impl DistinctPlan {
 				if pre_is_empty {
 					host.remove_row_number_for_group(groups[&pre_hash])?;
 					result.push(Diff::remove(Self::with_stable_rn(
-						pre_columns.extract_by_indices(&[row_idx]),
+						pre_columns.extract_by_indices(&[row_idx])?,
 						stable_rn,
 					)));
 				} else if let Some(new_visible) = pre_new_visible_opt {
 					result.push(Diff::update(
 						Self::with_stable_rn(
-							pre_columns.extract_by_indices(&[row_idx]),
+							pre_columns.extract_by_indices(&[row_idx])?,
 							stable_rn,
 						),
 						Self::with_stable_rn(new_visible.to_columns(&state.layout), stable_rn),
@@ -363,7 +364,7 @@ impl DistinctPlan {
 					.next()
 					.unwrap();
 				let post_out =
-					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx]), stable_rn);
+					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx])?, stable_rn);
 				match post_displaced_opt {
 					Some(old_visible) => result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),
@@ -446,14 +447,14 @@ impl DistinctPlan {
 					None => {
 						host.remove_row_number_for_group(groups[&hash])?;
 						result.push(Diff::remove(Self::with_stable_rn(
-							columns.extract_by_indices(&[row_idx]),
+							columns.extract_by_indices(&[row_idx])?,
 							stable_rn,
 						)));
 					}
 					Some(new_visible) => {
 						result.push(Diff::update(
 							Self::with_stable_rn(
-								columns.extract_by_indices(&[row_idx]),
+								columns.extract_by_indices(&[row_idx])?,
 								stable_rn,
 							),
 							Self::with_stable_rn(

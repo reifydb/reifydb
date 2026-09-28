@@ -32,7 +32,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::catalog::IndexEntryKey,
-	partition::partition_col_indices,
+	partition::{partition_col_indices, partition_of, partition_values},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -42,7 +42,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -54,7 +54,7 @@ use super::{
 };
 use crate::{
 	Result,
-	partition::{partition_values, resolve_partition},
+	partition::resolve_partition,
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
@@ -105,7 +105,7 @@ pub(crate) fn insert_table(
 		let mut verified = HashSet::new();
 		for row in &validated {
 			let values = partition_values(&shape, row, &indices);
-			let partition = Partition::of(&values);
+			let partition = partition_of(&table.columns, &table.partition_by, &values);
 			resolve_partition(txn, ObjectId::Table(table.id), partition, &values, &mut verified)?;
 		}
 	}

@@ -39,7 +39,11 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{DurableSink, emit_view_change, partition::resolve_partition_flow, view::dictionary_encode_view_columns};
+use super::{
+	DurableSink, emit_view_change,
+	partition::resolve_partition_flow,
+	view::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
+};
 use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 
 pub struct SinkSeriesViewOperator {
@@ -170,7 +174,7 @@ impl SinkSeriesViewOperator {
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx);
 				resolve_partition_flow(
 					txn,
 					object_id.into(),
@@ -231,9 +235,9 @@ impl SinkSeriesViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(&self.partition_indices, &coerced_pre, row_idx);
+					partition_of(view, &self.partition_indices, source_pre, row_idx);
 				let (post_partition, post_values) =
-					partition_of(&self.partition_indices, &coerced_post, row_idx);
+					partition_of(view, &self.partition_indices, source_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -300,13 +304,15 @@ impl SinkSeriesViewOperator {
 		pre: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
+		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
+		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers()[row_idx];
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				let (partition, _values) = partition_of(view, &self.partition_indices, source, row_idx);
 				PartitionedSeriesRowKey::encoded(object_id, partition, None, series_key, row_number.0)
 			} else {
 				SeriesRowKey {

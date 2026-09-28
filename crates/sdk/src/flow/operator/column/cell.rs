@@ -25,8 +25,7 @@ macro_rules! impl_cell_scalar {
 			const COLUMN_TYPE: ValueKind = $code;
 			#[inline]
 			fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-				e.$push(col, *self);
-				Ok(())
+				e.$push(col, *self)
 			}
 			#[inline]
 			fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -52,8 +51,7 @@ impl Cell for u128 {
 	const COLUMN_TYPE: ValueKind = ValueKind::Uint16;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_u128(col, *self);
-		Ok(())
+		e.push_u128(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -65,8 +63,7 @@ impl Cell for i128 {
 	const COLUMN_TYPE: ValueKind = ValueKind::Int16;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_i128(col, *self);
-		Ok(())
+		e.push_i128(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -129,8 +126,7 @@ impl Cell for Date {
 	const COLUMN_TYPE: ValueKind = ValueKind::Date;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_date(col, *self);
-		Ok(())
+		e.push_date(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -142,8 +138,7 @@ impl Cell for DateTime {
 	const COLUMN_TYPE: ValueKind = ValueKind::DateTime;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_datetime(col, *self);
-		Ok(())
+		e.push_datetime(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -155,8 +150,7 @@ impl Cell for Time {
 	const COLUMN_TYPE: ValueKind = ValueKind::Time;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_time(col, *self);
-		Ok(())
+		e.push_time(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {
@@ -168,8 +162,7 @@ impl Cell for Duration {
 	const COLUMN_TYPE: ValueKind = ValueKind::Duration;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		e.push_duration(col, *self);
-		Ok(())
+		e.push_duration(col, *self)
 	}
 	#[inline]
 	fn decode<V: RowView>(view: &V, name: &str) -> Result<Option<Self>, SdkError> {

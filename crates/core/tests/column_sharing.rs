@@ -10,7 +10,7 @@ use std::{
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use reifydb_core::value::column::{
 	buffer::ColumnBuffer,
-	builder::ColumnBuilder,
+	builder::TypedBuilder,
 	data::{Column, canonical::Canonical},
 };
 use reifydb_value::{
@@ -63,8 +63,8 @@ fn frozen_int8(n: usize) -> ColumnBuffer {
 
 fn thaw_int8(buffer: &mut ColumnBuffer) -> *const i64 {
 	let builder = mem::replace(buffer, ColumnBuffer::int8(Vec::<i64>::new())).into_builder();
-	let ptr = match &builder {
-		ColumnBuilder::Int8(values) => values.values_slice().as_ptr(),
+	let ptr = match builder.inner() {
+		TypedBuilder::Int8(values) => values.values_slice().as_ptr(),
 		other => panic!("expected an int8 buffer, got {:?}", other.get_type()),
 	};
 	*buffer = builder.finish();
@@ -296,7 +296,7 @@ fn none_bitmap_filter_and_gather_match_the_model() {
 	assert_eq!(kept_none.nulls().map(|n| n.len()), Some(0));
 
 	let indices = [999usize, 0, 7, 7, 13, 500];
-	let gathered = column.gather(&indices);
+	let gathered = column.gather(&indices).unwrap();
 	let gathered_nones = gathered.nulls().expect("a gathered optional column must keep its none bitmap");
 	for (row, index) in indices.iter().enumerate() {
 		assert_eq!(gathered_nones.is_null(row), !defined(ROWS)[*index], "gathered row {row}");

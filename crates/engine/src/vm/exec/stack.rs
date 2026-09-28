@@ -9,7 +9,7 @@ use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, frame::frame::Frame, value_type::ValueType},
+	value::{Value, frame::frame::Frame},
 };
 
 use crate::{Result, vm::vm::Vm};
@@ -30,7 +30,7 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_push_none(&mut self) {
 		if self.batch_size != 1 {
-			let data = ColumnBuffer::none_typed(ValueType::Any, self.batch_size);
+			let data = ColumnBuffer::none(self.batch_size);
 			let col = ColumnWithName::new(Fragment::internal("none"), data);
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {

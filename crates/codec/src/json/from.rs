@@ -11,9 +11,9 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::{precision::Precision, scale::Scale},
 		container::{
-			any_array::any_array,
+			any_array::any_array_optional,
 			decimal_array::decimal_array,
-			digest_array::{push_digest, push_none_slot},
+			digest_array::push_digest,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
 			varlen_array::blob_array,
@@ -387,13 +387,23 @@ fn convert_list_or_record_column(
 			None => {
 				let value = parse_json_value(base, &payload)
 					.map_err(|e| column_error(name, row, e.to_string()))?;
-				values.push(value);
+				if let Value::None {
+					..
+				} = value
+				{
+					return Err(column_error(
+						name,
+						row,
+						format!("none for non-Option type {target}"),
+					));
+				}
+				values.push(Some(value));
 			}
 			Some(wrapped) if wrapped < depth => {
 				for layer in &mut layers[wrapped as usize..] {
 					layer[row] = false;
 				}
-				values.push(Value::none());
+				values.push(None);
 			}
 			Some(_) if depth == 0 => {
 				return Err(column_error(
@@ -414,7 +424,7 @@ fn convert_list_or_record_column(
 		}
 	}
 	let base_col = FrameColumnData::Any {
-		container: any_array(values),
+		container: any_array_optional(values),
 		declared_type: Some(base.clone()),
 	};
 	Ok(layers.into_iter().rev().fold(base_col, |inner, layer| FrameColumnData::Option {
@@ -516,7 +526,7 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 			let mut builder = LargeBinaryBuilder::with_capacity(rows.len(), 0);
 			for (row, cell) in rows.into_iter().enumerate() {
 				match cell {
-					None => push_none_slot(&mut builder),
+					None => builder.append_null(),
 					Some(text) => {
 						let digest = parse_digest_text(inner, *accuracy, &text)
 							.ok_or_else(|| cell_error(name, row, base, &text))?;

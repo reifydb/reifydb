@@ -20,6 +20,7 @@ use reifydb_value::{
 	},
 };
 
+#[allow(clippy::disallowed_methods)]
 pub fn extract_partition(condition: &Expression, columns: &[Column], partition_by: &[String]) -> Option<Partition> {
 	if partition_by.is_empty() {
 		return None;
@@ -132,6 +133,7 @@ fn partition_value(value_type: &ValueType, fragment: Fragment) -> Option<Value> 
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 	use reifydb_core::{
 		expression::{

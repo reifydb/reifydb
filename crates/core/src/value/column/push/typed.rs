@@ -6,7 +6,10 @@ use reifydb_value::{
 	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
-use crate::{internal_err, value::column::builder::ColumnBuilder};
+use crate::{
+	internal_err,
+	value::column::builder::{ColumnBuilder, TypedBuilder},
+};
 
 impl ColumnBuilder {
 	pub fn push_typed(&mut self, value: Value, declared: &ValueType) -> Result<()> {
@@ -17,23 +20,18 @@ impl ColumnBuilder {
 	}
 
 	fn push_typed_option(&mut self, value: Value, inner_type: &ValueType) -> Result<()> {
-		let buffer_type = self.get_type();
-		let ColumnBuilder::Option {
-			inner,
-			bitvec,
-		} = self
-		else {
+		if !self.optional {
 			return internal_err!(
 				"column declares Option({:?}) but its buffer is {:?}; a buffer that stops being an Option publishes a column type the schema never declared",
 				inner_type,
-				buffer_type
+				self.get_type()
 			);
-		};
-		if inner.get_type() != *inner_type {
+		}
+		if matches!(self.inner, TypedBuilder::None(_)) || self.inner.get_type() != *inner_type {
 			return internal_err!(
-				"column declares Option({:?}) but its buffer holds Option({:?})",
+				"column declares Option({:?}) but its buffer holds {:?}",
 				inner_type,
-				inner.get_type()
+				self.get_type()
 			);
 		}
 		match value {
@@ -47,8 +45,7 @@ impl ColumnBuilder {
 						none_type
 					);
 				}
-				inner.push_default();
-				bitvec.append(false);
+				self.push_none();
 			}
 			value => {
 				let value = coerced(value, inner_type)?;
@@ -60,8 +57,7 @@ impl ColumnBuilder {
 						value_type
 					);
 				}
-				inner.push_value(value);
-				bitvec.append(true);
+				self.push_value(value);
 			}
 		}
 		Ok(())
@@ -109,8 +105,8 @@ mod tests {
 
 	#[test]
 	fn an_optional_column_stays_an_option_when_the_first_value_is_present() {
-		// push_value drops the Option wrapper when the first present value lands on an empty buffer, so the
-		// published column type would otherwise depend on row order.
+		// A present first value must never demote a declared Option column, otherwise its type depends on row
+		// order.
 		let mut typed = ColumnBuilder::with_capacity(optional_utf8(), 0);
 		typed.push_typed(Value::Utf8("a".to_string()), &optional_utf8()).unwrap();
 		assert_eq!(
@@ -121,11 +117,7 @@ mod tests {
 
 		let mut inferred = ColumnBuilder::with_capacity(optional_utf8(), 0);
 		inferred.push_value(Value::Utf8("a".to_string()));
-		assert_eq!(
-			inferred.get_type(),
-			ValueType::Utf8,
-			"push_value is expected to demote here; if it stops, this test is guarding nothing"
-		);
+		assert_eq!(inferred.get_type(), optional_utf8(), "push_value must keep the declared Option(Utf8)");
 	}
 
 	#[test]
@@ -159,8 +151,7 @@ mod tests {
 
 	#[test]
 	fn a_required_column_refuses_a_none() {
-		// push_value promotes a required buffer to Option on a none, publishing a nullable column the schema
-		// never declared.
+		// A none must be refused, otherwise the column turns nullable though the schema never declared it.
 		let mut buffer = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 		assert!(buffer.push_typed(Value::none_of(ValueType::Utf8), &ValueType::Utf8).is_err());
 		assert_eq!(buffer.get_type(), ValueType::Utf8, "a refused push must leave the buffer untouched");
