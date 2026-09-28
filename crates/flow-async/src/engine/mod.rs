@@ -15,16 +15,16 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::{
-	flow::{FlowId, OperatorId},
-	id::{TableId, ViewId},
-	object::ObjectId,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{
+		flow::{FlowId, OperatorId},
+		id::{TableId, ViewId},
+		object::ObjectId,
+	},
 };
+use reifydb_flow::analyzer::{FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::flow::{
-	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
-	flow::FlowDag,
-};
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use tracing::instrument;
 

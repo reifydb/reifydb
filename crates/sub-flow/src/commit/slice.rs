@@ -538,8 +538,12 @@ mod integration {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,
+		flow::{
+			dag::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::catalog::{
-			flow::OperatorId,
+			flow::{FlowEdge, OperatorId},
 			id::{SeriesId, TableId, ViewId},
 		},
 		key::tag::KeyTag,
@@ -552,10 +556,6 @@ mod integration {
 			substrate::{FlowSubstrate, apply_operator_state},
 			watermark::SourceWatermarks,
 		},
-	};
-	use reifydb_rql::flow::{
-		flow::FlowDag,
-		operator::{FlowEdge, FlowNode, OperatorDef},
 	};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_store_cdc::storage::CdcStorage;
@@ -571,7 +571,6 @@ mod integration {
 
 	use super::*;
 	use crate::{
-		catalog::FlowCatalog,
 		commit::{
 			committer::{Committer, CommitterActor, CommitterHandle, CommitterMessage},
 			quiescence::FlowMaterialization,
@@ -699,7 +698,7 @@ mod integration {
 				view: ViewId(3),
 			},
 		));
-		builder.add_edge(FlowEdge::new(1, OperatorId(1), OperatorId(3))).unwrap();
+		builder.add_edge(FlowEdge::new(1, builder.id(), OperatorId(1), OperatorId(3))).unwrap();
 		flow_engine.register_flow_dag(builder.build());
 		flow_engine.add_sink(flow, OperatorId(3), ObjectId::View(ViewId(3)));
 
@@ -797,8 +796,6 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}, {id: 3, val: 30}]");
 
 		let engine = te.inner().clone();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -807,8 +804,9 @@ mod integration {
 		let mut flow_engine = build_flow_engine(&engine);
 		{
 			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+			let flow = engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
 				.expect("load flow");
 			flow_engine.register(&mut txn, flow).expect("register");
 			txn.rollback().expect("rollback registration probe");
@@ -817,7 +815,7 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
@@ -892,8 +890,6 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}]");
 
 		let engine = te.inner().clone();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -902,8 +898,9 @@ mod integration {
 		let mut flow_engine = build_flow_engine(&engine);
 		{
 			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+			let flow = engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
 				.expect("load flow");
 			flow_engine.register(&mut txn, flow).expect("register");
 			txn.rollback().expect("rollback registration probe");
@@ -912,7 +909,7 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
@@ -1012,8 +1009,6 @@ mod integration {
 		);
 
 		let engine = te.inner().clone();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -1022,8 +1017,9 @@ mod integration {
 		let mut flow_engine = build_flow_engine(&engine);
 		{
 			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+			let flow = engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
 				.expect("load flow");
 			flow_engine.register(&mut txn, flow).expect("register");
 			txn.rollback().expect("rollback registration probe");
@@ -1032,7 +1028,7 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
@@ -1147,8 +1143,6 @@ mod integration {
 		let inserted = te.inner().done_until();
 
 		let engine = te.inner().clone();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -1157,8 +1151,9 @@ mod integration {
 		let mut flow_engine = build_flow_engine(&engine);
 		{
 			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+			let flow = engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
 				.expect("load flow");
 			flow_engine.register(&mut txn, flow).expect("register");
 			txn.rollback().expect("rollback registration probe");
@@ -1167,7 +1162,7 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
@@ -1251,8 +1246,6 @@ mod integration {
 
 	fn one_view_flow(te: &TestEngine) -> (FlowId, FlowEngineInner, BTreeSet<ObjectId>) {
 		let engine = te.inner().clone();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -1261,8 +1254,9 @@ mod integration {
 		let mut flow_engine = build_flow_engine(&engine);
 		{
 			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+			let flow = engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
 				.expect("load flow");
 			flow_engine.register(&mut txn, flow).expect("register");
 			txn.rollback().expect("rollback registration probe");
@@ -1271,7 +1265,7 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 		(flow_id, flow_engine, source_objects)

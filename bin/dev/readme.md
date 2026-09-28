@@ -72,13 +72,11 @@ cargo build -p dev --release
 
 - **`catalog.rs` (naming, boots the engine).** Opens the directory through the embedded engine
   and queries `system::namespaces`, `system::tables`, `system::series`, `system::ringbuffers`,
-  `system::views`, `system::flows`, and `system::operators` as root (bypassing the `system::*`
+  `system::views`, `system::flows`, and `system::flow::operators` as root (bypassing the `system::*`
   policy gate), then always stops the engine. It builds two maps: source id -> logical name, and
-  operator flow-node id -> a `view  [stage]{operator}` label. A view owns its rows under its own
+  operator flow-node id -> a `view  [kind]` label. A view owns its rows under its own
   id, so it names itself and needs no join through a backing object. The operator label is
-  decoded from the flow node `data` blob: the first byte is a `FlowNodeType` discriminant
-  (indexed into the local `NODE_TYPE` table) and `Apply` nodes carry their operator name as an
-  embedded string.
+  the `kind` column of `system::flow::operators`.
 
 - **`report.rs` (render).** Renders the catalog dump and the CDC breakdown, each with a `--json`
   variant emitting one JSON object per line. Objects with no catalog match render as `(unmapped)`.

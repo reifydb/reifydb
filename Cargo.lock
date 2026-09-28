@@ -3340,6 +3340,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-evaluate",
  "reifydb-extension",
+ "reifydb-flow",
  "reifydb-policy",
  "reifydb-routine",
  "reifydb-routine-abi",
@@ -3427,6 +3428,7 @@ name = "reifydb-flow"
 version = "0.9.3"
 dependencies = [
  "reifydb-build",
+ "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-evaluate",
@@ -3434,7 +3436,9 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-test-harness",
+ "reifydb-transaction",
  "reifydb-value",
+ "serde",
  "thiserror 2.0.18",
  "tracing",
 ]

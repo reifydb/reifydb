@@ -2,12 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::resolved::ResolvedObject;
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::constraint::Constraint;
-
-use crate::{
-	Result,
+use reifydb_core::{
 	expression::{
 		AddExpression, AliasExpression, AndExpression, CallExpression, CastExpression, ContainsExpression,
 		DivExpression, EqExpression, Expression, ExtendExpression, GreaterThanEqExpression,
@@ -15,7 +10,12 @@ use crate::{
 		ListExpression, MapExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression,
 		RemExpression, SubExpression, TupleExpression, XorExpression, name::display_label,
 	},
+	interface::resolved::ResolvedObject,
 };
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::constraint::Constraint;
+
+use crate::Result;
 
 pub fn resolve_is_variant_tags(
 	expr: &mut Expression,

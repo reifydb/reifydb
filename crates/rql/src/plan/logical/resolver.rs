@@ -103,7 +103,15 @@ fn probe_object_in_namespace(
 		))));
 	}
 
-	if matches!(ns_def.id(), NamespaceId::SYSTEM | NamespaceId::SYSTEM_PROCEDURES | NamespaceId::SYSTEM_BINDINGS) {
+	if matches!(
+		ns_def.id(),
+		NamespaceId::SYSTEM
+			| NamespaceId::SYSTEM_FLOW
+			| NamespaceId::SYSTEM_FLOW_OPERATOR
+			| NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY
+			| NamespaceId::SYSTEM_PROCEDURES
+			| NamespaceId::SYSTEM_BINDINGS
+	) {
 		let def = VTable {
 			id: VTableId(0),
 			namespace: ns_def.id(),

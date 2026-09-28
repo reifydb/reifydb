@@ -3,11 +3,13 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_core::interface::catalog::{
-	flow::{FlowId, OperatorId},
-	object::ObjectId,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{
+		flow::{FlowId, OperatorId},
+		object::ObjectId,
+	},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
@@ -106,8 +108,15 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::{TimeDomain, WindowKind, WindowSize},
+		flow::{
+			dag::FlowBuilder,
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::{
-			catalog::id::{SeriesId, TableId, ViewId},
+			catalog::{
+				flow::FlowEdge,
+				id::{SeriesId, TableId, ViewId},
+			},
 			change::Change,
 			flow::OperatorCapability,
 		},
@@ -115,10 +124,6 @@ mod tests {
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_rql::flow::{
-		flow::FlowBuilder,
-		operator::{FlowEdge, FlowNode, OperatorDef},
-	};
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -332,7 +337,14 @@ mod tests {
 
 		fn edge(mut self, from: u64, to: u64) -> Self {
 			self.edges += 1;
-			self.builder.add_edge(FlowEdge::new(self.edges, OperatorId(from), OperatorId(to))).unwrap();
+			self.builder
+				.add_edge(FlowEdge::new(
+					self.edges,
+					self.builder.id(),
+					OperatorId(from),
+					OperatorId(to),
+				))
+				.unwrap();
 			self
 		}
 

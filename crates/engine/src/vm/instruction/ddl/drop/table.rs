@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::{flow::operator::OperatorDef, nodes::DropTableNode};
+use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_rql::nodes::DropTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
@@ -21,12 +21,12 @@ pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: 
 
 	let def = services.catalog.get_table(&mut Transaction::Admin(txn), table_id)?;
 
-	let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+	let dags = services.catalog.list_flow_dags_asc(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_flow_dependents(
 		&services.catalog,
 		txn,
-		&operators,
+		&dags,
 		&flows,
 		|node_type| matches!(node_type, OperatorDef::SourceTable { table, .. } if *table == table_id),
 	)?;

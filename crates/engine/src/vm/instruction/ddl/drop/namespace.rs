@@ -4,8 +4,8 @@
 use std::collections::HashSet;
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::{flow::operator::OperatorDef, nodes::DropNamespaceNode};
+use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_rql::nodes::DropNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{Value, constraint::Constraint};
 
@@ -99,14 +99,14 @@ pub(crate) fn drop_namespace(
 		all_ringbuffers.iter().filter(|r| descendant_ids.contains(&r.namespace)).map(|r| r.id).collect();
 
 	if !table_ids.is_empty() || !view_ids.is_empty() || !ringbuffer_ids.is_empty() {
-		let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+		let dags = services.catalog.list_flow_dags_asc(&mut Transaction::Admin(txn))?;
 		let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 
-		let external_operators: Vec<_> = operators
+		let external_dags: Vec<_> = dags
 			.iter()
-			.filter(|n| {
+			.filter(|dag| {
 				flows.iter()
-					.find(|f| f.id == n.flow)
+					.find(|f| f.id == dag.id())
 					.map(|f| !descendant_ids.contains(&f.namespace))
 					.unwrap_or(false)
 			})
@@ -116,7 +116,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_operators,
+			&external_dags,
 			&flows,
 			|node_type| matches!(node_type, OperatorDef::SourceTable { table, .. } if table_ids.contains(table)),
 		)?);
@@ -124,7 +124,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_operators,
+			&external_dags,
 			&flows,
 			|node_type| {
 				matches!(node_type, OperatorDef::SourceView { view } if view_ids.contains(view))
@@ -135,7 +135,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_operators,
+			&external_dags,
 			&flows,
 			|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer, .. } if ringbuffer_ids.contains(ringbuffer)),
 		)?);

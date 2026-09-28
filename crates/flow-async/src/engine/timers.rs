@@ -5,10 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	common::ChangeVersion,
+	flow::dag::FlowDag,
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator::keyspace::timer::TimerWheelKey,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
 use crate::{
@@ -172,6 +172,10 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
+		flow::{
+			dag::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::{
 			catalog::{
 				flow::{FlowId, OperatorId},
@@ -181,10 +185,6 @@ mod tests {
 			flow::OperatorCapability,
 		},
 		state::timer::TimerKind,
-	};
-	use reifydb_rql::flow::{
-		flow::FlowDag,
-		operator::{FlowNode, OperatorDef},
 	};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;

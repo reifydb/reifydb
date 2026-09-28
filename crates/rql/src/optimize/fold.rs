@@ -3,12 +3,11 @@
 
 use std::mem;
 
-use reifydb_value::{fragment::Fragment, value::Value};
-
-use crate::expression::{
+use reifydb_core::expression::{
 	AliasExpression, ConstantExpression, Expression, IdentExpression, IfExpression, PrefixExpression,
 	PrefixOperator, name::canonical_name,
 };
+use reifydb_value::{fragment::Fragment, value::Value};
 
 pub fn fold(expr: &mut Expression) {
 	fold_children(expr);
@@ -376,15 +375,17 @@ fn bool_constant(b: bool) -> Expression {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
+	use reifydb_core::{
+		expression::{
+			AddExpression, AndExpression, CallExpression, ColumnExpression, ConstantExpression,
+			DivExpression, ElseIfExpression, EqExpression, GreaterThanExpression, IdentExpression,
+			IfExpression, MulExpression, OrExpression, PrefixExpression, PrefixOperator,
+		},
+		interface::identifier::{ColumnIdentifier, ColumnObject},
+	};
 	use reifydb_value::fragment::Fragment;
 
 	use super::*;
-	use crate::expression::{
-		AddExpression, AndExpression, CallExpression, ColumnExpression, ConstantExpression, DivExpression,
-		ElseIfExpression, EqExpression, GreaterThanExpression, IdentExpression, IfExpression, MulExpression,
-		OrExpression, PrefixExpression, PrefixOperator,
-	};
 
 	fn frag(s: &str) -> Fragment {
 		Fragment::internal(s)

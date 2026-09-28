@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_core::{
+	expression::Expression, flow::operator::OperatorDef::Aggregate, interface::catalog::flow::OperatorId,
+	operator_with::AggregateWith,
+};
+use reifydb_rql::{nodes::AggregateNode, query::QueryPlan};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::Result;
+
+use crate::{
+	aggregate::AggregateContext,
+	compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
+};
+
+pub(crate) struct AggregateCompiler {
+	pub input: Box<QueryPlan>,
+	pub by: Vec<Expression>,
+	pub map: Vec<Expression>,
+	pub with: AggregateWith,
+}
+
+impl From<AggregateNode> for AggregateCompiler {
+	fn from(node: AggregateNode) -> Self {
+		Self {
+			input: node.input,
+			by: node.by,
+			map: node.map,
+			with: node.with,
+		}
+	}
+}
+
+impl CompileOperator for AggregateCompiler {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+		validate_flow_aggregations(&compiler.routines, &self.map, AggregateContext::Grouped, None)?;
+
+		let input_node = compiler.compile_plan(txn, *self.input)?;
+
+		let node_id = compiler.add_node(
+			txn,
+			Aggregate {
+				by: self.by,
+				map: self.map,
+				with: self.with,
+			},
+		)?;
+
+		compiler.add_edge(txn, &input_node, &node_id)?;
+		Ok(node_id)
+	}
+}

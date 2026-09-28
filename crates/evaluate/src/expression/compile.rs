@@ -5,6 +5,7 @@ use std::{mem::discriminant, slice::from_ref, str::FromStr};
 
 use reifydb_core::{
 	error::diagnostic::catalog::{variant_enum_not_known, variant_in_expression},
+	expression::{Expression, name::display_label},
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
@@ -13,7 +14,6 @@ use reifydb_core::{
 		columns::Columns,
 	},
 };
-use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -1304,12 +1304,12 @@ fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error 
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
+		expression::{
+			CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression,
+			IfExpression, MapExpression, TypeExpression,
+		},
 		interface::identifier::ColumnIdentifier,
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
-	};
-	use reifydb_rql::expression::{
-		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression, IfExpression,
-		MapExpression, TypeExpression,
 	};
 	use reifydb_value::{
 		fragment::Fragment,

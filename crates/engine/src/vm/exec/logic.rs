@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+};
 use reifydb_evaluate::{
 	expression::{
 		compare::{Equal, GreaterThanEqual, LessThanEqual, compare_columns},
@@ -10,7 +13,6 @@ use reifydb_evaluate::{
 	},
 	stack::Variable,
 };
-use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,

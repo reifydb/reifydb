@@ -58,7 +58,10 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_CDC_COMMIT: NamespaceId = NamespaceId(49);
 	pub const SYSTEM_METRICS_STORE_CDC_READ: NamespaceId = NamespaceId(50);
 	pub const SYSTEM_METRICS_STORE_CDC_PERSISTENT: NamespaceId = NamespaceId(51);
+	pub const SYSTEM_FLOW: NamespaceId = NamespaceId(54);
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
+	pub const SYSTEM_FLOW_OPERATOR: NamespaceId = NamespaceId(56);
+	pub const SYSTEM_FLOW_OPERATOR_LIBRARY: NamespaceId = NamespaceId(57);
 }
 
 #[derive(Debug, Clone, PartialEq)]

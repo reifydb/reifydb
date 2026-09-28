@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	value::column::columns::Columns,
 };
-use reifydb_rql::flow::aggregate::SlotKind;
+use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,

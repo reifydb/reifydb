@@ -3,7 +3,18 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use reifydb_core::{
+	flow::{
+		dag::FlowDag,
+		operator::OperatorDef::{
+			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
+			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceInlineData, SourceRingBuffer,
+			SourceSeries, SourceTable, SourceView, Take, Window,
+		},
+	},
+	interface::catalog::flow::OperatorId,
+	value::column::columns::Columns,
+};
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
@@ -15,14 +26,6 @@ use reifydb_flow::{
 	},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::flow::{
-	flow::FlowDag,
-	operator::OperatorDef::{
-		Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
-		SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceInlineData, SourceRingBuffer,
-		SourceSeries, SourceTable, SourceView, Take, Window,
-	},
-};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, error::Error};
 
@@ -175,10 +178,15 @@ fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
 mod tests {
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, TimeDomain, TimeSource},
+		expression::Expression,
+		flow::{
+			dag::{FlowBuilder, FlowDag},
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::{
 			catalog::{
 				column::{Column, ColumnIndex},
-				flow::{FlowId, OperatorId},
+				flow::{FlowEdge, FlowId, OperatorId},
 				id::{ColumnId, NamespaceId, TableId, ViewId},
 				object::ObjectId,
 				table::Table,
@@ -189,13 +197,7 @@ mod tests {
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_rql::{
-		expression::{Expression, parse_expression},
-		flow::{
-			flow::{FlowBuilder, FlowDag},
-			operator::{FlowEdge, FlowNode, OperatorDef},
-		},
-	};
+	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -277,7 +279,7 @@ mod tests {
 			builder.add_node(FlowNode::new(id, ty));
 		}
 		for (position, (source, target)) in edges.iter().enumerate() {
-			builder.add_edge(FlowEdge::new(position as u64, *source, *target)).unwrap();
+			builder.add_edge(FlowEdge::new(position as u64, builder.id(), *source, *target)).unwrap();
 		}
 		builder.build()
 	}

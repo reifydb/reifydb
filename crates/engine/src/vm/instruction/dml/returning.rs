@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
+	expression::Expression,
 	interface::catalog::{column::Column, dictionary::Dictionary},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
 };
@@ -15,7 +16,6 @@ use reifydb_evaluate::{
 	},
 	stack::SymbolTable,
 };
-use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,

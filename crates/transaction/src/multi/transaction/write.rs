@@ -621,13 +621,22 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub fn commit(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
+		self.commit_with(flow_changes, |_| {})
+	}
+
+	pub fn commit_with(
+		&mut self,
+		flow_changes: Vec<Change>,
+		before_publish: impl FnOnce(CommitVersion),
+	) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
+			before_publish(CommitVersion(0));
 			return Ok(CommitVersion(0));
 		}
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending(deltas.clone())?;
-		self.finalize_commit(commit_version, deltas, flow_changes)
+		self.finalize_commit(commit_version, deltas, flow_changes, before_publish)
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
@@ -638,7 +647,7 @@ impl MultiWriteTransaction {
 		}
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
-		self.finalize_commit(commit_version, deltas, flow_changes)
+		self.finalize_commit(commit_version, deltas, flow_changes, |_| {})
 	}
 
 	#[inline]
@@ -647,6 +656,7 @@ impl MultiWriteTransaction {
 		commit_version: CommitVersion,
 		deltas: CowVec<Delta>,
 		flow_changes: Vec<Change>,
+		before_publish: impl FnOnce(CommitVersion),
 	) -> Result<CommitVersion> {
 		reifydb_assertions! {
 			assert_ne!(
@@ -672,6 +682,7 @@ impl MultiWriteTransaction {
 			self.oracle.query.mark_finished(v);
 		}
 		self.discard();
+		before_publish(commit_version);
 		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
 	}
@@ -1125,7 +1136,7 @@ mod tests {
 			racer.0, commit_version.0
 		);
 
-		let result = txn.finalize_commit(commit_version, deltas, vec![]);
+		let result = txn.finalize_commit(commit_version, deltas, vec![], |_| {});
 		assert_eq!(
 			result.unwrap(),
 			commit_version,

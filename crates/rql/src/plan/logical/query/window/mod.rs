@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::operator_with::WindowWith;
+use reifydb_core::{expression::Expression, operator_with::WindowWith};
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
 	ast::ast::{Ast, AstWindow},
-	expression::{Expression, ExpressionCompiler},
+	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan},
 };
 

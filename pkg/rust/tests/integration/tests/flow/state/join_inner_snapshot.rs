@@ -8,8 +8,6 @@ use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const JOIN_NODE_TYPE: u8 = 7;
-
 const LEFT: &str = "from system::metrics::flow::state::current
 	filter { keyspace == 'JOIN_LEFT' }";
 
@@ -69,9 +67,9 @@ fn advance_past_the_seal(db: &TestDb) {
 }
 
 fn join_operator(db: &TestDb) -> u64 {
-	let rql = format!("FROM system::operators FILTER {{ node_type == {JOIN_NODE_TYPE} }} MAP {{ id }}");
+	let rql = "FROM system::flow::operators FILTER { kind == 'Join' } MAP { id }";
 	let frames = db.query(&rql);
-	let values = column_values(frames.first().expect("system::operators returned no frame"), "id");
+	let values = column_values(frames.first().expect("system::flow::operators returned no frame"), "id");
 	match values.as_slice() {
 		[Value::Uint8(id)] => *id,
 		other => panic!("expected exactly one join operator, found {other:?}"),

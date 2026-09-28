@@ -3,15 +3,11 @@
 
 use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
 
-use crate::{
-	catalog::FlowCatalog,
-	progress::tracker::{FlowPositionTracker, ObjectVersionTracker},
-};
+use crate::progress::tracker::{FlowPositionTracker, ObjectVersionTracker};
 
 pub(crate) fn compute_flow_watermarks(
 	object_tracker: &ObjectVersionTracker,
 	flow_tracker: &FlowPositionTracker,
-	catalog: &FlowCatalog,
 	consumable: impl Fn() -> CommitVersion,
 ) -> Vec<FlowWatermarkRow> {
 	let object_versions = object_tracker.all();
@@ -20,7 +16,7 @@ pub(crate) fn compute_flow_watermarks(
 
 	let mut rows = Vec::new();
 
-	let registered = catalog.get_flow_ids();
+	let registered = flow_tracker.registered_flows();
 
 	for flow_id in &registered {
 		let flow_version = flow_positions.get(flow_id).copied().unwrap_or(CommitVersion(0)).0;

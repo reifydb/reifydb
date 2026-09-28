@@ -3,9 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	expression::VariableExpression,
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::{error::EvaluateError, stack::Variable};
-use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},

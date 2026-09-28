@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::{
-	expression::Expression,
-	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan, ReturnValue},
+use reifydb_core::expression::Expression;
+
+use crate::plan::physical::{
+	AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan, ReturnValue,
 };
 
 pub fn walk_expressions_mut(

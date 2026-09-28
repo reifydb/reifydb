@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
-use reifydb_rql::flow::aggregate::SlotKind;
+use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,

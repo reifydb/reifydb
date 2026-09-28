@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use arrow_array::Array;
 use reifydb_core::{
+	expression::{CastExpression, ConstantExpression, Expression, PrefixOperator, TypeExpression},
 	interface::evaluate::TargetColumn,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
@@ -15,7 +16,6 @@ use reifydb_evaluate::expression::{
 	eval::evaluate,
 	prefix::prefix_apply,
 };
-use reifydb_rql::expression::{CastExpression, ConstantExpression, Expression, PrefixOperator, TypeExpression};
 use reifydb_value::{
 	Result,
 	error::Diagnostic,

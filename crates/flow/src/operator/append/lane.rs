@@ -3,8 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
+use reifydb_core::{
+	flow::{dag::FlowDag, operator::OperatorDef},
+	interface::catalog::flow::OperatorId,
+};
 use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
 
 use crate::error::FlowGraphError;

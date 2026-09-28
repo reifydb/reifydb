@@ -65,7 +65,6 @@ use tracing::warn;
 
 use crate::{
 	builder::{CustomOperators, FlowConfig},
-	catalog::FlowCatalog,
 	commit::{
 		committer::{Committer, CommitterActor, CommitterHandle},
 		quiescence::FlowMaterialization,
@@ -116,7 +115,6 @@ impl FlowSubsystem {
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let flow_scope = spawner.scope();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let commit_handle = ioc.try_resolve::<CommitHandle>().unwrap_or_else(|| {
 			let begin_engine = engine.clone();
@@ -164,7 +162,6 @@ impl FlowSubsystem {
 			"flow-supervisor",
 			FlowSupervisor::new(FlowSupervisorParams {
 				engine: engine.clone(),
-				flow_catalog: flow_catalog.clone(),
 				committer: committer_ref,
 				terminal_committer: terminal_committer_ref,
 				backlog: backlog.clone(),
@@ -189,14 +186,7 @@ impl FlowSubsystem {
 			}),
 		);
 
-		Self::register_watermark_sampler(
-			ioc,
-			&engine,
-			&object_tracker,
-			&flow_tracker,
-			&flow_catalog,
-			&materialization,
-		);
+		Self::register_watermark_sampler(ioc, &engine, &object_tracker, &flow_tracker, &materialization);
 
 		let poisoned_health = health.clone();
 		let stalled_health = health.clone();
@@ -286,17 +276,15 @@ impl FlowSubsystem {
 		engine: &StandardEngine,
 		object_tracker: &ObjectVersionTracker,
 		flow_tracker: &FlowPositionTracker,
-		flow_catalog: &FlowCatalog,
 		materialization: &FlowMaterialization,
 	) {
 		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
 			let engine = engine.clone();
 			let tracker = object_tracker.clone();
 			let flow_tracker = flow_tracker.clone();
-			let flow_catalog = flow_catalog.clone();
 			let materialization = materialization.clone();
 			move || {
-				compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog, || {
+				compute_flow_watermarks(&tracker, &flow_tracker, || {
 					engine.done_until().max(materialization.output_frontier())
 				})
 			}

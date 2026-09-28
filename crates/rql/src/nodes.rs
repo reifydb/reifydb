@@ -9,6 +9,7 @@ use reifydb_catalog::catalog::{
 };
 use reifydb_core::{
 	common::{JoinType, TimeSource},
+	expression::{AliasExpression, Expression, VariableExpression},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
@@ -41,10 +42,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	expression::{AliasExpression, Expression, VariableExpression},
-	query::QueryPlan,
-};
+use crate::query::QueryPlan;
 
 #[derive(Debug, Clone)]
 pub struct PrimaryKeyColumn {

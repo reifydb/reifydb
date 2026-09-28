@@ -5,11 +5,11 @@ use std::{result::Result as StdResult, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
+	flow::dag::FlowDag,
 	interface::{catalog::id::SubscriptionId, change::StagedBatch},
 	metrics::execution::ExecutionMetrics,
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{Result, error::Error as TypeError, params::Params, value::identity::IdentityId};
 

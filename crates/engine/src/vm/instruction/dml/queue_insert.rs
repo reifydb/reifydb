@@ -18,6 +18,7 @@ use reifydb_core::{
 		},
 		query::column_not_found,
 	},
+	expression::Expression,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -33,9 +34,8 @@ use reifydb_core::{
 	value::column::{builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::{
-	expression::Expression,
-	nodes::{InsertQueueNode, QUEUE_CREATED_COLUMN, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD},
+use reifydb_rql::nodes::{
+	InsertQueueNode, QUEUE_CREATED_COLUMN, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{

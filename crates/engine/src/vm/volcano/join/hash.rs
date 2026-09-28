@@ -7,6 +7,7 @@ use arrow_array::{Array, ArrayRef};
 use arrow_row::{RowConverter, Rows};
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
+	expression::{AccessObjectExpression, Expression},
 	interface::identifier::ColumnObject,
 	internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -15,7 +16,6 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
-use reifydb_rql::expression::{AccessObjectExpression, Expression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,

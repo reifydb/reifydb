@@ -3,6 +3,12 @@
 
 use reifydb_core::{
 	error::diagnostic::query::unsupported_source_qualification,
+	expression::{
+		AccessObjectExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
+		GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression, LessThanExpression,
+		MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression,
+		SubExpression, TupleExpression, XorExpression,
+	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
 use reifydb_value::{fragment::Fragment, return_error};
@@ -11,12 +17,7 @@ use crate::{
 	Result,
 	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
-	expression::{
-		AccessObjectExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
-		ExpressionCompiler, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
-		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
-		RemExpression, SubExpression, TupleExpression, XorExpression,
-	},
+	expression::ExpressionCompiler,
 };
 
 pub struct JoinConditionCompiler {

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::key::encode_u64_asc;
 use reifydb_core::{
+	expression::Expression,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
@@ -21,7 +22,6 @@ use reifydb_evaluate::expression::{
 use reifydb_flow::context::FlowContext;
 use reifydb_macro::operator_state;
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,

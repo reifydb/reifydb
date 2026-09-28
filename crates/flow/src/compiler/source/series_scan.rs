@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_core::{flow::operator::OperatorDef::SourceSeries, interface::catalog::flow::OperatorId};
+use reifydb_rql::nodes::SeriesScanNode;
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::Result;
+
+use crate::compiler::{CompileOperator, FlowCompiler};
+
+pub(crate) struct SeriesScanCompiler {
+	pub series_scan: SeriesScanNode,
+}
+
+impl From<SeriesScanNode> for SeriesScanCompiler {
+	fn from(series_scan: SeriesScanNode) -> Self {
+		Self {
+			series_scan,
+		}
+	}
+}
+
+impl CompileOperator for SeriesScanCompiler {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+		let series = self.series_scan.source.def();
+		let time_domain = series.time.domain();
+		let series_id = series.id;
+		compiler.add_node(
+			txn,
+			SourceSeries {
+				series: series_id,
+				time_domain,
+			},
+		)
+	}
+}

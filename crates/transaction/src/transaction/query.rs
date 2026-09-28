@@ -13,7 +13,7 @@ use reifydb_core::{
 			binding::Binding,
 			column_snapshot::ColumnSnapshot,
 			dictionary::Dictionary,
-			flow::{Flow, FlowId},
+			flow::{FlowEntry, FlowId},
 			handler::Handler,
 			id::{
 				BindingId, ColumnSnapshotId, HandlerId, NamespaceId, ProcedureId, QueueId,
@@ -233,11 +233,11 @@ impl TransactionalColumnSnapshotChanges for QueryTransaction {
 }
 
 impl TransactionalFlowChanges for QueryTransaction {
-	fn find_flow(&self, _id: FlowId) -> Option<&Flow> {
+	fn find_flow(&self, _id: FlowId) -> Option<&FlowEntry> {
 		None
 	}
 
-	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Flow> {
+	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&FlowEntry> {
 		None
 	}
 

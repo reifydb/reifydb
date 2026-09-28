@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use postcard::to_stdvec;
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackOperatorChangeOperations, flow::Operator},
+	flow::operator::FlowNode,
+	interface::catalog::flow::FlowId,
+	internal,
 	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::{error::Error, value::blob::Blob};
 
 use crate::{
 	CatalogStore, Result,
@@ -13,22 +17,23 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_operator(txn: &mut AdminTransaction, node_def: &Operator) -> Result<()> {
-		let mut row = operator::allocate();
-		operator::set_id(&mut row, u64::from(node_def.id));
-		operator::set_flow(&mut row, u64::from(node_def.flow));
-		operator::set_type(&mut row, node_def.node_type);
-		operator::set_data(&mut row, &node_def.data);
+	pub(crate) fn create_operator(txn: &mut AdminTransaction, flow: FlowId, node: &FlowNode) -> Result<()> {
+		let data = to_stdvec(&node.ty)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 
-		txn.set(&OperatorKey::new(node_def.id), row.freeze())?;
+		let mut row = operator::allocate();
+		operator::set_id(&mut row, u64::from(node.id));
+		operator::set_flow(&mut row, u64::from(flow));
+		operator::set_type(&mut row, node.ty.discriminator());
+		operator::set_data(&mut row, &Blob::from(data));
+
+		txn.set(&OperatorKey::new(node.id), row.freeze())?;
 
 		let mut index_row = operator_by_flow::allocate();
-		operator_by_flow::set_flow(&mut index_row, u64::from(node_def.flow));
-		operator_by_flow::set_id(&mut index_row, u64::from(node_def.id));
+		operator_by_flow::set_flow(&mut index_row, u64::from(flow));
+		operator_by_flow::set_id(&mut index_row, u64::from(node.id));
 
-		txn.set(&OperatorByFlowKey::new(node_def.flow, node_def.id), index_row.freeze())?;
-
-		txn.track_operator_created(node_def.clone())?;
+		txn.set(&OperatorByFlowKey::new(flow, node.id), index_row.freeze())?;
 
 		Ok(())
 	}
@@ -36,10 +41,9 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::Operator;
+	use reifydb_core::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::blob::Blob;
 
 	use crate::{
 		CatalogStore,
@@ -54,20 +58,18 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 
 		let operator_id = next_operator_id(&mut txn).unwrap();
-		let node_def = Operator {
-			id: operator_id,
-			flow: flow.id,
-			node_type: 1, // SourceTable
-			data: Blob::from([0x01u8, 0x02, 0x03].as_slice()),
-		};
+		let node = FlowNode::new(operator_id, OperatorDef::SourceInlineData {});
 
-		CatalogStore::create_operator(&mut txn, &node_def).unwrap();
+		CatalogStore::create_operator(&mut txn, flow.id, &node).unwrap();
 
-		let result = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), operator_id).unwrap();
+		let result =
+			CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator_id).unwrap().unwrap();
 		assert_eq!(result.id, operator_id);
-		assert_eq!(result.flow, flow.id);
-		assert_eq!(result.node_type, 1);
-		assert_eq!(result.data.as_bytes(), &[0x01, 0x02, 0x03]);
+		assert!(CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
+			.unwrap()
+			.iter()
+			.any(|n| n.id == result.id));
+		assert_eq!(result.ty, OperatorDef::SourceInlineData {});
 	}
 
 	#[test]
@@ -77,28 +79,30 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1_id = next_operator_id(&mut txn).unwrap();
-		let node1 = Operator {
-			id: node1_id,
-			flow: flow.id,
-			node_type: 1, // SourceTable
-			data: Blob::from([0x01u8].as_slice()),
-		};
-		CatalogStore::create_operator(&mut txn, &node1).unwrap();
+		let node1 = FlowNode::new(node1_id, OperatorDef::SourceInlineData {});
+		CatalogStore::create_operator(&mut txn, flow.id, &node1).unwrap();
 
 		let node2_id = next_operator_id(&mut txn).unwrap();
-		let node2 = Operator {
-			id: node2_id,
-			flow: flow.id,
-			node_type: 4, // Filter
-			data: Blob::from([0x02u8].as_slice()),
-		};
-		CatalogStore::create_operator(&mut txn, &node2).unwrap();
+		let node2 = FlowNode::new(
+			node2_id,
+			OperatorDef::Take {
+				limit: 1,
+			},
+		);
+		CatalogStore::create_operator(&mut txn, flow.id, &node2).unwrap();
 
-		let result1 = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
-		let result2 = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
+		let result1 =
+			CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node1_id).unwrap().unwrap();
+		let result2 =
+			CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node2_id).unwrap().unwrap();
 
-		assert_eq!(result1.node_type, 1);
-		assert_eq!(result2.node_type, 4);
+		assert_eq!(result1.ty, OperatorDef::SourceInlineData {});
+		assert_eq!(
+			result2.ty,
+			OperatorDef::Take {
+				limit: 1
+			}
+		);
 	}
 
 	#[test]
@@ -110,28 +114,26 @@ pub mod tests {
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
 		let node1_id = next_operator_id(&mut txn).unwrap();
-		let node1 = Operator {
-			id: node1_id,
-			flow: flow1.id,
-			node_type: 1,
-			data: Blob::from([0x01u8].as_slice()),
-		};
-		CatalogStore::create_operator(&mut txn, &node1).unwrap();
+		let node1 = FlowNode::new(node1_id, OperatorDef::SourceInlineData {});
+		CatalogStore::create_operator(&mut txn, flow1.id, &node1).unwrap();
 
 		let node2_id = next_operator_id(&mut txn).unwrap();
-		let node2 = Operator {
-			id: node2_id,
-			flow: flow2.id,
-			node_type: 1,
-			data: Blob::from([0x02u8].as_slice()),
-		};
-		CatalogStore::create_operator(&mut txn, &node2).unwrap();
+		let node2 = FlowNode::new(node2_id, OperatorDef::SourceInlineData {});
+		CatalogStore::create_operator(&mut txn, flow2.id, &node2).unwrap();
 
-		let result1 = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
-		let result2 = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
+		let result1 =
+			CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node1_id).unwrap().unwrap();
+		let result2 =
+			CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node2_id).unwrap().unwrap();
 
-		assert_eq!(result1.flow, flow1.id);
-		assert_eq!(result2.flow, flow2.id);
+		assert!(CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow1.id)
+			.unwrap()
+			.iter()
+			.any(|n| n.id == result1.id));
+		assert!(CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow2.id)
+			.unwrap()
+			.iter()
+			.any(|n| n.id == result2.id));
 	}
 
 	#[test]
@@ -141,14 +143,9 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 
 		let operator_id = next_operator_id(&mut txn).unwrap();
-		let node_def = Operator {
-			id: operator_id,
-			flow: flow.id,
-			node_type: 1,
-			data: Blob::from([0x01u8].as_slice()),
-		};
+		let node = FlowNode::new(operator_id, OperatorDef::SourceInlineData {});
 
-		CatalogStore::create_operator(&mut txn, &node_def).unwrap();
+		CatalogStore::create_operator(&mut txn, flow.id, &node).unwrap();
 
 		let operators =
 			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();

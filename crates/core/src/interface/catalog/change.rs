@@ -10,7 +10,7 @@ use crate::{
 		column_snapshot::ColumnSnapshot,
 		config::Config,
 		dictionary::Dictionary,
-		flow::{Flow, FlowEdge, Operator, OperatorId},
+		flow::{FlowEntry, OperatorId},
 		handler::Handler,
 		identity::{GrantedRole, Identity, IdentityAttribute, IdentityAttributeValue, Role},
 		key::PrimaryKey,
@@ -59,27 +59,15 @@ pub trait CatalogTrackNamespaceChangeOperations {
 }
 
 pub trait CatalogTrackFlowChangeOperations {
-	fn track_flow_created(&mut self, flow: Flow) -> Result<()>;
+	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<()>;
 
-	fn track_flow_deleted(&mut self, flow: Flow) -> Result<()>;
+	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<()>;
 }
 
 pub trait CatalogTrackPrimaryKeyChangeOperations {
 	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
 
 	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
-}
-
-pub trait CatalogTrackOperatorChangeOperations {
-	fn track_operator_created(&mut self, operator: Operator) -> Result<()>;
-
-	fn track_operator_deleted(&mut self, operator: Operator) -> Result<()>;
-}
-
-pub trait CatalogTrackFlowEdgeChangeOperations {
-	fn track_flow_edge_created(&mut self, edge: FlowEdge) -> Result<()>;
-
-	fn track_flow_edge_deleted(&mut self, edge: FlowEdge) -> Result<()>;
 }
 
 pub trait CatalogTrackViewChangeOperations {
@@ -236,8 +224,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackPrimaryKeyChangeOperations
-	+ CatalogTrackOperatorChangeOperations
-	+ CatalogTrackFlowEdgeChangeOperations
 	+ CatalogTrackHandlerChangeOperations
 	+ CatalogTrackMigrationChangeOperations
 	+ CatalogTrackMigrationEventChangeOperations

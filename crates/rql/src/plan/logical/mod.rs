@@ -30,6 +30,7 @@ use reifydb_catalog::catalog::{
 };
 use reifydb_core::{
 	common::{IndexType, JoinType, TimeSource},
+	expression::{AliasExpression, Expression, IdentExpression},
 	interface::{
 		catalog::{
 			property::ColumnPropertyKind,
@@ -69,7 +70,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
-	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	nodes::TakeLimit,
 	plan::logical::alter::table::AlterTableNode,
 };

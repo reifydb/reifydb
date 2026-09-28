@@ -3,9 +3,10 @@
 
 use reifydb_core::{
 	common::TimeSource,
+	flow::operator::{FlowNode, OperatorDef},
 	interface::catalog::{
 		column::ColumnIndex,
-		flow::{Flow, FlowEdge, FlowId, FlowStatus, Operator, OperatorId},
+		flow::{Flow, FlowEdge, FlowId, FlowStatus, OperatorId},
 		handler::Handler,
 		id::{RingBufferId, TableId},
 		namespace::Namespace,
@@ -22,7 +23,6 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		blob::Blob,
 		constraint::TypeConstraint,
 		sumtype::{SumTypeId, VariantRef},
 	},
@@ -217,12 +217,16 @@ pub fn create_test_ringbuffer_column(
 }
 
 pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> Flow {
+	use crate::store::sequence::flow::next_flow_id;
+
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
 
+	let flow_id = next_flow_id(txn).unwrap();
 	CatalogStore::create_flow(
 		txn,
+		flow_id,
 		FlowToCreate {
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
@@ -244,19 +248,14 @@ pub fn ensure_test_flow(txn: &mut AdminTransaction) -> Flow {
 	create_flow(txn, "test_namespace", "test_flow")
 }
 
-pub fn create_operator(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> Operator {
+pub fn create_operator(txn: &mut AdminTransaction, flow_id: FlowId, def: OperatorDef) -> FlowNode {
 	use crate::store::sequence::flow::next_operator_id;
 
 	let operator_id = next_operator_id(txn).unwrap();
-	let node_def = Operator {
-		id: operator_id,
-		flow: flow_id,
-		node_type,
-		data: Blob::from(data),
-	};
+	let node = FlowNode::new(operator_id, def);
 
-	CatalogStore::create_operator(txn, &node_def).unwrap();
-	node_def
+	CatalogStore::create_operator(txn, flow_id, &node).unwrap();
+	node
 }
 
 pub fn create_flow_edge(

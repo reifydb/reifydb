@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
+	expression::Expression,
 	interface::catalog::flow::OperatorId,
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
@@ -14,7 +15,7 @@ use reifydb_flow_async::operator::{
 	aggregation::operator::AggregateOperator,
 	window::operator::{WindowConfig, WindowOperator},
 };
-use reifydb_rql::expression::{Expression, parse_expression};
+use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	fragment::Fragment,

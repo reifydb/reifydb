@@ -71,6 +71,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::flow::operator::OperatorDef;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -85,8 +86,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -110,9 +111,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node3 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
@@ -133,10 +134,10 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let left = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let right = create_operator(&mut txn, flow.id, 2, &[0x02]);
-		let extra = create_operator(&mut txn, flow.id, 3, &[0x03]);
-		let target = create_operator(&mut txn, flow.id, 4, &[0x04]);
+		let left = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let right = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let extra = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let target = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let first = create_flow_edge(&mut txn, flow.id, left.id, target.id);
 		let second = create_flow_edge(&mut txn, flow.id, right.id, target.id);
@@ -154,8 +155,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
@@ -179,10 +180,10 @@ pub mod tests {
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
-		let node1a = create_operator(&mut txn, flow1.id, 1, &[0x01]);
-		let node1b = create_operator(&mut txn, flow1.id, 4, &[0x02]);
-		let node2a = create_operator(&mut txn, flow2.id, 1, &[0x03]);
-		let node2b = create_operator(&mut txn, flow2.id, 4, &[0x04]);
+		let node1a = create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		let node1b = create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		let node2a = create_operator(&mut txn, flow2.id, OperatorDef::SourceInlineData {});
+		let node2b = create_operator(&mut txn, flow2.id, OperatorDef::SourceInlineData {});
 
 		create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
 		create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);

@@ -5,13 +5,16 @@ use std::collections::HashSet;
 
 use reifydb_core::{
 	common::TimeDomain,
-	interface::catalog::{flow::FlowId, id::TableId},
+	flow::{
+		dag::{FlowBuilder, FlowDag},
+		operator::{FlowNode, OperatorDef},
+	},
+	interface::catalog::{
+		flow::{FlowEdge, FlowId},
+		id::TableId,
+	},
 	operator_with::DistinctWith,
 	value::column::columns::Columns,
-};
-use reifydb_rql::flow::{
-	flow::{FlowBuilder, FlowDag},
-	operator::{FlowEdge, FlowNode, OperatorDef},
 };
 
 use super::{lane::*, *};
@@ -207,7 +210,7 @@ impl Dag {
 
 	fn edge(&mut self, from: OperatorId, to: OperatorId) {
 		self.next_edge += 1;
-		self.builder.add_edge(FlowEdge::new(self.next_edge, from, to)).unwrap();
+		self.builder.add_edge(FlowEdge::new(self.next_edge, self.builder.id(), from, to)).unwrap();
 	}
 
 	fn build(self) -> FlowDag {

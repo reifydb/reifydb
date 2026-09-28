@@ -18,8 +18,8 @@ pub fn operator_types() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: OPERATOR_TYPES,
-			namespace: NamespaceId::SYSTEM,
-			name: "operator_types".to_string(),
+			namespace: NamespaceId::SYSTEM_FLOW_OPERATOR,
+			name: "types".to_string(),
 			columns: vec![
 				Column {
 					id: ColumnId(1),

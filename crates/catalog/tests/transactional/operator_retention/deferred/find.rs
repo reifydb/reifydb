@@ -27,12 +27,8 @@ fn deferred_append_view_persists_no_operator_retention() {
 		.find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "merged")
 		.unwrap()
 		.expect("a flow must back the deferred view");
-	let node_ids: Vec<_> = catalog
-		.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
-		.unwrap()
-		.into_iter()
-		.map(|n| n.id)
-		.collect();
+	let node_ids: Vec<_> =
+		catalog.get_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap().get_operator_ids().collect();
 
 	let ttls = retentions_of(&catalog, &node_ids);
 
@@ -72,12 +68,8 @@ fn deferred_join_view_persists_join_ttl() {
 		.find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "joined")
 		.unwrap()
 		.expect("a flow must back the deferred view");
-	let node_ids: Vec<_> = catalog
-		.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
-		.unwrap()
-		.into_iter()
-		.map(|n| n.id)
-		.collect();
+	let node_ids: Vec<_> =
+		catalog.get_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap().get_operator_ids().collect();
 
 	let ttls = retentions_of(&catalog, &node_ids);
 

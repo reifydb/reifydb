@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
+use reifydb_core::expression::Expression;
 use reifydb_rql::{
-	expression::Expression,
 	nodes::{JoinInnerNode, JoinLeftNode, JoinNaturalNode},
 	query::QueryPlan,
 };

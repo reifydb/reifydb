@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_core::expression::{AliasExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
@@ -18,7 +19,7 @@ use crate::{
 	},
 	bump::BumpBox,
 	error::{IdentifierError, RqlError},
-	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, InlineDataNode, InsertDictionaryNode, InsertQueueNode, InsertRingBufferNode,
 		InsertSeriesNode, InsertTableNode, LogicalPlan, mutate::compile_returning_clause,

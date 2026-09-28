@@ -2,9 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_buffer::{BooleanBuffer, NullBuffer};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
+};
 use reifydb_evaluate::expression::{logic::execute_logical_op, prefix::prefix_apply};
-use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{error::LogicalOp, fragment::Fragment, value::value_type::ValueType};
 
 fn column(name: &str, data: ColumnBuffer) -> ColumnWithName {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::expression::{AliasExpression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{err, error::Diagnostic, fragment::Fragment};
 
@@ -8,7 +9,7 @@ use crate::{
 	Result,
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
 	bump::BumpBox,
-	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	plan::logical::{AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan},
 };
 

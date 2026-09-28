@@ -308,6 +308,12 @@ impl FlowPositionTracker {
 		self.inner.write().source_counts.insert(flow_id, count);
 	}
 
+	pub fn registered_flows(&self) -> Vec<FlowId> {
+		let mut flows: Vec<FlowId> = self.inner.read().source_counts.keys().copied().collect();
+		flows.sort();
+		flows
+	}
+
 	fn wakers_of(&self, flow_ids: impl IntoIterator<Item = FlowId>) -> Vec<(FlowWaker, bool)> {
 		let progress = self.inner.read();
 		flow_ids.into_iter()

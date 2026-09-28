@@ -227,8 +227,7 @@ fn an_unmanaged_apply_with_a_with_block_creates_without_a_with_check() {
 
 #[test]
 fn a_rejected_create_registers_no_flow() {
-	// create_flow runs before these checks, so a refused create must roll its flow row back or leave a half-built
-	// view.
+	// Checks must refuse the view before create_flow writes, otherwise a half-built flow row is left behind.
 	let db = memory();
 	event_time_source(&db);
 

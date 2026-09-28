@@ -3,13 +3,11 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use reifydb_core::expression::Expression;
 use reifydb_value::value::constraint::TypeConstraint;
 
 use super::LogicalPlan;
-use crate::{
-	bump::{BumpFragment, BumpVec},
-	expression::Expression,
-};
+use crate::bump::{BumpFragment, BumpVec};
 
 #[derive(Debug, Clone)]
 pub struct FunctionParameter<'bump> {

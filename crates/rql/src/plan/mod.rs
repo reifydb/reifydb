@@ -3,13 +3,13 @@
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
 	Result,
 	ast::ast::AstStatement,
-	expression::Expression,
 	plan::{
 		logical::{LogicalPlan, compile_logical},
 		physical::{PhysicalPlan, compile_physical},

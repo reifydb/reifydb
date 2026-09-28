@@ -18,8 +18,8 @@ pub fn flow_watermarks() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: FLOW_WATERMARKS,
-			namespace: NamespaceId::SYSTEM,
-			name: "flow_watermarks".to_string(),
+			namespace: NamespaceId::SYSTEM_FLOW,
+			name: "watermarks".to_string(),
 			columns: vec![
 				Column {
 					id: FLOW_ID,

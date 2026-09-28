@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackFlowEdgeChangeOperations, flow::FlowEdgeId},
+	interface::catalog::flow::FlowEdgeId,
 	key::flow::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -17,8 +17,6 @@ impl CatalogStore {
 			txn.remove(&FlowEdgeKey::new(edge_id))?;
 
 			txn.remove(&FlowEdgeByFlowKey::new(edge_def.flow, edge_id))?;
-
-			txn.track_flow_edge_deleted(edge_def)?;
 		}
 
 		Ok(())
@@ -27,7 +25,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowEdgeId;
+	use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::FlowEdgeId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -42,8 +40,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
@@ -59,8 +57,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -86,9 +84,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node3 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);

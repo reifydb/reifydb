@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	error::diagnostic::engine,
+	expression::ParameterExpression,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
-use reifydb_rql::expression::ParameterExpression;
 use reifydb_value::{
 	error,
 	fragment::Fragment,

@@ -5,6 +5,7 @@ use arrow_array::Array;
 use postcard::from_bytes;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
+	flow::operator::OperatorDef,
 	internal,
 	sort::SortKey,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -12,7 +13,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_rql::{expression::json::JsonExpression, flow::operator::OperatorDef};
+use reifydb_rql::expression::json::JsonExpression;
 use reifydb_value::{
 	error::Error,
 	value::{container::varlen_array, value_type::ValueType},

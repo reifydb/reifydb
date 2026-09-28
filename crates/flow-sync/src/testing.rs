@@ -4,17 +4,19 @@
 use std::sync::Arc;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::interface::{
-	catalog::{
-		dictionary::Dictionary,
-		id::{TableId, ViewId},
-		object::ObjectId,
-		table::Table,
-		view::View,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::{
+		catalog::{
+			dictionary::Dictionary,
+			id::{TableId, ViewId},
+			object::ObjectId,
+			table::Table,
+			view::View,
+		},
+		change::Diff,
 	},
-	change::Diff,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -230,6 +232,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		common::TimeSource,
+		flow::dag::FlowBuilder,
 		interface::{
 			catalog::{
 				dictionary::Dictionary,
@@ -242,7 +245,6 @@ mod tests {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_rql::flow::flow::FlowBuilder;
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		error::{Diagnostic, Error},

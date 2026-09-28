@@ -4,6 +4,15 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	expression::{
+		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, ContainsExpression,
+		DivExpression, ElseIfExpression, EqExpression, Expression, ExtendExpression, FieldAccessExpression,
+		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression, InExpression,
+		LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
+		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
+		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	internal,
 };
@@ -18,16 +27,6 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
-
-use super::{
-	AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
-	CastExpression, ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
-	EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
-	GreaterThanExpression, IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression,
-	ListExpression, MapExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression,
-	PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression,
-	VariableExpression, XorExpression,
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]

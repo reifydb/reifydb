@@ -2,6 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use bumpalo::collections::Vec as BumpVec;
+use reifydb_core::expression::{
+	AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression, IdentExpression,
+	IsVariantExpression,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
@@ -14,10 +18,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment},
 	convert_data_type_with_constraints,
-	expression::{
-		AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression, ExpressionCompiler,
-		IdentExpression, IsVariantExpression,
-	},
+	expression::ExpressionCompiler,
 	plan::logical::{
 		AssignNode, AssignValue, Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue,
 		LogicalPlan, LoopNode, MapNode, PipelineNode, WhileNode,

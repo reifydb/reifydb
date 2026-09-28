@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		query::column_not_found,
 	},
+	expression::Expression,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -25,7 +26,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::{expression::Expression, nodes::InsertRingBufferNode, query::QueryPlan};
+use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
-use reifydb_rql::flow::analyzer::FlowDependencyGraph;
+use reifydb_flow::analyzer::FlowDependencyGraph;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub fn flow_completeness_objects(

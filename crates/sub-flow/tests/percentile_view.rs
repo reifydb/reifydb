@@ -10,18 +10,19 @@ use reifydb::{
 };
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
+	expression::Expression,
 	interface::catalog::flow::OperatorId,
 	value::column::columns::Columns,
 };
-use reifydb_flow::context::FlowContext;
+use reifydb_flow::{
+	aggregate::{AggregateContext, DIGEST_FUNCTION, PERCENTILE_FUNCTION, SlotKind},
+	context::FlowContext,
+};
 use reifydb_flow_async::operator::{
 	aggregation::core::{Aggregation, SlotInput},
 	window::operator::{WindowConfig, WindowOperator},
 };
-use reifydb_rql::{
-	expression::{Expression, parse_expression},
-	flow::aggregate::{AggregateContext, DIGEST_FUNCTION, PERCENTILE_FUNCTION, SlotKind},
-};
+use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::{assert::rows, engine::TestEngine};

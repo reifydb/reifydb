@@ -86,8 +86,6 @@ mod enum_variant_update_errors;
 mod events;
 #[path = "extend_duplicate_column_fragment.rs"]
 mod extend_duplicate_column_fragment;
-#[path = "flow_dag_load.rs"]
-mod flow_dag_load;
 #[path = "grouped_sum_overflow.rs"]
 mod grouped_sum_overflow;
 #[path = "handler_body_pipe.rs"]

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::{flow::operator::OperatorDef, nodes::DropViewNode};
+use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_rql::nodes::DropViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
@@ -21,15 +21,15 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 
 	let def = services.catalog.get_view(&mut Transaction::Admin(txn), view_id)?;
 
-	let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+	let dags = services.catalog.list_flow_dags_asc(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let own_flow_id = flows.iter().find(|f| f.namespace == def.namespace() && f.name == def.name()).map(|f| f.id);
-	let external_operators: Vec<_> = if let Some(own_id) = own_flow_id {
-		operators.iter().filter(|n| n.flow != own_id).cloned().collect()
+	let external_dags: Vec<_> = if let Some(own_id) = own_flow_id {
+		dags.iter().filter(|dag| dag.id() != own_id).cloned().collect()
 	} else {
-		operators
+		dags
 	};
-	let dependents = find_flow_dependents(&services.catalog, txn, &external_operators, &flows, |node_type| {
+	let dependents = find_flow_dependents(&services.catalog, txn, &external_dags, &flows, |node_type| {
 		matches!(node_type, OperatorDef::SourceView { view } if *view == view_id)
 			|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } if *view == view_id)
 	})?;

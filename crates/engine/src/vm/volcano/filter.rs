@@ -6,6 +6,7 @@ use std::{mem, sync::Arc};
 use arrow_buffer::BooleanBuffer;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	expression::{Expression, IsVariantExpression},
 	interface::resolved::ResolvedObject,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -14,7 +15,6 @@ use reifydb_evaluate::expression::{
 	context::{CompileContext, EvalContext},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, IsVariantExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;

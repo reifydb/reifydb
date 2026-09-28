@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use postcard::from_bytes;
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
-	interface::catalog::flow::{FlowId, Operator, OperatorId},
+	flow::operator::{FlowNode, OperatorDef},
+	interface::catalog::flow::{FlowId, OperatorId},
+	internal,
 	key::{
 		any::TaggedKey,
 		operator::key::{OperatorByFlowKey, OperatorKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::Error;
 
 use crate::{
 	CatalogStore, Result,
@@ -17,7 +21,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_operators_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<Operator>> {
+	pub fn list_operators_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		let mut node_ids = Vec::new();
 		{
 			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
@@ -39,7 +43,7 @@ impl CatalogStore {
 		Ok(operators)
 	}
 
-	pub(crate) fn list_operators_all(rx: &mut Transaction<'_>) -> Result<Vec<Operator>> {
+	pub(crate) fn list_operators_all(rx: &mut Transaction<'_>) -> Result<Vec<(FlowId, FlowNode)>> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(OperatorKey::full_scan(), RangeScope::All, 1024)?;
@@ -49,17 +53,16 @@ impl CatalogStore {
 			if let TaggedKey::Operator(operator_key) = &entry.key {
 				let operator_id = operator_key.operator;
 				let flow_id = FlowId(operator::get_flow(EncodedCatalogRow::view(&entry.bytes)));
-				let node_type = operator::get_type(EncodedCatalogRow::view(&entry.bytes));
-				let data = operator::get_data(EncodedCatalogRow::view(&entry.bytes)).clone();
+				let ty: OperatorDef =
+					from_bytes(operator::get_data(EncodedCatalogRow::view(&entry.bytes)).as_ref())
+						.map_err(|e| {
+							Error(Box::new(internal!(
+								"Failed to deserialize OperatorDef: {}",
+								e
+							)))
+						})?;
 
-				let node_def = Operator {
-					id: operator_id,
-					flow: flow_id,
-					node_type,
-					data,
-				};
-
-				result.push(node_def);
+				result.push((flow_id, FlowNode::new(operator_id, ty)));
 			}
 		}
 
@@ -69,6 +72,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::flow::operator::OperatorDef;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -83,7 +87,7 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let operators =
 			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -108,9 +112,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node3 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let operators =
 			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -128,8 +132,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		create_operator(&mut txn, flow.id, 1, &[0x01]);
-		create_operator(&mut txn, flow.id, 4, &[0x02]);
+		create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let operators = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(operators.len(), 2);
@@ -151,15 +155,15 @@ pub mod tests {
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
-		create_operator(&mut txn, flow1.id, 1, &[0x01]);
-		create_operator(&mut txn, flow1.id, 4, &[0x02]);
-		create_operator(&mut txn, flow2.id, 1, &[0x03]);
+		create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		create_operator(&mut txn, flow2.id, OperatorDef::SourceInlineData {});
 
 		let all_nodes = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_nodes.len(), 3);
 
-		let flow1_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow1.id).collect();
-		let flow2_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow2.id).collect();
+		let flow1_nodes: Vec<_> = all_nodes.iter().filter(|(flow, _)| *flow == flow1.id).collect();
+		let flow2_nodes: Vec<_> = all_nodes.iter().filter(|(flow, _)| *flow == flow2.id).collect();
 
 		assert_eq!(flow1_nodes.len(), 2);
 		assert_eq!(flow2_nodes.len(), 1);

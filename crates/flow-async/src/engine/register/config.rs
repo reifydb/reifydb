@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::{expression::Expression, value::column::columns::Columns};
 use reifydb_evaluate::{
 	expression::{
 		compile::compile_expression,
@@ -12,7 +12,6 @@ use reifydb_evaluate::{
 	stack::SymbolTable,
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
@@ -71,8 +70,8 @@ pub fn evaluate_operator_params(
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_value::{fragment::Fragment, value::Value};
 

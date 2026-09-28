@@ -18,6 +18,7 @@ use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::{CommitVersion, SourceVersion},
 	error::diagnostic::flow::flow_step_panicked,
+	flow::dag::FlowDag,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -36,7 +37,6 @@ use reifydb_flow_async::{
 	operator::metrics::OperatorSampleRegistry,
 	transaction::substrate::FlowSubstrate,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -999,7 +999,6 @@ mod pull_protocol {
 
 	use super::*;
 	use crate::{
-		catalog::FlowCatalog,
 		commit::{
 			committer::{Committer, CommitterActor, CommitterHandle},
 			quiescence::FlowMaterialization,
@@ -1048,8 +1047,6 @@ mod pull_protocol {
 		te.admin(table_rql);
 		te.admin(view_rql);
 
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -1065,15 +1062,15 @@ mod pull_protocol {
 			OperatorSampleRegistry::new(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-		let (flow, _) =
-			flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
+		let flow =
+			engine.catalog().get_flow_dag(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
 		probe.register(&mut txn, flow.clone()).expect("register probe");
 		txn.rollback().expect("rollback probe");
 
 		let source_objects = {
 			let graph = probe.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			Arc::new(routing::flow_source_objects(&graph, flow_id, &registered, &view_kind))
 		};
 
@@ -1325,7 +1322,6 @@ mod pull_protocol {
 		}
 
 		fn reader_flow(&self) -> (FlowDag, Arc<BTreeSet<ObjectId>>, FlowUpstreams) {
-			let flow_catalog = FlowCatalog::new(self.engine.catalog());
 			let mut query = self.engine.begin_query(IdentityId::system()).expect("query");
 			let reader_id = self
 				.engine
@@ -1347,8 +1343,10 @@ mod pull_protocol {
 				OperatorSampleRegistry::new(),
 			);
 			let mut txn = self.engine.begin_command(IdentityId::system()).expect("command");
-			let (reader, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), reader_id)
+			let reader = self
+				.engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Command(&mut txn), reader_id)
 				.expect("load reader");
 			probe.register(&mut txn, self.flow.clone()).expect("register producer probe");
 			probe.register(&mut txn, reader.clone()).expect("register reader probe");
@@ -1356,7 +1354,7 @@ mod pull_protocol {
 
 			let graph = probe.get_dependency_graph();
 			let registered = |f: FlowId| f == self.flow_id || f == reader_id;
-			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let view_kind = |vid| self.engine.catalog().cache().find_view(vid).map(|v| v.kind());
 			let source_objects =
 				Arc::new(routing::flow_source_objects(&graph, reader_id, &registered, &view_kind));
 			let upstreams = routing::flow_upstreams(&graph, reader_id, &view_kind);
@@ -2254,8 +2252,12 @@ mod tick_failures {
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+		flow::operator::{FlowNode, OperatorDef},
 		interface::{
-			catalog::{flow::OperatorId, id::ViewId},
+			catalog::{
+				flow::{FlowEdge, OperatorId},
+				id::ViewId,
+			},
 			change::Change,
 			flow::OperatorCapability,
 		},
@@ -2272,7 +2274,6 @@ mod tick_failures {
 			substrate::apply_operator_state, watermark::SourceWatermarks,
 		},
 	};
-	use reifydb_rql::flow::operator::{FlowEdge, FlowNode, OperatorDef};
 	use reifydb_runtime::{
 		actor::{
 			context::Context,
@@ -2564,7 +2565,7 @@ mod tick_failures {
 				with: ApplyWith::default(),
 			},
 		));
-		builder.add_edge(FlowEdge::new(1, SOURCE, TIMED)).expect("edge");
+		builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, TIMED)).expect("edge");
 		let flow = builder.build();
 		assert!(flow.ticks(), "precondition: the flow must tick, otherwise on_tick returns without working");
 

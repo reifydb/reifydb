@@ -81,7 +81,10 @@ use crate::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
+		transaction::{
+			PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor,
+			PrePublishContext,
+		},
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -301,7 +304,12 @@ impl AdminTransaction {
 		row_changes: Vec<RowChange>,
 	) -> Result<CommitVersion> {
 		let id = multi.id();
-		let version = multi.commit(flow_changes)?;
+		let pre_publish = &self.interceptors.pre_publish;
+		let version = multi.commit_with(flow_changes, |version| {
+			if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
+				panic!("catalog cache fill for committed version {} failed: {}", version.0, err);
+			}
+		})?;
 		let _self_lease = multi.take_self_lease();
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
 		Ok(version)

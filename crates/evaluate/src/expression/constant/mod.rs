@@ -3,8 +3,7 @@
 
 pub mod temporal;
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_rql::expression::ConstantExpression;
+use reifydb_core::{expression::ConstantExpression, value::column::buffer::ColumnBuffer};
 use reifydb_value::{
 	fragment::Fragment,
 	return_error,

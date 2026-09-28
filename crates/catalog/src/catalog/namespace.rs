@@ -2,7 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::Namespace},
+	interface::catalog::{
+		change::{CatalogTrackFlowChangeOperations, CatalogTrackNamespaceChangeOperations},
+		flow::FlowEntry,
+		id::NamespaceId,
+		namespace::Namespace,
+	},
 	internal,
 };
 use reifydb_transaction::{
@@ -319,7 +324,20 @@ impl Catalog {
 
 	#[instrument(name = "catalog::namespace::drop", level = "info", skip(self, txn))]
 	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: Namespace) -> Result<()> {
+		let mut flows = Vec::new();
+		for flow in self.list_flows_all(&mut Transaction::Admin(&mut *txn))? {
+			if flow.namespace == namespace.id() {
+				let dag = self.get_flow_dag(&mut Transaction::Admin(&mut *txn), flow.id)?;
+				flows.push(FlowEntry {
+					flow,
+					dag,
+				});
+			}
+		}
 		CatalogStore::drop_namespace(txn, namespace.id())?;
+		for entry in flows {
+			txn.track_flow_deleted(entry)?;
+		}
 		txn.track_namespace_deleted(namespace)?;
 		Ok(())
 	}

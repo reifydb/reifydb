@@ -33,7 +33,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowEdgeId;
+	use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::FlowEdgeId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -48,8 +48,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let result = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();

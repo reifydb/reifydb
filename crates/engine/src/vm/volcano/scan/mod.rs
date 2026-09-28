@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 	},
 	resolved::ResolvedView,
 };
-use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, loader::load_flow_dag};
+use reifydb_flow::analyzer::FlowGraphAnalyzer;
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 
 use crate::{Result, vm::services::Services};
@@ -66,7 +66,7 @@ fn upstream_from_catalog(
 ) -> Result<Option<BTreeSet<ObjectId>>> {
 	let mut dags = Vec::new();
 	for flow in services.catalog.list_flows_all(rx)? {
-		dags.push(load_flow_dag(rx, flow.id)?);
+		dags.push(services.catalog.get_flow_dag(rx, flow.id)?);
 	}
 	let mut analyzer = FlowGraphAnalyzer::new();
 	analyzer.add_all(dags);

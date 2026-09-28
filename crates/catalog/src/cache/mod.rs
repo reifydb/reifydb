@@ -7,7 +7,6 @@ pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
-pub mod flow_edge;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;
@@ -16,7 +15,6 @@ pub mod identity_attribute_value;
 pub mod load;
 pub mod migration;
 pub mod namespace;
-pub mod operator;
 pub mod operator_retention;
 pub mod policy;
 pub mod primary_key;
@@ -51,7 +49,7 @@ use reifydb_core::{
 		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
-		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, Operator, OperatorId},
+		flow::{FlowEntry, FlowId, OperatorId},
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
@@ -105,9 +103,7 @@ pub type MultiVersionBinding = MultiVersionContainer<Binding>;
 pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
 pub type MultiVersionTable = MultiVersionContainer<Table>;
 pub type MultiVersionView = MultiVersionContainer<View>;
-pub type MultiVersionFlow = MultiVersionContainer<Flow>;
-pub type MultiVersionOperator = MultiVersionContainer<Operator>;
-pub type MultiVersionFlowEdge = MultiVersionContainer<FlowEdge>;
+pub type MultiVersionFlow = MultiVersionContainer<FlowEntry>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
 pub type MultiVersionRelationship = MultiVersionContainer<Relationship>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
@@ -173,14 +169,6 @@ pub struct CatalogCacheInner {
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlow>,
 
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
-
-	pub(crate) operators: SkipMap<OperatorId, MultiVersionOperator>,
-
-	pub(crate) operators_by_flow: SkipMap<FlowId, Vec<OperatorId>>,
-
-	pub(crate) flow_edges: SkipMap<FlowEdgeId, MultiVersionFlowEdge>,
-
-	pub(crate) flow_edges_by_flow: SkipMap<FlowId, Vec<FlowEdgeId>>,
 
 	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedure>,
 
@@ -343,10 +331,6 @@ impl CatalogCache {
 			views_by_name: SkipMap::new(),
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
-			operators: SkipMap::new(),
-			operators_by_flow: SkipMap::new(),
-			flow_edges: SkipMap::new(),
-			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			primary_keys_by_object: SkipMap::new(),
 			relationships: SkipMap::new(),

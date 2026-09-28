@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	expression::Expression,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
@@ -12,10 +15,7 @@ use reifydb_evaluate::{
 	},
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
 };
-use reifydb_rql::{
-	expression::Expression,
-	instruction::{Instruction, ScopeType},
-};
+use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, frame::frame::Frame, value_type::ValueType};
 use tracing::instrument;

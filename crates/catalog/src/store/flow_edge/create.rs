@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackFlowEdgeChangeOperations, flow::FlowEdge},
+	interface::catalog::flow::FlowEdge,
 	key::flow::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -28,14 +28,13 @@ impl CatalogStore {
 
 		txn.set(&FlowEdgeByFlowKey::new(edge_def.flow, edge_def.id), index_row.freeze())?;
 
-		txn.track_flow_edge_created(edge_def.clone())?;
-
 		Ok(())
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::flow::operator::OperatorDef;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -50,12 +49,12 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let result = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();
+		let result = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().unwrap();
 		assert_eq!(result.id, edge.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.source, node1.id);
@@ -68,15 +67,17 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node3 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
-		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
-		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
+		let result1 =
+			CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap().unwrap();
+		let result2 =
+			CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap().unwrap();
 
 		assert_eq!(result1.source, node1.id);
 		assert_eq!(result1.target, node2.id);
@@ -92,16 +93,18 @@ pub mod tests {
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
-		let node1a = create_operator(&mut txn, flow1.id, 1, &[0x01]);
-		let node1b = create_operator(&mut txn, flow1.id, 4, &[0x02]);
-		let node2a = create_operator(&mut txn, flow2.id, 1, &[0x03]);
-		let node2b = create_operator(&mut txn, flow2.id, 4, &[0x04]);
+		let node1a = create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		let node1b = create_operator(&mut txn, flow1.id, OperatorDef::SourceInlineData {});
+		let node2a = create_operator(&mut txn, flow2.id, OperatorDef::SourceInlineData {});
+		let node2b = create_operator(&mut txn, flow2.id, OperatorDef::SourceInlineData {});
 
 		let edge1 = create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
 		let edge2 = create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);
 
-		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
-		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
+		let result1 =
+			CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap().unwrap();
+		let result2 =
+			CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap().unwrap();
 
 		assert_eq!(result1.flow, flow1.id);
 		assert_eq!(result2.flow, flow2.id);
@@ -113,8 +116,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 

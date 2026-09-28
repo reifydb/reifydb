@@ -10,6 +10,9 @@ use reifydb_core::{
 		catalog::{variant_enum_not_known, variant_in_expression},
 		query, subscription,
 	},
+	expression::{
+		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
+	},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 };
@@ -31,19 +34,12 @@ use crate::{
 	},
 	bump::BumpBox,
 	error::RqlError,
-	expression::{
-		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
-	},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
 	nodes::CompiledViewStorageKind,
 	optimize::optimize_physical,
-	plan::{
-		logical::LogicalPlan,
-		physical::{self, PhysicalPlan},
-		plan, plan_with_policy,
-	},
+	plan::{logical::LogicalPlan, physical, physical::PhysicalPlan, plan, plan_with_policy},
 	query::QueryPlan,
 };
 

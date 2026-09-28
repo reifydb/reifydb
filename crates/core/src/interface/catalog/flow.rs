@@ -7,10 +7,9 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_value::value::blob::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::interface::catalog::id::NamespaceId;
+use crate::{flow::dag::FlowDag, interface::catalog::id::NamespaceId};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -259,17 +258,31 @@ pub struct Flow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Operator {
-	pub id: OperatorId,
-	pub flow: FlowId,
-	pub node_type: u8,
-	pub data: Blob,
+pub struct FlowEntry {
+	pub flow: Flow,
+	pub dag: FlowDag,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FlowEdge {
 	pub id: FlowEdgeId,
 	pub flow: FlowId,
 	pub source: OperatorId,
 	pub target: OperatorId,
+}
+
+impl FlowEdge {
+	pub fn new(
+		id: impl Into<FlowEdgeId>,
+		flow: impl Into<FlowId>,
+		source: impl Into<OperatorId>,
+		target: impl Into<OperatorId>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			flow: flow.into(),
+			source: source.into(),
+			target: target.into(),
+		}
+	}
 }

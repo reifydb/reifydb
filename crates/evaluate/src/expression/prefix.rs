@@ -4,9 +4,9 @@
 use arrow_arith::boolean::not;
 use reifydb_core::{
 	error::CoreError,
+	expression::PrefixOperator,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
-use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,

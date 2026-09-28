@@ -8,8 +8,6 @@ use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const APPEND_NODE_TYPE: u8 = 9;
-
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
 fn setup() -> TestDb {
@@ -46,9 +44,9 @@ fn advance_far_past_every_input(db: &TestDb) {
 }
 
 fn append_operator(db: &TestDb) -> u64 {
-	let rql = format!("FROM system::operators FILTER {{ node_type == {APPEND_NODE_TYPE} }} MAP {{ id }}");
+	let rql = "FROM system::flow::operators FILTER { kind == 'Append' } MAP { id }";
 	let frames = db.query(&rql);
-	let values = column_values(frames.first().expect("system::operators returned no frame"), "id");
+	let values = column_values(frames.first().expect("system::flow::operators returned no frame"), "id");
 	match values.as_slice() {
 		[Value::Uint8(id)] => *id,
 		other => panic!("expected exactly one append operator, found {other:?}"),

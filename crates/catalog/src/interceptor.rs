@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
+use reifydb_transaction::interceptor::transaction::{PrePublishContext, PrePublishInterceptor};
 
 use crate::{Result, cache::CatalogCache, catalog::Catalog};
 
@@ -17,8 +17,8 @@ impl CatalogCacheInterceptor {
 	}
 }
 
-impl PostCommitInterceptor for CatalogCacheInterceptor {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
+impl PrePublishInterceptor for CatalogCacheInterceptor {
+	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<()> {
 		let version = ctx.version;
 
 		for change in &ctx.changes.namespace {
@@ -259,29 +259,9 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
-				.map(|f| f.id)
+				.map(|e| e.flow.id)
 				.expect("Change must have either pre or post state");
 			self.catalog.set_flow(id, version, change.post.clone());
-		}
-
-		for change in &ctx.changes.operator {
-			let id = change
-				.post
-				.as_ref()
-				.or(change.pre.as_ref())
-				.map(|n| n.id)
-				.expect("Change must have either pre or post state");
-			self.catalog.set_operator(id, version, change.post.clone());
-		}
-
-		for change in &ctx.changes.flow_edge {
-			let id = change
-				.post
-				.as_ref()
-				.or(change.pre.as_ref())
-				.map(|e| e.id)
-				.expect("Change must have either pre or post state");
-			self.catalog.set_flow_edge(id, version, change.post.clone());
 		}
 
 		for change in &ctx.changes.source {

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, columns::Columns};
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::column::{ColumnWithName, columns::Columns},
+};
 use reifydb_evaluate::{
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
@@ -10,7 +13,6 @@ use reifydb_evaluate::{
 	},
 	stack::Variable,
 };
-use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::fragment::Fragment;
 
 use super::broadcast::broadcast_to_match;

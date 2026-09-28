@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	flow::dag::FlowDag,
 	interface::{
 		catalog::{flow::FlowId, id::SubscriptionId},
 		change::Change,
@@ -17,7 +18,6 @@ use reifydb_engine::{
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext},
 };
 use reifydb_flow_async::engine::FlowEngineInner;
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
 		context::Context,

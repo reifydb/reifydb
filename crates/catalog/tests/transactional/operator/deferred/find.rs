@@ -25,8 +25,9 @@ fn deferred_view_flow_loads_with_a_connected_sink() {
 		.unwrap()
 		.expect("a flow must back the deferred view");
 
-	let operators = catalog.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-	let edges = catalog.list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+	let dag = catalog.get_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+	let operators: Vec<_> = dag.graph.nodes().map(|(_, node)| node).collect();
+	let edges: Vec<_> = dag.graph.edges().collect();
 
 	assert!(
 		operators.len() >= 2,

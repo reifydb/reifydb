@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackFlowChangeOperations,
-	flow::{Flow, FlowId},
+	flow::{FlowEntry, FlowId},
 	id::NamespaceId,
 };
 use reifydb_value::Result;
@@ -18,19 +18,19 @@ use crate::{
 };
 
 impl CatalogTrackFlowChangeOperations for AdminTransaction {
-	fn track_flow_created(&mut self, flow: Flow) -> Result<()> {
+	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<()> {
 		let change = Change {
 			pre: None,
-			post: Some(flow),
+			post: Some(entry),
 			op: Create,
 		};
 		self.changes.add_flow_change(change);
 		Ok(())
 	}
 
-	fn track_flow_deleted(&mut self, flow: Flow) -> Result<()> {
+	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<()> {
 		let change = Change {
-			pre: Some(flow),
+			pre: Some(entry),
 			post: None,
 			op: Delete,
 		};
@@ -40,15 +40,15 @@ impl CatalogTrackFlowChangeOperations for AdminTransaction {
 }
 
 impl TransactionalFlowChanges for AdminTransaction {
-	fn find_flow(&self, id: FlowId) -> Option<&Flow> {
+	fn find_flow(&self, id: FlowId) -> Option<&FlowEntry> {
 		for change in self.changes.flow.iter().rev() {
-			if let Some(flow) = &change.post
-				&& flow.id == id
+			if let Some(entry) = &change.post
+				&& entry.flow.id == id
 			{
-				return Some(flow);
+				return Some(entry);
 			}
-			if let Some(flow) = &change.pre
-				&& flow.id == id
+			if let Some(entry) = &change.pre
+				&& entry.flow.id == id
 				&& change.op == Delete
 			{
 				return None;
@@ -57,17 +57,17 @@ impl TransactionalFlowChanges for AdminTransaction {
 		None
 	}
 
-	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Flow> {
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowEntry> {
 		for change in self.changes.flow.iter().rev() {
-			if let Some(flow) = &change.post
-				&& flow.namespace == namespace
-				&& flow.name == name
+			if let Some(entry) = &change.post
+				&& entry.flow.namespace == namespace
+				&& entry.flow.name == name
 			{
-				return Some(flow);
+				return Some(entry);
 			}
-			if let Some(flow) = &change.pre
-				&& flow.namespace == namespace
-				&& flow.name == name
+			if let Some(entry) = &change.pre
+				&& entry.flow.namespace == namespace
+				&& entry.flow.name == name
 				&& change.op == Delete
 			{
 				return None;
@@ -77,10 +77,9 @@ impl TransactionalFlowChanges for AdminTransaction {
 	}
 
 	fn is_flow_deleted(&self, id: FlowId) -> bool {
-		self.changes
-			.flow
-			.iter()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|f| f.id == id).unwrap_or(false))
+		self.changes.flow.iter().any(|change| {
+			change.op == Delete && change.pre.as_ref().map(|e| e.flow.id == id).unwrap_or(false)
+		})
 	}
 
 	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
@@ -89,7 +88,7 @@ impl TransactionalFlowChanges for AdminTransaction {
 				&& change
 					.pre
 					.as_ref()
-					.map(|f| f.namespace == namespace && f.name == name)
+					.map(|e| e.flow.namespace == namespace && e.flow.name == name)
 					.unwrap_or(false)
 		})
 	}

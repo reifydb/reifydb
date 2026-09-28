@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
+	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	value::column::columns::Columns,
 };
-use reifydb_rql::expression::Expression;
 use reifydb_value::Result;
 
 use crate::operator::{HostOperator, host::HostContext};

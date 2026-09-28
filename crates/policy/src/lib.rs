@@ -12,14 +12,16 @@ pub mod evaluate;
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{
-	catalog::policy::{DataOp, Policy, PolicyOperation, PolicyTargetType},
-	resolved::ResolvedObject,
+use reifydb_core::{
+	expression::{ConstantExpression, Expression},
+	interface::{
+		catalog::policy::{DataOp, Policy, PolicyOperation, PolicyTargetType},
+		resolved::ResolvedObject,
+	},
 };
 use reifydb_rql::{
 	ast::parse_str,
 	bump::BumpBox,
-	expression::{ConstantExpression, Expression},
 	plan::logical::{
 		AppendNode, AppendSourcePlan, AssignValue, ElseIfBranch, FilterNode, LetValue, LogicalPlan,
 		ObjectScanNode, PipelineNode, compile_logical, function::ReturnValue,

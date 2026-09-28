@@ -89,6 +89,12 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		Some(user_table)
 	} else if namespace.id() == NamespaceId::SYSTEM {
 		compile_system_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_FLOW {
+		compile_flow_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_FLOW_OPERATOR {
+		compile_flow_operator_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY {
+		compile_flow_operator_library_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
 		compile_procedures_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
@@ -125,12 +131,9 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"tables" => VTables::Tables(SystemTables::new()),
 		"views" => VTables::Views(SystemViews::new()),
 		"flows" => VTables::Flows(SystemFlows::new()),
-		"flow_watermarks" => VTables::FlowWatermarks(SystemFlowWatermarks::new(context.services.ioc.clone())),
 		"subscription_watermarks" => {
 			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
 		}
-		"operators" => VTables::Operators(SystemOperators::new()),
-		"flow_edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"columns" => VTables::Columns(SystemColumnsTable::new()),
 		"primary_keys" => VTables::PrimaryKeys(SystemPrimaryKeys::new()),
 		"primary_key_columns" => VTables::PrimaryKeyColumns(SystemPrimaryKeyColumns::new()),
@@ -138,19 +141,9 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
-		"operator_libraries" => {
-			VTables::OperatorLibraries(SystemOperatorLibraries::new(context.services.operators.clone()))
-		}
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
-		"operator_types" => VTables::OperatorTypes(SystemOperatorTypes::new()),
-		"operator_library_inputs" => VTables::OperatorLibraryInputs(SystemOperatorLibraryInputs::new(
-			context.services.operators.clone(),
-		)),
-		"operator_library_outputs" => VTables::OperatorLibraryOutputs(SystemOperatorLibraryOutputs::new(
-			context.services.operators.clone(),
-		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),
 		"queue_partitions" => VTables::QueuePartitions(SystemQueuePartitions::new()),
@@ -180,6 +173,37 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"virtual_table_columns" => {
 			VTables::VirtualTableColumns(SystemVirtualTableColumns::new(context.services.catalog.clone()))
 		}
+		_ => return None,
+	})
+}
+
+fn compile_flow_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
+	Some(match name {
+		"operators" => VTables::Operators(SystemOperators::new()),
+		"edges" => VTables::FlowEdges(SystemFlowEdges::new()),
+		"watermarks" => VTables::FlowWatermarks(SystemFlowWatermarks::new(context.services.ioc.clone())),
+		_ => return None,
+	})
+}
+
+fn compile_flow_operator_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
+	Some(match name {
+		"types" => VTables::OperatorTypes(SystemOperatorTypes::new()),
+		"libraries" => {
+			VTables::OperatorLibraries(SystemOperatorLibraries::new(context.services.operators.clone()))
+		}
+		_ => return None,
+	})
+}
+
+fn compile_flow_operator_library_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
+	Some(match name {
+		"inputs" => VTables::OperatorLibraryInputs(SystemOperatorLibraryInputs::new(
+			context.services.operators.clone(),
+		)),
+		"outputs" => VTables::OperatorLibraryOutputs(SystemOperatorLibraryOutputs::new(
+			context.services.operators.clone(),
+		)),
 		_ => return None,
 	})
 }

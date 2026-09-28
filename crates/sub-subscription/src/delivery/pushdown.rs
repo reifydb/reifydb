@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_engine::subscription::HydrationBound;
-use reifydb_rql::{
+use reifydb_core::{
 	expression::{ColumnExpression, ConstantExpression, Expression, PrefixOperator},
-	flow::{flow::FlowDag, operator::OperatorDef},
+	flow::{dag::FlowDag, operator::OperatorDef},
+	interface::catalog::flow::OperatorId,
 };
+use reifydb_engine::subscription::HydrationBound;
 
 pub(super) struct SourcePushdown {
 	parts: Vec<String>,
@@ -207,16 +207,14 @@ mod tests {
 
 	use reifydb_core::{
 		common::TimeDomain,
+		flow::operator::FlowNode,
 		interface::catalog::{
-			flow::{FlowEdgeId, FlowId},
+			flow::{FlowEdge, FlowEdgeId, FlowId},
 			id::TableId,
 		},
 		operator_with::DistinctWith,
 	};
-	use reifydb_rql::{
-		expression::parse_expression,
-		flow::operator::{FlowEdge, FlowNode},
-	};
+	use reifydb_rql::expression::parse_expression;
 
 	use super::*;
 
@@ -246,6 +244,7 @@ mod tests {
 		for i in 1..count {
 			builder.add_edge(FlowEdge::new(
 				FlowEdgeId(i as u64),
+				builder.id(),
 				OperatorId(i as u64),
 				OperatorId(i as u64 + 1),
 			))
@@ -467,9 +466,12 @@ mod tests {
 				expressions: vec![parse_one("id")],
 			},
 		));
-		builder.add_edge(FlowEdge::new(FlowEdgeId(1), OperatorId(1), OperatorId(2))).expect("source edge");
-		builder.add_edge(FlowEdge::new(FlowEdgeId(2), OperatorId(2), OperatorId(3))).expect("take branch");
-		builder.add_edge(FlowEdge::new(FlowEdgeId(3), OperatorId(2), OperatorId(4))).expect("map branch");
+		builder.add_edge(FlowEdge::new(FlowEdgeId(1), builder.id(), OperatorId(1), OperatorId(2)))
+			.expect("source edge");
+		builder.add_edge(FlowEdge::new(FlowEdgeId(2), builder.id(), OperatorId(2), OperatorId(3)))
+			.expect("take branch");
+		builder.add_edge(FlowEdge::new(FlowEdgeId(3), builder.id(), OperatorId(2), OperatorId(4)))
+			.expect("map branch");
 
 		let pd = walk_for_source_pushdown(&builder.build(), &OperatorId(1));
 

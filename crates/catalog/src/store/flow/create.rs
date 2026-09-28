@@ -14,10 +14,7 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
-	store::{
-		flow::shape::{flow, flow_namespace},
-		sequence::flow::next_flow_id,
-	},
+	store::flow::shape::{flow, flow_namespace},
 };
 
 #[derive(Debug, Clone)]
@@ -28,21 +25,13 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
-		let namespace_id = to_create.namespace;
-		Self::reject_existing_flow(txn, namespace_id, &to_create.name)?;
-
-		let flow_id = next_flow_id(txn)?;
-		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
-	}
-
-	pub(crate) fn create_flow_with_id(
+	pub(crate) fn create_flow(
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
 	) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
+		Self::reject_existing_flow(txn, namespace_id, &to_create.name)?;
 		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
 	}
@@ -124,7 +113,10 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::flow::{create::FlowToCreate, shape::flow_namespace},
+		store::{
+			flow::{create::FlowToCreate, shape::flow_namespace},
+			sequence::flow::next_flow_id,
+		},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -139,13 +131,15 @@ pub mod tests {
 			status: FlowStatus::Active,
 		};
 
-		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		let result = CatalogStore::create_flow(&mut txn, flow_id, to_create.clone()).unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_flow");
 		assert_eq!(result.status, FlowStatus::Active);
 
-		let err = CatalogStore::create_flow(&mut txn, to_create).unwrap_err();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		let err = CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_030");
 	}
 
@@ -159,14 +153,16 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
 
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
 
 		let links: Vec<_> = txn
 			.range(NamespaceFlowKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
@@ -211,14 +207,16 @@ pub mod tests {
 			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
 
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
 		};
-		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
+		let result = CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");
 		assert_eq!(result.namespace, namespace_two.id());
 	}

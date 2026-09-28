@@ -14,6 +14,7 @@ use reifydb_core::{
 		catalog::{namespace_not_found, series_not_found},
 		query::column_not_found,
 	},
+	expression::Expression,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -35,7 +36,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::{expression::Expression, nodes::UpdateSeriesNode, query::QueryPlan};
+use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,

@@ -57,11 +57,12 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 	}
 
 	let mut operators: HashMap<u64, (String, String)> = HashMap::new();
-	for r in rows(db, "from system::operators")? {
+	for r in rows(db, "from system::flow::operators")? {
 		if let Some(id) = u64c(&r, "id") {
 			let flow_id = u64c(&r, "flow_id").unwrap_or(0);
 			let view = flows.get(&flow_id).cloned().unwrap_or_else(|| format!("flow{flow_id}"));
-			operators.insert(id, (view, operator_label(&blobc(&r, "data"))));
+			let kind = strc(&r, "kind").ok_or("system::flow::operators row has no kind")?;
+			operators.insert(id, (view, format!("[{kind}]")));
 		}
 	}
 
@@ -99,68 +100,9 @@ fn strc(row: &[(String, Value)], col: &str) -> Option<String> {
 	}
 }
 
-fn blobc(row: &[(String, Value)], col: &str) -> Vec<u8> {
-	match cell(row, col) {
-		Some(Value::Blob(b)) => b.as_bytes().to_vec(),
-		_ => Vec::new(),
-	}
-}
-
 fn qualify(namespaces: &HashMap<u64, String>, ns_id: Option<u64>, name: &str) -> String {
 	match ns_id.and_then(|id| namespaces.get(&id)) {
 		Some(ns) => format!("{ns}::{name}"),
 		None => name.to_string(),
-	}
-}
-
-const NODE_TYPE: &[&str] = &[
-	"SourceInlineData",
-	"SourceTable",
-	"SourceView",
-	"SourceRingBuffer",
-	"SourceSeries",
-	"Filter",
-	"Gate",
-	"Map",
-	"Extend",
-	"Join",
-	"Aggregate",
-	"Append",
-	"Sort",
-	"Take",
-	"Distinct",
-	"Apply",
-	"SinkTableView",
-];
-
-fn operator_label(data: &[u8]) -> String {
-	let Some(&tag) = data.first() else {
-		return "[?]".to_string();
-	};
-	let stage = NODE_TYPE.get(tag as usize).copied().unwrap_or("?");
-	if stage == "Apply" {
-		let name = first_token(&data[1..]);
-		if !name.is_empty() {
-			return format!("[{stage}]{{{name}}}");
-		}
-	}
-	format!("[{stage}]")
-}
-
-fn first_token(bytes: &[u8]) -> String {
-	let mut run = String::new();
-	for &b in bytes {
-		if (0x20..0x7f).contains(&b) {
-			run.push(b as char);
-		} else if run.len() >= 3 {
-			return run;
-		} else {
-			run.clear();
-		}
-	}
-	if run.len() >= 3 {
-		run
-	} else {
-		String::new()
 	}
 }

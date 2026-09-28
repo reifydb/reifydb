@@ -7,11 +7,9 @@ pub mod insert;
 mod partition_guard;
 pub mod update;
 
-use crate::{
-	Result,
-	ast::ast::Ast,
-	expression::{Expression, ExpressionCompiler},
-};
+use reifydb_core::expression::Expression;
+
+use crate::{Result, ast::ast::Ast, expression::ExpressionCompiler};
 
 pub(crate) fn compile_returning_clause<'bump>(returning: Option<Vec<Ast<'bump>>>) -> Result<Option<Vec<Expression>>> {
 	let Some(returning_asts) = returning else {

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::error::diagnostic::query;
+use reifydb_core::{
+	error::diagnostic::query,
+	expression::{AliasExpression, IdentExpression},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{err, error, error::Diagnostic, fragment::Fragment};
 
@@ -9,11 +12,10 @@ use crate::{
 	Result,
 	ast::ast::{Ast, AstFrom},
 	bump::BumpBox,
-	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, ObjectScanNode, RemoteScanNode,
-		VariableSourceNode,
-		resolver::{self, ResolvedSource},
+		VariableSourceNode, resolver, resolver::ResolvedSource,
 	},
 };
 

@@ -30,8 +30,6 @@ pub(crate) mod duration;
 pub mod error;
 pub mod expression;
 pub mod fingerprint;
-#[allow(dead_code, unused_variables)]
-pub mod flow;
 pub mod instruction;
 pub mod nodes;
 pub mod optimize;

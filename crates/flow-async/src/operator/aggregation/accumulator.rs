@@ -4,8 +4,8 @@
 use std::mem;
 
 use reifydb_core::metrics::heap::HeapSize;
+use reifydb_flow::aggregate::SlotKind;
 use reifydb_macro::operator_state;
-use reifydb_rql::flow::aggregate::SlotKind;
 use reifydb_value::{
 	reifydb_assertions,
 	value::{

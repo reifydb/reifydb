@@ -51,21 +51,18 @@ impl BaseVTable for SystemOperators {
 
 		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, operators.len());
 		let mut flow_ids = ColumnBuilder::with_capacity(ValueType::Uint8, operators.len());
-		let mut node_types = ColumnBuilder::with_capacity(ValueType::Uint1, operators.len());
-		let mut data_column = ColumnBuilder::with_capacity(ValueType::Blob, operators.len());
+		let mut kinds = ColumnBuilder::with_capacity(ValueType::Utf8, operators.len());
 
-		for operator in operators {
+		for (flow, operator) in operators {
 			ids.push(operator.id.0);
-			flow_ids.push(operator.flow.0);
-			node_types.push(operator.node_type);
-			data_column.push(operator.data);
+			flow_ids.push(flow.0);
+			kinds.push(operator.ty.label());
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
 			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids.finish()),
-			ColumnWithName::new(Fragment::internal("node_type"), node_types.finish()),
-			ColumnWithName::new(Fragment::internal("data"), data_column.finish()),
+			ColumnWithName::new(Fragment::internal("kind"), kinds.finish()),
 		];
 
 		self.exhausted = true;

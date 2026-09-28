@@ -1,0 +1,429 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_catalog::{catalog::Catalog, store::operator_retention::create::create_operator_retention};
+use reifydb_core::{
+	error::diagnostic::{
+		flow::{
+			flow_dictionary_source_unsupported, flow_queue_source_unsupported,
+			flow_remote_source_unsupported, flow_sort_must_be_terminal, flow_source_required,
+			flow_window_requires_a_timed_source,
+		},
+		subscription::subscription_operation_unsupported,
+	},
+	flow::{
+		dag::{FlowBuilder, FlowDag},
+		operator::{FlowNode, OperatorDef},
+	},
+	interface::catalog::{
+		flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
+		id::SubscriptionId,
+		view::View,
+	},
+	row::OperatorRetention,
+};
+use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::query::QueryPlan;
+use reifydb_value::{Result, error::Error, value::duration::Duration};
+
+pub mod operator;
+pub mod source;
+
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+
+use crate::compiler::{
+	operator::{
+		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, distinct::DistinctCompiler,
+		extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler, join::JoinCompiler,
+		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
+	},
+	source::{
+		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
+		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
+	},
+};
+
+pub fn compile_flow(
+	catalog: &Catalog,
+	routines: &Routines,
+	txn: &mut AdminTransaction,
+	plan: QueryPlan,
+	sink: Option<&View>,
+	flow_id: FlowId,
+) -> Result<FlowDag> {
+	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
+	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
+}
+
+pub fn compile_subscription_flow_ephemeral(
+	catalog: &Catalog,
+	routines: &Routines,
+	txn: &mut Transaction<'_>,
+	plan: QueryPlan,
+	subscription_id: SubscriptionId,
+	flow_id: FlowId,
+) -> Result<FlowDag> {
+	let compiler = FlowCompiler::new_ephemeral(catalog.clone(), routines.clone(), flow_id);
+	compiler.compile_with_subscription_id(txn, plan, subscription_id)
+}
+
+pub(crate) struct FlowCompiler {
+	pub(crate) catalog: Catalog,
+
+	pub(crate) routines: Routines,
+
+	builder: FlowBuilder,
+
+	pub(crate) sink: Option<View>,
+
+	ephemeral: bool,
+
+	local_node_counter: u64,
+
+	local_edge_counter: u64,
+}
+
+impl FlowCompiler {
+	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
+		Self {
+			catalog,
+			routines,
+			builder: FlowDag::builder(flow_id),
+			sink: None,
+			ephemeral: false,
+			local_node_counter: 0,
+			local_edge_counter: 0,
+		}
+	}
+
+	pub fn new_ephemeral(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
+		let mut builder = FlowDag::builder(flow_id);
+		builder.ephemeral();
+		Self {
+			catalog,
+			routines,
+			builder,
+			sink: None,
+			ephemeral: true,
+			local_node_counter: 0,
+			local_edge_counter: 0,
+		}
+	}
+
+	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+		if self.ephemeral {
+			self.local_node_counter += 1;
+			Ok(OperatorId(self.local_node_counter))
+		} else {
+			self.catalog.next_operator_id(txn.admin_mut())
+		}
+	}
+
+	fn next_edge_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowEdgeId> {
+		if self.ephemeral {
+			self.local_edge_counter += 1;
+			Ok(FlowEdgeId(self.local_edge_counter))
+		} else {
+			self.catalog.next_flow_edge_id(txn.admin_mut())
+		}
+	}
+
+	pub(crate) fn add_edge(&mut self, txn: &mut Transaction<'_>, from: &OperatorId, to: &OperatorId) -> Result<()> {
+		let edge_id = self.next_edge_id(txn)?;
+		let flow_id = self.builder.id();
+		self.builder.add_edge(FlowEdge::new(edge_id, flow_id, *from, *to))?;
+		Ok(())
+	}
+
+	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: OperatorDef) -> Result<OperatorId> {
+		let operator_id = self.next_node_id(txn)?;
+		self.builder.add_node(FlowNode::new(operator_id, node_type));
+		Ok(operator_id)
+	}
+
+	pub(crate) fn write_operator_retention(
+		&self,
+		txn: &mut Transaction<'_>,
+		operator_id: OperatorId,
+		retention: Option<Duration>,
+	) -> Result<()> {
+		if self.ephemeral {
+			return Ok(());
+		}
+		if let Some(duration) = retention {
+			create_operator_retention(
+				txn.admin_mut(),
+				operator_id,
+				&OperatorRetention {
+					duration,
+				},
+			)?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn compile(
+		mut self,
+		txn: &mut Transaction<'_>,
+		plan: QueryPlan,
+		sink: Option<&View>,
+	) -> Result<FlowDag> {
+		validate_sort_terminal(&plan)?;
+		self.sink = sink.cloned();
+		let root_node_id = self.compile_plan(txn, plan)?;
+
+		if let Some(sink_view) = sink {
+			self.attach_sink_node(txn, sink_view, &root_node_id)?;
+		}
+
+		self.build_validated_flow()
+	}
+
+	#[inline]
+	fn attach_sink_node(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		sink_view: &View,
+		root_node_id: &OperatorId,
+	) -> Result<()> {
+		let node_type = match sink_view {
+			View::Table(_) => OperatorDef::SinkTableView {
+				view: sink_view.id(),
+			},
+			View::RingBuffer(rb) => OperatorDef::SinkRingBufferView {
+				view: sink_view.id(),
+				capacity: rb.capacity,
+			},
+			View::Series(s) => OperatorDef::SinkSeriesView {
+				view: sink_view.id(),
+				key: s.key.clone(),
+			},
+		};
+		let result_node = self.add_node(txn, node_type)?;
+		self.add_edge(txn, root_node_id, &result_node)
+	}
+
+	#[inline]
+	fn build_validated_flow(self) -> Result<FlowDag> {
+		let flow = self.builder.build();
+
+		if !has_real_source(&flow) {
+			return Err(Error(Box::new(flow_source_required())));
+		}
+		validate_temporal_operators(&flow)?;
+
+		Ok(flow)
+	}
+
+	pub(crate) fn compile_with_subscription_id(
+		mut self,
+		txn: &mut Transaction<'_>,
+		plan: QueryPlan,
+		subscription_id: SubscriptionId,
+	) -> Result<FlowDag> {
+		validate_subscription_plan(&plan)?;
+		let root_node_id = self.compile_plan(txn, plan)?;
+
+		let result_node = self.add_node(
+			txn,
+			OperatorDef::SinkSubscription {
+				subscription: subscription_id,
+			},
+		)?;
+
+		self.add_edge(txn, &root_node_id, &result_node)?;
+
+		let flow = self.builder.build();
+
+		if !has_real_source(&flow) {
+			return Err(Error(Box::new(flow_source_required())));
+		}
+		validate_temporal_operators(&flow)?;
+
+		Ok(flow)
+	}
+
+	pub(crate) fn compile_plan(&mut self, txn: &mut Transaction<'_>, plan: QueryPlan) -> Result<OperatorId> {
+		match plan {
+			QueryPlan::IndexScan(_index_scan) => {
+				// TODO: Implement IndexScanCompiler for flow
+				unimplemented!("IndexScan compilation not yet implemented for flow")
+			}
+			QueryPlan::TableScan(table_scan) => TableScanCompiler::from(table_scan).compile(self, txn),
+			QueryPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self, txn),
+			QueryPlan::InlineData(inline_data) => InlineDataCompiler::from(inline_data).compile(self, txn),
+			QueryPlan::Filter(filter) => FilterCompiler::from(filter).compile(self, txn),
+			QueryPlan::Gate(gate) => GateCompiler::from(gate).compile(self, txn),
+			QueryPlan::Map(map) => MapCompiler::from(map).compile(self, txn),
+			QueryPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self, txn),
+			QueryPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self, txn),
+			QueryPlan::Aggregate(aggregate) => AggregateCompiler::from(aggregate).compile(self, txn),
+			QueryPlan::Distinct(distinct) => DistinctCompiler::from(distinct).compile(self, txn),
+			QueryPlan::Take(take) => TakeCompiler::from(take).compile(self, txn),
+			QueryPlan::Sort(sort) => SortCompiler::from(sort).compile(self, txn),
+			QueryPlan::JoinInner(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::JoinNatural(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::Append(append) => AppendCompiler::from(append).compile(self, txn),
+			QueryPlan::Patch(_) => {
+				unimplemented!("Patch compilation not yet implemented for flow")
+			}
+			QueryPlan::TableVirtualScan(_scan) => {
+				// TODO: Implement VirtualScanCompiler
+				unimplemented!("VirtualScan compilation not yet implemented")
+			}
+			QueryPlan::RingBufferScan(scan) => RingBufferScanCompiler::from(scan).compile(self, txn),
+			QueryPlan::Generator(_generator) => {
+				// TODO: Implement GeneratorCompiler for flow
+				unimplemented!("Generator compilation not yet implemented for flow")
+			}
+			QueryPlan::Window(window) => WindowCompiler::from(window).compile(self, txn),
+			QueryPlan::Variable(_) => {
+				panic!("Variable references are not supported in flow graphs");
+			}
+			QueryPlan::Scalarize(_) => {
+				panic!("Scalarize operations are not supported in flow graphs");
+			}
+			QueryPlan::Environment(_) => {
+				panic!("Environment operations are not supported in flow graphs");
+			}
+			QueryPlan::RowPointLookup(_) => {
+				// TODO: Implement optimized row point lookup for flow graphs
+				unimplemented!("RowPointLookup compilation not yet implemented for flow")
+			}
+			QueryPlan::RowListLookup(_) => {
+				// TODO: Implement optimized row list lookup for flow graphs
+				unimplemented!("RowListLookup compilation not yet implemented for flow")
+			}
+			QueryPlan::RowRangeScan(_) => {
+				// TODO: Implement optimized row range scan for flow graphs
+				unimplemented!("RowRangeScan compilation not yet implemented for flow")
+			}
+			QueryPlan::DictionaryScan(_) => Err(Error(Box::new(flow_dictionary_source_unsupported()))),
+			QueryPlan::QueueScan(_) => Err(Error(Box::new(flow_queue_source_unsupported()))),
+			QueryPlan::Assert(_) => {
+				unimplemented!("Assert compilation not yet implemented for flow")
+			}
+			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
+			QueryPlan::RemoteScan(_) => Err(Error(Box::new(flow_remote_source_unsupported()))),
+			QueryPlan::RunTests(_) => {
+				panic!("RunTests is not supported in flow graphs");
+			}
+			QueryPlan::CallFunction(_) => {
+				panic!("CallFunction is not supported in flow graphs");
+			}
+		}
+	}
+}
+
+fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
+	match plan {
+		QueryPlan::Filter(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Gate(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Take(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Distinct(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Map(n) => match &n.input {
+			Some(input) => validate_subscription_plan(input),
+			None => Ok(()),
+		},
+		QueryPlan::Extend(n) => match &n.input {
+			Some(input) => validate_subscription_plan(input),
+			None => Ok(()),
+		},
+		QueryPlan::TableScan(_)
+		| QueryPlan::ViewScan(_)
+		| QueryPlan::RingBufferScan(_)
+		| QueryPlan::SeriesScan(_)
+		| QueryPlan::InlineData(_) => Ok(()),
+		other => Err(Error(Box::new(subscription_operation_unsupported(other.name())))),
+	}
+}
+
+fn validate_sort_terminal(plan: &QueryPlan) -> Result<()> {
+	let has_deeper_sort = match plan {
+		QueryPlan::Sort(n) => contains_sort(&n.input),
+		other => contains_sort(other),
+	};
+	if has_deeper_sort {
+		return Err(Error(Box::new(flow_sort_must_be_terminal())));
+	}
+	Ok(())
+}
+
+fn contains_sort(plan: &QueryPlan) -> bool {
+	matches!(plan, QueryPlan::Sort(_)) || child_plans(plan).iter().any(|child| contains_sort(child))
+}
+
+fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
+	match plan {
+		QueryPlan::Filter(n) => vec![&n.input],
+		QueryPlan::Gate(n) => vec![&n.input],
+		QueryPlan::Aggregate(n) => vec![&n.input],
+		QueryPlan::Distinct(n) => vec![&n.input],
+		QueryPlan::Sort(n) => vec![&n.input],
+		QueryPlan::Take(n) => vec![&n.input],
+		QueryPlan::Scalarize(n) => vec![&n.input],
+		QueryPlan::Map(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Extend(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Patch(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Apply(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Assert(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Window(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::JoinInner(n) => vec![&n.left, &n.right],
+		QueryPlan::JoinLeft(n) => vec![&n.left, &n.right],
+		QueryPlan::JoinNatural(n) => vec![&n.left, &n.right],
+		QueryPlan::Append(n) => vec![&n.left, &n.right],
+		QueryPlan::RemoteScan(_)
+		| QueryPlan::TableScan(_)
+		| QueryPlan::TableVirtualScan(_)
+		| QueryPlan::ViewScan(_)
+		| QueryPlan::RingBufferScan(_)
+		| QueryPlan::DictionaryScan(_)
+		| QueryPlan::SeriesScan(_)
+		| QueryPlan::QueueScan(_)
+		| QueryPlan::IndexScan(_)
+		| QueryPlan::RowPointLookup(_)
+		| QueryPlan::RowListLookup(_)
+		| QueryPlan::RowRangeScan(_)
+		| QueryPlan::InlineData(_)
+		| QueryPlan::Generator(_)
+		| QueryPlan::Variable(_)
+		| QueryPlan::Environment(_)
+		| QueryPlan::RunTests(_)
+		| QueryPlan::CallFunction(_) => vec![],
+	}
+}
+
+fn has_window(flow: &FlowDag) -> bool {
+	flow.get_operator_ids().any(|operator_id| {
+		flow.get_operator(&operator_id)
+			.is_some_and(|operator| matches!(operator.ty, OperatorDef::Window { .. }))
+	})
+}
+
+fn validate_temporal_operators(flow: &FlowDag) -> Result<()> {
+	if has_window(flow) && !flow.has_timed_source() {
+		return Err(Error(Box::new(flow_window_requires_a_timed_source())));
+	}
+	Ok(())
+}
+
+fn has_real_source(flow: &FlowDag) -> bool {
+	flow.get_operator_ids().any(|operator_id| {
+		if let Some(operator) = flow.get_operator(&operator_id) {
+			matches!(
+				operator.ty,
+				OperatorDef::SourceTable { .. }
+					| OperatorDef::SourceView { .. }
+					| OperatorDef::SourceRingBuffer { .. }
+					| OperatorDef::SourceSeries { .. }
+			)
+		} else {
+			false
+		}
+	})
+}
+
+pub(crate) trait CompileOperator {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId>;
+}

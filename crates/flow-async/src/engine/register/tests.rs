@@ -5,16 +5,14 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::TimeDomain,
-	interface::catalog::flow::{FlowId, OperatorId},
+	flow::{
+		dag::FlowDag,
+		operator::{FlowNode, OperatorDef},
+	},
+	interface::catalog::flow::{FlowEdge, FlowId, OperatorId},
 	operator_with::AggregateWith,
 };
-use reifydb_rql::{
-	expression::parse_expression,
-	flow::{
-		flow::FlowDag,
-		operator::{FlowEdge, FlowNode, OperatorDef},
-	},
-};
+use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -63,7 +61,7 @@ fn registering_a_filter_with_a_variant_inside_an_expression_returns_the_compile_
 			conditions: parse_expression("a == 1 + s::status::Active").expect("the condition must parse"),
 		},
 	));
-	builder.add_edge(FlowEdge::new(1, SOURCE, FILTER)).expect("both edge ends must exist");
+	builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, FILTER)).expect("both edge ends must exist");
 
 	let mut inner = FlowEngineInner::new(
 		engine.catalog(),
@@ -119,7 +117,7 @@ fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_err
 			with: AggregateWith {},
 		},
 	));
-	builder.add_edge(FlowEdge::new(1, SOURCE, AGGREGATE)).expect("both edge ends must exist");
+	builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, AGGREGATE)).expect("both edge ends must exist");
 
 	let mut inner = FlowEngineInner::new(
 		engine.catalog(),

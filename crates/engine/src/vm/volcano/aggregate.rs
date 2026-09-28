@@ -8,6 +8,7 @@ use reifydb_core::{
 		CoreError,
 		diagnostic::{operation, query},
 	},
+	expression::{CallExpression, ConstantExpression, Expression, name::display_label},
 	metrics::heap::HeapSize,
 	value::column::{
 		ColumnWithName,
@@ -21,15 +22,11 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
+use reifydb_flow::aggregate::{
+	DigestSlots, PERCENTILE_FUNCTION, PercentileCallError, rewrite_aggregate_calls, synthetic_aggregate_column_name,
+};
 use reifydb_routine_abi::{
 	Accumulator, LiteralArgument, LiteralKind, context::FunctionContext, error::RoutineError, registry::Routines,
-};
-use reifydb_rql::{
-	expression::{CallExpression, ConstantExpression, Expression, name::display_label},
-	flow::aggregate::{
-		DigestSlots, PERCENTILE_FUNCTION, PercentileCallError, rewrite_aggregate_calls,
-		synthetic_aggregate_column_name,
-	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -614,11 +611,11 @@ fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut Colum
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
-	use reifydb_routine_abi::{LiteralArgument, LiteralKind};
-	use reifydb_rql::expression::{
-		CallExpression, ColumnExpression, ConstantExpression, Expression, IdentExpression,
+	use reifydb_core::{
+		expression::{CallExpression, ColumnExpression, ConstantExpression, Expression, IdentExpression},
+		interface::identifier::{ColumnIdentifier, ColumnObject},
 	};
+	use reifydb_routine_abi::{LiteralArgument, LiteralKind};
 	use reifydb_value::fragment::{Fragment, StatementColumn, StatementLine};
 
 	use super::literal_arguments;

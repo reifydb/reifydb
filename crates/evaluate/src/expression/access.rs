@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::query::column_not_found, interface::identifier::ColumnObject, value::column::ColumnWithName,
+	error::diagnostic::query::column_not_found, expression::AccessObjectExpression,
+	interface::identifier::ColumnObject, value::column::ColumnWithName,
 };
-use reifydb_rql::expression::AccessObjectExpression;
 use reifydb_value::{error, fragment::Fragment};
 
 use crate::{Result, expression::context::EvalContext};

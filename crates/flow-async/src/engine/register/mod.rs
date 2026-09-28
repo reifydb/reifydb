@@ -11,20 +11,24 @@ mod transform;
 use std::{mem, sync::Arc};
 
 use reifydb_core::{
+	flow::{
+		dag::FlowDag,
+		operator::{
+			FlowNode,
+			OperatorDef::{
+				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
+				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				Window,
+			},
+		},
+	},
 	interface::catalog::flow::{FlowId, OperatorId},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{context::FlowContext, error::FlowGraphError};
-use reifydb_rql::flow::{
-	flow::FlowDag,
-	operator::{
-		FlowNode,
-		OperatorDef::{
-			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
-			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceInlineData, SourceRingBuffer,
-			SourceSeries, SourceTable, SourceView, Take, Window,
-		},
-	},
+use reifydb_flow::{
+	context::FlowContext,
+	error::FlowGraphError,
 	time_domain::{check_join_retention_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};

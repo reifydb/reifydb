@@ -5,13 +5,15 @@ use std::result::Result as StdResult;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::catalog::object::ObjectId, metrics::execution::StatementMetrics, value::column::columns::Columns,
+	flow::{dag::FlowDag, operator::OperatorDef},
+	interface::catalog::object::ObjectId,
+	metrics::execution::StatementMetrics,
+	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrationBound},
 };
-use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::params::Params;
 

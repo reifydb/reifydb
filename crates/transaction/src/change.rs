@@ -10,7 +10,7 @@ use reifydb_core::{
 		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, Operator, OperatorId},
+		flow::{FlowEntry, FlowId, OperatorId},
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
@@ -118,9 +118,9 @@ pub trait TransactionalNamespaceChanges {
 }
 
 pub trait TransactionalFlowChanges {
-	fn find_flow(&self, id: FlowId) -> Option<&Flow>;
+	fn find_flow(&self, id: FlowId) -> Option<&FlowEntry>;
 
-	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Flow>;
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowEntry>;
 
 	fn is_flow_deleted(&self, id: FlowId) -> bool;
 
@@ -339,11 +339,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub dictionary: Vec<Change<Dictionary>>,
 
-	pub flow: Vec<Change<Flow>>,
-
-	pub operator: Vec<Change<Operator>>,
-
-	pub flow_edge: Vec<Change<FlowEdge>>,
+	pub flow: Vec<Change<FlowEntry>>,
 
 	pub handler: Vec<Change<Handler>>,
 
@@ -402,8 +398,6 @@ pub struct CatalogChangesSavepoint {
 	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
-	operator_len: usize,
-	flow_edge_len: usize,
 	handler_len: usize,
 	migration_len: usize,
 	migration_event_len: usize,
@@ -440,8 +434,6 @@ impl TransactionalCatalogChanges {
 			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
-			operator_len: self.operator.len(),
-			flow_edge_len: self.flow_edge.len(),
 			handler_len: self.handler.len(),
 			migration_len: self.migration.len(),
 			migration_event_len: self.migration_event.len(),
@@ -477,8 +469,6 @@ impl TransactionalCatalogChanges {
 		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
-		self.operator.truncate(sp.operator_len);
-		self.flow_edge.truncate(sp.flow_edge_len);
 		self.handler.truncate(sp.handler_len);
 		self.migration.truncate(sp.migration_len);
 		self.migration_event.truncate(sp.migration_event_len);
@@ -567,46 +557,16 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_flow_change(&mut self, change: Change<Flow>) {
+	pub fn add_flow_change(&mut self, change: Change<FlowEntry>) {
 		let id = change
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|f| f.id)
+			.map(|e| e.flow.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.flow.push(change);
 		self.log.push(Operation::Flow {
-			id,
-			op,
-		});
-	}
-
-	pub fn add_operator_change(&mut self, change: Change<Operator>) {
-		let id = change
-			.post
-			.as_ref()
-			.or(change.pre.as_ref())
-			.map(|n| n.id)
-			.expect("Change must have either pre or post state");
-		let op = change.op;
-		self.operator.push(change);
-		self.log.push(Operation::Operator {
-			id,
-			op,
-		});
-	}
-
-	pub fn add_flow_edge_change(&mut self, change: Change<FlowEdge>) {
-		let id = change
-			.post
-			.as_ref()
-			.or(change.pre.as_ref())
-			.map(|e| e.id)
-			.expect("Change must have either pre or post state");
-		let op = change.op;
-		self.flow_edge.push(change);
-		self.log.push(Operation::FlowEdge {
 			id,
 			op,
 		});
@@ -1040,14 +1000,6 @@ pub enum Operation {
 		id: FlowId,
 		op: OperationType,
 	},
-	Operator {
-		id: OperatorId,
-		op: OperationType,
-	},
-	FlowEdge {
-		id: FlowEdgeId,
-		op: OperationType,
-	},
 	Handler {
 		id: HandlerId,
 		op: OperationType,
@@ -1161,8 +1113,6 @@ impl TransactionalCatalogChanges {
 			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
-			operator: Vec::new(),
-			flow_edge: Vec::new(),
 			handler: Vec::new(),
 			migration: Vec::new(),
 			migration_event: Vec::new(),

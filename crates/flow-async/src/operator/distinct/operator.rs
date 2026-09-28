@@ -9,6 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
+	expression::Expression,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
@@ -23,7 +24,6 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, error::Error, util::hash::Hash128, value::datetime::DateTime};
 use tracing::instrument;

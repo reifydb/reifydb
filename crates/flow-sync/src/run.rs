@@ -5,6 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	flow::{
+		dag::FlowDag,
+		operator::OperatorDef::{SinkTableView, SourceTable, SourceView},
+	},
 	interface::{
 		catalog::{flow::OperatorId, id::ViewId, object::ObjectId},
 		change::{Change, Diff},
@@ -12,10 +16,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::flow::{
-	flow::FlowDag,
-	operator::OperatorDef::{SinkTableView, SourceTable, SourceView},
-};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, value::datetime::DateTime};
 
@@ -167,10 +167,15 @@ mod tests {
 	use reifydb_codec::row::shape::RowFamily;
 	use reifydb_core::{
 		common::{TimeDomain, TimeSource},
+		expression::Expression,
+		flow::{
+			dag::{FlowBuilder, FlowDag},
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::{
 			catalog::{
 				column::{Column, ColumnIndex},
-				flow::FlowId,
+				flow::{FlowEdge, FlowId},
 				id::{ColumnId, NamespaceId, TableId, ViewId},
 				object::ObjectId,
 				table::Table,
@@ -183,13 +188,7 @@ mod tests {
 	};
 	use reifydb_flow::operator::sink::view::row_key;
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_rql::{
-		expression::{Expression, parse_expression},
-		flow::{
-			flow::{FlowBuilder, FlowDag},
-			operator::{FlowEdge, FlowNode, OperatorDef},
-		},
-	};
+	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -261,7 +260,7 @@ mod tests {
 			builder.add_node(FlowNode::new(node, ty));
 		}
 		for (position, (source, target)) in edges.iter().enumerate() {
-			builder.add_edge(FlowEdge::new(position as u64, *source, *target)).unwrap();
+			builder.add_edge(FlowEdge::new(position as u64, builder.id(), *source, *target)).unwrap();
 		}
 		builder.build()
 	}

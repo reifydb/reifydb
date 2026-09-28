@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
+};
 use reifydb_evaluate::expression::{
 	arith::add::add_columns,
 	compare::{CompareOp, Equal, GreaterThan, LessThan, NotEqual, compare_columns},
 	context::EvalContext,
 	prefix::prefix_apply,
 };
-use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	Result,
 	error::Diagnostic,

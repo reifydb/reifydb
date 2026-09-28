@@ -4,6 +4,7 @@
 mod authentication;
 mod binding;
 mod dictionary;
+mod flow;
 mod handler;
 mod identity;
 mod identity_attribute;

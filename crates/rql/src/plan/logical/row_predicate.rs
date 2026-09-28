@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{number::parse::parse_primitive_uint, row_number::ROW_NUMBER_COLUMN_NAME};
-
-use crate::expression::{
+use reifydb_core::expression::{
 	BetweenExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
 	TupleExpression,
 };
+use reifydb_value::value::{number::parse::parse_primitive_uint, row_number::ROW_NUMBER_COLUMN_NAME};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RowPredicate {
@@ -117,11 +116,13 @@ fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 pub mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
+	use reifydb_core::{
+		expression::ListExpression,
+		interface::identifier::{ColumnIdentifier, ColumnObject},
+	};
 	use reifydb_value::fragment::Fragment;
 
 	use super::*;
-	use crate::expression::ListExpression;
 
 	fn make_rownum_column() -> Expression {
 		let column = ColumnIdentifier {

@@ -104,6 +104,35 @@ where
 	ClosurePreCommitInterceptor::new(f)
 }
 
+pub struct PrePublishContext<'a> {
+	pub id: TransactionId,
+	pub version: CommitVersion,
+	pub changes: &'a TransactionalCatalogChanges,
+}
+
+impl<'a> PrePublishContext<'a> {
+	pub fn new(id: TransactionId, version: CommitVersion, changes: &'a TransactionalCatalogChanges) -> Self {
+		Self {
+			id,
+			version,
+			changes,
+		}
+	}
+}
+
+pub trait PrePublishInterceptor: Send + Sync {
+	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<()>;
+}
+
+impl InterceptorChain<dyn PrePublishInterceptor + Send + Sync> {
+	pub fn execute(&self, mut ctx: PrePublishContext<'_>) -> Result<()> {
+		for interceptor in &self.interceptors {
+			interceptor.intercept(&mut ctx)?;
+		}
+		Ok(())
+	}
+}
+
 pub struct PostCommitContext {
 	pub id: TransactionId,
 	pub version: CommitVersion,

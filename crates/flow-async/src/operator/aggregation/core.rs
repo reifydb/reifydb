@@ -16,6 +16,7 @@ use reifydb_core::{
 		},
 		operation::aggregate_group_by_unkeyable,
 	},
+	expression::{Expression, name::display_label},
 	interface::catalog::flow::OperatorId,
 	row::Row,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -24,18 +25,15 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
-use reifydb_flow::{context::FlowContext, operator::map::schema_column};
-use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::{
-	expression::{Expression, name::display_label},
-	flow::{
-		aggregate::{
-			AggregateContext, DigestSlots, SlotArg, SlotKind, rewrite_aggregates,
-			synthetic_aggregate_column_name,
-		},
-		compiler::operator::aggregate_validation::aggregate_call_diagnostic,
+use reifydb_flow::{
+	aggregate::{
+		AggregateContext, DigestSlots, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name,
 	},
+	compiler::operator::aggregate_validation::aggregate_call_diagnostic,
+	context::FlowContext,
+	operator::map::schema_column,
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
@@ -436,7 +434,7 @@ mod tests {
 		row::Row,
 		value::column::{buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_rql::flow::aggregate::DIGEST_FUNCTION;
+	use reifydb_flow::aggregate::DIGEST_FUNCTION;
 	use reifydb_value::value::{
 		Value, digest::Digest, duration::Duration, row_number::RowNumber, value_type::ValueType,
 	};

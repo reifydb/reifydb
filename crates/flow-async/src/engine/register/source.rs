@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	flow::OperatorId,
-	id::{RingBufferId, SeriesId, TableId, ViewId},
-	object::ObjectId,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{
+		flow::OperatorId,
+		id::{RingBufferId, SeriesId, TableId, ViewId},
+		object::ObjectId,
+	},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -84,8 +86,10 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::catalog::flow::FlowId;
-	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
+	use reifydb_core::{
+		flow::operator::{FlowNode, OperatorDef},
+		interface::catalog::flow::FlowId,
+	};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::identity::IdentityId;

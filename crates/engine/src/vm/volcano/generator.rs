@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	expression::Expression,
+	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_routine_abi::{Function, Procedure, context::FunctionContext};
-use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, params::Params, value::Value};
 use tracing::instrument;

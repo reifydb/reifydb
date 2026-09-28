@@ -3,9 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	expression::{Expression, name::display_label},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
-use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;

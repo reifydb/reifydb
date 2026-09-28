@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
+	expression::ColumnExpression,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
-use reifydb_rql::expression::ColumnExpression;
 use reifydb_value::{
 	error,
 	value::{
@@ -185,11 +185,11 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
+		expression::ColumnExpression,
 		interface::identifier::{ColumnIdentifier, ColumnObject},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 

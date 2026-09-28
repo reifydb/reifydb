@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	error::RqlError,
-	expression::{Expression, ExpressionCompiler},
+	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
 		PipelineNode, mutate::compile_returning_clause,

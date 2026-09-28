@@ -18,6 +18,8 @@ use reifydb_core::{
 		},
 		query,
 	},
+	expression::Expression,
+	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
@@ -30,17 +32,12 @@ use reifydb_evaluate::{
 	expression::{compile::compile_expression, context::CompileContext, udf_extract::extract_udf_calls},
 	stack::SymbolTable,
 };
-use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::{
-	expression::Expression,
-	flow::{
-		compiler::compile_flow,
-		flow::FlowDag,
-		operator::OperatorDef,
-		time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
-	},
-	query::{QueryPlan, extract_resolved_source},
+use reifydb_flow::{
+	compiler::compile_flow,
+	time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
 };
+use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::query::{QueryPlan, extract_resolved_source};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{error, fragment::Fragment};
 
@@ -346,20 +343,22 @@ pub(crate) fn create_deferred_view_flow(
 	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;
 	ensure_flow_expressions_compile(&mut plan, symbols)?;
-	let flow = catalog.create_flow(
+	let flow_id = catalog.next_flow_id(txn)?;
+	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
+	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
+	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
+	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
+	check_operator_with_requirements(&dag, operators)?;
+	catalog.create_flow(
 		txn,
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
 			status: FlowStatus::Active,
 		},
+		dag,
 	)?;
-
-	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
-	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
-	check_operator_with_requirements(&dag, operators)
+	Ok(())
 }
 
 fn check_transactional_flow(catalog: &Catalog, txn: &mut AdminTransaction, flow: &FlowDag) -> Result<()> {
@@ -461,15 +460,17 @@ pub(crate) fn create_transactional_view_flow(
 	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;
 	ensure_flow_expressions_compile(&mut plan, symbols)?;
-	let flow = catalog.create_flow(
+	let flow_id = catalog.next_flow_id(txn)?;
+	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
+	check_transactional_flow(catalog, txn, &dag)?;
+	catalog.create_flow(
 		txn,
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
 			status: FlowStatus::Active,
 		},
+		dag,
 	)?;
-
-	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
-	check_transactional_flow(catalog, txn, &dag)
+	Ok(())
 }

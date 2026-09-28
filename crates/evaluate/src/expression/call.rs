@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{
-	ColumnWithName,
-	builder::ColumnBuilder,
-	columns::Columns,
-	view::group_by::{GroupId, GroupRows},
+use reifydb_core::{
+	expression::{CallExpression, Expression, name::display_label},
+	value::column::{
+		ColumnWithName,
+		builder::ColumnBuilder,
+		columns::Columns,
+		view::group_by::{GroupId, GroupRows},
+	},
 };
 use reifydb_routine_abi::{FunctionKind, context::FunctionContext, error::RoutineError};
-use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
 use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{Result, error::EvaluateError, expression::context::EvalContext};

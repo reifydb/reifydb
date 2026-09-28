@@ -38,6 +38,30 @@ pub fn bootstrap_flow(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
+		NamespaceId::SYSTEM_FLOW,
+		"system::flow",
+		"flow",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_FLOW_OPERATOR,
+		"system::flow::operator",
+		"operator",
+		NamespaceId::SYSTEM_FLOW,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY,
+		"system::flow::operator::library",
+		"library",
+		NamespaceId::SYSTEM_FLOW_OPERATOR,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
 		NamespaceId::SYSTEM_METRICS_FLOW,
 		"system::metrics::flow",
 		"flow",

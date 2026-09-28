@@ -4,13 +4,14 @@
 use bumpalo::Bump;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	expression::Expression,
 	interface::catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
 	ast::{ast::Ast, parse_str},
 	bump::BumpBox,
-	expression::{Expression, ExpressionCompiler},
+	expression::ExpressionCompiler,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::identity::IdentityId};

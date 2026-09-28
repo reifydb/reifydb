@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 

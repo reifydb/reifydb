@@ -3,17 +3,17 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use postcard::from_bytes;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::catalog::update_partition_column_immutable,
+	expression::IdentExpression,
+	flow::operator::OperatorDef,
 	interface::catalog::id::{RingBufferId, SeriesId, TableId, ViewId},
-	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::return_error;
 
-use crate::{Result, expression::IdentExpression, flow::operator::OperatorDef};
+use crate::Result;
 
 pub(crate) enum UpdateTarget {
 	Table(TableId),
@@ -95,12 +95,13 @@ fn downstream_view_partition_columns(
 ) -> Result<HashMap<String, ViewId>> {
 	let mut forbidden: HashMap<String, ViewId> = HashMap::new();
 
-	let nodes = catalog.list_operators_all(tx)?;
-	let mut decoded = Vec::with_capacity(nodes.len());
-	for node in &nodes {
-		let ty: OperatorDef = from_bytes(node.data.as_ref())
-			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
-		decoded.push((node.flow, ty));
+	let mut decoded = Vec::new();
+	for dag in catalog.list_flow_dags_asc(tx)? {
+		for id in dag.get_operator_ids() {
+			if let Some(node) = dag.get_operator(&id) {
+				decoded.push((dag.id(), node.ty.clone()));
+			}
+		}
 	}
 
 	let mut worklist: VecDeque<Anchor> = VecDeque::from([Anchor::Target(target)]);

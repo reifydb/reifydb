@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	expression::Expression,
 	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
@@ -18,7 +19,6 @@ use reifydb_policy::{
 	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
 };
-use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, params::Params, value::identity::IdentityId};
 

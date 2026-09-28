@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data};
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	expression::Expression,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data},
+};
 use reifydb_value::{
 	fragment::LazyFragment,
 	value::{
@@ -81,12 +83,14 @@ fn refuse_lost_scale(data: &ColumnBuffer, target: &ValueType, fragment: impl Laz
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::column::buffer::ColumnBuffer;
-	use reifydb_rql::expression::{
-		CastExpression, ConstantExpression,
-		ConstantExpression::Number,
-		Expression::{Cast, Constant, Prefix},
-		PrefixExpression, PrefixOperator, TypeExpression,
+	use reifydb_core::{
+		expression::{
+			CastExpression, ConstantExpression,
+			ConstantExpression::Number,
+			Expression::{Cast, Constant, Prefix},
+			PrefixExpression, PrefixOperator, TypeExpression,
+		},
+		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_value::{
 		fragment::Fragment,

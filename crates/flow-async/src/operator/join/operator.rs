@@ -11,6 +11,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::JoinType,
 	error::diagnostic::operation::{join_key_unkeyable, natural_join_no_shared_column},
+	expression::Expression,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -31,7 +32,6 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_flow::{context::FlowContext, error::FlowGraphError};
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result, error,

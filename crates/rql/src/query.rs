@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::resolved::ResolvedObject;
+use reifydb_core::{
+	expression::{Expression, name::display_label},
+	interface::resolved::ResolvedObject,
+};
 use reifydb_value::value::constraint::Constraint;
 
-use crate::{
-	expression::{Expression, name::display_label},
-	nodes::{
-		AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode,
-		DistinctNode, EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode,
-		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode,
-		RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
-		RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
-		VariableNode, ViewScanNode, WindowNode,
-	},
+use crate::nodes::{
+	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
+	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
+	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode, RingBufferScanNode,
+	RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode,
+	TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]

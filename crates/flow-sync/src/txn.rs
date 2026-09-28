@@ -2,17 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::interface::{
-	catalog::{
-		dictionary::Dictionary,
-		id::{TableId, ViewId},
-		object::ObjectId,
-		table::Table,
-		view::View,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::{
+		catalog::{
+			dictionary::Dictionary,
+			id::{TableId, ViewId},
+			object::ObjectId,
+			table::Table,
+			view::View,
+		},
+		change::Diff,
 	},
-	change::Diff,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{
 	Result,
 	value::{

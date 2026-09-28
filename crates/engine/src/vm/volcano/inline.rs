@@ -13,6 +13,10 @@ use reifydb_core::{
 		catalog::{column_not_sumtype, namespace_not_found, sumtype_not_found, sumtype_variant_not_found},
 		query::{column_not_found, duplicate_field},
 	},
+	expression::{
+		AliasExpression, CastExpression, ConstantExpression, Expression, IdentExpression,
+		SumTypeConstructorExpression, TypeExpression, name::display_label,
+	},
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
 	value::column::{
 		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
@@ -20,10 +24,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
-use reifydb_rql::expression::{
-	AliasExpression, CastExpression, ConstantExpression, Expression, IdentExpression, SumTypeConstructorExpression,
-	TypeExpression, name::display_label, variant::for_each_is_variant,
-};
+use reifydb_rql::expression::variant::for_each_is_variant;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,

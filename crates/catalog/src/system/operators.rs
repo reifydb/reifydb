@@ -18,7 +18,7 @@ pub fn operators() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: OPERATORS,
-			namespace: NamespaceId::SYSTEM,
+			namespace: NamespaceId::SYSTEM_FLOW,
 			name: "operators".to_string(),
 			columns: vec![
 				Column {
@@ -40,21 +40,11 @@ pub fn operators() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: NODE_TYPE,
-					name: "node_type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
-
+					id: KIND,
+					name: "kind".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(2),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: DATA,
-					name: "data".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Blob),
-					properties: vec![],
-					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},

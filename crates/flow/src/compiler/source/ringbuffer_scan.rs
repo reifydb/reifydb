@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_core::{flow::operator::OperatorDef::SourceRingBuffer, interface::catalog::flow::OperatorId};
+use reifydb_rql::nodes::RingBufferScanNode;
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::Result;
+
+use crate::compiler::{CompileOperator, FlowCompiler};
+
+pub(crate) struct RingBufferScanCompiler {
+	pub ringbuffer_scan: RingBufferScanNode,
+}
+
+impl From<RingBufferScanNode> for RingBufferScanCompiler {
+	fn from(ringbuffer_scan: RingBufferScanNode) -> Self {
+		Self {
+			ringbuffer_scan,
+		}
+	}
+}
+
+impl CompileOperator for RingBufferScanCompiler {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+		let ringbuffer = self.ringbuffer_scan.source.def();
+		let time_domain = ringbuffer.time.domain();
+		let ringbuffer_id = ringbuffer.id;
+		compiler.add_node(
+			txn,
+			SourceRingBuffer {
+				ringbuffer: ringbuffer_id,
+				time_domain,
+			},
+		)
+	}
+}

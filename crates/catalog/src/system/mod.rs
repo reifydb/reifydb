@@ -183,10 +183,9 @@ pub mod ids {
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const FLOW_ID: ColumnId = ColumnId(2);
-			pub const NODE_TYPE: ColumnId = ColumnId(3);
-			pub const DATA: ColumnId = ColumnId(4);
+			pub const KIND: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, NODE_TYPE, DATA];
+			pub const ALL: [ColumnId; 3] = [ID, FLOW_ID, KIND];
 		}
 
 		pub mod flow_edges {

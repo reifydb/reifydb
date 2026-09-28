@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::column::Column;
+use reifydb_core::{
+	expression::{ColumnExpression, ConstantExpression, Expression},
+	interface::catalog::column::Column,
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -16,8 +19,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-
-use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 
 pub fn extract_partition(condition: &Expression, columns: &[Column], partition_by: &[String]) -> Option<Partition> {
 	if partition_by.is_empty() {
@@ -132,12 +133,18 @@ fn partition_value(value_type: &ValueType, fragment: Fragment) -> Option<Value> 
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		catalog::{
-			column::{Column, ColumnIndex},
-			id::ColumnId,
+	use reifydb_core::{
+		expression::{
+			AndExpression, CastExpression, EqExpression, GreaterThanExpression, OrExpression,
+			TypeExpression,
 		},
-		identifier::{ColumnIdentifier, ColumnObject},
+		interface::{
+			catalog::{
+				column::{Column, ColumnIndex},
+				id::ColumnId,
+			},
+			identifier::{ColumnIdentifier, ColumnObject},
+		},
 	};
 	use reifydb_value::{
 		fragment::Fragment,
@@ -150,9 +157,6 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::expression::{
-		AndExpression, CastExpression, EqExpression, GreaterThanExpression, OrExpression, TypeExpression,
-	};
 
 	// The writer hashes postcard bytes of the column's declared-type Value, so Int4(1) and Int8(1) land in
 	// different partitions. `prunes_*` pins that round trip; `declines_*` pins the cases where equality and

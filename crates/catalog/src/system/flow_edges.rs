@@ -18,8 +18,8 @@ pub fn flow_edges() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: FLOW_EDGES,
-			namespace: NamespaceId::SYSTEM,
-			name: "flow_edges".to_string(),
+			namespace: NamespaceId::SYSTEM_FLOW,
+			name: "edges".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

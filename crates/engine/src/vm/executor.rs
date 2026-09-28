@@ -19,12 +19,12 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::{SymbolTable, Variable};
+use reifydb_flow::compiler::compile_subscription_flow_ephemeral;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, Compiled, IncrementalCompilation, constrain_policy},
 	fingerprint::request::fingerprint_request,
-	flow::compiler::compile_subscription_flow_ephemeral,
 	query::QueryPlan,
 };
 use reifydb_runtime::context::clock::Instant;

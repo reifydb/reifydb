@@ -7,10 +7,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::interface::{
-	catalog::{
-		id::NamespaceId,
-		token::{Token, TokenId},
-	},
+	catalog::token::{Token, TokenId},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -29,10 +26,6 @@ pub mod vtable;
 pub type Result<T> = reifydb_value::Result<T>;
 
 pub struct CatalogStore;
-
-pub fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
-	CatalogStore::drop_flow_by_name(txn, namespace, name)
-}
 
 pub fn create_token(
 	txn: &mut AdminTransaction,

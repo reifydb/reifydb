@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	flow::{FlowId, OperatorId},
-	object::ObjectId,
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{
+		flow::{FlowId, OperatorId},
+		object::ObjectId,
+	},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::reifydb_assertions;
 
 use crate::engine::FlowEngineInner;
@@ -100,13 +102,13 @@ mod tests {
 	use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 	use reifydb_core::{
 		common::TimeDomain,
+		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::id::{SeriesId, ViewId},
 		key::operator::{
 			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
 			state::{GroupId, KeyspaceId, unmanaged_key},
 		},
 	};
-	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 	use reifydb_test_harness::engine::TestEngine;

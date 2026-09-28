@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::{
-		catalog::{flow::FlowId, id::NamespaceId},
-		cdc::CdcConsumerId,
-	},
+	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
 	key::{
 		cdc::CdcConsumerKey,
 		flow::{FlowKey, FlowVersionKey},
@@ -17,15 +14,6 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
-		if let Some(flow) =
-			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace, name)?
-		{
-			CatalogStore::drop_flow(txn, flow.id)?;
-		}
-		Ok(())
-	}
-
 	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
 		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
@@ -55,7 +43,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowId;
+	use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::FlowId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -70,8 +58,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = create_flow(&mut txn, "test_namespace", "drop_test_flow");
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		assert!(CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_some());
@@ -95,22 +83,5 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		CatalogStore::drop_flow(&mut txn, FlowId(999)).unwrap();
-	}
-
-	#[test]
-	fn test_drop_flow_by_name() {
-		let mut txn = create_test_admin_transaction();
-		let ns = create_namespace(&mut txn, "test_namespace");
-		let _flow = create_flow(&mut txn, "test_namespace", "named_flow");
-
-		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "named_flow")
-			.unwrap()
-			.is_some());
-
-		CatalogStore::drop_flow_by_name(&mut txn, ns.id(), "named_flow").unwrap();
-
-		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "named_flow")
-			.unwrap()
-			.is_none());
 	}
 }

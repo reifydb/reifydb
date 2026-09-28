@@ -1,27 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
-	interface::catalog::{
-		change::CatalogTrackOperatorChangeOperations,
-		flow::{FlowId, OperatorId},
-	},
+	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::{CatalogStore, Result};
+use crate::{CatalogStore, Result, store::operator::shape::operator};
 
 impl CatalogStore {
 	pub(crate) fn drop_operator(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<()> {
-		let Some(node_def) = CatalogStore::find_operator(&mut Transaction::Admin(&mut *txn), operator_id)?
-		else {
+		let Some(multi) = txn.get(&OperatorKey::new(operator_id))? else {
 			return Ok(());
 		};
+		let flow = FlowId(operator::get_flow(&EncodedCatalogRow::try_from(multi.bytes)?));
 
-		Self::unlink_node(txn, operator_id, node_def.flow)?;
-		txn.track_operator_deleted(node_def)?;
-		Ok(())
+		Self::unlink_node(txn, operator_id, flow)
 	}
 
 	#[inline]
@@ -34,7 +30,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::OperatorId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -49,7 +45,7 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator.id).unwrap().is_some());
 
@@ -64,7 +60,7 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		let operators =
 			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -91,8 +87,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
+		let node2 = create_operator(&mut txn, flow.id, OperatorDef::SourceInlineData {});
 
 		CatalogStore::drop_operator(&mut txn, node1.id).unwrap();
 

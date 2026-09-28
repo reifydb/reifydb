@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::JoinType,
+	expression::{ColumnExpression, Expression},
+	flow::dag::FlowDag,
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
 		identifier::{ColumnIdentifier, ColumnObject},
@@ -21,10 +23,6 @@ use reifydb_flow::{
 		filter::FilterOperator,
 		map::MapOperator,
 	},
-};
-use reifydb_rql::{
-	expression::{ColumnExpression, Expression},
-	flow::flow::FlowDag,
 };
 use reifydb_value::{Result, config::ExtensionParams, error::Error, fragment::Fragment};
 

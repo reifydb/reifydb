@@ -33,6 +33,7 @@ reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true }
 reifydb-extension = { workspace = true }
+reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }

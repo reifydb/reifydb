@@ -21,8 +21,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: OPERATOR_LIBRARIES,
-			namespace: NamespaceId::SYSTEM,
-			name: "operator_libraries".to_string(),
+			namespace: NamespaceId::SYSTEM_FLOW_OPERATOR,
+			name: "libraries".to_string(),
 			columns: vec![
 				Column {
 					id: OPERATOR,

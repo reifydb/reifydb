@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::expression::{Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
 
 use super::partition_guard::{UpdateTarget, check_partition_immutability};
@@ -15,7 +16,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	error::RqlError,
-	expression::{Expression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, FilterNode, LogicalPlan, PatchNode, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
 		UpdateTableNode, mutate::compile_returning_clause,

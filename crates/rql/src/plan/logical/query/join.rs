@@ -3,7 +3,10 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::common::JoinType;
+use reifydb_core::{
+	common::JoinType,
+	expression::{AndExpression, EqExpression, Expression, OrExpression},
+};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -13,12 +16,10 @@ use crate::{
 		identifier::UnresolvedObjectIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
-	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
+	expression::join::JoinConditionCompiler,
 	plan::logical::{
-		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
-		LogicalPlan::SourceScan,
-		ObjectScanNode, PipelineNode, RemoteScanNode,
-		resolver::{self, ResolvedSource},
+		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
+		ObjectScanNode, PipelineNode, RemoteScanNode, resolver, resolver::ResolvedSource,
 	},
 };
 

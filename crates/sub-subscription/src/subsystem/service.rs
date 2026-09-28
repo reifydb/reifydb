@@ -7,12 +7,14 @@ use std::{
 	sync::{Arc, mpsc},
 };
 
-use reifydb_core::interface::catalog::{flow::FlowId, id::SubscriptionId};
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::catalog::{flow::FlowId, id::SubscriptionId},
+};
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	sync::rwlock::RwLock,

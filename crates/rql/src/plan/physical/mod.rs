@@ -16,6 +16,9 @@ use reifydb_core::{
 		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
 		ringbuffer_not_found, series_not_found, table_not_found,
 	},
+	expression::{
+		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
+	},
 	interface::{
 		catalog::{
 			column::{Column, ColumnIndex},
@@ -47,16 +50,14 @@ use crate::{
 	bump::{BumpBox, FragmentInterner},
 	convert_data_type_with_constraints,
 	error::RqlError,
-	expression::{
-		ConstantExpression, Expression, Expression::Constant, ExpressionCompiler, VariableExpression,
-		extract_variable_names,
-	},
+	expression::ExpressionCompiler,
+	nodes,
 	nodes::{
-		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode,
-		CreateRingBufferNode, CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode,
-		GeneratorNode, IndexScanNode, InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
-		QueueScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
-		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode, CreateRingBufferNode,
+		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
+		InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
+		RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, SeriesScanNode,
+		TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,

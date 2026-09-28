@@ -7,7 +7,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod builder;
-pub(crate) mod catalog;
 pub(crate) mod commit;
 pub(crate) mod control;
 pub(crate) mod discovery;

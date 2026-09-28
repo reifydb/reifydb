@@ -4,6 +4,7 @@
 use std::{mem, sync::Arc};
 
 use reifydb_core::{
+	expression::{Expression, name::display_label},
 	interface::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
@@ -16,7 +17,6 @@ use reifydb_evaluate::expression::{
 	eval::cast_for_write,
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, reifydb_assertions, value::system_columns::SystemColumns};
 use tracing::instrument;

@@ -7,6 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
+	expression::Expression,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
@@ -15,9 +16,8 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::context::FlowContext;
+use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::{expression::Expression, flow::aggregate::AggregateContext};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,

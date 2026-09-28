@@ -39,7 +39,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::flow::create::FlowToCreate,
+		store::{flow::create::FlowToCreate, sequence::flow::next_flow_id},
 		test_utils::{create_flow, create_namespace},
 	};
 
@@ -97,8 +97,10 @@ pub mod tests {
 			CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
 				.unwrap()
 				.unwrap();
+		let flow_id = next_flow_id(&mut txn).unwrap();
 		CatalogStore::create_flow(
 			&mut txn,
+			flow_id,
 			FlowToCreate {
 				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id(),

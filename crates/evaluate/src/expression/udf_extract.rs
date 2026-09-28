@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
-use reifydb_rql::expression::{
-	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
-	ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
-	ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression,
-	InExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-	NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, TupleExpression, XorExpression,
+use reifydb_core::{
+	expression::{
+		AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
+		ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
+		ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression,
+		InExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
+		NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, TupleExpression,
+		XorExpression,
+	},
+	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
 use reifydb_value::fragment::Fragment;
 

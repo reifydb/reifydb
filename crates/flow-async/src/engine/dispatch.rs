@@ -3,11 +3,13 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{
-	catalog::flow::{FlowId, OperatorId},
-	change::{Change, ChangeOrigin},
+use reifydb_core::{
+	flow::{dag::FlowDag, operator::FlowNode},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		change::{Change, ChangeOrigin},
+	},
 };
-use reifydb_rql::flow::{flow::FlowDag, operator::FlowNode};
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 

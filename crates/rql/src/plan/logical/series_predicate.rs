@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::expression::{ColumnExpression, ConstantExpression, Expression};
 use reifydb_value::value::number::parse::parse_primitive_uint;
-
-use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 
 #[derive(Debug, Clone, Default)]
 pub struct SeriesPredicate {

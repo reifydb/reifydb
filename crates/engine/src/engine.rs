@@ -10,7 +10,6 @@ use std::{
 	},
 };
 
-use postcard::from_bytes;
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -31,6 +30,7 @@ use reifydb_core::{
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
 	execution::ExecutionResult,
+	flow::operator::OperatorDef,
 	interface::{
 		WithEventBus,
 		catalog::{
@@ -41,12 +41,11 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
-	internal, internal_error,
+	internal,
 	lifecycle::watermark::CheckpointFloor,
 	metrics::sample::MetricKind,
 	util::ioc::IocContainer,
 };
-use reifydb_rql::flow::operator::OperatorDef;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
@@ -468,7 +467,7 @@ impl StandardEngine {
 
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
+			interceptors.pre_publish.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
 		}));
 
 		let queue_wake = config.ioc.try_resolve::<QueueWakeRegistry>().unwrap_or_else(|| {
@@ -590,15 +589,16 @@ impl StandardEngine {
 
 	pub fn apply_operator_names(&self, txn: &mut Transaction<'_>) -> Result<HashMap<OperatorId, String>> {
 		let mut names = HashMap::new();
-		for operator in self.catalog.list_operators_all(txn)? {
-			let definition: OperatorDef = from_bytes(operator.data.as_ref())
-				.map_err(|e| internal_error!("Failed to deserialize operator type: {}", e))?;
-			if let OperatorDef::Apply {
-				operator: name,
-				..
-			} = definition
-			{
-				names.insert(operator.id, name);
+		for dag in self.catalog.list_flow_dags_asc(txn)? {
+			for id in dag.get_operator_ids() {
+				if let Some(node) = dag.get_operator(&id)
+					&& let OperatorDef::Apply {
+						operator: name,
+						..
+					} = &node.ty
+				{
+					names.insert(id, name.clone());
+				}
 			}
 		}
 		Ok(names)

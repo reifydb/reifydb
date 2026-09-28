@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
+	flow::dag::FlowDag,
 	interface::{
 		catalog::{
 			flow::{FlowId, OperatorId},
@@ -13,7 +14,6 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, datetime::DateTime},
@@ -343,13 +343,13 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::TimeDomain,
+		flow::operator::{FlowNode, OperatorDef},
 		interface::{
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Diff,
 		},
 		value::column::columns::Columns,
 	};
-	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},

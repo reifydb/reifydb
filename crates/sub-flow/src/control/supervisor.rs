@@ -17,14 +17,15 @@ use reifydb_cdc::{
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
+	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
 	},
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
+use reifydb_flow::analyzer::FlowGraphAnalyzer;
 use reifydb_flow_async::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
-use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -45,7 +46,6 @@ use tracing::{debug, error, warn};
 
 use crate::{
 	builder::CustomOperators,
-	catalog::FlowCatalog,
 	commit::committer::{CommitterMessage, FlowSlice, SliceCommitReply},
 	control::{
 		actor::{FlowActor, FlowActorParams},
@@ -75,7 +75,6 @@ const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
 
 pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
-	pub flow_catalog: FlowCatalog,
 	pub committer: ActorRef<CommitterMessage>,
 	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub backlog: FlowBacklog,
@@ -101,7 +100,6 @@ pub struct FlowSupervisorParams {
 
 pub struct FlowSupervisor {
 	engine: StandardEngine,
-	flow_catalog: FlowCatalog,
 	committer: ActorRef<CommitterMessage>,
 	terminal_committer: ActorRef<CommitterMessage>,
 	backlog: FlowBacklog,
@@ -142,7 +140,6 @@ impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
 		Self {
 			engine: params.engine,
-			flow_catalog: params.flow_catalog,
 			committer: params.committer,
 			terminal_committer: params.terminal_committer,
 			backlog: params.backlog,
@@ -184,10 +181,11 @@ impl FlowSupervisor {
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
 			let flow = match self
-				.flow_catalog
-				.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id)
+				.engine
+				.catalog()
+				.get_flow_dag(&mut Transaction::Query(&mut query), flow_id)
 			{
-				Ok((flow, _)) => flow,
+				Ok(flow) => flow,
 				Err(e) => {
 					warn!(flow_id = flow_id.0, error = %e, "failed to load flow during bootstrap, skipping");
 					continue;
@@ -384,7 +382,6 @@ impl FlowSupervisor {
 			state.sources.remove(flow_id);
 			state.stall_watches.remove(flow_id);
 			self.health.clear(*flow_id);
-			self.flow_catalog.remove(*flow_id);
 			state.analyzer.remove(*flow_id);
 			lineage_dirty = true;
 		}
@@ -393,22 +390,15 @@ impl FlowSupervisor {
 		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
 		for (flow_id, version) in extract_new_flows(items) {
 			if deleted.contains(&flow_id) {
-				self.flow_catalog.remove(flow_id);
 				continue;
 			}
 			if state.flows.contains_key(&flow_id) {
 				continue;
 			}
-			let Some((flow, is_new)) = self.load_flow_at(flow_id, version) else {
+			let Some(flow) = self.load_flow_at(flow_id, version) else {
 				continue;
 			};
 			if self.is_transactional_flow(&flow) {
-				continue;
-			}
-			if !is_new {
-				state.analyzer.add(flow);
-				self.flow_catalog.remove(flow_id);
-				lineage_dirty = true;
 				continue;
 			}
 			state.analyzer.add(flow.clone());
@@ -476,7 +466,7 @@ impl FlowSupervisor {
 		seeds
 	}
 
-	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<(FlowDag, bool)> {
+	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<FlowDag> {
 		let lease = match self.engine.acquire_version_lease(version) {
 			Ok(lease) => lease,
 			Err(e) if e.0.code == "TXN_012" => match self.engine.acquire_current_snapshot_lease() {
@@ -498,7 +488,7 @@ impl FlowSupervisor {
 				return None;
 			}
 		};
-		match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
+		match self.engine.catalog().get_flow_dag(&mut Transaction::Query(&mut query), flow_id) {
 			Ok(loaded) => Some(loaded),
 			Err(e) => {
 				warn!(flow_id = flow_id.0, error = %e, "failed to load flow in supervisor, skipping");
@@ -527,7 +517,12 @@ impl FlowSupervisor {
 				} => view,
 				_ => continue,
 			};
-			if self.flow_catalog.find_view(*view).is_some_and(|def| def.kind() == ViewKind::Transactional) {
+			if self.engine
+				.catalog()
+				.cache()
+				.find_view(*view)
+				.is_some_and(|def| def.kind() == ViewKind::Transactional)
+			{
 				return true;
 			}
 		}
@@ -556,7 +551,7 @@ impl FlowSupervisor {
 	) -> Arc<BTreeSet<ObjectId>> {
 		let graph = state.analyzer.get_dependency_graph();
 		let is_registered = |f: FlowId| registered.contains(&f);
-		let view_kind = |view_id| self.flow_catalog.find_view(view_id).map(|v| v.kind());
+		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		Arc::new(routing::flow_source_objects(graph, flow_id, &is_registered, &view_kind))
 	}
 
@@ -604,7 +599,7 @@ impl FlowSupervisor {
 
 	fn publish_upstreams(&self, state: &SupervisorState, flow_id: FlowId) {
 		let graph = state.analyzer.get_dependency_graph();
-		let view_kind = |view_id| self.flow_catalog.find_view(view_id).map(|v| v.kind());
+		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 	}
 
