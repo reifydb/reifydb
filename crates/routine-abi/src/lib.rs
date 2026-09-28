@@ -30,7 +30,9 @@ mod sealed {
 	pub trait Sealed {}
 }
 
-pub trait Context: Send + Sync + sealed::Sealed {}
+pub trait Context: Send + Sync + sealed::Sealed {
+	const PROPAGATES_OPTIONS: bool;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FunctionKind {
@@ -62,7 +64,7 @@ pub trait Routine<C: Context>: Send + Sync {
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
 
 	fn propagates_options(&self) -> bool {
-		true
+		C::PROPAGATES_OPTIONS
 	}
 
 	fn attaches_row_metadata(&self) -> bool {
