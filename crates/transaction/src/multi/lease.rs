@@ -7,7 +7,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::Result;
 
-use crate::error::TransactionError;
+use crate::{error::TransactionError, multi::watermark::watermark::WaterMark};
 
 #[derive(Debug)]
 pub struct VersionLeases {
@@ -24,6 +24,14 @@ impl VersionLeases {
 	pub fn try_acquire(self: &Arc<Self>, version: CommitVersion, qdu: CommitVersion) -> Result<VersionLeaseGuard> {
 		let mut leases = self.inner.lock();
 		Self::insert_locked(self, &mut leases, version, qdu)
+	}
+
+	pub fn try_acquire_at(
+		self: &Arc<Self>,
+		version: CommitVersion,
+		watermark: &WaterMark,
+	) -> Result<VersionLeaseGuard> {
+		self.try_acquire_with(|| Ok((version, watermark.done_until(), ()))).map(|(guard, ())| guard)
 	}
 
 	pub fn try_acquire_with<F, T>(self: &Arc<Self>, f: F) -> Result<(VersionLeaseGuard, T)>
