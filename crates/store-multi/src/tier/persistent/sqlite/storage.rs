@@ -366,6 +366,10 @@ impl SqlitePersistentStorage {
 		self.inner.conn.lock()
 	}
 
+	pub fn is_shut_down(&self) -> bool {
+		self.lock_conn().is_none()
+	}
+
 	pub fn set_checkpoint_threshold(&self, frames: u32) {
 		let guard = self.lock_conn();
 		if let Some(conn) = guard.as_ref()

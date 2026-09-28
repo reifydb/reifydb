@@ -30,9 +30,9 @@ use reifydb_store_commit::store::EvictedVersion;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::byte_size::ByteSize;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use tracing::{debug, error, instrument};
+use tracing::{debug, instrument};
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
@@ -120,7 +120,9 @@ impl FlushEngine {
 	pub fn sweep_slice(&self, budget: ByteSize) -> SweepOutcome {
 		let mut state = self.sweep_lock.lock();
 		let (progress, reclaimed) = match self.eviction_cutoff() {
-			Some(cutoff) => self.sweep_once(&mut state, cutoff, budget),
+			Some(cutoff) => self
+				.sweep_once(&mut state, cutoff, budget)
+				.expect("flush sweep: persist failed on a live persistent tier"),
 			None => (Progress::Exhausted, 0),
 		};
 		if let Some(range) = &self.range {
@@ -141,14 +143,24 @@ impl FlushEngine {
 		let mut guard = self.sweep_lock.lock();
 		guard.resume_keys.clear();
 		if let Some(cutoff) = self.eviction_cutoff() {
-			while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
+			while self
+				.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET)
+				.expect("flush sweep: persist failed on a live persistent tier")
+				.0
+				.is_yielded()
+			{}
 		}
 	}
 
 	pub fn flush_all(&self) {
 		let mut guard = self.sweep_lock.lock();
 		guard.resume_keys.clear();
-		while self.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_BYTE_BUDGET).0.is_yielded() {}
+		while self
+			.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_BYTE_BUDGET)
+			.expect("flush sweep: persist failed on a live persistent tier")
+			.0
+			.is_yielded()
+		{}
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -172,11 +184,21 @@ impl FlushEngine {
 	fn sweep(&self, cutoff: CommitVersion) {
 		let mut guard = self.sweep_lock.lock();
 		guard.resume_keys.clear();
-		while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
+		while self
+			.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET)
+			.expect("flush sweep: persist failed on a live persistent tier")
+			.0
+			.is_yielded()
+		{}
 	}
 
 	#[instrument(name = "store::multi::flush::sweep_once", level = "debug", skip_all)]
-	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: ByteSize) -> (Progress, u64) {
+	fn sweep_once(
+		&self,
+		state: &mut FlushEngineState,
+		cutoff: CommitVersion,
+		budget: ByteSize,
+	) -> Result<(Progress, u64)> {
 		let mut entry_kinds = self.list_evictable_kinds();
 		if let Some(resume) = state.resume_from
 			&& let Some(position) = entry_kinds.iter().position(|kind| *kind == resume)
@@ -216,16 +238,14 @@ impl FlushEngine {
 			plan.push((kind, persistent_object, (to_persist, to_drop), next));
 		}
 		if plan.is_empty() {
-			return (Progress::Exhausted, 0);
+			return Ok((Progress::Exhausted, 0));
 		}
 
 		let accepted = if batches.values().any(|batch| !batch.is_empty()) {
 			match self.persistent.persist_sweep(batches.into_iter().collect()) {
 				Ok(accepted) => accepted,
-				Err(e) => {
-					error!(error = %e, "flush sweep: persist failed, aborting slice");
-					return (Progress::Exhausted, 0);
-				}
+				Err(_) if self.persistent.is_shut_down() => return Ok((Progress::Exhausted, 0)),
+				Err(e) => return Err(e),
 			}
 		} else {
 			Vec::new()
@@ -282,7 +302,7 @@ impl FlushEngine {
 		} else {
 			Progress::Exhausted
 		};
-		(progress, dropped as u64)
+		Ok((progress, dropped as u64))
 	}
 
 	#[inline]
@@ -371,6 +391,7 @@ mod tests {
 	use std::{
 		collections::hash_map::DefaultHasher,
 		hash::{Hash, Hasher},
+		panic::{AssertUnwindSafe, catch_unwind},
 	};
 
 	use reifydb_core::{
@@ -382,9 +403,10 @@ mod tests {
 		key::row::RowKey,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
-	use reifydb_sqlite::SqliteTempPathGuard;
+	use reifydb_sqlite::{DbPath, SqliteConfig, SqliteTempPathGuard};
 	use reifydb_store_commit::VersionedGetResult;
 	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+	use rusqlite::Connection;
 
 	use super::*;
 	use crate::tier::point::MultiPointConfig;
@@ -467,6 +489,17 @@ mod tests {
 			),
 			guard,
 		)
+	}
+
+	fn build_engine_over(persistent: MultiPersistentTier, watermark: Option<CommitVersion>) -> FlushEngine {
+		let buffer = CommitStore::new();
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
+		let _ = persistence_lock.set(Arc::new(AllPersistent));
+		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
+		if let Some(w) = watermark {
+			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
+		}
+		FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, testing_event_bus())
 	}
 
 	fn testing_event_bus() -> EventBus {
@@ -1001,6 +1034,29 @@ mod tests {
 			actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(2)).value().as_deref(),
 			Some(b"entry-7".as_slice()),
 			"a failed persist must leave the dictionary write in the commit buffer, not drop the only copy"
+		);
+	}
+
+	#[test]
+	fn sweep_panics_and_keeps_buffer_when_persist_fails_on_a_live_tier() {
+		let (config, _guard) = SqliteConfig::in_memory();
+		let DbPath::Memory(path) = config.path.clone() else {
+			panic!("in_memory must give a memory path")
+		};
+		let actor = build_engine_over(MultiPersistentTier::sqlite(config), Some(CommitVersion(2)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(34)), EntryLayout::Row);
+		let key = ek("row-locked-out");
+		write(&actor.commit, kind, &key, 1, "v");
+
+		let blocker = Connection::open(&path).unwrap();
+		blocker.execute_batch("BEGIN EXCLUSIVE").unwrap();
+		let swept = catch_unwind(AssertUnwindSafe(|| actor.sweep(CommitVersion(2))));
+
+		assert!(swept.is_err(), "a persist failure on a live tier must stop the sweep loudly");
+		assert_eq!(
+			actor.commit.get(kind, key.as_ref(), CommitVersion(2)).value().as_deref(),
+			Some(b"v".as_slice()),
+			"a failed persist must leave the write in the commit buffer"
 		);
 	}
 

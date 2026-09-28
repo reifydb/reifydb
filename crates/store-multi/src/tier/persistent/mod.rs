@@ -253,6 +253,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn is_shut_down(&self) -> bool {
+		match self {
+			Self::Sqlite(s) => s.is_shut_down(),
+		}
+	}
+
 	pub fn install_floor(&self) -> Result<CommitVersion> {
 		match self {
 			Self::Sqlite(s) => s.install_floor(),
@@ -292,6 +298,10 @@ impl MultiPersistentTier {
 	}
 
 	pub fn persist_sweep(&self, _batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+		match *self {}
+	}
+
+	pub fn is_shut_down(&self) -> bool {
 		match *self {}
 	}
 
