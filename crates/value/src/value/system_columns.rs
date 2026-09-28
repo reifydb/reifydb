@@ -385,6 +385,33 @@ impl SystemColumns {
 		}
 	}
 
+	pub fn keep_row_numbers_and(&mut self, named: &[SystemColumn]) {
+		let Self {
+			row_numbers: _,
+			has_row_numbers: _,
+			partitions,
+			created_at,
+			updated_at,
+			time,
+			commit_versions,
+		} = self;
+		if !named.contains(&SystemColumn::Partitions) {
+			partitions.clear();
+		}
+		if !named.contains(&SystemColumn::CreatedAt) {
+			created_at.clear();
+		}
+		if !named.contains(&SystemColumn::UpdatedAt) {
+			updated_at.clear();
+		}
+		if !named.contains(&SystemColumn::Time) {
+			time.clear();
+		}
+		if !named.contains(&SystemColumn::CommitVersion) {
+			commit_versions.clear();
+		}
+	}
+
 	pub fn clear(&mut self) {
 		let Self {
 			row_numbers,

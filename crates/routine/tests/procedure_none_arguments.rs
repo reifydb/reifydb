@@ -27,7 +27,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ReportsNoneArguments {
 	fn execute(&self, _ctx: &mut ProcedureContext<'a, 'tx>, args: &Columns) -> Result<Columns, RoutineError> {
 		let arg = args.data_at(0);
 		let saw_none = (0..arg.len()).map(|row| matches!(arg.get_value(row), Value::None { .. }));
-		Ok(Columns::new(vec![ColumnWithName::new(Fragment::internal("saw_none"), ColumnBuffer::bool(saw_none))]))
+		Ok(Columns::new(vec![ColumnWithName::new(
+			Fragment::internal("saw_none"),
+			ColumnBuffer::bool(saw_none),
+		)]))
 	}
 }
 

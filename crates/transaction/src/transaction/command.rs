@@ -172,6 +172,7 @@ impl CommandTransaction {
 		if let Err(e) = self.check_active() {
 			return ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(e),
 				metrics: Default::default(),
 			};

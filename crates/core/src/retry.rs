@@ -178,6 +178,7 @@ mod retry_tests {
 	fn ok() -> ExecutionResult {
 		ExecutionResult {
 			frames: vec![],
+			named_system_columns: vec![],
 			error: None,
 			metrics: ExecutionMetrics::default(),
 		}
@@ -186,6 +187,7 @@ mod retry_tests {
 	fn err(code: &str) -> ExecutionResult {
 		ExecutionResult {
 			frames: vec![],
+			named_system_columns: vec![],
 			error: Some(Error(Box::new(Diagnostic {
 				code: code.to_string(),
 				rql: None,

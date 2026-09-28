@@ -194,6 +194,8 @@ mod shutdown;
 mod sort_key_order;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
+#[path = "system_columns_named_or_needed.rs"]
+mod system_columns_named_or_needed;
 #[path = "system_reserved_ids.rs"]
 mod system_reserved_ids;
 #[path = "take.rs"]

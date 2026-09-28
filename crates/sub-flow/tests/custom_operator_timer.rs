@@ -27,9 +27,10 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
+	params::Params,
 	value::{
 		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
-		value_type::ValueType,
+		frame::frame::Frame, identity::IdentityId, value_type::ValueType,
 	},
 };
 
@@ -152,6 +153,14 @@ fn setup() -> TestDb {
 	)
 }
 
+fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
+	let result = db.engine().begin_query(IdentityId::root()).expect("begin query").rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
+}
+
 fn declare(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
@@ -235,7 +244,7 @@ fn a_row_emitted_from_a_timer_carries_the_firing_instant_as_its_event_time() {
 
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
 
-	let frames = db.query_as_root("FROM app::v filter { g == 7 }", ()).expect("query view");
+	let frames = query_internal(&db, "FROM app::v filter { g == 7 }");
 	let stamps: Vec<DateTime> = frames.iter().flat_map(|frame| frame.time().iter().copied()).collect();
 
 	assert_eq!(

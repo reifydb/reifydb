@@ -18,6 +18,7 @@ use crate::{
 
 pub mod logical;
 pub mod physical;
+pub mod system_columns;
 
 pub type RowToInsert = Vec<Expression>;
 

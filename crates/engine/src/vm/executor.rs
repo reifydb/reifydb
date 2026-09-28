@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, result::Result as StdResult, sync::Arc};
+use std::{iter, ops::Deref, result::Result as StdResult, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{
@@ -38,7 +38,10 @@ use reifydb_value::error::Diagnostic;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityKind, value_type::ValueType},
+	value::{
+		Value, duration::Duration, frame::frame::Frame, identity::IdentityKind, system_columns::SystemColumn,
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -176,7 +179,37 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	Ok(())
 }
 
-type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, bool, SymbolTable, Vec<StatementMetrics>);
+type CompiledUnitsResult = (Emitted, Emitted, bool, SymbolTable, Vec<StatementMetrics>);
+
+#[derive(Default)]
+struct Emitted {
+	frames: Vec<Frame>,
+	named_system_columns: Vec<Vec<SystemColumn>>,
+}
+
+impl Emitted {
+	#[cfg(not(reifydb_single_threaded))]
+	fn forwarded(frames: Vec<Frame>) -> Self {
+		Self {
+			named_system_columns: vec![SystemColumn::ALL.to_vec(); frames.len()],
+			frames,
+		}
+	}
+
+	fn append(&mut self, frames: &mut Vec<Frame>, named: &[SystemColumn]) {
+		self.named_system_columns.extend(iter::repeat_n(named.to_vec(), frames.len()));
+		self.frames.append(frames);
+	}
+
+	fn into_result(self, metrics: ExecutionMetrics) -> ExecutionResult {
+		ExecutionResult {
+			frames: self.frames,
+			named_system_columns: self.named_system_columns,
+			error: None,
+			metrics,
+		}
+	}
+}
 
 struct ExecutionFailure {
 	error: Error,
@@ -241,7 +274,7 @@ fn execute_compiled_units(
 		compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64,
 	);
 	let mut result = vec![];
-	let mut output_results: Vec<Frame> = Vec::new();
+	let mut output_results = Emitted::default();
 	let mut saw_output = false;
 	let mut metrics = Vec::new();
 
@@ -271,14 +304,18 @@ fn execute_compiled_units(
 
 		if compiled.is_output {
 			saw_output = true;
-			output_results.append(&mut result);
+			output_results.append(&mut result, &compiled.named_system_columns);
 		}
 	}
 
-	Ok((output_results, result, saw_output, symbols, metrics))
+	let mut last = Emitted::default();
+	if let Some(compiled) = compiled_list.last() {
+		last.append(&mut result, &compiled.named_system_columns);
+	}
+	Ok((output_results, last, saw_output, symbols, metrics))
 }
 
-fn select_frames(saw_output: bool, output: Vec<Frame>, last: Vec<Frame>) -> Vec<Frame> {
+fn select_frames(saw_output: bool, output: Emitted, last: Emitted) -> Emitted {
 	if saw_output {
 		output
 	} else {
@@ -290,6 +327,7 @@ fn select_frames(saw_output: bool, output: Vec<Frame>, last: Vec<Frame>) -> Vec<
 fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
 	ExecutionResult {
 		frames: vec![],
+		named_system_columns: vec![],
 		error: Some(error),
 		metrics,
 	}
@@ -346,11 +384,9 @@ impl Executor {
 		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		match execute_compiled_units(&self.0, tx, &compiled_list, &params, symbols, compile_duration) {
-			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
-				frames: select_frames(saw_output, output, last),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
+			Ok((output, last, saw_output, _, metrics)) => {
+				select_frames(saw_output, output, last).into_result(build_metrics(metrics))
+			}
 			Err(f) => error_result(f.error, build_metrics(f.partial_metrics)),
 		}
 	}
@@ -360,11 +396,7 @@ impl Executor {
 	fn handle_rql_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
 		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
-			return ExecutionResult {
-				frames,
-				error: None,
-				metrics: ExecutionMetrics::default(),
-			};
+			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
 	}
@@ -404,11 +436,7 @@ impl Executor {
 	fn handle_admin_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
 		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
-			return ExecutionResult {
-				frames,
-				error: None,
-				metrics: ExecutionMetrics::default(),
-			};
+			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
 	}
@@ -431,13 +459,12 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
-				frames: select_frames(saw_output, output, last),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
+			Ok((output, last, saw_output, _, metrics)) => {
+				select_frames(saw_output, output, last).into_result(build_metrics(metrics))
+			}
 			Err(f) => ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(f.error),
 				metrics: build_metrics(f.partial_metrics),
 			},
@@ -453,7 +480,8 @@ impl Executor {
 	) -> ExecutionResult {
 		let policy = constrain_policy(inject_from_policies);
 		let mut result = vec![];
-		let mut output_results: Vec<Frame> = Vec::new();
+		let mut output_results = Emitted::default();
+		let mut last_named: Vec<SystemColumn> = Vec::new();
 		let mut saw_output = false;
 		let mut symbols = symbols;
 		let mut metrics = Vec::new();
@@ -499,14 +527,13 @@ impl Executor {
 
 			if compiled.is_output {
 				saw_output = true;
-				output_results.append(&mut result);
+				output_results.append(&mut result, &compiled.named_system_columns);
 			}
+			last_named = compiled.named_system_columns;
 		}
-		ExecutionResult {
-			frames: select_frames(saw_output, output_results, result),
-			error: None,
-			metrics: build_metrics(metrics),
-		}
+		let mut last = Emitted::default();
+		last.append(&mut result, &last_named);
+		select_frames(saw_output, output_results, last).into_result(build_metrics(metrics))
 	}
 
 	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
@@ -550,11 +577,7 @@ impl Executor {
 	fn handle_test_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
 		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
-			return ExecutionResult {
-				frames,
-				error: None,
-				metrics: ExecutionMetrics::default(),
-			};
+			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
 	}
@@ -577,13 +600,12 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
-				frames: select_frames(saw_output, output, last),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
+			Ok((output, last, saw_output, _, metrics)) => {
+				select_frames(saw_output, output, last).into_result(build_metrics(metrics))
+			}
 			Err(f) => ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(f.error),
 				metrics: build_metrics(f.partial_metrics),
 			},
@@ -599,7 +621,8 @@ impl Executor {
 	) -> ExecutionResult {
 		let policy = constrain_policy(inject_from_policies);
 		let mut result = vec![];
-		let mut output_results: Vec<Frame> = Vec::new();
+		let mut output_results = Emitted::default();
+		let mut last_named: Vec<SystemColumn> = Vec::new();
 		let mut saw_output = false;
 		let mut symbols = symbols;
 		let mut metrics = Vec::new();
@@ -645,14 +668,13 @@ impl Executor {
 
 			if compiled.is_output {
 				saw_output = true;
-				output_results.append(&mut result);
+				output_results.append(&mut result, &compiled.named_system_columns);
 			}
+			last_named = compiled.named_system_columns;
 		}
-		ExecutionResult {
-			frames: select_frames(saw_output, output_results, result),
-			error: None,
-			metrics: build_metrics(metrics),
-		}
+		let mut last = Emitted::default();
+		last.append(&mut result, &last_named);
+		select_frames(saw_output, output_results, last).into_result(build_metrics(metrics))
 	}
 
 	#[instrument(name = "executor::subscribe", level = "debug", skip(self, txn, params, options), fields(query = %query))]
@@ -740,6 +762,7 @@ impl Executor {
 			Err(e) => {
 				return ExecutionResult {
 					frames: vec![],
+					named_system_columns: vec![],
 					error: Some(e),
 					metrics: ExecutionMetrics::default(),
 				};
@@ -753,6 +776,7 @@ impl Executor {
 		) {
 			return ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(e),
 				metrics: ExecutionMetrics::default(),
 			};
@@ -769,6 +793,7 @@ impl Executor {
 				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
 					return ExecutionResult {
 						frames: vec![],
+						named_system_columns: vec![],
 						error: Some(Error(Box::new(Diagnostic {
 							code: "REMOTE_002".to_string(),
 							message: "Write operations on remote namespaces are not supported"
@@ -782,6 +807,7 @@ impl Executor {
 				}
 				return ExecutionResult {
 					frames: vec![],
+					named_system_columns: vec![],
 					error: Some(err),
 					metrics: ExecutionMetrics::default(),
 				};
@@ -797,13 +823,12 @@ impl Executor {
 			symbols,
 			compile_duration,
 		) {
-			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
-				frames: select_frames(saw_output, output, last),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
+			Ok((output, last, saw_output, _, metrics)) => {
+				select_frames(saw_output, output, last).into_result(build_metrics(metrics))
+			}
 			Err(f) => ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(f.error),
 				metrics: build_metrics(f.partial_metrics),
 			},
@@ -817,6 +842,7 @@ impl Executor {
 			Err(e) => {
 				return ExecutionResult {
 					frames: vec![],
+					named_system_columns: vec![],
 					error: Some(e),
 					metrics: ExecutionMetrics::default(),
 				};
@@ -830,6 +856,7 @@ impl Executor {
 		) {
 			return ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(e),
 				metrics: ExecutionMetrics::default(),
 			};
@@ -844,14 +871,11 @@ impl Executor {
 			Err(err) => {
 				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, qry.rql, qry.params) {
-					return ExecutionResult {
-						frames,
-						error: None,
-						metrics: ExecutionMetrics::default(),
-					};
+					return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 				}
 				return ExecutionResult {
 					frames: vec![],
+					named_system_columns: vec![],
 					error: Some(err),
 					metrics: ExecutionMetrics::default(),
 				};
@@ -869,13 +893,12 @@ impl Executor {
 		);
 
 		match exec_result {
-			Ok((output, last, saw_output, _, metrics)) => ExecutionResult {
-				frames: select_frames(saw_output, output, last),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
+			Ok((output, last, saw_output, _, metrics)) => {
+				select_frames(saw_output, output, last).into_result(build_metrics(metrics))
+			}
 			Err(f) => ExecutionResult {
 				frames: vec![],
+				named_system_columns: vec![],
 				error: Some(f.error),
 				metrics: build_metrics(f.partial_metrics),
 			},

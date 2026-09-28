@@ -187,6 +187,7 @@ impl StandardEngine {
 				params,
 			},
 		);
+		strip_unnamed_system_columns(&mut outcome);
 		self.commit_admin(&mut txn, &mut outcome, rql);
 		self.annotate_rql(&mut outcome, rql);
 		outcome
@@ -245,6 +246,7 @@ impl StandardEngine {
 				params,
 			},
 		);
+		strip_unnamed_system_columns(&mut outcome);
 		self.commit_command(&mut txn, &mut outcome, rql);
 		self.annotate_rql(&mut outcome, rql);
 		outcome
@@ -276,6 +278,7 @@ impl StandardEngine {
 				params,
 			},
 		);
+		strip_unnamed_system_columns(&mut outcome);
 		if let Some(ref mut e) = outcome.error {
 			e.with_rql(rql.to_string());
 		}
@@ -299,6 +302,7 @@ impl StandardEngine {
 				params,
 			},
 		);
+		strip_unnamed_system_columns(&mut outcome);
 		if let Some(ref mut e) = outcome.error {
 			e.with_rql(rql.to_string());
 		}
@@ -760,4 +764,12 @@ fn convert_vtable_user_columns_to_columns(columns: &[UserVTableColumn]) -> Vec<C
 			}
 		})
 		.collect()
+}
+
+fn strip_unnamed_system_columns(outcome: &mut ExecutionResult) {
+	if let Err(e) = outcome.strip_unnamed_system_columns() {
+		outcome.frames.clear();
+		outcome.named_system_columns.clear();
+		outcome.error = Some(e);
+	}
 }

@@ -3,6 +3,8 @@
 
 #[path = "aggregate_expression_input.rs"]
 mod aggregate_expression_input;
+#[path = "apply_row_numbers.rs"]
+mod apply_row_numbers;
 #[path = "apply_unknown_operator_view.rs"]
 mod apply_unknown_operator_view;
 #[path = "apply_unknown_operator_view_create.rs"]

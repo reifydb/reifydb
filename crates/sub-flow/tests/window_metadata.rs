@@ -6,12 +6,23 @@
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{column_values, timed_rows};
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_value::{
+	params::Params,
+	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
+}
+
+fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
+	let result = db.engine().begin_query(IdentityId::root()).expect("begin query").rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
 }
 
 fn source(db: &TestDb) {
@@ -160,7 +171,7 @@ fn time_still_stamps_the_window_start() {
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	assert_eq!(stamped, vec!["2026-01-01T00:01:00.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "s")), stamped);
@@ -236,7 +247,7 @@ fn a_session_window_starts_at_its_first_event_and_ends_one_gap_past_its_last() {
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "d")), vec!["40s".to_string()]);
@@ -260,7 +271,7 @@ fn a_late_event_that_extends_a_session_backwards_moves_its_start() {
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
 	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
@@ -336,7 +347,7 @@ fn a_row_counted_tumbling_window_stamps_its_earliest_event_time() {
 	insert(&db, 4, 1, 7, "2026-01-01T00:02:30Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	stamped.sort();
 	assert_eq!(
@@ -361,7 +372,7 @@ fn a_row_counted_sliding_window_stamps_its_earliest_event_time() {
 	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
 	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	stamped.sort();
 	assert_eq!(
@@ -389,7 +400,7 @@ fn a_late_earlier_row_moves_a_row_counted_window_stamp_back() {
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 
-	let frames = db.query("FROM app::w");
+	let frames = query_internal(&db, "FROM app::w");
 	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
 }

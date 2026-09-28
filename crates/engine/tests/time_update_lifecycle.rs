@@ -6,7 +6,10 @@
 // tests and re-dates every updated row to now, so it is pinned here against a clock that moves.
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{
+	params::Params,
+	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
+};
 
 const BLOCK_TIME: &str = "@2020-01-01T00:00:00Z";
 const CORRECTED_TIME: &str = "@2019-06-01T00:00:00Z";
@@ -25,15 +28,23 @@ fn engine() -> TestEngine {
 	t
 }
 
+fn query_internal(t: &TestEngine, rql: &str) -> Vec<Frame> {
+	let result = t.begin_query(IdentityId::system()).unwrap().rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
+}
+
 fn only_time(t: &TestEngine, rql: &str) -> DateTime {
-	let frames = t.query(rql);
+	let frames = query_internal(t, rql);
 	let time = frames[0].time();
 	assert_eq!(time.len(), 1, "expected exactly one row from `{rql}`");
 	time[0]
 }
 
 fn only_updated_at(t: &TestEngine, rql: &str) -> DateTime {
-	let frames = t.query(rql);
+	let frames = query_internal(t, rql);
 	let updated_at = frames[0].updated_at();
 	assert_eq!(updated_at.len(), 1, "expected exactly one row from `{rql}`");
 	updated_at[0]

@@ -7,12 +7,23 @@
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{column_values, timed_rows};
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_value::{
+	params::Params,
+	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
+}
+
+fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
+	let result = db.engine().begin_query(IdentityId::root()).expect("begin query").rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
 }
 
 /// One table feeding a sliding window whose size is a whole number of slides, so the window a
@@ -46,7 +57,7 @@ fn a_row_lands_in_every_window_that_covers_it() {
 		4,
 		"a row at 70s must land in exactly the four 60s windows that cover it (starting at 15s, 30s, \
 		 45s, 60s); view now: {:?}",
-		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+		timed_rows(&query_internal(&db, "FROM app::w"))
 	);
 
 	let frames = db.query_as_root("FROM app::w | map { total }", ()).expect("query view");
@@ -68,7 +79,7 @@ fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 7, ts: "2026-01-01T00:01:10Z" }]"#);
 	db.await_exact_row_count("FROM app::w", 4, TIMEOUT);
 
-	let frames = db.query_as_root("FROM app::w | map { g }", ()).expect("query view");
+	let frames = query_internal(&db, "FROM app::w | map { g }");
 	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
 	stamped.sort();
 
@@ -98,7 +109,7 @@ fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
 		covering,
 		4,
 		"a row at T0 is covered by the four 60s windows starting T0-45s through T0; view now: {:?}",
-		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+		timed_rows(&query_internal(&db, "FROM app::w"))
 	);
 
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
@@ -126,7 +137,7 @@ fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
 		 because their starts are 30s apart and the watermark landed between their horizons"
 	);
 
-	let open = db.query_as_root("FROM app::w FILTER { total == 107 } | map { g }", ()).expect("query view");
+	let open = query_internal(&db, "FROM app::w FILTER { total == 107 } | map { g }");
 	let mut stamped: Vec<String> = timed_rows(&open).into_iter().map(|row| row.time.to_string()).collect();
 	stamped.sort();
 	assert_eq!(

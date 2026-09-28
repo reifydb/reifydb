@@ -24,7 +24,7 @@ use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
 	util::hash::xxh3_128,
-	value::{Value, value_type::ValueType},
+	value::{Value, system_columns::SystemColumn, value_type::ValueType},
 };
 
 use crate::{
@@ -39,7 +39,13 @@ use crate::{
 	nodes,
 	nodes::CompiledViewStorageKind,
 	optimize::optimize_physical,
-	plan::{logical::LogicalPlan, physical, physical::PhysicalPlan, plan, plan_with_policy},
+	plan::{
+		logical::LogicalPlan,
+		physical,
+		physical::PhysicalPlan,
+		plan, plan_with_policy,
+		system_columns::{check_flow_system_columns, named_system_columns},
+	},
 	query::QueryPlan,
 };
 
@@ -63,6 +69,7 @@ pub struct Compiled {
 	pub is_output: bool,
 	pub fingerprint: StatementFingerprint,
 	pub normalized_rql: String,
+	pub named_system_columns: Vec<SystemColumn>,
 }
 
 pub enum CompilationResult {
@@ -146,11 +153,13 @@ impl Compiler {
 			let normalized_rql = normalize_statement(&statement);
 			if let Some(mut physical) = plan(bump, &self.0.catalog, tx, statement)? {
 				optimize_physical(&mut physical);
+				let named_system_columns = named_system_columns(&physical)?;
 				plans.push(Compiled {
 					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
+					named_system_columns,
 				});
 			}
 		}
@@ -177,11 +186,13 @@ impl Compiler {
 		let normalized_rql = normalize_statement(&statement);
 		if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 			optimize_physical(&mut physical);
+			let named_system_columns = named_system_columns(&physical)?;
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
+				named_system_columns,
 			}))
 		} else {
 			self.compile_next(tx, state)
@@ -233,11 +244,13 @@ impl Compiler {
 			let normalized_rql = normalize_statement(&statement);
 			if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
 				optimize_physical(&mut physical);
+				let named_system_columns = named_system_columns(&physical)?;
 				plans.push(Compiled {
 					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
+					named_system_columns,
 				});
 			}
 		}
@@ -268,6 +281,7 @@ impl Compiler {
 			return Ok(None);
 		};
 		optimize_physical(&mut physical);
+		check_flow_system_columns(&physical)?;
 		materialize_query_plan_with(physical, |_| subscription::single_query_required()).map(Some)
 	}
 
@@ -300,11 +314,13 @@ impl Compiler {
 		let normalized_rql = normalize_statement(&statement);
 		if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
 			optimize_physical(&mut physical);
+			let named_system_columns = named_system_columns(&physical)?;
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
+				named_system_columns,
 			}))
 		} else {
 			self.compile_next_with_policy(tx, state, policy)

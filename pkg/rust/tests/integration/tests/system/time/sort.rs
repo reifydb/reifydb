@@ -6,7 +6,10 @@
 //! a length that no longer matches the row count (loud), and a right length with shuffled entries.
 
 use reifydb::{RuntimeConfig, embedded as db_embedded, testing::db::TestDb};
-use reifydb_value::value::Value;
+use reifydb_value::{
+	params::Params,
+	value::{Value, frame::frame::Frame, identity::IdentityId},
+};
 
 fn seeded_db() -> TestDb {
 	let db = TestDb::from(
@@ -28,10 +31,18 @@ fn seeded_db() -> TestDb {
 	db
 }
 
+fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
+	let result = db.engine().begin_query(IdentityId::root()).expect("begin query").rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
+}
+
 /// `#time` is populated from `at`, so the two must agree row for row no matter how the rows were
 /// reordered or trimmed on the way out.
 fn assert_time_tracks_its_row(db: &TestDb, rql: &str, expected_rows: usize) {
-	let frames = db.query(rql);
+	let frames = query_internal(db, rql);
 	let frame = frames.first().unwrap_or_else(|| panic!("{rql}: no frame"));
 	let at = frame.columns.iter().find(|c| c.name == "at").unwrap_or_else(|| panic!("{rql}: no `at` column"));
 

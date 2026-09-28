@@ -132,21 +132,14 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 		let col = input.column(name)?;
 		cols.push(ColumnWithName::new(col.name().clone(), col.data().clone()));
 	}
-	if !input.row_numbers().is_empty() {
-		Some(Columns::with_system(
-			cols,
-			SystemColumns::new(
-				input.row_numbers().to_vec(),
-				Vec::new(),
-				input.created_at().to_vec(),
-				input.updated_at().to_vec(),
-				input.time().to_vec(),
-				Vec::new(),
-			),
-		))
-	} else {
-		Some(Columns::new(cols))
+	Some(carry_row_numbers(Columns::new(cols), input))
+}
+
+fn carry_row_numbers(columns: Columns, input: &Columns) -> Columns {
+	if input.row_numbers().is_empty() {
+		return columns;
 	}
+	columns.with_row_numbers(input.row_numbers().to_vec())
 }
 
 pub(crate) fn evaluate_returning(
@@ -188,19 +181,5 @@ pub(crate) fn evaluate_returning(
 		new_columns.push(column);
 	}
 
-	if !input.row_numbers().is_empty() {
-		Ok(Columns::with_system(
-			new_columns,
-			SystemColumns::new(
-				input.row_numbers().to_vec(),
-				Vec::new(),
-				input.created_at().to_vec(),
-				input.updated_at().to_vec(),
-				input.time().to_vec(),
-				Vec::new(),
-			),
-		))
-	} else {
-		Ok(Columns::new(new_columns))
-	}
+	Ok(carry_row_numbers(Columns::new(new_columns), &input))
 }

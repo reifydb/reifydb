@@ -21,6 +21,7 @@ use reifydb_rql::{
 			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan,
 			SortNode, TakeNode, compile_physical,
 		},
+		system_columns::check_system_columns,
 	},
 };
 use reifydb_value::value::value_type::ValueType;
@@ -67,6 +68,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlExplain {
 			let logical = compile_logical(&bump, ctx.catalog, ctx.tx, statement)?;
 			if let Some(mut plan) = compile_physical(&bump, ctx.catalog, ctx.tx, logical)? {
 				optimize_physical(&mut plan);
+				check_system_columns(&plan)?;
 				walker.walk(&plan, 0, None);
 			}
 		}

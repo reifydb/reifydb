@@ -11,7 +11,10 @@
 // back at the end of the chain can.
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 const BLOCK_TIME: &str = "2020-01-01T00:00:00Z";
@@ -20,8 +23,16 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
+fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
+	let result = db.engine().begin_query(IdentityId::root()).expect("begin query").rql(rql, Params::None);
+	if let Some(e) = result.error {
+		panic!("internal query failed: {e:?}\nrql: {rql}")
+	}
+	result.frames
+}
+
 fn only_time(db: &TestDb, rql: &str) -> reifydb_value::value::datetime::DateTime {
-	let frames = db.query(rql);
+	let frames = query_internal(db, rql);
 	let time = frames[0].time();
 	assert_eq!(time.len(), 1, "expected exactly one row from `{rql}`");
 	time[0]
