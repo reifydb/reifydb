@@ -775,16 +775,16 @@ impl InlineDataNode {
 		});
 
 		let mut column_data = if wide_type.is_none() {
-			let none_type = all_values
-				.iter()
-				.find_map(|(value, _, _)| match value {
-					Value::None {
-						inner,
-					} if *inner != ValueType::Any => Some(inner.clone()),
-					_ => None,
-				})
-				.unwrap_or(ValueType::Boolean);
-			ColumnBuffer::none_typed(none_type, all_values.len())
+			let none_type = all_values.iter().find_map(|(value, _, _)| match value {
+				Value::None {
+					inner,
+				} if *inner != ValueType::Any => Some(inner.clone()),
+				_ => None,
+			});
+			match none_type {
+				Some(none_type) => ColumnBuffer::none_typed(none_type, all_values.len()),
+				None => ColumnBuffer::none(all_values.len()),
+			}
 		} else {
 			let mut data = ColumnBuilder::with_capacity(wide_type.clone().unwrap(), 0);
 
@@ -897,7 +897,7 @@ impl InlineDataNode {
 		let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
 		let mut column_data = if let Some(tc) = table_column {
-			ColumnBuffer::none_typed(tc.constraint.get_type(), 0).into_builder()
+			ColumnBuilder::with_capacity(tc.constraint.get_type(), rows_data.len())
 		} else {
 			ColumnBuilder::with_capacity(ValueType::Uint1, 0)
 		};

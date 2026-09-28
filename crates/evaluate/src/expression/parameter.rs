@@ -6,11 +6,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_rql::expression::ParameterExpression;
-use reifydb_value::{
-	error,
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{error, fragment::Fragment, value::Value};
 
 use crate::{Result, expression::context::EvalContext};
 
@@ -65,7 +61,7 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::Decimal(_) => ColumnBuffer::from_many(value.clone(), ctx.row_count),
 		Value::None {
 			..
-		} => ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),
+		} => ColumnBuffer::from_many(value.clone(), ctx.row_count),
 		Value::Digest(_) => ColumnBuffer::from_many(value.clone(), ctx.row_count),
 		Value::Type(_) | Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
 			unreachable!("Any/ValueType/List/Record/Tuple not supported as parameter")

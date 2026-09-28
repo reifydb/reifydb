@@ -59,14 +59,14 @@ fn one_row(value: Value) -> ColumnBuffer {
 
 #[test]
 fn any_none() {
-	let input = ColumnBuffer::any([Value::none()]);
+	let input = ColumnBuffer::any_optional([None]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_none", &input, &output);
 }
 
 #[test]
 fn any_none_of_int8() {
-	let input = ColumnBuffer::any([Value::none_of(ValueType::Int8)]);
+	let input = one_row(Value::List(vec![Value::none_of(ValueType::Int8)]));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_none_of_int8", &input, &output);
 }
@@ -605,10 +605,8 @@ fn any_thirty_two_rows() {
 
 #[test]
 fn any_with_undefined() {
-	let input = ColumnBuffer::any_with_bitvec(
-		[Value::Int8(7i64), Value::none(), Value::Utf8("x".to_string()), Value::none()],
-		vec![true, false, true, false],
-	);
+	let input =
+		ColumnBuffer::any_optional([Some(Value::Int8(7i64)), None, Some(Value::Utf8("x".to_string())), None]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_with_undefined", &input, &output);
 }
@@ -617,7 +615,6 @@ fn any_with_undefined() {
 fn any_one_per_variant_in_one_column() {
 	// One row per variant in a single column, so a tag mix-up anywhere in the Any encoding shows up here.
 	let input = ColumnBuffer::any([
-		Value::none(),
 		Value::Boolean(true),
 		float4(1.5),
 		float8(2.5),

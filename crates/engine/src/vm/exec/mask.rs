@@ -85,9 +85,9 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &Bool
 		.zip(new_value.columns.iter())
 		.enumerate()
 		.map(|(idx, (old_col, new_col))| {
-			ColumnWithName::new(existing.name_at(idx).clone(), old_col.merge_rows(new_col, mask, len))
+			Ok(ColumnWithName::new(existing.name_at(idx).clone(), old_col.merge_rows(new_col, mask, len)?))
 		})
-		.collect();
+		.collect::<Result<_>>()?;
 
 	Ok(Columns::new(merged_columns))
 }
@@ -98,7 +98,7 @@ pub(crate) fn scatter_merge_variables(
 	then_mask: &BooleanBuffer,
 	else_mask: &BooleanBuffer,
 	total_len: usize,
-) -> Variable {
+) -> Result<Variable> {
 	let then_cols = variable_to_columns(then_var);
 	let else_cols = variable_to_columns(else_var);
 
@@ -108,16 +108,20 @@ pub(crate) fn scatter_merge_variables(
 		.zip(else_cols.columns.iter())
 		.enumerate()
 		.map(|(idx, (tc, ec))| {
-			let merged_data = tc.scatter_merge(ec, then_mask, else_mask, total_len);
-			ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data)
+			let merged_data = tc.scatter_merge(ec, then_mask, else_mask, total_len)?;
+			Ok(ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data))
 		})
-		.collect();
+		.collect::<Result<_>>()?;
 
-	Variable::columns(Columns::new(merged))
+	Ok(Variable::columns(Columns::new(merged)))
 }
 
-fn named_types<'c>(columns: &'c Columns, name: &'c str) -> impl Iterator<Item = (&'c str, ValueType)> {
-	columns.columns.iter().map(move |data| (name, data.get_type().inner_type().clone()))
+fn named_types<'c>(columns: &'c Columns, name: &'c str) -> impl Iterator<Item = (&'c str, ValueType, bool)> {
+	columns.columns.iter().map(move |data| {
+		let ty = data.get_type().inner_type().clone();
+		let fits_any = ty == ValueType::Any;
+		(name, ty, fits_any)
+	})
 }
 
 fn variable_columns(var: &Variable) -> Option<&Columns> {
@@ -302,7 +306,7 @@ impl<'a> Vm<'a> {
 					&write_mask,
 					&already_returned,
 					self.batch_size,
-				)
+				)?
 			}
 			None => {
 				let returning = Variable::columns(columns);
@@ -312,7 +316,7 @@ impl<'a> Vm<'a> {
 					&write_mask,
 					&already_returned,
 					self.batch_size,
-				)
+				)?
 			}
 		};
 
@@ -585,7 +589,7 @@ impl<'a> Vm<'a> {
 				&frame.then_mask,
 				&frame.else_mask,
 				total_len,
-			);
+			)?;
 			self.stack.push(merged);
 		}
 
@@ -604,10 +608,10 @@ impl<'a> Vm<'a> {
 							&frame.then_mask,
 							&frame.else_mask,
 							total_len,
-						);
-						ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data)
+						)?;
+						Ok(ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data))
 					})
-					.collect();
+					.collect::<Result<_>>()?;
 				self.symbols.reassign(name.clone(), Variable::columns(Columns::new(merged_cols)))?;
 			}
 		}
@@ -684,7 +688,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, true, true]);
 		let else_mask = BooleanBuffer::from(vec![false, false, false]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(20));
 		assert_eq!(merged.get_value(2), Value::Int4(30));
@@ -697,7 +701,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![false, false, false]);
 		let else_mask = BooleanBuffer::from(vec![true, true, true]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(40));
 		assert_eq!(merged.get_value(1), Value::Int4(50));
 		assert_eq!(merged.get_value(2), Value::Int4(60));
@@ -710,7 +714,7 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true, false]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false, true]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 4);
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 4).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(80));
 		assert_eq!(merged.get_value(2), Value::Int4(30));

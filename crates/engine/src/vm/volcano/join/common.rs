@@ -45,8 +45,6 @@ pub(crate) fn load_and_merge_all<'a>(
 	Ok(result)
 }
 
-pub(crate) const NO_MATCH: usize = usize::MAX;
-
 pub(crate) struct JoinSlot<'a> {
 	pub columns: &'a [ColumnBuffer],
 	pub system: &'a SystemColumns,
@@ -57,7 +55,7 @@ pub(crate) fn materialize_join(
 	qualified_names: &[String],
 	left_slots: &[JoinSlot<'_>],
 	right_columns: &[ColumnBuffer],
-	right_picks: &[usize],
+	right_picks: &[Option<usize>],
 	right_time: &[DateTime],
 	has_row_numbers: bool,
 	emitted: u64,
@@ -66,15 +64,17 @@ pub(crate) fn materialize_join(
 	let mut picked: Vec<ColumnWithName> = Vec::with_capacity(left_width + right_columns.len());
 
 	for index in 0..left_width {
-		let parts: Vec<ColumnBuffer> =
-			left_slots.iter().map(|slot| slot.columns[index].extract_rows(slot.picks)).collect();
+		let parts: Vec<ColumnBuffer> = left_slots
+			.iter()
+			.map(|slot| slot.columns[index].extract_rows(slot.picks))
+			.collect::<Result<Vec<_>>>()?;
 		let name = Fragment::internal(&qualified_names[picked.len()]);
 		picked.push(ColumnWithName::new(name, ColumnBuffer::concat(&parts)?));
 	}
 
 	for column in right_columns {
 		let name = Fragment::internal(&qualified_names[picked.len()]);
-		picked.push(ColumnWithName::new(name, column.extract_rows(right_picks)));
+		picked.push(ColumnWithName::new(name, column.extract_rows_or_none(right_picks)?));
 	}
 
 	let mut left = SystemColumns::empty();
@@ -93,12 +93,9 @@ pub(crate) fn materialize_join(
 		left.time()
 			.iter()
 			.zip(right_picks)
-			.map(|(&time, &pick)| {
-				if pick == NO_MATCH {
-					time
-				} else {
-					time.max(right_time[pick])
-				}
+			.map(|(&time, &pick)| match pick {
+				None => time,
+				Some(index) => time.max(right_time[index]),
 			})
 			.collect()
 	};

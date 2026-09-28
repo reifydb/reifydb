@@ -299,6 +299,6 @@ fn column_for_values(values: &[Value]) -> ColumnBuilder {
 	});
 	match first_type {
 		Some(ty) => ColumnBuilder::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder(),
+		None => ColumnBuffer::none(0).into_builder(),
 	}
 }

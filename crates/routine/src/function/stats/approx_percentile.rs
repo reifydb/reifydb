@@ -41,12 +41,6 @@ fn output_type(input: &ValueType) -> ValueType {
 	}
 }
 
-fn is_untyped_none(column: &ColumnBuffer) -> bool {
-	let (data, nulls) = column.clone().split_nulls();
-	matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
-		&& nulls.is_some_and(|nulls| !nulls.inner().has_true())
-}
-
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	RoutineError::FunctionExecutionFailed {
 		function: ctx.fragment.clone(),
@@ -104,7 +98,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 				container,
 				..
 			} => container,
-			_ if args.len() == 2 && is_untyped_none(digest_column) => {
+			_ if args.len() == 2 && digest_column.is_untyped_none() => {
 				return Ok(Columns::new(vec![ColumnWithName::new(
 					ctx.fragment.clone(),
 					ColumnBuffer::none_typed(ValueType::Float8, row_count),
@@ -129,7 +123,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 		}
 
 		let result_type = output_type(&digest_data.get_type());
-		if is_untyped_none(percentile_column) {
+		if percentile_column.is_untyped_none() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
 				ColumnBuffer::none_typed(result_type, row_count),

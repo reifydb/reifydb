@@ -109,10 +109,7 @@ fn a_scalar_nested_in_any_still_casts() {
 #[test]
 fn a_none_entry_next_to_a_list_does_not_mask_the_refusal() {
 	// The refusal must come from the list row even when an earlier row is none.
-	let column = ColumnBuffer::any_with_bitvec(
-		vec![Value::none(), Value::List(vec![Value::Int4(1)])],
-		vec![false, true],
-	);
+	let column = ColumnBuffer::any_optional([None, Some(Value::List(vec![Value::Int4(1)]))]);
 	let err = cast_column_data(
 		TargetConvert {
 			target: None,

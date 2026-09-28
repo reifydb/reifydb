@@ -1097,8 +1097,8 @@ impl SinkRingBufferViewOperator {
 				txn,
 				view,
 				Diff::update(
-					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied),
-					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied),
+					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied)?,
+					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied)?,
 				),
 			);
 		}
@@ -1165,7 +1165,7 @@ impl SinkRingBufferViewOperator {
 			emit_view_change(
 				txn,
 				view,
-				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)),
+				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)?),
 			);
 		}
 		Ok(())

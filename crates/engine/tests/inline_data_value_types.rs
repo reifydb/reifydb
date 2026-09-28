@@ -72,7 +72,7 @@ fn digest_of(values: &[f64]) -> Value {
 
 #[test]
 fn duration_literal_reads_back_as_a_duration_column() {
-	// The inferred column must not fall back to a none Boolean for a type outside the numeric and text set.
+	// The inferred column must not fall back to the untyped none for a type outside the numeric and text set.
 	let frames = query("from [{ d: duration::hours(25) }]", Params::None);
 
 	let (ty, values) = column(&frames, "d");
@@ -92,7 +92,7 @@ fn datetime_literal_reads_back_as_a_datetime_column() {
 
 #[test]
 fn leading_none_row_does_not_erase_a_later_duration() {
-	// The first non-none row decides the type, so a leading none must not turn the column into Boolean.
+	// The first non-none row decides the type, so a leading none must not turn the column into the untyped none.
 	let frames = query("from [{ d: none }, { d: duration::hours(1) }]", Params::None);
 
 	let (ty, values) = column(&frames, "d");
@@ -195,7 +195,7 @@ fn blob_values_mixed_with_none_keep_their_type() {
 
 #[test]
 fn digest_values_mixed_with_none_keep_their_type() {
-	// The column type must carry the digest inner type and accuracy, not a none Boolean.
+	// The column type must carry the digest inner type and accuracy, not the untyped none.
 	let first = digest_of(&[1.0, 2.0, 3.0]);
 	let second = digest_of(&[100.0]);
 	let expected = first.get_type();
@@ -216,7 +216,7 @@ fn list_values_mixed_with_none_keep_their_type() {
 
 #[test]
 fn typed_none_only_column_keeps_its_declared_type() {
-	// A column of typed nones must report that type, not the Boolean used for untyped nones.
+	// A column of typed nones must report that type, not the untyped none.
 	let frames = query("from [{ d: cast(none, duration) }, { d: none }]", Params::None);
 
 	let (ty, values) = column(&frames, "d");
@@ -225,13 +225,13 @@ fn typed_none_only_column_keeps_its_declared_type() {
 }
 
 #[test]
-fn untyped_none_only_column_stays_boolean() {
-	// With no typed value or typed none to go on, the column keeps the Boolean none convention.
+fn untyped_none_only_column_is_the_untyped_none() {
+	// With no typed value or typed none to go on, the column must be the untyped none, never a Boolean.
 	let frames = query("from [{ v: none }, { v: none }]", Params::None);
 
 	let (ty, values) = column(&frames, "v");
-	assert_eq!(ty, ValueType::Option(Box::new(ValueType::Boolean)));
-	assert_eq!(values, vec![Value::none_of(ValueType::Boolean), Value::none_of(ValueType::Boolean)]);
+	assert_eq!(ty, ValueType::Option(Box::new(ValueType::Any)));
+	assert_eq!(values, vec![Value::none(), Value::none()]);
 }
 
 #[test]

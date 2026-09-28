@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape},
@@ -17,7 +17,7 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::Constraint,
 		container::{
-			dictionary_array::push_entry,
+			dictionary_array,
 			digest_array::push_digest,
 			temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 		},
@@ -38,7 +38,11 @@ use uuid::Uuid;
 
 use crate::{
 	error::CoreError,
-	value::column::{ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::column::{
+		ColumnBuffer,
+		builder::{ColumnBuilder, TypedBuilder, append_fixed},
+		columns::Columns,
+	},
 };
 
 impl Columns {
@@ -153,8 +157,7 @@ impl Columns {
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
-			let is_all_none = column.nulls().is_some_and(|nulls| nulls.null_count() == nulls.len());
-			if is_all_none {
+			if column.is_untyped_none() {
 				let size = column.len();
 				let new_data = match field.constraint.get_type() {
 					ValueType::Boolean => ColumnBuffer::bool_with_bitvec(
@@ -271,16 +274,11 @@ impl Columns {
 						}
 						col_data
 					}
-					ValueType::Any | ValueType::Tuple(_) => ColumnBuffer::any_with_bitvec(
-						vec![Value::none(); size],
-						BooleanBuffer::new_unset(size),
-					),
+					ValueType::Any | ValueType::Tuple(_) => {
+						ColumnBuffer::any_optional(vec![None; size])
+					}
 					declared @ (ValueType::List(_) | ValueType::Record(_)) => {
-						ColumnBuffer::any_with_bitvec_typed(
-							vec![Value::none(); size],
-							BooleanBuffer::new_unset(size),
-							declared,
-						)
+						ColumnBuffer::any_optional_typed(vec![None; size], declared)
 					}
 					digest @ ValueType::Digest {
 						..
@@ -343,49 +341,38 @@ impl Columns {
 	) -> Result<()> {
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
-			match (&mut *column, field.constraint.get_type()) {
-				(
-					ColumnBuilder::Option {
-						inner,
-						bitvec,
-					},
-					_ty,
-				) => {
-					let value = shape.get_value(bytes, index);
-					if matches!(value, Value::None { .. }) {
-						inner.push_none();
-						bitvec.append(false);
-					} else {
-						inner.push_value(value);
-						bitvec.append(true);
-					}
+			if column.optional {
+				column.push_value(shape.get_value(bytes, index));
+				continue;
+			}
+			let column_type = column.get_type();
+			match (&mut column.inner, field.constraint.get_type()) {
+				(TypedBuilder::Bool(builder), ValueType::Boolean) => {
+					builder.append_value(shape.get::<bool>(bytes, index));
 				}
-				(ColumnBuilder::Bool(builder), ValueType::Boolean) => {
-					builder.append(shape.get::<bool>(bytes, index));
-				}
-				(ColumnBuilder::Float4(builder), ValueType::Float4) => {
+				(TypedBuilder::Float4(builder), ValueType::Float4) => {
 					builder.append_value(shape.get::<f32>(bytes, index));
 				}
-				(ColumnBuilder::Float8(builder), ValueType::Float8) => {
+				(TypedBuilder::Float8(builder), ValueType::Float8) => {
 					builder.append_value(shape.get::<f64>(bytes, index));
 				}
-				(ColumnBuilder::Int1(builder), ValueType::Int1) => {
+				(TypedBuilder::Int1(builder), ValueType::Int1) => {
 					builder.append_value(shape.get::<i8>(bytes, index));
 				}
-				(ColumnBuilder::Int2(builder), ValueType::Int2) => {
+				(TypedBuilder::Int2(builder), ValueType::Int2) => {
 					builder.append_value(shape.get::<i16>(bytes, index));
 				}
-				(ColumnBuilder::Int4(builder), ValueType::Int4) => {
+				(TypedBuilder::Int4(builder), ValueType::Int4) => {
 					builder.append_value(shape.get::<i32>(bytes, index));
 				}
-				(ColumnBuilder::Int8(builder), ValueType::Int8) => {
+				(TypedBuilder::Int8(builder), ValueType::Int8) => {
 					builder.append_value(shape.get::<i64>(bytes, index));
 				}
-				(ColumnBuilder::Int16(builder), ValueType::Int16) => {
+				(TypedBuilder::Int16(builder), ValueType::Int16) => {
 					builder.append_value(shape.get::<i128>(bytes, index));
 				}
 				(
-					ColumnBuilder::Utf8 {
+					TypedBuilder::Utf8 {
 						builder,
 						..
 					},
@@ -393,44 +380,44 @@ impl Columns {
 				) => {
 					builder.append_value(shape.get_utf8(bytes, index));
 				}
-				(ColumnBuilder::Uint1(builder), ValueType::Uint1) => {
+				(TypedBuilder::Uint1(builder), ValueType::Uint1) => {
 					builder.append_value(shape.get::<u8>(bytes, index));
 				}
-				(ColumnBuilder::Uint2(builder), ValueType::Uint2) => {
+				(TypedBuilder::Uint2(builder), ValueType::Uint2) => {
 					builder.append_value(shape.get::<u16>(bytes, index));
 				}
-				(ColumnBuilder::Uint4(builder), ValueType::Uint4) => {
+				(TypedBuilder::Uint4(builder), ValueType::Uint4) => {
 					builder.append_value(shape.get::<u32>(bytes, index));
 				}
-				(ColumnBuilder::Uint8(builder), ValueType::Uint8) => {
+				(TypedBuilder::Uint8(builder), ValueType::Uint8) => {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
-				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
+				(TypedBuilder::Uint16(builder), ValueType::Uint16) => {
 					builder.append_value(shape.get::<u128>(bytes, index));
 				}
-				(ColumnBuilder::Date(builder), ValueType::Date) => {
+				(TypedBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));
 				}
-				(ColumnBuilder::DateTime(builder), ValueType::DateTime) => {
+				(TypedBuilder::DateTime(builder), ValueType::DateTime) => {
 					builder.append_value(datetime_to_native(shape.get::<DateTime>(bytes, index)));
 				}
-				(ColumnBuilder::Time(builder), ValueType::Time) => {
+				(TypedBuilder::Time(builder), ValueType::Time) => {
 					builder.append_value(time_to_native(shape.get::<Time>(bytes, index)));
 				}
-				(ColumnBuilder::Duration(builder), ValueType::Duration) => {
+				(TypedBuilder::Duration(builder), ValueType::Duration) => {
 					builder.append_value(duration_to_native(shape.get::<Duration>(bytes, index)));
 				}
-				(ColumnBuilder::Uuid4(buffer), ValueType::Uuid4) => {
-					buffer.extend_from_slice(shape.get::<Uuid4>(bytes, index).as_bytes());
+				(TypedBuilder::Uuid4(builder), ValueType::Uuid4) => {
+					append_fixed(builder, shape.get::<Uuid4>(bytes, index).as_bytes());
 				}
-				(ColumnBuilder::Uuid7(buffer), ValueType::Uuid7) => {
-					buffer.extend_from_slice(shape.get::<Uuid7>(bytes, index).as_bytes());
+				(TypedBuilder::Uuid7(builder), ValueType::Uuid7) => {
+					append_fixed(builder, shape.get::<Uuid7>(bytes, index).as_bytes());
 				}
-				(ColumnBuilder::IdentityId(buffer), ValueType::IdentityId) => {
-					buffer.extend_from_slice(shape.get::<IdentityId>(bytes, index).as_bytes());
+				(TypedBuilder::IdentityId(builder), ValueType::IdentityId) => {
+					append_fixed(builder, shape.get::<IdentityId>(bytes, index).as_bytes());
 				}
 				(
-					ColumnBuilder::Blob {
+					TypedBuilder::Blob {
 						builder,
 						..
 					},
@@ -439,7 +426,7 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Decimal(builder),
+					TypedBuilder::Decimal(builder),
 					ValueType::Decimal {
 						..
 					},
@@ -447,17 +434,20 @@ impl Columns {
 					builder.push(&shape.get_decimal(bytes, index));
 				}
 				(
-					ColumnBuilder::DictionaryId {
-						buffer,
+					TypedBuilder::DictionaryId {
+						builder,
 						..
 					},
 					ValueType::DictionaryId,
 				) => match shape.get_value(bytes, index) {
-					Value::DictionaryId(id) => push_entry(buffer, id),
-					_ => push_entry(buffer, DictionaryEntryId::default()),
+					Value::DictionaryId(id) => append_fixed(builder, &dictionary_array::encode(id)),
+					_ => append_fixed(
+						builder,
+						&dictionary_array::encode(DictionaryEntryId::default()),
+					),
 				},
 				(
-					ColumnBuilder::Digest {
+					TypedBuilder::Digest {
 						builder,
 						inner,
 						accuracy,
@@ -474,7 +464,7 @@ impl Columns {
 						message: format!(
 							"type mismatch for column '{}'({}): incompatible with value {}",
 							names[index].text(),
-							column.get_type(),
+							column_type,
 							v
 						),
 					}
@@ -498,44 +488,37 @@ impl Columns {
 				continue;
 			}
 
-			match (&mut *column, field.constraint.get_type()) {
-				(
-					ColumnBuilder::Option {
-						inner,
-						bitvec,
-					},
-					_ty,
-				) => {
-					let value = shape.get_value(bytes, index);
-					inner.push_value(value);
-					bitvec.append(true);
+			if column.optional {
+				column.push_value(shape.get_value(bytes, index));
+				continue;
+			}
+			match (&mut column.inner, field.constraint.get_type()) {
+				(TypedBuilder::Bool(builder), ValueType::Boolean) => {
+					builder.append_value(shape.get::<bool>(bytes, index));
 				}
-				(ColumnBuilder::Bool(builder), ValueType::Boolean) => {
-					builder.append(shape.get::<bool>(bytes, index));
-				}
-				(ColumnBuilder::Float4(builder), ValueType::Float4) => {
+				(TypedBuilder::Float4(builder), ValueType::Float4) => {
 					builder.append_value(shape.get::<f32>(bytes, index));
 				}
-				(ColumnBuilder::Float8(builder), ValueType::Float8) => {
+				(TypedBuilder::Float8(builder), ValueType::Float8) => {
 					builder.append_value(shape.get::<f64>(bytes, index));
 				}
-				(ColumnBuilder::Int1(builder), ValueType::Int1) => {
+				(TypedBuilder::Int1(builder), ValueType::Int1) => {
 					builder.append_value(shape.get::<i8>(bytes, index));
 				}
-				(ColumnBuilder::Int2(builder), ValueType::Int2) => {
+				(TypedBuilder::Int2(builder), ValueType::Int2) => {
 					builder.append_value(shape.get::<i16>(bytes, index));
 				}
-				(ColumnBuilder::Int4(builder), ValueType::Int4) => {
+				(TypedBuilder::Int4(builder), ValueType::Int4) => {
 					builder.append_value(shape.get::<i32>(bytes, index));
 				}
-				(ColumnBuilder::Int8(builder), ValueType::Int8) => {
+				(TypedBuilder::Int8(builder), ValueType::Int8) => {
 					builder.append_value(shape.get::<i64>(bytes, index));
 				}
-				(ColumnBuilder::Int16(builder), ValueType::Int16) => {
+				(TypedBuilder::Int16(builder), ValueType::Int16) => {
 					builder.append_value(shape.get::<i128>(bytes, index));
 				}
 				(
-					ColumnBuilder::Utf8 {
+					TypedBuilder::Utf8 {
 						builder,
 						..
 					},
@@ -543,44 +526,44 @@ impl Columns {
 				) => {
 					builder.append_value(shape.get_utf8(bytes, index));
 				}
-				(ColumnBuilder::Uint1(builder), ValueType::Uint1) => {
+				(TypedBuilder::Uint1(builder), ValueType::Uint1) => {
 					builder.append_value(shape.get::<u8>(bytes, index));
 				}
-				(ColumnBuilder::Uint2(builder), ValueType::Uint2) => {
+				(TypedBuilder::Uint2(builder), ValueType::Uint2) => {
 					builder.append_value(shape.get::<u16>(bytes, index));
 				}
-				(ColumnBuilder::Uint4(builder), ValueType::Uint4) => {
+				(TypedBuilder::Uint4(builder), ValueType::Uint4) => {
 					builder.append_value(shape.get::<u32>(bytes, index));
 				}
-				(ColumnBuilder::Uint8(builder), ValueType::Uint8) => {
+				(TypedBuilder::Uint8(builder), ValueType::Uint8) => {
 					builder.append_value(shape.get::<u64>(bytes, index));
 				}
-				(ColumnBuilder::Uint16(builder), ValueType::Uint16) => {
+				(TypedBuilder::Uint16(builder), ValueType::Uint16) => {
 					builder.append_value(shape.get::<u128>(bytes, index));
 				}
-				(ColumnBuilder::Date(builder), ValueType::Date) => {
+				(TypedBuilder::Date(builder), ValueType::Date) => {
 					builder.append_value(date_to_native(shape.get::<Date>(bytes, index)));
 				}
-				(ColumnBuilder::DateTime(builder), ValueType::DateTime) => {
+				(TypedBuilder::DateTime(builder), ValueType::DateTime) => {
 					builder.append_value(datetime_to_native(shape.get::<DateTime>(bytes, index)));
 				}
-				(ColumnBuilder::Time(builder), ValueType::Time) => {
+				(TypedBuilder::Time(builder), ValueType::Time) => {
 					builder.append_value(time_to_native(shape.get::<Time>(bytes, index)));
 				}
-				(ColumnBuilder::Duration(builder), ValueType::Duration) => {
+				(TypedBuilder::Duration(builder), ValueType::Duration) => {
 					builder.append_value(duration_to_native(shape.get::<Duration>(bytes, index)));
 				}
-				(ColumnBuilder::Uuid4(buffer), ValueType::Uuid4) => {
-					buffer.extend_from_slice(shape.get::<Uuid4>(bytes, index).as_bytes());
+				(TypedBuilder::Uuid4(builder), ValueType::Uuid4) => {
+					append_fixed(builder, shape.get::<Uuid4>(bytes, index).as_bytes());
 				}
-				(ColumnBuilder::Uuid7(buffer), ValueType::Uuid7) => {
-					buffer.extend_from_slice(shape.get::<Uuid7>(bytes, index).as_bytes());
+				(TypedBuilder::Uuid7(builder), ValueType::Uuid7) => {
+					append_fixed(builder, shape.get::<Uuid7>(bytes, index).as_bytes());
 				}
-				(ColumnBuilder::IdentityId(buffer), ValueType::IdentityId) => {
-					buffer.extend_from_slice(shape.get::<IdentityId>(bytes, index).as_bytes());
+				(TypedBuilder::IdentityId(builder), ValueType::IdentityId) => {
+					append_fixed(builder, shape.get::<IdentityId>(bytes, index).as_bytes());
 				}
 				(
-					ColumnBuilder::Blob {
+					TypedBuilder::Blob {
 						builder,
 						..
 					},
@@ -589,7 +572,7 @@ impl Columns {
 					builder.append_value(shape.get_blob_slice(bytes, index));
 				}
 				(
-					ColumnBuilder::Decimal(builder),
+					TypedBuilder::Decimal(builder),
 					ValueType::Decimal {
 						..
 					},
@@ -597,17 +580,20 @@ impl Columns {
 					builder.push(&shape.get_decimal(bytes, index));
 				}
 				(
-					ColumnBuilder::DictionaryId {
-						buffer,
+					TypedBuilder::DictionaryId {
+						builder,
 						..
 					},
 					ValueType::DictionaryId,
 				) => match shape.get_value(bytes, index) {
-					Value::DictionaryId(id) => push_entry(buffer, id),
-					_ => push_entry(buffer, DictionaryEntryId::default()),
+					Value::DictionaryId(id) => append_fixed(builder, &dictionary_array::encode(id)),
+					_ => append_fixed(
+						builder,
+						&dictionary_array::encode(DictionaryEntryId::default()),
+					),
 				},
 				(
-					ColumnBuilder::Digest {
+					TypedBuilder::Digest {
 						builder,
 						inner,
 						accuracy,
@@ -619,11 +605,7 @@ impl Columns {
 				) if *inner == *field_inner && *accuracy == field_accuracy => {
 					push_digest(builder, &shape.get_digest(bytes, index));
 				}
-				(l, r) => {
-					let l = mem::replace(l, ColumnBuilder::Bool(BooleanBufferBuilder::new(0)))
-						.finish();
-					unreachable!("{:#?} {:#?}", l, r)
-				}
+				(l, r) => unreachable!("{:?} {:?}", l.get_type(), r),
 			}
 		}
 		Ok(())
@@ -633,10 +615,7 @@ impl Columns {
 #[cfg(test)]
 pub mod tests {
 	mod columns {
-		use reifydb_value::value::{
-			uuid::{Uuid4, Uuid7},
-			value_type::ValueType,
-		};
+		use reifydb_value::value::uuid::{Uuid4, Uuid7};
 		use uuid::{Timestamp, Uuid};
 
 		use crate::value::column::{ColumnBuffer, ColumnWithName, columns::Columns};
@@ -966,8 +945,7 @@ pub mod tests {
 				ColumnBuffer::int2_with_bitvec([1, 2], vec![true, false]),
 			)]);
 
-			let test_instance2 =
-				Columns::new(vec![ColumnWithName::undefined_typed("id", ValueType::Boolean, 2)]);
+			let test_instance2 = Columns::new(vec![ColumnWithName::new("id", ColumnBuffer::none(2))]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -980,7 +958,7 @@ pub mod tests {
 		#[test]
 		fn test_with_undefined_l_promotes_correctly() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnWithName::undefined_typed("score", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("score", ColumnBuffer::none(2))]);
 
 			let test_instance2 = Columns::new(vec![ColumnWithName::new(
 				"score",
@@ -1071,7 +1049,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
@@ -1089,7 +1067,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
@@ -1107,7 +1085,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int1() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int1]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int1(42)]);
@@ -1125,7 +1103,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int2() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int2(-1234)]);
@@ -1143,7 +1121,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int4]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int4(56789)]);
@@ -1161,7 +1139,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
@@ -1179,7 +1157,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int16() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
@@ -1197,7 +1175,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_string() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Utf8]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
@@ -1215,7 +1193,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint1() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint1(255)]);
@@ -1233,7 +1211,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint2() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint2(65535)]);
@@ -1251,7 +1229,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
@@ -1269,7 +1247,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
@@ -1287,7 +1265,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint16() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::new("test_col", ColumnBuffer::none(2))]);
 			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16]);
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
@@ -1934,8 +1912,7 @@ pub mod tests {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), ValueType::Uint4);
 			let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("tag", constraint)]);
 
-			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("tag", ValueType::Boolean, 2)]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new("tag", ColumnBuffer::none(2))]);
 
 			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);

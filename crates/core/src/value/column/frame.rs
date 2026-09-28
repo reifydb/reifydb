@@ -15,69 +15,77 @@ use crate::value::column::{ColumnBuffer, ColumnWithName, columns::Columns};
 
 impl From<ColumnBuffer> for FrameColumnData {
 	fn from(value: ColumnBuffer) -> Self {
-		let value = match value.split_nulls() {
-			(bare, Some(nulls)) => {
-				return FrameColumnData::Option {
-					inner: Box::new(FrameColumnData::from(bare)),
-					bitvec: nulls.into_inner(),
-				};
-			}
-			(bare, None) => bare,
-		};
-		match value {
-			ColumnBuffer::Bool(container) => FrameColumnData::Bool(container),
-			ColumnBuffer::Float4(container) => FrameColumnData::Float4(container),
-			ColumnBuffer::Float8(container) => FrameColumnData::Float8(container),
-			ColumnBuffer::Int1(container) => FrameColumnData::Int1(container),
-			ColumnBuffer::Int2(container) => FrameColumnData::Int2(container),
-			ColumnBuffer::Int4(container) => FrameColumnData::Int4(container),
-			ColumnBuffer::Int8(container) => FrameColumnData::Int8(container),
-			ColumnBuffer::Int16(container) => FrameColumnData::Int16(container),
-			ColumnBuffer::Uint1(container) => FrameColumnData::Uint1(container),
-			ColumnBuffer::Uint2(container) => FrameColumnData::Uint2(container),
-			ColumnBuffer::Uint4(container) => FrameColumnData::Uint4(container),
-			ColumnBuffer::Uint8(container) => FrameColumnData::Uint8(container),
-			ColumnBuffer::Uint16(container) => FrameColumnData::Uint16(container),
-			ColumnBuffer::Utf8 {
-				container,
-				..
-			} => FrameColumnData::Utf8(container),
-			ColumnBuffer::Date(container) => FrameColumnData::Date(container),
-			ColumnBuffer::DateTime(container) => FrameColumnData::DateTime(container),
-			ColumnBuffer::Time(container) => FrameColumnData::Time(container),
-			ColumnBuffer::Duration(container) => FrameColumnData::Duration(container),
-			ColumnBuffer::IdentityId(container) => FrameColumnData::IdentityId(container),
-			ColumnBuffer::Uuid4(container) => FrameColumnData::Uuid4(container),
-			ColumnBuffer::Uuid7(container) => FrameColumnData::Uuid7(container),
-			ColumnBuffer::Blob {
-				container,
-				..
-			} => FrameColumnData::Blob(container),
-			ColumnBuffer::Decimal(container) => FrameColumnData::Decimal(container),
-			ColumnBuffer::Any {
-				container,
-				declared_type,
-			} => FrameColumnData::Any {
-				container,
-				declared_type,
-			},
-			ColumnBuffer::DictionaryId {
-				container,
-				dictionary_id,
-			} => FrameColumnData::DictionaryId {
-				container,
-				dictionary_id,
-			},
-			ColumnBuffer::Digest {
-				container,
-				inner,
-				accuracy,
-			} => FrameColumnData::Digest {
-				container,
-				inner,
-				accuracy,
-			},
+		if value.is_none() {
+			let len = value.len();
+			return FrameColumnData::from(ColumnBuffer::any_optional(vec![None; len]));
 		}
+		match value.split_nulls() {
+			(bare, Some(nulls)) => FrameColumnData::Option {
+				inner: Box::new(bare_frame_data(bare)),
+				bitvec: nulls.into_inner(),
+			},
+			(bare, None) => bare_frame_data(bare),
+		}
+	}
+}
+
+fn bare_frame_data(value: ColumnBuffer) -> FrameColumnData {
+	match value {
+		ColumnBuffer::Bool(container) => FrameColumnData::Bool(container),
+		ColumnBuffer::Float4(container) => FrameColumnData::Float4(container),
+		ColumnBuffer::Float8(container) => FrameColumnData::Float8(container),
+		ColumnBuffer::Int1(container) => FrameColumnData::Int1(container),
+		ColumnBuffer::Int2(container) => FrameColumnData::Int2(container),
+		ColumnBuffer::Int4(container) => FrameColumnData::Int4(container),
+		ColumnBuffer::Int8(container) => FrameColumnData::Int8(container),
+		ColumnBuffer::Int16(container) => FrameColumnData::Int16(container),
+		ColumnBuffer::Uint1(container) => FrameColumnData::Uint1(container),
+		ColumnBuffer::Uint2(container) => FrameColumnData::Uint2(container),
+		ColumnBuffer::Uint4(container) => FrameColumnData::Uint4(container),
+		ColumnBuffer::Uint8(container) => FrameColumnData::Uint8(container),
+		ColumnBuffer::Uint16(container) => FrameColumnData::Uint16(container),
+		ColumnBuffer::Utf8 {
+			container,
+			..
+		} => FrameColumnData::Utf8(container),
+		ColumnBuffer::Date(container) => FrameColumnData::Date(container),
+		ColumnBuffer::DateTime(container) => FrameColumnData::DateTime(container),
+		ColumnBuffer::Time(container) => FrameColumnData::Time(container),
+		ColumnBuffer::Duration(container) => FrameColumnData::Duration(container),
+		ColumnBuffer::IdentityId(container) => FrameColumnData::IdentityId(container),
+		ColumnBuffer::Uuid4(container) => FrameColumnData::Uuid4(container),
+		ColumnBuffer::Uuid7(container) => FrameColumnData::Uuid7(container),
+		ColumnBuffer::Blob {
+			container,
+			..
+		} => FrameColumnData::Blob(container),
+		ColumnBuffer::Decimal(container) => FrameColumnData::Decimal(container),
+		ColumnBuffer::Any {
+			container,
+			declared_type,
+		} => FrameColumnData::Any {
+			container,
+			declared_type,
+		},
+		ColumnBuffer::DictionaryId {
+			container,
+			dictionary_id,
+		} => FrameColumnData::DictionaryId {
+			container,
+			dictionary_id,
+		},
+		ColumnBuffer::Digest {
+			container,
+			inner,
+			accuracy,
+		} => FrameColumnData::Digest {
+			container,
+			inner,
+			accuracy,
+		},
+		ColumnBuffer::None {
+			..
+		} => unreachable!("a none column leaves as an optional any column before its null buffer is split"),
 	}
 }
 

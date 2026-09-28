@@ -4,8 +4,14 @@
 use std::f64::consts::PI;
 
 use reifydb_value::value::{
-	Value, blob::Blob, container::any_array::any_array, date::Date, frame::data::FrameColumnData,
-	ordered_f64::OrderedF64, uuid::Uuid4, value_type::ValueType,
+	Value,
+	blob::Blob,
+	container::any_array::{any_array, any_array_optional},
+	date::Date,
+	frame::data::FrameColumnData,
+	ordered_f64::OrderedF64,
+	uuid::Uuid4,
+	value_type::ValueType,
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
@@ -28,73 +34,14 @@ crate::nones_tests! {
 
 #[test]
 fn any_cell_holding_none_of_duration_round_trips() {
-	// Distinct from column-level absence: the cell is present and its payload is itself a none,
-	// so it bypasses the outer bitvec and rides the Any value codec.
+	// A none row next to a value must come back as a null row, never as an encoded none cell.
 	crate::common::round_trip_column(
 		"c",
 		FrameColumnData::Any {
-			container: any_array(vec![Value::none_of(ValueType::Duration), Value::Int4(5)]),
+			container: any_array_optional([None, Some(Value::Int4(5))]),
 			declared_type: None,
 		},
 	);
-}
-
-#[test]
-fn any_cell_holding_none_of_nested_option_duration_round_trips() {
-	crate::common::round_trip_column(
-		"c",
-		FrameColumnData::Any {
-			container: any_array(vec![Value::none_of(ValueType::Option(Box::new(ValueType::Duration)))]),
-			declared_type: None,
-		},
-	);
-}
-
-#[test]
-fn any_cell_holding_none_of_triple_nested_option_round_trips() {
-	let inner_ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Duration))));
-	crate::common::round_trip_column(
-		"c",
-		FrameColumnData::Any {
-			container: any_array(vec![Value::none_of(inner_ty)]),
-			declared_type: None,
-		},
-	);
-}
-
-#[test]
-fn any_cell_holding_bare_none_round_trips() {
-	// Value::none() defaults its inner type to Any, so it encodes identically to none_of(Any).
-	crate::common::round_trip_column(
-		"c",
-		FrameColumnData::Any {
-			container: any_array(vec![Value::none()]),
-			declared_type: None,
-		},
-	);
-}
-
-#[test]
-fn any_cell_holding_none_of_various_inner_types_round_trips() {
-	let cases: &[ValueType] = &[
-		ValueType::Boolean,
-		ValueType::Int4,
-		ValueType::Uint8,
-		ValueType::Utf8,
-		ValueType::Blob,
-		ValueType::Date,
-		ValueType::Uuid4,
-	];
-
-	for ty in cases {
-		crate::common::round_trip_column(
-			"c",
-			FrameColumnData::Any {
-				container: any_array(vec![Value::none_of(ty.clone())]),
-				declared_type: None,
-			},
-		);
-	}
 }
 
 #[test]
@@ -104,11 +51,11 @@ fn any_cell_mixed_concrete_and_none_of_different_types_round_trips() {
 		FrameColumnData::Any {
 			container: any_array(vec![
 				Value::Int4(1),
-				Value::none_of(ValueType::Duration),
+				Value::List(vec![Value::none_of(ValueType::Duration)]),
 				Value::Utf8("hello".to_string()),
-				Value::none_of(ValueType::Boolean),
+				Value::List(vec![Value::none_of(ValueType::Boolean)]),
 				Value::Blob(Blob::new(vec![1, 2, 3])),
-				Value::none(),
+				Value::List(vec![Value::none()]),
 				Value::Date(Date::from_days_since_epoch(0).unwrap()),
 				Value::Uuid4(Uuid4(uuid::Uuid::nil())),
 			]),

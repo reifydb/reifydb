@@ -3,16 +3,26 @@
 
 use std::{borrow::Borrow, result::Result as StdResult};
 
-use arrow_array::{Array, LargeBinaryArray, builder::LargeBinaryBuilder};
+use arrow_array::{
+	Array, LargeBinaryArray,
+	builder::{ArrayBuilder, LargeBinaryBuilder},
+};
 use postcard::{from_bytes, to_allocvec};
-use serde::{Deserialize, Deserializer, Serializer, ser::SerializeSeq};
+use serde::{Deserialize, Deserializer, Serializer, de::Error as _, ser::SerializeSeq};
 
 use crate::{
-	util::bitmap,
+	Result,
+	util::{bitmap, kernel},
 	value::{Value, container::varlen_array, value_type::ValueType},
 };
 
-fn encode(value: &Value) -> Vec<u8> {
+fn encode(value: &Value, row: usize) -> Vec<u8> {
+	if let Value::None {
+		..
+	} = value
+	{
+		panic!("an Any cell can not hold a none, row {row} must be a null row");
+	}
 	to_allocvec(value).expect("postcard serialization of a Value is total")
 }
 
@@ -20,27 +30,45 @@ fn decode(row: &[u8]) -> Value {
 	if row.is_empty() {
 		panic!("empty Any row");
 	}
-	from_bytes(row).unwrap_or_else(|error| panic!("corrupt Any row {row:02x?}: {error}"))
+	match from_bytes(row) {
+		Ok(Value::None {
+			..
+		}) => panic!("corrupt Any row {row:02x?}: an encoded none, a none is a null row"),
+		Ok(value) => value,
+		Err(error) => panic!("corrupt Any row {row:02x?}: {error}"),
+	}
 }
 
 pub fn any_array<B: Borrow<Value>>(values: impl IntoIterator<Item = B>) -> LargeBinaryArray {
 	let mut builder = LargeBinaryBuilder::new();
-	for value in values {
-		builder.append_value(encode(value.borrow()));
+	for (row, value) in values.into_iter().enumerate() {
+		builder.append_value(encode(value.borrow(), row));
+	}
+	builder.finish()
+}
+
+pub fn any_array_optional<B: Borrow<Value>>(values: impl IntoIterator<Item = Option<B>>) -> LargeBinaryArray {
+	let mut builder = LargeBinaryBuilder::new();
+	for (row, value) in values.into_iter().enumerate() {
+		match value {
+			Some(value) => builder.append_value(encode(value.borrow(), row)),
+			None => builder.append_null(),
+		}
 	}
 	builder.finish()
 }
 
 pub fn push_any(builder: &mut LargeBinaryBuilder, value: &Value) {
-	builder.append_value(encode(value));
+	let row = builder.len();
+	builder.append_value(encode(value, row));
 }
 
 pub fn get(array: &LargeBinaryArray, index: usize) -> Option<Value> {
-	varlen_array::get(array, index).map(decode)
+	varlen_array::get(array, index).filter(|_| array.is_valid(index)).map(decode)
 }
 
 pub fn values(array: &LargeBinaryArray) -> Vec<Value> {
-	(0..array.len()).map(|index| decode(array.value(index))).collect()
+	(0..array.len()).map(|index| get(array, index).unwrap_or_else(Value::none)).collect()
 }
 
 pub fn get_value(array: &LargeBinaryArray, declared_type: Option<&ValueType>, index: usize) -> Value {
@@ -58,34 +86,33 @@ pub fn as_string(array: &LargeBinaryArray, index: usize) -> String {
 	}
 }
 
-pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> LargeBinaryArray {
-	let default_row = encode(&Value::none());
+pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> Result<LargeBinaryArray> {
+	kernel::rows_in_range(indices, array.len())?;
 	let mut builder = LargeBinaryBuilder::with_capacity(indices.len(), varlen_array::compact_parts(array).0.len());
 	for &index in indices {
-		match varlen_array::get(array, index) {
-			Some(row) => builder.append_value(row),
-			None => builder.append_value(&default_row),
-		}
+		builder.append_value(array.value(index));
 	}
-	varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices))
+	Ok(varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices)))
 }
 
 pub fn equals(left: &LargeBinaryArray, right: &LargeBinaryArray) -> bool {
-	left.len() == right.len()
-		&& (0..left.len()).all(|index| decode(left.value(index)) == decode(right.value(index)))
+	left.len() == right.len() && (0..left.len()).all(|index| get(left, index) == get(right, index))
 }
 
 pub fn serialize<Ser: Serializer>(array: &LargeBinaryArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 	let mut seq = serializer.serialize_seq(Some(array.len()))?;
 	for index in 0..array.len() {
-		seq.serialize_element(&decode(array.value(index)))?;
+		seq.serialize_element(&get(array, index))?;
 	}
 	seq.end()
 }
 
 pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<LargeBinaryArray, D::Error> {
-	let values: Vec<Value> = Vec::deserialize(deserializer)?;
-	Ok(any_array(&values))
+	let values: Vec<Option<Value>> = Vec::deserialize(deserializer)?;
+	if let Some(row) = values.iter().position(|value| matches!(value, Some(Value::None { .. }))) {
+		return Err(D::Error::custom(format!("an Any cell can not hold a none, row {row} must be a null row")));
+	}
+	Ok(any_array_optional(values))
 }
 
 #[cfg(test)]
@@ -130,8 +157,6 @@ mod tests {
 
 	fn every_variant() -> Vec<Value> {
 		vec![
-			Value::none(),
-			Value::none_of(ValueType::Utf8),
 			Value::Boolean(true),
 			Value::Float4(OrderedF32::try_from(1.5f32).unwrap()),
 			Value::Float8(OrderedF64::try_from(-0.0f64).unwrap()),
@@ -205,12 +230,10 @@ mod tests {
 	}
 
 	#[test]
-	fn reorder_fills_out_of_range_rows_with_the_untyped_none() {
-		// Out of range rows must read as none, never as an empty row that panics on read.
-		let array = reorder(&any_array([Value::Int4(1)]), &[3, 0]);
-		assert_eq!(values(&array), vec![Value::none(), Value::Int4(1)]);
-		assert_eq!(as_string(&array, 1), "1");
-		assert_eq!(as_string(&array, 2), "none");
+	fn reorder_with_an_out_of_range_row_fails() {
+		// An out of range row is a bug, so it must fail naming the row and length, never read as a none.
+		let error = reorder(&any_array([Value::Int4(1)]), &[3, 0]).unwrap_err();
+		assert_eq!(error.diagnostic().message, "row index 3 out of range for a column of 1 rows");
 	}
 
 	#[test]
@@ -227,7 +250,8 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "empty Any row")]
 	fn an_empty_any_row_panics_naming_the_type() {
-		// An empty row is never written, so reading one must fail loudly instead of giving a none.
+		// An empty row under a set valid bit is corrupt, so reading one must fail loudly instead of giving a
+		// none.
 		get(&LargeBinaryArray::from_iter_values([b"".as_slice()]), 0);
 	}
 

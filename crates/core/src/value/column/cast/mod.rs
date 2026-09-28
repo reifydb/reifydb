@@ -48,7 +48,9 @@ pub fn cast_column_data(
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
-	if let Some(nulls) = data.nulls() {
+	if let Some(nulls) = data.nulls()
+		&& !data.keeps_own_nulls()
+	{
 		let (inner, _) = data.clone().split_nulls();
 		let bitvec = nulls.inner();
 		let inner_target = match &target {
@@ -66,25 +68,19 @@ pub fn cast_column_data(
 			let mut compacted = inner;
 			compacted.filter(bitvec)?;
 
-			let mut cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
+			let cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
 
-			let sentinel = defined_count;
-			let mut expand_indices = Vec::with_capacity(total_len);
+			let mut expand_picks = Vec::with_capacity(total_len);
 			let mut src_idx = 0usize;
 			for i in 0..total_len {
 				if bitvec.value(i) {
-					expand_indices.push(src_idx);
+					expand_picks.push(Some(src_idx));
 					src_idx += 1;
 				} else {
-					expand_indices.push(sentinel);
+					expand_picks.push(None);
 				}
 			}
-			cast_compacted.reorder(&expand_indices);
-
-			return Ok(match cast_compacted.nulls() {
-				Some(_) => cast_compacted,
-				None => cast_compacted.with_nulls(nulls.clone()),
-			});
+			return cast_compacted.extract_rows_or_none(&expand_picks);
 		}
 
 		let cast_inner = cast_column_data(ctx, &inner, inner_target, lazy_fragment)?;
@@ -105,7 +101,10 @@ pub fn cast_column_data(
 		});
 	}
 
-	let object_type = data.get_type();
+	let object_type = match data.get_type() {
+		ValueType::Option(inner) if data.keeps_own_nulls() => *inner,
+		other => other,
+	};
 	if target == object_type {
 		return Ok(data.clone());
 	}

@@ -4,30 +4,29 @@
 use std::{fmt::Debug, marker::PhantomData, mem};
 
 use arrow_array::{
-	Array, ArrowPrimitiveType, BooleanArray, FixedSizeBinaryArray, GenericByteArray, PrimitiveArray,
-	builder::{ArrayBuilder, GenericByteBuilder, LargeBinaryBuilder, LargeStringBuilder, PrimitiveBuilder},
+	Array, ArrowPrimitiveType, FixedSizeBinaryArray, GenericByteArray, PrimitiveArray,
+	builder::{
+		ArrayBuilder, BooleanBuilder, FixedSizeBinaryBuilder, GenericByteBuilder, LargeBinaryBuilder,
+		LargeStringBuilder, NullBuilder, PrimitiveBuilder,
+	},
 	types::{
 		ByteArrayType, Date32Type, Decimal128Type, Decimal256Type, Float32Type, Float64Type, Int8Type,
 		Int16Type, Int32Type, Int64Type, IntervalMonthDayNanoType, Time64NanosecondType,
 		TimestampNanosecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 	},
 };
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, i256};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, Buffer, NullBuffer, i256};
 use reifydb_value::{
 	Result,
 	value::{
-		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any_array::push_any,
 			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalArray, decimal_at},
 			dictionary_array::DICTIONARY_ENTRY_WIDTH,
-			digest_array::push_none_slot,
-			fixed_array,
 			temporal_array::DATETIME_TIMEZONE,
 			uuid_array::UUID_WIDTH,
 			varlen_array,
-			wide_int_array::{self, WideInt},
+			wide_int_array::WideInt,
 		},
 		decimal::{Decimal, unscaled},
 		dictionary::DictionaryId,
@@ -144,8 +143,17 @@ impl DecimalBuilder {
 		}
 	}
 
-	pub(crate) fn append_default(&mut self) {
-		self.append_fitting(i256::ZERO);
+	pub(crate) fn append_null(&mut self) {
+		match self {
+			DecimalBuilder::Decimal128 {
+				builder,
+				..
+			} => builder.append_null(),
+			DecimalBuilder::Decimal256 {
+				builder,
+				..
+			} => builder.append_null(),
+		}
 	}
 
 	pub fn push(&mut self, value: &Decimal) {
@@ -165,9 +173,7 @@ impl DecimalBuilder {
 					scale,
 				},
 				DecimalArray::Decimal128(array),
-			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => {
-				builder.append_slice(array.values())
-			}
+			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => builder.append_array(array),
 			(
 				DecimalBuilder::Decimal256 {
 					builder,
@@ -175,11 +181,14 @@ impl DecimalBuilder {
 					scale,
 				},
 				DecimalArray::Decimal256(array),
-			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => {
-				builder.append_slice(array.values())
-			}
+			) if array.precision() == precision.value() && array.scale() as u8 == scale.value() => builder.append_array(array),
 			(this, array) => {
+				let nulls = decimal_nulls(array);
 				for index in 0..array.len() {
+					if nulls.as_ref().is_some_and(|nulls| nulls.is_null(index)) {
+						this.append_null();
+						continue;
+					}
 					let value = decimal_at(array, index).expect("index is below the array length");
 					this.push(&value);
 				}
@@ -202,8 +211,9 @@ impl DecimalBuilder {
 
 	fn widen_for(&mut self, value: &Decimal) -> Decimal {
 		let (precision, scale) = (self.precision().value(), self.scale().value());
-		let existing: Vec<Decimal> = self
-			.finish()
+		let finished = self.finish();
+		let nulls = decimal_nulls(&finished);
+		let existing: Vec<Decimal> = finished
 			.unscaled_values()
 			.into_iter()
 			.map(|unscaled| {
@@ -226,55 +236,85 @@ impl DecimalBuilder {
 			Scale::new(wide_scale),
 			rounded.len() + 1,
 		);
-		for decimal in rounded {
-			widened.append_fitting(decimal.unscaled());
+		for (index, decimal) in rounded.into_iter().enumerate() {
+			match nulls.as_ref().is_some_and(|nulls| nulls.is_null(index)) {
+				true => widened.append_null(),
+				false => widened.append_fitting(decimal.unscaled()),
+			}
 		}
 		*self = widened;
 		fitted
 	}
 }
 
+fn decimal_nulls(array: &DecimalArray) -> Option<NullBuffer> {
+	match array {
+		DecimalArray::Decimal128(array) => array.nulls().cloned(),
+		DecimalArray::Decimal256(array) => array.nulls().cloned(),
+	}
+}
+
 #[derive(Debug)]
 pub struct WideBuilder<T: WideInt> {
-	buffer: MutableBuffer,
+	builder: FixedSizeBinaryBuilder,
 	marker: PhantomData<T>,
 }
 
 impl<T: WideInt> WideBuilder<T> {
 	pub(crate) fn with_capacity(capacity: usize) -> Self {
 		Self {
-			buffer: MutableBuffer::with_capacity(capacity * T::WIDTH),
+			builder: FixedSizeBinaryBuilder::with_capacity(capacity, T::WIDTH as i32),
 			marker: PhantomData,
 		}
 	}
 
 	pub(crate) fn from_array(array: FixedSizeBinaryArray) -> Self {
 		Self {
-			buffer: fixed_builder(array),
+			builder: fixed_size_builder(array),
 			marker: PhantomData,
 		}
 	}
 
-	pub(crate) fn append_value(&mut self, value: T) {
-		wide_int_array::push_wide(&mut self.buffer, value);
+	pub(crate) fn append_null(&mut self) {
+		let mut row = [0u8; 16];
+		T::default().to_ordered(&mut row);
+		let null_row = FixedSizeBinaryArray::new(
+			T::WIDTH as i32,
+			Buffer::from(row[..T::WIDTH].to_vec()),
+			Some(NullBuffer::new_null(1)),
+		);
+		append_fixed_array(&mut self.builder, &null_row)
+			.expect("a null row of the builder width always appends");
 	}
 
-	pub(crate) fn append_array(&mut self, array: &FixedSizeBinaryArray) {
-		self.buffer.extend_from_slice(array.value_data());
+	pub(crate) fn append_value(&mut self, value: T) {
+		let mut row = [0u8; 16];
+		value.to_ordered(&mut row);
+		append_fixed(&mut self.builder, &row);
+	}
+
+	pub(crate) fn append_array(&mut self, array: &FixedSizeBinaryArray) -> Result<()> {
+		append_fixed_array(&mut self.builder, array)
 	}
 
 	pub(crate) fn len(&self) -> usize {
-		self.buffer.len() / T::WIDTH
+		self.builder.len()
 	}
 
 	pub(crate) fn finish(&mut self) -> FixedSizeBinaryArray {
-		fixed_array::from_buffer(T::WIDTH, mem::take(&mut self.buffer))
+		self.builder.finish()
 	}
 }
 
 #[derive(Debug)]
-pub enum ColumnBuilder {
-	Bool(BooleanBufferBuilder),
+pub struct ColumnBuilder {
+	pub(crate) inner: TypedBuilder,
+	pub(crate) optional: bool,
+}
+
+#[derive(Debug)]
+pub enum TypedBuilder {
+	Bool(BooleanBuilder),
 	Int1(PrimitiveBuilder<Int8Type>),
 	Int2(PrimitiveBuilder<Int16Type>),
 	Int4(PrimitiveBuilder<Int32Type>),
@@ -291,11 +331,11 @@ pub enum ColumnBuilder {
 	DateTime(PrimitiveBuilder<TimestampNanosecondType>),
 	Time(PrimitiveBuilder<Time64NanosecondType>),
 	Duration(PrimitiveBuilder<IntervalMonthDayNanoType>),
-	IdentityId(MutableBuffer),
-	Uuid4(MutableBuffer),
-	Uuid7(MutableBuffer),
+	IdentityId(FixedSizeBinaryBuilder),
+	Uuid4(FixedSizeBinaryBuilder),
+	Uuid7(FixedSizeBinaryBuilder),
 	DictionaryId {
-		buffer: MutableBuffer,
+		builder: FixedSizeBinaryBuilder,
 		dictionary_id: Option<DictionaryId>,
 	},
 	Utf8 {
@@ -316,87 +356,93 @@ pub enum ColumnBuilder {
 		inner: ValueType,
 		accuracy: u32,
 	},
-	Option {
-		inner: Box<ColumnBuilder>,
-		bitvec: BooleanBufferBuilder,
-	},
+	None(NullBuilder),
 }
 
 impl ColumnBuilder {
 	pub fn with_capacity(target: ValueType, capacity: usize) -> Self {
-		match target {
-			ValueType::Boolean => ColumnBuilder::Bool(BooleanBufferBuilder::new(capacity)),
-			ValueType::Int1 => ColumnBuilder::Int1(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Int2 => ColumnBuilder::Int2(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Int4 => ColumnBuilder::Int4(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Int8 => ColumnBuilder::Int8(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Int16 => ColumnBuilder::Int16(WideBuilder::with_capacity(capacity)),
-			ValueType::Uint1 => ColumnBuilder::Uint1(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Uint2 => ColumnBuilder::Uint2(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Uint4 => ColumnBuilder::Uint4(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Uint8 => ColumnBuilder::Uint8(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Uint16 => ColumnBuilder::Uint16(WideBuilder::with_capacity(capacity)),
-			ValueType::Float4 => ColumnBuilder::Float4(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Float8 => ColumnBuilder::Float8(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Date => ColumnBuilder::Date(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::DateTime => ColumnBuilder::DateTime(
+		let inner = match target {
+			ValueType::Option(inner) => {
+				return ColumnBuilder {
+					optional: true,
+					..ColumnBuilder::with_capacity(*inner, capacity)
+				};
+			}
+			ValueType::Boolean => TypedBuilder::Bool(BooleanBuilder::with_capacity(capacity)),
+			ValueType::Int1 => TypedBuilder::Int1(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Int2 => TypedBuilder::Int2(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Int4 => TypedBuilder::Int4(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Int8 => TypedBuilder::Int8(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Int16 => TypedBuilder::Int16(WideBuilder::with_capacity(capacity)),
+			ValueType::Uint1 => TypedBuilder::Uint1(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Uint2 => TypedBuilder::Uint2(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Uint4 => TypedBuilder::Uint4(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Uint8 => TypedBuilder::Uint8(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Uint16 => TypedBuilder::Uint16(WideBuilder::with_capacity(capacity)),
+			ValueType::Float4 => TypedBuilder::Float4(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Float8 => TypedBuilder::Float8(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Date => TypedBuilder::Date(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::DateTime => TypedBuilder::DateTime(
 				PrimitiveBuilder::<TimestampNanosecondType>::with_capacity(capacity)
 					.with_timezone(DATETIME_TIMEZONE),
 			),
-			ValueType::Time => ColumnBuilder::Time(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::Duration => ColumnBuilder::Duration(PrimitiveBuilder::with_capacity(capacity)),
-			ValueType::IdentityId => {
-				ColumnBuilder::IdentityId(MutableBuffer::with_capacity(capacity * UUID_WIDTH))
+			ValueType::Time => TypedBuilder::Time(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::Duration => TypedBuilder::Duration(PrimitiveBuilder::with_capacity(capacity)),
+			ValueType::IdentityId => TypedBuilder::IdentityId(FixedSizeBinaryBuilder::with_capacity(
+				capacity,
+				UUID_WIDTH as i32,
+			)),
+			ValueType::Uuid4 => {
+				TypedBuilder::Uuid4(FixedSizeBinaryBuilder::with_capacity(capacity, UUID_WIDTH as i32))
 			}
-			ValueType::Uuid4 => ColumnBuilder::Uuid4(MutableBuffer::with_capacity(capacity * UUID_WIDTH)),
-			ValueType::Uuid7 => ColumnBuilder::Uuid7(MutableBuffer::with_capacity(capacity * UUID_WIDTH)),
-			ValueType::DictionaryId => ColumnBuilder::DictionaryId {
-				buffer: MutableBuffer::with_capacity(capacity * DICTIONARY_ENTRY_WIDTH),
+			ValueType::Uuid7 => {
+				TypedBuilder::Uuid7(FixedSizeBinaryBuilder::with_capacity(capacity, UUID_WIDTH as i32))
+			}
+			ValueType::DictionaryId => TypedBuilder::DictionaryId {
+				builder: FixedSizeBinaryBuilder::with_capacity(capacity, DICTIONARY_ENTRY_WIDTH as i32),
 				dictionary_id: None,
 			},
-			ValueType::Utf8 => ColumnBuilder::Utf8 {
+			ValueType::Utf8 => TypedBuilder::Utf8 {
 				builder: LargeStringBuilder::with_capacity(capacity, capacity * 16),
 				max_bytes: MaxBytes::MAX,
 			},
-			ValueType::Blob => ColumnBuilder::Blob {
+			ValueType::Blob => TypedBuilder::Blob {
 				builder: LargeBinaryBuilder::with_capacity(capacity, capacity * 32),
 				max_bytes: MaxBytes::MAX,
 			},
 			ValueType::Decimal {
 				precision,
 				scale,
-			} => ColumnBuilder::Decimal(DecimalBuilder::with_capacity(precision, scale, capacity)),
-			ValueType::Any | ValueType::Tuple(_) => ColumnBuilder::Any {
+			} => TypedBuilder::Decimal(DecimalBuilder::with_capacity(precision, scale, capacity)),
+			ValueType::Any | ValueType::Tuple(_) => TypedBuilder::Any {
 				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
 				declared_type: None,
 			},
-			declared @ (ValueType::List(_) | ValueType::Record(_)) => ColumnBuilder::Any {
+			declared @ (ValueType::List(_) | ValueType::Record(_)) => TypedBuilder::Any {
 				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
 				declared_type: Some(declared),
 			},
 			ValueType::Digest {
 				inner,
 				accuracy,
-			} => ColumnBuilder::Digest {
+			} => TypedBuilder::Digest {
 				builder: LargeBinaryBuilder::with_capacity(capacity, 0),
 				inner: *inner,
 				accuracy,
 			},
-			ValueType::Option(inner) => ColumnBuilder::Option {
-				inner: match ColumnBuilder::with_capacity(*inner, capacity) {
-					ColumnBuilder::Option {
-						inner,
-						..
-					} => inner,
-					builder => Box::new(builder),
-				},
-				bitvec: BooleanBufferBuilder::new(capacity),
-			},
+		};
+		ColumnBuilder {
+			inner,
+			optional: false,
 		}
 	}
 
 	pub fn like(buffer: &ColumnBuffer, capacity: usize) -> Self {
 		buffer.empty_like(capacity).into_builder()
+	}
+
+	pub fn inner(&self) -> &TypedBuilder {
+		&self.inner
 	}
 
 	pub fn push<T>(&mut self, value: T)
@@ -407,96 +453,22 @@ impl ColumnBuilder {
 		<Self as Push<T>>::push(self, value)
 	}
 
-	pub(crate) fn push_keeping_option(&mut self, value: Value) {
-		match self {
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} if !matches!(value, Value::None { .. }) => {
-				inner.push_value(value);
-				bitvec.append(true);
-			}
-			builder => builder.push_value(value),
-		}
-	}
-
-	pub(crate) fn push_default(&mut self) {
-		match self {
-			ColumnBuilder::Bool(b) => b.append(false),
-			ColumnBuilder::Int1(b) => b.append_value(Default::default()),
-			ColumnBuilder::Int2(b) => b.append_value(Default::default()),
-			ColumnBuilder::Int4(b) => b.append_value(Default::default()),
-			ColumnBuilder::Int8(b) => b.append_value(Default::default()),
-			ColumnBuilder::Int16(b) => b.append_value(Default::default()),
-			ColumnBuilder::Uint1(b) => b.append_value(Default::default()),
-			ColumnBuilder::Uint2(b) => b.append_value(Default::default()),
-			ColumnBuilder::Uint4(b) => b.append_value(Default::default()),
-			ColumnBuilder::Uint8(b) => b.append_value(Default::default()),
-			ColumnBuilder::Uint16(b) => b.append_value(Default::default()),
-			ColumnBuilder::Float4(b) => b.append_value(Default::default()),
-			ColumnBuilder::Float8(b) => b.append_value(Default::default()),
-			ColumnBuilder::Date(b) => b.append_value(Default::default()),
-			ColumnBuilder::DateTime(b) => b.append_value(Default::default()),
-			ColumnBuilder::Time(b) => b.append_value(Default::default()),
-			ColumnBuilder::Duration(b) => b.append_value(Default::default()),
-			ColumnBuilder::IdentityId(b) => b.extend_zeros(UUID_WIDTH),
-			ColumnBuilder::Uuid4(b) => b.extend_zeros(UUID_WIDTH),
-			ColumnBuilder::Uuid7(b) => b.extend_zeros(UUID_WIDTH),
-			ColumnBuilder::DictionaryId {
-				buffer,
-				..
-			} => buffer.extend_zeros(DICTIONARY_ENTRY_WIDTH),
-			ColumnBuilder::Utf8 {
-				builder,
-				..
-			} => builder.append_value(""),
-			ColumnBuilder::Blob {
-				builder,
-				..
-			} => builder.append_value(b""),
-			ColumnBuilder::Decimal(b) => b.append_default(),
-			ColumnBuilder::Any {
-				builder,
-				..
-			} => push_any(builder, &Value::none()),
-			ColumnBuilder::Digest {
-				builder,
-				..
-			} => push_none_slot(builder),
-			ColumnBuilder::Option {
-				..
-			} => {
-				unreachable!(
-					"with_container! must not be called on Option variant directly; handle it explicitly"
-				)
-			}
-		}
-	}
-
 	pub fn set_dictionary_id(&mut self, id: DictionaryId) {
-		match self {
-			ColumnBuilder::DictionaryId {
-				dictionary_id,
-				..
-			} => *dictionary_id = Some(id),
-			ColumnBuilder::Option {
-				inner,
-				..
-			} => inner.set_dictionary_id(id),
-			_ => {}
+		if let TypedBuilder::DictionaryId {
+			dictionary_id,
+			..
+		} = &mut self.inner
+		{
+			*dictionary_id = Some(id);
 		}
 	}
 
 	pub fn dictionary_id(&self) -> Option<DictionaryId> {
-		match self {
-			ColumnBuilder::DictionaryId {
+		match &self.inner {
+			TypedBuilder::DictionaryId {
 				dictionary_id,
 				..
 			} => *dictionary_id,
-			ColumnBuilder::Option {
-				inner,
-				..
-			} => inner.dictionary_id(),
 			_ => None,
 		}
 	}
@@ -505,41 +477,39 @@ impl ColumnBuilder {
 		if other.nulls().is_some() {
 			return self.extend_finished(other);
 		}
-		match (&mut *self, other) {
-			(ColumnBuilder::Bool(l), ColumnBuffer::Bool(r)) => l.append_buffer(r.values()),
-			(ColumnBuilder::Int1(l), ColumnBuffer::Int1(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Int2(l), ColumnBuffer::Int2(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Int4(l), ColumnBuffer::Int4(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Int8(l), ColumnBuffer::Int8(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Int16(l), ColumnBuffer::Int16(r)) => l.append_array(&r),
-			(ColumnBuilder::Uint1(l), ColumnBuffer::Uint1(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Uint2(l), ColumnBuffer::Uint2(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Uint4(l), ColumnBuffer::Uint4(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Uint8(l), ColumnBuffer::Uint8(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Uint16(l), ColumnBuffer::Uint16(r)) => l.append_array(&r),
-			(ColumnBuilder::Float4(l), ColumnBuffer::Float4(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Float8(l), ColumnBuffer::Float8(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Date(l), ColumnBuffer::Date(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::DateTime(l), ColumnBuffer::DateTime(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Time(l), ColumnBuffer::Time(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::Duration(l), ColumnBuffer::Duration(r)) => l.append_slice(r.values()),
-			(ColumnBuilder::IdentityId(l), ColumnBuffer::IdentityId(r)) => {
-				l.extend_from_slice(r.value_data())
-			}
-			(ColumnBuilder::Uuid4(l), ColumnBuffer::Uuid4(r)) => l.extend_from_slice(r.value_data()),
-			(ColumnBuilder::Uuid7(l), ColumnBuffer::Uuid7(r)) => l.extend_from_slice(r.value_data()),
+		match (&mut self.inner, other) {
+			(TypedBuilder::Bool(l), ColumnBuffer::Bool(r)) => l.append_array(&r),
+			(TypedBuilder::Int1(l), ColumnBuffer::Int1(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Int2(l), ColumnBuffer::Int2(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Int4(l), ColumnBuffer::Int4(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Int8(l), ColumnBuffer::Int8(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Int16(l), ColumnBuffer::Int16(r)) => l.append_array(&r)?,
+			(TypedBuilder::Uint1(l), ColumnBuffer::Uint1(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Uint2(l), ColumnBuffer::Uint2(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Uint4(l), ColumnBuffer::Uint4(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Uint8(l), ColumnBuffer::Uint8(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Uint16(l), ColumnBuffer::Uint16(r)) => l.append_array(&r)?,
+			(TypedBuilder::Float4(l), ColumnBuffer::Float4(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Float8(l), ColumnBuffer::Float8(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Date(l), ColumnBuffer::Date(r)) => l.append_slice(r.values()),
+			(TypedBuilder::DateTime(l), ColumnBuffer::DateTime(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Time(l), ColumnBuffer::Time(r)) => l.append_slice(r.values()),
+			(TypedBuilder::Duration(l), ColumnBuffer::Duration(r)) => l.append_slice(r.values()),
+			(TypedBuilder::IdentityId(l), ColumnBuffer::IdentityId(r)) => append_fixed_array(l, &r)?,
+			(TypedBuilder::Uuid4(l), ColumnBuffer::Uuid4(r)) => append_fixed_array(l, &r)?,
+			(TypedBuilder::Uuid7(l), ColumnBuffer::Uuid7(r)) => append_fixed_array(l, &r)?,
 			(
-				ColumnBuilder::DictionaryId {
-					buffer,
+				TypedBuilder::DictionaryId {
+					builder,
 					..
 				},
 				ColumnBuffer::DictionaryId {
 					container,
 					..
 				},
-			) => buffer.extend_from_slice(container.value_data()),
+			) => append_fixed_array(builder, &container)?,
 			(
-				ColumnBuilder::Utf8 {
+				TypedBuilder::Utf8 {
 					builder,
 					..
 				},
@@ -549,7 +519,7 @@ impl ColumnBuilder {
 				},
 			) => append_varlen(builder, &container)?,
 			(
-				ColumnBuilder::Blob {
+				TypedBuilder::Blob {
 					builder,
 					..
 				},
@@ -558,9 +528,9 @@ impl ColumnBuilder {
 					..
 				},
 			) => append_varlen(builder, &container)?,
-			(ColumnBuilder::Decimal(l), ColumnBuffer::Decimal(r)) => l.append_array(&r),
+			(TypedBuilder::Decimal(l), ColumnBuffer::Decimal(r)) => l.append_array(&r),
 			(
-				ColumnBuilder::Any {
+				TypedBuilder::Any {
 					builder,
 					..
 				},
@@ -570,7 +540,7 @@ impl ColumnBuilder {
 				},
 			) => append_varlen(builder, &container)?,
 			(
-				ColumnBuilder::Digest {
+				TypedBuilder::Digest {
 					builder,
 					inner: l_inner,
 					accuracy: l_accuracy,
@@ -587,59 +557,133 @@ impl ColumnBuilder {
 	}
 
 	fn extend_finished(&mut self, other: ColumnBuffer) -> Result<()> {
-		let mut buffer = mem::replace(self, ColumnBuilder::Bool(BooleanBufferBuilder::new(0))).finish();
+		let placeholder = ColumnBuilder {
+			inner: TypedBuilder::None(NullBuilder::new()),
+			optional: false,
+		};
+		let mut buffer = mem::replace(self, placeholder).finish();
 		let extended = buffer.extend(other);
 		*self = buffer.into_builder();
 		extended
 	}
 
 	pub fn len(&self) -> usize {
+		self.inner.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn get_type(&self) -> ValueType {
+		match self.optional {
+			true => ValueType::Option(Box::new(self.inner.get_type())),
+			false => self.inner.get_type(),
+		}
+	}
+
+	pub fn finish(self) -> ColumnBuffer {
+		let buffer = self.inner.finish();
+		if self.optional && buffer.nulls().is_none() {
+			let len = buffer.len();
+			return buffer.replace_nulls(Some(NullBuffer::new_valid(len)));
+		}
+		buffer
+	}
+}
+
+impl TypedBuilder {
+	pub(crate) fn append_null(&mut self) {
 		match self {
-			ColumnBuilder::Bool(b) => b.len(),
-			ColumnBuilder::Int1(b) => b.len(),
-			ColumnBuilder::Int2(b) => b.len(),
-			ColumnBuilder::Int4(b) => b.len(),
-			ColumnBuilder::Int8(b) => b.len(),
-			ColumnBuilder::Int16(b) => b.len(),
-			ColumnBuilder::Uint1(b) => b.len(),
-			ColumnBuilder::Uint2(b) => b.len(),
-			ColumnBuilder::Uint4(b) => b.len(),
-			ColumnBuilder::Uint8(b) => b.len(),
-			ColumnBuilder::Uint16(b) => b.len(),
-			ColumnBuilder::Float4(b) => b.len(),
-			ColumnBuilder::Float8(b) => b.len(),
-			ColumnBuilder::Date(b) => b.len(),
-			ColumnBuilder::DateTime(b) => b.len(),
-			ColumnBuilder::Time(b) => b.len(),
-			ColumnBuilder::Duration(b) => b.len(),
-			ColumnBuilder::IdentityId(b) => b.len() / UUID_WIDTH,
-			ColumnBuilder::Uuid4(b) => b.len() / UUID_WIDTH,
-			ColumnBuilder::Uuid7(b) => b.len() / UUID_WIDTH,
-			ColumnBuilder::DictionaryId {
-				buffer,
+			TypedBuilder::Bool(b) => b.append_null(),
+			TypedBuilder::Int1(b) => b.append_null(),
+			TypedBuilder::Int2(b) => b.append_null(),
+			TypedBuilder::Int4(b) => b.append_null(),
+			TypedBuilder::Int8(b) => b.append_null(),
+			TypedBuilder::Int16(b) => b.append_null(),
+			TypedBuilder::Uint1(b) => b.append_null(),
+			TypedBuilder::Uint2(b) => b.append_null(),
+			TypedBuilder::Uint4(b) => b.append_null(),
+			TypedBuilder::Uint8(b) => b.append_null(),
+			TypedBuilder::Uint16(b) => b.append_null(),
+			TypedBuilder::Float4(b) => b.append_null(),
+			TypedBuilder::Float8(b) => b.append_null(),
+			TypedBuilder::Date(b) => b.append_null(),
+			TypedBuilder::DateTime(b) => b.append_null(),
+			TypedBuilder::Time(b) => b.append_null(),
+			TypedBuilder::Duration(b) => b.append_null(),
+			TypedBuilder::IdentityId(b) => b.append_null(),
+			TypedBuilder::Uuid4(b) => b.append_null(),
+			TypedBuilder::Uuid7(b) => b.append_null(),
+			TypedBuilder::DictionaryId {
+				builder,
 				..
-			} => buffer.len() / DICTIONARY_ENTRY_WIDTH,
-			ColumnBuilder::Utf8 {
+			} => builder.append_null(),
+			TypedBuilder::Utf8 {
+				builder,
+				..
+			} => builder.append_null(),
+			TypedBuilder::Blob {
+				builder,
+				..
+			}
+			| TypedBuilder::Any {
+				builder,
+				..
+			}
+			| TypedBuilder::Digest {
+				builder,
+				..
+			} => builder.append_null(),
+			TypedBuilder::Decimal(b) => b.append_null(),
+			TypedBuilder::None(b) => b.append_null(),
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		match self {
+			TypedBuilder::Bool(b) => b.len(),
+			TypedBuilder::Int1(b) => b.len(),
+			TypedBuilder::Int2(b) => b.len(),
+			TypedBuilder::Int4(b) => b.len(),
+			TypedBuilder::Int8(b) => b.len(),
+			TypedBuilder::Int16(b) => b.len(),
+			TypedBuilder::Uint1(b) => b.len(),
+			TypedBuilder::Uint2(b) => b.len(),
+			TypedBuilder::Uint4(b) => b.len(),
+			TypedBuilder::Uint8(b) => b.len(),
+			TypedBuilder::Uint16(b) => b.len(),
+			TypedBuilder::Float4(b) => b.len(),
+			TypedBuilder::Float8(b) => b.len(),
+			TypedBuilder::Date(b) => b.len(),
+			TypedBuilder::DateTime(b) => b.len(),
+			TypedBuilder::Time(b) => b.len(),
+			TypedBuilder::Duration(b) => b.len(),
+			TypedBuilder::IdentityId(b) => b.len(),
+			TypedBuilder::Uuid4(b) => b.len(),
+			TypedBuilder::Uuid7(b) => b.len(),
+			TypedBuilder::DictionaryId {
 				builder,
 				..
 			} => builder.len(),
-			ColumnBuilder::Blob {
+			TypedBuilder::Utf8 {
 				builder,
 				..
 			} => builder.len(),
-			ColumnBuilder::Decimal(b) => b.len(),
-			ColumnBuilder::Any {
+			TypedBuilder::Blob {
+				builder,
+				..
+			}
+			| TypedBuilder::Any {
+				builder,
+				..
+			}
+			| TypedBuilder::Digest {
 				builder,
 				..
 			} => builder.len(),
-			ColumnBuilder::Digest {
-				builder,
-				..
-			} => builder.len(),
-			ColumnBuilder::Option {
-				inner,
-				..
-			} => inner.len(),
+			TypedBuilder::Decimal(b) => b.len(),
+			TypedBuilder::None(b) => b.len(),
 		}
 	}
 
@@ -649,41 +693,41 @@ impl ColumnBuilder {
 
 	pub fn get_type(&self) -> ValueType {
 		match self {
-			ColumnBuilder::Bool(_) => ValueType::Boolean,
-			ColumnBuilder::Int1(_) => ValueType::Int1,
-			ColumnBuilder::Int2(_) => ValueType::Int2,
-			ColumnBuilder::Int4(_) => ValueType::Int4,
-			ColumnBuilder::Int8(_) => ValueType::Int8,
-			ColumnBuilder::Int16(_) => ValueType::Int16,
-			ColumnBuilder::Uint1(_) => ValueType::Uint1,
-			ColumnBuilder::Uint2(_) => ValueType::Uint2,
-			ColumnBuilder::Uint4(_) => ValueType::Uint4,
-			ColumnBuilder::Uint8(_) => ValueType::Uint8,
-			ColumnBuilder::Uint16(_) => ValueType::Uint16,
-			ColumnBuilder::Float4(_) => ValueType::Float4,
-			ColumnBuilder::Float8(_) => ValueType::Float8,
-			ColumnBuilder::Date(_) => ValueType::Date,
-			ColumnBuilder::DateTime(_) => ValueType::DateTime,
-			ColumnBuilder::Time(_) => ValueType::Time,
-			ColumnBuilder::Duration(_) => ValueType::Duration,
-			ColumnBuilder::IdentityId(_) => ValueType::IdentityId,
-			ColumnBuilder::Uuid4(_) => ValueType::Uuid4,
-			ColumnBuilder::Uuid7(_) => ValueType::Uuid7,
-			ColumnBuilder::DictionaryId {
+			TypedBuilder::Bool(_) => ValueType::Boolean,
+			TypedBuilder::Int1(_) => ValueType::Int1,
+			TypedBuilder::Int2(_) => ValueType::Int2,
+			TypedBuilder::Int4(_) => ValueType::Int4,
+			TypedBuilder::Int8(_) => ValueType::Int8,
+			TypedBuilder::Int16(_) => ValueType::Int16,
+			TypedBuilder::Uint1(_) => ValueType::Uint1,
+			TypedBuilder::Uint2(_) => ValueType::Uint2,
+			TypedBuilder::Uint4(_) => ValueType::Uint4,
+			TypedBuilder::Uint8(_) => ValueType::Uint8,
+			TypedBuilder::Uint16(_) => ValueType::Uint16,
+			TypedBuilder::Float4(_) => ValueType::Float4,
+			TypedBuilder::Float8(_) => ValueType::Float8,
+			TypedBuilder::Date(_) => ValueType::Date,
+			TypedBuilder::DateTime(_) => ValueType::DateTime,
+			TypedBuilder::Time(_) => ValueType::Time,
+			TypedBuilder::Duration(_) => ValueType::Duration,
+			TypedBuilder::IdentityId(_) => ValueType::IdentityId,
+			TypedBuilder::Uuid4(_) => ValueType::Uuid4,
+			TypedBuilder::Uuid7(_) => ValueType::Uuid7,
+			TypedBuilder::DictionaryId {
 				..
 			} => ValueType::DictionaryId,
-			ColumnBuilder::Utf8 {
+			TypedBuilder::Utf8 {
 				..
 			} => ValueType::Utf8,
-			ColumnBuilder::Blob {
+			TypedBuilder::Blob {
 				..
 			} => ValueType::Blob,
-			ColumnBuilder::Decimal(b) => ValueType::decimal(b.precision(), b.scale()),
-			ColumnBuilder::Any {
+			TypedBuilder::Decimal(b) => ValueType::decimal(b.precision(), b.scale()),
+			TypedBuilder::Any {
 				declared_type,
 				..
 			} => declared_type.clone().unwrap_or(ValueType::Any),
-			ColumnBuilder::Digest {
+			TypedBuilder::Digest {
 				inner,
 				accuracy,
 				..
@@ -691,67 +735,62 @@ impl ColumnBuilder {
 				inner: Box::new(inner.clone()),
 				accuracy: *accuracy,
 			},
-			ColumnBuilder::Option {
-				inner,
-				..
-			} => ValueType::Option(Box::new(inner.get_type())),
+			TypedBuilder::None(_) => ValueType::Any,
 		}
 	}
 
-	pub fn finish(self) -> ColumnBuffer {
+	fn finish(self) -> ColumnBuffer {
 		match self {
-			ColumnBuilder::Bool(mut b) => ColumnBuffer::Bool(BooleanArray::from(b.finish())),
-			ColumnBuilder::Int1(mut b) => ColumnBuffer::Int1(b.finish()),
-			ColumnBuilder::Int2(mut b) => ColumnBuffer::Int2(b.finish()),
-			ColumnBuilder::Int4(mut b) => ColumnBuffer::Int4(b.finish()),
-			ColumnBuilder::Int8(mut b) => ColumnBuffer::Int8(b.finish()),
-			ColumnBuilder::Int16(mut b) => ColumnBuffer::Int16(b.finish()),
-			ColumnBuilder::Uint1(mut b) => ColumnBuffer::Uint1(b.finish()),
-			ColumnBuilder::Uint2(mut b) => ColumnBuffer::Uint2(b.finish()),
-			ColumnBuilder::Uint4(mut b) => ColumnBuffer::Uint4(b.finish()),
-			ColumnBuilder::Uint8(mut b) => ColumnBuffer::Uint8(b.finish()),
-			ColumnBuilder::Uint16(mut b) => ColumnBuffer::Uint16(b.finish()),
-			ColumnBuilder::Float4(mut b) => ColumnBuffer::Float4(b.finish()),
-			ColumnBuilder::Float8(mut b) => ColumnBuffer::Float8(b.finish()),
-			ColumnBuilder::Date(mut b) => ColumnBuffer::Date(b.finish()),
-			ColumnBuilder::DateTime(mut b) => ColumnBuffer::DateTime(b.finish()),
-			ColumnBuilder::Time(mut b) => ColumnBuffer::Time(b.finish()),
-			ColumnBuilder::Duration(mut b) => ColumnBuffer::Duration(b.finish()),
-			ColumnBuilder::IdentityId(b) => {
-				ColumnBuffer::IdentityId(fixed_array::from_buffer(UUID_WIDTH, b))
-			}
-			ColumnBuilder::Uuid4(b) => ColumnBuffer::Uuid4(fixed_array::from_buffer(UUID_WIDTH, b)),
-			ColumnBuilder::Uuid7(b) => ColumnBuffer::Uuid7(fixed_array::from_buffer(UUID_WIDTH, b)),
-			ColumnBuilder::DictionaryId {
-				buffer,
+			TypedBuilder::Bool(mut b) => ColumnBuffer::Bool(b.finish()),
+			TypedBuilder::Int1(mut b) => ColumnBuffer::Int1(b.finish()),
+			TypedBuilder::Int2(mut b) => ColumnBuffer::Int2(b.finish()),
+			TypedBuilder::Int4(mut b) => ColumnBuffer::Int4(b.finish()),
+			TypedBuilder::Int8(mut b) => ColumnBuffer::Int8(b.finish()),
+			TypedBuilder::Int16(mut b) => ColumnBuffer::Int16(b.finish()),
+			TypedBuilder::Uint1(mut b) => ColumnBuffer::Uint1(b.finish()),
+			TypedBuilder::Uint2(mut b) => ColumnBuffer::Uint2(b.finish()),
+			TypedBuilder::Uint4(mut b) => ColumnBuffer::Uint4(b.finish()),
+			TypedBuilder::Uint8(mut b) => ColumnBuffer::Uint8(b.finish()),
+			TypedBuilder::Uint16(mut b) => ColumnBuffer::Uint16(b.finish()),
+			TypedBuilder::Float4(mut b) => ColumnBuffer::Float4(b.finish()),
+			TypedBuilder::Float8(mut b) => ColumnBuffer::Float8(b.finish()),
+			TypedBuilder::Date(mut b) => ColumnBuffer::Date(b.finish()),
+			TypedBuilder::DateTime(mut b) => ColumnBuffer::DateTime(b.finish()),
+			TypedBuilder::Time(mut b) => ColumnBuffer::Time(b.finish()),
+			TypedBuilder::Duration(mut b) => ColumnBuffer::Duration(b.finish()),
+			TypedBuilder::IdentityId(mut b) => ColumnBuffer::IdentityId(b.finish()),
+			TypedBuilder::Uuid4(mut b) => ColumnBuffer::Uuid4(b.finish()),
+			TypedBuilder::Uuid7(mut b) => ColumnBuffer::Uuid7(b.finish()),
+			TypedBuilder::DictionaryId {
+				mut builder,
 				dictionary_id,
 			} => ColumnBuffer::DictionaryId {
-				container: fixed_array::from_buffer(DICTIONARY_ENTRY_WIDTH, buffer),
+				container: builder.finish(),
 				dictionary_id,
 			},
-			ColumnBuilder::Utf8 {
+			TypedBuilder::Utf8 {
 				mut builder,
 				max_bytes,
 			} => ColumnBuffer::Utf8 {
 				container: builder.finish(),
 				max_bytes,
 			},
-			ColumnBuilder::Blob {
+			TypedBuilder::Blob {
 				mut builder,
 				max_bytes,
 			} => ColumnBuffer::Blob {
 				container: builder.finish(),
 				max_bytes,
 			},
-			ColumnBuilder::Decimal(mut b) => ColumnBuffer::Decimal(b.finish()),
-			ColumnBuilder::Any {
+			TypedBuilder::Decimal(mut b) => ColumnBuffer::Decimal(b.finish()),
+			TypedBuilder::Any {
 				mut builder,
 				declared_type,
 			} => ColumnBuffer::Any {
 				container: builder.finish(),
 				declared_type,
 			},
-			ColumnBuilder::Digest {
+			TypedBuilder::Digest {
 				mut builder,
 				inner,
 				accuracy,
@@ -760,73 +799,72 @@ impl ColumnBuilder {
 				inner,
 				accuracy,
 			},
-			ColumnBuilder::Option {
-				inner,
-				mut bitvec,
-			} => inner.finish().with_nulls(NullBuffer::new(bitvec.finish())),
+			TypedBuilder::None(b) => ColumnBuffer::none(b.len()),
 		}
 	}
 }
 
 impl ColumnBuffer {
 	pub fn into_builder(self) -> ColumnBuilder {
-		match self.split_nulls() {
-			(bare, Some(nulls)) => ColumnBuilder::Option {
-				inner: Box::new(bare.into_bare_builder()),
-				bitvec: boolean_builder(nulls.into_inner()),
-			},
-			(bare, None) => bare.into_bare_builder(),
+		let optional = self.is_none() || self.nulls().is_some();
+		ColumnBuilder {
+			inner: self.into_typed_builder(),
+			optional,
 		}
 	}
 
-	fn into_bare_builder(self) -> ColumnBuilder {
+	fn into_typed_builder(self) -> TypedBuilder {
 		match self {
-			ColumnBuffer::Bool(a) => ColumnBuilder::Bool(boolean_builder(a.into_parts().0)),
-			ColumnBuffer::Int1(a) => ColumnBuilder::Int1(primitive_builder(a)),
-			ColumnBuffer::Int2(a) => ColumnBuilder::Int2(primitive_builder(a)),
-			ColumnBuffer::Int4(a) => ColumnBuilder::Int4(primitive_builder(a)),
-			ColumnBuffer::Int8(a) => ColumnBuilder::Int8(primitive_builder(a)),
-			ColumnBuffer::Int16(a) => ColumnBuilder::Int16(WideBuilder::from_array(a)),
-			ColumnBuffer::Uint1(a) => ColumnBuilder::Uint1(primitive_builder(a)),
-			ColumnBuffer::Uint2(a) => ColumnBuilder::Uint2(primitive_builder(a)),
-			ColumnBuffer::Uint4(a) => ColumnBuilder::Uint4(primitive_builder(a)),
-			ColumnBuffer::Uint8(a) => ColumnBuilder::Uint8(primitive_builder(a)),
-			ColumnBuffer::Uint16(a) => ColumnBuilder::Uint16(WideBuilder::from_array(a)),
-			ColumnBuffer::Float4(a) => ColumnBuilder::Float4(primitive_builder(a)),
-			ColumnBuffer::Float8(a) => ColumnBuilder::Float8(primitive_builder(a)),
-			ColumnBuffer::Date(a) => ColumnBuilder::Date(primitive_builder(a)),
-			ColumnBuffer::DateTime(a) => ColumnBuilder::DateTime(primitive_builder(a)),
-			ColumnBuffer::Time(a) => ColumnBuilder::Time(primitive_builder(a)),
-			ColumnBuffer::Duration(a) => ColumnBuilder::Duration(primitive_builder(a)),
-			ColumnBuffer::IdentityId(a) => ColumnBuilder::IdentityId(fixed_builder(a)),
-			ColumnBuffer::Uuid4(a) => ColumnBuilder::Uuid4(fixed_builder(a)),
-			ColumnBuffer::Uuid7(a) => ColumnBuilder::Uuid7(fixed_builder(a)),
+			ColumnBuffer::Bool(a) => {
+				let mut builder = BooleanBuilder::with_capacity(a.len());
+				builder.append_array(&a);
+				TypedBuilder::Bool(builder)
+			}
+			ColumnBuffer::Int1(a) => TypedBuilder::Int1(primitive_builder(a)),
+			ColumnBuffer::Int2(a) => TypedBuilder::Int2(primitive_builder(a)),
+			ColumnBuffer::Int4(a) => TypedBuilder::Int4(primitive_builder(a)),
+			ColumnBuffer::Int8(a) => TypedBuilder::Int8(primitive_builder(a)),
+			ColumnBuffer::Int16(a) => TypedBuilder::Int16(WideBuilder::from_array(a)),
+			ColumnBuffer::Uint1(a) => TypedBuilder::Uint1(primitive_builder(a)),
+			ColumnBuffer::Uint2(a) => TypedBuilder::Uint2(primitive_builder(a)),
+			ColumnBuffer::Uint4(a) => TypedBuilder::Uint4(primitive_builder(a)),
+			ColumnBuffer::Uint8(a) => TypedBuilder::Uint8(primitive_builder(a)),
+			ColumnBuffer::Uint16(a) => TypedBuilder::Uint16(WideBuilder::from_array(a)),
+			ColumnBuffer::Float4(a) => TypedBuilder::Float4(primitive_builder(a)),
+			ColumnBuffer::Float8(a) => TypedBuilder::Float8(primitive_builder(a)),
+			ColumnBuffer::Date(a) => TypedBuilder::Date(primitive_builder(a)),
+			ColumnBuffer::DateTime(a) => TypedBuilder::DateTime(primitive_builder(a)),
+			ColumnBuffer::Time(a) => TypedBuilder::Time(primitive_builder(a)),
+			ColumnBuffer::Duration(a) => TypedBuilder::Duration(primitive_builder(a)),
+			ColumnBuffer::IdentityId(a) => TypedBuilder::IdentityId(fixed_size_builder(a)),
+			ColumnBuffer::Uuid4(a) => TypedBuilder::Uuid4(fixed_size_builder(a)),
+			ColumnBuffer::Uuid7(a) => TypedBuilder::Uuid7(fixed_size_builder(a)),
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
-			} => ColumnBuilder::DictionaryId {
-				buffer: fixed_builder(container),
+			} => TypedBuilder::DictionaryId {
+				builder: fixed_size_builder(container),
 				dictionary_id,
 			},
 			ColumnBuffer::Utf8 {
 				container,
 				max_bytes,
-			} => ColumnBuilder::Utf8 {
+			} => TypedBuilder::Utf8 {
 				builder: varlen_builder(container),
 				max_bytes,
 			},
 			ColumnBuffer::Blob {
 				container,
 				max_bytes,
-			} => ColumnBuilder::Blob {
+			} => TypedBuilder::Blob {
 				builder: varlen_builder(container),
 				max_bytes,
 			},
-			ColumnBuffer::Decimal(a) => ColumnBuilder::Decimal(DecimalBuilder::from_array(a)),
+			ColumnBuffer::Decimal(a) => TypedBuilder::Decimal(DecimalBuilder::from_array(a)),
 			ColumnBuffer::Any {
 				container,
 				declared_type,
-			} => ColumnBuilder::Any {
+			} => TypedBuilder::Any {
 				builder: varlen_builder(container),
 				declared_type,
 			},
@@ -834,11 +872,19 @@ impl ColumnBuffer {
 				container,
 				inner,
 				accuracy,
-			} => ColumnBuilder::Digest {
+			} => TypedBuilder::Digest {
 				builder: varlen_builder(container),
 				inner,
 				accuracy,
 			},
+			ColumnBuffer::None {
+				array,
+				..
+			} => {
+				let mut builder = NullBuilder::new();
+				builder.append_nulls(array.len());
+				TypedBuilder::None(builder)
+			}
 		}
 	}
 }
@@ -847,17 +893,15 @@ pub(crate) fn primitive_builder<A>(array: PrimitiveArray<A>) -> PrimitiveBuilder
 where
 	A: ArrowPrimitiveType,
 {
-	assert_bare(array.nulls());
 	let data_type = array.data_type().clone();
-	let builder = match array.into_builder() {
-		Ok(builder) => builder,
+	match array.into_builder() {
+		Ok(builder) => builder.with_data_type(data_type),
 		Err(array) => {
 			let mut builder = PrimitiveBuilder::with_capacity(array.len());
-			builder.append_slice(array.values());
-			builder
+			builder.append_array(&array);
+			builder.with_data_type(data_type)
 		}
-	};
-	builder.with_data_type(data_type)
+	}
 }
 
 pub(crate) fn boolean_builder(bits: BooleanBuffer) -> BooleanBufferBuilder {
@@ -875,25 +919,31 @@ pub(crate) fn boolean_builder(bits: BooleanBuffer) -> BooleanBufferBuilder {
 	builder
 }
 
-pub(crate) fn fixed_builder(array: FixedSizeBinaryArray) -> MutableBuffer {
-	assert_bare(array.nulls());
-	let bytes = array.len() * array.value_length() as usize;
-	let (_, values, _) = array.into_parts();
-	match values.into_mutable() {
-		Ok(buffer) => buffer,
-		Err(values) => {
-			let mut buffer = MutableBuffer::with_capacity(bytes);
-			buffer.extend_from_slice(&values.as_slice()[..bytes]);
-			buffer
-		}
+pub(crate) fn append_fixed(builder: &mut FixedSizeBinaryBuilder, row: &[u8]) {
+	if builder.append_value(row).is_err() {
+		panic!(
+			"a fixed size builder of {} byte rows can not take a row of {} bytes",
+			builder.finish_cloned().value_length(),
+			row.len()
+		);
 	}
+}
+
+fn fixed_size_builder(array: FixedSizeBinaryArray) -> FixedSizeBinaryBuilder {
+	let mut builder = FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
+	append_fixed_array(&mut builder, &array)
+		.expect("copying a fixed size array into a builder of its own width failed");
+	builder
+}
+
+fn append_fixed_array(builder: &mut FixedSizeBinaryBuilder, array: &FixedSizeBinaryArray) -> Result<()> {
+	builder.append_array(array).map_err(|e| internal_error!("fixed size append failed: {}", e))
 }
 
 pub(crate) fn varlen_builder<T>(array: GenericByteArray<T>) -> GenericByteBuilder<T>
 where
 	T: ByteArrayType<Offset = i64>,
 {
-	assert_bare(array.nulls());
 	let array = if array.value_offsets()[0] == 0 {
 		match array.into_builder() {
 			Ok(builder) => return builder,
@@ -909,7 +959,7 @@ where
 	builder
 }
 
-fn assert_bare(nulls: Option<&NullBuffer>) {
+pub(crate) fn assert_bare(nulls: Option<&NullBuffer>) {
 	assert!(
 		nulls.is_none(),
 		"a column builder takes an array without validity, found validity of {} rows",

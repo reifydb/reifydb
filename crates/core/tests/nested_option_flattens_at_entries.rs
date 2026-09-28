@@ -72,7 +72,7 @@ fn a_depth_three_frame_becomes_one_nullable_layer_with_rows_anded() {
 
 #[test]
 fn a_builder_for_a_nested_option_type_builds_one_nullable_layer() {
-	// A nested option type must build one layer, and a leading none must never reach an unreachable arm.
+	// A nested option type must build one layer, and a leading none must stay a null row in it.
 	let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(optional_int4())), 3);
 	builder.push_none();
 	builder.push_value(Value::Int4(2));

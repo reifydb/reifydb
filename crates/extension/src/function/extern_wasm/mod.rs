@@ -67,7 +67,7 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 			None => {
-				let data = ColumnBuffer::none_typed(ValueType::Any, args.row_count());
+				let data = ColumnBuffer::none(args.row_count());
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 		}

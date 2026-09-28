@@ -164,15 +164,26 @@ pub(crate) fn declared_return_column(
 pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &Fragment) -> Result<ColumnBuffer> {
 	let mut layout: Option<BranchLayout> = None;
 	for value in &values {
-		let named_type = [(name, value.get_type())];
+		let fits_any = matches!(
+			value,
+			Value::None {
+				inner: ValueType::Any
+			}
+		);
+		let named_type = [(name, value.get_type(), fits_any)];
 		let Some(expected) = layout.as_mut() else {
 			layout = Some(BranchLayout::new(named_type));
 			continue;
 		};
 		expected.admit(named_type, fragment)?;
 	}
-	let column_type = values.first().map(Value::get_type).unwrap_or(ValueType::Any);
-	let mut data = ColumnBuffer::none_typed(column_type, 0).into_builder();
+	let column_type = values
+		.iter()
+		.find(|value| !matches!(value, Value::None { .. }))
+		.or(values.first())
+		.map(Value::get_type)
+		.unwrap_or(ValueType::Any);
+	let mut data = ColumnBuilder::with_capacity(column_type, values.len());
 	for value in values {
 		data.push_value(value);
 	}

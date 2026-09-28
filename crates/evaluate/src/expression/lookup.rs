@@ -91,6 +91,14 @@ fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<Column
 	extract_column_data_by_type(col, take, effective_type)
 }
 
+fn extract_any_column(col: &ColumnWithName, take: usize) -> Result<ColumnWithName> {
+	let values = col.data().iter().take(take).map(|value| match value {
+		Value::Any(boxed) => Some(*boxed),
+		_ => None,
+	});
+	Ok(col.with_new_data(ColumnBuffer::any_optional(values)))
+}
+
 fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: ValueType) -> Result<ColumnWithName> {
 	match col_type {
 		ValueType::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
@@ -157,9 +165,7 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 		ValueType::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)
 		}
-		ValueType::Any => {
-			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
-		}
+		ValueType::Any => extract_any_column(col, take),
 		ValueType::Decimal {
 			precision,
 			scale,
@@ -167,15 +173,9 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::zero(), decimal_with_bitvec, precision, scale)
 		}
 		ValueType::Option(inner) => extract_column_data_by_type(col, take, *inner),
-		ValueType::List(_) => {
-			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
-		}
-		ValueType::Record(_) => {
-			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
-		}
-		ValueType::Tuple(_) => {
-			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
-		}
+		ValueType::List(_) => extract_any_column(col, take),
+		ValueType::Record(_) => extract_any_column(col, take),
+		ValueType::Tuple(_) => extract_any_column(col, take),
 		ValueType::Digest {
 			..
 		} => Ok(col.with_new_data(col.data().take(take))),

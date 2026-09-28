@@ -3,19 +3,15 @@
 
 use reifydb_value::value::decimal::Decimal;
 
-use crate::value::column::{builder::ColumnBuilder, push::Push};
+use crate::value::column::{
+	builder::{ColumnBuilder, TypedBuilder},
+	push::Push,
+};
 
 impl Push<Decimal> for ColumnBuilder {
 	fn push(&mut self, value: Decimal) {
-		match self {
-			ColumnBuilder::Decimal(builder) => builder.push(&value),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+		match &mut self.inner {
+			TypedBuilder::Decimal(builder) => builder.push(&value),
 			_ => unreachable!("Push<Decimal> for ColumnBuffer with incompatible type"),
 		}
 	}

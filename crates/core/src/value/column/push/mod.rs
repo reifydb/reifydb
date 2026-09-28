@@ -4,7 +4,7 @@
 use reifydb_value::value::{
 	blob::Blob,
 	container::{
-		dictionary_array::push_entry,
+		dictionary_array,
 		temporal_array::{date_to_native, datetime_to_native, duration_to_native, time_to_native},
 	},
 	date::Date,
@@ -15,7 +15,7 @@ use reifydb_value::value::{
 	time::Time,
 };
 
-use crate::value::column::builder::ColumnBuilder;
+use crate::value::column::builder::{ColumnBuilder, TypedBuilder, append_fixed};
 
 pub mod decimal;
 pub mod none;
@@ -31,16 +31,9 @@ macro_rules! impl_native_push {
 	($t:ty, $variant:ident) => {
 		impl Push<$t> for ColumnBuilder {
 			fn push(&mut self, value: $t) {
-				match self {
-					ColumnBuilder::$variant(builder) => {
+				match &mut self.inner {
+					TypedBuilder::$variant(builder) => {
 						builder.append_value(value);
-					}
-					ColumnBuilder::Option {
-						inner,
-						bitvec,
-					} => {
-						inner.push(value);
-						bitvec.append(true);
 					}
 					other => panic!(
 						"called `push::<{}>()` on ColumnBuffer::{:?}",
@@ -57,16 +50,9 @@ macro_rules! impl_temporal_push {
 	($t:ty, $variant:ident, $to_native:ident) => {
 		impl Push<$t> for ColumnBuilder {
 			fn push(&mut self, value: $t) {
-				match self {
-					ColumnBuilder::$variant(builder) => {
+				match &mut self.inner {
+					TypedBuilder::$variant(builder) => {
 						builder.append_value($to_native(value));
-					}
-					ColumnBuilder::Option {
-						inner,
-						bitvec,
-					} => {
-						inner.push(value);
-						bitvec.append(true);
 					}
 					other => panic!(
 						"called `push::<{}>()` on ColumnBuffer::{:?}",
@@ -86,18 +72,14 @@ macro_rules! impl_numeric_push {
 	) => {
 		impl Push<$from> for ColumnBuilder {
 			fn push(&mut self, value: $from) {
-				match self {
+				match &mut self.inner {
 					$(
-						ColumnBuilder::$variant(builder) => {
+						TypedBuilder::$variant(builder) => {
 							builder.append_value(<$from as SafeConvert<$target>>::saturating_convert(value));
 						},
 					)*
-					ColumnBuilder::$own(builder) => {
+					TypedBuilder::$own(builder) => {
 						builder.append_value(value);
-					}
-					ColumnBuilder::Option { inner, bitvec } => {
-						inner.push(value);
-						bitvec.append(true);
 					}
 					other => {
 						panic!(
@@ -114,15 +96,8 @@ macro_rules! impl_numeric_push {
 
 impl Push<bool> for ColumnBuilder {
 	fn push(&mut self, value: bool) {
-		match self {
-			ColumnBuilder::Bool(builder) => builder.append(value),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+		match &mut self.inner {
+			TypedBuilder::Bool(builder) => builder.append_value(value),
 			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
@@ -197,19 +172,12 @@ impl_numeric_push!(
 
 impl Push<Blob> for ColumnBuilder {
 	fn push(&mut self, value: Blob) {
-		match self {
-			ColumnBuilder::Blob {
+		match &mut self.inner {
+			TypedBuilder::Blob {
 				builder,
 				..
 			} => {
 				builder.append_value(value.as_bytes());
-			}
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
 			}
 			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
@@ -218,19 +186,12 @@ impl Push<Blob> for ColumnBuilder {
 
 impl Push<String> for ColumnBuilder {
 	fn push(&mut self, value: String) {
-		match self {
-			ColumnBuilder::Utf8 {
+		match &mut self.inner {
+			TypedBuilder::Utf8 {
 				builder,
 				..
 			} => {
 				builder.append_value(value);
-			}
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
 			}
 			other => {
 				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
@@ -241,18 +202,11 @@ impl Push<String> for ColumnBuilder {
 
 impl Push<DictionaryEntryId> for ColumnBuilder {
 	fn push(&mut self, value: DictionaryEntryId) {
-		match self {
-			ColumnBuilder::DictionaryId {
-				buffer,
+		match &mut self.inner {
+			TypedBuilder::DictionaryId {
+				builder,
 				..
-			} => push_entry(buffer, value),
-			ColumnBuilder::Option {
-				inner,
-				bitvec,
-			} => {
-				inner.push(value);
-				bitvec.append(true);
-			}
+			} => append_fixed(builder, &dictionary_array::encode(value)),
 			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}

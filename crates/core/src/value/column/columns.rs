@@ -141,6 +141,9 @@ impl<'a> ColumnRef<'a> {
 fn value_to_buffer(value: Value) -> ColumnBuffer {
 	match value {
 		Value::None {
+			inner: ValueType::Any,
+		} => ColumnBuffer::none(1),
+		Value::None {
 			inner,
 		} => ColumnBuffer::none_typed(inner, 1),
 		Value::Boolean(v) => ColumnBuffer::bool([v]),
@@ -167,6 +170,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Blob(v) => ColumnBuffer::blob([v]),
 		value @ Value::Decimal(_) => ColumnBuffer::from(value),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
+		Value::Any(v) if matches!(*v, Value::None { .. }) => ColumnBuffer::any_optional([None]),
 		Value::Any(v) => ColumnBuffer::any(vec![*v]),
 		Value::Type(v) => ColumnBuffer::any(vec![Value::Type(v)]),
 		Value::List(v) => ColumnBuffer::any(vec![Value::List(v)]),
@@ -379,7 +383,18 @@ impl Columns {
 
 		let mut name_vec: Vec<Fragment> = names.iter().map(Fragment::internal).collect();
 		let mut builders: Vec<ColumnBuilder> = (0..column_count)
-			.map(|_| ColumnBuffer::none_typed(ValueType::Boolean, 0).into_builder())
+			.map(|i| {
+				match result_rows
+					.iter()
+					.map(|row| &row[i])
+					.find(|value| !matches!(value, Value::None { .. }))
+				{
+					Some(value) => {
+						ColumnBuilder::with_capacity(value.get_type(), result_rows.len())
+					}
+					None => ColumnBuffer::none(0).into_builder(),
+				}
+			})
 			.collect();
 
 		for row in result_rows {
@@ -447,7 +462,7 @@ impl Columns {
 
 		for encoded in bytes_slice {
 			for (i, _) in fields.iter().enumerate() {
-				builders[i].push_keeping_option(shape.get_value(encoded, i));
+				builders[i].push_value(shape.get_value(encoded, i));
 			}
 		}
 
@@ -504,24 +519,24 @@ impl Default for Columns {
 }
 
 impl Columns {
-	pub fn extract_by_indices(&self, indices: &[usize]) -> Columns {
+	pub fn extract_by_indices(&self, indices: &[usize]) -> Result<Columns> {
 		if indices.is_empty() {
-			return Columns::empty();
+			return Ok(Columns::empty());
 		}
 
 		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
 		for col in self.columns.iter() {
-			new_buffers.push(col.extract_rows(indices));
+			new_buffers.push(col.extract_rows(indices)?);
 		}
 
-		Columns {
+		Ok(Columns {
 			system: self.system.permute(indices),
 			columns: new_buffers,
 			names: self.names.clone(),
-		}
+		})
 	}
 
-	pub fn extract_row(&self, index: usize) -> Columns {
+	pub fn extract_row(&self, index: usize) -> Result<Columns> {
 		self.extract_by_indices(&[index])
 	}
 
@@ -680,7 +695,7 @@ pub mod tests {
 	/// variant without hand-constructing each `Value`.
 	fn assert_extract_preserves_values(buffer: ColumnBuffer, indices: &[usize]) {
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(indices);
+		let extracted = original.extract_by_indices(indices).unwrap();
 
 		assert_eq!(extracted.len(), 1, "column count must be preserved");
 		assert_eq!(extracted.row_count(), indices.len(), "row count must equal number of indices");
@@ -853,8 +868,9 @@ pub mod tests {
 
 	#[test]
 	fn extract_by_indices_preserves_any_values() {
-		let data = [Value::Int4(1), Value::Utf8("two".to_string()), Value::Boolean(true), Value::none()];
-		assert_extract_preserves_values(ColumnBuffer::any(data), &[3, 1, 2]);
+		let data =
+			[Some(Value::Int4(1)), Some(Value::Utf8("two".to_string())), Some(Value::Boolean(true)), None];
+		assert_extract_preserves_values(ColumnBuffer::any_optional(data), &[3, 1, 2]);
 	}
 
 	#[test]
@@ -882,7 +898,7 @@ pub mod tests {
 	#[test]
 	fn extract_by_indices_empty_indices_yields_empty_columns() {
 		let original = Columns::new(vec![ColumnWithName::int4("c", [1, 2, 3])]);
-		let extracted = original.extract_by_indices(&[]);
+		let extracted = original.extract_by_indices(&[]).unwrap();
 		assert_eq!(extracted.row_count(), 0);
 		assert!(extracted.is_empty());
 	}
@@ -926,7 +942,7 @@ pub mod tests {
 	#[test]
 	fn extract_by_indices_duplicate_index_duplicates_row() {
 		let original = Columns::new(vec![ColumnWithName::int4("c", [10, 20, 30])]);
-		let extracted = original.extract_by_indices(&[1, 1, 1]);
+		let extracted = original.extract_by_indices(&[1, 1, 1]).unwrap();
 		assert_eq!(extracted.row_count(), 3);
 		assert_eq!(extracted.data_at(0).get_value(0), Value::Int4(20));
 		assert_eq!(extracted.data_at(0).get_value(1), Value::Int4(20));
@@ -943,7 +959,7 @@ pub mod tests {
 			),
 			ColumnWithName::bool("flag", [true, false, true, false]),
 		]);
-		let extracted = original.extract_by_indices(&[2, 0]);
+		let extracted = original.extract_by_indices(&[2, 0]).unwrap();
 
 		assert_eq!(extracted.len(), 3);
 		assert_eq!(extracted.row_count(), 2);
@@ -977,7 +993,7 @@ pub mod tests {
 			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
 		);
 
-		let extracted = original.extract_by_indices(&[3, 0]);
+		let extracted = original.extract_by_indices(&[3, 0]).unwrap();
 
 		let rns: Vec<RowNumber> = extracted.row_numbers().to_vec();
 		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
@@ -1014,7 +1030,7 @@ pub mod tests {
 		}
 
 		let original = Columns::new(vec![ColumnWithName::new("token", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
+		let extracted = original.extract_by_indices(&[2, 0]).unwrap();
 
 		match extracted.data_at(0) {
 			ColumnBuffer::DictionaryId {
@@ -1043,7 +1059,7 @@ pub mod tests {
 		}
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
+		let extracted = original.extract_by_indices(&[2, 0]).unwrap();
 
 		match extracted.data_at(0) {
 			ColumnBuffer::Utf8 {
@@ -1066,7 +1082,7 @@ pub mod tests {
 		}
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
+		let extracted = original.extract_by_indices(&[2, 0]).unwrap();
 
 		match extracted.data_at(0) {
 			ColumnBuffer::Blob {
@@ -1090,7 +1106,7 @@ pub mod tests {
 		);
 
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
-		let extracted = original.extract_by_indices(&[2, 0]);
+		let extracted = original.extract_by_indices(&[2, 0]).unwrap();
 
 		match extracted.data_at(0) {
 			ColumnBuffer::Decimal(array) => {
@@ -1204,8 +1220,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_row_none_of_boolean_is_boolean_typed() {
-		// Boolean is value_to_buffer's fallback type, so this case alone proves nothing; it is kept
-		// for symmetry with the other inner types above.
+		// A typed none of Boolean must keep Boolean, never become the untyped none column.
 		let columns = Columns::single_row([("n", Value::none_of(ValueType::Boolean))]);
 		match columns.column("n").unwrap().data().get_value(0) {
 			Value::None {
@@ -1281,7 +1296,7 @@ pub mod tests {
 			ColumnBuffer::int4([1, 2, 3]).replace_nulls(Some(NullBuffer::new_valid(3))),
 		)]);
 
-		let extracted = columns.extract_by_indices(&[2, 0]);
+		let extracted = columns.extract_by_indices(&[2, 0]).unwrap();
 
 		assert!(extracted.data_at(0).nulls().is_some());
 		assert_eq!(extracted.data_at(0).get_type(), ValueType::Option(Box::new(ValueType::Int4)));
@@ -1296,7 +1311,7 @@ pub mod tests {
 			ColumnBuffer::utf8_with_bitvec(["keep", "hidden"], BooleanBuffer::from(vec![true, false])),
 		)]);
 
-		let extracted = columns.extract_by_indices(&[1, 0]);
+		let extracted = columns.extract_by_indices(&[1, 0]).unwrap();
 
 		let ColumnBuffer::Utf8 {
 			container,
@@ -1311,15 +1326,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn extract_by_indices_out_of_range_index_reads_as_none() {
-		// An index past the end is a miss, not a panic and not a wrapped read.
+	fn extract_by_indices_out_of_range_index_fails() {
+		// An index past the end is a bug, so it must fail naming the row and length, never read as a none row.
 		let columns = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::int4([1, 2]))]);
 
-		let extracted = columns.extract_by_indices(&[1, 7]);
+		let error = columns.extract_by_indices(&[1, 7]).unwrap_err();
 
-		assert_eq!(extracted.row_count(), 2);
-		assert_eq!(extracted.data_at(0).get_value(0), Value::Int4(2));
-		assert_eq!(extracted.data_at(0).get_value(1), Value::none_of(ValueType::Int4));
+		assert!(error.diagnostic().message.contains("row index 7 out of range for a column of 2 rows"));
 	}
 
 	#[test]
@@ -1327,7 +1340,7 @@ pub mod tests {
 		// An empty index list drops the columns entirely instead of returning empty ones.
 		let columns = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::int4([1, 2]))]);
 
-		let extracted = columns.extract_by_indices(&[]);
+		let extracted = columns.extract_by_indices(&[]).unwrap();
 
 		assert_eq!(extracted.len(), 0);
 		assert_eq!(extracted.row_count(), 0);

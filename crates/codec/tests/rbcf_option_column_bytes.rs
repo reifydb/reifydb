@@ -13,7 +13,7 @@ use reifydb_codec::frame::{
 };
 use reifydb_value::value::{
 	Value,
-	container::{any_array::any_array, dictionary_array::dictionary_array, digest_array::digest_array},
+	container::{any_array::any_array_optional, dictionary_array::dictionary_array, digest_array::digest_array},
 	dictionary::DictionaryEntryId,
 	digest::Digest,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -151,10 +151,10 @@ fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
 			EncodeOptions::none(),
 			option(
 				FrameColumnData::Any {
-					container: any_array(vec![
-						Value::Int4(9),
-						Value::none(),
-						Value::Utf8("x".to_string()),
+					container: any_array_optional([
+						Some(Value::Int4(9)),
+						None,
+						Some(Value::Utf8("x".to_string())),
 					]),
 					declared_type: None,
 				},

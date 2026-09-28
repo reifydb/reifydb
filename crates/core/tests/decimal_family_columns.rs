@@ -95,12 +95,14 @@ fn scatter_merge_keeps_precision_and_scale() {
 	// A merged column must keep the declared type, otherwise a CASE result widens to the default precision.
 	for buffer in sample_columns() {
 		let ty = buffer.get_type();
-		let merged = buffer.scatter_merge(
-			&buffer.gather(&[1, 0]),
-			&BooleanBuffer::from(vec![true, false]),
-			&BooleanBuffer::from(vec![false, true]),
-			2,
-		);
+		let merged = buffer
+			.scatter_merge(
+				&buffer.gather(&[1, 0]).unwrap(),
+				&BooleanBuffer::from(vec![true, false]),
+				&BooleanBuffer::from(vec![false, true]),
+				2,
+			)
+			.unwrap();
 		assert_eq!(merged.get_type(), ty);
 		assert_eq!(merged.get_value(0), buffer.get_value(0), "{ty:?} then row");
 		assert_eq!(merged.get_value(1), buffer.get_value(0), "{ty:?} else row");
@@ -115,12 +117,14 @@ fn scatter_merge_of_optional_columns_keeps_precision_and_scale() {
 		let mut optional = buffer.clone().into_builder();
 		optional.push_none();
 		let optional = optional.finish();
-		let merged = optional.scatter_merge(
-			&optional,
-			&BooleanBuffer::from(vec![true, false, true]),
-			&BooleanBuffer::from(vec![false, true, false]),
-			3,
-		);
+		let merged = optional
+			.scatter_merge(
+				&optional,
+				&BooleanBuffer::from(vec![true, false, true]),
+				&BooleanBuffer::from(vec![false, true, false]),
+				3,
+			)
+			.unwrap();
 		assert_eq!(merged.get_type(), ValueType::Option(Box::new(ty.clone())));
 		assert_eq!(merged.get_value(1), buffer.get_value(1), "{ty:?} defined row");
 		assert!(!merged.is_defined(2), "{ty:?} none row");
@@ -192,7 +196,7 @@ fn a_none_in_a_family_column_survives_reorder() {
 		let ty = original.get_type();
 		let mut column = original.clone();
 		let indices = [2, 0, 1];
-		column.reorder(&indices);
+		column.reorder(&indices).unwrap();
 		assert_eq!(column.len(), 3, "{ty:?}");
 		for (new_index, &old_index) in indices.iter().enumerate() {
 			assert_eq!(
@@ -217,7 +221,7 @@ fn a_none_in_a_family_column_survives_gather_with_a_repeated_index() {
 	for original in sample_columns_with_a_none() {
 		let ty = original.get_type();
 		let indices = [1, 1, 2, 0];
-		let gathered = original.gather(&indices);
+		let gathered = original.gather(&indices).unwrap();
 		assert_eq!(gathered.len(), indices.len(), "{ty:?}");
 		for (new_index, &old_index) in indices.iter().enumerate() {
 			assert_eq!(

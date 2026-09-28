@@ -17,7 +17,7 @@ use reifydb_codec::{
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
-	container::any_array::any_array,
+	container::any_array::any_array_optional,
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
@@ -168,10 +168,10 @@ fn golden_rbcf_frames() {
 		FrameColumn {
 			name: "anys".to_string(),
 			data: FrameColumnData::Any {
-				container: any_array(vec![
-					Value::Int4(9),
-					Value::none_of(ValueType::Duration),
-					Value::Utf8("x".to_string()),
+				container: any_array_optional([
+					Some(Value::Int4(9)),
+					None,
+					Some(Value::Utf8("x".to_string())),
 				]),
 				declared_type: None,
 			},

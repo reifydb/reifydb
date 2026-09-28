@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{params::Params, value::value_type::ValueType};
+use reifydb_value::params::Params;
 
 use crate::{
 	Result,
@@ -84,7 +84,7 @@ pub(crate) fn run_query_plan(
 			.into_iter()
 			.map(|name| ColumnWithName {
 				name,
-				data: ColumnBuffer::none_typed(ValueType::Boolean, 0),
+				data: ColumnBuffer::none(0),
 			})
 			.collect();
 		let mut columns = Columns::new(empty_columns);

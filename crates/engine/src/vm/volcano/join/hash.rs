@@ -26,7 +26,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, JoinSlot, NO_MATCH, ensure_join_keyable, eval_join_condition, join_key_types, load_and_merge_all,
+	JoinContext, JoinSlot, ensure_join_keyable, eval_join_condition, join_key_types, load_and_merge_all,
 	materialize_join, resolve_column_names,
 };
 use crate::{
@@ -232,7 +232,7 @@ impl HashJoinNode {
 	fn materialize(
 		state: &mut HashJoinState,
 		probe_slots: &[ProbeSlot],
-		build_picks: &[usize],
+		build_picks: &[Option<usize>],
 		has_row_numbers: bool,
 	) -> Result<Columns> {
 		let no_system = SystemColumns::empty();
@@ -432,7 +432,7 @@ impl QueryNode for HashJoinNode {
 		}
 
 		let mut probe_slots: Vec<ProbeSlot> = Vec::new();
-		let mut build_picks: Vec<usize> = Vec::new();
+		let mut build_picks: Vec<Option<usize>> = Vec::new();
 
 		if let Some(batch) = state.probe_batch.as_ref() {
 			probe_slots.push(ProbeSlot {
@@ -449,8 +449,11 @@ impl QueryNode for HashJoinNode {
 			if state.resolved_names.is_empty() {
 				let resolved = resolve_column_names(probe, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
-				state.probe_shells =
-					probe.columns.iter().map(|column| column.extract_rows(&[])).collect();
+				state.probe_shells = probe
+					.columns
+					.iter()
+					.map(|column| column.extract_rows(&[]))
+					.collect::<Result<_>>()?;
 			}
 			if state.left_key_indices.is_empty() {
 				state.left_key_indices =
@@ -525,7 +528,7 @@ impl QueryNode for HashJoinNode {
 			if state.current_match_idx >= state.current_matches.len() {
 				if self.mode == HashJoinMode::Left && !state.current_row_matched {
 					picked(&mut probe_slots).push(state.probe_row_idx);
-					build_picks.push(NO_MATCH);
+					build_picks.push(None);
 				}
 
 				state.probe_row_idx += 1;
@@ -565,7 +568,7 @@ impl QueryNode for HashJoinNode {
 
 			state.current_row_matched = true;
 			picked(&mut probe_slots).push(state.probe_row_idx);
-			build_picks.push(build_idx);
+			build_picks.push(Some(build_idx));
 		}
 
 		self.state = Some(state);

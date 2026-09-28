@@ -74,6 +74,9 @@ impl ColumnBuffer {
 				container,
 				..
 			} => digest_array::get_value(container, index),
+			ColumnBuffer::None {
+				..
+			} => Value::none(),
 			_ => with_container!(self, |a| primitive::get_value(a, index)),
 		}
 	}

@@ -36,8 +36,9 @@ fn option_layers(depth: usize) -> FrameColumnData {
 }
 
 fn unencodable_digest() -> FrameColumnData {
+	// The Utf8 inner is what rbcf refuses, so the one row must be a real digest, not a none.
 	FrameColumnData::Digest {
-		container: digest_array([None::<Digest>]),
+		container: digest_array([Some(Digest::new(ValueType::Float8, 10_000).unwrap())]),
 		inner: ValueType::Utf8,
 		accuracy: 10_000,
 	}

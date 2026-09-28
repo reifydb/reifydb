@@ -544,17 +544,20 @@ fn option_decimal_all_undefined() {
 
 #[test]
 fn option_any_alternating() {
-	let input = ColumnBuffer::any_with_bitvec(
-		[Value::Int8(7), Value::none(), Value::Utf8("x".to_string()), Value::none(), Value::Boolean(true)],
-		vec![true, false, true, false, true],
-	);
+	let input = ColumnBuffer::any_optional([
+		Some(Value::Int8(7)),
+		None,
+		Some(Value::Utf8("x".to_string())),
+		None,
+		Some(Value::Boolean(true)),
+	]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_alt", &input, &output);
 }
 
 #[test]
 fn option_any_all_undefined() {
-	let input = ColumnBuffer::any_with_bitvec(vec![Value::none(); 4], vec![false; 4]);
+	let input = ColumnBuffer::any_optional(vec![None; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_all_undef", &input, &output);
 }

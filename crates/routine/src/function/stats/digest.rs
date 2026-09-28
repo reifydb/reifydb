@@ -271,7 +271,7 @@ impl Accumulator for DigestAccumulator {
 			(None, Some(accuracy)) => digest_type(ValueType::Float8, accuracy),
 			(None, None) => {
 				let keys: Vec<GroupId> = digests.into_iter().map(|(group, _)| group).collect();
-				let data = ColumnBuffer::none_typed(ValueType::Any, keys.len());
+				let data = ColumnBuffer::none(keys.len());
 				return Ok((keys, data));
 			}
 		};

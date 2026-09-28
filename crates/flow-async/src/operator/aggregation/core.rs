@@ -446,7 +446,8 @@ mod tests {
 	const PPM: u32 = 10_000;
 
 	fn column(values: Vec<Value>) -> ColumnBuffer {
-		let mut builder = ColumnBuffer::none_typed(ValueType::Float8, 0).into_builder();
+		let first_type = values.iter().find(|value| !matches!(value, Value::None { .. })).map(Value::get_type);
+		let mut builder = ColumnBuffer::none_typed(first_type.unwrap_or(ValueType::Float8), 0).into_builder();
 		for value in values {
 			builder.push_value(value);
 		}

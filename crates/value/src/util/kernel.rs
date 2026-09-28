@@ -11,7 +11,11 @@ use arrow_select::{
 	zip::zip,
 };
 
-use crate::util::bitmap;
+use crate::{
+	Result,
+	error::{Diagnostic, Error},
+	util::bitmap,
+};
 
 pub fn predicate(mask: &BooleanBuffer, len: usize) -> FilterPredicate {
 	FilterBuilder::new(&BooleanArray::new(bitmap::resize(mask, len), None)).build()
@@ -41,8 +45,15 @@ where
 	}
 }
 
-pub fn indices_in_range(indices: &[usize], len: usize) -> BooleanBuffer {
-	BooleanBuffer::collect_bool(indices.len(), |row| indices[row] < len)
+pub fn rows_in_range(indices: &[usize], len: usize) -> Result<()> {
+	match indices.iter().find(|&&index| index >= len) {
+		Some(index) => Err(Error(Box::new(Diagnostic {
+			code: "INTERNAL_ERROR".to_string(),
+			message: format!("row index {index} out of range for a column of {len} rows"),
+			..Diagnostic::default()
+		}))),
+		None => Ok(()),
+	}
 }
 
 pub fn taken<A>(array: &A, indices: &UInt64Array) -> A

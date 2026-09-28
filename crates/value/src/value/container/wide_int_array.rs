@@ -76,12 +76,6 @@ pub fn push_wide<T: WideInt>(buffer: &mut MutableBuffer, value: T) {
 	value.to_ordered(&mut buffer.as_slice_mut()[start..]);
 }
 
-pub fn push_defaults<T: WideInt>(buffer: &mut MutableBuffer, count: usize) {
-	for _ in 0..count {
-		push_wide(buffer, T::default());
-	}
-}
-
 pub fn wide_at<T: WideInt>(array: &FixedSizeBinaryArray, index: usize) -> Option<T> {
 	rows::<T>(array).nth(index).map(T::from_ordered)
 }

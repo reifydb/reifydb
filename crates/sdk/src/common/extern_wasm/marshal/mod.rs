@@ -28,7 +28,7 @@ use reifydb_value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any_array::{self, any_array},
+			any_array::{self, any_array_optional},
 			decimal_array::DecimalArray,
 			dictionary_array,
 			temporal_array::{
@@ -49,7 +49,6 @@ use reifydb_value::{
 		system_columns::SystemColumns,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
 	},
 };
 use uuid::Uuid;
@@ -412,6 +411,9 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			accuracy,
 			..
 		} => panic!("a Digest({inner}, {accuracy}) column cannot be marshalled to a wasm guest"),
+		ColumnBuffer::None {
+			..
+		} => (0, 0, 0, 0),
 	}
 }
 
@@ -498,7 +500,7 @@ fn unmarshal_column_data(
 	offsets_bytes: &[u8],
 ) -> SdkResult<ColumnBuffer> {
 	if row_count == 0 {
-		return Ok(ColumnBuffer::none_typed(ValueType::Any, 0));
+		return Ok(ColumnBuffer::none(0));
 	}
 
 	let inner = match type_code {
@@ -540,7 +542,7 @@ fn unmarshal_column_data(
 			max_bytes: MaxBytes::MAX,
 		},
 		ValueKind::Any => ColumnBuffer::Any {
-			container: unmarshal_any(data, row_count, offsets_bytes)?,
+			container: unmarshal_any(data, row_count, offsets_bytes, &bitvec)?,
 			declared_type: None,
 		},
 		ValueKind::DictionaryId => {
@@ -549,13 +551,13 @@ fn unmarshal_column_data(
 		ValueKind::Decimal => {
 			return Err(malformed(format!("guest {type_code:?} column reached the var-len decoder")));
 		}
-		ValueKind::None
-		| ValueKind::Type
-		| ValueKind::List
-		| ValueKind::Record
-		| ValueKind::Tuple
-		| ValueKind::Digest => {
-			return Ok(ColumnBuffer::none_typed(ValueType::Any, row_count));
+		ValueKind::None => {
+			return Ok(ColumnBuffer::none(row_count));
+		}
+		ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple | ValueKind::Digest => {
+			return Err(malformed(format!(
+				"guest {type_code:?} column is not supported by the wasm marshal"
+			)));
 		}
 	};
 
@@ -571,7 +573,7 @@ fn unmarshal_family(
 	bitvec: BooleanBuffer,
 ) -> SdkResult<ColumnBuffer> {
 	if row_count == 0 {
-		return Ok(ColumnBuffer::none_typed(ValueType::Any, 0));
+		return Ok(ColumnBuffer::none(0));
 	}
 	let zeros;
 	let data = if data.is_empty() {
@@ -790,15 +792,35 @@ fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8])
 		.collect()
 }
 
-fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeBinaryArray> {
-	if data.is_empty() || offsets_bytes.is_empty() {
-		return Ok(any_array(vec![Value::none(); row_count]));
-	}
-	let values = cell_ranges(data, row_count, offsets_bytes, "any")?
+fn unmarshal_any(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+	defined: &BooleanBuffer,
+) -> SdkResult<LargeBinaryArray> {
+	let cells = if data.is_empty() || offsets_bytes.is_empty() {
+		vec![Value::none(); row_count]
+	} else {
+		cell_ranges(data, row_count, offsets_bytes, "any")?
+			.into_iter()
+			.map(|(start, end)| {
+				decode_any_cell(&data[start..end])
+					.map_err(|e| malformed(format!("guest any cell: {e}")))
+			})
+			.collect::<SdkResult<Vec<Value>>>()?
+	};
+	let values = cells
 		.into_iter()
-		.map(|(start, end)| {
-			decode_any_cell(&data[start..end]).map_err(|e| malformed(format!("guest any cell: {e}")))
+		.enumerate()
+		.map(|(row, value)| match value {
+			Value::None {
+				..
+			} if defined.value(row) => Err(malformed(format!("guest any cell at row {row} holds a none under a set valid bit"))),
+			Value::None {
+				..
+			} => Ok(None),
+			value => Ok(Some(value)),
 		})
-		.collect::<SdkResult<Vec<Value>>>()?;
-	Ok(any_array(values))
+		.collect::<SdkResult<Vec<Option<Value>>>>()?;
+	Ok(any_array_optional(values))
 }

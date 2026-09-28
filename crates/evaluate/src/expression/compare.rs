@@ -33,7 +33,7 @@ use reifydb_value::{
 	},
 };
 
-use super::option::{is_all_none, is_untyped_none};
+use super::option::is_all_none;
 use crate::Result;
 
 pub trait CompareOp {
@@ -499,7 +499,7 @@ pub fn compare_columns<Op: CompareOp>(
 	};
 	let (left_data, left_nulls) = left.data().clone().split_nulls();
 	let (right_data, right_nulls) = right.data().clone().split_nulls();
-	if is_untyped_none(&left_data, left_nulls.as_ref()) || is_untyped_none(&right_data, right_nulls.as_ref()) {
+	if left.data().is_untyped_none() || right.data().is_untyped_none() {
 		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
 	}
 	let (left_type, right_type) = (left_data.get_type(), right_data.get_type());

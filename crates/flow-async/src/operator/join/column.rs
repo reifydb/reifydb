@@ -3,6 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
 use reifydb_value::{
+	Result,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
@@ -157,16 +158,16 @@ impl JoinedColumnsBuilder {
 		)
 	}
 
-	pub(crate) fn retain_rows(columns: &Columns, keep: &[usize]) -> Columns {
+	pub(crate) fn retain_rows(columns: &Columns, keep: &[usize]) -> Result<Columns> {
 		if keep.len() == columns.row_count() {
-			return columns.clone();
+			return Ok(columns.clone());
 		}
 		let gathered = columns
 			.iter()
-			.map(|column| ColumnWithName::new(column.name().clone(), column.data().gather(keep)))
-			.collect();
+			.map(|column| Ok(ColumnWithName::new(column.name().clone(), column.data().gather(keep)?)))
+			.collect::<Result<Vec<_>>>()?;
 		let pick = |stamps: &[DateTime]| keep.iter().map(|&i| stamps[i]).collect::<Vec<_>>();
-		Columns::with_system(
+		Ok(Columns::with_system(
 			gathered,
 			SystemColumns::new(
 				keep.iter().map(|&i| columns.row_numbers()[i]).collect(),
@@ -176,7 +177,7 @@ impl JoinedColumnsBuilder {
 				pick(columns.time()),
 				Self::extract_timestamps_at_indices(columns.system.commit_versions(), keep),
 			),
-		)
+		))
 	}
 
 	pub(crate) fn join_cartesian(

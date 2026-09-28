@@ -5,6 +5,7 @@ use reifydb_value::value::{
 	Value,
 	constraint::{precision::Precision, scale::Scale},
 	container::digest_array::digest_array,
+	value_type::ValueType,
 };
 
 use crate::value::column::ColumnBuffer;
@@ -39,9 +40,15 @@ impl ColumnBuffer {
 			}
 			Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v; row_count]),
 			Value::None {
+				inner: ValueType::Any,
+			} => ColumnBuffer::none(row_count),
+			Value::None {
 				inner,
 			} => ColumnBuffer::none_typed(inner, row_count),
 			Value::Type(t) => ColumnBuffer::any(vec![Value::Type(t); row_count]),
+			Value::Any(v) if matches!(*v, Value::None { .. }) => {
+				ColumnBuffer::any_optional(vec![None; row_count])
+			}
 			Value::Any(v) => ColumnBuffer::any(vec![*v; row_count]),
 			Value::List(v) => ColumnBuffer::any(vec![Value::List(v); row_count]),
 			Value::Record(v) => ColumnBuffer::any(vec![Value::Record(v); row_count]),

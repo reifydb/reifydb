@@ -68,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		if promoted == ValueType::Any {
 			if (0..3).all(|i| all_rows_none(&args[i])) {
 				let row_count = args[0].len();
-				let result = ColumnBuffer::none_typed(ValueType::Any, row_count);
+				let result = ColumnBuffer::none(row_count);
 				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {

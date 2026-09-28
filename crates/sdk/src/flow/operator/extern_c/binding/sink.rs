@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{
-	reifydb_assertions,
-	value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time},
-};
+use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
 	common::{
@@ -26,6 +23,7 @@ use crate::{
 
 pub struct ExternCRowSink<'a> {
 	writers: Vec<AnyWriter<'a>>,
+	columns: &'static [(&'static str, ValueKind)],
 	row_capacity: usize,
 }
 
@@ -137,6 +135,7 @@ impl<'a> ExternCRowSink<'a> {
 		}
 		Ok(Self {
 			writers,
+			columns: R::COLUMNS,
 			row_capacity,
 		})
 	}
@@ -144,6 +143,10 @@ impl<'a> ExternCRowSink<'a> {
 	#[inline]
 	pub fn capacity(&self) -> usize {
 		self.row_capacity
+	}
+
+	fn mismatch(&self, col: usize, kind: &str) -> SdkError {
+		SdkError::InvalidInput(format!("column {col} is {:?}, cannot push {kind}", self.columns[col].1))
 	}
 
 	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, SdkError> {
@@ -157,138 +160,189 @@ impl<'a> ExternCRowSink<'a> {
 
 impl RowSink for ExternCRowSink<'_> {
 	#[inline]
-	fn push_u8(&mut self, col: usize, v: u8) {
+	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U8(w) => w.push(v),
-			_ => debug_panic("push_u8 on wrong column type"),
+			AnyWriter::U8(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "u8")),
 		}
 	}
 
 	#[inline]
-	fn push_u16(&mut self, col: usize, v: u16) {
+	fn push_u16(&mut self, col: usize, v: u16) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U16(w) => w.push(v),
-			_ => debug_panic("push_u16 on wrong column type"),
+			AnyWriter::U16(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "u16")),
 		}
 	}
 
 	#[inline]
-	fn push_u32(&mut self, col: usize, v: u32) {
+	fn push_u32(&mut self, col: usize, v: u32) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U32(w) => w.push(v),
-			_ => debug_panic("push_u32 on wrong column type"),
+			AnyWriter::U32(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "u32")),
 		}
 	}
 
 	#[inline]
-	fn push_u64(&mut self, col: usize, v: u64) {
+	fn push_u64(&mut self, col: usize, v: u64) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U64(w) => w.push(v),
-			_ => debug_panic("push_u64 on wrong column type"),
+			AnyWriter::U64(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "u64")),
 		}
 	}
 
 	#[inline]
-	fn push_u128(&mut self, col: usize, v: u128) {
+	fn push_u128(&mut self, col: usize, v: u128) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U128(w) => w.push(v),
-			_ => debug_panic("push_u128 on wrong column type"),
+			AnyWriter::U128(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "u128")),
 		}
 	}
 
 	#[inline]
-	fn push_i8(&mut self, col: usize, v: i8) {
+	fn push_i8(&mut self, col: usize, v: i8) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I8(w) => w.push(v),
-			_ => debug_panic("push_i8 on wrong column type"),
+			AnyWriter::I8(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "i8")),
 		}
 	}
 
 	#[inline]
-	fn push_i16(&mut self, col: usize, v: i16) {
+	fn push_i16(&mut self, col: usize, v: i16) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I16(w) => w.push(v),
-			_ => debug_panic("push_i16 on wrong column type"),
+			AnyWriter::I16(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "i16")),
 		}
 	}
 
 	#[inline]
-	fn push_i32(&mut self, col: usize, v: i32) {
+	fn push_i32(&mut self, col: usize, v: i32) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I32(w) => w.push(v),
-			_ => debug_panic("push_i32 on wrong column type"),
+			AnyWriter::I32(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "i32")),
 		}
 	}
 
 	#[inline]
-	fn push_i64(&mut self, col: usize, v: i64) {
+	fn push_i64(&mut self, col: usize, v: i64) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I64(w) => w.push(v),
-			_ => debug_panic("push_i64 on wrong column type"),
+			AnyWriter::I64(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "i64")),
 		}
 	}
 
 	#[inline]
-	fn push_i128(&mut self, col: usize, v: i128) {
+	fn push_i128(&mut self, col: usize, v: i128) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I128(w) => w.push(v),
-			_ => debug_panic("push_i128 on wrong column type"),
+			AnyWriter::I128(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "i128")),
 		}
 	}
 
 	#[inline]
-	fn push_f32(&mut self, col: usize, v: f32) {
+	fn push_f32(&mut self, col: usize, v: f32) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::F32(w) => w.push(v),
-			_ => debug_panic("push_f32 on wrong column type"),
+			AnyWriter::F32(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "f32")),
 		}
 	}
 
 	#[inline]
-	fn push_f64(&mut self, col: usize, v: f64) {
+	fn push_f64(&mut self, col: usize, v: f64) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::F64(w) => w.push(v),
-			_ => debug_panic("push_f64 on wrong column type"),
+			AnyWriter::F64(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "f64")),
 		}
 	}
 
 	#[inline]
-	fn push_date(&mut self, col: usize, v: Date) {
+	fn push_date(&mut self, col: usize, v: Date) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Date(w) => w.push(v),
-			_ => debug_panic("push_date on wrong column type"),
+			AnyWriter::Date(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "date")),
 		}
 	}
 
 	#[inline]
-	fn push_datetime(&mut self, col: usize, v: DateTime) {
+	fn push_datetime(&mut self, col: usize, v: DateTime) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::DateTime(w) => w.push(v),
-			_ => debug_panic("push_datetime on wrong column type"),
+			AnyWriter::DateTime(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "datetime")),
 		}
 	}
 
 	#[inline]
-	fn push_time(&mut self, col: usize, v: Time) {
+	fn push_time(&mut self, col: usize, v: Time) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Time(w) => w.push(v),
-			_ => debug_panic("push_time on wrong column type"),
+			AnyWriter::Time(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "time")),
 		}
 	}
 
 	#[inline]
-	fn push_duration(&mut self, col: usize, v: Duration) {
+	fn push_duration(&mut self, col: usize, v: Duration) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Duration(w) => w.push(v),
-			_ => debug_panic("push_duration on wrong column type"),
+			AnyWriter::Duration(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "duration")),
 		}
 	}
 
 	#[inline]
-	fn push_bool(&mut self, col: usize, v: bool) {
+	fn push_bool(&mut self, col: usize, v: bool) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Bool(w) => w.push(v),
-			_ => debug_panic("push_bool on wrong column type"),
+			AnyWriter::Bool(w) => {
+				w.push(v);
+				Ok(())
+			}
+			_ => Err(self.mismatch(col, "bool")),
 		}
 	}
 
@@ -296,10 +350,7 @@ impl RowSink for ExternCRowSink<'_> {
 	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Utf8(w) => w.push_str(v),
-			_ => {
-				debug_panic("push_utf8 on wrong column type");
-				Ok(())
-			}
+			_ => Err(self.mismatch(col, "utf8")),
 		}
 	}
 
@@ -307,10 +358,7 @@ impl RowSink for ExternCRowSink<'_> {
 	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Blob(w) => w.push_bytes(v),
-			_ => {
-				debug_panic("push_blob on wrong column type");
-				Ok(())
-			}
+			_ => Err(self.mismatch(col, "blob")),
 		}
 	}
 
@@ -318,10 +366,7 @@ impl RowSink for ExternCRowSink<'_> {
 	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Decimal(w) => w.push(v),
-			_ => {
-				debug_panic("push_decimal on wrong column type");
-				Ok(())
-			}
+			_ => Err(self.mismatch(col, "decimal")),
 		}
 	}
 
@@ -350,16 +395,5 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Decimal(w) => return w.push_none(),
 		}
 		Ok(())
-	}
-}
-
-#[inline]
-fn debug_panic(msg: &'static str) {
-	reifydb_assertions! {
-		assert!(false, "{}", msg);
-	}
-	#[cfg(not(reifydb_assertions))]
-	{
-		let _ = msg;
 	}
 }

@@ -307,7 +307,7 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = post.extract_by_indices(&[row_idx]);
+			let single = post.extract_by_indices(&[row_idx])?;
 			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
 		}
 		Ok(())
@@ -340,14 +340,14 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = post.extract_by_indices(&[row_idx]);
+			let single = post.extract_by_indices(&[row_idx])?;
 			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
 		}
 
 		if !update_indices.is_empty() {
 			output_diffs.push(Diff::update(
-				pre.extract_by_indices(&update_indices),
-				post.extract_by_indices(&update_indices),
+				pre.extract_by_indices(&update_indices)?,
+				post.extract_by_indices(&update_indices)?,
 			));
 		}
 		Ok(())
@@ -370,7 +370,7 @@ impl TakePlan {
 				state.by_row.remove(&row_number);
 				state.by_age.remove(&age);
 				state.row_data.remove(&row_number);
-				output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])));
+				output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])?));
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
 					self.promote_one_candidate(state, &schema, output_diffs)?;

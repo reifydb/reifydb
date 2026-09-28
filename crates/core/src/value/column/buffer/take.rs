@@ -4,14 +4,18 @@
 use arrow_array::{Array, ArrayRef, UInt64Array};
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use reifydb_value::{
+	Result,
 	util::{bitmap, kernel},
 	value::container::{bool_array, fixed_array, primitive, varlen_array},
 };
 
-use crate::value::column::{
-	ColumnBuffer,
-	buffer::{map_decimal, on_decimal, with_container},
-	builder::ColumnBuilder,
+use crate::{
+	internal_err,
+	value::column::{
+		ColumnBuffer,
+		buffer::{map_decimal, on_decimal, with_container},
+		builder::ColumnBuilder,
+	},
 };
 
 macro_rules! map_container {
@@ -80,6 +84,13 @@ macro_rules! map_container {
 				inner: inner.clone(),
 				accuracy: *accuracy,
 			},
+			ColumnBuffer::None {
+				..
+			} => {
+				unreachable!(
+					"map_container! must not be called on the None variant directly; handle it explicitly"
+				)
+			}
 		}
 	};
 }
@@ -88,6 +99,10 @@ impl ColumnBuffer {
 	pub fn take(&self, num: usize) -> ColumnBuffer {
 		match self {
 			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::take(a, num)),
+			ColumnBuffer::None {
+				array,
+				nulls,
+			} => ColumnBuffer::none_sized(num.min(array.len()), nulls.is_none()),
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -108,6 +123,10 @@ impl ColumnBuffer {
 		}
 		match self {
 			ColumnBuffer::Bool(a) => ColumnBuffer::Bool(bool_array::slice(a, start, end)),
+			ColumnBuffer::None {
+				nulls,
+				..
+			} => ColumnBuffer::none_sized(end - start, nulls.is_none()),
 			ColumnBuffer::DictionaryId {
 				container,
 				dictionary_id,
@@ -124,11 +143,28 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn extract_rows(&self, indices: &[usize]) -> ColumnBuffer {
-		let len = self.len();
-		let kept = BooleanBuffer::collect_bool(indices.len(), |row| {
-			indices[row] < len && !self.none_at(indices[row])
+	pub fn extract_rows(&self, indices: &[usize]) -> Result<ColumnBuffer> {
+		rows_in_range(indices.iter().copied(), self.len())?;
+		let kept = BooleanBuffer::collect_bool(indices.len(), |row| !self.none_at(indices[row]));
+		Ok(self.selected(indices, kept))
+	}
+
+	pub fn extract_rows_or_none(&self, picks: &[Option<usize>]) -> Result<ColumnBuffer> {
+		rows_in_range(picks.iter().flatten().copied(), self.len())?;
+		let indices: Vec<usize> = picks.iter().map(|pick| pick.unwrap_or(0)).collect();
+		let kept = BooleanBuffer::collect_bool(picks.len(), |row| {
+			picks[row].is_some_and(|index| !self.none_at(index))
 		});
+		Ok(self.selected(&indices, kept))
+	}
+
+	fn selected(&self, indices: &[usize], kept: BooleanBuffer) -> ColumnBuffer {
+		if let ColumnBuffer::None {
+			..
+		} = self
+		{
+			return ColumnBuffer::none_sized(indices.len(), self.nulls().is_none());
+		}
 		let all_kept = kept.count_set_bits() == kept.len();
 		let selected = if all_kept {
 			take_rows(self, &picks(indices))
@@ -141,18 +177,32 @@ impl ColumnBuffer {
 		selected
 	}
 
-	pub fn gather(&self, indices: &[usize]) -> ColumnBuffer {
+	pub fn gather(&self, indices: &[usize]) -> Result<ColumnBuffer> {
+		if let ColumnBuffer::None {
+			..
+		} = self
+		{
+			rows_in_range(indices.iter().copied(), self.len())?;
+			return Ok(ColumnBuffer::none_sized(indices.len(), self.nulls().is_none()));
+		}
 		match self.clone().split_nulls() {
-			(inner, Some(nulls)) => {
-				let inner = inner.gather(indices);
+			(inner, Some(nulls)) if !self.keeps_own_nulls() => {
+				let inner = inner.gather(indices)?;
 				let bits = bitmap::reorder(nulls.inner(), indices);
-				inner.replace_nulls(Some(NullBuffer::new(bits)))
+				Ok(inner.replace_nulls(Some(NullBuffer::new(bits))))
 			}
-			(mut inner, None) => {
-				inner.reorder(indices);
-				inner
+			(mut inner, _) => {
+				inner.reorder(indices)?;
+				Ok(inner)
 			}
 		}
+	}
+}
+
+fn rows_in_range(mut indices: impl Iterator<Item = usize>, len: usize) -> Result<()> {
+	match indices.find(|&index| index >= len) {
+		Some(index) => internal_err!("row index {} out of range for a column of {} rows", index, len),
+		None => Ok(()),
 	}
 }
 
@@ -212,6 +262,10 @@ pub(crate) fn as_array(buffer: &ColumnBuffer) -> &dyn Array {
 	match buffer {
 		ColumnBuffer::Bool(a) => a,
 		ColumnBuffer::Uint16(a) => a,
+		ColumnBuffer::None {
+			array,
+			..
+		} => array,
 		ColumnBuffer::Decimal(d) => {
 			on_decimal!(d, |a| a as &dyn Array)
 		}
@@ -231,6 +285,10 @@ pub(crate) fn wrap_array(shell: &ColumnBuffer, array: &dyn Array) -> ColumnBuffe
 	match shell {
 		ColumnBuffer::Bool(_) => ColumnBuffer::Bool(kernel::downcast(array)),
 		ColumnBuffer::Uint16(_) => ColumnBuffer::Uint16(kernel::downcast(array)),
+		ColumnBuffer::None {
+			nulls,
+			..
+		} => ColumnBuffer::none_sized(array.len(), nulls.is_none()),
 		ColumnBuffer::DictionaryId {
 			dictionary_id,
 			..
@@ -247,6 +305,56 @@ pub(crate) fn wrap_array(shell: &ColumnBuffer, array: &dyn Array) -> ColumnBuffe
 pub(crate) fn default_row(source: &ColumnBuffer) -> ColumnBuffer {
 	let (bare, _) = source.clone().split_nulls();
 	let mut builder = ColumnBuilder::like(&bare, 1);
-	builder.push_default();
+	builder.push_none();
 	builder.finish()
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::{Value, value_type::ValueType};
+
+	use crate::value::column::ColumnBuffer;
+
+	#[test]
+	fn extract_rows_past_the_end_fails() {
+		// A row past the end is a bug, so it must fail naming the row and length, never read as a none row.
+		let column = ColumnBuffer::int4([1, 2]);
+
+		let error = column.extract_rows(&[0, 2]).unwrap_err();
+
+		assert!(error.diagnostic().message.contains("row index 2 out of range for a column of 2 rows"));
+	}
+
+	#[test]
+	fn extract_rows_keeps_a_none_row_at_a_valid_index() {
+		// The range check must not turn a real none row into an error or a value.
+		let column = ColumnBuffer::int4_with_bitvec([1, 2], vec![false, true]);
+
+		let extracted = column.extract_rows(&[1, 0]).unwrap();
+
+		assert_eq!(extracted.get_value(0), Value::Int4(2));
+		assert_eq!(extracted.get_value(1), Value::none_of(ValueType::Int4));
+	}
+
+	#[test]
+	fn extract_rows_or_none_gives_a_none_row_for_no_pick() {
+		// A left join row with no match must read as none, never as the row at a placeholder index.
+		let column = ColumnBuffer::int4([7, 8]);
+
+		let extracted = column.extract_rows_or_none(&[Some(1), None, Some(0)]).unwrap();
+
+		assert_eq!(extracted.get_value(0), Value::Int4(8));
+		assert_eq!(extracted.get_value(1), Value::none_of(ValueType::Int4));
+		assert_eq!(extracted.get_value(2), Value::Int4(7));
+	}
+
+	#[test]
+	fn extract_rows_or_none_fails_on_a_pick_past_the_end() {
+		// A matched pick past the end is a bug, so it must fail like extract rows does.
+		let column = ColumnBuffer::int4([7, 8]);
+
+		let error = column.extract_rows_or_none(&[None, Some(2)]).unwrap_err();
+
+		assert!(error.diagnostic().message.contains("row index 2 out of range for a column of 2 rows"));
+	}
 }

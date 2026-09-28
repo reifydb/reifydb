@@ -57,7 +57,7 @@ fn kind_byte_is_identical_across_codecs() {
 
 #[test]
 fn value_codec_and_rbcf_any_column_round_trip_identically() {
-	let values = cross_codec_values();
+	let values: Vec<Value> = cross_codec_values().into_iter().map(|value| Value::List(vec![value])).collect();
 	let column = FrameColumn {
 		name: "c".to_string(),
 		data: FrameColumnData::Any {
@@ -74,17 +74,7 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 			..
 		} => {
 			for (expected, actual) in values.iter().zip(any_array::values(container).iter()) {
-				match (expected, actual) {
-					(
-						Value::None {
-							inner: l,
-						},
-						Value::None {
-							inner: r,
-						},
-					) => assert_eq!(l, r, "none inner type through RBCF"),
-					(l, r) => assert_eq!(l, r),
-				}
+				assert_eq!(expected, actual, "wrapped value and its none inner type through RBCF");
 			}
 		}
 		other => panic!("expected any column, got {other:?}"),

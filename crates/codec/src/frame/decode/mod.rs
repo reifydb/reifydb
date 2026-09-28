@@ -280,6 +280,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			data_bytes,
 			offsets_bytes,
 			extra_bytes,
+			layers.last(),
 		)?;
 
 		let col_data = layers.into_iter().rev().fold(col_data, |inner, bitvec| FrameColumnData::Option {
@@ -309,6 +310,7 @@ pub(crate) fn column_type_from_code(type_code: u8) -> Result<ValueType, DecodeEr
 	TypeTag::from_byte(type_code)?.to_type()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_column_dispatch(
 	type_code: u8,
 	encoding: Encoding,
@@ -317,6 +319,7 @@ fn decode_column_dispatch(
 	data: &[u8],
 	offsets: &[u8],
 	extra: &[u8],
+	defined: Option<&BooleanBuffer>,
 ) -> Result<FrameColumnData, DecodeError> {
 	if type_code == ValueKind::Digest.byte() {
 		if encoding != Encoding::Plain {
@@ -334,7 +337,7 @@ fn decode_column_dispatch(
 	match encoding {
 		Encoding::Plain | Encoding::BitPack => {
 			if ty == ValueType::Any {
-				return any::decode_any_column(row_count, data);
+				return any::decode_any_column(row_count, data, defined);
 			}
 
 			if let Some(result) = fixed::decode_fixed_plain(type_code, row_count, data) {
