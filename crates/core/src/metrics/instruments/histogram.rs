@@ -186,7 +186,7 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64], max: f64
 		let bound = if i < boundaries.len() {
 			boundaries[i]
 		} else {
-			f64::INFINITY
+			max
 		};
 		for (j, &target) in targets.iter().enumerate() {
 			if !found[j] && cumulative >= target {
@@ -268,6 +268,17 @@ mod tests {
 		h.observe(200.0);
 		assert_eq!(h.buckets.last().unwrap().load(Ordering::Relaxed), 1); // overflow bucket
 		assert_eq!(h.percentiles().p100, 200.0, "p100 must report the observed value, not the overflow bound");
+	}
+
+	#[test]
+	fn overflow_quantiles_export_window_max_not_infinity() {
+		// Without a finite overflow bound, read_window panics the metrics sampler on any slow window.
+		let h = Histogram::new("profiler.flow.duration_us", "h", ReadingKind::Duration, SIMPLE_BOUNDS);
+		h.observe(200.0);
+		let mut out = Vec::new();
+		h.read_window(&mut out);
+		assert_eq!(out[2].reading.as_f64(), 200.0, "p50 in the overflow bucket must report the window max");
+		assert_eq!(out[4].reading.as_f64(), 200.0, "p99 in the overflow bucket must report the window max");
 	}
 
 	#[test]
