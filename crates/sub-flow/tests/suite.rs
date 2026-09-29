@@ -65,6 +65,8 @@ mod ringbuffer_row_ttl;
 mod state;
 #[path = "time_propagation.rs"]
 mod time_propagation;
+#[path = "transactional_twin.rs"]
+mod transactional_twin;
 #[path = "view_calling_a_script_routine.rs"]
 mod view_calling_a_script_routine;
 #[path = "view_calling_a_udf.rs"]
