@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::batch::{is_scalar, single_row},
 };
 use reifydb_rql::{
-	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
+	instruction::{CompiledClosure, CompiledFunction, Instruction},
 	nodes::FunctionParameter,
 };
 use reifydb_value::{
@@ -119,7 +119,6 @@ struct SymbolTableInner {
 #[derive(Debug, Clone)]
 struct Scope {
 	variables: HashMap<String, VariableBinding>,
-	scope_type: ScopeType,
 }
 
 #[derive(Debug, Clone)]
@@ -132,7 +131,6 @@ impl SymbolTable {
 	pub fn new() -> Self {
 		let global_scope = Scope {
 			variables: HashMap::new(),
-			scope_type: ScopeType::Global,
 		};
 
 		Self {
@@ -143,10 +141,9 @@ impl SymbolTable {
 		}
 	}
 
-	pub fn enter_scope(&mut self, scope_type: ScopeType) {
+	pub fn enter_scope(&mut self) {
 		let new_scope = Scope {
 			variables: HashMap::new(),
-			scope_type,
 		};
 		Arc::make_mut(&mut self.inner).scopes.push(new_scope);
 	}
@@ -157,14 +154,6 @@ impl SymbolTable {
 		}
 		Arc::make_mut(&mut self.inner).scopes.pop();
 		Ok(())
-	}
-
-	pub fn scope_depth(&self) -> usize {
-		self.inner.scopes.len() - 1
-	}
-
-	pub fn current_scope_type(&self) -> &ScopeType {
-		&self.inner.scopes.last().unwrap().scope_type
 	}
 
 	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
@@ -221,16 +210,6 @@ impl SymbolTable {
 			}
 		}
 		None
-	}
-
-	pub fn clear(&mut self) {
-		let inner = Arc::make_mut(&mut self.inner);
-		inner.scopes.clear();
-		inner.scopes.push(Scope {
-			variables: HashMap::new(),
-			scope_type: ScopeType::Global,
-		});
-		inner.functions.clear();
 	}
 
 	pub fn define_function(&mut self, name: String, func: CompiledFunction) {
@@ -335,24 +314,10 @@ pub mod tests {
 	fn test_scope_management() {
 		let mut ctx = SymbolTable::new();
 
-		assert_eq!(ctx.scope_depth(), 0);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);
-
-		ctx.enter_scope(ScopeType::Function);
-		assert_eq!(ctx.scope_depth(), 1);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Function);
-
-		ctx.enter_scope(ScopeType::Block);
-		assert_eq!(ctx.scope_depth(), 2);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Block);
-
+		ctx.enter_scope();
+		ctx.enter_scope();
 		ctx.exit_scope().unwrap();
-		assert_eq!(ctx.scope_depth(), 1);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Function);
-
 		ctx.exit_scope().unwrap();
-		assert_eq!(ctx.scope_depth(), 0);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);
 
 		// Popping the global scope would leave the table with nowhere to bind.
 		assert!(ctx.exit_scope().is_err());
@@ -368,7 +333,7 @@ pub mod tests {
 		assert!(ctx.get("var").is_some());
 
 		// Rebinding an existing name in an inner scope must shadow, not overwrite.
-		ctx.enter_scope(ScopeType::Block);
+		ctx.enter_scope();
 		ctx.set("var".to_string(), Variable::columns(inner_cols.clone()), false).unwrap();
 
 		assert!(ctx.get("var").is_some());
@@ -384,29 +349,10 @@ pub mod tests {
 
 		ctx.set("global_var".to_string(), Variable::columns(outer_cols.clone()), false).unwrap();
 
-		ctx.enter_scope(ScopeType::Function);
+		ctx.enter_scope();
 
 		// A function scope must read through to its parent.
 		assert!(ctx.get("global_var").is_some());
-	}
-
-	#[test]
-	fn test_clear_resets_to_global() {
-		let mut ctx = SymbolTable::new();
-		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
-
-		ctx.set("var1".to_string(), Variable::columns(cols.clone()), false).unwrap();
-		ctx.enter_scope(ScopeType::Function);
-		ctx.set("var2".to_string(), Variable::columns(cols.clone()), false).unwrap();
-		ctx.enter_scope(ScopeType::Block);
-		ctx.set("var3".to_string(), Variable::columns(cols.clone()), false).unwrap();
-
-		assert_eq!(ctx.scope_depth(), 2);
-
-		// Clear must unwind the scope stack too, not only drop the bindings.
-		ctx.clear();
-		assert_eq!(ctx.scope_depth(), 0);
-		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);
 	}
 
 	#[test]

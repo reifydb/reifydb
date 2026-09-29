@@ -32,7 +32,7 @@ use reifydb_routine_abi::{
 };
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
-	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
+	instruction::{CompiledClosure, CompiledFunction, Instruction},
 	nodes::FunctionParameter,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -558,7 +558,7 @@ impl<'a> Vm<'a> {
 				return_type: return_type.cloned(),
 			},
 		);
-		self.symbols.enter_scope(ScopeType::Function);
+		self.symbols.enter_scope();
 
 		for (cap_name, cap_var) in captured {
 			self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
@@ -604,7 +604,7 @@ impl<'a> Vm<'a> {
 		let mut func_symbols = self.symbols.clone();
 
 		for row_idx in 0..row_count {
-			func_symbols.enter_scope(ScopeType::Function);
+			func_symbols.enter_scope();
 			for (cap_name, cap_var) in captured {
 				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 			}
@@ -662,7 +662,7 @@ impl<'a> Vm<'a> {
 		}
 
 		let saved_ip = self.ip;
-		self.symbols.enter_scope(ScopeType::Function);
+		self.symbols.enter_scope();
 
 		for (name, var) in &callable.captured {
 			self.symbols.set(name.clone(), var.clone(), true)?;
@@ -872,7 +872,7 @@ impl<'a> Vm<'a> {
 		}
 
 		let saved_ip = self.ip;
-		self.symbols.enter_scope(ScopeType::Function);
+		self.symbols.enter_scope();
 
 		for (param_def, arg) in proc_params.iter().zip(args) {
 			let bare_name = strip_dollar_prefix(&param_def.name);

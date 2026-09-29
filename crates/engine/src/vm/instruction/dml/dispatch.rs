@@ -17,7 +17,7 @@ use reifydb_evaluate::{
 	stack::Variable,
 };
 use reifydb_policy::inject_from_policies;
-use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
+use reifydb_rql::{compiler::CompilationResult, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -135,7 +135,7 @@ pub(crate) fn dispatch(
 				let handler_start = services.runtime_context.clock.instant();
 				let saved_ip = vm.ip;
 
-				vm.symbols.enter_scope(ScopeType::Function);
+				vm.symbols.enter_scope();
 				for (field, array) in
 					event_payload.schema_ref().fields().iter().zip(event_payload.columns())
 				{

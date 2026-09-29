@@ -24,7 +24,7 @@ use reifydb_evaluate::{
 	},
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
 };
-use reifydb_rql::instruction::{Instruction, ScopeType};
+use reifydb_rql::instruction::Instruction;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
 	Value,
@@ -115,7 +115,7 @@ impl UdfEvalNode {
 		row_count: usize,
 	) -> Result<(FieldRef, ArrayRef)> {
 		let mut func_symbols = stored_ctx.symbols.clone();
-		func_symbols.enter_scope(ScopeType::Function);
+		func_symbols.enter_scope();
 
 		for (cap_name, cap_var) in &call.udf.callable.captured {
 			func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
@@ -176,7 +176,7 @@ impl UdfEvalNode {
 		let mut func_symbols = stored_ctx.symbols.clone();
 
 		for row_idx in 0..row_count {
-			func_symbols.enter_scope(ScopeType::Function);
+			func_symbols.enter_scope();
 
 			for (cap_name, cap_var) in &call.udf.callable.captured {
 				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
@@ -386,7 +386,7 @@ pub(crate) fn evaluate_udfs_no_input(
 	for udf in &all_udfs {
 		check_arity(&udf.callable.parameters, udf.arg_expressions.len(), &udf.name, &udf.fragment)?;
 		let mut func_symbols = ctx.symbols.clone();
-		func_symbols.enter_scope(ScopeType::Function);
+		func_symbols.enter_scope();
 
 		for (cap_name, cap_var) in &udf.callable.captured {
 			func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;

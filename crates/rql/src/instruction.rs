@@ -43,12 +43,6 @@ pub struct CompiledClosure {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeType {
-	Global,
-
-	Function,
-
-	Block,
-
 	Conditional,
 
 	Loop,

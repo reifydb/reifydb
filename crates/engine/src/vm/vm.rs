@@ -351,7 +351,7 @@ impl<'a> Vm<'a> {
 						continue;
 					}
 				}
-				Instruction::EnterScope(scope_type) => self.exec_enter_scope(scope_type),
+				Instruction::EnterScope(_) => self.exec_enter_scope(),
 				Instruction::ExitScope => self.exec_exit_scope()?,
 				Instruction::Break {
 					exit_scopes,

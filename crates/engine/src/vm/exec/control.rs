@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_rql::instruction::ScopeType;
 use reifydb_value::error::{RuntimeErrorKind, TypeError};
 
 use crate::{
@@ -47,8 +46,8 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	pub(crate) fn exec_enter_scope(&mut self, scope_type: &ScopeType) {
-		self.symbols.enter_scope(scope_type.clone());
+	pub(crate) fn exec_enter_scope(&mut self) {
+		self.symbols.enter_scope();
 	}
 
 	pub(crate) fn exec_exit_scope(&mut self) -> Result<()> {
