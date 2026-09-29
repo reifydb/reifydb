@@ -67,6 +67,8 @@ mod time_propagation;
 mod view_calling_a_script_routine;
 #[path = "view_calling_a_udf.rs"]
 mod view_calling_a_udf;
+#[path = "view_kind_chains.rs"]
+mod view_kind_chains;
 #[path = "window_epoch.rs"]
 mod window_epoch;
 #[path = "window_metadata.rs"]
