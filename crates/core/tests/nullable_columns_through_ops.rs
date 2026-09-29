@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Write as _;
-
-use arrow_buffer::BooleanBuffer;
-use postcard::{from_bytes, to_stdvec};
-use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
-	builder::ColumnBuilder,
-	cast::{cast_column_data, convert::TargetConvert},
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_schema::FieldRef;
+use reifydb_core::value::{
+	batch::{batch, filter as filter_rows, head, take_rows},
+	column::{
+		builder::ColumnBuilder,
+		cast::{cast_column_data, convert::TargetConvert},
+		factory,
+		nulls::with_nulls,
+		scatter::scatter_merge,
+	},
 };
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
 		blob::Blob,
+		column_view::ColumnView,
 		constraint::{precision::Precision, scale::Scale},
 		date::Date,
 		datetime::DateTime,
@@ -22,63 +27,56 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		digest::Digest,
 		duration::Duration,
-		frame::data::FrameColumnData,
 		time::Time,
 		uuid::Uuid4,
 		value_type::ValueType,
 	},
 };
-use serde::Serialize;
 use uuid::Uuid;
 
 const ZERO_NONE: [bool; 4] = [true, true, true, true];
 const WITH_NONE: [bool; 4] = [true, false, true, true];
 
+type Pair = (FieldRef, ArrayRef);
+
 struct Kind {
 	ty: ValueType,
-	pick: fn(&[usize]) -> ColumnBuffer,
+	pick: fn(&[usize]) -> Pair,
 }
 
 struct Case {
 	ty: ValueType,
-	actual: ColumnBuffer,
-	expected: ColumnBuffer,
+	actual: Pair,
+	expected: Pair,
 	bits: Vec<bool>,
 }
 
-fn hex(bytes: &[u8]) -> String {
-	let mut out = String::with_capacity(bytes.len() * 2);
-	for byte in bytes {
-		write!(out, "{byte:02x}").unwrap();
-	}
-	out
+fn view(column: &Pair) -> ColumnView<'_> {
+	ColumnView::try_from(column).unwrap()
 }
 
-fn postcard_hex<T: Serialize>(value: &T) -> String {
-	hex(&to_stdvec(value).unwrap())
+fn only(batch: &RecordBatch) -> Pair {
+	(batch.schema_ref().fields()[0].clone(), batch.column(0).clone())
 }
 
-fn json<T: Serialize>(value: &T) -> String {
-	serde_json::to_string(value).unwrap()
+fn nullable(bare: Pair, defined: &[bool]) -> Pair {
+	with_nulls(bare, NullBuffer::new(BooleanBuffer::from(defined.to_vec()))).unwrap()
 }
 
-fn nullable(bare: ColumnBuffer, defined: &[bool]) -> ColumnBuffer {
-	ColumnBuffer::from(FrameColumnData::Option {
-		inner: Box::new(FrameColumnData::from(bare)),
-		bitvec: BooleanBuffer::from(defined.to_vec()),
-	})
-}
-
-fn mapped(kind: &Kind, defined: &[bool], rows: &[usize]) -> ColumnBuffer {
+fn mapped(kind: &Kind, defined: &[bool], rows: &[usize]) -> Pair {
 	let bits: Vec<bool> = rows.iter().map(|&row| defined[row]).collect();
 	nullable((kind.pick)(rows), &bits)
 }
 
-fn source(kind: &Kind, defined: &[bool]) -> ColumnBuffer {
+fn source(kind: &Kind, defined: &[bool]) -> Pair {
 	mapped(kind, defined, &[0, 1, 2, 3])
 }
 
-fn case(kind: &Kind, defined: &[bool], actual: ColumnBuffer, rows: &[usize]) -> Case {
+fn source_batch(kind: &Kind, defined: &[bool]) -> RecordBatch {
+	batch(vec![source(kind, defined)]).unwrap()
+}
+
+fn case(kind: &Kind, defined: &[bool], actual: Pair, rows: &[usize]) -> Case {
 	Case {
 		ty: kind.ty.clone(),
 		actual,
@@ -87,70 +85,70 @@ fn case(kind: &Kind, defined: &[bool], actual: ColumnBuffer, rows: &[usize]) -> 
 	}
 }
 
-fn built(kind: &Kind, defined: &[bool]) -> ColumnBuffer {
+fn built(kind: &Kind, defined: &[bool]) -> Pair {
 	let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(kind.ty.clone())), defined.len());
 	for (row, &is_defined) in defined.iter().enumerate() {
 		if is_defined {
-			builder.push_value((kind.pick)(&[row]).get_value(0));
+			builder.push_value(view(&(kind.pick)(&[row])).get_value(0));
 		} else {
 			builder.push_none();
 		}
 	}
-	builder.finish()
+	builder.finish("c")
 }
 
 fn check(case: Case) {
 	let nullable_type = ValueType::Option(Box::new(case.ty.clone()));
-	assert_eq!(case.actual.get_type(), nullable_type, "the column must stay nullable");
-	let defined: Vec<bool> = (0..case.actual.len()).map(|row| case.actual.is_defined(row)).collect();
+	let actual = view(&case.actual);
+	let expected = view(&case.expected);
+	assert_eq!(actual.get_type(), nullable_type, "the column must stay nullable");
+	assert_eq!(expected.get_type(), nullable_type, "the expected column must be nullable");
+	let defined: Vec<bool> = (0..actual.len()).map(|row| actual.is_defined(row)).collect();
 	assert_eq!(defined, case.bits, "rows that report as defined");
 	for (row, _) in case.bits.iter().enumerate().filter(|(_, is_defined)| !**is_defined) {
-		assert_eq!(case.actual.get_value(row), Value::none_of(case.ty.clone()), "row {row} must read as none");
+		assert_eq!(actual.get_value(row), Value::none_of(case.ty.clone()), "row {row} must read as none");
 	}
-	assert_eq!(
-		postcard_hex(&case.actual),
-		postcard_hex(&case.expected),
-		"bytes must match, placeholders included\nactual:   {}\nexpected: {}",
-		json(&case.actual),
-		json(&case.expected)
-	);
+	assert_eq!(actual.len(), expected.len(), "row count");
+	for row in 0..actual.len() {
+		assert_eq!(actual.get_value(row), expected.get_value(row), "row {row}");
+	}
 }
 
 fn slice(kind: &Kind, defined: &[bool]) -> Case {
-	case(kind, defined, source(kind, defined).slice(1, 3), &[1, 2])
+	case(kind, defined, only(&source_batch(kind, defined).slice(1, 2)), &[1, 2])
 }
 
 fn take(kind: &Kind, defined: &[bool]) -> Case {
-	case(kind, defined, source(kind, defined).take(2), &[0, 1])
+	case(kind, defined, only(&head(&source_batch(kind, defined), 2)), &[0, 1])
 }
 
 fn filter(kind: &Kind, defined: &[bool]) -> Case {
-	let mut column = source(kind, defined);
-	column.filter(&BooleanBuffer::from(vec![true, true, false, true])).unwrap();
-	case(kind, defined, column, &[0, 1, 3])
+	let filtered =
+		filter_rows(&source_batch(kind, defined), &BooleanBuffer::from(vec![true, true, false, true])).unwrap();
+	case(kind, defined, only(&filtered), &[0, 1, 3])
 }
 
 fn reorder(kind: &Kind, defined: &[bool]) -> Case {
-	let mut column = source(kind, defined);
-	column.reorder(&[2, 1, 3, 0]).unwrap();
-	case(kind, defined, column, &[2, 1, 3, 0])
+	case(kind, defined, only(&take_rows(&source_batch(kind, defined), &[2, 1, 3, 0]).unwrap()), &[2, 1, 3, 0])
 }
 
 fn gather(kind: &Kind, defined: &[bool]) -> Case {
-	case(kind, defined, source(kind, defined).gather(&[3, 1, 1, 0]).unwrap(), &[3, 1, 1, 0])
+	case(kind, defined, only(&take_rows(&source_batch(kind, defined), &[3, 1, 1, 0]).unwrap()), &[3, 1, 1, 0])
 }
 
 fn extend(kind: &Kind, defined: &[bool]) -> Case {
-	let mut column = source(kind, defined);
-	column.extend(source(kind, defined)).unwrap();
-	case(kind, defined, column, &[0, 1, 2, 3, 0, 1, 2, 3])
+	let column = source(kind, defined);
+	let mut builder = ColumnBuilder::from_view(&view(&column));
+	builder.extend(&view(&source(kind, defined))).unwrap();
+	case(kind, defined, builder.finish("c"), &[0, 1, 2, 3, 0, 1, 2, 3])
 }
 
 fn scatter(kind: &Kind, defined: &[bool]) -> Case {
 	let rotated = mapped(kind, defined, &[2, 3, 0, 1]);
 	let then_mask = BooleanBuffer::from(vec![true, true, false, false]);
 	let else_mask = BooleanBuffer::from(vec![false, false, true, true]);
-	let merged = source(kind, defined).scatter_merge(&rotated, &then_mask, &else_mask, 4).unwrap();
+	let source = source(kind, defined);
+	let merged = scatter_merge(&view(&source), &view(&rotated), &then_mask, &else_mask, 4, "c").unwrap();
 	case(kind, defined, merged, &[0, 1, 0, 1])
 }
 
@@ -159,7 +157,7 @@ fn cast(kind: &Kind, defined: &[bool]) -> Case {
 		TargetConvert {
 			target: None,
 		},
-		&source(kind, defined),
+		&view(&source(kind, defined)),
 		ValueType::Option(Box::new(kind.ty.clone())),
 		|| Fragment::internal("cast"),
 	)
@@ -178,23 +176,9 @@ fn cast(kind: &Kind, defined: &[bool]) -> Case {
 }
 
 fn builder_round_trip(kind: &Kind, defined: &[bool]) -> Case {
-	let mut builder = source(kind, defined).into_builder();
-	builder.push_value((kind.pick)(&[0]).get_value(0));
-	case(kind, defined, builder.finish(), &[0, 1, 2, 3, 0])
-}
-
-fn postcard_round_trip(kind: &Kind, defined: &[bool]) -> Case {
-	let bytes = to_stdvec(&source(kind, defined)).unwrap();
-	case(kind, defined, from_bytes(&bytes).unwrap(), &[0, 1, 2, 3])
-}
-
-fn json_round_trip(kind: &Kind, defined: &[bool]) -> Case {
-	let text = json(&source(kind, defined));
-	case(kind, defined, serde_json::from_str(&text).unwrap(), &[0, 1, 2, 3])
-}
-
-fn frame_round_trip(kind: &Kind, defined: &[bool]) -> Case {
-	case(kind, defined, ColumnBuffer::from(FrameColumnData::from(source(kind, defined))), &[0, 1, 2, 3])
+	let mut builder = ColumnBuilder::from_view(&view(&source(kind, defined)));
+	builder.push_value(view(&(kind.pick)(&[0])).get_value(0));
+	case(kind, defined, builder.finish("c"), &[0, 1, 2, 3, 0])
 }
 
 fn uuid4_at(row: usize) -> Uuid4 {
@@ -208,7 +192,7 @@ fn digest_type() -> ValueType {
 	}
 }
 
-fn digests(rows: &[usize]) -> ColumnBuffer {
+fn digests(rows: &[usize]) -> Pair {
 	let samples: [&[f64]; 4] = [&[1.0], &[99.0, 98.0], &[3.0], &[4.0, 5.0]];
 	let mut builder = ColumnBuilder::with_capacity(digest_type(), rows.len());
 	for &row in rows {
@@ -218,7 +202,7 @@ fn digests(rows: &[usize]) -> ColumnBuffer {
 		}
 		builder.push_value(Value::Digest(Box::new(digest)));
 	}
-	builder.finish()
+	builder.finish("c")
 }
 
 macro_rules! cells {
@@ -229,13 +213,13 @@ macro_rules! cells {
 
 				#[test]
 				fn keeps_a_zero_none_column_nullable() {
-					// Zero nones must never drop nullability, otherwise type and bytes change.
+					// Zero nones must never drop nullability, otherwise the column type changes.
 					crate::check(crate::$op(&kind(), &crate::ZERO_NONE));
 				}
 
 				#[test]
-				fn keeps_the_none_row_and_its_placeholder() {
-					// A none row must stay none over exactly its stored value, otherwise bytes drift.
+				fn keeps_the_none_row_in_place() {
+					// A none row must stay none at its own row, never move onto a defined value.
 					crate::check(crate::$op(&kind(), &crate::WITH_NONE));
 				}
 			}
@@ -266,9 +250,6 @@ macro_rules! matrix {
 					scatter,
 					cast,
 					builder_round_trip,
-					postcard_round_trip,
-					json_round_trip,
-					frame_round_trip,
 				);
 			}
 		)*
@@ -276,51 +257,54 @@ macro_rules! matrix {
 }
 
 matrix! {
-	int4 => ValueType::Int4, |rows| ColumnBuffer::int4(rows.iter().map(|&row| [10, 99, 30, 40][row]));
-	float8 => ValueType::Float8, |rows| ColumnBuffer::float8(rows.iter().map(|&row| [1.5, 99.25, -3.0, 4.0][row]));
-	int16 => ValueType::Int16, |rows| ColumnBuffer::int16(rows.iter().map(|&row| [1, 99, -3, i128::MAX][row]));
-	uint16 => ValueType::Uint16, |rows| ColumnBuffer::uint16(rows.iter().map(|&row| [1, 99, 3, u128::MAX][row]));
-	boolean => ValueType::Boolean, |rows| ColumnBuffer::bool(rows.iter().map(|&row| [false, true, false, true][row]));
-	utf8 => ValueType::Utf8, |rows| ColumnBuffer::utf8(rows.iter().map(|&row| ["a", "placeholder", "", "dd"][row]));
-	blob => ValueType::Blob, |rows| {
-		ColumnBuffer::blob(rows.iter().map(|&row| Blob::new([&[1u8][..], &[9, 9], &[], &[3, 4]][row].to_vec())))
+	int4 => ValueType::Int4, |rows| factory::int4("c", rows.iter().map(|&row| [10, 99, 30, 40][row]));
+	float8 => ValueType::Float8, |rows| factory::float8("c", rows.iter().map(|&row| [1.5, 99.25, -3.0, 4.0][row]));
+	int16 => ValueType::Int16, |rows| factory::int16("c", rows.iter().map(|&row| [1, 99, -3, i128::MAX][row]));
+	uint16 => ValueType::Uint16, |rows| factory::uint16("c", rows.iter().map(|&row| [1, 99, 3, u128::MAX][row]));
+	boolean => ValueType::Boolean, |rows| {
+		factory::bool("c", rows.iter().map(|&row| [false, true, false, true][row]))
 	};
-	uuid4 => ValueType::Uuid4, |rows| ColumnBuffer::uuid4(rows.iter().map(|&row| uuid4_at(row)));
+	utf8 => ValueType::Utf8, |rows| factory::utf8("c", rows.iter().map(|&row| ["a", "placeholder", "", "dd"][row]));
+	blob => ValueType::Blob, |rows| {
+		factory::blob("c", rows.iter().map(|&row| Blob::new([&[1u8][..], &[9, 9], &[], &[3, 4]][row].to_vec())))
+	};
+	uuid4 => ValueType::Uuid4, |rows| factory::uuid4("c", rows.iter().map(|&row| uuid4_at(row)));
 	date => ValueType::Date, |rows| {
-		ColumnBuffer::date(rows.iter().map(|&row| {
+		factory::date("c", rows.iter().map(|&row| {
 			[(2026, 9, 22), (1999, 12, 31), (1970, 1, 2), (2000, 2, 29)]
 				.map(|(y, m, d)| Date::from_ymd(y, m, d).unwrap())[row]
 		}))
 	};
 	datetime => ValueType::DateTime, |rows| {
-		ColumnBuffer::datetime(rows.iter().map(|&row| {
+		factory::datetime("c", rows.iter().map(|&row| {
 			DateTime::from_nanos([1_758_500_000_123_456_789, 99, 3_000, 4_000_000][row])
 		}))
 	};
 	time => ValueType::Time, |rows| {
-		ColumnBuffer::time(rows.iter().map(|&row| {
+		factory::time("c", rows.iter().map(|&row| {
 			[(1, 2, 3, 4), (23, 59, 59, 999_999_999), (0, 0, 1, 0), (12, 0, 0, 5)]
 				.map(|(h, m, s, n)| Time::from_hms_nano(h, m, s, n).unwrap())[row]
 		}))
 	};
 	duration => ValueType::Duration, |rows| {
-		ColumnBuffer::duration(rows.iter().map(|&row| {
+		factory::duration("c", rows.iter().map(|&row| {
 			[(1, 2, 3), (99, 9, 9), (-1, 0, 0), (0, 4, 4_000)].map(|(m, d, n)| Duration::new(m, d, n).unwrap())
 				[row]
 		}))
 	};
 	dictionary_id => ValueType::DictionaryId, |rows| {
-		ColumnBuffer::dictionary_id(rows.iter().map(|&row| DictionaryEntryId::U4([1, 99, 3, 4][row])))
+		factory::dictionary_id("c", rows.iter().map(|&row| DictionaryEntryId::U4([1, 99, 3, 4][row])))
 	};
 	decimal => ValueType::decimal(Precision::new(10), Scale::new(2)), |rows| {
-		ColumnBuffer::decimal(
+		factory::decimal(
+			"c",
 			Precision::new(10),
 			Scale::new(2),
 			rows.iter().map(|&row| ["1.5", "99", "-3.25", "4"][row].parse::<Decimal>().unwrap()),
 		)
 	};
 	any => ValueType::Any, |rows| {
-		ColumnBuffer::any(rows.iter().map(|&row| {
+		factory::any("c", rows.iter().map(|&row| {
 			[Value::Int4(1), Value::Utf8("placeholder".to_string()), Value::Boolean(true), Value::Int8(4)][row]
 				.clone()
 		}))

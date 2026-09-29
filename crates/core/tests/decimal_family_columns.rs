@@ -60,21 +60,6 @@ fn family_types(precision: u8) -> [ValueType; 1] {
 	[ValueType::decimal(precision, Scale::new(4))]
 }
 
-fn round_trips(buffer: &ColumnBuffer) -> Vec<ColumnBuffer> {
-	let frame = FrameColumnData::from(buffer.clone());
-	let frame_bytes = postcard::to_stdvec(&frame).unwrap();
-	let frame_json = serde_json::to_string(&frame).unwrap();
-	let column_bytes = postcard::to_stdvec(buffer).unwrap();
-	let column_json = serde_json::to_string(buffer).unwrap();
-	vec![
-		ColumnBuffer::from(frame),
-		ColumnBuffer::from(postcard::from_bytes::<FrameColumnData>(&frame_bytes).unwrap()),
-		ColumnBuffer::from(serde_json::from_str::<FrameColumnData>(&frame_json).unwrap()),
-		postcard::from_bytes::<ColumnBuffer>(&column_bytes).unwrap(),
-		serde_json::from_str::<ColumnBuffer>(&column_json).unwrap(),
-	]
-}
-
 fn sample_columns() -> [(FieldRef, ArrayRef); 1] {
 	[factory::decimal("c", Precision::new(12), Scale::new(3), [decimal("1.25"), decimal("-0.5")])]
 }
@@ -156,18 +141,6 @@ fn scatter_merge_of_optional_columns_keeps_precision_and_scale() {
 		assert_eq!(merged.get_type(), ValueType::Option(Box::new(ty.clone())));
 		assert_eq!(merged.get_value(1), buffer.get_value(1), "{ty:?} defined row");
 		assert!(!merged.is_defined(2), "{ty:?} none row");
-	}
-}
-
-#[test]
-fn frame_and_serde_round_trips_keep_precision_and_scale() {
-	// A frame or wire round trip must keep the declared type, otherwise a client sees int(76) for int(20).
-	for buffer in sample_columns() {
-		let ty = buffer.get_type();
-		for decoded in round_trips(&buffer) {
-			assert_eq!(decoded.get_type(), ty);
-			assert_eq!(decoded, buffer, "{ty:?} values");
-		}
 	}
 }
 

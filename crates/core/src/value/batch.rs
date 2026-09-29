@@ -4,9 +4,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array};
+use arrow_buffer::BooleanBuffer;
 use arrow_schema::{ArrowError, FieldRef, Schema};
 use arrow_select::{
-	concat::{concat, concat_batches},
+	concat::{concat as concat_arrays, concat_batches},
 	take::take,
 };
 use reifydb_codec::row::{
@@ -187,47 +188,76 @@ pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch> {
 }
 
 pub fn append(left: &RecordBatch, right: &RecordBatch) -> Result<RecordBatch> {
-	if right.num_rows() == 0 {
-		return Ok(left.clone());
-	}
-	if left.num_columns() == 0 {
-		return Ok(right.clone());
-	}
-	if left.num_columns() != right.num_columns() {
-		return Err(CoreError::FrameError {
-			message: "mismatched column count".to_string(),
-		}
-		.into());
-	}
+	concat(&[left.clone(), right.clone()])
+}
 
-	let left_schema = left.schema_ref();
-	let right_schema = right.schema_ref();
-	for (index, (left_field, right_field)) in left_schema.fields().iter().zip(right_schema.fields()).enumerate() {
-		if left_field.name() != right_field.name() {
-			return Err(CoreError::FrameError {
-				message: format!(
-					"column name mismatch at index {}: '{}' vs '{}'",
-					index,
-					left_field.name(),
-					right_field.name(),
-				),
+pub fn concat(batches: &[RecordBatch]) -> Result<RecordBatch> {
+	let mut parts: Vec<&RecordBatch> = Vec::with_capacity(batches.len());
+	for batch in batches {
+		match parts.first() {
+			None => parts.push(batch),
+			Some(_) if batch.num_rows() == 0 => {}
+			Some(lead) if lead.num_columns() == 0 => parts = vec![batch],
+			Some(lead) => {
+				check_joinable(lead, batch)?;
+				parts.push(batch);
 			}
-			.into());
 		}
 	}
-
-	if left_schema == right_schema {
-		return concat_batches(left_schema, [left, right]).map_err(frame_error);
+	let Some((lead, rest)) = parts.split_first() else {
+		return Ok(empty_batch());
+	};
+	if rest.is_empty() {
+		return Ok((*lead).clone());
 	}
-
-	let mut columns = Vec::with_capacity(left.num_columns());
-	for index in 0..left.num_columns() {
-		let field = left_schema.field(index);
-		let mut builder = ColumnBuilder::from_view(&ColumnView::try_from((left.column(index), field))?);
-		builder.extend(&ColumnView::try_from((right.column(index), right_schema.field(index)))?)?;
-		columns.push(builder.finish(field.name()));
+	let schema = lead.schema_ref();
+	if rest.iter().all(|part| part.schema_ref() == schema) {
+		return concat_batches(schema, parts.iter().copied()).map_err(frame_error);
 	}
-	assemble(columns, left_schema.metadata().clone(), left.num_rows() + right.num_rows())
+	let mut columns = Vec::with_capacity(lead.num_columns());
+	for index in 0..lead.num_columns() {
+		let views = parts
+			.iter()
+			.map(|part| ColumnView::try_from((part.column(index), part.schema_ref().field(index))))
+			.collect::<Result<Vec<_>>>()?;
+		columns.push(unify(schema.field(index).name(), &views)?);
+	}
+	assemble(columns, schema.metadata().clone(), parts.iter().map(|part| part.num_rows()).sum())
+}
+
+pub fn concat_columns(columns: &[(FieldRef, ArrayRef)]) -> Result<(FieldRef, ArrayRef)> {
+	let Some(((field, array), rest)) = columns.split_first() else {
+		return internal_err!("concat_columns needs at least one column");
+	};
+	if rest.is_empty() {
+		return Ok((field.clone(), array.clone()));
+	}
+	if rest.iter().all(|(other, _)| other == field) {
+		let arrays: Vec<&dyn Array> = columns.iter().map(|(_, array)| array.as_ref()).collect();
+		return Ok((field.clone(), concat_arrays(&arrays).map_err(frame_error)?));
+	}
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+	unify(field.name(), &views)
+}
+
+pub fn head(batch: &RecordBatch, n: usize) -> RecordBatch {
+	batch.slice(0, n.min(batch.num_rows()))
+}
+
+pub fn filter(batch: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch> {
+	let predicate = kernel::shared_predicate(mask, batch.num_rows());
+	let columns = batch
+		.columns()
+		.iter()
+		.map(|column| predicate.filter(column.as_ref()))
+		.collect::<std::result::Result<Vec<_>, _>>()
+		.map_err(frame_error)?;
+	RecordBatch::try_new_with_options(
+		batch.schema(),
+		columns,
+		&RecordBatchOptions::new().with_row_count(Some(predicate.count())),
+	)
+	.map_err(frame_error)
 }
 
 pub fn append_rows(
@@ -301,6 +331,27 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> 
 		&RecordBatchOptions::new().with_row_count(Some(indices.len())),
 	)
 	.map_err(frame_error)
+}
+
+pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch> {
+	kernel::rows_in_range(&picks.iter().flatten().copied().collect::<Vec<_>>(), batch.num_rows())?;
+	let indices: UInt64Array = picks.iter().map(|pick| pick.map(|index| index as u64)).collect();
+	let schema = batch.schema_ref();
+	let mut columns = Vec::with_capacity(batch.num_columns());
+	for (field, array) in schema.fields().iter().zip(batch.columns()) {
+		let taken = take(array.as_ref(), &indices, None).map_err(frame_error)?;
+		let field = match taken.logical_null_count() > 0 && !field.is_nullable() {
+			true => {
+				let mut field_type = from_field(field)?;
+				field_type.value_type =
+					field_type.value_type.map(|value_type| ValueType::Option(Box::new(value_type)));
+				Arc::new(to_field(field.name(), &field_type))
+			}
+			false => field.clone(),
+		};
+		columns.push((field, taken));
+	}
+	assemble(columns, schema.metadata().clone(), picks.len())
 }
 
 pub fn scalar_value(batch: &RecordBatch) -> Result<Value> {
@@ -404,6 +455,42 @@ fn assemble(
 	.map_err(frame_error)
 }
 
+fn check_joinable(lead: &RecordBatch, part: &RecordBatch) -> Result<()> {
+	if lead.num_columns() != part.num_columns() {
+		return Err(CoreError::FrameError {
+			message: "mismatched column count".to_string(),
+		}
+		.into());
+	}
+	for (index, (lead_field, part_field)) in
+		lead.schema_ref().fields().iter().zip(part.schema_ref().fields()).enumerate()
+	{
+		if lead_field.name() != part_field.name() {
+			return Err(CoreError::FrameError {
+				message: format!(
+					"column name mismatch at index {}: '{}' vs '{}'",
+					index,
+					lead_field.name(),
+					part_field.name(),
+				),
+			}
+			.into());
+		}
+	}
+	Ok(())
+}
+
+fn unify(name: &str, views: &[ColumnView]) -> Result<(FieldRef, ArrayRef)> {
+	let Some((lead, rest)) = views.split_first() else {
+		return internal_err!("column {} has no parts to concat", name);
+	};
+	let mut builder = ColumnBuilder::from_view(lead);
+	for view in rest {
+		builder.extend(view)?;
+	}
+	Ok(builder.finish(name))
+}
+
 fn record_shape_error(param: &str, row: usize, detail: &str) -> Error {
 	Error(Box::new(Diagnostic {
 		code: "PARAM_001".to_string(),
@@ -462,7 +549,7 @@ fn merge_system_columns(
 	for column in SystemColumn::ALL {
 		let new = fresh.iter().find(|(fresh_column, _)| *fresh_column == column).map(|(_, array)| array);
 		let merged = match (system_column(batch, column), new) {
-			(Some(old), Some(new)) => concat(&[old.as_ref(), new.as_ref()]).map_err(frame_error)?,
+			(Some(old), Some(new)) => concat_arrays(&[old.as_ref(), new.as_ref()]).map_err(frame_error)?,
 			(Some(old), None) if appended == 0 => old.clone(),
 			(Some(_), None) if batch.num_rows() == 0 => continue,
 			(None, Some(new)) if batch.num_rows() == 0 => new.clone(),
@@ -679,9 +766,9 @@ fn append_encoded(
 
 #[cfg(test)]
 pub mod tests {
-	use std::str::FromStr;
+	use std::{str::FromStr, sync::Arc};
 
-	use arrow_array::{Array, ArrayRef, LargeStringArray, RecordBatch};
+	use arrow_array::{Array, ArrayRef, Int32Array, LargeStringArray, RecordBatch};
 	use arrow_buffer::BooleanBuffer;
 	use arrow_schema::FieldRef;
 	use reifydb_value::value::{
@@ -1291,6 +1378,44 @@ pub mod tests {
 	}
 
 	#[test]
+	fn with_row_numbers_fails_on_a_partial_sidecar() {
+		// A row number column that covers only some rows must stop the write, never be padded to fit.
+		let columns = batch(vec![factory::int4("v", [1, 2, 3])]).unwrap();
+		let columns = with_system_column(columns, SystemColumn::RowNumbers, factory::uint8("", [1u64, 2, 3]).1)
+			.unwrap();
+		let columns = with_system_column(
+			columns,
+			SystemColumn::Time,
+			factory::datetime(
+				"",
+				[DateTime::from_nanos(10), DateTime::from_nanos(20), DateTime::from_nanos(30)],
+			)
+			.1,
+		)
+		.unwrap();
+
+		let short = factory::uint8("", [1u64, 2]).1;
+		assert!(with_system_column(columns, SystemColumn::RowNumbers, short).is_err());
+	}
+
+	#[test]
+	fn extract_by_indices_keeps_an_all_valid_column_nullable() {
+		// Arrow kernels drop an all-valid null buffer, so an Option column without its field flag turns bare.
+		let columns = batch(vec![named(
+			"c",
+			FieldType::from(ValueType::Option(Box::new(ValueType::Int4))),
+			Arc::new(Int32Array::from(vec![1, 2, 3])),
+		)])
+		.unwrap();
+
+		let extracted = take_rows(&columns, &[2, 0]).unwrap();
+
+		assert!(extracted.schema_ref().field(0).is_nullable());
+		assert_eq!(view(&extracted, "c").get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+		assert_eq!(view(&extracted, "c").get_value(0), Value::Int4(3));
+	}
+
+	#[test]
 	fn extract_by_indices_writes_the_type_default_under_a_none_row() {
 		// A none row must carry the type default underneath it, never the bytes left at the source row.
 		let columns = batch(vec![factory::utf8_with_bitvec(
@@ -1321,7 +1446,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn extract_by_indices_with_no_indices_gives_no_columns() {
+	fn extract_by_indices_with_no_indices_keeps_the_schema() {
 		// An empty index list must keep the schema, otherwise an emptied result loses the columns it renders.
 		let columns = batch(vec![factory::int4("c", [1, 2])]).unwrap();
 
@@ -1337,7 +1462,7 @@ pub mod tests {
 
 		use super::{column, view};
 		use crate::value::{
-			batch::batch,
+			batch::{batch, head},
 			column::{factory, nulls::with_nulls},
 		};
 
@@ -1555,6 +1680,584 @@ pub mod tests {
 
 			assert_eq!(view(&test_instance, "u").len(), 3);
 			assert_eq!(view(&test_instance, "u").get_value(0), Value::none_of(ValueType::Boolean));
+		}
+
+		#[test]
+		fn test_n_larger_than_len_is_safe() {
+			// Asking for more rows than the batch holds must return every row, never panic or pad.
+			let test_instance =
+				batch(vec![factory::int2_with_bitvec("a", [10, 20], vec![true, false])]).unwrap();
+
+			let taken = head(&test_instance, 10);
+
+			assert_eq!(taken, test_instance);
+			assert_eq!(head(&test_instance, 1).num_rows(), 1);
+		}
+	}
+
+	mod extract_rows {
+		use reifydb_value::value::{Value, value_type::ValueType};
+
+		use super::view;
+		use crate::value::{
+			batch::{batch, take_rows, take_rows_or_none},
+			column::factory,
+		};
+
+		#[test]
+		fn extract_rows_past_the_end_fails() {
+			// A row past the end is a bug: it must fail naming row and length, never read as none.
+			let columns = batch(vec![factory::int4("c", [1, 2])]).unwrap();
+
+			let error = take_rows(&columns, &[0, 2]).unwrap_err();
+
+			assert!(error.diagnostic().message.contains("row index 2 out of range for a column of 2 rows"));
+		}
+
+		#[test]
+		fn extract_rows_keeps_a_none_row_at_a_valid_index() {
+			// The range check must not turn a real none row into an error or a value.
+			let columns = batch(vec![factory::int4_with_bitvec("c", [1, 2], vec![false, true])]).unwrap();
+
+			let extracted = take_rows(&columns, &[1, 0]).unwrap();
+
+			assert_eq!(view(&extracted, "c").get_value(0), Value::Int4(2));
+			assert_eq!(view(&extracted, "c").get_value(1), Value::none_of(ValueType::Int4));
+		}
+
+		#[test]
+		fn extract_rows_or_none_gives_a_none_row_for_no_pick() {
+			// A left join row with no match must read as none, never as the row at a placeholder index.
+			let columns = batch(vec![factory::int4("c", [7, 8])]).unwrap();
+
+			let extracted = take_rows_or_none(&columns, &[Some(1), None, Some(0)]).unwrap();
+
+			assert_eq!(extracted.num_rows(), 3);
+			assert_eq!(view(&extracted, "c").get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+			assert_eq!(view(&extracted, "c").get_value(0), Value::Int4(8));
+			assert_eq!(view(&extracted, "c").get_value(1), Value::none_of(ValueType::Int4));
+			assert_eq!(view(&extracted, "c").get_value(2), Value::Int4(7));
+		}
+
+		#[test]
+		fn extract_rows_or_none_fails_on_a_pick_past_the_end() {
+			// A matched pick past the end is a bug, so it must fail like extract rows does.
+			let columns = batch(vec![factory::int4("c", [7, 8])]).unwrap();
+
+			let error = take_rows_or_none(&columns, &[None, Some(2)]).unwrap_err();
+
+			assert!(error.diagnostic().message.contains("row index 2 out of range for a column of 2 rows"));
+		}
+
+		#[test]
+		fn extract_rows_or_none_with_every_pick_keeps_a_bare_column_bare() {
+			// Widening a column that got no none row would flip a bare type to Option for nothing.
+			let columns = batch(vec![factory::int4("c", [7, 8])]).unwrap();
+
+			let extracted = take_rows_or_none(&columns, &[Some(1), Some(0)]).unwrap();
+
+			assert_eq!(extracted.schema(), columns.schema());
+			assert_eq!(view(&extracted, "c").get_value(0), Value::Int4(8));
+		}
+	}
+
+	mod filter {
+		use std::sync::Arc;
+
+		use arrow_array::{ArrayRef, Int32Array, LargeStringArray, RecordBatch};
+		use arrow_buffer::BooleanBuffer;
+		use arrow_schema::FieldRef;
+		use reifydb_runtime::context::{
+			clock::{Clock, MockClock},
+			rng::Rng,
+		};
+		use reifydb_value::value::{
+			Value,
+			dictionary::DictionaryEntryId,
+			identity::IdentityId,
+			row_number::RowNumber,
+			system_columns::{SystemColumn, row_numbers, with_system_column},
+			value_type::{
+				ValueType,
+				field::{FieldType, named},
+			},
+		};
+
+		use super::view;
+		use crate::value::{
+			batch::{batch, filter},
+			column::factory,
+		};
+
+		fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+			let mock = MockClock::from_millis(1000);
+			let clock = Clock::Mock(mock.clone());
+			let rng = Rng::seeded(42);
+			(mock, clock, rng)
+		}
+
+		fn filtered(column: (FieldRef, ArrayRef), mask: Vec<bool>) -> RecordBatch {
+			filter(&batch(vec![column]).unwrap(), &BooleanBuffer::from(mask)).unwrap()
+		}
+
+		#[test]
+		fn test_filter_bool() {
+			let col = filtered(
+				factory::bool("c", [true, false, true, false]),
+				vec![true, false, true, false],
+			);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::Boolean(true));
+			assert_eq!(view(&col, "c").get_value(1), Value::Boolean(true));
+		}
+
+		#[test]
+		fn test_filter_int4() {
+			let col = filtered(factory::int4("c", [1, 2, 3, 4, 5]), vec![true, false, true, false, true]);
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::Int4(1));
+			assert_eq!(view(&col, "c").get_value(1), Value::Int4(3));
+			assert_eq!(view(&col, "c").get_value(2), Value::Int4(5));
+		}
+
+		#[test]
+		fn test_filter_float4() {
+			let col = filtered(factory::float4("c", [1.0, 2.0, 3.0, 4.0]), vec![false, true, false, true]);
+
+			assert_eq!(col.num_rows(), 2);
+			match view(&col, "c").get_value(0) {
+				Value::Float4(v) => assert_eq!(v.value(), 2.0),
+				_ => panic!("Expected Float4"),
+			}
+			match view(&col, "c").get_value(1) {
+				Value::Float4(v) => assert_eq!(v.value(), 4.0),
+				_ => panic!("Expected Float4"),
+			}
+		}
+
+		#[test]
+		fn test_filter_string() {
+			let col = filtered(factory::utf8("c", ["a", "b", "c", "d"]), vec![true, false, false, true]);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::Utf8("a".to_string()));
+			assert_eq!(view(&col, "c").get_value(1), Value::Utf8("d".to_string()));
+		}
+
+		#[test]
+		fn test_filter_none() {
+			let col = filtered(
+				factory::none_typed("c", ValueType::Boolean, 5),
+				vec![true, false, true, false, false],
+			);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::none_of(ValueType::Boolean));
+			assert_eq!(view(&col, "c").get_value(1), Value::none_of(ValueType::Boolean));
+		}
+
+		#[test]
+		fn test_filter_empty_mask() {
+			let col = filtered(factory::int4("c", [1, 2, 3]), vec![false, false, false]);
+
+			assert_eq!(col.num_rows(), 0);
+		}
+
+		#[test]
+		fn test_filter_all_true_mask() {
+			let col = filtered(factory::int4("c", [1, 2, 3]), vec![true, true, true]);
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::Int4(1));
+			assert_eq!(view(&col, "c").get_value(1), Value::Int4(2));
+			assert_eq!(view(&col, "c").get_value(2), Value::Int4(3));
+		}
+
+		#[test]
+		fn test_filter_identity_id() {
+			let (mock, clock, rng) = test_clock_and_rng();
+			let id1 = IdentityId::generate(&clock, &rng);
+			mock.advance_millis(1);
+			let id2 = IdentityId::generate(&clock, &rng);
+			mock.advance_millis(1);
+			let id3 = IdentityId::generate(&clock, &rng);
+			mock.advance_millis(1);
+			let id4 = IdentityId::generate(&clock, &rng);
+
+			let col = filtered(
+				factory::identity_id("c", [id1, id2, id3, id4]),
+				vec![true, false, true, false],
+			);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::IdentityId(id1));
+			assert_eq!(view(&col, "c").get_value(1), Value::IdentityId(id3));
+		}
+
+		#[test]
+		fn test_filter_dictionary_id() {
+			let e1 = DictionaryEntryId::U4(10);
+			let e2 = DictionaryEntryId::U4(20);
+			let e3 = DictionaryEntryId::U4(30);
+			let e4 = DictionaryEntryId::U4(40);
+
+			let col =
+				filtered(factory::dictionary_id("c", [e1, e2, e3, e4]), vec![true, false, true, false]);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::DictionaryId(e1));
+			assert_eq!(view(&col, "c").get_value(1), Value::DictionaryId(e3));
+		}
+
+		#[test]
+		fn test_filter_dictionary_id_with_undefined() {
+			let e1 = DictionaryEntryId::U4(10);
+			let e2 = DictionaryEntryId::U4(20);
+
+			let col = filtered(
+				factory::dictionary_id_with_bitvec(
+					"c",
+					[e1, DictionaryEntryId::default(), e2, DictionaryEntryId::default()],
+					BooleanBuffer::from(vec![true, false, true, false]),
+				),
+				vec![true, true, false, true],
+			);
+
+			assert_eq!(col.num_rows(), 3);
+			assert!(view(&col, "c").is_defined(0));
+			assert!(!view(&col, "c").is_defined(1));
+			assert!(!view(&col, "c").is_defined(2));
+			assert_eq!(view(&col, "c").get_value(0), Value::DictionaryId(e1));
+		}
+
+		#[test]
+		fn filter_with_a_mask_longer_than_the_column_ignores_the_extra_bits() {
+			// A mask sized past the batch must select nothing beyond the end instead of failing the kernel.
+			let col = filtered(factory::int4("c", [1, 2, 3]), vec![true, false, true, true, true]);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::Int4(1));
+			assert_eq!(view(&col, "c").get_value(1), Value::Int4(3));
+		}
+
+		#[test]
+		fn filter_with_a_mask_shorter_than_the_column_drops_the_tail() {
+			// The rows past the end of the mask are unselected, never kept by default.
+			let col = filtered(factory::int4("c", [1, 2, 3, 4]), vec![true, true]);
+
+			assert_eq!(col.num_rows(), 2);
+			assert_eq!(view(&col, "c").get_value(0), Value::Int4(1));
+			assert_eq!(view(&col, "c").get_value(1), Value::Int4(2));
+		}
+
+		#[test]
+		fn filter_keeps_an_all_valid_column_nullable() {
+			// Arrow drops an all-valid null buffer, so the Option type must survive on the field.
+			let column = named(
+				"c",
+				FieldType::from(ValueType::Option(Box::new(ValueType::Int4))),
+				Arc::new(Int32Array::from(vec![1, 2, 3])),
+			);
+
+			let col = filtered(column, vec![true, false, true]);
+
+			assert!(col.schema_ref().field(0).is_nullable());
+			assert_eq!(view(&col, "c").get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+		}
+
+		#[test]
+		fn filter_with_an_all_false_mask_keeps_the_type_and_nullability() {
+			// An all-false mask gives a fresh empty array, so the type must come from the field.
+			let col = filtered(
+				factory::utf8_with_bitvec("c", ["a", "b"], BooleanBuffer::from(vec![true, false])),
+				vec![false, false],
+			);
+
+			assert_eq!(col.num_rows(), 0);
+			assert!(col.schema_ref().field(0).is_nullable());
+			assert_eq!(view(&col, "c").get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+		}
+
+		#[test]
+		fn filter_keeps_the_placeholder_bytes_under_a_none_row() {
+			// Encoders see the bytes under a none row, so the filter must move them unchanged.
+			let col = filtered(
+				factory::utf8_with_bitvec(
+					"c",
+					["keep", "hidden"],
+					BooleanBuffer::from(vec![true, false]),
+				),
+				vec![true, true],
+			);
+
+			let Some(container) = col.column(0).as_any().downcast_ref::<LargeStringArray>() else {
+				panic!("expected a utf8 column");
+			};
+			assert_eq!(container.value(1), "hidden");
+			assert_eq!(view(&col, "c").get_value(1), Value::none_of(ValueType::Utf8));
+		}
+
+		#[test]
+		fn filter_applies_one_mask_to_every_column_of_the_batch() {
+			// A # column filtered apart from user columns would pair rows with wrong row numbers.
+			let columns = batch(vec![factory::int4("a", [1, 2, 3]), factory::utf8("b", ["x", "y", "z"])])
+				.unwrap();
+			let columns = with_system_column(
+				columns,
+				SystemColumn::RowNumbers,
+				factory::uint8("", [10u64, 20, 30]).1,
+			)
+			.unwrap();
+
+			let col = filter(&columns, &BooleanBuffer::from(vec![false, true, true])).unwrap();
+
+			assert_eq!(view(&col, "a").get_value(0), Value::Int4(2));
+			assert_eq!(view(&col, "b").get_value(1), Value::Utf8("z".to_string()));
+			assert_eq!(row_numbers(&col).unwrap(), &[RowNumber(20), RowNumber(30)]);
+		}
+	}
+
+	mod reorder {
+		use reifydb_runtime::context::{
+			clock::{Clock, MockClock},
+			rng::Rng,
+		};
+		use reifydb_value::value::{
+			Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType,
+		};
+
+		use super::view;
+		use crate::value::{
+			batch::{batch, take_rows},
+			column::factory,
+		};
+
+		fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+			let mock = MockClock::from_millis(1000);
+			let clock = Clock::Mock(mock.clone());
+			let rng = Rng::seeded(42);
+			(mock, clock, rng)
+		}
+
+		#[test]
+		fn test_reorder_bool() {
+			let col = take_rows(&batch(vec![factory::bool("c", [true, false, true])]).unwrap(), &[2, 0, 1])
+				.unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::Boolean(true));
+			assert_eq!(view(&col, "c").get_value(1), Value::Boolean(true));
+			assert_eq!(view(&col, "c").get_value(2), Value::Boolean(false));
+		}
+
+		#[test]
+		fn test_reorder_float4() {
+			let col = take_rows(&batch(vec![factory::float4("c", [1.0, 2.0, 3.0])]).unwrap(), &[2, 0, 1])
+				.unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			match view(&col, "c").get_value(0) {
+				Value::Float4(v) => assert_eq!(v.value(), 3.0),
+				_ => panic!("Expected Float4"),
+			}
+			match view(&col, "c").get_value(1) {
+				Value::Float4(v) => assert_eq!(v.value(), 1.0),
+				_ => panic!("Expected Float4"),
+			}
+			match view(&col, "c").get_value(2) {
+				Value::Float4(v) => assert_eq!(v.value(), 2.0),
+				_ => panic!("Expected Float4"),
+			}
+		}
+
+		#[test]
+		fn test_reorder_int4() {
+			let col = take_rows(&batch(vec![factory::int4("c", [1, 2, 3])]).unwrap(), &[2, 0, 1]).unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::Int4(3));
+			assert_eq!(view(&col, "c").get_value(1), Value::Int4(1));
+			assert_eq!(view(&col, "c").get_value(2), Value::Int4(2));
+		}
+
+		#[test]
+		fn test_reorder_string() {
+			let col = take_rows(
+				&batch(vec![factory::utf8("c", ["a".to_string(), "b".to_string(), "c".to_string()])])
+					.unwrap(),
+				&[2, 0, 1],
+			)
+			.unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::Utf8("c".to_string()));
+			assert_eq!(view(&col, "c").get_value(1), Value::Utf8("a".to_string()));
+			assert_eq!(view(&col, "c").get_value(2), Value::Utf8("b".to_string()));
+		}
+
+		#[test]
+		fn test_reorder_none() {
+			let col = take_rows(
+				&batch(vec![factory::none_typed("c", ValueType::Boolean, 3)]).unwrap(),
+				&[2, 0, 1],
+			)
+			.unwrap();
+			assert_eq!(col.num_rows(), 3);
+
+			let col = take_rows(&col, &[1, 0]).unwrap();
+			assert_eq!(col.num_rows(), 2);
+		}
+
+		#[test]
+		fn test_reorder_identity_id() {
+			let (mock, clock, rng) = test_clock_and_rng();
+			let id1 = IdentityId::generate(&clock, &rng);
+			mock.advance_millis(1);
+			let id2 = IdentityId::generate(&clock, &rng);
+			mock.advance_millis(1);
+			let id3 = IdentityId::generate(&clock, &rng);
+
+			let col = take_rows(
+				&batch(vec![factory::identity_id("c", [id1, id2, id3])]).unwrap(),
+				&[2, 0, 1],
+			)
+			.unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::IdentityId(id3));
+			assert_eq!(view(&col, "c").get_value(1), Value::IdentityId(id1));
+			assert_eq!(view(&col, "c").get_value(2), Value::IdentityId(id2));
+		}
+
+		#[test]
+		fn test_reorder_dictionary_id() {
+			let e1 = DictionaryEntryId::U4(10);
+			let e2 = DictionaryEntryId::U4(20);
+			let e3 = DictionaryEntryId::U4(30);
+
+			let col =
+				take_rows(&batch(vec![factory::dictionary_id("c", [e1, e2, e3])]).unwrap(), &[2, 0, 1])
+					.unwrap();
+
+			assert_eq!(col.num_rows(), 3);
+			assert_eq!(view(&col, "c").get_value(0), Value::DictionaryId(e3));
+			assert_eq!(view(&col, "c").get_value(1), Value::DictionaryId(e1));
+			assert_eq!(view(&col, "c").get_value(2), Value::DictionaryId(e2));
+		}
+	}
+
+	mod concat {
+		use std::sync::Arc;
+
+		use arrow_array::RecordBatch;
+		use arrow_schema::Schema;
+		use reifydb_value::value::{
+			Value,
+			constraint::bytes::MaxBytes,
+			value_type::{ValueType, field::from_field},
+		};
+
+		use super::{retag, view};
+		use crate::value::{
+			batch::{append, batch, concat, concat_columns, empty_batch},
+			column::factory,
+		};
+
+		#[test]
+		fn concat_of_no_batches_is_the_empty_batch() {
+			// A concat of nothing must give append's identity batch, never an error or panic.
+			assert_eq!(concat(&[]).unwrap(), empty_batch());
+		}
+
+		#[test]
+		fn concat_matches_a_chain_of_appends() {
+			// Concat must unify types like repeated append, or a scan would differ by chunk count.
+			let a = batch(vec![factory::int4("c", [1, 2])]).unwrap();
+			let b = batch(vec![factory::int4_optional("c", [None, Some(4)])]).unwrap();
+			let c = batch(vec![factory::int4("c", [5])]).unwrap();
+
+			let merged = concat(&[a.clone(), b.clone(), c.clone()]).unwrap();
+
+			assert_eq!(merged, append(&append(&a, &b).unwrap(), &c).unwrap());
+			assert_eq!(view(&merged, "c").get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+			assert_eq!(view(&merged, "c").get_value(2), Value::none_of(ValueType::Int4));
+			assert_eq!(view(&merged, "c").get_value(4), Value::Int4(5));
+		}
+
+		#[test]
+		fn concat_skips_empty_batches_and_replaces_a_columnless_lead() {
+			// An empty part must not fail the merge, and a columnless lead must not drop rows.
+			let columnless = RecordBatch::new_empty(Arc::new(Schema::empty()));
+			let a = batch(vec![factory::int4("c", [1])]).unwrap();
+			let other = batch(vec![factory::utf8("x", Vec::<String>::new())]).unwrap();
+			let b = batch(vec![factory::int4("c", [2])]).unwrap();
+
+			let merged = concat(&[columnless, a, other, b]).unwrap();
+
+			assert_eq!(merged.num_rows(), 2);
+			assert_eq!(view(&merged, "c").get_value(1), Value::Int4(2));
+		}
+
+		#[test]
+		fn concat_rejects_a_name_mismatch_in_any_part() {
+			// A later part with a different column would be glued under the wrong name.
+			let a = batch(vec![factory::int4("c", [1])]).unwrap();
+			let b = batch(vec![factory::int4("c", [2])]).unwrap();
+			let c = batch(vec![factory::int4("d", [3])]).unwrap();
+
+			let error = concat(&[a, b, c]).unwrap_err();
+
+			assert!(error.diagnostic().message.contains("column name mismatch at index 0: 'c' vs 'd'"));
+		}
+
+		#[test]
+		fn concat_columns_of_nothing_fails() {
+			// A column merge has no name or type to give an empty result, so it must fail, not panic.
+			assert!(concat_columns(&[]).is_err());
+		}
+
+		#[test]
+		fn concat_columns_of_one_part_is_that_part() {
+			// A single chunk must come back as is, keeping its field details.
+			let part = retag(factory::utf8("c", ["a"]), |field_type| {
+				field_type.max_bytes = Some(MaxBytes::new(8))
+			});
+
+			assert_eq!(concat_columns(&[part.clone()]).unwrap(), part);
+		}
+
+		#[test]
+		fn concat_columns_unifies_a_bare_and_an_optional_part() {
+			// A bare chunk then a chunk with none rows must widen to Option, never drop the nones.
+			let parts = [factory::int4("c", [1, 2]), factory::int4_optional("c", [None, Some(4)])];
+
+			let (field, array) = concat_columns(&parts).unwrap();
+
+			assert_eq!(field.name(), "c");
+			assert!(field.is_nullable());
+			let merged = batch(vec![(field, array)]).unwrap();
+			assert_eq!(view(&merged, "c").get_value(1), Value::Int4(2));
+			assert_eq!(view(&merged, "c").get_value(2), Value::none_of(ValueType::Int4));
+			assert_eq!(view(&merged, "c").get_value(3), Value::Int4(4));
+		}
+
+		#[test]
+		fn concat_columns_keeps_the_field_details_of_equal_parts() {
+			// The equal-field fast path must keep max_bytes, or the merged column accepts too much.
+			let tagged = |values: [&str; 1]| {
+				retag(factory::utf8("c", values), |field_type| {
+					field_type.max_bytes = Some(MaxBytes::new(8))
+				})
+			};
+
+			let (field, array) = concat_columns(&[tagged(["a"]), tagged(["b"])]).unwrap();
+
+			assert_eq!(from_field(&field).unwrap().max_bytes, Some(MaxBytes::new(8)));
+			let merged = batch(vec![(field, array)]).unwrap();
+			assert_eq!(merged.num_rows(), 2);
+			assert_eq!(view(&merged, "c").get_value(1), Value::Utf8("b".to_string()));
 		}
 	}
 
@@ -1939,8 +2642,8 @@ pub mod tests {
 			let test_instance =
 				batch(vec![factory::none_typed("test_col", ValueType::Boolean, 2)]).unwrap();
 
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Boolean]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Boolean(true)]);
 
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
@@ -1958,8 +2661,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float4() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -1976,8 +2679,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float8() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float8]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -1994,8 +2697,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int1() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int1]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int1]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Int1(42)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2012,8 +2715,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int2() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int2]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Int2(-1234)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2030,8 +2733,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int4() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int4]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Int4(56789)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2048,8 +2751,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int8() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2066,8 +2769,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int16() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2084,8 +2787,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_string() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Utf8]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2102,8 +2805,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint1() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Uint1(255)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2120,8 +2823,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint2() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint2]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Uint2(65535)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2138,8 +2841,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint4() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint4]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2156,8 +2859,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint8() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2174,8 +2877,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint16() {
 			let test_instance = batch(vec![factory::none("test_col", 2)]).unwrap();
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
 
@@ -2205,10 +2908,10 @@ pub mod tests {
 		fn test_ok() {
 			let test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Boolean]);
-			let mut row_one = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int2, ValueType::Boolean]);
+			let mut row_one = shape.allocate_pod();
 			shape.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
-			let mut row_two = shape.allocate_table();
+			let mut row_two = shape.allocate_pod();
 			shape.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
 			let test_instance =
@@ -2464,8 +3167,8 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Boolean]);
-			let mut row = shape.allocate_table();
+			let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int2, ValueType::Boolean]);
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();
@@ -2878,11 +3581,11 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), ValueType::Uint4);
-			let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("tag", constraint)]);
+			let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::new("tag", constraint)]);
 
 			let test_instance = batch(vec![factory::none("tag", 2)]).unwrap();
 
-			let mut row = shape.allocate_table();
+			let mut row = shape.allocate_pod();
 			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
 
 			let test_instance = append_rows(test_instance, &shape, [row.freeze()], vec![]).unwrap();

@@ -1093,8 +1093,7 @@ mod tests {
 
 	#[test]
 	fn concat_keeps_a_nullable_column_nullable_across_chunks() {
-		// A chunk whose bits are all valid still declares the column Option, and joining it with a bare chunk
-		// must not drop that.
+		// An all-valid chunk still declares Option, and joining it with a bare chunk must not drop that.
 		let first = with_nulls(factory::int4("c", [1, 2]), NullBuffer::new_valid(2)).unwrap();
 		let second = factory::int4("c", [3, 4]);
 
@@ -1124,8 +1123,7 @@ mod tests {
 
 	#[test]
 	fn concat_keeps_the_decimal_precision_and_scale() {
-		// Precision and scale ride in the arrow data type, so joining chunks must not reset them to the
-		// defaults.
+		// Precision and scale live in the arrow type, so joining chunks must never reset them to defaults.
 		let first =
 			factory::decimal("c", Precision::new(9), Scale::new(2), [Decimal::from_str("1.25").unwrap()]);
 		let second =

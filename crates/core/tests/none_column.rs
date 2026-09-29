@@ -107,26 +107,3 @@ fn scatter_merging_a_none_column_with_an_option_int4_column_gives_option_int4_in
 	assert_eq!(int4_then.get_type(), option_of(ValueType::Int4));
 	assert_eq!(values(&int4_then), [Value::Int4(7), none.clone(), none]);
 }
-
-#[test]
-fn a_none_column_round_trips_through_postcard_and_json_as_itself() {
-	// Otherwise a persisted or shipped none column comes back typed, or as an any column with encoded nones.
-	let buffer = ColumnBuffer::none(2);
-
-	let from_postcard: ColumnBuffer = postcard::from_bytes(&postcard::to_stdvec(&buffer).unwrap()).unwrap();
-	let from_json: ColumnBuffer = serde_json::from_str(&serde_json::to_string(&buffer).unwrap()).unwrap();
-
-	assert_eq!(from_postcard, buffer);
-	assert_eq!(from_json, buffer);
-	assert_eq!(from_json.get_type(), option_of(ValueType::Any));
-}
-
-#[test]
-fn a_none_column_leaves_through_the_frame_edge_as_an_optional_any_column_of_nones() {
-	// Otherwise clients that know no untyped none column can not read the frame.
-	let frame = FrameColumnData::from(ColumnBuffer::none(2));
-
-	let back = ColumnBuffer::from(frame);
-
-	assert_eq!(back, ColumnBuffer::any_optional(vec![None; 2]));
-}

@@ -414,8 +414,7 @@ mod tests {
 
 	#[test]
 	fn every_datetime_construction_path_agrees_on_the_arrow_data_type() {
-		// A path that drops the "+00:00" timezone cannot interleave with the others, which require exact
-		// DataType equality.
+		// A path dropping the "+00:00" timezone cannot interleave with the others, which need exact equality.
 		let (_, via_data) = datetime("c", vec![DateTime::from_nanos(0)]);
 		let (_, via_builder) = ColumnBuilder::with_capacity(ValueType::DateTime, 1).finish("c");
 

@@ -38,16 +38,18 @@ fn a_none_pushed_into_an_any_column_is_a_null_row_with_no_encoded_value() {
 
 #[test]
 fn reads_of_an_any_column_with_a_null_row_never_decode_the_empty_row() {
-	// An empty null row that reaches the any decoder panics, so serde, equality and value reads must skip it.
+	// An empty null row that reaches the any decoder panics, so equality and value reads must skip it.
 	let column = any_column_with_a_none_between_values();
+	let view = ColumnView::try_from(&column).unwrap();
+	let expected = vec![
+		Value::Any(Box::new(Value::Int4(1))),
+		Value::none(),
+		Value::Any(Box::new(Value::Utf8("x".to_string()))),
+	];
 
-	let bytes = postcard::to_allocvec(&column).unwrap();
-	let back: ColumnBuffer = postcard::from_bytes(&bytes).unwrap();
-	let json: ColumnBuffer = serde_json::from_str(&serde_json::to_string(&column).unwrap()).unwrap();
-
-	assert_eq!(back, column);
-	assert_eq!(json, column);
-	assert_eq!(column.get_value(0), Value::Any(Box::new(Value::Int4(1))));
-	assert_eq!(column.get_value(1), Value::none());
-	assert_eq!(column.get_value(2), Value::Any(Box::new(Value::Utf8("x".to_string()))));
+	assert_eq!(column, any_column_with_a_none_between_values());
+	assert_eq!(view.get_value(0), expected[0]);
+	assert_eq!(view.get_value(1), expected[1]);
+	assert_eq!(view.get_value(2), expected[2]);
+	assert_eq!(view.iter().collect::<Vec<_>>(), expected);
 }

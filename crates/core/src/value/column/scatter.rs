@@ -695,6 +695,7 @@ mod tests {
 		.unwrap();
 		let merged = ColumnView::try_from(&merged).unwrap();
 
+		assert!(merged.is_nullable());
 		assert_eq!(merged.get_value(0), Value::Int4(8));
 		assert_eq!(merged.get_value(1), Value::Int4(2));
 	}

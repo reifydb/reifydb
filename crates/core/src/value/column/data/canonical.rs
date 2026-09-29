@@ -55,9 +55,8 @@ impl Canonical {
 	}
 
 	pub fn view(&self) -> ColumnView<'_> {
-		ColumnView::try_from((&self.buffer, self.field.as_ref())).unwrap_or_else(|error| {
-			panic!("canonical buffer does not match its field type: {error}")
-		})
+		ColumnView::try_from((&self.buffer, self.field.as_ref()))
+			.unwrap_or_else(|error| panic!("canonical buffer does not match its field type: {error}"))
 	}
 
 	pub fn len(&self) -> usize {
@@ -108,5 +107,53 @@ impl ColumnData for Canonical {
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>> {
 		Ok(Arc::new(self.clone()))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::Int32Array;
+	use reifydb_value::value::{
+		constraint::bytes::MaxBytes,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field},
+		},
+	};
+
+	use super::Canonical;
+	use crate::value::column::{
+		data::{Column, ColumnData},
+		factory,
+	};
+
+	#[test]
+	fn a_slice_keeps_the_max_bytes_and_dictionary_id() {
+		// A canonical rebuilt from the bare value type drops the limit and id, so reads cannot decode.
+		let (field, array) = factory::utf8("c", ["abc", "de", "f"]);
+		let mut field_type = from_field(&field).unwrap();
+		field_type.max_bytes = Some(MaxBytes::new(8));
+		let limited = Canonical::new(field_type.clone(), array).unwrap();
+		let sliced = Column::from_canonical(limited).slice(1, 3).unwrap().to_canonical().unwrap();
+		assert_eq!(sliced.field_type(), &field_type);
+		assert_eq!(from_field(&sliced.to_column("c").0).unwrap().max_bytes, Some(MaxBytes::new(8)));
+
+		let (field, array) = factory::dictionary_id("d", [DictionaryEntryId::U2(1), DictionaryEntryId::U2(2)]);
+		let mut field_type = from_field(&field).unwrap();
+		field_type.dictionary_id = Some(DictionaryId(9));
+		let tagged = Canonical::new(field_type, array).unwrap();
+		let sliced = Column::from_canonical(tagged).slice(1, 2).unwrap().to_canonical().unwrap();
+		assert_eq!(sliced.field_type().dictionary_id, Some(DictionaryId(9)));
+		assert_eq!(sliced.get_value(0), reifydb_value::value::Value::DictionaryId(DictionaryEntryId::U2(2)));
+	}
+
+	#[test]
+	fn new_rejects_a_buffer_of_another_type() {
+		// A buffer that does not match its type must fail here, never panic on the first read.
+		let result = Canonical::new(FieldType::from(ValueType::Utf8), Arc::new(Int32Array::from(vec![1])));
+		assert!(result.is_err());
 	}
 }
