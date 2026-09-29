@@ -19,8 +19,8 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateSeriesNode, LogicalPlan,
-		reserved::reject_reserved_column_name,
 		create::{column_saturation_property, reject_column_default, reject_digest_partition_columns},
+		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 };

@@ -435,8 +435,8 @@ class ScriptedSocket {
   insertRegion(subscriptionId: string, rownum: number, label: string) {
     const frame = {
       op: 1,
-      row_numbers: [String(rownum)],
       columns: [
+        { name: '#rownum', type: { id: 'Uint8' }, payload: [String(rownum)] },
         { name: 'id', type: { id: 'Uuid7' }, payload: [Uuid7Value.generate().toString()] },
         { name: 'label', type: { id: 'Utf8' }, payload: [label] },
       ],

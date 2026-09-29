@@ -25,8 +25,8 @@ use crate::{
 	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
-		reserved::reject_reserved_column_name,
 		create::{column_saturation_property, reject_column_default},
+		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 	token::token::Token,

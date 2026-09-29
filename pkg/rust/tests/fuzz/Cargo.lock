@@ -981,6 +981,8 @@ version = "0.9.3"
 name = "reifydb-catalog"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "crossbeam-skiplist",
  "once_cell",
  "postcard",
@@ -1006,6 +1008,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "crc32fast",
  "postcard",
  "reifydb-build",
@@ -1058,6 +1061,8 @@ dependencies = [
 name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -1105,7 +1110,9 @@ dependencies = [
 name = "reifydb-routine-abi"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "indexmap",
  "reifydb-build",
  "reifydb-catalog",
@@ -1167,6 +1174,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "bumpalo",
  "postcard",
  "rand",
@@ -1258,6 +1266,7 @@ dependencies = [
 name = "reifydb-transaction"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "crossbeam-skiplist",
  "dashmap",
  "indexmap",

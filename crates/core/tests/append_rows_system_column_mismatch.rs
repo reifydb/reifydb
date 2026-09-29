@@ -35,7 +35,8 @@ fn empty(shape: &RowShape) -> RecordBatch {
 fn appending_without_row_numbers_onto_a_stamped_batch_is_not_an_internal_error() {
 	// The caller picks whether row numbers are passed, so this must be a user-facing error, never INTERNAL_ERROR.
 	let shape = shape();
-	let stamped = append_rows(empty(&shape), &shape, rows(&shape, &[1, 2]), vec![RowNumber(1), RowNumber(2)]).unwrap();
+	let stamped =
+		append_rows(empty(&shape), &shape, rows(&shape, &[1, 2]), vec![RowNumber(1), RowNumber(2)]).unwrap();
 
 	let err = append_rows(stamped, &shape, rows(&shape, &[3]), Vec::new()).unwrap_err().diagnostic();
 

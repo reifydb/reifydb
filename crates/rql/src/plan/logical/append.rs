@@ -11,7 +11,8 @@ use crate::{
 	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{
-		AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan, reserved::reject_reserved_column_name,
+		AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan,
+		reserved::reject_reserved_column_name,
 	},
 };
 

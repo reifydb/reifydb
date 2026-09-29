@@ -59,7 +59,7 @@ describe.each(['frames', 'rbcf'] as const)('store against a live server (%s)', f
         await store.admin(writeSpec([], `create table ${created} { id: int4, name: utf8 }`), null);
         await store.command(writeSpec([], `insert ${created} [{ id: 1, name: 'a' }]`), null);
         const [rows] = await client.query(`from ${created}`, null, [items]);
-        expect(rows).toEqual([{id: 1, name: 'a'}]);
+        expect(rows).toEqual([{id: 1, name: 'a', '#rownum': expect.any(Number)}]);
     });
 
     it('admin rejects a DDL statement the server refuses rather than reporting success', async () => {
@@ -101,7 +101,7 @@ describe.each(['frames', 'rbcf'] as const)('store against a live server (%s)', f
             writeSpec([items, count], `insert ${table} [{ id: 10, name: 'ten' }]; output from ${table} filter id == 10; output from ${table} filter id == 10 aggregate { n: math::count(id) }`),
             null
         );
-        expect(rows).toEqual([{id: 10, name: 'ten'}]);
+        expect(rows).toEqual([{id: 10, name: 'ten', '#rownum': expect.any(Number)}]);
         expect(counts).toEqual([{n: 1n}]);
     });
 
@@ -121,12 +121,12 @@ describe.each(['frames', 'rbcf'] as const)('store against a live server (%s)', f
 
         const rows = await store.query(readSpec(items, rql), null);
 
-        expect(rows).toEqual([{id: 1, name: 'a'}, {id: 2, name: 'b'}]);
+        expect(rows).toEqual([{id: 1, name: 'a', '#rownum': expect.any(Number)}, {id: 2, name: 'b', '#rownum': expect.any(Number)}]);
         expect(typeof rows[0].id).toBe('number');
         expect(typeof rows[0].name).toBe('string');
         const entry = store.getEntry(readSpec(items, rql), null);
         expect(entry.status).toBe('ready');
-        expect(entry.data).toEqual(rows);
+        expect(entry.data).toEqual(rows.map(({'#rownum': _, ...rest}) => rest));
     });
 
     it('a query after a command sees the write, so the cached entry is refreshed rather than reused', async () => {
@@ -137,7 +137,7 @@ describe.each(['frames', 'rbcf'] as const)('store against a live server (%s)', f
 
         await store.command(writeSpec([], `insert ${refreshed} [{ id: 7, name: 'seven' }]`), null);
 
-        expect(await store.query(readSpec(items, rql), null)).toEqual([{id: 7, name: 'seven'}]);
+        expect(await store.query(readSpec(items, rql), null)).toEqual([{id: 7, name: 'seven', '#rownum': expect.any(Number)}]);
         expect(store.getEntry(readSpec(items, rql), null).data).toEqual([{id: 7, name: 'seven'}]);
     });
 
@@ -169,7 +169,7 @@ describe.each(['frames', 'rbcf'] as const)('store against a live server (%s)', f
             null
         );
 
-        expect(rows).toEqual([{id: 3, name: 'three'}]);
+        expect(rows).toEqual([{id: 3, name: 'three', '#rownum': expect.any(Number)}]);
         expect(typeof rows[0].id).toBe('number');
     });
 

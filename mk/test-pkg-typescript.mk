@@ -5,24 +5,13 @@
 # TypeScript Package Testing
 # =============================================================================
 
-.PHONY: test-pkg-typescript ensure-testcontainer start-testcontainer
+.PHONY: test-pkg-typescript start-testcontainer
 
-# Check if testcontainer is running and start it if needed
-ensure-testcontainer:
-	@if ! docker ps --format "table {{.Names}}" | grep -q "^reifydb-test$$"; then \
-		echo "🐳 Test container not running. Starting reifydb-test..."; \
-		$(MAKE) start-testcontainer; \
-		echo "⏳ Waiting for test container to be ready..."; \
-		sleep 3; \
-	else \
-		echo "✅ Test container reifydb-test is already running"; \
-	fi
-
-# Run TypeScript tests
-test-pkg-typescript: ensure-testcontainer
+# Run TypeScript tests against a testcontainer built from this workspace
+test-pkg-typescript: build-wasm
 	@echo "🧪 Running TypeScript tests..."
 	@if [ -d "pkg/typescript" ]; then \
-		cd pkg/typescript && $(MAKE) test; \
+		./scripts/test-pkg-typescript.sh; \
 	else \
 		echo "⚠️ Skipping TypeScript tests – directory pkg/typescript not found"; \
 	fi

@@ -16,7 +16,9 @@ fn seeded() -> TestEngine {
 }
 
 fn diagnostic(result: ExecutionResult, rql: &str) -> Diagnostic {
-	result.error.unwrap_or_else(|| panic!("`{rql}` names a user column starting with #, so it must fail")).diagnostic()
+	result.error
+		.unwrap_or_else(|| panic!("`{rql}` names a user column starting with #, so it must fail"))
+		.diagnostic()
 }
 
 #[track_caller]
