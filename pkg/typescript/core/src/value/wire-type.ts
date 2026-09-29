@@ -156,6 +156,12 @@ function payloadOf(row: any, name: string, type: Type): WireCellValue {
     if (isListType(base) || isRecordType(base)) {
         return value as WireCellValue;
     }
+    if (base === 'Boolean') {
+        if (typeof value !== 'boolean') {
+            throw new Error(`Cell for column ${name} must arrive as a boolean, got ${typeof value}`);
+        }
+        return value;
+    }
     if (typeof value !== 'string') {
         throw new Error(`Cell for column ${name} must arrive as text, got ${typeof value}`);
     }

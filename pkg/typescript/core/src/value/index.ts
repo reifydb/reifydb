@@ -94,8 +94,8 @@ export function innerOfOption(t: OptionType): Type {
     return t.Option;
 }
 
-/** A wire cell: a plain string for every scalar type, or a real JSON array/object for List/Record. */
-export type WireCellValue = string | WireCellValue[] | {[key: string]: WireCellValue};
+/** A wire cell: a JSON bool for Boolean, a plain string for every other scalar type, or a real JSON array/object for List/Record. */
+export type WireCellValue = string | boolean | WireCellValue[] | {[key: string]: WireCellValue};
 
 export interface TypeValuePair {
     type: Type;

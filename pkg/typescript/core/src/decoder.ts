@@ -64,6 +64,10 @@ export function decode(pair: TypeValuePair): Value {
         return new RecordValue(fields);
     }
 
+    if (pair.type === 'Boolean' && typeof pair.value === 'boolean') {
+        return new BooleanValue(pair.value);
+    }
+
     if (typeof pair.value !== 'string') {
         throw new Error(`Cell for type ${pair.type} must be a JSON string, got ${typeof pair.value}`);
     }
