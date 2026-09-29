@@ -1,0 +1,25 @@
+[lib]
+proc-macro = true
+path = "mod.rs"
+
+[package]
+name = "ext-trait-proc_macros"
+authors = [
+    "Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>"
+]
+version = "1.0.1"  # Keep in sync
+edition = "2018"
+
+license = "Zlib OR MIT OR Apache-2.0"
+repository = "https://github.com/danielhenrymantilla/ext-trait.rs"
+documentation = "https://docs.rs/ext-trait"
+
+description = "Internal: proc-macro backend of ::ext_trait."
+
+[dependencies]
+proc-macro2.version = "1.0.0"
+quote.version = "1.0.0"
+syn.version = "1.0.7"  # Access to `receiver()`.
+syn.features = [
+    "full",
+]

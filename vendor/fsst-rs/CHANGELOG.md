@@ -1,0 +1,252 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.5.8](https://github.com/spiraldb/fsst/compare/v0.5.7...v0.5.8) - 2026-03-19
+
+### Other
+
+- Use maintained version of fxhash ([#182](https://github.com/spiraldb/fsst/pull/182))
+
+## [0.5.7](https://github.com/spiraldb/fsst/compare/v0.5.6...v0.5.7) - 2026-03-17
+
+### Fixed
+
+- Handle exactly-sized buffers in `compress_into`/`decompress_into` ([#165](https://github.com/spiraldb/fsst/pull/165))
+
+### Other
+
+- no more duplicate candidate generation ([#181](https://github.com/spiraldb/fsst/pull/181))
+- *(deps)* lock file maintenance ([#180](https://github.com/spiraldb/fsst/pull/180))
+- *(deps)* update swatinem/rust-cache digest to e18b497 ([#179](https://github.com/spiraldb/fsst/pull/179))
+- *(deps)* lock file maintenance ([#178](https://github.com/spiraldb/fsst/pull/178))
+- *(deps)* lock file maintenance ([#176](https://github.com/spiraldb/fsst/pull/176))
+- Remove codspeed walltime benchmark ([#177](https://github.com/spiraldb/fsst/pull/177))
+- Add more micro benchmarks ([#171](https://github.com/spiraldb/fsst/pull/171))
+- *(deps)* update marcoieni/release-plz-action digest to 1528104 ([#170](https://github.com/spiraldb/fsst/pull/170))
+- *(deps)* update codspeedhq/action digest to 281164b ([#169](https://github.com/spiraldb/fsst/pull/169))
+- *(deps)* update actions/upload-artifact action to v7 ([#167](https://github.com/spiraldb/fsst/pull/167))
+- *(deps)* lock file maintenance ([#168](https://github.com/spiraldb/fsst/pull/168))
+- *(deps)* update actions/upload-artifact action to v6 ([#160](https://github.com/spiraldb/fsst/pull/160))
+- *(deps)* lock file maintenance ([#164](https://github.com/spiraldb/fsst/pull/164))
+- *(deps)* update swatinem/rust-cache digest to 779680d ([#157](https://github.com/spiraldb/fsst/pull/157))
+- *(deps)* update actions/checkout digest to de0fac2 ([#158](https://github.com/spiraldb/fsst/pull/158))
+- *(deps)* update codspeedhq/action digest to 2ac5728 ([#162](https://github.com/spiraldb/fsst/pull/162))
+- *(deps)* update marcoieni/release-plz-action digest to f708778 ([#166](https://github.com/spiraldb/fsst/pull/166))
+- *(deps)* update marcoieni/release-plz-action digest to 52440b5 ([#156](https://github.com/spiraldb/fsst/pull/156))
+- *(deps)* lock file maintenance ([#161](https://github.com/spiraldb/fsst/pull/161))
+- *(deps)* lock file maintenance ([#159](https://github.com/spiraldb/fsst/pull/159))
+- *(deps)* update actions/checkout action to v6 ([#154](https://github.com/spiraldb/fsst/pull/154))
+- *(deps)* lock file maintenance ([#155](https://github.com/spiraldb/fsst/pull/155))
+- *(deps)* update codspeedhq/action digest to 346a2d8 ([#152](https://github.com/spiraldb/fsst/pull/152))
+- *(deps)* update actions/checkout digest to 93cb6ef ([#151](https://github.com/spiraldb/fsst/pull/151))
+
+## [0.5.6](https://github.com/spiraldb/fsst/compare/v0.5.5...v0.5.6) - 2025-11-11
+
+### Other
+
+- *(deps)* update codspeedhq/action digest to 6a8e2b8 ([#147](https://github.com/spiraldb/fsst/pull/147))
+- Bump MSRV to 1.86 (and codspeed) ([#149](https://github.com/spiraldb/fsst/pull/149))
+- *(deps)* lock file maintenance ([#146](https://github.com/spiraldb/fsst/pull/146))
+- Reuse binary heap during training ([#144](https://github.com/spiraldb/fsst/pull/144))
+- *(deps)* lock file maintenance ([#141](https://github.com/spiraldb/fsst/pull/141))
+- *(deps)* update actions/upload-artifact action to v5 ([#139](https://github.com/spiraldb/fsst/pull/139))
+- *(deps)* update codspeedhq/action digest to 4348f63 ([#138](https://github.com/spiraldb/fsst/pull/138))
+
+## [0.5.5](https://github.com/spiraldb/fsst/compare/v0.5.4...v0.5.5) - 2025-10-22
+
+### Other
+
+- Add Hash/Eq to FSST symbol ([#137](https://github.com/spiraldb/fsst/pull/137))
+- *(deps)* update codspeedhq/action digest to c6574d0 ([#135](https://github.com/spiraldb/fsst/pull/135))
+- *(deps)* update codspeedhq/action digest to 7a5b8b0 ([#132](https://github.com/spiraldb/fsst/pull/132))
+- *(deps)* update marcoieni/release-plz-action digest to d529f73 ([#133](https://github.com/spiraldb/fsst/pull/133))
+
+## [0.5.4](https://github.com/spiraldb/fsst/compare/v0.5.3...v0.5.4) - 2025-10-06
+
+### Other
+
+- Expose internal bytes of Symbol ([#131](https://github.com/spiraldb/fsst/pull/131))
+- *(deps)* update rust crate criterion to v4 ([#129](https://github.com/spiraldb/fsst/pull/129))
+- *(deps)* update codspeedhq/action digest to 3959e9e ([#130](https://github.com/spiraldb/fsst/pull/130))
+- *(deps)* pin dependencies ([#116](https://github.com/spiraldb/fsst/pull/116))
+- *(deps)* update codspeedhq/action action to v4 ([#124](https://github.com/spiraldb/fsst/pull/124))
+- *(deps)* lock file maintenance ([#127](https://github.com/spiraldb/fsst/pull/127))
+- *(deps)* lock file maintenance ([#126](https://github.com/spiraldb/fsst/pull/126))
+- *(deps)* lock file maintenance ([#125](https://github.com/spiraldb/fsst/pull/125))
+- *(deps)* lock file maintenance ([#122](https://github.com/spiraldb/fsst/pull/122))
+- *(deps)* lock file maintenance ([#121](https://github.com/spiraldb/fsst/pull/121))
+- *(deps)* update actions/checkout action to v5 ([#119](https://github.com/spiraldb/fsst/pull/119))
+- *(deps)* lock file maintenance ([#118](https://github.com/spiraldb/fsst/pull/118))
+- *(deps)* lock file maintenance ([#117](https://github.com/spiraldb/fsst/pull/117))
+- *(deps)* update rust crate criterion to v3.0.5 ([#115](https://github.com/spiraldb/fsst/pull/115))
+- *(deps)* lock file maintenance ([#114](https://github.com/spiraldb/fsst/pull/114))
+- *(deps)* update rust crate criterion to v3.0.4 ([#113](https://github.com/spiraldb/fsst/pull/113))
+- *(deps)* lock file maintenance ([#112](https://github.com/spiraldb/fsst/pull/112))
+- *(deps)* lock file maintenance ([#111](https://github.com/spiraldb/fsst/pull/111))
+- *(deps)* update rust crate criterion to v3.0.3 ([#110](https://github.com/spiraldb/fsst/pull/110))
+- *(deps)* lock file maintenance ([#109](https://github.com/spiraldb/fsst/pull/109))
+- *(deps)* update rust crate criterion to v3.0.2 ([#108](https://github.com/spiraldb/fsst/pull/108))
+- *(deps)* update rust crate criterion to v3 ([#105](https://github.com/spiraldb/fsst/pull/105))
+
+## [0.5.3](https://github.com/spiraldb/fsst/compare/v0.5.2...v0.5.3) - 2025-06-17
+
+### Other
+
+- move to Rust 1.85.0 stable toolchain ([#101](https://github.com/spiraldb/fsst/pull/101))
+- *(deps)* lock file maintenance ([#100](https://github.com/spiraldb/fsst/pull/100))
+- *(deps)* lock file maintenance ([#99](https://github.com/spiraldb/fsst/pull/99))
+- *(deps)* update rust crate curl to v0.4.48 ([#98](https://github.com/spiraldb/fsst/pull/98))
+- *(deps)* lock file maintenance ([#97](https://github.com/spiraldb/fsst/pull/97))
+- *(deps)* lock file maintenance ([#96](https://github.com/spiraldb/fsst/pull/96))
+- *(deps)* lock file maintenance ([#93](https://github.com/spiraldb/fsst/pull/93))
+- *(deps)* update rust crate criterion to v2.10.1 ([#94](https://github.com/spiraldb/fsst/pull/94))
+- *(deps)* update rust crate criterion to v2.10.0 ([#92](https://github.com/spiraldb/fsst/pull/92))
+- *(deps)* lock file maintenance ([#91](https://github.com/spiraldb/fsst/pull/91))
+- *(deps)* update mozilla-actions/sccache-action action to v0.0.9 ([#89](https://github.com/spiraldb/fsst/pull/89))
+
+## [0.5.2](https://github.com/spiraldb/fsst/compare/v0.5.1...v0.5.2) - 2025-03-17
+
+### Added
+
+- add rebuild from existing function ([#84](https://github.com/spiraldb/fsst/pull/84))
+
+## [0.5.1](https://github.com/spiraldb/fsst/compare/v0.5.0...v0.5.1) - 2025-03-12
+
+### Other
+
+- Decompress in 8-byte blocks ([#82](https://github.com/spiraldb/fsst/pull/82))
+- *(deps)* lock file maintenance ([#83](https://github.com/spiraldb/fsst/pull/83))
+- Assert enough room in decoded buffer ([#79](https://github.com/spiraldb/fsst/pull/79))
+- *(deps)* update rust crate criterion to v2.9.1 ([#80](https://github.com/spiraldb/fsst/pull/80))
+- *(deps)* update mozilla-actions/sccache-action action to v0.0.8 ([#78](https://github.com/spiraldb/fsst/pull/78))
+- *(deps)* lock file maintenance ([#77](https://github.com/spiraldb/fsst/pull/77))
+- Add codspeed ([#76](https://github.com/spiraldb/fsst/pull/76))
+
+## [0.5.0](https://github.com/spiraldb/fsst/compare/v0.4.4...v0.5.0) - 2025-01-31
+
+### Added
+
+- allow specifying exact size of decompress buffer (#70)
+
+## [0.4.4](https://github.com/spiraldb/fsst/compare/v0.4.3...v0.4.4) - 2024-12-30
+
+### Added
+
+- add dbtext decompression benchmark (#44)
+
+### Other
+
+- Decode into an uninitialized byte slice ([#63](https://github.com/spiraldb/fsst/pull/63))
+- *(deps)* lock file maintenance (#62)
+- *(deps)* lock file maintenance (#60)
+- *(deps)* lock file maintenance (#59)
+- *(deps)* update mozilla-actions/sccache-action action to v0.0.7 (#58)
+- *(deps)* lock file maintenance (#57)
+- *(deps)* lock file maintenance (#56)
+- *(deps)* lock file maintenance (#55)
+- *(deps)* lock file maintenance (#54)
+- *(deps)* lock file maintenance (#53)
+- *(deps)* lock file maintenance (#50)
+- *(deps)* lock file maintenance (#49)
+- *(deps)* lock file maintenance (#47)
+- *(deps)* lock file maintenance (#46)
+
+## [0.4.3](https://github.com/spiraldb/fsst/compare/v0.4.2...v0.4.3) - 2024-10-03
+
+### Added
+
+- 35% faster decompression with less boundary check ([#41](https://github.com/spiraldb/fsst/pull/41))
+
+### Other
+
+- *(deps)* update rust crate curl to v0.4.47 ([#40](https://github.com/spiraldb/fsst/pull/40))
+- *(deps)* update mozilla-actions/sccache-action action to v0.0.6 ([#38](https://github.com/spiraldb/fsst/pull/38))
+
+## [0.4.2](https://github.com/spiraldb/fsst/compare/v0.4.1...v0.4.2) - 2024-09-17
+
+### Fixed
+
+- search for first non-empty chunk ([#35](https://github.com/spiraldb/fsst/pull/35))
+- docs first3 ([#33](https://github.com/spiraldb/fsst/pull/33))
+
+### Other
+
+- Assertion should allow empty compression ([#36](https://github.com/spiraldb/fsst/pull/36))
+
+## [0.4.1](https://github.com/spiraldb/fsst/compare/v0.4.0...v0.4.1) - 2024-09-12
+
+### Other
+
+- Use wrapping operations in fsst_hash ([#31](https://github.com/spiraldb/fsst/pull/31))
+
+## [0.4.0](https://github.com/spiraldb/fsst/compare/v0.3.0...v0.4.0) - 2024-09-03
+
+### Fixed
+- hash_table_sizing, inline hints, lint rule ([#29](https://github.com/spiraldb/fsst/pull/29))
+
+## [0.3.0](https://github.com/spiraldb/fsst/compare/v0.2.3...v0.3.0) - 2024-09-03
+
+### Added
+- port in more from the C++ code ([#24](https://github.com/spiraldb/fsst/pull/24))
+
+### Other
+- centering ([#26](https://github.com/spiraldb/fsst/pull/26))
+
+## [0.2.3](https://github.com/spiraldb/fsst/compare/v0.2.2...v0.2.3) - 2024-08-22
+
+### Added
+- reuse and clear instead of allocate, 2x speedup ([#22](https://github.com/spiraldb/fsst/pull/22))
+
+## [0.2.2](https://github.com/spiraldb/fsst/compare/v0.2.1...v0.2.2) - 2024-08-21
+
+### Other
+- implement second bitmap, ~2x speedup for train ([#21](https://github.com/spiraldb/fsst/pull/21))
+- remove spurious check ([#18](https://github.com/spiraldb/fsst/pull/18))
+
+## [0.2.1](https://github.com/spiraldb/fsst/compare/v0.2.0...v0.2.1) - 2024-08-20
+
+### Added
+- make Compressor::train 2x faster with bitmap index ([#16](https://github.com/spiraldb/fsst/pull/16))
+
+## [0.2.0](https://github.com/spiraldb/fsst/compare/v0.1.0...v0.2.0) - 2024-08-20
+
+### Other
+- tput improvements ([#13](https://github.com/spiraldb/fsst/pull/13))
+
+## [0.1.0](https://github.com/spiraldb/fsst/compare/v0.0.1...v0.1.0) - 2024-08-16
+
+### Added
+- separate Compressor and Decompressor ([#11](https://github.com/spiraldb/fsst/pull/11))
+
+### Other
+- add badges ([#10](https://github.com/spiraldb/fsst/pull/10))
+- release v0.0.1 ([#8](https://github.com/spiraldb/fsst/pull/8))
+
+## [0.0.1](https://github.com/spiraldb/fsst/releases/tag/v0.0.1) - 2024-08-15
+
+### Fixed
+- fix doc link
+
+### Other
+- turn on release-plz
+- add fuzzer, fix bug ([#7](https://github.com/spiraldb/fsst/pull/7))
+- logo ([#6](https://github.com/spiraldb/fsst/pull/6))
+- bugfix, comment fix, force compile fails for big-endian ([#5](https://github.com/spiraldb/fsst/pull/5))
+- Configure Renovate ([#1](https://github.com/spiraldb/fsst/pull/1))
+- Get compress performance to match paper algorithm 4 ([#3](https://github.com/spiraldb/fsst/pull/3))
+- docs
+- cleanup
+- words
+- README
+- disable release action for now
+- deny(missing_docs), 512 -> 511
+- add toolchain
+- add actions files
+- implementation v0
+- initial impl
+- Initial commit

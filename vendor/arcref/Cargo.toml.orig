@@ -1,0 +1,11 @@
+[package]
+name = "arcref"
+version = "0.2.0"
+authors = ["SpiralDB Authors <hello@spiraldb.com>"]
+license = "MIT"
+edition = "2024"
+repository = "https://github.com/spiraldb/arcref"
+documentation = "https://docs.rs/arcref"
+description = "For when you need a pointer and don't care if it's &'static T or Arc<T>"
+keywords = ["arc", "arcref", "static", "pointer"]
+readme = "README.md"

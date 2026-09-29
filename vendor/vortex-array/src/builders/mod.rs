@@ -1,0 +1,472 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+//! Builders for Vortex arrays.
+//!
+//! Every logical type in Vortex has a canonical (uncompressed) in-memory encoding. This module
+//! provides pre-allocated builders to construct new canonical arrays.
+//!
+//! Canonical form is not recursive, and neither are these builders: appending an array to a nested
+//! builder keeps the child in the encoding it arrived in instead of decoding it. The fields of a
+//! [`StructArray`](crate::arrays::StructArray), the elements of a list, and the storage of an
+//! [`ExtensionArray`](crate::arrays::ExtensionArray) may therefore come back compressed, or as a
+//! [`ChunkedArray`](crate::arrays::ChunkedArray) when several arrays were appended in turn.
+//!
+//! ## Example:
+//!
+//! ```
+//! use vortex_array::builders::{ArrayBuilder, builder_with_capacity_in};
+//! use vortex_array::dtype::{DType, Nullability};
+//! use vortex_array::memory::BufferAllocatorRef;
+//! use vortex_array::{VortexSessionExecute, array_session};
+//!
+//! // Create a new builder for string data.
+//! let mut builder = builder_with_capacity_in(&DType::Utf8(Nullability::NonNullable), 4, BufferAllocatorRef::static_ref());
+//!
+//! builder.append_scalar(&"a".into()).unwrap();
+//! builder.append_scalar(&"b".into()).unwrap();
+//! builder.append_scalar(&"c".into()).unwrap();
+//! builder.append_scalar(&"d".into()).unwrap();
+//!
+//! let strings = builder.finish();
+//! let mut ctx = array_session().create_execution_ctx();
+//!
+//! assert_eq!(strings.execute_scalar(0, &mut ctx).unwrap(), "a".into());
+//! assert_eq!(strings.execute_scalar(1, &mut ctx).unwrap(), "b".into());
+//! assert_eq!(strings.execute_scalar(2, &mut ctx).unwrap(), "c".into());
+//! assert_eq!(strings.execute_scalar(3, &mut ctx).unwrap(), "d".into());
+//! ```
+
+use std::any::Any;
+use std::sync::Arc;
+
+use vortex_error::VortexResult;
+
+use crate::ArrayRef;
+use crate::ExecutionCtx;
+use crate::canonical::Canonical;
+use crate::dtype::DType;
+use crate::match_each_decimal_value_type;
+use crate::match_each_native_ptype;
+use crate::memory::BufferAllocatorRef;
+use crate::scalar::Scalar;
+
+mod lazy_null_builder;
+pub(crate) use lazy_null_builder::LazyBitBufferBuilder;
+
+mod bool;
+mod child;
+mod decimal;
+pub mod dict;
+mod extension;
+mod fixed_size_list;
+mod list;
+mod listview;
+mod map;
+mod null;
+mod primitive;
+mod struct_;
+mod validity;
+mod varbinview;
+
+pub use bool::*;
+pub(crate) use child::ChildBuilder;
+pub use decimal::*;
+pub use extension::*;
+pub use fixed_size_list::*;
+pub use list::*;
+pub use listview::*;
+pub use map::*;
+pub use null::*;
+pub use primitive::*;
+pub use struct_::*;
+pub(crate) use validity::ValidityBuilder;
+pub use varbinview::*;
+
+pub use crate::arrays::varbin::builder::VarBinBuilder;
+
+#[cfg(test)]
+mod tests;
+
+/// The default capacity for builders.
+///
+/// This is equal to the default capacity for Arrow Arrays.
+pub const DEFAULT_BUILDER_CAPACITY: usize = 1024;
+
+pub trait ArrayBuilder: Send {
+    fn as_any(&self) -> &dyn Any;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn dtype(&self) -> &DType;
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Append a "zero" value to the array.
+    ///
+    /// Zero values are generally determined by [`Scalar::default_value`].
+    fn append_zero(&mut self) {
+        self.append_zeros(1)
+    }
+
+    /// Appends n "zero" values to the array.
+    ///
+    /// Zero values are generally determined by [`Scalar::default_value`].
+    fn append_zeros(&mut self, n: usize);
+
+    /// Append a "null" value to the array.
+    ///
+    /// Implementors should panic if this method is called on a non-nullable [`ArrayBuilder`].
+    fn append_null(&mut self) {
+        self.append_nulls(1)
+    }
+
+    /// The inner part of `append_nulls`.
+    ///
+    /// # Safety
+    ///
+    /// The array builder must be nullable.
+    unsafe fn append_nulls_unchecked(&mut self, n: usize);
+
+    /// Appends n "null" values to the array.
+    ///
+    /// Implementors should panic if this method is called on a non-nullable [`ArrayBuilder`].
+    fn append_nulls(&mut self, n: usize) {
+        assert!(
+            self.dtype().is_nullable(),
+            "tried to append {n} nulls to a non-nullable array builder"
+        );
+
+        // SAFETY: We check above that the array builder is nullable.
+        unsafe {
+            self.append_nulls_unchecked(n);
+        }
+    }
+
+    /// Appends a default value to the array.
+    fn append_default(&mut self) {
+        self.append_defaults(1)
+    }
+
+    /// Appends n default values to the array.
+    ///
+    /// If the array builder is nullable, then this has the behavior of `self.append_nulls(n)`.
+    /// If the array builder is non-nullable, then it has the behavior of `self.append_zeros(n)`.
+    fn append_defaults(&mut self, n: usize) {
+        if self.dtype().is_nullable() {
+            self.append_nulls(n);
+        } else {
+            self.append_zeros(n);
+        }
+    }
+
+    /// A generic function to append a scalar to the builder.
+    fn append_scalar(&mut self, scalar: &Scalar) -> VortexResult<()>;
+
+    /// Allocate space for extra `additional` items
+    fn reserve_exact(&mut self, additional: usize);
+
+    /// Constructs an Array from the builder components.
+    ///
+    /// The returned array is canonical at the top level only; its children keep whatever encoding
+    /// they were appended with.
+    ///
+    /// # Panics
+    ///
+    /// This function may panic if the builder's methods are called with invalid arguments. If only
+    /// the methods on this interface are used, the builder should not panic. However, specific
+    /// builders have interfaces that may be misused. For example, if the number of values in a
+    /// [PrimitiveBuilder]'s [vortex_buffer::BufferMut] does not match the number of validity bits,
+    /// the PrimitiveBuilder's [Self::finish] will panic.
+    fn finish(&mut self) -> ArrayRef;
+
+    /// Constructs a canonical array directly from the builder.
+    ///
+    /// This method provides a default implementation that creates an [`ArrayRef`] via `finish` and
+    /// then converts it to canonical form. Specific builders can override this with optimized
+    /// implementations that avoid the intermediate [`ArrayRef`] creation.
+    fn finish_into_canonical(&mut self, ctx: &mut ExecutionCtx) -> Canonical;
+}
+
+/// Matches a `&mut dyn ArrayBuilder` against every concrete list builder type, i.e. every
+/// [`ListBuilder`]`<O>` and [`ListViewBuilder`]`<O, S>` instantiation over the
+/// [`OffsetBuilderPType`](crate::dtype::OffsetBuilderPType) offset/size types (`u32`, `u64`, `i32`,
+/// `i64`).
+///
+/// Binds the downcast builder as `$builder` and evaluates `$body` with it, yielding
+/// `Some($body)`; yields `None` when the builder is not a list builder. List encodings dispatch
+/// through this matcher because the concrete list builders are generic over their offset/size
+/// integer types, which cannot be named through a `dyn ArrayBuilder`. The matcher is exhaustive
+/// because `OffsetBuilderPType` is sealed, so no other instantiations can be constructed.
+#[macro_export]
+macro_rules! match_each_list_builder {
+    ($dyn_builder:expr, | $builder:ident | $body:expr) => {{
+        let __dyn_builder: &mut dyn $crate::builders::ArrayBuilder = $dyn_builder;
+        match $crate::__match_each_list_builder!(
+            __dyn_builder,
+            $builder,
+            $body,
+            [u32, u64, i32, i64]
+        ) {
+            ::core::option::Option::Some(__result) => ::core::option::Option::Some(__result),
+            ::core::option::Option::None => $crate::__match_each_listview_builder!(
+                __dyn_builder,
+                $builder,
+                $body,
+                [u32, u64, i32, i64]
+            ),
+        }
+    }};
+}
+
+/// Matches a `&mut dyn ArrayBuilder` against every concrete [`ListViewBuilder`]`<O, S>`
+/// instantiation over the [`OffsetBuilderPType`](crate::dtype::OffsetBuilderPType) offset/size
+/// types (`u32`, `u64`, `i32`, `i64`), and only those.
+///
+/// Binds the downcast builder as `$builder` and evaluates `$body` with it, yielding
+/// `Some($body)`; yields `None` when the builder is not a list-view builder - including when it
+/// is a [`ListBuilder`]. Callers reach for this instead of
+/// [`match_each_list_builder!`](crate::match_each_list_builder) when the body needs methods only
+/// a list-view builder has, such as
+/// [`append_array_as_repeated_list`](ListViewBuilder::append_array_as_repeated_list).
+#[macro_export]
+macro_rules! match_each_listview_builder {
+    ($dyn_builder:expr, | $builder:ident | $body:expr) => {{
+        let __dyn_builder: &mut dyn $crate::builders::ArrayBuilder = $dyn_builder;
+        $crate::__match_each_listview_builder!(__dyn_builder, $builder, $body, [u32, u64, i32, i64])
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __match_each_list_builder {
+    ($target:ident, $builder:ident, $body:expr, []) => {
+        ::core::option::Option::None
+    };
+    ($target:ident, $builder:ident, $body:expr, [$offset:ty $(, $rest:ty)*]) => {
+        if let ::core::option::Option::Some($builder) =
+            $crate::builders::ArrayBuilder::as_any_mut($target)
+                .downcast_mut::<$crate::builders::ListBuilder<$offset>>()
+        {
+            ::core::option::Option::Some($body)
+        } else {
+            $crate::__match_each_list_builder!($target, $builder, $body, [$($rest),*])
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __match_each_listview_builder {
+    ($target:ident, $builder:ident, $body:expr, []) => {
+        ::core::option::Option::None
+    };
+    ($target:ident, $builder:ident, $body:expr, [$offset:ty $(, $rest:ty)*]) => {
+        match $crate::__match_each_listview_builder_size!(
+            $target,
+            $builder,
+            $body,
+            $offset,
+            [u32, u64, i32, i64]
+        ) {
+            ::core::option::Option::Some(__result) => ::core::option::Option::Some(__result),
+            ::core::option::Option::None => $crate::__match_each_listview_builder!(
+                $target,
+                $builder,
+                $body,
+                [$($rest),*]
+            ),
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __match_each_listview_builder_size {
+    ($target:ident, $builder:ident, $body:expr, $offset:ty, []) => {
+        ::core::option::Option::None
+    };
+    ($target:ident, $builder:ident, $body:expr, $offset:ty, [$size:ty $(, $rest:ty)*]) => {
+        if let ::core::option::Option::Some($builder) =
+            $crate::builders::ArrayBuilder::as_any_mut($target)
+                .downcast_mut::<$crate::builders::ListViewBuilder<$offset, $size>>()
+        {
+            ::core::option::Option::Some($body)
+        } else {
+            $crate::__match_each_listview_builder_size!(
+                $target, $builder, $body, $offset, [$($rest),*]
+            )
+        }
+    };
+}
+
+/// Matches a `&mut dyn ArrayBuilder` against every concrete map builder type.
+///
+/// Binds the downcast builder as `$builder` and evaluates `$body` with it, yielding
+/// `Some($body)`; yields `None` when the builder is not a map builder.
+#[macro_export]
+macro_rules! match_each_map_builder {
+    ($dyn_builder:expr, | $builder:ident | $body:expr) => {{
+        let __dyn_builder: &mut dyn $crate::builders::ArrayBuilder = $dyn_builder;
+        $crate::__match_each_map_builder!(__dyn_builder, $builder, $body, [u32, u64, i32, i64])
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __match_each_map_builder {
+    ($target:ident, $builder:ident, $body:expr, []) => {
+        ::core::option::Option::None
+    };
+    ($target:ident, $builder:ident, $body:expr, [$offset:ty $(, $rest:ty)*]) => {
+        match $crate::__match_each_map_builder_size!(
+            $target,
+            $builder,
+            $body,
+            $offset,
+            [u32, u64, i32, i64]
+        ) {
+            ::core::option::Option::Some(__result) => ::core::option::Option::Some(__result),
+            ::core::option::Option::None => $crate::__match_each_map_builder!(
+                $target,
+                $builder,
+                $body,
+                [$($rest),*]
+            ),
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __match_each_map_builder_size {
+    ($target:ident, $builder:ident, $body:expr, $offset:ty, []) => {
+        ::core::option::Option::None
+    };
+    ($target:ident, $builder:ident, $body:expr, $offset:ty, [$size:ty $(, $rest:ty)*]) => {
+        if let ::core::option::Option::Some($builder) =
+            $crate::builders::ArrayBuilder::as_any_mut($target)
+                .downcast_mut::<$crate::builders::MapBuilder<$offset, $size>>()
+        {
+            ::core::option::Option::Some($body)
+        } else {
+            $crate::__match_each_map_builder_size!(
+                $target, $builder, $body, $offset, [$($rest),*]
+            )
+        }
+    };
+}
+
+/// Construct a new canonical builder for the given [`DType`].
+#[deprecated(note = "use `builder_with_capacity_in` with an explicit allocator")]
+pub fn builder_with_capacity(dtype: &DType, capacity: usize) -> Box<dyn ArrayBuilder> {
+    builder_with_capacity_in(dtype, capacity, BufferAllocatorRef::static_ref())
+}
+
+/// Construct a new canonical builder using `allocator`.
+///
+/// # Example
+///
+/// ```
+/// use vortex_array::builders::{ArrayBuilder, builder_with_capacity_in};
+/// use vortex_array::dtype::{DType, Nullability};
+/// use vortex_array::memory::BufferAllocatorRef;
+/// use vortex_array::{VortexSessionExecute, array_session};
+///
+/// // Create a new builder for string data.
+/// let mut builder = builder_with_capacity_in(&DType::Utf8(Nullability::NonNullable), 4, BufferAllocatorRef::static_ref());
+///
+/// builder.append_scalar(&"a".into()).unwrap();
+/// builder.append_scalar(&"b".into()).unwrap();
+/// builder.append_scalar(&"c".into()).unwrap();
+/// builder.append_scalar(&"d".into()).unwrap();
+///
+/// let strings = builder.finish();
+/// let mut ctx = array_session().create_execution_ctx();
+///
+/// assert_eq!(strings.execute_scalar(0, &mut ctx).unwrap(), "a".into());
+/// assert_eq!(strings.execute_scalar(1, &mut ctx).unwrap(), "b".into());
+/// assert_eq!(strings.execute_scalar(2, &mut ctx).unwrap(), "c".into());
+/// assert_eq!(strings.execute_scalar(3, &mut ctx).unwrap(), "d".into());
+/// ```
+pub fn builder_with_capacity_in(
+    dtype: &DType,
+    capacity: usize,
+    allocator: &BufferAllocatorRef,
+) -> Box<dyn ArrayBuilder> {
+    match dtype {
+        DType::Null => Box::new(NullBuilder::new()),
+        DType::Bool(n) => Box::new(BoolBuilder::with_capacity_in(*n, capacity, allocator)),
+        DType::Primitive(ptype, n) => {
+            match_each_native_ptype!(ptype, |P| {
+                Box::new(PrimitiveBuilder::<P>::with_capacity_in(
+                    *n, capacity, allocator,
+                ))
+            })
+        }
+        DType::Decimal(decimal_type, n) => {
+            match_each_decimal_value_type!(
+                DecimalType::smallest_decimal_value_type(decimal_type),
+                |D| {
+                    Box::new(DecimalBuilder::with_capacity_in::<D>(
+                        capacity,
+                        *decimal_type,
+                        *n,
+                        allocator,
+                    ))
+                }
+            )
+        }
+        DType::Utf8(n) => Box::new(VarBinViewBuilder::with_capacity_in(
+            DType::Utf8(*n),
+            capacity,
+            allocator.clone(),
+        )),
+        DType::Binary(n) => Box::new(VarBinViewBuilder::with_capacity_in(
+            DType::Binary(*n),
+            capacity,
+            allocator.clone(),
+        )),
+        DType::List(dtype, n) => Box::new(ListViewBuilder::<u64, u64>::with_capacity_in(
+            Arc::clone(dtype),
+            *n,
+            2 * capacity, // Arbitrarily choose 2 times the `offsets` capacity here.
+            capacity,
+            allocator,
+        )),
+        DType::Map(map_dtype, nullability) => Box::new(MapBuilder::<u64, u64>::with_capacity_in(
+            map_dtype.clone(),
+            *nullability,
+            capacity,
+            allocator,
+        )),
+        DType::FixedSizeList(elem_dtype, list_size, null) => {
+            Box::new(FixedSizeListBuilder::with_capacity_in(
+                Arc::clone(elem_dtype),
+                *list_size,
+                *null,
+                capacity,
+                allocator,
+            ))
+        }
+        DType::Struct(struct_dtype, n) => Box::new(StructBuilder::with_capacity_in(
+            struct_dtype.clone(),
+            *n,
+            capacity,
+            allocator,
+        )),
+        DType::Union(..) => todo!("TODO(connor)[Union]: unimplemented"),
+        DType::Variant(_) => {
+            unimplemented!()
+        }
+        DType::Extension(ext_dtype) => Box::new(ExtensionBuilder::with_capacity_in(
+            ext_dtype.clone(),
+            capacity,
+            allocator,
+        )),
+    }
+}

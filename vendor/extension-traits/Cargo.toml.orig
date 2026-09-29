@@ -1,0 +1,23 @@
+[package]
+name = "extension-traits"
+version = "1.0.1"  # Keep in sync
+authors = ["Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>"]
+edition = "2018"
+
+license = "Zlib OR MIT OR Apache-2.0"
+repository = "https://github.com/danielhenrymantilla/ext-trait.rs"
+documentation = "https://docs.rs/ext-trait"
+readme = "README.md"
+
+description = "Annotation to easily define ad-hoc / one-shot extension traits"
+keywords = ["extension", "trait", "custom", "method", "impl"]
+
+[features]
+better-docs = []  # allowed to break MSRV
+
+[dependencies.ext-trait]
+path = ".."
+version = "1.0.1"  # Keep in sync
+
+[package.metadata.docs.rs]
+all-features = true

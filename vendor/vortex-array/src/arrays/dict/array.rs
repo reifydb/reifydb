@@ -1,0 +1,509 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use std::fmt::Display;
+use std::fmt::Formatter;
+
+use num_traits::AsPrimitive;
+use smallvec::smallvec;
+use vortex_buffer::BitBuffer;
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_mask::AllOr;
+
+use crate::ArrayRef;
+use crate::ArraySlots;
+use crate::ExecutionCtx;
+use crate::array::Array;
+use crate::array::ArrayParts;
+use crate::array::TypedArrayRef;
+use crate::array_slots;
+use crate::arrays::Dict;
+use crate::arrays::PrimitiveArray;
+use crate::dtype::DType;
+use crate::dtype::PType;
+use crate::match_each_integer_ptype;
+
+#[derive(Clone, prost::Message)]
+pub struct DictMetadata {
+    #[prost(uint32, tag = "1")]
+    pub(super) values_len: u32,
+    #[prost(enumeration = "PType", tag = "2")]
+    pub(super) codes_ptype: i32,
+    // nullable codes are optional since they were added after stabilisation.
+    #[prost(optional, bool, tag = "3")]
+    pub(super) is_nullable_codes: Option<bool>,
+    // all_values_referenced is optional for backward compatibility.
+    // true = all dictionary values are definitely referenced by at least one code.
+    // false/None = unknown whether all values are referenced (conservative default).
+    #[prost(optional, bool, tag = "4")]
+    pub(super) all_values_referenced: Option<bool>,
+}
+
+#[array_slots(Dict)]
+pub struct DictSlots {
+    /// The codes array mapping each element to a dictionary entry.
+    #[slot(0)]
+    pub codes: ArrayRef,
+    /// The dictionary values array containing the unique values.
+    #[slot(1)]
+    pub values: ArrayRef,
+}
+
+#[derive(Debug, Clone)]
+pub struct DictData {
+    /// Indicates whether all dictionary values are definitely referenced by at least one code.
+    /// `true` = all values are referenced (computed during encoding).
+    /// `false` = unknown/might have unreferenced values.
+    /// In case this is incorrect never use this to enable memory unsafe behaviour just semantically
+    /// incorrect behaviour.
+    pub(super) all_values_referenced: bool,
+}
+
+impl Display for DictData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "all_values_referenced: {}", self.all_values_referenced)
+    }
+}
+
+impl DictData {
+    /// Build a new `DictArray` without validating the codes or values.
+    ///
+    /// # Safety
+    /// This should be called only when you can guarantee the invariants checked
+    /// by the safe `DictArray::try_new` constructor are valid, for example when
+    /// you are filtering or slicing an existing valid `DictArray`.
+    pub unsafe fn new_unchecked() -> Self {
+        Self {
+            all_values_referenced: false,
+        }
+    }
+
+    /// Set whether all dictionary values are definitely referenced.
+    ///
+    /// # Safety
+    /// The caller must ensure that when setting `all_values_referenced = true`, ALL dictionary
+    /// values are actually referenced by at least one valid code. Setting this incorrectly can
+    /// lead to incorrect query results in operations like min/max.
+    ///
+    /// This is typically only set to `true` during dictionary encoding when we know for certain
+    /// that all values are referenced.
+    pub unsafe fn set_all_values_referenced(mut self, all_values_referenced: bool) -> Self {
+        self.all_values_referenced = all_values_referenced;
+        self
+    }
+
+    /// Build a new `DictArray` from its components, `codes` and `values`.
+    ///
+    /// This constructor will panic if `codes` or `values` do not pass validation for building
+    /// a new `DictArray`. See `DictArray::try_new` for a description of the error conditions.
+    pub fn new(codes_dtype: &DType) -> Self {
+        Self::try_new(codes_dtype).vortex_expect("DictArray new")
+    }
+
+    /// Build a new `DictArray` from its components, `codes` and `values`.
+    ///
+    /// The codes must be integers, and may be nullable. Values can be any
+    /// type, and may also be nullable. This mirrors the nullability of the Arrow `DictionaryArray`.
+    ///
+    /// # Errors
+    ///
+    /// The `codes` **must** be integers, and the maximum code must be less than the length
+    /// of the `values` array. Otherwise, this constructor returns an error.
+    ///
+    /// It is an error to provide a nullable `codes` with non-nullable `values`.
+    pub(crate) fn try_new(codes_dtype: &DType) -> VortexResult<Self> {
+        if !codes_dtype.is_int() {
+            vortex_bail!(MismatchedTypes: "int", codes_dtype);
+        }
+
+        Ok(unsafe { Self::new_unchecked() })
+    }
+}
+
+pub trait DictArrayExt: TypedArrayRef<Dict> + DictArraySlotsExt {
+    #[inline]
+    fn has_all_values_referenced(&self) -> bool {
+        self.all_values_referenced
+    }
+
+    fn validate_all_values_referenced(&self, ctx: &mut ExecutionCtx) -> VortexResult<()> {
+        if self.has_all_values_referenced() {
+            if !self.codes().is_host() {
+                return Ok(());
+            }
+
+            let referenced_mask = self.compute_referenced_values_mask(true, ctx)?;
+            let all_referenced = referenced_mask.true_count() == referenced_mask.len();
+
+            vortex_ensure!(all_referenced, "value in dict not referenced");
+        }
+
+        Ok(())
+    }
+
+    fn compute_referenced_values_mask(
+        &self,
+        referenced: bool,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<BitBuffer> {
+        let codes = self.codes();
+        let codes_validity = codes.validity()?.execute_mask(codes.len(), ctx)?;
+        let codes_primitive = codes.clone().execute::<PrimitiveArray>(ctx)?;
+        let values_len = self.values().len();
+
+        let init_value = !referenced;
+        let referenced_value = referenced;
+
+        let mut values_vec = vec![init_value; values_len];
+        match codes_validity.bit_buffer() {
+            AllOr::All => {
+                match_each_integer_ptype!(codes_primitive.ptype(), |P| {
+                    for idx in codes_primitive.as_slice::<P>() {
+                        let idxu: usize = idx.as_();
+                        values_vec[idxu] = referenced_value;
+                    }
+                });
+            }
+            AllOr::None => {}
+            AllOr::Some(mask) => {
+                match_each_integer_ptype!(codes_primitive.ptype(), |P| {
+                    let codes = codes_primitive.as_slice::<P>();
+                    mask.set_indices().for_each(|idx| {
+                        let idxu: usize = codes[idx].as_();
+                        values_vec[idxu] = referenced_value;
+                    });
+                });
+            }
+        }
+
+        Ok(BitBuffer::from(values_vec))
+    }
+}
+impl<T: TypedArrayRef<Dict>> DictArrayExt for T {}
+
+/// Concrete parts of a [`DictArray`](super::DictArray) after iterative execution.
+pub struct DictParts {
+    pub dtype: DType,
+    pub codes: ArrayRef,
+    pub values: ArrayRef,
+}
+
+pub trait DictOwnedExt {
+    fn into_parts(self) -> DictParts;
+}
+
+impl DictOwnedExt for Array<Dict> {
+    fn into_parts(self) -> DictParts {
+        match self.try_into_parts() {
+            Ok(array_parts) => {
+                let slots = DictSlots::from_slots(array_parts.slots);
+                DictParts {
+                    dtype: array_parts.dtype,
+                    codes: slots.codes,
+                    values: slots.values,
+                }
+            }
+            Err(array) => {
+                let slots = DictSlotsView::from_slots(array.slots());
+                DictParts {
+                    dtype: array.dtype().clone(),
+                    codes: slots.codes.clone(),
+                    values: slots.values.clone(),
+                }
+            }
+        }
+    }
+}
+
+impl Array<Dict> {
+    /// Build a new `DictArray` from its components, `codes` and `values`.
+    pub fn new(codes: ArrayRef, values: ArrayRef) -> Self {
+        Self::try_new(codes, values).vortex_expect("DictArray new")
+    }
+
+    /// Build a new `DictArray` from its components, `codes` and `values`.
+    pub fn try_new(codes: ArrayRef, values: ArrayRef) -> VortexResult<Self> {
+        let dtype = values
+            .dtype()
+            .union_nullability(codes.dtype().nullability());
+        let len = codes.len();
+        let data = DictData::try_new(codes.dtype())?;
+        Array::try_from_parts(
+            ArrayParts::new(Dict, dtype, len, data)
+                .with_slots(smallvec![Some(codes), Some(values)]),
+        )
+    }
+
+    /// Build a new `DictArray` without validating the codes or values.
+    ///
+    /// # Safety
+    ///
+    /// See [`DictData::new_unchecked`].
+    pub unsafe fn new_unchecked(codes: ArrayRef, values: ArrayRef) -> Self {
+        let dtype = values
+            .dtype()
+            .union_nullability(codes.dtype().nullability());
+        let len = codes.len();
+        let data = unsafe { DictData::new_unchecked() };
+        unsafe {
+            Array::from_parts_unchecked(
+                ArrayParts::new(Dict, dtype, len, data)
+                    .with_slots(smallvec![Some(codes), Some(values)]),
+            )
+        }
+    }
+
+    /// Set whether all values in the dictionary are referenced by at least one code.
+    ///
+    /// # Safety
+    ///
+    /// See [`DictData::set_all_values_referenced`].
+    pub unsafe fn set_all_values_referenced(self, all_values_referenced: bool) -> Self {
+        let dtype = self.dtype().clone();
+        let len = self.len();
+        let slots: ArraySlots = self.slots().iter().cloned().collect();
+        let data = unsafe {
+            self.into_data()
+                .set_all_values_referenced(all_values_referenced)
+        };
+        unsafe {
+            Array::from_parts_unchecked(ArrayParts::new(Dict, dtype, len, data).with_slots(slots))
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use rand::RngExt;
+    use rand::SeedableRng;
+    use rand::distr::Distribution;
+    use rand::distr::StandardUniform;
+    use rand::prelude::StdRng;
+    use vortex_buffer::BitBuffer;
+    use vortex_buffer::buffer;
+    use vortex_error::VortexExpect;
+    use vortex_error::VortexResult;
+    use vortex_error::vortex_panic;
+    use vortex_mask::AllOr;
+
+    use crate::ArrayRef;
+    use crate::IntoArray;
+    use crate::VortexSessionExecute;
+    use crate::array_session;
+    use crate::arrays::ChunkedArray;
+    use crate::arrays::DictArray;
+    use crate::arrays::PrimitiveArray;
+    use crate::arrays::VarBinViewArray;
+    use crate::assert_arrays_eq;
+    use crate::builders::VarBinBuilder;
+    use crate::builders::builder_with_capacity_in;
+    use crate::dtype::DType;
+    use crate::dtype::NativePType;
+    use crate::dtype::Nullability::NonNullable;
+    use crate::dtype::PType;
+    use crate::dtype::UnsignedPType;
+    use crate::validity::Validity;
+
+    #[test]
+    fn nullable_codes_validity() {
+        let dict = DictArray::try_new(
+            PrimitiveArray::new(
+                buffer![0u32, 1, 2, 2, 1],
+                Validity::from(BitBuffer::from(vec![true, false, true, false, true])),
+            )
+            .into_array(),
+            PrimitiveArray::new(buffer![3, 6, 9], Validity::AllValid).into_array(),
+        )
+        .unwrap();
+        let mask = dict
+            .as_ref()
+            .validity()
+            .unwrap()
+            .execute_mask(
+                dict.as_ref().len(),
+                &mut array_session().create_execution_ctx(),
+            )
+            .unwrap();
+        let AllOr::Some(indices) = mask.indices() else {
+            vortex_panic!("Expected indices from mask")
+        };
+        assert_eq!(indices, [0, 2, 4]);
+    }
+
+    #[test]
+    fn nullable_values_validity() {
+        let dict = DictArray::try_new(
+            buffer![0u32, 1, 2, 2, 1].into_array(),
+            PrimitiveArray::new(
+                buffer![3, 6, 9],
+                Validity::from(BitBuffer::from(vec![true, false, false])),
+            )
+            .into_array(),
+        )
+        .unwrap();
+        let mask = dict
+            .as_ref()
+            .validity()
+            .unwrap()
+            .execute_mask(
+                dict.as_ref().len(),
+                &mut array_session().create_execution_ctx(),
+            )
+            .unwrap();
+        let AllOr::Some(indices) = mask.indices() else {
+            vortex_panic!("Expected indices from mask")
+        };
+        assert_eq!(indices, [0]);
+    }
+
+    #[test]
+    fn nullable_codes_and_values() {
+        let dict = DictArray::try_new(
+            PrimitiveArray::new(
+                buffer![0u32, 1, 2, 2, 1],
+                Validity::from(BitBuffer::from(vec![true, false, true, false, true])),
+            )
+            .into_array(),
+            PrimitiveArray::new(
+                buffer![3, 6, 9],
+                Validity::from(BitBuffer::from(vec![false, true, true])),
+            )
+            .into_array(),
+        )
+        .unwrap();
+        let mask = dict
+            .as_ref()
+            .validity()
+            .unwrap()
+            .execute_mask(
+                dict.as_ref().len(),
+                &mut array_session().create_execution_ctx(),
+            )
+            .unwrap();
+        let AllOr::Some(indices) = mask.indices() else {
+            vortex_panic!("Expected indices from mask")
+        };
+        assert_eq!(indices, [2, 4]);
+    }
+
+    #[test]
+    fn nullable_codes_and_non_null_values() {
+        let dict = DictArray::try_new(
+            PrimitiveArray::new(
+                buffer![0u32, 1, 2, 2, 1],
+                Validity::from(BitBuffer::from(vec![true, false, true, false, true])),
+            )
+            .into_array(),
+            PrimitiveArray::new(buffer![3, 6, 9], Validity::NonNullable).into_array(),
+        )
+        .unwrap();
+        let mask = dict
+            .as_ref()
+            .validity()
+            .unwrap()
+            .execute_mask(
+                dict.as_ref().len(),
+                &mut array_session().create_execution_ctx(),
+            )
+            .unwrap();
+        let AllOr::Some(indices) = mask.indices() else {
+            vortex_panic!("Expected indices from mask")
+        };
+        assert_eq!(indices, [0, 2, 4]);
+    }
+
+    fn make_dict_primitive_chunks<T: NativePType, Code: UnsignedPType>(
+        len: usize,
+        unique_values: usize,
+        chunk_count: usize,
+    ) -> ArrayRef
+    where
+        StandardUniform: Distribution<T>,
+    {
+        let mut rng = StdRng::seed_from_u64(0);
+
+        (0..chunk_count)
+            .map(|_| {
+                let values = (0..unique_values)
+                    .map(|_| rng.random::<T>())
+                    .collect::<PrimitiveArray>();
+                let codes = (0..len)
+                    .map(|_| {
+                        Code::from(rng.random_range(0..unique_values)).vortex_expect("valid value")
+                    })
+                    .collect::<PrimitiveArray>();
+
+                DictArray::try_new(codes.into_array(), values.into_array())
+                    .vortex_expect("DictArray creation should succeed in arbitrary impl")
+                    .into_array()
+            })
+            .collect::<ChunkedArray>()
+            .into_array()
+    }
+
+    #[test]
+    fn test_dict_utf8_append_to_varbin_builder() -> VortexResult<()> {
+        let values = VarBinViewArray::from_iter_str(["zero", "one", "two"]);
+        let dict = DictArray::try_new(buffer![2u8, 0, 2, 1].into_array(), values.into_array())?;
+        let expected = VarBinViewArray::from_iter_str(["two", "zero", "two", "one"]);
+        let mut ctx = array_session().create_execution_ctx();
+        let mut builder = VarBinBuilder::<i32>::with_capacity_in(
+            dict.dtype().clone(),
+            dict.len(),
+            ctx.allocator(),
+        );
+
+        dict.into_array()
+            .append_to_builder(&mut builder, &mut ctx)?;
+
+        assert_arrays_eq!(builder.finish_into_varbin(), expected, &mut ctx);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dict_array_from_primitive_chunks() -> VortexResult<()> {
+        let mut ctx = array_session().create_execution_ctx();
+        let len = 2;
+        let chunk_count = 2;
+        let array = make_dict_primitive_chunks::<u64, u64>(len, 2, chunk_count);
+
+        let mut builder = builder_with_capacity_in(
+            &DType::Primitive(PType::U64, NonNullable),
+            len * chunk_count,
+            ctx.allocator(),
+        );
+        array.append_to_builder(
+            builder.as_mut(),
+            &mut array_session().create_execution_ctx(),
+        )?;
+
+        let into_prim = array.execute::<PrimitiveArray>(&mut ctx)?;
+        let prim_into = builder.finish_into_canonical(&mut ctx).into_primitive();
+
+        assert_arrays_eq!(into_prim, prim_into, &mut ctx);
+        Ok(())
+    }
+
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn test_dict_metadata() {
+        use prost::Message;
+
+        use super::DictMetadata;
+        use crate::test_harness::check_metadata;
+
+        check_metadata(
+            "dict.metadata",
+            &DictMetadata {
+                codes_ptype: PType::U64 as i32,
+                values_len: u32::MAX,
+                is_nullable_codes: None,
+                all_values_referenced: None,
+            }
+            .encode_to_vec(),
+        );
+    }
+}

@@ -1,0 +1,347 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+//! This module contains the VTable definitions for a Vortex encoding.
+//!
+//! A Vortex array encoding is implemented by a small static vtable type plus an associated
+//! `TypedArrayData` value stored in each array instance. The vtable owns behavior such as
+//! validation, serialization, execution, child traversal, scalar access, and validity access.
+//!
+//! The public [`ArrayRef`] API performs common precondition checks before calling
+//! into these traits. Implementations should focus on encoding-specific work and uphold the
+//! documented postconditions.
+
+mod operations;
+mod validity;
+
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::hash::Hasher;
+
+pub use operations::*;
+pub use validity::*;
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_error::vortex_panic;
+use vortex_session::VortexSession;
+
+use crate::Array;
+use crate::ArrayRef;
+use crate::ArrayView;
+use crate::Canonical;
+use crate::EqMode;
+use crate::ExecutionResult;
+use crate::IntoArray;
+pub use crate::array::plugin::*;
+use crate::arrays::ConstantArray;
+use crate::arrays::constant::Constant;
+use crate::buffer::BufferHandle;
+use crate::builders::ArrayBuilder;
+use crate::dtype::DType;
+use crate::dtype::Nullability;
+use crate::executor::ExecutionCtx;
+use crate::hash::ArrayEq;
+use crate::hash::ArrayHash;
+use crate::patches::Patches;
+use crate::scalar::ScalarValue;
+use crate::serde::ArrayChildren;
+use crate::validity::Validity;
+
+/// The array [`VTable`] encapsulates logic for an Array type within Vortex.
+///
+/// The logic is split across several "VTable" traits to enable easier code organization than
+/// simply lumping everything into a single trait.
+///
+/// From this [`VTable`] trait, we derive implementations for the sealed `DynArrayData` trait and the
+/// public [`ArrayPlugin`] registry trait.
+///
+/// The functions defined in these vtable traits will typically document their pre- and
+/// post-conditions. The pre-conditions are validated inside the `DynArrayData` and [`ArrayRef`]
+/// implementations so do not need to be checked in the vtable implementations (for example, index
+/// out of bounds). Post-conditions are validated after invocation of the vtable function and will
+/// panic if violated.
+pub trait VTable: 'static + Clone + Sized + Send + Sync + Debug {
+    /// Per-array data owned by this encoding, excluding child arrays.
+    ///
+    /// Child arrays belong in [`ArrayParts::slots`](crate::ArrayParts::slots) so traversal,
+    /// serialization, and layout writers can discover them generically.
+    type TypedArrayData: 'static + Send + Sync + Clone + Debug + Display + ArrayHash + ArrayEq;
+
+    /// Scalar and element-wise operation hooks for this encoding.
+    type OperationsVTable: OperationsVTable<Self>;
+    /// Validity hook for nullable instances of this encoding.
+    type ValidityVTable: ValidityVTable<Self>;
+
+    /// Returns the ID of the array.
+    fn id(&self) -> ArrayId;
+
+    /// Validates that externally supplied logical metadata matches the array data.
+    ///
+    /// This is called by [`Array::try_from_parts`](crate::Array::try_from_parts) before the array
+    /// is published. Implementations should check dtype, length, slot count, child dtypes/lengths,
+    /// metadata bounds, and any buffer shape invariants that unsafe accessors depend on.
+    fn validate(
+        &self,
+        data: &Self::TypedArrayData,
+        dtype: &DType,
+        len: usize,
+        slots: &[Option<ArrayRef>],
+    ) -> VortexResult<()>;
+
+    /// Returns the number of top-level buffers in the array.
+    fn nbuffers(array: ArrayView<'_, Self>) -> usize;
+
+    /// Returns the buffer at the given index.
+    ///
+    /// # Panics
+    /// Panics if `idx >= nbuffers(array)`.
+    fn buffer(array: ArrayView<'_, Self>, idx: usize) -> BufferHandle;
+
+    /// Returns the name of the buffer at the given index, or `None` if unnamed.
+    fn buffer_name(array: ArrayView<'_, Self>, idx: usize) -> Option<String>;
+
+    /// Rebuild this array with replacement top-level buffers.
+    ///
+    /// This is for physical rewrites that preserve `dtype`, `len`, child slots, buffer count, and
+    /// buffer lengths. The caller checks the generic invariants before dispatching here;
+    /// implementations should interpret the replacement buffers for their encoding-specific
+    /// in-memory representation.
+    fn with_buffers(
+        &self,
+        array: ArrayView<'_, Self>,
+        buffers: &[BufferHandle],
+    ) -> VortexResult<ArrayParts<Self>>;
+
+    /// Serialize encoding metadata into a byte buffer for IPC or file storage.
+    ///
+    /// Return `None` if the array cannot be serialized by this encoding. Buffers and children are
+    /// serialized separately through [`buffer`](Self::buffer), [`nbuffers`](Self::nbuffers), and
+    /// child traversal.
+    fn serialize(
+        array: ArrayView<'_, Self>,
+        session: &VortexSession,
+    ) -> VortexResult<Option<Vec<u8>>>;
+
+    /// Deserialize an array from serialized metadata, buffers, and children.
+    ///
+    /// The returned [`ArrayParts`] are still validated by the generic adapter.
+    /// Deserializers should use the provided `session` to resolve plugin-owned metadata instead of
+    /// relying on global state.
+    fn deserialize(
+        &self,
+        dtype: &DType,
+        len: usize,
+        metadata: &[u8],
+        buffers: &[BufferHandle],
+        children: &dyn ArrayChildren,
+        session: &VortexSession,
+    ) -> VortexResult<ArrayParts<Self>>;
+
+    /// Writes the array's logical values into a canonical builder.
+    ///
+    /// The default implementation executes the full array to [`Canonical`] and appends that result.
+    /// Encodings may override this to avoid materializing an intermediate canonical array.
+    fn append_to_builder(
+        array: ArrayView<'_, Self>,
+        builder: &mut dyn ArrayBuilder,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<()> {
+        let canonical = array
+            .array()
+            .clone()
+            .execute::<Canonical>(ctx)?
+            .into_array();
+        canonical.append_to_builder(builder, ctx)
+    }
+
+    /// Returns the name of the slot at the given index.
+    ///
+    /// # Panics
+    /// Panics if `idx >= slots(array).len()`.
+    fn slot_name(array: ArrayView<'_, Self>, idx: usize) -> String;
+
+    /// Execute this array by returning an [`ExecutionResult`].
+    ///
+    /// Execution is **iterative**, not recursive. Instead of recursively executing children,
+    /// implementations should return [`ExecutionResult::execute_slot`] to request that the
+    /// scheduler execute a slot first, or [`ExecutionResult::done`] when the encoding can
+    /// produce a result directly.
+    ///
+    /// For good examples of this pattern, see:
+    /// - [`Dict::execute`](crate::arrays::dict::vtable::Dict::execute) — demonstrates
+    ///   requiring children via `require_child!` and producing a result once they are canonical.
+    /// - `BitPacked::execute` (in `vortex-fastlanes`) — demonstrates requiring patches and
+    ///   validity via `require_patches!`/`require_validity!`.
+    ///
+    /// Array execution is designed such that repeated execution of an array will eventually
+    /// converge to a canonical representation. Implementations of this function should therefore
+    /// ensure they make progress towards that goal.
+    ///
+    /// The returned array (in `Done`) must be logically equivalent to the input array. In other
+    /// words, the recursively canonicalized forms of both arrays must be equal.
+    ///
+    /// Debug builds will panic if the returned array is of the wrong type, wrong length, or
+    /// incorrectly contains null values.
+    fn execute(array: Array<Self>, ctx: &mut ExecutionCtx) -> VortexResult<ExecutionResult>;
+
+    /// Attempt to reduce the array to a simpler representation without changing logical values.
+    ///
+    /// Reductions are opportunistic and may return `Ok(None)` when no cheaper representation is
+    /// known.
+    fn reduce(array: ArrayView<'_, Self>) -> VortexResult<Option<ArrayRef>> {
+        _ = array;
+        Ok(None)
+    }
+
+    /// Attempt to reduce `parent` after this array appears as one of its children.
+    ///
+    /// This is used by lazy arrays to let child execution unlock parent simplifications.
+    fn reduce_parent(
+        array: ArrayView<'_, Self>,
+        parent: &ArrayRef,
+        child_idx: usize,
+    ) -> VortexResult<Option<ArrayRef>> {
+        _ = (array, parent, child_idx);
+        Ok(None)
+    }
+}
+
+/// Alias for migration — downstream code can start using `ArrayVTable`.
+pub use VTable as ArrayVTable;
+
+use crate::array::ArrayId;
+use crate::array::ArrayParts;
+
+/// Empty array metadata struct for encodings with no per-array metadata.
+#[derive(Clone, Debug, Default)]
+pub struct EmptyArrayData;
+
+impl ArrayEq for EmptyArrayData {
+    fn array_eq(&self, _other: &Self, _accuracy: EqMode) -> bool {
+        true
+    }
+}
+impl ArrayHash for EmptyArrayData {
+    fn array_hash<H: Hasher>(&self, _state: &mut H, _accuracy: EqMode) {}
+}
+
+impl Display for EmptyArrayData {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
+/// Rebuild an array that has no top-level buffers.
+#[inline]
+pub fn with_empty_buffers<V: VTable>(
+    vtable: &V,
+    array: ArrayView<'_, V>,
+    buffers: &[BufferHandle],
+) -> VortexResult<ArrayParts<V>> {
+    vortex_ensure!(
+        buffers.is_empty(),
+        "Array {} expects 0 buffers, got {}",
+        array.encoding_id(),
+        buffers.len()
+    );
+    Ok(ArrayParts::new(
+        vtable.clone(),
+        array.dtype().clone(),
+        array.len(),
+        array.data().clone(),
+    )
+    .with_slots(array.slots().iter().cloned().collect()))
+}
+
+/// Reject buffer replacement for encodings whose exposed buffers are not runtime backing buffers.
+#[inline]
+pub fn unsupported_buffer_replacement<V: VTable>(
+    array: ArrayView<'_, V>,
+    _buffers: &[BufferHandle],
+) -> VortexResult<ArrayParts<V>> {
+    vortex_bail!(
+        "Array {} does not support in-memory buffer replacement",
+        array.encoding_id()
+    )
+}
+
+/// Placeholder type used to indicate when a particular vtable is not supported by the encoding.
+pub struct NotSupported;
+
+/// Returns the validity as a child array if it produces one.
+#[inline]
+pub fn validity_to_child(validity: &Validity, len: usize) -> Option<ArrayRef> {
+    match validity {
+        Validity::NonNullable | Validity::AllValid => None,
+        Validity::AllInvalid => Some(ConstantArray::new(false, len).into_array()),
+        Validity::Array(array) => Some(array.clone()),
+    }
+}
+
+/// Reconstruct a [`Validity`] from an optional child array and nullability.
+///
+/// This is the inverse of [`validity_to_child`].
+#[inline]
+pub fn child_to_validity(child: Option<&ArrayRef>, nullability: Nullability) -> Validity {
+    match child {
+        Some(arr) => {
+            // Detect constant bool arrays created by validity_to_child.
+            // Use direct ScalarValue matching to avoid expensive scalar conversion.
+            if let Some(c) = arr.as_opt::<Constant>()
+                && let Some(ScalarValue::Bool(val)) = c.scalar().value()
+            {
+                return if *val {
+                    Validity::AllValid
+                } else {
+                    Validity::AllInvalid
+                };
+            }
+            Validity::Array(arr.clone())
+        }
+        None => Validity::from(nullability),
+    }
+}
+
+/// Returns 1 if validity produces a child, 0 otherwise.
+#[inline]
+pub fn validity_nchildren(validity: &Validity) -> usize {
+    match validity {
+        Validity::NonNullable | Validity::AllValid => 0,
+        Validity::AllInvalid | Validity::Array(_) => 1,
+    }
+}
+
+/// Returns the number of children produced by patches.
+#[inline]
+pub fn patches_nchildren(patches: &Patches) -> usize {
+    2 + patches.chunk_offsets().is_some() as usize
+}
+
+/// Returns the child at the given index within a patches component.
+#[inline]
+pub fn patches_child(patches: &Patches, idx: usize) -> ArrayRef {
+    match idx {
+        0 => patches.indices().clone(),
+        1 => patches.values().clone(),
+        2 => patches
+            .chunk_offsets()
+            .as_ref()
+            .vortex_expect("patch_chunk_offsets child out of bounds")
+            .clone(),
+        _ => vortex_panic!("patches child index {idx} out of bounds"),
+    }
+}
+
+/// Returns the name of the child at the given index within a patches component.
+#[inline]
+pub fn patches_child_name(idx: usize) -> &'static str {
+    match idx {
+        0 => "patch_indices",
+        1 => "patch_values",
+        2 => "patch_chunk_offsets",
+        _ => vortex_panic!("patches child name index {idx} out of bounds"),
+    }
+}

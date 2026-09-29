@@ -1,0 +1,82 @@
+[package]
+name = "fastlanes"
+version = "0.6.1"
+description = "Rust implementation of the FastLanes compression layout"
+license = "Apache-2.0"
+homepage = "https://github.com/spiraldb/fastlanes"
+repository = "https://github.com/spiraldb/fastlanes"
+authors = ["SpiralDB <hello@spiraldb.com>"]
+keywords = ["fastlanes", "compression", "codec", "encoding", "lightweight"]
+edition = "2024"
+rust-version = "1.91"
+exclude = [".github/*", "renovate.json", ".git/*"]
+
+[features]
+default = []
+# Enables runtime CPU feature detection for `transpose_bits`/`untranspose_bits`
+# dispatch. Without it, the dispatch is resolved at compile time from the enabled
+# `target_feature`s, keeping the crate `no_std`.
+std = []
+
+[dependencies]
+const_for = "0.1"
+num-traits = "0.2"
+pastey = "0.2"
+seq-macro = "0.3"
+
+[dev-dependencies]
+arrayref = "0.3"
+divan = { package = "codspeed-divan-compat", version = "5.0" }
+hegeltest = "0.28.2"
+
+[lints.rust]
+warnings = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(codspeed)'] }
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# enable pedantic lint group with overrides
+pedantic = { level = "deny", priority = -1 }
+cast_possible_truncation = "allow"
+needless_range_loop = "allow"
+# opt-in to members of the "restrictions" lint group
+if_then_some_else_none = "deny"
+mem_forget = "deny"
+multiple_inherent_impl = "deny"
+or_fun_call = "deny"
+panic = "deny"
+same_name_method = "deny"
+self_named_module_files = "deny"
+tests_outside_test_module = "deny"
+unwrap_used = "deny"
+use_debug = "deny"
+
+[[bench]]
+name = "bitpacking"
+harness = false
+
+[[bench]]
+name = "ffor"
+harness = false
+
+[[bench]]
+name = "bitpacking_cmp"
+harness = false
+
+[[bench]]
+name = "delta"
+harness = false
+
+[[bench]]
+name = "transpose"
+harness = false
+
+[[bench]]
+name = "bit_transpose"
+harness = false
+required-features = ["std"]
+
+[[bench]]
+name = "rle"
+harness = false

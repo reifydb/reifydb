@@ -1,0 +1,2 @@
+[alias]
+test-ui = ["test", "--doc", "--features", "ui-tests", "--", "--nocapture", "--test-threads", "1"]

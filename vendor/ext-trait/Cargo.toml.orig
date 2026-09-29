@@ -1,0 +1,36 @@
+[package]
+name = "ext-trait"
+authors = [
+    "Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>"
+]
+version = "1.0.1"  # Keep in sync
+edition = "2018"
+
+license = "Zlib OR MIT OR Apache-2.0"
+repository = "https://github.com/danielhenrymantilla/ext-trait.rs"
+documentation = "https://docs.rs/ext-trait"
+readme = "README.md"
+
+description = "Annotation to easily define ad-hoc / one-shot extension traits"
+keywords = ["extension", "trait", "custom", "method", "impl"]
+
+[features]
+better-docs = []  # allowed to break MSRV
+ui-tests = ["better-docs"]
+
+[dependencies]
+
+[dependencies.ext-trait-proc_macros]
+path = "src/proc_macros"
+version = "1.0.1"  # Keep in sync
+
+[dev-dependencies]
+
+[workspace]
+members = [
+    "src/proc_macros",
+    "extension-traits",
+]
+
+[package.metadata.docs.rs]
+all-features = true
