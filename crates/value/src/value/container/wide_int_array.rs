@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Display, result::Result as StdResult, slice::ChunksExact};
+use std::{fmt::Display, slice::ChunksExact};
 
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_buffer::MutableBuffer;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::value::{Value, container::fixed_array, to_value::ToValue, value_type::ValueType};
 
@@ -98,57 +97,9 @@ pub fn as_string<T: WideInt + Display>(array: &FixedSizeBinaryArray, index: usiz
 	}
 }
 
-pub fn serialize<T, Ser>(array: &FixedSizeBinaryArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
-where
-	T: WideInt + Serialize,
-	Ser: Serializer,
-{
-	#[derive(Serialize)]
-	struct Helper<T: Serialize> {
-		data: Vec<T>,
-	}
-	Helper {
-		data: wides::<T>(array),
-	}
-	.serialize(serializer)
-}
-
-pub fn deserialize<'de, T, D>(deserializer: D) -> StdResult<FixedSizeBinaryArray, D::Error>
-where
-	T: WideInt + Deserialize<'de>,
-	D: Deserializer<'de>,
-{
-	#[derive(Deserialize)]
-	struct Helper<T> {
-		data: Vec<T>,
-	}
-	Ok(wide_array(Helper::<T>::deserialize(deserializer)?.data))
-}
-
 #[cfg(test)]
 mod tests {
-	use postcard::{from_bytes, to_allocvec};
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
-
 	use super::*;
-
-	#[derive(Serialize, Deserialize)]
-	struct Int16Column(
-		#[serde(serialize_with = "serialize::<i128, _>", deserialize_with = "deserialize::<i128, _>")]
-		FixedSizeBinaryArray,
-	);
-
-	#[derive(Serialize, Deserialize)]
-	struct Uint16Column(
-		#[serde(serialize_with = "serialize::<u128, _>", deserialize_with = "deserialize::<u128, _>")]
-		FixedSizeBinaryArray,
-	);
-
-	#[derive(Serialize)]
-	struct Expected<T: Serialize> {
-		data: Vec<T>,
-	}
 
 	const INT16_EXTREMES: [i128; 5] = [i128::MIN, -1, 0, 1, i128::MAX];
 
@@ -189,47 +140,6 @@ mod tests {
 		let array = wide_array([i128::MIN]);
 		assert_eq!(as_string::<i128>(&array, 0), i128::MIN.to_string());
 		assert_eq!(get_value::<i128>(&array, 1), Value::none_of(ValueType::Int16));
-	}
-
-	#[test]
-	fn int16_serde_writes_i128_rows() {
-		// The wire must carry the plain i128 values; writing the ordered row bytes would break every reader.
-		let column = Int16Column(wide_array(INT16_EXTREMES));
-		let bytes = to_allocvec(&column).unwrap();
-		let expected = to_allocvec(&Expected {
-			data: INT16_EXTREMES.to_vec(),
-		})
-		.unwrap();
-		assert_eq!(bytes, expected);
-		let back: Int16Column = from_bytes(&bytes).unwrap();
-		assert_eq!(wides::<i128>(&back.0), INT16_EXTREMES);
-		let json = to_string(&column).unwrap();
-		assert_eq!(
-			json,
-			to_string(&Expected {
-				data: INT16_EXTREMES.to_vec(),
-			})
-			.unwrap()
-		);
-		let back: Int16Column = from_str(&json).unwrap();
-		assert_eq!(wides::<i128>(&back.0), INT16_EXTREMES);
-	}
-
-	#[test]
-	fn uint16_serde_writes_u128_rows() {
-		// The wire must carry the plain u128 values; writing the ordered row bytes would break every reader.
-		let column = Uint16Column(wide_array(UINT16_BOUNDARIES));
-		let bytes = to_allocvec(&column).unwrap();
-		let expected = to_allocvec(&Expected {
-			data: UINT16_BOUNDARIES.to_vec(),
-		})
-		.unwrap();
-		assert_eq!(bytes, expected);
-		let back: Uint16Column = from_bytes(&bytes).unwrap();
-		assert_eq!(wides::<u128>(&back.0), UINT16_BOUNDARIES);
-		let json = to_string(&column).unwrap();
-		let back: Uint16Column = from_str(&json).unwrap();
-		assert_eq!(wides::<u128>(&back.0), UINT16_BOUNDARIES);
 	}
 
 	#[test]

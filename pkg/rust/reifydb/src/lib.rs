@@ -38,8 +38,6 @@ pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_codec as codec;
-#[cfg(feature = "column")]
-pub use reifydb_column as column;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
 pub use reifydb_core::actors::server::Operation;
@@ -66,6 +64,8 @@ pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;
+#[cfg(feature = "column")]
+pub use reifydb_store_column as column;
 pub mod routine {
 	pub use reifydb_routine::{function, monoid, procedure};
 	pub use reifydb_routine_abi as abi;

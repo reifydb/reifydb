@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, result::Result as StdResult, str};
+use std::borrow::Cow;
 
 use arrow_array::{
-	Array, GenericByteArray, LargeBinaryArray, LargeStringArray,
-	builder::{GenericByteBuilder, LargeBinaryBuilder, LargeStringBuilder},
-	types::ByteArrayType,
+	Array, GenericByteArray, LargeBinaryArray, LargeStringArray, builder::GenericByteBuilder, types::ByteArrayType,
 };
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer};
 use arrow_select::filter::FilterPredicate;
-use serde::{Deserialize, Deserializer, Serializer, de::Error as DeError, ser::SerializeSeq};
-use serde_bytes::{ByteBuf, Bytes};
 
 use crate::{
 	Result,
@@ -190,53 +186,11 @@ pub fn blob_as_string(array: &LargeBinaryArray, index: usize) -> String {
 	}
 }
 
-pub fn serialize<T, Ser>(array: &GenericByteArray<T>, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
-where
-	T: ByteArrayType<Offset = i64>,
-	Ser: Serializer,
-{
-	let mut seq = serializer.serialize_seq(Some(array.len()))?;
-	for i in 0..array.len() {
-		seq.serialize_element(Bytes::new(row_bytes(array, i)))?;
-	}
-	seq.end()
-}
-
-pub fn deserialize_utf8<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<LargeStringArray, D::Error> {
-	let items: Vec<ByteBuf> = Vec::deserialize(deserializer)?;
-	let total: usize = items.iter().map(|b| b.len()).sum();
-	let mut builder = LargeStringBuilder::with_capacity(items.len(), total);
-	for item in &items {
-		let text = str::from_utf8(item.as_slice()).map_err(DeError::custom)?;
-		builder.append_value(text);
-	}
-	Ok(builder.finish())
-}
-
-pub fn deserialize_blob<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<LargeBinaryArray, D::Error> {
-	let items: Vec<ByteBuf> = Vec::deserialize(deserializer)?;
-	let total: usize = items.iter().map(|b| b.len()).sum();
-	let mut builder = LargeBinaryBuilder::with_capacity(items.len(), total);
-	for item in &items {
-		builder.append_value(item.as_slice());
-	}
-	Ok(builder.finish())
-}
-
 #[cfg(test)]
 mod tests {
-	use postcard::{from_bytes as postcard_from_bytes, to_allocvec as postcard_to_allocvec};
-	use serde::{Deserialize, Serialize};
+	use arrow_array::builder::LargeStringBuilder;
 
 	use super::*;
-
-	#[derive(Serialize)]
-	struct Utf8Column(#[serde(serialize_with = "serialize")] LargeStringArray);
-
-	#[derive(Serialize, Deserialize)]
-	struct BlobColumn(
-		#[serde(serialize_with = "serialize", deserialize_with = "deserialize_blob")] LargeBinaryArray,
-	);
 
 	mod utf8 {
 		use super::*;
@@ -324,18 +278,6 @@ mod tests {
 			assert_eq!(compact_parts(&container).0, b"aabb");
 			assert_eq!(&*compact_parts(&container).1, &[0i64, 2, 4]);
 		}
-
-		#[test]
-		fn test_postcard_wire_compat() {
-			// Postcard bytes must match Vec<String>, otherwise stored state and CDC stop decoding.
-			let strings = vec!["hello".to_string(), "world".to_string()];
-			let strings_bytes: Vec<u8> = postcard_to_allocvec(&strings).unwrap();
-
-			let container = Utf8Column(LargeStringArray::from(strings.clone()));
-			let container_bytes: Vec<u8> = postcard_to_allocvec(&container).unwrap();
-
-			assert_eq!(strings_bytes, container_bytes);
-		}
 	}
 
 	mod blob {
@@ -347,18 +289,6 @@ mod tests {
 			let container = blob_array(&[Blob::new(vec![0xAA, 0xBB]), Blob::new(vec![0xCC])]);
 			assert_eq!(compact_parts(&container).0, &[0xAAu8, 0xBB, 0xCC]);
 			assert_eq!(&*compact_parts(&container).1, &[0i64, 2, 3]);
-		}
-
-		#[test]
-		fn test_postcard_wire_compat() {
-			// Postcard bytes must match Vec<Blob>, otherwise stored state and CDC stop decoding.
-			let blobs = vec![Blob::new(vec![1, 2, 3]), Blob::new(vec![4, 5])];
-			let blobs_bytes: Vec<u8> = postcard_to_allocvec(&blobs).unwrap();
-
-			let container = BlobColumn(blob_array(&blobs));
-			let container_bytes: Vec<u8> = postcard_to_allocvec(&container).unwrap();
-
-			assert_eq!(blobs_bytes, container_bytes);
 		}
 	}
 
@@ -406,33 +336,6 @@ mod tests {
 			assert_eq!(get(&s, 0), Some(b"bb".as_slice()));
 			assert_eq!(get(&s, 1), Some(b"cc".as_slice()));
 			assert_eq!(&*compact_parts(&s).1, &[0i64, 2, 4]);
-		}
-
-		#[test]
-		fn serde_round_trip_preserves_content() {
-			// A postcard round trip must keep every row, including empty ones, in order.
-			let original =
-				BlobColumn(LargeBinaryArray::from_iter_values([b"hello".as_slice(), b"", b"world"]));
-			let encoded: Vec<u8> = postcard_to_allocvec(&original).unwrap();
-			let decoded: BlobColumn = postcard_from_bytes(&encoded).unwrap();
-			let decoded = decoded.0;
-			assert_eq!(decoded.len(), 3);
-			assert_eq!(get(&decoded, 0), Some(b"hello".as_slice()));
-			assert_eq!(get(&decoded, 1), Some(b"".as_slice()));
-			assert_eq!(get(&decoded, 2), Some(b"world".as_slice()));
-		}
-
-		#[test]
-		fn serde_wire_compat_with_vec_of_strings() {
-			// Byte rows must decode Vec<String> bytes, otherwise rows written as strings stop decoding.
-			let strings = vec!["a".to_string(), "bc".to_string(), "def".to_string()];
-			let encoded: Vec<u8> = postcard_to_allocvec(&strings).unwrap();
-			let decoded: BlobColumn = postcard_from_bytes(&encoded).unwrap();
-			let decoded = decoded.0;
-			assert_eq!(decoded.len(), 3);
-			assert_eq!(get(&decoded, 0), Some(b"a".as_slice()));
-			assert_eq!(get(&decoded, 1), Some(b"bc".as_slice()));
-			assert_eq!(get(&decoded, 2), Some(b"def".as_slice()));
 		}
 
 		#[test]

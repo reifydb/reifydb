@@ -9,8 +9,8 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
 use reifydb_core::common::CommitVersion;
+use reifydb_store_column::reader::SnapshotReader;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -125,7 +125,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
-	let mut reader = SnapshotReader::new(Arc::clone(&block), 100);
+	let mut reader = SnapshotReader::new(Arc::clone(&block), 100, block_store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 
 	let n = batch.num_rows();
@@ -181,7 +181,7 @@ fn table_snapshot_system_columns_match_row_metadata() {
 	)
 	.expect("table snapshot did not materialize within 5 seconds");
 
-	let mut reader = SnapshotReader::new(Arc::clone(&block), 100);
+	let mut reader = SnapshotReader::new(Arc::clone(&block), 100, block_store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert_eq!(batch.num_rows(), 3);
 

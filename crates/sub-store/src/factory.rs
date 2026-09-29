@@ -5,8 +5,6 @@
 use std::sync::Arc;
 
 #[cfg(feature = "column")]
-use reifydb_column::compress::Compressor;
-#[cfg(feature = "column")]
 use reifydb_core::event::{EventBus, transaction::PostCommitEvent};
 use reifydb_core::util::ioc::IocContainer;
 #[cfg(feature = "column")]
@@ -18,7 +16,7 @@ use reifydb_sqlite::SqliteConfig;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{compress::Compressor, store::ColumnStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
@@ -77,10 +75,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
-		let compressor = || match self.config.compress.clone() {
-			Some(cfg) => Compressor::new(cfg),
-			None => Compressor::disabled(),
-		};
+		let compressor = || Compressor::new(block_store.session().clone());
 
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());

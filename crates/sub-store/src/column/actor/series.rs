@@ -11,12 +11,6 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
 };
-use reifydb_column::{
-	bucket::{Bucket, BucketId, bucket_for, is_closed},
-	compress::Compressor,
-	snapshot::ColumnBlock,
-	stats::block_stats,
-};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -45,7 +39,13 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{
+	bucket::{Bucket, BucketId, bucket_for, is_closed},
+	compress::Compressor,
+	snapshot::ColumnBlock,
+	stats::block_stats,
+	store::ColumnStore,
+};
 use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
@@ -60,9 +60,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use tracing::{debug, warn};
-
-const PARTITION_CARDINALITY_WARN: usize = 1000;
+use tracing::debug;
 
 use crate::column::{
 	actor::{
@@ -293,15 +291,6 @@ impl SeriesMaterializationActor {
 		} else {
 			self.read_partition_registry(query_txn, series)?
 		};
-		if partitions.len() > PARTITION_CARDINALITY_WARN {
-			warn!(
-				series = %series.name,
-				series_id = ?series.id,
-				partitions = partitions.len(),
-				"series exceeds {} partitions; the column store writes one block per bucket per partition",
-				PARTITION_CARDINALITY_WARN
-			);
-		}
 		state.partitions.insert(series.id, partitions.clone());
 		Ok(partitions)
 	}
@@ -369,7 +358,7 @@ impl SeriesMaterializationActor {
 		}
 
 		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
-		let stats = block_stats(block.as_ref())?;
+		let stats = block_stats(block.as_ref(), self.block_store.session())?;
 		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, block)
 	}
 

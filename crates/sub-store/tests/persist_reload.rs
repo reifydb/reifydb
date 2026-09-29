@@ -9,9 +9,8 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, store::ColumnStore};
+use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, reader::SnapshotReader, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -70,7 +69,7 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		.find(|b| b.len() == 3)
 		.expect("reloaded block store must contain the 3-row block from disk");
 
-	let mut reader = SnapshotReader::new(block, 100);
+	let mut reader = SnapshotReader::new(block, 100, reloaded.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert_eq!(batch.num_rows(), 3);
 

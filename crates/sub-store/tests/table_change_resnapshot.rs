@@ -9,8 +9,7 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{reader::SnapshotReader, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -60,7 +59,7 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 	if block.is_empty() {
 		return Some(rows);
 	}
-	let mut reader = SnapshotReader::new(block, 100);
+	let mut reader = SnapshotReader::new(block, 100, store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	for row in 0..batch.num_rows() {
 		let id = match column_view(&batch, "id").expect("id view").expect("id column").get_value(row) {

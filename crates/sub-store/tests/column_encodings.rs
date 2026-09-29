@@ -9,10 +9,10 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::{reader::SnapshotReader, snapshot::ColumnBlock};
-use reifydb_core::value::column::encoding::EncodingId;
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, store::ColumnStore};
+use reifydb_store_column::{
+	persistent::sqlite::SqliteColumnStore, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore,
+};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -25,7 +25,7 @@ const INSERT: &str = "INSERT test::t [{id: 1, tag: \"same\", note: none},\
 	 {id: 2, tag: \"same\", note: none},\
 	 {id: 3, tag: \"same\", note: none}]";
 
-fn encoding_of(block: &ColumnBlock, name: &str) -> EncodingId {
+fn encoding_of(block: &ColumnBlock, name: &str) -> String {
 	let (_, chunks) = block.column_by_name(name).unwrap_or_else(|| panic!("column {name} missing from block"));
 	assert_eq!(
 		chunks.chunks.len(),
@@ -33,38 +33,25 @@ fn encoding_of(block: &ColumnBlock, name: &str) -> EncodingId {
 		"{name} materialized as {} chunks, so a single-chunk encoding assertion would not describe the whole column",
 		chunks.chunks.len()
 	);
-	chunks.chunks[0].encoding()
+	chunks.chunks[0].encoding_id().to_string()
 }
 
-fn assert_encodings(block: &ColumnBlock, stage: &str) {
-	assert_eq!(
-		encoding_of(block, "tag"),
-		EncodingId::CONSTANT,
-		"{stage}: a column holding one repeated value must be CONSTANT"
-	);
-	assert_eq!(
-		encoding_of(block, "note"),
-		EncodingId::ALL_NONE,
-		"{stage}: a column holding only none must be ALL_NONE"
-	);
-	assert_eq!(
-		encoding_of(block, "id"),
-		EncodingId::CANONICAL_FIXED,
-		"{stage}: a varying column must stay canonical, otherwise the compressor is encoding blindly"
-	);
+fn assert_encodings(block: &ColumnBlock, stage: &str) -> Vec<String> {
+	let tag = encoding_of(block, "tag");
+	let note = encoding_of(block, "note");
+	let id = encoding_of(block, "id");
+	assert_eq!(tag, "vortex.constant", "{stage}: a column holding one repeated value must compress to constant");
+	assert_eq!(note, "vortex.constant", "{stage}: a column holding only none must compress to a constant none");
+	assert_ne!(id, "vortex.constant", "{stage}: a varying column must not be encoded blindly as constant");
+	vec![tag, note, id]
 }
 
 #[test]
 fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
-	// The loop under test is compress -> persist -> load -> read, and every stage is asserted
-	// separately: a stage that silently canonicalizes still returns the right values, so a
-	// values-only test would pass while the column store saved nothing.
-	// tag repeats one value so CONSTANT fires, note is entirely none so ALL_NONE fires, and id
-	// varies so it must stay canonical - without id the test could not tell compression from
-	// blanket encoding.
+	// A stage that silently canonicalizes still returns the right values, so every stage asserts its encodings.
 	let (column_cfg, _guard) = SqliteConfig::in_memory();
 
-	{
+	let compressed = {
 		let storage_config = StorageConfig {
 			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -87,13 +74,13 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 		)
 		.expect("a 3-row block did not materialize within 5 seconds");
 
-		assert_encodings(&block, "after compression");
+		let compressed = assert_encodings(&block, "after compression");
 
 		db.stop();
-	}
+		compressed
+	};
 
-	// Nothing re-materializes below: a fresh tier over the same file can only answer from disk,
-	// so surviving encodings prove persist wrote the arm rather than canonicalizing on the way out.
+	// A fresh tier can only answer from disk, so equal encodings prove persist wrote the encoded tree.
 	let tier = Arc::new(SqliteColumnStore::new(column_cfg));
 	let reloaded = ColumnStore::with_persistent(Some(tier));
 	reloaded.warm().expect("warm from column.db");
@@ -105,9 +92,10 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 		.find(|b| b.len() == ROWS)
 		.expect("reloaded block store must contain the 3-row block from disk");
 
-	assert_encodings(&block, "after reload");
+	let reloaded_encodings = assert_encodings(&block, "after reload");
+	assert_eq!(reloaded_encodings, compressed, "persist must not re-encode or canonicalize any column");
 
-	let mut reader = SnapshotReader::new(block, 100);
+	let mut reader = SnapshotReader::new(block, 100, reloaded.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert_eq!(batch.num_rows(), ROWS);
 
@@ -131,5 +119,5 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 		);
 	}
 	seen.sort();
-	assert_eq!(seen, vec![1, 2, 3], "the canonical column must survive the round trip unchanged");
+	assert_eq!(seen, vec![1, 2, 3], "the varying column must survive the round trip unchanged");
 }

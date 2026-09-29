@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Borrow, result::Result as StdResult, sync::Arc};
+use std::{borrow::Borrow, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray};
 use arrow_buffer::{ScalarBuffer, i256};
 use arrow_schema::DataType;
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 
 use crate::value::{
 	Value,
@@ -220,92 +219,11 @@ pub fn decimal_as_string<'a>(array: impl Into<DecimalView<'a>>, index: usize) ->
 	decimal_at(array, index).map(|value| value.to_string()).unwrap_or_else(|| "none".to_string())
 }
 
-#[derive(Serialize, Deserialize)]
-enum DecimalArrayWire {
-	Decimal128 {
-		precision: u8,
-		scale: u8,
-		data: Vec<i128>,
-	},
-	Decimal256 {
-		precision: u8,
-		scale: u8,
-		data: Vec<(u128, i128)>,
-	},
-}
-
-pub fn serialize_decimal_array<Ser: Serializer>(
-	array: &DecimalArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	let precision = array.precision().value();
-	let scale = array.scale().value();
-	match array {
-		DecimalArray::Decimal128(array) => DecimalArrayWire::Decimal128 {
-			precision,
-			scale,
-			data: array.values().to_vec(),
-		},
-		DecimalArray::Decimal256(array) => DecimalArrayWire::Decimal256 {
-			precision,
-			scale,
-			data: array.values().iter().map(|value| value.to_parts()).collect(),
-		},
-	}
-	.serialize(serializer)
-}
-
-pub fn deserialize_decimal_array<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<DecimalArray, D::Error> {
-	let (precision, scale, data): (u8, u8, Vec<i256>) = match DecimalArrayWire::deserialize(deserializer)? {
-		DecimalArrayWire::Decimal128 {
-			precision,
-			scale,
-			data,
-		} => {
-			if precision > DECIMAL128_MAX_PRECISION {
-				return Err(D::Error::custom(format!(
-					"decimal128 array cannot have precision {precision}"
-				)));
-			}
-			(precision, scale, data.into_iter().map(i256::from_i128).collect())
-		}
-		DecimalArrayWire::Decimal256 {
-			precision,
-			scale,
-			data,
-		} => {
-			if precision <= DECIMAL128_MAX_PRECISION {
-				return Err(D::Error::custom(format!(
-					"decimal256 array cannot have precision {precision}"
-				)));
-			}
-			(precision, scale, data.into_iter().map(|(low, high)| i256::from_parts(low, high)).collect())
-		}
-	};
-	let precision = Precision::try_new(precision).map_err(D::Error::custom)?;
-	if scale > precision.value() {
-		return Err(D::Error::custom(format!("decimal array scale {scale} exceeds precision {precision}")));
-	}
-	if let Some(value) = data.iter().find(|&&value| unscaled::digits(value) > precision.value()) {
-		return Err(D::Error::custom(format!("unscaled value {value} does not fit precision {precision}")));
-	}
-	Ok(DecimalArray::from_unscaled(precision, Scale::new(scale), data))
-}
-
 #[cfg(test)]
 mod family {
 	use std::str::FromStr;
 
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
-
 	use super::*;
-
-	#[derive(Serialize, Deserialize)]
-	struct DecimalColumn(
-		#[serde(serialize_with = "serialize_decimal_array", deserialize_with = "deserialize_decimal_array")]
-		DecimalArray,
-	);
 
 	fn decimal(text: &str) -> Decimal {
 		Decimal::from_str(text).unwrap()
@@ -376,22 +294,5 @@ mod family {
 		assert!(narrow != other);
 		let shorter = decimal_array(Precision::new(10), Scale::new(1), [decimal("1.5")]);
 		assert!(narrow != shorter);
-	}
-
-	#[test]
-	fn serde_restores_values_width_and_data_type() {
-		// Deserializing into the arrow default type would misread every value by a power of ten.
-		let decs = DecimalColumn(decimal_array(Precision::new(40), Scale::new(5), [decimal("-12.5")]));
-		let back: DecimalColumn = from_str(&to_string(&decs).unwrap()).unwrap();
-		assert_eq!(decimal_as_string(&back.0, 0), "-12.50000");
-		assert_eq!(back.0.data_type(), &DataType::Decimal256(40, 5));
-	}
-
-	#[test]
-	fn deserialize_refuses_payloads_that_break_the_family_rules() {
-		// Each payload would build an array whose readers panic or misread its values.
-		assert!(from_str::<DecimalColumn>(r#"{"Decimal128":{"precision":5,"scale":6,"data":[1]}}"#).is_err());
-		assert!(from_str::<DecimalColumn>(r#"{"Decimal128":{"precision":5,"scale":5,"data":[-99999]}}"#)
-			.is_ok());
 	}
 }

@@ -13,7 +13,6 @@ members = [
     "crates/catalog",
     "crates/cdc",
     "crates/codec",
-    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/evaluate",
@@ -106,7 +105,6 @@ default-members = [
     "crates/catalog",
     "crates/cdc",
     "crates/codec",
-    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/evaluate",
@@ -237,7 +235,6 @@ reifydb-auth = { version = "0.9.3", path = "crates/auth" }
 reifydb-routine = { version = "0.9.3", path = "crates/routine" }
 reifydb-catalog = { version = "0.9.3", path = "crates/catalog" }
 reifydb-cdc = { version = "0.9.3", path = "crates/cdc" }
-reifydb-column = { version = "0.9.3", path = "crates/column" }
 reifydb-codec = { version = "0.9.3", path = "crates/codec" }
 reifydb-core = { version = "0.9.3", path = "crates/core" }
 reifydb-engine = { version = "0.9.3", path = "crates/engine" }

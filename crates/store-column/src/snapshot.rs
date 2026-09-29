@@ -3,29 +3,37 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::data::Column;
-use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::value_type::{ValueType, field::FieldType},
+};
+use vortex_array::ArrayRef;
+
+use crate::error::vortex;
 
 #[derive(Clone)]
 pub struct ColumnChunks {
 	pub ty: ValueType,
 	pub nullable: bool,
-	pub chunks: Vec<Column>,
+	pub field_type: FieldType,
+	pub chunks: Vec<ArrayRef>,
 }
 
 impl ColumnChunks {
-	pub fn new(ty: ValueType, nullable: bool, chunks: Vec<Column>) -> Self {
+	pub fn new(ty: ValueType, nullable: bool, field_type: FieldType, chunks: Vec<ArrayRef>) -> Self {
 		Self {
 			ty,
 			nullable,
+			field_type,
 			chunks,
 		}
 	}
 
-	pub fn single(ty: ValueType, nullable: bool, array: Column) -> Self {
+	pub fn single(ty: ValueType, nullable: bool, field_type: FieldType, array: ArrayRef) -> Self {
 		Self {
 			ty,
 			nullable,
+			field_type,
 			chunks: vec![array],
 		}
 	}
@@ -104,9 +112,14 @@ impl ColumnBlock {
 			let ranges = column.iter_range_chunks(start, end);
 			let mut sliced_chunks = Vec::with_capacity(ranges.len());
 			for (idx, s, e) in ranges {
-				sliced_chunks.push(column.chunks[idx].slice(s, e)?);
+				sliced_chunks.push(column.chunks[idx].slice(s..e).map_err(vortex("view_range"))?);
 			}
-			sliced_columns.push(ColumnChunks::new(column.ty.clone(), column.nullable, sliced_chunks));
+			sliced_columns.push(ColumnChunks::new(
+				column.ty.clone(),
+				column.nullable,
+				column.field_type.clone(),
+				sliced_chunks,
+			));
 		}
 		Ok(ColumnBlock::new(Arc::clone(&self.schema), sliced_columns))
 	}
@@ -114,19 +127,20 @@ impl ColumnBlock {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{data::canonical::Canonical, factory};
-	use reifydb_value::value::Value;
+	use reifydb_core::value::column::factory;
+	use reifydb_value::value::{Value, column_view::ColumnView};
 
 	use super::*;
+	use crate::{
+		convert::{to_arrow, to_vortex},
+		session::new_session,
+	};
 
 	fn chunked_int4(parts: &[&[i32]]) -> ColumnChunks {
-		let chunks = parts
-			.iter()
-			.map(|p| {
-				Column::from_canonical(Canonical::from_column(&factory::int4("c", p.to_vec())).unwrap())
-			})
-			.collect();
-		ColumnChunks::new(ValueType::Int4, false, chunks)
+		let session = new_session();
+		let chunks =
+			parts.iter().map(|p| to_vortex(&session, &factory::int4("c", p.to_vec())).unwrap()).collect();
+		ColumnChunks::new(ValueType::Int4, false, FieldType::from(ValueType::Int4), chunks)
 	}
 
 	#[test]
@@ -201,7 +215,9 @@ mod tests {
 		fn chunks_value_at(&self, mut idx: usize) -> Value {
 			for chunk in &self.chunks {
 				if idx < chunk.len() {
-					return chunk.data().get_value(idx);
+					let column =
+						to_arrow(&new_session(), "c", &self.field_type, chunk.clone()).unwrap();
+					return ColumnView::try_from(&column).unwrap().get_value(idx);
 				}
 				idx -= chunk.len();
 			}

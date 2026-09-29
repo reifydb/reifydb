@@ -4,9 +4,8 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_column::{predicate::Predicate, reader::SnapshotReader, snapshot::Schema};
 use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId};
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{predicate::Predicate, reader::SnapshotReader, snapshot::Schema, store::ColumnStore};
 use reifydb_value::error::Error;
 
 use crate::Result;
@@ -70,7 +69,7 @@ impl BlockSequenceReader {
 				self.schema = Some(Arc::clone(&block.schema));
 			}
 
-			let reader = SnapshotReader::new(block, self.batch_size);
+			let reader = SnapshotReader::new(block, self.batch_size, self.store.session().clone());
 			self.current = Some(match self.predicate.clone() {
 				Some(predicate) => reader.with_predicate(predicate),
 				None => reader,

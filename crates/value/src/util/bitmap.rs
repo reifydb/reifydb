@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, result::Result as StdResult};
+use std::borrow::Cow;
 
-use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, Buffer, NullBuffer};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
 
 pub fn slice(bits: &BooleanBuffer, start: usize, end: usize) -> BooleanBuffer {
 	let end = end.min(bits.len());
@@ -82,54 +81,13 @@ pub fn packed_bytes(bits: &BooleanBuffer) -> Cow<'_, [u8]> {
 	Cow::Owned(packed)
 }
 
-#[derive(Serialize)]
-#[serde(rename = "BitVecInner")]
-struct BitVecInnerRef<'a> {
-	bits: &'a [u8],
-	len: usize,
-}
-
-#[derive(Deserialize)]
-struct BitVecInner {
-	bits: Vec<u8>,
-	len: usize,
-}
-
-pub fn serialize<Ser: Serializer>(bits: &BooleanBuffer, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-	BitVecInnerRef {
-		bits: &packed_bytes(bits),
-		len: bits.len(),
-	}
-	.serialize(serializer)
-}
-
-pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<BooleanBuffer, D::Error> {
-	let BitVecInner {
-		mut bits,
-		len,
-	} = BitVecInner::deserialize(deserializer)?;
-	let byte_len = len.div_ceil(8);
-	if bits.len() < byte_len {
-		return Err(D::Error::invalid_length(bits.len(), &"at least ceil(len / 8) packed bytes"));
-	}
-	bits.truncate(byte_len);
-	clear_tail(&mut bits, len);
-	Ok(BooleanBuffer::new(Buffer::from_vec(bits), 0, len))
-}
-
 #[cfg(test)]
 mod tests {
 	use std::borrow::Cow;
 
 	use arrow_buffer::BooleanBuffer;
-	use postcard::{from_bytes, to_allocvec};
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
 
 	use super::{filter, packed_bytes, reorder, slice};
-
-	#[derive(Serialize, Deserialize)]
-	struct Wrap(#[serde(with = "super")] BooleanBuffer);
 
 	fn pattern(len: usize) -> Vec<bool> {
 		(0..len).map(|i| i % 3 != 1).collect()
@@ -208,56 +166,5 @@ mod tests {
 		let packed = packed_bytes(&bits);
 		assert!(matches!(packed, Cow::Borrowed(_)));
 		assert_eq!(packed.len(), 2);
-	}
-
-	#[test]
-	fn serialize_writes_the_bitvec_shape() {
-		// Without the {bits, len} shape of packed bytes, stored and wire columns stop decoding.
-		let bits = BooleanBuffer::from(vec![true, false, true]);
-		assert_eq!(to_string(&Wrap(bits.clone())).unwrap(), r#"{"bits":[5],"len":3}"#);
-		assert_eq!(to_allocvec(&Wrap(bits)).unwrap(), vec![1, 5, 3]);
-	}
-
-	#[test]
-	fn serialize_of_a_view_equals_a_fresh_buffer() {
-		// A view at any bit offset must serialize exactly like a fresh buffer of the same bits.
-		let all = pattern(20);
-		let view = slice(&BooleanBuffer::from(all.clone()), 3, 17);
-		let fresh = BooleanBuffer::from(all[3..17].to_vec());
-		assert_eq!(to_string(&Wrap(view.clone())).unwrap(), to_string(&Wrap(fresh.clone())).unwrap());
-		assert_eq!(to_allocvec(&Wrap(view)).unwrap(), to_allocvec(&Wrap(fresh)).unwrap());
-	}
-
-	#[test]
-	fn serialize_after_not_has_a_zero_tail() {
-		// Arrow's `!` leaves 1 bits past len; they must not reach the serialized bytes.
-		let inverted = !&BooleanBuffer::from(vec![true, false, true]);
-		assert_eq!(to_string(&Wrap(inverted)).unwrap(), r#"{"bits":[2],"len":3}"#);
-	}
-
-	#[test]
-	fn deserialize_rejects_fewer_bytes_than_len_needs() {
-		// Accepting short bits would panic on the first read past them; it must be a serde error.
-		assert!(from_str::<Wrap>(r#"{"bits":[],"len":5}"#).is_err());
-		assert!(from_str::<Wrap>(r#"{"bits":[1],"len":9}"#).is_err());
-	}
-
-	#[test]
-	fn deserialize_cuts_extra_bytes_and_cleans_dirty_bits() {
-		// Extra bytes and bits past len must be dropped, or equal columns serialize differently.
-		let Wrap(bits) = from_str::<Wrap>(r#"{"bits":[255,7,9],"len":3}"#).unwrap();
-		assert_eq!(bits_of(&bits), vec![true, true, true]);
-		assert_eq!(bits.inner().len(), 1);
-		assert_eq!(bits.values(), &[0b0000_0111]);
-		assert_eq!(to_string(&Wrap(bits)).unwrap(), r#"{"bits":[7],"len":3}"#);
-	}
-
-	#[test]
-	fn deserialize_round_trips_postcard() {
-		// A postcard round trip must keep every bit and the length.
-		let bits = BooleanBuffer::from(pattern(13));
-		let bytes = to_allocvec(&Wrap(bits.clone())).unwrap();
-		let Wrap(back) = from_bytes::<Wrap>(&bytes).unwrap();
-		assert_eq!(back, bits);
 	}
 }

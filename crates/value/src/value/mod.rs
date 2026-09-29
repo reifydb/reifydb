@@ -455,7 +455,9 @@ impl Ord for Value {
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
-			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
+			(Value::DictionaryId(l), Value::DictionaryId(r)) => {
+				l.to_u128().cmp(&r.to_u128()).then_with(|| l.cmp(r))
+			}
 			(Value::Type(l), Value::Type(r)) => l.cmp(r),
 			(Value::List(_), Value::List(_)) => unreachable!("List values are not orderable"),
 			(Value::Record(_), Value::Record(_)) => unreachable!("Record values are not orderable"),
@@ -861,5 +863,16 @@ mod tests {
 		let bytes = to_allocvec(&values).unwrap();
 		let restored: Vec<Value> = from_bytes(&bytes).unwrap();
 		assert_eq!(restored, values);
+	}
+
+	#[test]
+	fn dictionary_ids_order_by_number_then_width_consistent_with_equality() {
+		// Sorts must rank by number, and a width tie-break keeps Ord agreeing with Eq for U1(1) != U4(1).
+		let id = |entry| Value::DictionaryId(entry);
+		assert_eq!(id(DictionaryEntryId::U8(1)).cmp(&id(DictionaryEntryId::U1(5))), Ordering::Less);
+		assert_eq!(id(DictionaryEntryId::U2(300)).cmp(&id(DictionaryEntryId::U4(1))), Ordering::Greater);
+		assert_ne!(id(DictionaryEntryId::U1(1)), id(DictionaryEntryId::U4(1)));
+		assert_eq!(id(DictionaryEntryId::U1(1)).cmp(&id(DictionaryEntryId::U4(1))), Ordering::Less);
+		assert_eq!(id(DictionaryEntryId::U4(1)).cmp(&id(DictionaryEntryId::U4(1))), Ordering::Equal);
 	}
 }

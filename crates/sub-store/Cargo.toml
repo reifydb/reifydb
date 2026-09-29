@@ -18,7 +18,6 @@ arrow-array = { workspace = true, optional = true }
 arrow-schema = { workspace = true, optional = true }
 dashmap = { workspace = true, optional = true }
 reifydb-catalog = { workspace = true, optional = true }
-reifydb-column = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-evaluate = { workspace = true, optional = true }
@@ -39,7 +38,6 @@ column = [
 	"dep:arrow-schema",
 	"dep:dashmap",
 	"dep:reifydb-catalog",
-	"dep:reifydb-column",
 	"dep:reifydb-engine",
 	"reifydb-engine/column",
 	"dep:reifydb-evaluate",

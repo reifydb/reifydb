@@ -4,20 +4,33 @@
 use std::sync::Arc;
 
 use dashmap::{DashMap, mapref::one::Ref};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_column::persist::{deserialize_block, serialize_block};
-use reifydb_column::snapshot::ColumnBlock;
 use reifydb_core::interface::catalog::id::ColumnSnapshotId;
 use reifydb_value::Result;
+use vortex_session::VortexSession;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::persist::{deserialize_block, serialize_block};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::persistent::sqlite::SqliteColumnStore;
+use crate::{session::new_session, snapshot::ColumnBlock};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ColumnStore {
 	blocks: Arc<DashMap<ColumnSnapshotId, Arc<ColumnBlock>>>,
+	session: VortexSession,
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	persistent: Option<Arc<SqliteColumnStore>>,
+}
+
+impl Default for ColumnStore {
+	fn default() -> Self {
+		Self {
+			blocks: Arc::new(DashMap::new()),
+			session: new_session(),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			persistent: None,
+		}
+	}
 }
 
 impl ColumnStore {
@@ -25,10 +38,15 @@ impl ColumnStore {
 		Self::default()
 	}
 
+	pub fn session(&self) -> &VortexSession {
+		&self.session
+	}
+
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn with_persistent(persistent: Option<Arc<SqliteColumnStore>>) -> Self {
 		Self {
 			blocks: Arc::new(DashMap::new()),
+			session: new_session(),
 			persistent,
 		}
 	}
@@ -46,7 +64,7 @@ impl ColumnStore {
 		if let Some(tier) = &self.persistent
 			&& let Some(bytes) = tier.get(id)?
 		{
-			let arc = Arc::new(deserialize_block(&bytes)?);
+			let arc = Arc::new(deserialize_block(&bytes, &self.session)?);
 			self.blocks.insert(id, Arc::clone(&arc));
 			return Ok(Some(arc));
 		}
@@ -58,7 +76,7 @@ impl ColumnStore {
 	pub fn persist(&self, id: ColumnSnapshotId, block: &ColumnBlock) -> Result<()> {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(tier) = &self.persistent {
-			tier.put(id, &serialize_block(block)?)?;
+			tier.put(id, &serialize_block(block, &self.session)?)?;
 		}
 		Ok(())
 	}
@@ -67,7 +85,7 @@ impl ColumnStore {
 	pub fn warm(&self) -> Result<()> {
 		if let Some(tier) = &self.persistent {
 			for (id, bytes) in tier.load_all()? {
-				self.blocks.insert(id, Arc::new(deserialize_block(&bytes)?));
+				self.blocks.insert(id, Arc::new(deserialize_block(&bytes, &self.session)?));
 			}
 		}
 		Ok(())

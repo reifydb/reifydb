@@ -8,8 +8,20 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+pub mod bucket;
+pub mod compress;
+pub mod convert;
+pub mod error;
+pub mod persist;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod persistent;
+pub mod predicate;
+pub mod reader;
+pub mod scalar;
+pub mod selection;
+pub mod session;
+pub mod snapshot;
+pub mod stats;
 pub mod store;
 
 pub struct ColumnStoreVersion;

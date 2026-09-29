@@ -10,17 +10,14 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::{
-	compress::{CompressConfig, Compressor},
-	reader::SnapshotReader,
-	snapshot::ColumnBlock,
-};
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
 	interface::catalog::id::ColumnSnapshotId,
 	value::{batch, column::factory},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{
+	compress::Compressor, reader::SnapshotReader, session::new_session, snapshot::ColumnBlock, store::ColumnStore,
+};
 use reifydb_sub_store::{
 	column::actor::batches::{column_block_from_batches, system_column_schema},
 	factory::StorageSubsystemFactory,
@@ -141,7 +138,7 @@ fn a_timed_table_block_carries_time_and_a_timeless_one_does_not() {
 		}
 
 		let block = blocks.into_iter().find(|b| b.len() == 3).expect("3-row block");
-		let mut reader = SnapshotReader::new(block, 100);
+		let mut reader = SnapshotReader::new(block, 100, store.session().clone());
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch for 3 rows");
 		assert_eq!(batch.num_rows(), 3);
@@ -213,7 +210,7 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 			assert!(!block.is_empty(), "test::{name}: a closed bucket must hold rows");
 
 			let len = block.len();
-			let mut reader = SnapshotReader::new(block, 100);
+			let mut reader = SnapshotReader::new(block, 100, store.session().clone());
 			let batch = reader.next().expect("batch present").expect("read batch");
 			assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
 			assert_eq!(batch.num_rows(), len);
@@ -285,14 +282,9 @@ fn a_timed_block_refuses_a_batch_without_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::Processing, false));
 
-	let err = column_block_from_batches(
-		schema,
-		vec![batch],
-		CommitVersion(1),
-		&Compressor::new(CompressConfig::default()),
-	)
-	.err()
-	.expect("a timed block must not be built from a batch with no #time");
+	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
+		.err()
+		.expect("a timed block must not be built from a batch with no #time");
 
 	assert_eq!(err.diagnostic().code, "SCOL_004");
 }
@@ -305,14 +297,9 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::None, false));
 
-	let err = column_block_from_batches(
-		schema,
-		vec![batch],
-		CommitVersion(1),
-		&Compressor::new(CompressConfig::default()),
-	)
-	.err()
-	.expect("a timeless block must not be built from a batch that carries #time");
+	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
+		.err()
+		.expect("a timeless block must not be built from a batch that carries #time");
 
 	assert_eq!(err.diagnostic().code, "SCOL_004");
 }

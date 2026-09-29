@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{result::Result as StdResult, slice};
+use std::slice;
 
 use arrow_array::{
 	Date32Array, IntervalMonthDayNanoArray, PrimitiveArray, Time64NanosecondArray, TimestampNanosecondArray,
 };
 use arrow_buffer::{IntervalMonthDayNano, ScalarBuffer};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time};
 
@@ -87,76 +86,4 @@ pub fn as_string<T: IsTemporal>(values: &[T], index: usize) -> String {
 	} else {
 		"none".to_string()
 	}
-}
-
-fn serialize_values<T, Ser>(data: &[T], serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
-where
-	T: Serialize,
-	Ser: Serializer,
-{
-	#[derive(Serialize)]
-	struct Helper<'a, T: Serialize> {
-		data: &'a [T],
-	}
-	Helper {
-		data,
-	}
-	.serialize(serializer)
-}
-
-fn deserialize_values<'de, T, D>(deserializer: D) -> StdResult<Vec<T>, D::Error>
-where
-	T: Deserialize<'de>,
-	D: Deserializer<'de>,
-{
-	#[derive(Deserialize)]
-	struct Helper<T> {
-		data: Vec<T>,
-	}
-	Ok(Helper::<T>::deserialize(deserializer)?.data)
-}
-
-pub fn serialize_dates<Ser: Serializer>(array: &Date32Array, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(dates(array), serializer)
-}
-
-pub fn deserialize_dates<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Date32Array, D::Error> {
-	Ok(date_array(deserialize_values::<Date, D>(deserializer)?))
-}
-
-pub fn serialize_datetimes<Ser: Serializer>(
-	array: &TimestampNanosecondArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(datetimes(array), serializer)
-}
-
-pub fn deserialize_datetimes<'de, D: Deserializer<'de>>(
-	deserializer: D,
-) -> StdResult<TimestampNanosecondArray, D::Error> {
-	Ok(datetime_array(deserialize_values::<DateTime, D>(deserializer)?))
-}
-
-pub fn serialize_times<Ser: Serializer>(
-	array: &Time64NanosecondArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(times(array), serializer)
-}
-
-pub fn deserialize_times<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Time64NanosecondArray, D::Error> {
-	Ok(time_array(deserialize_values::<Time, D>(deserializer)?))
-}
-
-pub fn serialize_durations<Ser: Serializer>(
-	array: &IntervalMonthDayNanoArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(durations(array), serializer)
-}
-
-pub fn deserialize_durations<'de, D: Deserializer<'de>>(
-	deserializer: D,
-) -> StdResult<IntervalMonthDayNanoArray, D::Error> {
-	Ok(duration_array(deserialize_values::<Duration, D>(deserializer)?))
 }

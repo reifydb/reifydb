@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::ManuallyDrop, ops::Deref, result::Result as StdResult, slice};
+use std::{mem::ManuallyDrop, ops::Deref, slice};
 
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_buffer::Buffer;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
 use crate::value::{
@@ -92,68 +91,6 @@ pub fn as_string<T: IsUuid>(values: &[T], index: usize) -> String {
 	} else {
 		"none".to_string()
 	}
-}
-
-fn serialize_values<T, Ser>(data: &[T], serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
-where
-	T: Serialize,
-	Ser: Serializer,
-{
-	#[derive(Serialize)]
-	struct Helper<'a, T: Serialize> {
-		data: &'a [T],
-	}
-	Helper {
-		data,
-	}
-	.serialize(serializer)
-}
-
-fn deserialize_values<'de, T, D>(deserializer: D) -> StdResult<Vec<T>, D::Error>
-where
-	T: Deserialize<'de>,
-	D: Deserializer<'de>,
-{
-	#[derive(Deserialize)]
-	struct Helper<T> {
-		data: Vec<T>,
-	}
-	Ok(Helper::<T>::deserialize(deserializer)?.data)
-}
-
-pub fn serialize_uuid4s<Ser: Serializer>(
-	array: &FixedSizeBinaryArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(uuid4s(array), serializer)
-}
-
-pub fn deserialize_uuid4s<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<FixedSizeBinaryArray, D::Error> {
-	Ok(uuid4_array(deserialize_values::<Uuid4, D>(deserializer)?))
-}
-
-pub fn serialize_uuid7s<Ser: Serializer>(
-	array: &FixedSizeBinaryArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(uuid7s(array), serializer)
-}
-
-pub fn deserialize_uuid7s<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<FixedSizeBinaryArray, D::Error> {
-	Ok(uuid7_array(deserialize_values::<Uuid7, D>(deserializer)?))
-}
-
-pub fn serialize_identity_ids<Ser: Serializer>(
-	array: &FixedSizeBinaryArray,
-	serializer: Ser,
-) -> StdResult<Ser::Ok, Ser::Error> {
-	serialize_values(identity_ids(array), serializer)
-}
-
-pub fn deserialize_identity_ids<'de, D: Deserializer<'de>>(
-	deserializer: D,
-) -> StdResult<FixedSizeBinaryArray, D::Error> {
-	Ok(identity_id_array(deserialize_values::<Uuid7, D>(deserializer)?.into_iter().map(IdentityId)))
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
+use reifydb_store_column::reader::SnapshotReader;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -96,7 +96,7 @@ fn series_materialization_populates_block_store() {
 			vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		);
 
-		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
+		let mut reader = SnapshotReader::new(Arc::clone(block), 100, block_store.session().clone());
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
 		assert_eq!(batch.num_rows(), block.len());

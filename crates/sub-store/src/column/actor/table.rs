@@ -6,7 +6,6 @@ use std::{collections::HashMap, sync::Arc};
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
 use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
-use reifydb_column::{compress::Compressor, snapshot::ColumnBlock};
 use reifydb_core::{
 	common::CommitVersion,
 	event::{EventListener, transaction::PostCommitEvent},
@@ -30,7 +29,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{compress::Compressor, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,

@@ -5,16 +5,13 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_column::{
-	compress::Compressor,
-	snapshot::{ColumnBlock, ColumnChunks},
-};
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
-	value::{
-		batch::concat_columns,
-		column::{data::canonical::Canonical, factory},
-	},
+	value::{batch::concat_columns, column::factory},
+};
+use reifydb_store_column::{
+	compress::Compressor,
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -83,9 +80,8 @@ pub fn column_block_from_batches(
 			Some(sc) => system_column_buffer(sc, &batches, version)?,
 			None => user_column_buffer(name, &batches)?,
 		};
-		let canonical = Canonical::from_column(&combined)?;
 		reifydb_assertions! {
-			let rows = canonical.len();
+			let rows = combined.1.len();
 			match block_rows {
 				None => block_rows = Some(rows),
 				Some(expected) => assert!(
@@ -97,9 +93,7 @@ pub fn column_block_from_batches(
 				),
 			}
 		}
-		let nullable = canonical.view().is_nullable();
-		let array = compressor.compress(&canonical)?;
-		chunked.push(ColumnChunks::single(ty.clone(), nullable, array));
+		chunked.push(compressor.compress(ty.clone(), &combined)?);
 	}
 
 	let schema_arc = Arc::new(

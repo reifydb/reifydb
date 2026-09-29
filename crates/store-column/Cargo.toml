@@ -18,17 +18,41 @@ sqlite = ["rusqlite", "reifydb-sqlite"]
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-column = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 dashmap = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
+vortex-alp = { workspace = true }
+vortex-array = { workspace = true }
+vortex-arrow = { workspace = true }
+vortex-btrblocks = { workspace = true }
+vortex-buffer = { workspace = true }
+vortex-datetime-parts = { workspace = true }
+vortex-decimal-byte-parts = { workspace = true }
+vortex-error = { workspace = true }
+vortex-fastlanes = { workspace = true }
+vortex-flatbuffers = { workspace = true }
+vortex-fsst = { workspace = true }
+vortex-mask = { workspace = true }
+vortex-onpair = { workspace = true }
+vortex-runend = { workspace = true }
+vortex-sequence = { workspace = true }
+vortex-session = { workspace = true }
+vortex-sparse = { workspace = true }
+vortex-zigzag = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+uuid = { workspace = true }

@@ -3586,7 +3586,6 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-codec",
- "reifydb-column",
  "reifydb-console-protocol",
  "reifydb-core",
  "reifydb-derive",
@@ -3606,6 +3605,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-store-cdc",
+ "reifydb-store-column",
  "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-operator",
@@ -3698,10 +3698,10 @@ dependencies = [
  "reifydb-build",
  "reifydb-client",
  "reifydb-codec",
- "reifydb-column",
  "reifydb-core",
  "reifydb-evaluate",
  "reifydb-runtime",
+ "reifydb-store-column",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-testing-scenario",
@@ -3836,42 +3836,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-column"
-version = "0.9.3"
-dependencies = [
- "arrow-arith",
- "arrow-array",
- "arrow-buffer",
- "arrow-schema",
- "arrow-select",
- "postcard",
- "reifydb-build",
- "reifydb-core",
- "reifydb-value",
- "serde",
- "thiserror 2.0.18",
- "uuid",
- "vortex-alp",
- "vortex-array",
- "vortex-arrow",
- "vortex-btrblocks",
- "vortex-buffer",
- "vortex-datetime-parts",
- "vortex-decimal-byte-parts",
- "vortex-error",
- "vortex-fastlanes",
- "vortex-flatbuffers",
- "vortex-fsst",
- "vortex-mask",
- "vortex-onpair",
- "vortex-runend",
- "vortex-sequence",
- "vortex-session",
- "vortex-sparse",
- "vortex-zigzag",
-]
-
-[[package]]
 name = "reifydb-console-protocol"
 version = "0.9.3"
 dependencies = [
@@ -3933,7 +3897,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-client",
  "reifydb-codec",
- "reifydb-column",
  "reifydb-core",
  "reifydb-evaluate",
  "reifydb-extension",
@@ -4374,15 +4337,39 @@ dependencies = [
 name = "reifydb-store-column"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "dashmap 7.0.0-rc2",
+ "postcard",
  "reifydb-build",
- "reifydb-column",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-value",
  "rusqlite",
+ "serde",
+ "thiserror 2.0.18",
  "tracing",
+ "uuid",
+ "vortex-alp",
+ "vortex-array",
+ "vortex-arrow",
+ "vortex-btrblocks",
+ "vortex-buffer",
+ "vortex-datetime-parts",
+ "vortex-decimal-byte-parts",
+ "vortex-error",
+ "vortex-fastlanes",
+ "vortex-flatbuffers",
+ "vortex-fsst",
+ "vortex-mask",
+ "vortex-onpair",
+ "vortex-runend",
+ "vortex-sequence",
+ "vortex-session",
+ "vortex-sparse",
+ "vortex-zigzag",
 ]
 
 [[package]]
@@ -4760,7 +4747,6 @@ dependencies = [
  "reifydb",
  "reifydb-build",
  "reifydb-catalog",
- "reifydb-column",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-evaluate",

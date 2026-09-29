@@ -1,48 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
-
 use arrow_array::{Array, ArrowPrimitiveType, PrimitiveArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use arrow_select::filter::FilterPredicate;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
 	util::{bitmap, kernel},
 	value::{Value, is::IsNumber, to_value::ToValue, value_type::get::GetType},
 };
-
-pub fn serialize<A, Ser>(array: &PrimitiveArray<A>, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error>
-where
-	A: ArrowPrimitiveType,
-	A::Native: Serialize,
-	Ser: Serializer,
-{
-	#[derive(Serialize)]
-	struct Helper<'a, T: Serialize> {
-		data: &'a [T],
-	}
-	Helper {
-		data: array.values(),
-	}
-	.serialize(serializer)
-}
-
-pub fn deserialize<'de, A, D>(deserializer: D) -> StdResult<PrimitiveArray<A>, D::Error>
-where
-	A: ArrowPrimitiveType,
-	A::Native: Deserialize<'de>,
-	D: Deserializer<'de>,
-{
-	#[derive(Deserialize)]
-	struct Helper<T> {
-		data: Vec<T>,
-	}
-	let h = Helper::<A::Native>::deserialize(deserializer)?;
-	Ok(PrimitiveArray::new(ScalarBuffer::from(h.data), None))
-}
 
 pub fn get_value<A>(array: &PrimitiveArray<A>, index: usize) -> Value
 where

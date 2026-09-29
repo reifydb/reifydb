@@ -5,6 +5,7 @@ use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 };
+use vortex_error::VortexError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ColumnError {
@@ -13,20 +14,6 @@ pub enum ColumnError {
 		operation: &'static str,
 		name: String,
 	},
-
-	#[error("{operation}: only FixedArray storage supported in v1")]
-	FixedArrayRequired {
-		operation: &'static str,
-	},
-
-	#[error("predicate::evaluate: compare did not return a bool array")]
-	PredicateCompareNotBool,
-
-	#[error("min_max: empty array has no min/max")]
-	MinMaxEmpty,
-
-	#[error("min_max: all rows are None")]
-	MinMaxAllNone,
 
 	#[error("persist: failed to serialize column block: {reason}")]
 	PersistSerialize {
@@ -41,6 +28,26 @@ pub enum ColumnError {
 	#[error("persist: unsupported column block format version {version}")]
 	PersistVersionUnsupported {
 		version: u16,
+	},
+
+	#[error("{operation}: vortex failed: {reason}")]
+	Vortex {
+		operation: &'static str,
+		reason: String,
+	},
+
+	#[error("predicate: {value} cannot be compared with column '{column}' of type {ty}")]
+	PredicateValue {
+		column: String,
+		ty: String,
+		value: String,
+	},
+
+	#[error("persist: column '{column}' is stored as {stored} but its field type reads as {expected}")]
+	DTypeMismatch {
+		column: String,
+		stored: String,
+		expected: String,
 	},
 }
 
@@ -64,60 +71,6 @@ impl IntoDiagnostic for ColumnError {
 				fragment: Fragment::None,
 				label: Some("column not found".to_string()),
 				help: Some("Verify the column name matches the block's schema".to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::FixedArrayRequired {
-				operation,
-			} => Diagnostic {
-				code: "COL_004".to_string(),
-				rql: None,
-				message: format!("{operation}: only FixedArray storage supported in v1"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::PredicateCompareNotBool => Diagnostic {
-				code: "COL_013".to_string(),
-				rql: None,
-				message: "predicate::evaluate: compare did not return a bool array".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::MinMaxEmpty => Diagnostic {
-				code: "COL_015".to_string(),
-				rql: None,
-				message: "min_max: empty array has no min/max".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::MinMaxAllNone => Diagnostic {
-				code: "COL_016".to_string(),
-				rql: None,
-				message: "min_max: all rows are None".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
@@ -168,6 +121,70 @@ impl IntoDiagnostic for ColumnError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			ColumnError::Vortex {
+				operation,
+				reason,
+			} => Diagnostic {
+				code: "COL_021".to_string(),
+				rql: None,
+				message: format!("{operation}: vortex failed: {reason}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			ColumnError::PredicateValue {
+				column,
+				ty,
+				value,
+			} => Diagnostic {
+				code: "COL_022".to_string(),
+				rql: None,
+				message: format!(
+					"predicate: {value} cannot be compared with column '{column}' of type {ty}"
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("value type does not match the column".to_string()),
+				help: Some("compare the column with a value of its own type".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			ColumnError::DTypeMismatch {
+				column,
+				stored,
+				expected,
+			} => Diagnostic {
+				code: "COL_023".to_string(),
+				rql: None,
+				message: format!(
+					"persist: column '{column}' is stored as {stored} but its field type reads as {expected}"
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("the column block was written with a different type mapping".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
+	}
+}
+
+pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> Error {
+	move |err| {
+		ColumnError::Vortex {
+			operation,
+			reason: err.to_string(),
+		}
+		.into()
 	}
 }

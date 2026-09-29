@@ -16,7 +16,7 @@ default = ["tokio", "sqlite"]
 tokio = []
 sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
 testing = ["reifydb-flow-sync/testing", "reifydb-flow/testing"]
-column = ["dep:reifydb-column", "dep:reifydb-store-column"]
+column = ["dep:reifydb-store-column"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -31,7 +31,6 @@ reifydb-auth = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
-reifydb-column = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true }

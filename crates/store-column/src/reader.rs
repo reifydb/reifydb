@@ -6,18 +6,19 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
-use reifydb_core::value::{
-	batch::{batch, concat_columns},
-	column::data::Column,
-};
+use reifydb_core::value::batch::{batch, concat_columns};
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::bitmap,
 	value::system_columns::{require_created_at, require_row_numbers, require_updated_at},
 };
+use vortex_buffer::BitBuffer;
+use vortex_mask::Mask;
+use vortex_session::VortexSession;
 
 use crate::{
-	compute,
+	convert::to_arrow,
+	error::vortex,
 	predicate::{self, Predicate},
 	selection::Selection,
 	snapshot::{ColumnBlock, ColumnChunks, Schema},
@@ -29,10 +30,11 @@ pub struct SnapshotReader {
 	offset: usize,
 	row_count: usize,
 	predicate: Option<Predicate>,
+	session: VortexSession,
 }
 
 impl SnapshotReader {
-	pub fn new(block: Arc<ColumnBlock>, batch_size: usize) -> Self {
+	pub fn new(block: Arc<ColumnBlock>, batch_size: usize, session: VortexSession) -> Self {
 		let row_count = block.columns.first().map(|c| c.len()).unwrap_or(0);
 		Self {
 			block,
@@ -40,6 +42,7 @@ impl SnapshotReader {
 			offset: 0,
 			row_count,
 			predicate: None,
+			session,
 		}
 	}
 
@@ -53,10 +56,10 @@ impl SnapshotReader {
 		let block = self.block.as_ref();
 
 		let Some(predicate) = self.predicate.as_ref() else {
-			return Ok(Some(materialize_full(block, start, end)?));
+			return Ok(Some(materialize_full(block, start, end, &self.session)?));
 		};
 
-		evaluate_and_materialize(block, predicate, start, end)
+		evaluate_and_materialize(block, predicate, start, end, &self.session)
 	}
 
 	#[inline]
@@ -83,14 +86,15 @@ fn evaluate_and_materialize(
 	predicate: &Predicate,
 	start: usize,
 	end: usize,
+	session: &VortexSession,
 ) -> Result<Option<RecordBatch>> {
 	let schema = &block.schema;
 	let view = block.view_range(start, end)?;
-	let selection = predicate::evaluate(&view, predicate)?;
+	let selection = predicate::evaluate(&view, predicate, session)?;
 	match selection {
 		Selection::None_ => Ok(None),
-		Selection::All => Ok(Some(materialize_view_full(schema, &view, start, end)?)),
-		Selection::Mask(mask) => Ok(Some(materialize_filtered(schema, &view, start, &mask)?)),
+		Selection::All => Ok(Some(materialize_view_full(schema, &view, start, end, session)?)),
+		Selection::Mask(mask) => Ok(Some(materialize_filtered(schema, &view, start, &mask, session)?)),
 	}
 }
 
@@ -109,12 +113,18 @@ fn materialize(
 	Ok(materialized)
 }
 
-fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<RecordBatch> {
-	materialize(&block.schema, |name, i| read_range(name, &block.columns[i], start, end))
+fn materialize_full(block: &ColumnBlock, start: usize, end: usize, session: &VortexSession) -> Result<RecordBatch> {
+	materialize(&block.schema, |name, i| read_range(name, &block.columns[i], start, end, session))
 }
 
-fn materialize_view_full(schema: &Schema, view: &ColumnBlock, _start: usize, _end: usize) -> Result<RecordBatch> {
-	materialize(schema, |name, i| concat_view_chunks(name, &view.columns[i]))
+fn materialize_view_full(
+	schema: &Schema,
+	view: &ColumnBlock,
+	_start: usize,
+	_end: usize,
+	session: &VortexSession,
+) -> Result<RecordBatch> {
+	materialize(schema, |name, i| concat_view_chunks(name, &view.columns[i], session))
 }
 
 fn materialize_filtered(
@@ -122,11 +132,17 @@ fn materialize_filtered(
 	view: &ColumnBlock,
 	_batch_start: usize,
 	mask: &BooleanBuffer,
+	session: &VortexSession,
 ) -> Result<RecordBatch> {
-	materialize(schema, |name, i| filter_view_column(name, &view.columns[i], mask))
+	materialize(schema, |name, i| filter_view_column(name, &view.columns[i], mask, session))
 }
 
-fn filter_view_column(name: &str, view_chunks: &ColumnChunks, mask: &BooleanBuffer) -> Result<(FieldRef, ArrayRef)> {
+fn filter_view_column(
+	name: &str,
+	view_chunks: &ColumnChunks,
+	mask: &BooleanBuffer,
+	session: &VortexSession,
+) -> Result<(FieldRef, ArrayRef)> {
 	let mut chunk_offset = 0usize;
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(view_chunks.chunks.len());
 	for chunk in &view_chunks.chunks {
@@ -138,28 +154,39 @@ fn filter_view_column(name: &str, view_chunks: &ColumnChunks, mask: &BooleanBuff
 		if chunk_mask.count_set_bits() == 0 {
 			continue;
 		}
-		let filtered: Column = compute::filter(chunk, &chunk_mask)?;
-		out.push(filtered.to_canonical()?.to_column(name));
+		let filtered = chunk.filter(to_mask(&chunk_mask)).map_err(vortex("filter"))?;
+		out.push(to_arrow(session, name, &view_chunks.field_type, filtered)?);
 	}
 	assert!(!out.is_empty(), "Selection::Mask guarantees at least one row survives");
 	concat_columns(&out)
 }
 
-fn concat_view_chunks(name: &str, view_chunks: &ColumnChunks) -> Result<(FieldRef, ArrayRef)> {
+fn to_mask(bits: &BooleanBuffer) -> Mask {
+	Mask::from(BitBuffer::from(bits.clone()))
+}
+
+fn concat_view_chunks(name: &str, view_chunks: &ColumnChunks, session: &VortexSession) -> Result<(FieldRef, ArrayRef)> {
 	assert!(!view_chunks.chunks.is_empty(), "concat_view_chunks called with empty chunks");
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(view_chunks.chunks.len());
 	for chunk in &view_chunks.chunks {
-		out.push(chunk.to_canonical()?.to_column(name));
+		out.push(to_arrow(session, name, &view_chunks.field_type, chunk.clone())?);
 	}
 	concat_columns(&out)
 }
 
-fn read_range(name: &str, column_chunks: &ColumnChunks, start: usize, end: usize) -> Result<(FieldRef, ArrayRef)> {
+fn read_range(
+	name: &str,
+	column_chunks: &ColumnChunks,
+	start: usize,
+	end: usize,
+	session: &VortexSession,
+) -> Result<(FieldRef, ArrayRef)> {
 	let ranges = column_chunks.iter_range_chunks(start, end);
 	assert!(!ranges.is_empty(), "read_range called with empty range");
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(ranges.len());
 	for (idx, s, e) in ranges {
-		out.push(column_chunks.chunks[idx].slice(s, e)?.to_canonical()?.to_column(name));
+		let sliced = column_chunks.chunks[idx].slice(s..e).map_err(vortex("read"))?;
+		out.push(to_arrow(session, name, &column_chunks.field_type, sliced)?);
 	}
 	concat_columns(&out)
 }
@@ -183,34 +210,43 @@ impl Iterator for SnapshotReader {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{
-		builder::ColumnBuilder,
-		data::{Column, canonical::Canonical},
-		factory,
-	};
+	use reifydb_core::value::column::{builder::ColumnBuilder, factory};
 	use reifydb_value::value::{
 		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		row_number::RowNumber,
 		system_columns::{SystemColumn, column_view, row_numbers},
-		value_type::ValueType,
+		value_type::{ValueType, field::from_field},
 	};
+	use vortex_array::ArrayRef as VortexArrayRef;
 
 	use super::*;
-	use crate::snapshot::{ColumnBlock, ColumnChunks};
+	use crate::{
+		convert::to_vortex,
+		session::new_session,
+		snapshot::{ColumnBlock, ColumnChunks},
+	};
 
-	fn array_from_column_data(cd: &(FieldRef, ArrayRef)) -> Column {
-		let ca = Canonical::from_column(cd).unwrap();
-		Column::from_canonical(ca)
+	fn array_from_column_data(cd: &(FieldRef, ArrayRef)) -> VortexArrayRef {
+		to_vortex(&new_session(), cd).unwrap()
+	}
+
+	fn single(ty: ValueType, cd: &(FieldRef, ArrayRef)) -> ColumnChunks {
+		ColumnChunks::single(ty, false, from_field(&cd.0).unwrap(), array_from_column_data(cd))
+	}
+
+	fn multi(ty: ValueType, nullable: bool, parts: &[(FieldRef, ArrayRef)]) -> ColumnChunks {
+		let chunks = parts.iter().map(array_from_column_data).collect();
+		ColumnChunks::new(ty, nullable, from_field(&parts[0].0).unwrap(), chunks)
 	}
 
 	fn system_chunked(rows: usize) -> Vec<((String, ValueType, bool), ColumnChunks)> {
 		let row_numbers = factory::uint8(SystemColumn::RowNumbers.name(), (0..rows as u64).collect::<Vec<_>>());
 		let ts = factory::datetime("ts", vec![DateTime::default(); rows]);
-		let row_number_chunk =
-			ColumnChunks::single(ValueType::Uint8, false, array_from_column_data(&row_numbers));
-		let created_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
-		let updated_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
-		let time_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
+		let row_number_chunk = single(ValueType::Uint8, &row_numbers);
+		let created_chunk = single(ValueType::DateTime, &ts);
+		let updated_chunk = single(ValueType::DateTime, &ts);
+		let time_chunk = single(ValueType::DateTime, &ts);
 		vec![
 			((SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false), row_number_chunk),
 			((SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false), created_chunk),
@@ -223,8 +259,8 @@ mod tests {
 		let a_col = factory::int4("a", (0..rows as i32).collect::<Vec<_>>());
 		let b_col = factory::utf8("b", (0..rows).map(|i| format!("row-{i}")).collect::<Vec<_>>());
 
-		let chunked_a = ColumnChunks::single(ValueType::Int4, false, array_from_column_data(&a_col));
-		let chunked_b = ColumnChunks::single(ValueType::Utf8, false, array_from_column_data(&b_col));
+		let chunked_a = single(ValueType::Int4, &a_col);
+		let chunked_b = single(ValueType::Utf8, &b_col);
 
 		let mut schema_entries: Vec<(String, ValueType, bool)> =
 			vec![("a".to_string(), ValueType::Int4, false), ("b".to_string(), ValueType::Utf8, false)];
@@ -239,14 +275,14 @@ mod tests {
 	#[test]
 	fn reader_returns_none_for_empty_snapshot() {
 		let snap = mk_block(0);
-		let mut reader = SnapshotReader::new(snap, 4);
+		let mut reader = SnapshotReader::new(snap, 4, new_session());
 		assert!(reader.next().is_none());
 	}
 
 	#[test]
 	fn reader_emits_batches_matching_batch_size() {
 		let snap = mk_block(5);
-		let mut reader = SnapshotReader::new(snap, 2);
+		let mut reader = SnapshotReader::new(snap, 2, new_session());
 
 		let batch = reader.next().expect("first batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -274,9 +310,8 @@ mod tests {
 
 	fn mk_chunked_block(parts: &[&[i32]]) -> Arc<ColumnBlock> {
 		let total_rows: usize = parts.iter().map(|p| p.len()).sum();
-		let chunks: Vec<Column> =
-			parts.iter().map(|p| array_from_column_data(&factory::int4("a", p.to_vec()))).collect();
-		let chunked_a = ColumnChunks::new(ValueType::Int4, false, chunks);
+		let columns: Vec<(FieldRef, ArrayRef)> = parts.iter().map(|p| factory::int4("a", p.to_vec())).collect();
+		let chunked_a = multi(ValueType::Int4, false, &columns);
 		let mut schema_entries: Vec<(String, ValueType, bool)> =
 			vec![("a".to_string(), ValueType::Int4, false)];
 		let mut all_chunks: Vec<ColumnChunks> = vec![chunked_a];
@@ -291,7 +326,7 @@ mod tests {
 	fn reader_handles_multi_chunk_column() {
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		assert_eq!(snap.len(), 9);
-		let mut reader = SnapshotReader::new(snap, 100);
+		let mut reader = SnapshotReader::new(snap, 100, new_session());
 
 		let batch = reader.next().unwrap().unwrap();
 		assert_eq!(batch.num_rows(), 9);
@@ -306,7 +341,7 @@ mod tests {
 		// Batch size 4 lands on no chunk boundary, so the first two batches each have to stitch two chunks
 		// together and the third is a short tail.
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
-		let mut reader = SnapshotReader::new(snap, 4);
+		let mut reader = SnapshotReader::new(snap, 4, new_session());
 
 		let b0 = reader.next().unwrap().unwrap();
 		assert_eq!(b0.num_rows(), 4);
@@ -330,7 +365,7 @@ mod tests {
 	fn reader_batch_starts_mid_chunk() {
 		// Batch size 3 over a single 10-row chunk makes every batch after the first start mid-chunk.
 		let snap = mk_chunked_block(&[&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]);
-		let mut reader = SnapshotReader::new(snap, 3);
+		let mut reader = SnapshotReader::new(snap, 3, new_session());
 
 		let b0 = reader.next().unwrap().unwrap();
 		assert_eq!(b0.num_rows(), 3);
@@ -349,7 +384,7 @@ mod tests {
 	fn pushdown_eq_predicate_keeps_only_matching_rows() {
 		let snap = mk_block(5);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(3));
-		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
+		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 1);
@@ -364,7 +399,7 @@ mod tests {
 		// The whole snapshot arrives as one batch, so the filter has to select across chunk boundaries.
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		let p = Predicate::In(ColRef::from("a"), vec![Value::Int4(30), Value::Int4(80)]);
-		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
+		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -382,7 +417,7 @@ mod tests {
 		// batches.
 		let snap = mk_block(6);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(4));
-		let mut reader = SnapshotReader::new(snap, 2).with_predicate(p);
+		let mut reader = SnapshotReader::new(snap, 2, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("only matching batch").unwrap();
 		assert_eq!(batch.num_rows(), 1);
@@ -397,7 +432,7 @@ mod tests {
 		// intact.
 		let snap = mk_block(5);
 		let p = Predicate::GtEq(ColRef::from("a"), Value::Int4(0));
-		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
+		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 5);
@@ -421,8 +456,7 @@ mod tests {
 		b.push_none();
 		b.push::<i32>(60);
 		let b = b.finish("a");
-		let chunks = vec![array_from_column_data(&a), array_from_column_data(&b)];
-		let id_col = ColumnChunks::new(ValueType::Int4, true, chunks);
+		let id_col = multi(ValueType::Int4, true, &[a, b]);
 		let mut schema_entries: Vec<(String, ValueType, bool)> = vec![("a".to_string(), ValueType::Int4, true)];
 		let mut block_chunks: Vec<ColumnChunks> = vec![id_col];
 		for (entry, chunk) in system_chunked(6) {
@@ -432,7 +466,7 @@ mod tests {
 		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
 
 		let p = Predicate::IsNone(ColRef::from("a"));
-		let mut reader = SnapshotReader::new(block, 100).with_predicate(p);
+		let mut reader = SnapshotReader::new(block, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -460,8 +494,7 @@ mod tests {
 			],
 		);
 		let second = factory::int4_optional("a", [Some(110), None, Some(130), Some(140), None, Some(160)]);
-		let chunks = vec![array_from_column_data(&first), array_from_column_data(&second)];
-		let a_col = ColumnChunks::new(ValueType::Int4, true, chunks);
+		let a_col = multi(ValueType::Int4, true, &[first, second]);
 		let mut schema_entries: Vec<(String, ValueType, bool)> = vec![("a".to_string(), ValueType::Int4, true)];
 		let mut block_chunks: Vec<ColumnChunks> = vec![a_col];
 		for (entry, chunk) in system_chunked(17) {
@@ -474,7 +507,7 @@ mod tests {
 			Predicate::IsNone(ColRef::from("a")),
 			Predicate::Gt(ColRef::from("a"), Value::Int4(125)),
 		]);
-		let reader = SnapshotReader::new(block, 8).with_predicate(p);
+		let reader = SnapshotReader::new(block, 8, new_session()).with_predicate(p);
 
 		let mut rows = Vec::new();
 		for batch in reader {
@@ -498,5 +531,46 @@ mod tests {
 				(RowNumber(16), Value::Int4(160)),
 			]
 		);
+	}
+
+	#[test]
+	fn a_filtered_dictionary_column_keeps_its_dictionary_id() {
+		// Without the id a filtered dictionary column comes back undecodable.
+		let (field, array) = factory::dictionary_id(
+			"d",
+			[DictionaryEntryId::U4(1), DictionaryEntryId::U4(2), DictionaryEntryId::U4(3)],
+		);
+		let mut field_type = from_field(&field).unwrap();
+		field_type.dictionary_id = Some(DictionaryId(42));
+		let d_col = ColumnChunks::single(
+			ValueType::DictionaryId,
+			false,
+			field_type,
+			array_from_column_data(&(field, array)),
+		);
+		let a_col = single(ValueType::Int4, &factory::int4("a", vec![0, 1, 2]));
+		let mut schema_entries: Vec<(String, ValueType, bool)> = vec![
+			("a".to_string(), ValueType::Int4, false),
+			("d".to_string(), ValueType::DictionaryId, false),
+		];
+		let mut block_chunks: Vec<ColumnChunks> = vec![a_col, d_col];
+		for (entry, chunk) in system_chunked(3) {
+			schema_entries.push(entry);
+			block_chunks.push(chunk);
+		}
+		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
+
+		let p = Predicate::In(ColRef::from("a"), vec![Value::Int4(0), Value::Int4(2)]);
+		let mut reader = SnapshotReader::new(block, 100, new_session()).with_predicate(p);
+
+		let batch = reader.next().expect("batch").unwrap();
+		assert_eq!(batch.num_rows(), 2);
+		let schema = batch.schema();
+		let d_field = schema.field_with_name("d").unwrap();
+		assert_eq!(from_field(d_field).unwrap().dictionary_id, Some(DictionaryId(42)));
+		let d = column_view(&batch, "d").unwrap().unwrap();
+		assert_eq!(d.get_value(0), Value::DictionaryId(DictionaryEntryId::U4(1)));
+		assert_eq!(d.get_value(1), Value::DictionaryId(DictionaryEntryId::U4(3)));
+		assert!(reader.next().is_none());
 	}
 }
