@@ -73,7 +73,10 @@ impl LeftHashJoin {
 				let unmatched_pre =
 					ctx.operator.unmatched_left_columns(host, pre, row_idx, Identity::Existing)?;
 				if unmatched_pre.is_empty() {
-					return Ok(Vec::new());
+					return Ok(ctx
+						.operator
+						.unmatched_left_columns(host, post, row_idx, Identity::Mint)?
+						.published());
 				}
 				let unmatched_post =
 					ctx.operator.unmatched_left_columns(host, post, row_idx, Identity::Existing)?;
