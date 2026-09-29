@@ -15,7 +15,7 @@ doctest = false
 default = ["tokio", "sqlite"]
 tokio = []
 sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
-testing = ["reifydb-flow-sync/testing"]
+testing = ["reifydb-flow-sync/testing", "reifydb-flow/testing"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -57,6 +57,7 @@ postcard = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-flow = { workspace = true, features = ["runtime", "testing"] }
 reifydb-routine = { workspace = true }
 reifydb-test-harness = { workspace = true }
 

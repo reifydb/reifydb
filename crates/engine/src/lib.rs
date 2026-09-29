@@ -9,6 +9,7 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_value::Result;
 
+pub mod backfill;
 pub mod bulk_insert;
 pub mod engine;
 pub mod environment;
