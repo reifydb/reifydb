@@ -18,6 +18,8 @@ use reifydb_core::{
 	},
 	key::any::TaggedKey,
 };
+#[cfg(feature = "testing")]
+use reifydb_flow_sync::testing::{InstalledHooks, TestingTxn};
 use reifydb_flow_sync::{
 	run::run,
 	txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
@@ -39,6 +41,10 @@ pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>)
 		catalog: &services.catalog,
 		runtime_context: &services.runtime_context,
 	};
+	#[cfg(feature = "testing")]
+	if let Some(InstalledHooks(hooks)) = services.ioc.try_resolve::<InstalledHooks>() {
+		return run(&mut TestingTxn::over(txn, hooks), &services.routines, &services.runtime_context);
+	}
 	run(&mut txn, &services.routines, &services.runtime_context)
 }
 
@@ -95,7 +101,14 @@ impl Rows for FlowTransaction<'_> {
 	}
 
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.tx.remove(&tagged(key))
+		let key = tagged(key);
+		match self.tx.get_committed(&key)? {
+			Some(committed) => {
+				self.tx.mark_preexisting(&key)?;
+				self.tx.remove_with_pre(&key, committed.bytes)
+			}
+			None => self.tx.remove(&key),
+		}
 	}
 }
 
@@ -181,7 +194,8 @@ mod tests {
 
 	#[test]
 	fn an_emitted_view_diff_lands_after_the_cursor_and_moving_the_cursor_skips_it() {
-		// Without this the run loop either re-feeds its own view diffs or never hands them to a downstream flow.
+		// Without this the run loop either re-feeds its own view diffs or never hands them to a downstream
+		// flow.
 		let executor = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 		let mut sync = FlowTransaction {

@@ -47,6 +47,12 @@ struct BucketKey {
 	pre_shape: RowShapeFingerprint,
 }
 
+struct RebuiltRow {
+	target: RowTarget,
+	pre: Option<EncodedBytes>,
+	post: Option<EncodedBytes>,
+}
+
 #[derive(Default)]
 struct Bucket {
 	ids: Vec<RowNumber>,
@@ -120,7 +126,7 @@ pub fn rebuild_selected_changes(
 	txn: &mut Transaction<'_>,
 	accept: impl Fn(ObjectId) -> bool,
 ) -> Result<Vec<Change>> {
-	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
+	let mut rows: Vec<RebuiltRow> = Vec::with_capacity(cdc.changes.len());
 
 	for cdc_change in &cdc.changes {
 		let Some(target) = tracked_target(cdc_change.key()) else {
@@ -129,35 +135,16 @@ pub fn rebuild_selected_changes(
 		if !accept(target.object) {
 			continue;
 		}
-		let (key, pre, post) = match cdc_change {
+		let (pre, post) = match cdc_change {
 			CdcChange::Insert {
 				post,
 				..
-			} => {
-				let fingerprint = read_fingerprint(post);
-				(
-					BucketKey {
-						kind: RebuiltKind::Insert,
-						post_shape: fingerprint,
-						pre_shape: fingerprint,
-					},
-					None,
-					Some(post.clone()),
-				)
-			}
+			} => (None, Some(post.clone())),
 			CdcChange::Update {
 				pre,
 				post,
 				..
-			} => (
-				BucketKey {
-					kind: RebuiltKind::Update,
-					post_shape: read_fingerprint(post),
-					pre_shape: read_fingerprint(pre),
-				},
-				Some(pre.clone()),
-				Some(post.clone()),
-			),
+			} => (Some(pre.clone()), Some(post.clone())),
 			CdcChange::Delete {
 				visible: false,
 				..
@@ -175,25 +162,51 @@ pub fn rebuild_selected_changes(
 						cdc.version.commit.0
 					))))
 				})?;
-				let fingerprint = read_fingerprint(pre);
-				(
-					BucketKey {
-						kind: RebuiltKind::Remove,
-						post_shape: fingerprint,
-						pre_shape: fingerprint,
-					},
-					Some(pre.clone()),
-					None,
-				)
+				(Some(pre.clone()), None)
 			}
 		};
+		rows.push(RebuiltRow {
+			target,
+			pre,
+			post,
+		});
+	}
 
-		let bucket = grouped.entry(target.object).or_default().entry(key).or_default();
-		bucket.ids.push(target.row);
-		if let Some(pre) = pre {
+	pair_moved_rows(&mut rows);
+
+	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
+	for row in rows {
+		let key = match (&row.pre, &row.post) {
+			(None, Some(post)) => {
+				let fingerprint = read_fingerprint(post);
+				BucketKey {
+					kind: RebuiltKind::Insert,
+					post_shape: fingerprint,
+					pre_shape: fingerprint,
+				}
+			}
+			(Some(pre), Some(post)) => BucketKey {
+				kind: RebuiltKind::Update,
+				post_shape: read_fingerprint(post),
+				pre_shape: read_fingerprint(pre),
+			},
+			(Some(pre), None) => {
+				let fingerprint = read_fingerprint(pre);
+				BucketKey {
+					kind: RebuiltKind::Remove,
+					post_shape: fingerprint,
+					pre_shape: fingerprint,
+				}
+			}
+			(None, None) => continue,
+		};
+
+		let bucket = grouped.entry(row.target.object).or_default().entry(key).or_default();
+		bucket.ids.push(row.target.row);
+		if let Some(pre) = row.pre {
 			bucket.pre.push(pre);
 		}
-		if let Some(post) = post {
+		if let Some(post) = row.post {
 			bucket.post.push(post);
 		}
 	}
@@ -233,6 +246,24 @@ pub fn rebuild_selected_changes(
 	}
 
 	Ok(changes)
+}
+
+fn pair_moved_rows(rows: &mut Vec<RebuiltRow>) {
+	let mut inserts: BTreeMap<(ObjectId, RowNumber), usize> = BTreeMap::new();
+	for (index, row) in rows.iter().enumerate() {
+		if row.pre.is_none() {
+			inserts.insert((row.target.object, row.target.row), index);
+		}
+	}
+	for index in 0..rows.len() {
+		if rows[index].pre.is_none() || rows[index].post.is_some() {
+			continue;
+		}
+		if let Some(insert) = inserts.remove(&(rows[index].target.object, rows[index].target.row)) {
+			rows[index].post = rows[insert].post.take();
+		}
+	}
+	rows.retain(|row| row.pre.is_some() || row.post.is_some());
 }
 
 fn load_shape(

@@ -15,6 +15,7 @@ doctest = false
 default = ["tokio", "sqlite"]
 tokio = []
 sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
+testing = ["reifydb-flow-sync/testing"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }

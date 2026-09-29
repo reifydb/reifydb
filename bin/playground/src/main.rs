@@ -71,21 +71,37 @@ fn main() {
 	);
 	query(&db, "2. View right after the insert (expect 2 and 3, no lag)", "FROM shop::big_orders");
 
-	command(&db, "3. Update Alice to 500 (moves into the view)", "UPDATE shop::orders { amount: 500 } FILTER { id == 1 }");
-	command(&db, "3. Update Bob to 10 (moves out of the view)", "UPDATE shop::orders { amount: 10 } FILTER { id == 2 }");
+	command(
+		&db,
+		"3. Update Alice to 500 (moves into the view)",
+		"UPDATE shop::orders { amount: 500 } FILTER { id == 1 }",
+	);
+	command(
+		&db,
+		"3. Update Bob to 10 (moves out of the view)",
+		"UPDATE shop::orders { amount: 10 } FILTER { id == 2 }",
+	);
 	query(&db, "3. View after the updates (expect 1 and 3)", "FROM shop::big_orders");
 
 	command(&db, "4. Delete Carol", "DELETE shop::orders FILTER { id == 3 }");
 	query(&db, "4. View after the delete (expect 1)", "FROM shop::big_orders");
 
 	let mut txn = db.engine().begin_command(IdentityId::root()).unwrap();
-	in_txn(&mut txn, "5. In one txn: insert Erin 200", r#"INSERT shop::orders [{ id: 5, customer: "Erin", amount: 200 }]"#);
+	in_txn(
+		&mut txn,
+		"5. In one txn: insert Erin 200",
+		r#"INSERT shop::orders [{ id: 5, customer: "Erin", amount: 200 }]"#,
+	);
 	in_txn(&mut txn, "5. Same txn: read the view (expect 1 and 5)", "FROM shop::big_orders");
 	txn.commit().unwrap();
 	query(&db, "5. After commit (expect 1 and 5)", "FROM shop::big_orders");
 
 	let mut txn = db.engine().begin_command(IdentityId::root()).unwrap();
-	in_txn(&mut txn, "6. In one txn: insert Frank 999", r#"INSERT shop::orders [{ id: 6, customer: "Frank", amount: 999 }]"#);
+	in_txn(
+		&mut txn,
+		"6. In one txn: insert Frank 999",
+		r#"INSERT shop::orders [{ id: 6, customer: "Frank", amount: 999 }]"#,
+	);
 	in_txn(&mut txn, "6. Same txn: read the view (expect 1, 5 and 6)", "FROM shop::big_orders");
 	txn.rollback().unwrap();
 	query(&db, "6. After rollback (expect 1 and 5, Frank is gone)", "FROM shop::big_orders");

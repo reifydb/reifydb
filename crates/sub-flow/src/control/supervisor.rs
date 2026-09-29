@@ -499,7 +499,11 @@ impl FlowSupervisor {
 
 	fn is_transactional_flow(&self, flow: &FlowDag) -> bool {
 		flow.sink_views().any(|view| {
-			self.engine.catalog().cache().find_view(view).is_some_and(|def| def.kind() == ViewKind::Transactional)
+			self.engine
+				.catalog()
+				.cache()
+				.find_view(view)
+				.is_some_and(|def| def.kind() == ViewKind::Transactional)
 		})
 	}
 

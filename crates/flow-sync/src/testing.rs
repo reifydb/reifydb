@@ -90,6 +90,9 @@ pub struct NoFaults;
 
 impl SyncHooks for NoFaults {}
 
+#[derive(Clone)]
+pub struct InstalledHooks(pub Arc<dyn SyncHooks>);
+
 pub struct TestingTxn<T> {
 	txn: T,
 	hooks: Arc<dyn SyncHooks>,

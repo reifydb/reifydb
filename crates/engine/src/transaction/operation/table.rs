@@ -247,7 +247,7 @@ impl TableOperations for CommandTransaction {
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec)?);
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &displayed_bytes_vec)?);
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}
@@ -400,7 +400,7 @@ impl TableOperations for AdminTransaction {
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec)?);
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &displayed_bytes_vec)?);
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}
