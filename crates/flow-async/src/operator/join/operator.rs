@@ -271,18 +271,16 @@ impl JoinOperator {
 		})
 	}
 
-	fn resolve_groups(
-		cleared: &[(Hash128, RowNumber)],
-		armed: &[(Hash128, RowNumber, DateTime)],
-	) -> Result<HashMap<Hash128, GroupId>> {
-		let mut distinct: Vec<Hash128> = Vec::new();
-		let mut seen: HashSet<Hash128> = HashSet::new();
-		for hash in cleared.iter().map(|(hash, _)| hash).chain(armed.iter().map(|(hash, _, _)| hash)) {
-			if seen.insert(*hash) {
-				distinct.push(*hash);
+	fn expiry_group(&self, side: JoinSide, key: Option<Hash128>) -> Option<GroupId> {
+		match key {
+			Some(hash) => Some(GroupId::hashed(hash)),
+			None if side == JoinSide::Left
+				&& matches!(self.strategy, JoinStrategy::Left(_) | JoinStrategy::LatestLeft(_)) =>
+			{
+				Some(GroupId::UNKEYED)
 			}
+			None => None,
 		}
-		Ok(distinct.into_iter().map(|hash| (hash, GroupId::hashed(hash))).collect())
 	}
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
@@ -313,8 +311,8 @@ impl JoinOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
-		cleared: &[(Hash128, RowNumber)],
-		armed: &[(Hash128, RowNumber, DateTime)],
+		cleared: &[(GroupId, RowNumber)],
+		armed: &[(GroupId, RowNumber, DateTime)],
 	) -> Result<()> {
 		let Some(retention) = self.retention_of(side) else {
 			return Ok(());
@@ -323,24 +321,17 @@ impl JoinOperator {
 			return Ok(());
 		}
 		let rule = SealRule::of(retention);
-		let resolved = Self::resolve_groups(cleared, armed)?;
 
-		for (hash, row_number) in cleared {
-			let Some(group) = resolved.get(hash).copied() else {
-				continue;
-			};
-			if let Some(at) = host.join_expiry_clear(group, side.tag(), *row_number)? {
+		for &(group, row_number) in cleared {
+			if let Some(at) = host.join_expiry_clear(group, side.tag(), row_number)? {
 				self.expiry.cleared(at);
 			}
 		}
 
-		for (hash, row_number, at) in armed {
-			let Some(group) = resolved.get(hash).copied() else {
-				continue;
-			};
-			let sealed = rule.seal_instant(*at).at();
+		for &(group, row_number, at) in armed {
+			let sealed = rule.seal_instant(at).at();
 			host.state_remove(&queue_key(group))?;
-			host.join_expiry_arm(group, side.tag(), *row_number, sealed)?;
+			host.join_expiry_arm(group, side.tag(), row_number, sealed)?;
 			self.expiry.armed(sealed);
 		}
 
@@ -361,10 +352,11 @@ impl JoinOperator {
 		let row_numbers = require_row_numbers(columns)?;
 		let mut armed = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
-			let (Some(hash), Some(at)) = (key, times.get(row_idx).copied().flatten()) else {
+			let (Some(group), Some(at)) = (self.expiry_group(side, *key), times.get(row_idx).copied().flatten())
+			else {
 				continue;
 			};
-			armed.push((*hash, row_numbers[row_idx], at));
+			armed.push((group, row_numbers[row_idx], at));
 		}
 		self.move_join_expiries(host, side, &[], &armed)
 	}
@@ -382,10 +374,10 @@ impl JoinOperator {
 		let row_numbers = require_row_numbers(columns)?;
 		let mut cleared = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
-			let Some(hash) = key else {
+			let Some(group) = self.expiry_group(side, *key) else {
 				continue;
 			};
-			cleared.push((*hash, row_numbers[row_idx]));
+			cleared.push((group, row_numbers[row_idx]));
 		}
 		self.move_join_expiries(host, side, &cleared, &[])
 	}
@@ -402,13 +394,15 @@ impl JoinOperator {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
-		let mut cleared: Vec<(Hash128, RowNumber)> = Vec::new();
-		if let Some(hash) = keys.0 {
-			cleared.push((hash, require_row_numbers(pre)?[row_idx]));
+		let mut cleared: Vec<(GroupId, RowNumber)> = Vec::new();
+		if let Some(group) = self.expiry_group(side, keys.0) {
+			cleared.push((group, require_row_numbers(pre)?[row_idx]));
 		}
-		let mut armed: Vec<(Hash128, RowNumber, DateTime)> = Vec::new();
-		if let (Some(hash), Some(at)) = (keys.1, row_times(post)?.get(row_idx).copied().flatten()) {
-			armed.push((hash, require_row_numbers(post)?[row_idx], at));
+		let mut armed: Vec<(GroupId, RowNumber, DateTime)> = Vec::new();
+		if let (Some(group), Some(at)) =
+			(self.expiry_group(side, keys.1), row_times(post)?.get(row_idx).copied().flatten())
+		{
+			armed.push((group, require_row_numbers(post)?[row_idx], at));
 		}
 		self.move_join_expiries(host, side, &cleared, &armed)
 	}

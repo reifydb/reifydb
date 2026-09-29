@@ -60,6 +60,16 @@ impl GroupId {
 		Self(bytes)
 	};
 
+	pub const UNKEYED: Self = {
+		let mut bytes = [0u8; Self::WIDTH];
+		let mut idx = 0;
+		while idx < Self::HASH_OFFSET {
+			bytes[idx] = u8::MAX;
+			idx += 1;
+		}
+		Self(bytes)
+	};
+
 	pub const MIN: Self = Self([u8::MIN; Self::WIDTH]);
 
 	pub const MAX: Self = Self([u8::MAX; Self::WIDTH]);
