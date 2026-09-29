@@ -44,7 +44,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	coerce::coerce_value_to_column_type,
+	coerce::{InputFragments, coerce_value_to_column_type},
 	context::RingBufferTarget,
 	partition::{
 		compute_partition_col_indices, ensure_partition_metadata, evict_oldest_for_partition,
@@ -86,6 +86,7 @@ pub(crate) fn insert_ringbuffer(
 		ringbuffer: &ringbuffer,
 	};
 	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols, txn.identity());
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile_and_initialize_input(*input, txn, &context)?;
 
 	let mut partition_metadata_cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
@@ -97,6 +98,7 @@ pub(crate) fn insert_ringbuffer(
 		&shape,
 		&context,
 		input_node.as_mut(),
+		&fragments,
 		returning.is_some(),
 		&mut partition_metadata_cache,
 	)?;
@@ -135,6 +137,7 @@ fn drive_ringbuffer_insert(
 	shape: &RowShape,
 	context: &Arc<QueryContext>,
 	input_node: &mut dyn QueryNode,
+	fragments: &InputFragments,
 	has_returning: bool,
 	partition_metadata_cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
@@ -157,7 +160,7 @@ fn drive_ringbuffer_insert(
 		if let Some((unknown, _)) = user_columns(&columns)
 			.find(|(field, _)| !ringbuffer.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 
 		let row_count = columns.num_rows();
@@ -168,6 +171,7 @@ fn drive_ringbuffer_insert(
 				target_data,
 				shape,
 				&columns,
+				fragments,
 				context,
 				row_idx,
 			)?;
@@ -282,12 +286,14 @@ fn build_insert_ringbuffer_query_context(
 	})
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_insert_ringbuffer_row(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
 	columns: &RecordBatch,
+	fragments: &InputFragments,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<(EncodedBytes, Vec<Value>)> {
@@ -301,10 +307,7 @@ fn build_insert_ringbuffer_row(
 			Value::none()
 		};
 
-		let column_ident = user_columns(columns)
-			.find(|(field, _)| field.name() == &rb_column.name)
-			.map(|(field, _)| Fragment::internal(field.name()))
-			.unwrap_or_else(|| Fragment::internal(&rb_column.name));
+		let column_ident = fragments.column(&rb_column.name);
 		let resolved_column =
 			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
 

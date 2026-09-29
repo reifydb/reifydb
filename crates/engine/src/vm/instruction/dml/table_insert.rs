@@ -62,7 +62,10 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
+		instruction::dml::{
+			coerce::{InputFragments, coerce_value_to_column_type},
+			time::resolve_time,
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -91,6 +94,7 @@ pub(crate) fn insert_table(
 		fragment: target.identifier(),
 	};
 	let context = build_insert_table_query_context(services, &target_data, symbols, txn.identity());
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
@@ -102,6 +106,7 @@ pub(crate) fn insert_table(
 		&context,
 		symbols,
 		&mut input_node,
+		&fragments,
 	)?;
 
 	if !table.partition_by.is_empty() {
@@ -194,6 +199,7 @@ fn build_insert_table_query_context(
 	})
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_and_encode_input_rows(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
@@ -202,6 +208,7 @@ fn validate_and_encode_input_rows(
 	context: &Arc<QueryContext>,
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
+	fragments: &InputFragments,
 ) -> Result<Vec<EncodedBytes>> {
 	let mut validated: Vec<EncodedBytes> = Vec::new();
 	let mut mutable_context = (**context).clone();
@@ -217,7 +224,7 @@ fn validate_and_encode_input_rows(
 		if let Some((unknown, _)) = user_columns(&columns)
 			.find(|(field, _)| !target.table.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 		let views: Vec<ColumnView<'_>> = user_columns(&columns)
 			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
@@ -232,12 +239,15 @@ fn validate_and_encode_input_rows(
 		};
 		let row_count = columns.num_rows();
 		for row_idx in 0..row_count {
-			validated.push(build_insert_table_row(services, txn, target, shape, &view, context, row_idx)?);
+			validated.push(build_insert_table_row(
+				services, txn, target, shape, &view, fragments, context, row_idx,
+			)?);
 		}
 	}
 	Ok(validated)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn build_insert_table_row(
 	services: &Arc<Services>,
@@ -245,6 +255,7 @@ fn build_insert_table_row(
 	target: &TableTarget<'_>,
 	shape: &RowShape,
 	view: &InputColumns<'_>,
+	fragments: &InputFragments,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
@@ -258,11 +269,7 @@ fn build_insert_table_row(
 		if table_column.auto_increment && matches!(value, Value::None { .. }) {
 			value = services.catalog.column_sequence_next_value(txn, target.table.id, table_column.id)?;
 		}
-		let column_ident = view
-			.column_map
-			.get(table_column.name.as_str())
-			.map(|&idx| Fragment::internal(view.columns[idx].field.name()))
-			.unwrap_or_else(|| Fragment::internal(table_column.name.clone()));
+		let column_ident = fragments.column(&table_column.name);
 		let resolved_column = ResolvedColumn::new(
 			column_ident.clone(),
 			context.source.clone().unwrap(),

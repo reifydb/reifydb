@@ -62,7 +62,10 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_for_update},
+		instruction::dml::{
+			coerce::{InputFragments, coerce_value_to_column_type},
+			time::resolve_time_for_update,
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -93,6 +96,7 @@ pub(crate) fn update_table(
 	};
 	let context = build_update_table_query_context(services, &target_data, &params, symbols, txn.identity());
 
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
 
@@ -100,8 +104,16 @@ pub(crate) fn update_table(
 		services,
 		symbols,
 	};
-	let (updated_count, returned_rows, pre_rows) =
-		run_table_update(&exec, txn, &mut input_node, &target_data, &shape, &context, returning.is_some())?;
+	let (updated_count, returned_rows, pre_rows) = run_table_update(
+		&exec,
+		txn,
+		&mut input_node,
+		&fragments,
+		&target_data,
+		&shape,
+		&context,
+		returning.is_some(),
+	)?;
 
 	if let Some(returning_exprs) = &returning {
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
@@ -156,10 +168,12 @@ fn build_update_table_query_context(
 
 type ReturnedRows = Vec<(RowNumber, EncodedBytes)>;
 
+#[allow(clippy::too_many_arguments)]
 fn run_table_update(
 	exec: &WriteExecCtx<'_>,
 	txn: &mut Transaction<'_>,
 	input_node: &mut Box<dyn QueryNode>,
+	fragments: &InputFragments,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
 	context: &QueryContext,
@@ -185,7 +199,7 @@ fn run_table_update(
 		if let Some((unknown, _)) = user_columns(&columns)
 			.find(|(field, _)| !target.table.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 
 		if row_numbers(&columns)?.is_empty() {
@@ -216,6 +230,7 @@ fn run_table_update(
 				target.table,
 				shape,
 				&columns,
+				fragments,
 				context,
 				row_idx,
 			)?;
@@ -307,6 +322,7 @@ fn enforce_old_row_policies(
 	)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn build_updated_table_row(
 	services: &Arc<Services>,
@@ -314,6 +330,7 @@ fn build_updated_table_row(
 	table: &Table,
 	shape: &RowShape,
 	columns: &RecordBatch,
+	fragments: &InputFragments,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedTableRowBuilder> {
@@ -325,10 +342,7 @@ fn build_updated_table_row(
 			Value::none()
 		};
 
-		let column_ident = user_columns(columns)
-			.find(|(field, _)| field.name() == &table_column.name)
-			.map(|(field, _)| Fragment::internal(field.name()))
-			.unwrap_or_else(|| Fragment::internal(&table_column.name));
+		let column_ident = fragments.column(&table_column.name);
 		let resolved_column = ResolvedColumn::new(
 			column_ident.clone(),
 			context.source.clone().unwrap(),

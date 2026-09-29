@@ -78,7 +78,7 @@ use crate::{
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::{
-			coerce::{coerce_series_row, series_key},
+			coerce::{InputFragments, coerce_series_row, series_key},
 			time::resolve_time,
 		},
 		services::Services,
@@ -114,6 +114,7 @@ pub(crate) fn insert_series(
 		symbols,
 		txn.identity(),
 	);
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
 
 	let tag = series.tag.map(|tag_id| services.catalog.get_sumtype(txn, tag_id)).transpose()?;
@@ -137,7 +138,7 @@ pub(crate) fn insert_series(
 			!(series.columns.iter().any(|c| &c.name == field.name())
 				|| (tag.is_some() && field.name() == "tag"))
 		}) {
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 		for column in &series.columns {
 			if let Some(input) = column_view(&columns, &column.name)? {
@@ -155,6 +156,7 @@ pub(crate) fn insert_series(
 				&shape,
 				&context,
 				&columns,
+				&fragments,
 				row_idx,
 				key_column_name,
 				tag.as_ref(),
@@ -217,6 +219,7 @@ fn insert_series_row(
 	shape: &RowShape,
 	context: &QueryContext,
 	columns: &RecordBatch,
+	fragments: &InputFragments,
 	row_idx: usize,
 	key_column_name: &str,
 	tag: Option<&SumType>,
@@ -224,7 +227,7 @@ fn insert_series_row(
 	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
-	let values = coerce_series_row(series, columns, context, row_idx)?;
+	let values = coerce_series_row(series, columns, fragments, context, row_idx)?;
 	let mut encoded = values.clone();
 	for (col_def, value) in series.columns.iter().zip(encoded.iter_mut()) {
 		if col_def.name != key_column_name

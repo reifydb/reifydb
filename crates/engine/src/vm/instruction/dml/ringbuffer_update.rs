@@ -50,7 +50,7 @@ use reifydb_value::{
 };
 
 use super::{
-	coerce::coerce_value_to_column_type,
+	coerce::{InputFragments, coerce_value_to_column_type},
 	context::RingBufferTarget,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -90,6 +90,7 @@ pub(crate) fn update_ringbuffer(
 	};
 	let context = build_update_ringbuffer_query_context(services, &target_data, &params, symbols, txn.identity());
 
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
 
@@ -114,7 +115,7 @@ pub(crate) fn update_ringbuffer(
 		if let Some((unknown, _)) = user_columns(&columns)
 			.find(|(field, _)| !ringbuffer.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 		if row_numbers(&columns)?.is_empty() {
 			return_error!(engine::missing_row_number_column());
@@ -141,6 +142,7 @@ pub(crate) fn update_ringbuffer(
 				&target_data,
 				&shape,
 				&view,
+				&fragments,
 				&context,
 				row_idx,
 			)?;
@@ -293,6 +295,7 @@ fn enforce_old_row_policies(
 	)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn build_updated_ringbuffer_row(
 	services: &Arc<Services>,
@@ -300,6 +303,7 @@ fn build_updated_ringbuffer_row(
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
 	view: &InputColumns<'_>,
+	fragments: &InputFragments,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
@@ -311,12 +315,7 @@ fn build_updated_ringbuffer_row(
 			Value::none()
 		};
 
-		let column_ident = view
-			.columns
-			.iter()
-			.find(|col| col.field.name() == &rb_column.name)
-			.map(|col| Fragment::internal(col.field.name()))
-			.unwrap_or_else(|| Fragment::internal(&rb_column.name));
+		let column_ident = fragments.column(&rb_column.name);
 		let resolved_column =
 			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
 

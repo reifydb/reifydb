@@ -70,7 +70,7 @@ use crate::{
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::{
-			coerce::{coerce_series_row, series_key},
+			coerce::{InputFragments, coerce_series_row, series_key},
 			shape::get_or_create_series_shape,
 			time::resolve_time_for_update,
 		},
@@ -102,6 +102,7 @@ pub(crate) fn update_series(
 		series: &series,
 	};
 	let context = build_update_series_query_context(services, &target_data, &params, symbols, txn.identity());
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
 
@@ -129,7 +130,7 @@ pub(crate) fn update_series(
 		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
 			!(series.columns.iter().any(|c| &c.name == field.name()) || (has_tag && field.name() == "tag"))
 		}) {
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 
 		let row_numbers = row_numbers(&columns)?;
@@ -138,6 +139,7 @@ pub(crate) fn update_series(
 			txn,
 			&series,
 			&columns,
+			&fragments,
 			&context,
 			row_numbers,
 			has_tag,
@@ -302,11 +304,13 @@ fn build_update_series_query_context(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_series_updates_to_apply(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	columns: &RecordBatch,
+	fragments: &InputFragments,
 	context: &QueryContext,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
@@ -348,7 +352,8 @@ fn build_series_updates_to_apply(
 		};
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-		let row = build_series_update_bytes(services, txn, series, columns, &shape, context, row_idx)?;
+		let row =
+			build_series_update_bytes(services, txn, series, columns, fragments, &shape, context, row_idx)?;
 		updates_to_apply.push((key, row, row_idx));
 	}
 	Ok(updates_to_apply)
@@ -426,19 +431,21 @@ fn extract_series_update_variant_tag(columns: &RecordBatch, has_tag: bool, row_i
 	}))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn build_series_update_bytes(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	columns: &RecordBatch,
+	fragments: &InputFragments,
 	shape: &RowShape,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
 	let mut row = shape.allocate_series();
 	let key_column = series.key.column();
-	let values = coerce_series_row(series, columns, context, row_idx)?;
+	let values = coerce_series_row(series, columns, fragments, context, row_idx)?;
 	let mut data_idx = 0;
 	for (col_def, value) in series.columns.iter().zip(values) {
 		if col_def.name == key_column {

@@ -73,7 +73,10 @@ use crate::{
 		queue::{QueueInsertRow, QueueOperations},
 	},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
+		instruction::dml::{
+			coerce::{InputFragments, coerce_value_to_column_type},
+			time::resolve_time,
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -110,6 +113,7 @@ pub(crate) fn insert_queue(
 	};
 
 	let context = build_insert_queue_query_context(services, &target_data, symbols, txn.identity());
+	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
@@ -121,6 +125,7 @@ pub(crate) fn insert_queue(
 		&context,
 		symbols,
 		&mut input_node,
+		&fragments,
 		has_deduplication,
 		has_not_before,
 	)?;
@@ -404,6 +409,7 @@ fn validate_and_encode_input_rows(
 	context: &Arc<QueryContext>,
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
+	fragments: &InputFragments,
 	has_deduplication: bool,
 	has_not_before: bool,
 ) -> Result<Vec<PendingItem>> {
@@ -425,7 +431,7 @@ fn validate_and_encode_input_rows(
 				|| (has_deduplication && field.name() == QUEUE_DEDUPLICATION_KEY_FIELD)
 				|| (has_not_before && field.name() == QUEUE_NOT_BEFORE_FIELD))
 		}) {
-			return_error!(column_not_found(Fragment::internal(unknown.name())));
+			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 
 		let views: Vec<ColumnView<'_>> = user_columns(&columns)
@@ -451,6 +457,7 @@ fn validate_and_encode_input_rows(
 				shape,
 				&views,
 				&column_map,
+				fragments,
 				context,
 				row_idx,
 				not_before,
@@ -533,6 +540,7 @@ fn build_insert_queue_row(
 	shape: &RowShape,
 	columns: &[ColumnView<'_>],
 	column_map: &HashMap<&str, usize>,
+	fragments: &InputFragments,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 	not_before: Option<DateTime>,
@@ -550,10 +558,7 @@ fn build_insert_queue_row(
 			value = services.catalog.column_sequence_next_value(txn, target.queue.id, queue_column.id)?;
 		}
 
-		let column_ident = column_map
-			.get(queue_column.name.as_str())
-			.map(|&idx| Fragment::internal(columns[idx].field.name()))
-			.unwrap_or_else(|| Fragment::internal(queue_column.name.clone()));
+		let column_ident = fragments.column(&queue_column.name);
 
 		let resolved_column = ResolvedColumn::new(
 			column_ident.clone(),
