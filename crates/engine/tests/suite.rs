@@ -216,6 +216,8 @@ mod time_update_lifecycle;
 mod top_k_system_columns;
 #[path = "transaction.rs"]
 mod transaction;
+#[path = "transactional_view_backfill.rs"]
+mod transactional_view_backfill;
 #[path = "transactional_view_chain.rs"]
 mod transactional_view_chain;
 #[path = "transactional_view_create.rs"]

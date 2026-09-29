@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_array::RecordBatch;
 use reifydb_catalog::{catalog::view::ViewToCreate, store::view::create::ViewStorage};
 use reifydb_core::{
@@ -14,10 +16,14 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{error, return_error, value::Value};
 
 use super::{create_transactional_view_flow, extract_view_sort};
-use crate::{Result, vm::services::Services};
+use crate::{
+	Result,
+	flow_sync::{backfill_transactional_view, sync_transactional_views},
+	vm::services::Services,
+};
 
 pub(crate) fn create_transactional_view(
-	services: &Services,
+	services: &Arc<Services>,
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateTransactionalViewNode,
@@ -59,6 +65,8 @@ pub(crate) fn create_transactional_view(
 
 	let sort = extract_view_sort(&plan.as_clause, &plan.columns);
 
+	sync_transactional_views(services, Transaction::Admin(txn))?;
+
 	let result = services.catalog.create_transactional_view(
 		txn,
 		ViewToCreate {
@@ -80,6 +88,8 @@ pub(crate) fn create_transactional_view(
 		&result,
 		*plan.as_clause,
 	)?;
+
+	backfill_transactional_view(services, Transaction::Admin(txn), result.id())?;
 
 	single_row([
 		("id", Value::Uint8(result.id().0)),

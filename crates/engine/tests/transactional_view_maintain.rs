@@ -150,7 +150,7 @@ fn a_view_created_after_an_earlier_load_is_maintained() {
 	t.command("INSERT ns::src [{ id: 2 }]");
 	t.admin("CREATE TRANSACTIONAL VIEW ns::w { id: int4 } AS { FROM ns::src }");
 	t.command("INSERT ns::src [{ id: 3 }]");
-	assert_eq!(ids(&t.query("FROM ns::w")), vec![3]);
+	assert_eq!(ids(&t.query("FROM ns::w")), vec![2, 3]);
 	assert_eq!(ids(&t.query("FROM ns::v")), vec![2, 3]);
 }
 

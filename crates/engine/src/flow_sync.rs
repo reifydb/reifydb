@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{num::NonZeroU64, sync::Arc};
+
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -8,7 +10,9 @@ use reifydb_core::{
 	flow::dag::FlowDag,
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			dictionary::Dictionary,
+			flow::OperatorId,
 			id::{TableId, ViewId},
 			object::ObjectId,
 			table::Table,
@@ -16,12 +20,15 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
+	internal_err,
 	key::any::TaggedKey,
 };
 #[cfg(feature = "testing")]
 use reifydb_flow_sync::testing::{InstalledHooks, TestingTxn};
 use reifydb_flow_sync::{
-	run::run,
+	graph::build,
+	node::Node,
+	run::{flow_sources, run, run_flow},
 	txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -33,7 +40,7 @@ use reifydb_value::value::{
 };
 use smallvec::smallvec;
 
-use crate::{Result, transaction::operation::dictionary::DictionaryOperations, vm::services::Services};
+use crate::{Result, backfill, transaction::operation::dictionary::DictionaryOperations, vm::services::Services};
 
 pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>) -> Result<()> {
 	let mut txn = FlowTransaction {
@@ -46,6 +53,67 @@ pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>)
 		return run(&mut TestingTxn::over(txn, hooks), &services.routines, &services.runtime_context);
 	}
 	run(&mut txn, &services.routines, &services.runtime_context)
+}
+
+pub(crate) fn backfill_transactional_view(
+	services: &Arc<Services>,
+	mut tx: Transaction<'_>,
+	view: ViewId,
+) -> Result<()> {
+	let flow = view_flow(&services.catalog, &mut tx, view)?;
+	let mut nodes = build_flow(services, tx.reborrow(), &flow)?;
+	backfill::run(services, tx.reborrow(), &flow_sources(&flow), query_batch_size(services)?, |scan, change| {
+		feed_flow(services, scan.transaction().reborrow(), &flow, &mut nodes, change)
+	})?;
+	let end = tx.flow_entries_from(0).len();
+	tx.set_flow_cursor(end);
+	Ok(())
+}
+
+fn view_flow(catalog: &Catalog, tx: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag> {
+	match catalog.list_flow_dags_asc(tx)?.into_iter().find(|flow| flow.sink_views().any(|sink| sink == view)) {
+		Some(flow) => Ok(flow),
+		None => internal_err!("transactional view {:?} has no flow to backfill", view),
+	}
+}
+
+fn query_batch_size(services: &Services) -> Result<NonZeroU64> {
+	match NonZeroU64::new(u64::from(services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize))) {
+		Some(batch_size) => Ok(batch_size),
+		None => internal_err!("QUERY_ROW_BATCH_SIZE is 0, which its config validation rejects"),
+	}
+}
+
+fn build_flow(services: &Services, tx: Transaction<'_>, flow: &FlowDag) -> Result<Vec<(OperatorId, Node)>> {
+	let mut txn = FlowTransaction {
+		tx,
+		catalog: &services.catalog,
+		runtime_context: &services.runtime_context,
+	};
+	#[cfg(feature = "testing")]
+	if let Some(InstalledHooks(hooks)) = services.ioc.try_resolve::<InstalledHooks>() {
+		return build(&mut TestingTxn::over(txn, hooks), flow, &services.routines, &services.runtime_context);
+	}
+	build(&mut txn, flow, &services.routines, &services.runtime_context)
+}
+
+fn feed_flow(
+	services: &Services,
+	tx: Transaction<'_>,
+	flow: &FlowDag,
+	nodes: &mut [(OperatorId, Node)],
+	change: Change,
+) -> Result<()> {
+	let mut txn = FlowTransaction {
+		tx,
+		catalog: &services.catalog,
+		runtime_context: &services.runtime_context,
+	};
+	#[cfg(feature = "testing")]
+	if let Some(InstalledHooks(hooks)) = services.ioc.try_resolve::<InstalledHooks>() {
+		return run_flow(&mut TestingTxn::over(txn, hooks), flow, nodes, change);
+	}
+	run_flow(&mut txn, flow, nodes, change)
 }
 
 pub(crate) struct FlowTransaction<'a> {

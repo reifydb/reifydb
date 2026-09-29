@@ -804,7 +804,11 @@ fn an_admin_txn_backfill_sees_a_table_and_view_it_created_and_filled_itself() {
 	assert_matches_from(&of(t), t, v, &from_t, &DROPPED);
 	let from_v = db.from(&mut Transaction::Admin(&mut txn), "ns::v");
 	assert_matches_from(&of(view), view, v, &from_v, &DROPPED);
-	assert_eq!(user_values(&of(view)), pairs(&[(4, 40)]), "the view holds only rows written after its create");
+	assert_eq!(
+		user_values(&of(view)),
+		pairs(&[(1, 10), (3, 30), (4, 40)]),
+		"the view holds the rows at its create plus the later writes"
+	);
 	txn.rollback().unwrap();
 }
 

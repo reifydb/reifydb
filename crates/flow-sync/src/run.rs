@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	flow::{
 		dag::FlowDag,
-		operator::OperatorDef::{SinkTableView, SourceTable, SourceView},
+		operator::OperatorDef::{self, SinkTableView, SourceTable, SourceView},
 	},
 	interface::{
 		catalog::{flow::OperatorId, id::ViewId, object::ObjectId},
-		change::{Change, Diff},
+		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
+	internal_err,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -49,6 +50,50 @@ pub fn run<T: Changes + Rows + Emit + Lookup + Intern + ClockNow>(
 	let processed = txn.entries_from(at).len();
 	txn.set_cursor(at + processed);
 	Ok(())
+}
+
+pub fn flow_sources(flow: &FlowDag) -> BTreeSet<ObjectId> {
+	flow.get_operator_ids()
+		.filter_map(|id| flow.get_operator(&id).and_then(|operator| source_object(&operator.ty)))
+		.collect()
+}
+
+pub fn run_flow<T: Rows + Emit + Lookup + Intern>(
+	txn: &mut T,
+	flow: &FlowDag,
+	nodes: &mut [(OperatorId, Node)],
+	change: Change,
+) -> Result<()> {
+	let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+	for operator_id in flow.topological_order() {
+		let operator = flow.get_operator(operator_id).unwrap_or_else(|| {
+			panic!("transactional flow {:?} orders operator {} it does not hold", flow.id, operator_id)
+		});
+		if source_object(&operator.ty).is_some_and(|source| change.origin == ChangeOrigin::Object(source)) {
+			pending.insert(*operator_id, vec![change.clone()]);
+		}
+	}
+	if pending.is_empty() {
+		return internal_err!(
+			"change from {:?} reaches no source of transactional flow {:?}",
+			change.origin,
+			flow.id
+		);
+	}
+	run_topology(txn, flow, nodes, pending)
+}
+
+fn source_object(ty: &OperatorDef) -> Option<ObjectId> {
+	match ty {
+		SourceTable {
+			table,
+			..
+		} => Some(ObjectId::table(*table)),
+		SourceView {
+			view,
+		} => Some(ObjectId::view(*view)),
+		_ => None,
+	}
 }
 
 fn order_flows(mut flows: Vec<FlowDag>) -> Vec<FlowDag> {
@@ -95,15 +140,8 @@ fn seed_entry_nodes(
 		let operator = flow.get_operator(operator_id).unwrap_or_else(|| {
 			panic!("transactional flow {:?} orders operator {} it does not hold", flow.id, operator_id)
 		});
-		let object = match &operator.ty {
-			SourceTable {
-				table,
-				..
-			} => ObjectId::table(*table),
-			SourceView {
-				view,
-			} => ObjectId::view(*view),
-			_ => continue,
+		let Some(object) = source_object(&operator.ty) else {
+			continue;
 		};
 		let diffs = consolidate_diffs(
 			entries.iter().filter(|(entry, _)| *entry == object).map(|(_, diff)| diff.clone()).collect(),

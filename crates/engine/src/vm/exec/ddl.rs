@@ -44,7 +44,7 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Services, &mut AdminTransaction, &SymbolTable) -> Result<RecordBatch>,
+		F: FnOnce(&Arc<Services>, &mut AdminTransaction, &SymbolTable) -> Result<RecordBatch>,
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn, &self.symbols)?;
