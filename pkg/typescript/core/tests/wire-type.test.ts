@@ -54,7 +54,6 @@ describe('typeFromWire', () => {
 describe('framesFromWire', () => {
     it('converts every column type and leaves the payload and the other frame keys alone', () => {
         const frames = [{
-            row_numbers: [1],
             columns: [
                 {name: 'id', type: {id: 'Int4'}, payload: ['1']},
                 {name: 'v', type: {id: 'Option', underlying: {id: 'Utf8'}}, payload: ['a']},
@@ -62,7 +61,6 @@ describe('framesFromWire', () => {
         }];
 
         expect(framesFromWire(frames)).toEqual([{
-            row_numbers: [1],
             columns: [
                 {name: 'id', type: 'Int4', payload: ['1']},
                 {name: 'v', type: {Option: 'Utf8'}, payload: ['a']},

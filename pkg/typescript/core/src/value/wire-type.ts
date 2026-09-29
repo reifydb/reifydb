@@ -95,10 +95,17 @@ export function columnsFromWire<T extends {type: any}>(columns: T[]): T[] {
     return columns.map(column => ({...column, type: typeFromWire(column.type)}));
 }
 
+const LEGACY_FRAME_KEYS = ['row_numbers', 'created_at', 'updated_at', 'time'];
+
 export function framesFromWire(frames: any[]): any[] {
-    return frames.map(frame =>
-        frame && frame.columns ? {...frame, columns: columnsFromWire(frame.columns)} : frame
-    );
+    return frames.map(frame => {
+        for (const key of LEGACY_FRAME_KEYS) {
+            if (Array.isArray(frame?.[key]) && frame[key].length > 0) {
+                throw new Error(`frame key ${key} is not supported, system columns travel as # columns`);
+            }
+        }
+        return frame && frame.columns ? {...frame, columns: columnsFromWire(frame.columns)} : frame;
+    });
 }
 
 /**
