@@ -282,12 +282,12 @@ impl LeftHashJoin {
 			}
 		}
 
-		let right_group = ctx.state.right.group_of(key_hash);
+		let mut any_removed = false;
 		for &idx in indices {
-			ctx.state.right.remove_row_in(host, right_group, require_row_numbers(pre)?[idx])?;
+			any_removed |= ctx.state.right.remove_row(host, key_hash, require_row_numbers(pre)?[idx])?;
 		}
 
-		if !ctx.operator.snapshot && !ctx.state.right.contains_key(host, key_hash)? {
+		if !ctx.operator.snapshot && any_removed && !ctx.state.right.contains_key(host, key_hash)? {
 			let operator = ctx.operator;
 			for_each_left_block(host, &ctx.state.left, key_hash, |host, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.num_rows()).collect();
