@@ -4,13 +4,17 @@
 use std::{collections::BTreeSet, ops::Bound};
 
 use reifydb_cdc::rebuild::rebuild_changes;
-use reifydb_core::interface::{catalog::object::ObjectId, cdc::Cdc, change::ChangeOrigin};
+use reifydb_core::interface::{
+	catalog::object::ObjectId,
+	cdc::Cdc,
+	change::{ChangeOrigin, Diff},
+};
 use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{frame::frame::Frame, identity::IdentityId, system_columns::row_numbers},
 };
 
 fn chain() -> TestEngine {
@@ -19,6 +23,16 @@ fn chain() -> TestEngine {
 	t.admin("CREATE TABLE ns::src { id: int4, v: int4 }");
 	t.admin("CREATE TRANSACTIONAL VIEW ns::a { id: int4, v: int4 } AS { FROM ns::src | filter { v > 10 } }");
 	t.admin("CREATE TRANSACTIONAL VIEW ns::b { id: int4, v: int4 } AS { FROM ns::a | filter { v < 90 } }");
+	t
+}
+
+fn diamond() -> TestEngine {
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE ns");
+	t.admin("CREATE TABLE ns::src { id: int4, v: int4 }");
+	t.admin("CREATE TRANSACTIONAL VIEW ns::lo { id: int4, v: int4 } AS { FROM ns::src | filter { v < 50 } }");
+	t.admin("CREATE TRANSACTIONAL VIEW ns::hi { id: int4, v: int4 } AS { FROM ns::src | filter { v > 20 } }");
+	t.admin("CREATE TRANSACTIONAL VIEW ns::both { id: int4, v: int4 } AS { FROM ns::lo | append { FROM ns::hi } }");
 	t
 }
 
@@ -53,6 +67,31 @@ fn view_origins(t: &TestEngine, cdc: &Cdc) -> BTreeSet<ObjectId> {
 			_ => None,
 		})
 		.collect()
+}
+
+fn view_inserted_rows(t: &TestEngine, cdc: &Cdc) -> Vec<usize> {
+	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
+	let mut counts: Vec<usize> = rebuild_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query))
+		.expect("rebuild")
+		.into_iter()
+		.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
+		.map(|change| {
+			change.diffs
+				.iter()
+				.map(|diff| match diff {
+					Diff::Insert {
+						post,
+						..
+					} => post.num_rows(),
+					other => panic!(
+						"an insert-only commit rebuilt a non-insert view diff: {other:?}"
+					),
+				})
+				.sum()
+		})
+		.collect();
+	counts.sort();
+	counts
 }
 
 #[test]
@@ -150,4 +189,42 @@ fn a_sort_value_change_upstream_reaches_the_downstream_view_as_one_row() {
 	t.command("UPDATE ns::src { v: 90 } FILTER { id == 1 }");
 	assert_eq!(pairs(&t.query("FROM ns::a")), vec![(1, 90), (2, 20)]);
 	assert_eq!(pairs(&t.query("FROM ns::b")), vec![(1, 90), (2, 20)]);
+}
+
+#[test]
+fn a_diamond_holds_each_branch_row_once() {
+	// both must run after lo and hi settle; running early misses a branch, running twice doubles one.
+	let t = diamond();
+	t.command("INSERT ns::src [{ id: 1, v: 10 }, { id: 2, v: 30 }, { id: 3, v: 70 }]");
+	let frames = t.query("FROM ns::both");
+	assert_eq!(ids(&frames), vec![1, 2, 2, 3]);
+	let rownums: BTreeSet<u64> = row_numbers(&frames[0].batch).expect("row numbers").iter().map(|r| r.0).collect();
+	assert_eq!(rownums.len(), 4, "the two branch rows of id 2 must not share a row number: {rownums:?}");
+}
+
+#[test]
+fn a_diamond_follows_an_update_that_leaves_one_branch() {
+	// The retraction must come through lo only; retracting through hi too would drop id 2 from both.
+	let t = diamond();
+	t.command("INSERT ns::src [{ id: 1, v: 10 }, { id: 2, v: 30 }, { id: 3, v: 70 }]");
+	t.command("UPDATE ns::src { v: 80 } FILTER { id == 2 }");
+	assert_eq!(pairs(&t.query("FROM ns::both")), vec![(1, 10), (2, 80), (3, 70)]);
+}
+
+#[test]
+fn a_diamond_follows_a_delete_in_both_branches() {
+	// A delete seen through one branch only would leave the other branch's row in both.
+	let t = diamond();
+	t.command("INSERT ns::src [{ id: 1, v: 10 }, { id: 2, v: 30 }, { id: 3, v: 70 }]");
+	t.command("DELETE ns::src FILTER { id == 2 }");
+	assert_eq!(ids(&t.query("FROM ns::both")), vec![1, 3]);
+}
+
+#[test]
+fn a_diamond_commit_emits_each_branch_row_once() {
+	// lo and hi carry one row each and both carries exactly two; a double feed shows as more.
+	let t = diamond();
+	t.command("INSERT ns::src [{ id: 2, v: 30 }]");
+	let last = last_cdc(&t);
+	assert_eq!(view_inserted_rows(&t, &last), vec![1, 1, 2]);
 }
