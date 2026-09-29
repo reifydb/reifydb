@@ -65,8 +65,8 @@ export class ScriptedSocket {
     insert(subscriptionId: string, rows: Row[]): void {
         const frame = {
             op: 1,
-            row_numbers: rows.map(([rownum]) => String(rownum)),
             columns: [
+                {name: '#rownum', type: {id: 'Uint8'}, payload: rows.map(([rownum]) => String(rownum))},
                 {name: 'id', type: {id: 'Int4'}, payload: rows.map(([, id]) => String(id))},
                 {name: 'name', type: {id: 'Utf8'}, payload: rows.map(([, , name]) => name)},
             ],

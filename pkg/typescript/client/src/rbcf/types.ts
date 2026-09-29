@@ -20,9 +20,4 @@ export interface WireFrame {
     columns: WireColumn[];
     // Change operation for the whole frame: 1=insert, 2=update, 3=remove. Absent on query results.
     op?: WireOp;
-    // u64 row numbers stringified to avoid JS number precision loss (optional).
-    row_numbers?: string[];
-    // DateTime ISO-8601 strings (optional).
-    created_at?: string[];
-    updated_at?: string[];
 }

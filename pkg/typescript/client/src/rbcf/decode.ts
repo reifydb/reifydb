@@ -6,12 +6,12 @@ import { FIXED_POINT_NARROW_PRECISION, fixedPointType, noneMarker } from "@reify
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
-    META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, MESSAGE_HEADER_SIZE,
+    MESSAGE_HEADER_SIZE,
     RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TAG_KIND_MASK, TYPE_CODE, dictIndexWidthFromFlags, typeNameFromCode,
 } from "./format";
 import { BinaryReader } from "./reader";
 import { decodeBitvec } from "./nones";
-import { digitCount, formatDateTime, formatFixedPoint } from "./values";
+import { digitCount, formatFixedPoint } from "./values";
 import type { WireColumn, WireFrame } from "./types";
 import { decodeDigestPlain, decodePlain, decodePlainFixedPoint } from "./encoding/plain";
 import { decodeDict } from "./encoding/dict";
@@ -42,32 +42,20 @@ function decodeFrame(r: BinaryReader): WireFrame {
     const frameStart = r.pos;
     if (r.remaining() < FRAME_HEADER_SIZE) throw new Error("RBCF: frame header truncated");
 
-    const rowCount = r.u32();
+    r.u32();
     const colCount = r.u16();
     const metaFlags = r.u8();
     const op = r.u8();
     r.u32();
     void frameStart;
 
+    if (metaFlags !== 0) {
+        throw new Error(`RBCF: frame meta byte must be 0, found 0x${metaFlags.toString(16).toUpperCase().padStart(2, "0")}`);
+    }
+
     const frame: WireFrame = { columns: [] };
     if (op === 1 || op === 2 || op === 3) frame.op = op;
     else if (op !== 0) throw new Error(`RBCF: unknown frame op ${op}`);
-
-    if (metaFlags & META_HAS_ROW_NUMBERS) {
-        const rows = new Array<string>(rowCount);
-        for (let i = 0; i < rowCount; i++) rows[i] = r.u64().toString();
-        frame.row_numbers = rows;
-    }
-    if (metaFlags & META_HAS_CREATED_AT) {
-        const cr = new Array<string>(rowCount);
-        for (let i = 0; i < rowCount; i++) cr[i] = formatDateTime(r.i64());
-        frame.created_at = cr;
-    }
-    if (metaFlags & META_HAS_UPDATED_AT) {
-        const up = new Array<string>(rowCount);
-        for (let i = 0; i < rowCount; i++) up[i] = formatDateTime(r.i64());
-        frame.updated_at = up;
-    }
 
     for (let c = 0; c < colCount; c++) frame.columns.push(decodeColumn(r));
     return frame;

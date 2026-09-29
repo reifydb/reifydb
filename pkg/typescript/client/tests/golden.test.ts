@@ -45,14 +45,12 @@ describe("RBCF golden vectors", () => {
         const bytes = new Uint8Array(fs.readFileSync(path.join(goldenRoot, "frames/plain_mixed.bin")));
         const frames = rbcf.decode(bytes);
         expect(frames).toHaveLength(1);
-        expect(frames[0].row_numbers).toBeUndefined();
-        expect(frames[0].created_at).toBeUndefined();
-        expect(frames[0].updated_at).toBeUndefined();
+        expect(Object.keys(frames[0])).toEqual(["columns"]);
         expect(frames[0].columns).toEqual([
             { name: "bools", type: "Boolean", payload: ["true", "false", "true"] },
             { name: "ints", type: "Int4", payload: ["1", "2", "3"] },
             { name: "texts", type: "Utf8", payload: ["a", "bb", "ccc"] },
-            { name: "anys", type: "Any", payload: ["9", NONE_VALUE, "x"] },
+            { name: "anys", type: { Option: "Any" }, payload: ["9", NONE_VALUE, "x"] },
         ]);
     });
 

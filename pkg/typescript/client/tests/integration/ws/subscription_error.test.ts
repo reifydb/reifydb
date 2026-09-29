@@ -129,23 +129,23 @@ describe('WebSocket Subscription Error Reporting', () => {
                     frames: [
                         {
                             op: 1,
-                            row_numbers: [1],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['1']},
                                 {name: 'unexpected', type: {id: 'Int4'}, payload: ['1']}
                             ]
                         },
                         {
                             op: 1,
-                            row_numbers: [2],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['2']},
                                 {name: 'id', type: {id: 'Int4'}, payload: ['2']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['bob']}
                             ]
                         },
                         {
                             op: 2,
-                            row_numbers: [3],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['3']},
                                 {name: 'id', type: {id: 'Int4'}, payload: ['3']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['carol']}
                             ]
@@ -264,24 +264,24 @@ describe('WebSocket Subscription Error Reporting', () => {
                     frames: [
                         {
                             op: 1,
-                            row_numbers: [1],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['1']},
                                 {name: 'id', type: 'Int4', payload: ['1']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['alice']}
                             ]
                         },
                         {
                             op: 1,
-                            row_numbers: [2],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['2']},
                                 {name: 'id', type: {id: 'Int4'}, payload: ['2']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['bob']}
                             ]
                         },
                         {
                             op: 2,
-                            row_numbers: [3],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['3']},
                                 {name: 'id', type: {id: 'Int4'}, payload: ['3']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['carol']}
                             ]

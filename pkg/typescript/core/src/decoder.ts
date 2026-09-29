@@ -6,7 +6,7 @@ import {
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     ListValue, RecordValue,
-    Value, TypeValuePair, Type, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
+    Value, TypeValuePair, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
     fixedPointTypeName, isFixedPointType
 } from './value';
 import {noneMarkerDepth, ROW_NUMBER_KEY} from './constant';
@@ -123,6 +123,14 @@ export function decode(pair: TypeValuePair): Value {
     }
 }
 
+function rowNumberOf(cell: WireCellValue): number {
+    const rowNumber = Number(cell);
+    if (!Number.isFinite(rowNumber)) {
+        throw new Error(`row number ${JSON.stringify(cell)} is not a number`);
+    }
+    return rowNumber;
+}
+
 export function columnsToRows(columns: Column[], rowNumbers?: (string | number)[]): Record<string, Value>[] {
     const rowCount = columns[0]?.payload.length ?? 0;
     for (const column of columns) {
@@ -139,7 +147,11 @@ export function columnsToRows(columns: Column[], rowNumbers?: (string | number)[
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.payload[i]});
+            if (col.name === ROW_NUMBER_KEY) {
+                (row as any)[ROW_NUMBER_KEY] = rowNumberOf(col.payload[i]);
+            } else {
+                row[col.name] = decode({type: col.type, value: col.payload[i]});
+            }
         }
         if (hasRowNumbers) {
             (row as any)[ROW_NUMBER_KEY] = Number(rowNumbers![i]);

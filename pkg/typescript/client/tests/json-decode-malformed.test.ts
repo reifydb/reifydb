@@ -21,6 +21,7 @@ import {
 } from './helpers/abort-test-utils';
 
 const INT4 = {id: 'Int4'};
+const UINT8 = {id: 'Uint8'};
 
 function deliver(body: any) {
     const seen = {errors: [] as unknown[], inserts: [] as any[][], updates: [] as any[][], removes: [] as any[][]};
@@ -79,14 +80,14 @@ describe('dispatchChange rejects malformed change bodies', () => {
 
     it('does not deliver a row number that is not a number', () => {
         // a garbage row number must not reach the caller as NaN
-        const seen = deliver({frames: [{op: 1, row_numbers: ['abc'], columns: [{name: 'a', type: INT4, payload: ['1']}]}]});
+        const seen = deliver({frames: [{op: 1, columns: [{name: '#rownum', type: UINT8, payload: ['abc']}, {name: 'a', type: INT4, payload: ['1']}]}]});
         expect(seen.inserts).toEqual([]);
         expect(seen.errors.length).toBeGreaterThan(0);
     });
 
     it('does not deliver rows when row numbers are fewer than rows', () => {
         // row numbers must cover every row, otherwise some rows silently lose their identity
-        const seen = deliver({frames: [{op: 1, row_numbers: [5], columns: [{name: 'a', type: INT4, payload: ['1', '2']}]}]});
+        const seen = deliver({frames: [{op: 1, columns: [{name: '#rownum', type: UINT8, payload: ['5']}, {name: 'a', type: INT4, payload: ['1', '2']}]}]});
         expect(seen.inserts).toEqual([]);
         expect(seen.errors.length).toBeGreaterThan(0);
     });

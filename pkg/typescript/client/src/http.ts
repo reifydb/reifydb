@@ -336,7 +336,7 @@ export class HttpClient {
                 const buf = await response.arrayBuffer();
                 const frames = rbcf.decode(new Uint8Array(buf));
                 checkFrames(frames, shapes);
-                return { result: frames.map((frame: any) => columnsToRows(frame.columns, frame.row_numbers)), meta };
+                return { result: frames.map((frame: any) => columnsToRows(frame.columns)), meta };
             }
 
             const responseBody = await response.text();
@@ -381,7 +381,7 @@ export class HttpClient {
             const frames = framesFromWire(parsed.frames);
             checkFrames(frames, shapes);
             return {
-                result: frames.map((frame: any) => columnsToRows(frame.columns, frame.row_numbers)),
+                result: frames.map((frame: any) => columnsToRows(frame.columns)),
                 meta,
             };
         } catch (err: any) {

@@ -11,10 +11,6 @@ export const MESSAGE_HEADER_SIZE = 16;
 export const FRAME_HEADER_SIZE = 12;
 export const COLUMN_DESCRIPTOR_SIZE = 28;
 
-export const META_HAS_ROW_NUMBERS = 1 << 0;
-export const META_HAS_CREATED_AT = 1 << 1;
-export const META_HAS_UPDATED_AT = 1 << 2;
-
 export const COL_FLAG_HAS_NONES = 1 << 0;
 
 export enum ColumnEncoding {

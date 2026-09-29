@@ -6,11 +6,10 @@
 // so the turn from wire bytes to callback rows lives here once rather than once per socket.
 
 import {
-    decode,
+    columnsToRows,
     framesFromWire,
     transformResult,
-    checkFrame,
-    ROW_NUMBER_KEY
+    checkFrame
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -198,47 +197,6 @@ export function frameToRows(frame: any, shape?: ShapeNode): any[] {
     if (frame.columns.length === 0) return [];
     if (shape) checkFrame(frame.columns, shape);
 
-    const rowCount = frame.columns[0].payload.length;
-    for (const column of frame.columns) {
-        if (column.payload.length !== rowCount) {
-            throw new Error(
-                `column ${column.name} carries ${column.payload.length} cells where ${frame.columns[0].name} carries ${rowCount}`
-            );
-        }
-    }
-
-    const rowNumbers = frame.row_numbers;
-    if (rowNumbers !== undefined) {
-        if (!Array.isArray(rowNumbers)) {
-            throw new Error(`Row numbers must arrive as a list, got ${JSON.stringify(rowNumbers)}`);
-        }
-        if (rowNumbers.length !== rowCount) {
-            throw new Error(`Row numbers cover ${rowNumbers.length} of ${rowCount} rows`);
-        }
-        for (const rowNumber of rowNumbers) {
-            if (!Number.isFinite(Number(rowNumber))) {
-                throw new Error(`Row number ${JSON.stringify(rowNumber)} is not a number`);
-            }
-        }
-    }
-
-    const rows: any[] = [];
-
-    for (let i = 0; i < rowCount; i++) {
-        const row: any = {};
-        for (const col of frame.columns) {
-            row[col.name] = decode({type: col.type, value: col.payload[i]});
-        }
-        rows.push(row);
-    }
-
-    const shaped = shape ? rows.map(row => transformResult(row, shape)) : rows;
-
-    if (rowNumbers) {
-        for (let i = 0; i < shaped.length; i++) {
-            shaped[i][ROW_NUMBER_KEY] = Number(rowNumbers[i]);
-        }
-    }
-
-    return shaped;
+    const rows = columnsToRows(frame.columns);
+    return shape ? rows.map(row => transformResult(row, shape)) : rows;
 }

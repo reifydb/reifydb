@@ -8,8 +8,7 @@ import {
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
-    MESSAGE_HEADER_SIZE, META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT,
-    RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TYPE_CODE, type TypeName,
+    MESSAGE_HEADER_SIZE, RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TYPE_CODE, type TypeName,
 } from "./format";
 import { BinaryWriter } from "./writer";
 import { encodeBitvec } from "./nones";
@@ -37,26 +36,14 @@ function encodeFrame(w: BinaryWriter, frame: WireFrame): void {
     const rowCount = frame.columns[0]?.payload.length ?? 0;
     const colCount = frame.columns.length;
 
-    let metaFlags = 0;
-    if (frame.row_numbers && frame.row_numbers.length > 0) metaFlags |= META_HAS_ROW_NUMBERS;
-    if (frame.created_at && frame.created_at.length > 0) metaFlags |= META_HAS_CREATED_AT;
-    if (frame.updated_at && frame.updated_at.length > 0) metaFlags |= META_HAS_UPDATED_AT;
-
     const frameHeaderAt = w.reserve(FRAME_HEADER_SIZE);
-
-    if (metaFlags & META_HAS_ROW_NUMBERS) {
-        for (const rn of frame.row_numbers!) w.u64(BigInt(rn));
-    }
-    if (metaFlags & (META_HAS_CREATED_AT | META_HAS_UPDATED_AT)) {
-        throw new Error("RBCF encode: metadata timestamps require nanos input, got ISO strings");
-    }
 
     for (const col of frame.columns) encodeColumn(w, col);
 
     const frameSize = w.length - frameStart;
     w.patchU32(frameHeaderAt + 0, rowCount);
     w.patchU16(frameHeaderAt + 4, colCount);
-    w.patchU8(frameHeaderAt + 6, metaFlags);
+    w.patchU8(frameHeaderAt + 6, 0);
     w.patchU8(frameHeaderAt + 7, frame.op ?? 0);
     w.patchU32(frameHeaderAt + 8, frameSize);
 }

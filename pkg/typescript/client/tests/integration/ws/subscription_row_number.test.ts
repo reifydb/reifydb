@@ -37,7 +37,7 @@ describe('WebSocket Subscription Row Numbers', () => {
     });
 
     describe('Stamping from the frame', () => {
-        it('should stamp each row of a frame with its own entry from row_numbers', async () => {
+        it('should stamp each row of a frame with its own entry from the #rownum column', async () => {
             const tableName = createTestTableName('rownum_stamp');
             await createTestTable(wsClient, tableName, [
                 'id Int4',
@@ -51,7 +51,7 @@ describe('WebSocket Subscription Row Numbers', () => {
 
             // The frame is what the stamping reads, so the test has to see it too; wrapping the
             // change handler records the frames the real server sent without changing what runs.
-            // The raw frames still carry row_numbers here, since reading the wire types only
+            // The raw frames still carry the #rownum column here, since reading the wire types only
             // rewrites columns.
             const client = wsClient as any;
             const dispatched: any[] = [];
@@ -81,7 +81,7 @@ describe('WebSocket Subscription Row Numbers', () => {
             const rows = tracker.getAllRows();
             expect(rows.length).toBe(3);
 
-            const rowNumbers = dispatched.flatMap(frame => Array.from(frame.row_numbers));
+            const rowNumbers = dispatched.flatMap(frame => frame.columns.find((column: any) => column.name === '#rownum').payload);
             expect(rowNumbers.length).toBe(3);
 
             rows.forEach((row, i) => {
@@ -217,9 +217,8 @@ describe('WebSocket Subscription Row Numbers', () => {
         }, 15000);
     });
 
-    // The frames below are fed to the change handler directly. A live server always sends
-    // `row_numbers`, and always sends them as JSON numbers, so neither the missing-key case nor the
-    // widening of the raw wire value can be induced through a subscription.
+    // The frames below are fed to the change handler directly. A live server always sends a
+    // `#rownum` column, so the missing-column case can not be induced through a subscription.
     describe('Frames the server does not currently send', () => {
         it('should read the row number as a number, not the raw wire value', async () => {
             const tableName = createTestTableName('rownum_number');
@@ -251,8 +250,8 @@ describe('WebSocket Subscription Row Numbers', () => {
                     body: {
                         frames: [{
                             op: 1,
-                            row_numbers: ['7', '8'],
                             columns: [
+                                {name: '#rownum', type: {id: 'Uint8'}, payload: ['7', '8']},
                                 {name: 'id', type: {id: 'Int4'}, payload: ['1', '2']},
                                 {name: 'name', type: {id: 'Utf8'}, payload: ['alice', 'bob']}
                             ]
