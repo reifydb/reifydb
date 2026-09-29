@@ -9,7 +9,9 @@ pub mod update;
 
 use reifydb_core::expression::Expression;
 
-use crate::{Result, ast::ast::Ast, expression::ExpressionCompiler};
+use crate::{
+	Result, ast::ast::Ast, expression::ExpressionCompiler, plan::logical::reserved::reject_reserved_output_names,
+};
 
 pub(crate) fn compile_returning_clause<'bump>(returning: Option<Vec<Ast<'bump>>>) -> Result<Option<Vec<Expression>>> {
 	let Some(returning_asts) = returning else {
@@ -19,5 +21,6 @@ pub(crate) fn compile_returning_clause<'bump>(returning: Option<Vec<Ast<'bump>>>
 	for ast_node in returning_asts {
 		exprs.push(ExpressionCompiler::compile(ast_node)?);
 	}
+	reject_reserved_output_names(&exprs)?;
 	Ok(Some(exprs))
 }

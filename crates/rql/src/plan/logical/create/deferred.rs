@@ -16,7 +16,10 @@ use crate::{
 	ast::ast::{AstColumnProperty, AstCreateDeferredView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan, create::reject_digest_partition_columns},
+	plan::logical::{
+		Compiler, CreateDeferredViewNode, LogicalPlan, create::reject_digest_partition_columns,
+		reserved::reject_reserved_column_name,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -30,6 +33,7 @@ impl<'bump> Compiler<'bump> {
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
 
 		for col in ast.columns.into_iter() {
+			reject_reserved_column_name(&col.name.to_owned())?;
 			let column_name = col.name.text().to_string();
 			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
 			let column_type = constraint.get_type();

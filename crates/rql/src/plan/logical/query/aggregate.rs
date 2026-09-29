@@ -5,13 +5,14 @@ use crate::{
 	Result,
 	ast::ast::AstAggregate,
 	expression::ExpressionCompiler,
-	plan::logical::{AggregateNode, Compiler, LogicalPlan},
+	plan::logical::{AggregateNode, Compiler, LogicalPlan, reserved::reject_reserved_output_names},
 };
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_aggregate(&self, ast: AstAggregate<'bump>) -> Result<LogicalPlan<'bump>> {
 		let by = ast.by.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
 		let map = ast.map.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		reject_reserved_output_names(&map)?;
 		let with = Self::compile_aggregate_with(ast.with.as_ref())?;
 		Ok(LogicalPlan::Aggregate(AggregateNode {
 			by,

@@ -17,6 +17,7 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateRingBufferNode, LogicalPlan,
+		reserved::reject_reserved_column_name,
 		create::{column_saturation_property, reject_column_default, reject_digest_partition_columns},
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
@@ -33,6 +34,7 @@ impl<'bump> Compiler<'bump> {
 		let ringbuffer_ns_segments: Vec<&str> = ast.ringbuffer.namespace.iter().map(|n| n.text()).collect();
 
 		for col in ast.columns.into_iter() {
+			reject_reserved_column_name(&col.name.to_owned())?;
 			let column_name = col.name.text().to_string();
 			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
 			let column_type = constraint.get_type();

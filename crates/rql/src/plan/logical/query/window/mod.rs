@@ -8,7 +8,7 @@ use crate::{
 	Result,
 	ast::ast::{Ast, AstWindow},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, LogicalPlan},
+	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_output_names},
 };
 
 #[derive(Debug, Clone)]
@@ -27,6 +27,8 @@ impl<'bump> Compiler<'bump> {
 
 		let group_by = Self::compile_expressions(ast.group_by)?;
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
+		reject_reserved_output_names(&group_by)?;
+		reject_reserved_output_names(&aggregations)?;
 		let with = Self::compile_window_with(ast.kind, ast.with.as_ref(), fragment.clone())?;
 
 		Ok(LogicalPlan::Window(WindowNode {

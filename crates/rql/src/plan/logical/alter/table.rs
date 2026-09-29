@@ -14,7 +14,7 @@ use crate::{
 	bump::BumpFragment,
 	convert_data_type_with_constraints,
 	diagnostic::AstError,
-	plan::logical::{Compiler, LogicalPlan},
+	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_column_name},
 };
 
 #[derive(Debug)]
@@ -53,6 +53,7 @@ impl<'bump> Compiler<'bump> {
 			AstAlterTableAction::AddColumn {
 				column,
 			} => {
+				reject_reserved_column_name(&column.name.to_owned())?;
 				let constraint = convert_data_type_with_constraints(&column.ty)?;
 
 				let mut auto_increment = false;
@@ -83,10 +84,13 @@ impl<'bump> Compiler<'bump> {
 			AstAlterTableAction::RenameColumn {
 				old_name,
 				new_name,
-			} => AlterTableAction::RenameColumn {
-				old_name,
-				new_name,
-			},
+			} => {
+				reject_reserved_column_name(&new_name.to_owned())?;
+				AlterTableAction::RenameColumn {
+					old_name,
+					new_name,
+				}
+			}
 			AstAlterTableAction::DropPartition {
 				spec,
 				remove_registry,

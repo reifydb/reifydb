@@ -10,6 +10,7 @@ pub mod mutate;
 pub mod operator_with;
 pub mod partition_predicate;
 pub mod query;
+pub mod reserved;
 pub mod resolver;
 pub mod row_predicate;
 pub mod scripting;

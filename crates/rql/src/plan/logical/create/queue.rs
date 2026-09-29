@@ -25,6 +25,7 @@ use crate::{
 	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
+		reserved::reject_reserved_column_name,
 		create::{column_saturation_property, reject_column_default},
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
@@ -42,6 +43,7 @@ impl<'bump> Compiler<'bump> {
 		let queue_ns_segments: Vec<&str> = ast.queue.namespace.iter().map(|n| n.text()).collect();
 
 		for col in ast.columns.into_iter() {
+			reject_reserved_column_name(&col.name.to_owned())?;
 			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
 
 			let name = col.name.to_owned();

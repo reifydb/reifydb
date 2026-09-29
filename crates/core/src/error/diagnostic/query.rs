@@ -92,6 +92,22 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn system_column_reserved(fragment: Fragment) -> Diagnostic {
+	let name = fragment.text();
+	Diagnostic {
+		code: "QUERY_004".to_string(),
+		rql: None,
+		message: format!("column name '{}' is reserved for system columns", name),
+		fragment,
+		label: Some("names starting with '#' always refer to system columns".to_string()),
+		help: Some("rename the column so it does not start with '#'".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn empty_map(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_014".to_string(),

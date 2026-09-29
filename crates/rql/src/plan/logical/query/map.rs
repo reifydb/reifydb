@@ -8,7 +8,7 @@ use crate::{
 	Result,
 	ast::ast::AstMap,
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, LogicalPlan, MapNode},
+	plan::logical::{Compiler, LogicalPlan, MapNode, reserved::reject_reserved_output_names},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -16,8 +16,10 @@ impl<'bump> Compiler<'bump> {
 		if ast.nodes.is_empty() {
 			return_error!(empty_map(ast.token.fragment.to_owned()));
 		}
+		let map = ast.nodes.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		reject_reserved_output_names(&map)?;
 		Ok(LogicalPlan::Map(MapNode {
-			map: ast.nodes.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
+			map,
 			rql: ast.rql.to_string(),
 		}))
 	}

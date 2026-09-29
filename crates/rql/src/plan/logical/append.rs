@@ -10,7 +10,9 @@ use crate::{
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
 	bump::BumpBox,
 	expression::ExpressionCompiler,
-	plan::logical::{AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan},
+	plan::logical::{
+		AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan, reserved::reject_reserved_column_name,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -67,6 +69,7 @@ fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode> {
 				let mut alias_fields = Vec::new();
 				for field in row.keyed_values {
 					let key_fragment = field.key.token.fragment.to_owned();
+					reject_reserved_column_name(&key_fragment)?;
 					let alias = IdentExpression(key_fragment.clone());
 					let expr = ExpressionCompiler::compile(BumpBox::into_inner(field.value))?;
 
