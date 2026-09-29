@@ -130,7 +130,6 @@ pub mod testing {
 
 	pub use reifydb_testing::*;
 	pub use reifydb_testing_chaos as chaos;
-	#[cfg(feature = "flow_testing")]
 	pub use reifydb_testing_flow as flow;
 	pub use reifydb_testing_sdk as sdk;
 }

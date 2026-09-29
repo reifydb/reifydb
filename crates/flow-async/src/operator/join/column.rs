@@ -142,11 +142,13 @@ impl JoinedColumnsBuilder {
 		right: &RecordBatch,
 		right_indices: &[usize],
 	) -> Result<RecordBatch> {
-		let left_count = left_indices.len();
 		let right_count = right_indices.len();
-		let result_count = left_count * right_count;
 		reifydb_assertions! {
-			assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
+			assert_eq!(
+				row_numbers.len(),
+				left_indices.len() * right_count,
+				"row_numbers must match cartesian product size"
+			);
 		}
 
 		let left_rows: Vec<usize> =

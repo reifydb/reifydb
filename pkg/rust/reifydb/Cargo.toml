@@ -109,7 +109,7 @@ wasm = ["reifydb-extension/wasm"]
 # Subsystem features
 column = ["reifydb-sub-store/column", "reifydb-sub-store/sqlite"]
 sub_flow = ["dep:reifydb-flow-async", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
-flow_testing = ["testing", "sub_flow", "dep:reifydb-testing-flow"]
+flow_testing = ["testing"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_metric_profiler = ["dep:tracing-subscriber"]
 sub_server = ["dep:reifydb-sub-server", "reifydb-sub-metrics/server"]
@@ -120,7 +120,7 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_console = ["dep:reifydb-sub-console", "sub_server_ws"]
 server = ["sub_server_admin", "sub_server_grpc", "sub_server_http", "sub_server_otel", "sub_server_ws", "sub_tracing"]
-testing = ["reifydb-core/testing", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
+testing = ["reifydb-core/testing", "sub_flow", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-flow", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
 [[test]]
 name = "testing_surface"
