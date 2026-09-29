@@ -41,6 +41,7 @@ column = [
 	"dep:reifydb-catalog",
 	"dep:reifydb-column",
 	"dep:reifydb-engine",
+	"reifydb-engine/column",
 	"dep:reifydb-evaluate",
 	"dep:reifydb-store-column",
 	"dep:reifydb-transaction",
@@ -54,5 +55,5 @@ sqlite = [
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
-reifydb = { workspace = true, features = ["testing"] }
+reifydb = { workspace = true, features = ["testing", "column"] }
 reifydb-test-harness = { workspace = true }

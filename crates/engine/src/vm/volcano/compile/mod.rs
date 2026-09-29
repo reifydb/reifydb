@@ -29,6 +29,11 @@ use super::{
 	apply_transform::{ApplyTransformNode, UnknownTransformNode},
 	run_tests::RunTestsQueryNode,
 };
+#[cfg(feature = "column")]
+use crate::vm::volcano::scan::{
+	column_series::ColumnSeriesScanNode, column_table::ColumnTableScanNode,
+	column_unsupported::UnsupportedColumnScanNode,
+};
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
 	append::UnsupportedAppendNode,
@@ -43,10 +48,9 @@ use crate::vm::volcano::{
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
-		column_series::ColumnSeriesScanNode, column_table::ColumnTableScanNode,
-		column_unsupported::UnsupportedColumnScanNode, dictionary::DictionaryScanNode, index::IndexScanNode,
-		queue::QueueScan, remote::RemoteFetchNode, ringbuffer::RingBufferScan,
-		series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
+		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
+		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
+		view::ViewScanNode,
 	},
 	sort::SortNode,
 	take::TakeNode,
@@ -72,6 +76,7 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
+#[cfg(feature = "column")]
 fn row_store_scan(plan: &RqlQueryPlan) -> Option<String> {
 	match plan {
 		RqlQueryPlan::ViewScan(node) => Some(format!("view '{}'", node.source.def().name())),
@@ -92,6 +97,7 @@ pub(crate) fn compile<'a>(
 	rx: &mut Transaction<'a>,
 	context: Arc<QueryContext>,
 ) -> Box<dyn QueryNode> {
+	#[cfg(feature = "column")]
 	if rx.layout() == ScanLayout::Column
 		&& let Some(what) = row_store_scan(&plan)
 	{
@@ -188,10 +194,15 @@ pub(crate) fn compile<'a>(
 			ScanLayout::Row => {
 				Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 			}
-			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(
-				format!("a partition scan of table '{}'", node.source.fully_qualified_name()),
-			)),
+			#[cfg(feature = "column")]
+			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(format!(
+				"a partition scan of table '{}'",
+				node.source.fully_qualified_name()
+			))),
+			#[cfg(feature = "column")]
 			ScanLayout::Column => Box::new(ColumnTableScanNode::new(node.source.clone(), context)),
+			#[cfg(not(feature = "column"))]
+			ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
 		},
 		RqlQueryPlan::ViewScan(node) => {
 			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
@@ -215,6 +226,7 @@ pub(crate) fn compile<'a>(
 				)
 				.unwrap(),
 			),
+			#[cfg(feature = "column")]
 			ScanLayout::Column => Box::new(ColumnSeriesScanNode::new(
 				node.source.clone(),
 				node.key_range_start,
@@ -223,6 +235,8 @@ pub(crate) fn compile<'a>(
 				node.partition,
 				context,
 			)),
+			#[cfg(not(feature = "column"))]
+			ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
 		},
 		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();

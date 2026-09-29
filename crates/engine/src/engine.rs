@@ -55,15 +55,15 @@ use reifydb_runtime::{
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
+#[cfg(feature = "column")]
+use reifydb_transaction::transaction::ScanLayout;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{
-		ScanLayout, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-	},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
 	error,
@@ -285,6 +285,7 @@ impl StandardEngine {
 		outcome
 	}
 
+	#[cfg(feature = "column")]
 	#[instrument(name = "engine::query_column_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_column_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
 		let mut txn = match self.begin_query(identity) {

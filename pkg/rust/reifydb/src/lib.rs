@@ -38,6 +38,7 @@ pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_codec as codec;
+#[cfg(feature = "column")]
 pub use reifydb_column as column;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
