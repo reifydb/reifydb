@@ -74,8 +74,8 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let mut types = Vec::with_capacity(3);
-		for i in 0..3 {
-			let (bare, _) = split_nulls(args[i].clone())?;
+		for (i, arg) in args.iter().enumerate().take(3) {
+			let (bare, _) = split_nulls(arg.clone())?;
 			let data = ColumnView::try_from(&bare)?;
 			ensure_numeric(ctx, &data, i)?;
 			types.push(bare_type(&data));

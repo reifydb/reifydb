@@ -372,10 +372,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.iter()
 						.map(|expr| expr.execute(ctx))
 						.collect::<Result<Vec<_>>>()?;
-					let views = columns
-						.iter()
-						.map(|column| ColumnView::try_from(column))
-						.collect::<Result<Vec<_>>>()?;
+					let views =
+						columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 
 					let len = columns.first().map_or(1, |c| c.1.len());
 					let mut data: Vec<Value> = Vec::with_capacity(len);
@@ -401,10 +399,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let columns: Vec<(FieldRef, ArrayRef)> =
 					compiled.iter().map(|expr| expr.execute(ctx)).collect::<Result<Vec<_>>>()?;
-				let views = columns
-					.iter()
-					.map(|column| ColumnView::try_from(column))
-					.collect::<Result<Vec<_>>>()?;
+				let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 
 				let len = columns.first().map_or(1, |c| c.1.len());
 				let mut data: Vec<Value> = Vec::with_capacity(len);
@@ -1179,9 +1174,7 @@ fn execute_if_multi(
 	let views: Vec<Option<Vec<ColumnView<'_>>>> = evaluated
 		.iter()
 		.map(|columns| {
-			columns.as_ref()
-				.map(|columns| columns.iter().map(|column| ColumnView::try_from(column)).collect())
-				.transpose()
+			columns.as_ref().map(|columns| columns.iter().map(ColumnView::try_from).collect()).transpose()
 		})
 		.collect::<Result<_>>()?;
 

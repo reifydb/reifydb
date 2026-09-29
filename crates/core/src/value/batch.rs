@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array};
+use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array, new_null_array};
 use arrow_buffer::BooleanBuffer;
 use arrow_schema::{ArrowError, FieldRef, Schema};
 use arrow_select::{
@@ -335,11 +335,12 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> 
 
 pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch> {
 	kernel::rows_in_range(&picks.iter().flatten().copied().collect::<Vec<_>>(), batch.num_rows())?;
-	let indices: UInt64Array = picks.iter().map(|pick| pick.map(|index| index as u64)).collect();
+	let pairs: Vec<(usize, usize)> = picks.iter().map(|pick| pick.map_or((1, 0), |index| (0, index))).collect();
 	let schema = batch.schema_ref();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
-		let taken = take(array.as_ref(), &indices, None).map_err(frame_error)?;
+		let filler = new_null_array(array.data_type(), 1);
+		let taken = kernel::picked(&[array.as_ref(), filler.as_ref()], &pairs);
 		let field = match taken.logical_null_count() > 0 && !field.is_nullable() {
 			true => {
 				let mut field_type = from_field(field)?;
@@ -1093,7 +1094,7 @@ pub mod tests {
 
 	#[test]
 	fn extract_by_indices_extracts_system_columns_in_order() {
-		let row_numbers = vec![RowNumber::from(1), RowNumber::from(2), RowNumber::from(3), RowNumber::from(4)];
+		let row_numbers = [RowNumber::from(1), RowNumber::from(2), RowNumber::from(3), RowNumber::from(4)];
 		let created_at = vec![
 			DateTime::from_epoch_secs(1000).unwrap(),
 			DateTime::from_epoch_secs(2000).unwrap(),
@@ -2149,7 +2150,7 @@ pub mod tests {
 	}
 
 	mod concat {
-		use std::sync::Arc;
+		use std::{slice::from_ref, sync::Arc};
 
 		use arrow_array::RecordBatch;
 		use arrow_schema::Schema;
@@ -2225,7 +2226,7 @@ pub mod tests {
 				field_type.max_bytes = Some(MaxBytes::new(8))
 			});
 
-			assert_eq!(concat_columns(&[part.clone()]).unwrap(), part);
+			assert_eq!(concat_columns(from_ref(&part)).unwrap(), part);
 		}
 
 		#[test]

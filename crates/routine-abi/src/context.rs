@@ -32,8 +32,6 @@ pub struct FunctionContext<'a> {
 
 impl sealed::Sealed for FunctionContext<'_> {}
 impl Context for FunctionContext<'_> {
-	const PROPAGATES_OPTIONS: bool = true;
-
 	type Output = (FieldRef, ArrayRef);
 
 	fn call<R: Routine<Self> + ?Sized>(
@@ -100,8 +98,6 @@ pub struct ProcedureContext<'a, 'tx> {
 
 impl sealed::Sealed for ProcedureContext<'_, '_> {}
 impl Context for ProcedureContext<'_, '_> {
-	const PROPAGATES_OPTIONS: bool = false;
-
 	type Output = RecordBatch;
 
 	fn call<R: Routine<Self> + ?Sized>(

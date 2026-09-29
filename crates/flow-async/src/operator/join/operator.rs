@@ -590,7 +590,7 @@ impl JoinOperator {
 		}
 
 		let expr_views: Vec<ColumnView> =
-			expr_columns.iter().map(|col| ColumnView::try_from(col)).collect::<Result<_>>()?;
+			expr_columns.iter().map(ColumnView::try_from).collect::<Result<_>>()?;
 		for (view, (field, _)) in expr_views.iter().zip(&expr_columns) {
 			let ty = view.get_type();
 			if matches!(ty.inner_type(), ValueType::Digest { .. }) {

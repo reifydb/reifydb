@@ -236,14 +236,6 @@ pub fn any_optional(name: &str, data: impl IntoIterator<Item = Option<Value>>) -
 	column(name, ValueType::Any, Arc::new(any_array_optional(data)))
 }
 
-pub fn any_optional_typed(
-	name: &str,
-	data: impl IntoIterator<Item = Option<Value>>,
-	declared_type: ValueType,
-) -> (FieldRef, ArrayRef) {
-	declared(name, Arc::new(any_array_optional(data)), declared_type)
-}
-
 fn declared(name: &str, array: ArrayRef, declared_type: ValueType) -> (FieldRef, ArrayRef) {
 	let value_type = match array.null_count() > 0 {
 		true => ValueType::Option(Box::new(declared_type.clone())),

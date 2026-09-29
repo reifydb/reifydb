@@ -2,6 +2,7 @@ disallowed-methods = [
     { path = "std::time::Instant::now", reason = "Use reifydb_runtime::context::clock::Clock::instant() instead" },
     { path = "std::time::SystemTime::now", reason = "Use reifydb_runtime::context::clock::Clock::now_*() instead" },
     { path = "reifydb_value::value::partition::Partition::of", reason = "Use reifydb_core::partition::partition_of, which checks that dictionary partition columns hold entry ids; only sites rehashing stored partition values or hashing non-object keys may call it directly - annotate those with #[allow(clippy::disallowed_methods)]" },
+    { path = "arrow_array::array::Array::nulls", reason = "Use logical_nulls(); a NullArray has no null buffer, so nulls() reports no nones for an all-none column" },
 ]
 
 disallowed-types = [

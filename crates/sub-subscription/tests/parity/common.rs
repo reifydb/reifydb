@@ -246,7 +246,7 @@ fn announced_ids(batches: &[StagedBatch], want_op: DiffType) -> Vec<i32> {
 		if *op != want_op {
 			continue;
 		}
-		let id_col = column_view(&cols, "id").unwrap().expect("id column");
+		let id_col = column_view(cols, "id").unwrap().expect("id column");
 		for i in 0..cols.num_rows() {
 			match id_col.get_value(i) {
 				Value::Int4(v) => out.push(v),

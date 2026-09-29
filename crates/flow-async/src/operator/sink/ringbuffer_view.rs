@@ -1140,8 +1140,7 @@ impl SinkRingBufferViewOperator {
 		} else {
 			require_row_numbers(&coerced)?
 		};
-		for row_idx in 0..row_count {
-			let source_rn = row_numbers[row_idx];
+		for (row_idx, &source_rn) in row_numbers.iter().enumerate().take(row_count) {
 			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
 				continue;
 			};

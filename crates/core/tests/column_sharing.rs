@@ -67,7 +67,7 @@ fn canonical_from_option_column_lifts_the_defined_bits_to_nones() {
 	// Canonical must share the column's validity without a copy and read none exactly on undefined rows.
 	let column = factory::int8_with_bitvec("c", ints(ROWS), defined(ROWS));
 	let base = int8_values(&column.1).as_ptr();
-	let bits_ptr = column.1.nulls().expect("an optional column has a null buffer").validity().as_ptr();
+	let bits_ptr = column.1.logical_nulls().expect("an optional column has a null buffer").validity().as_ptr();
 	let canonical = Canonical::from_column(&column).unwrap();
 	assert!(canonical.view().is_nullable());
 	assert_eq!(canonical.field_type().value_type, Some(ValueType::Option(Box::new(ValueType::Int8))));

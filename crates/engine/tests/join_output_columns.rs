@@ -29,7 +29,7 @@ fn rows(frames: &[Frame], names: &[&str]) -> Vec<Vec<Value>> {
 		let columns: Vec<_> = names
 			.iter()
 			.map(|name| {
-				frame.column(*name).unwrap().unwrap_or_else(|| panic!("no column {name} in\n{frame}"))
+				frame.column(name).unwrap().unwrap_or_else(|| panic!("no column {name} in\n{frame}"))
 			})
 			.collect();
 		let row_count = columns.first().map(|c| c.len()).unwrap_or(0);

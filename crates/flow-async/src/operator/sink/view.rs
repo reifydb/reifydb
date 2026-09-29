@@ -148,8 +148,7 @@ impl SinkTableViewOperator {
 			require_row_numbers(source)?
 		};
 
-		for row_idx in 0..row_count {
-			let row_number = row_numbers[row_idx];
+		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let (_, encoded) =
 				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
@@ -330,8 +329,7 @@ impl SinkTableViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
-		for row_idx in 0..row_count {
-			let row_number = row_numbers[row_idx];
+		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) =

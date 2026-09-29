@@ -77,8 +77,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		ctx: &mut FunctionContext<'a>,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		for i in 0..3 {
-			let (data, _) = split_nulls(args[i].clone())?;
+		for (i, arg) in args.iter().enumerate().take(3) {
+			let (data, _) = split_nulls(arg.clone())?;
 			ensure_integer(ctx, &ColumnView::try_from(&data)?, i)?;
 		}
 

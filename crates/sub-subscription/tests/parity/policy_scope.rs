@@ -45,7 +45,7 @@ fn insert_docs(db: &TestDb, alice: IdentityId, bob: IdentityId) {
 fn contents(batches: &[StagedBatch]) -> Vec<String> {
 	let mut out = Vec::new();
 	for (_, cols) in batches {
-		let Some(content) = column_view(&cols, "content").unwrap() else {
+		let Some(content) = column_view(cols, "content").unwrap() else {
 			continue;
 		};
 		for i in 0..cols.num_rows() {

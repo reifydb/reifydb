@@ -93,11 +93,11 @@ fn hydration_carries_rownum_it_never_names() {
 	let mut seen: Vec<u64> = Vec::new();
 	for (_, batch) in &outcome.batches {
 		assert_eq!(
-			row_numbers(&batch).unwrap().len(),
+			row_numbers(batch).unwrap().len(),
 			batch.num_rows(),
 			"every hydrated row must carry its #rownum"
 		);
-		seen.extend(row_numbers(&batch).unwrap().iter().map(|row| row.value()));
+		seen.extend(row_numbers(batch).unwrap().iter().map(|row| row.value()));
 	}
 	seen.sort();
 	assert_eq!(seen, vec![1, 2], "the snapshot must carry the stored row numbers");

@@ -159,33 +159,6 @@
       {
         "columns": [
           {
-            "name": "val",
-            "payload": [
-              "0x0103904e01000101460103430122022301",
-              "⟪none:1⟫",
-              "⟪none⟫",
-              "0x0103904e0000000000"
-            ],
-            "type": {
-              "Option": {
-                "Option": {
-                  "Digest": {
-                    "accuracy": 10000,
-                    "inner": "Float8"
-                  }
-                }
-              }
-            }
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "frames": [
-      {
-        "columns": [
-          {
             "name": "latency",
             "payload": [
               "0x0112a08d060000000002c202010301",

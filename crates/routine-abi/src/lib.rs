@@ -26,8 +26,6 @@ mod sealed {
 }
 
 pub trait Context: Send + Sync + sealed::Sealed {
-	const PROPAGATES_OPTIONS: bool;
-
 	type Output;
 
 	fn call<R: Routine<Self> + ?Sized>(

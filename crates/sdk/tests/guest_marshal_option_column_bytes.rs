@@ -97,7 +97,9 @@ fn option_int4_sliced_at_a_bit_offset() -> (FieldRef, ArrayRef) {
 	slice(factory::int4_optional("c", rows), 3, 12)
 }
 
-fn fixtures() -> Vec<(&'static str, (FieldRef, ArrayRef), (FieldRef, ArrayRef))> {
+type Column = (FieldRef, ArrayRef);
+
+fn fixtures() -> Vec<(&'static str, Column, Column)> {
 	let with_nones = factory::int4_optional("c", [Some(1), None, Some(3)]);
 	let placeholder = factory::int4_with_bitvec("c", [1, 99, 3], vec![true, false, true]);
 	let sliced = option_int4_sliced_at_a_bit_offset();

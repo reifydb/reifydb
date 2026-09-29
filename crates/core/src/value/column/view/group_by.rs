@@ -312,14 +312,14 @@ fn cast_key_array(array: ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
 fn rescale_exact(array: &DecimalArray, precision: Precision, scale: Scale) -> (DecimalArray, usize) {
 	let from = array.scale().value();
 	let nulls = match array {
-		DecimalArray::Decimal128(array) => array.nulls(),
-		DecimalArray::Decimal256(array) => array.nulls(),
+		DecimalArray::Decimal128(array) => array.logical_nulls(),
+		DecimalArray::Decimal256(array) => array.logical_nulls(),
 	};
 	let mut dropped = 0;
 	let mut valid = Vec::with_capacity(array.len());
 	let mut values = Vec::with_capacity(array.len());
 	for (index, value) in array.unscaled_values().into_iter().enumerate() {
-		let present = nulls.is_none_or(|nulls| nulls.is_valid(index));
+		let present = nulls.as_ref().is_none_or(|nulls| nulls.is_valid(index));
 		let exact = present.then(|| rescaled(value, from, scale.value(), precision.value())).flatten();
 		if present && exact.is_none() {
 			dropped += 1;

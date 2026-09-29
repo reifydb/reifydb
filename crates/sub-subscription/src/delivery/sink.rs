@@ -128,8 +128,8 @@ impl EphemeralSinkPlan {
 		let row_count = post.num_rows();
 		let post_row_numbers = staged_row_numbers(post)?;
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
-		for row_idx in 0..row_count {
-			if state.rows.insert(post_row_numbers[row_idx]) {
+		for (row_idx, &row_number) in post_row_numbers.iter().enumerate().take(row_count) {
+			if state.rows.insert(row_number) {
 				new_indices.push(row_idx);
 			}
 		}
@@ -201,9 +201,8 @@ impl EphemeralSinkPlan {
 		let row_count = pre.num_rows();
 		let pre_row_numbers = staged_row_numbers(pre)?;
 		let mut remove_indices: Vec<usize> = Vec::new();
-		for row_idx in 0..row_count {
-			let pre_rn = pre_row_numbers[row_idx];
-			if state.rows.remove(&pre_rn) {
+		for (row_idx, pre_rn) in pre_row_numbers.iter().enumerate().take(row_count) {
+			if state.rows.remove(pre_rn) {
 				remove_indices.push(row_idx);
 			}
 		}

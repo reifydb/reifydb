@@ -428,7 +428,7 @@ pub mod tests {
 		let ViewData::Int16(container) = col.data else {
 			panic!("Expected Int16");
 		};
-		assert_eq!(wides::<i128>(&container), [1000, 2000]);
+		assert_eq!(wides::<i128>(container), [1000, 2000]);
 	}
 
 	#[test]
@@ -603,7 +603,7 @@ pub mod tests {
 		let ViewData::Uint16(container) = col.data else {
 			panic!("Expected Uint16");
 		};
-		assert_eq!(wides::<u128>(&container), [10000, 20000]);
+		assert_eq!(wides::<u128>(container), [10000, 20000]);
 	}
 
 	#[test]
@@ -691,7 +691,7 @@ pub mod tests {
 		let ViewData::Date(container) = col.data else {
 			panic!("Expected Date");
 		};
-		assert_eq!(dates(&container), &[date1, date2]);
+		assert_eq!(dates(container), &[date1, date2]);
 	}
 
 	#[test]
@@ -730,7 +730,7 @@ pub mod tests {
 		let ViewData::DateTime(container) = col.data else {
 			panic!("Expected DateTime");
 		};
-		assert_eq!(datetimes(&container), &[dt1, dt2]);
+		assert_eq!(datetimes(container), &[dt1, dt2]);
 	}
 
 	#[test]
@@ -769,7 +769,7 @@ pub mod tests {
 		let ViewData::Time(container) = col.data else {
 			panic!("Expected Time");
 		};
-		assert_eq!(times(&container), &[time1, time2]);
+		assert_eq!(times(container), &[time1, time2]);
 	}
 
 	#[test]
@@ -808,7 +808,7 @@ pub mod tests {
 		let ViewData::Duration(container) = col.data else {
 			panic!("Expected Duration");
 		};
-		assert_eq!(durations(&container), &[duration1, duration2]);
+		assert_eq!(durations(container), &[duration1, duration2]);
 	}
 
 	#[test]
@@ -849,7 +849,7 @@ pub mod tests {
 		let ViewData::IdentityId(container) = col.data else {
 			panic!("Expected IdentityId");
 		};
-		assert_eq!(identity_ids(&container), &[id1, id2]);
+		assert_eq!(identity_ids(container), &[id1, id2]);
 	}
 
 	#[test]
@@ -890,7 +890,7 @@ pub mod tests {
 		let ViewData::Uuid4(container) = col.data else {
 			panic!("Expected Uuid4");
 		};
-		assert_eq!(uuid4s(&container), &[uuid1, uuid2]);
+		assert_eq!(uuid4s(container), &[uuid1, uuid2]);
 	}
 
 	#[test]
@@ -931,7 +931,7 @@ pub mod tests {
 		let ViewData::Uuid7(container) = col.data else {
 			panic!("Expected Uuid7");
 		};
-		assert_eq!(uuid7s(&container), &[uuid1, uuid2]);
+		assert_eq!(uuid7s(container), &[uuid1, uuid2]);
 	}
 
 	#[test]
@@ -976,7 +976,7 @@ pub mod tests {
 		else {
 			panic!("Expected DictionaryId");
 		};
-		assert_eq!(dictionary_array::iter(&container).collect::<Vec<_>>(), &[e1, e2]);
+		assert_eq!(dictionary_array::iter(container).collect::<Vec<_>>(), &[e1, e2]);
 	}
 
 	#[test]

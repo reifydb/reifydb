@@ -316,9 +316,7 @@ impl TakePlan {
 		}
 		let schema = row_shape_from_columns(&post)?;
 		let row_numbers = require_row_numbers(&post)?;
-		for row_idx in 0..row_count {
-			let row_number = row_numbers[row_idx];
-
+		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
 				continue;
@@ -352,9 +350,7 @@ impl TakePlan {
 		let row_numbers = require_row_numbers(&post)?;
 		let mut update_indices: Vec<usize> = Vec::new();
 
-		for row_idx in 0..row_count {
-			let row_number = row_numbers[row_idx];
-
+		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if state.by_row.contains_key(&row_number) {
 				update_indices.push(row_idx);
 				state.row_data.insert(row_number, encode_take_bytes(&schema, &post, row_idx)?);
@@ -393,9 +389,7 @@ impl TakePlan {
 		}
 		let schema = row_shape_from_columns(&pre)?;
 		let row_numbers = require_row_numbers(&pre)?;
-		for row_idx in 0..row_count {
-			let row_number = row_numbers[row_idx];
-
+		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				if slot.1 > 1 {
 					slot.1 -= 1;

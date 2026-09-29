@@ -54,9 +54,9 @@ fn assert_time_tracks_its_row(db: &TestDb, rql: &str, expected_rows: usize) {
 		"{rql}: #time holds {} stamps for {expected_rows} rows - it was not trimmed with the rows",
 		stamps.len()
 	);
-	for i in 0..expected_rows {
+	for (i, &stamp) in stamps.iter().enumerate().take(expected_rows) {
 		assert_eq!(
-			Value::DateTime(stamps[i]),
+			Value::DateTime(stamp),
 			at.get_value(i),
 			"{rql}: #time[{i}] carries another row's stamp - it was not permuted with the rows",
 		);

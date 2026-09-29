@@ -158,7 +158,7 @@ fn seed_backdated(db: &TestDb, table: &str, rows: &[(i32, u64)]) {
 fn announced_ids(batches: &[StagedBatch]) -> Vec<i32> {
 	let mut out = Vec::new();
 	for (_, batch) in batches {
-		let id_col = column_view(&batch, "id").unwrap().expect("id column");
+		let id_col = column_view(batch, "id").unwrap().expect("id column");
 		for row_idx in 0..batch.num_rows() {
 			match id_col.get_value(row_idx) {
 				Value::Int4(v) => out.push(v),
@@ -242,7 +242,7 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 	let mut announced: HashSet<u64> = HashSet::new();
 	let mut seen = 0usize;
 	for (op, batch) in &outcome.batches {
-		let row_numbers = row_numbers(&batch).unwrap();
+		let row_numbers = row_numbers(batch).unwrap();
 		assert_eq!(
 			row_numbers.len(),
 			batch.num_rows(),
@@ -362,7 +362,7 @@ fn hydrate_pushes_filter_into_source_query() {
 	assert!(total_rows > 0, "snapshot must deliver at least one filtered row");
 
 	for (_, cols) in &outcome.batches {
-		let kind_col = column_view(&cols, "kind").unwrap().expect("kind column present");
+		let kind_col = column_view(cols, "kind").unwrap().expect("kind column present");
 		for i in 0..cols.num_rows() {
 			match kind_col.get_value(i) {
 				Value::Utf8(s) => assert_eq!(s, "b", "filter must restrict to kind == 'b'"),
