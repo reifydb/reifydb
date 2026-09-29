@@ -12,7 +12,7 @@ use crate::{
 		object::ObjectId,
 		series::SeriesKey,
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
 	sort::SortKey,
 };
 
@@ -95,6 +95,19 @@ pub enum OperatorDef {
 		aggregations: Vec<Expression>,
 		with: WindowWith,
 	},
+	Lookup {
+		join_type: JoinType,
+		right: LookupObject,
+		left: Vec<Expression>,
+		alias: Option<String>,
+		with: LookupWith,
+	},
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LookupObject {
+	Table(TableId),
+	View(ViewId),
 }
 
 impl OperatorDef {
@@ -138,6 +151,7 @@ impl OperatorDef {
 				| OperatorDef::Window { .. }
 				| OperatorDef::Apply { .. }
 				| OperatorDef::Join { .. }
+				| OperatorDef::Lookup { .. }
 				| OperatorDef::Aggregate { .. }
 				| OperatorDef::SinkRingBufferView { .. }
 		)
@@ -209,6 +223,9 @@ impl OperatorDef {
 			OperatorDef::Window {
 				..
 			} => "Window".into(),
+			OperatorDef::Lookup {
+				..
+			} => "Lookup".into(),
 		}
 	}
 
@@ -277,6 +294,9 @@ impl OperatorDef {
 			OperatorDef::SinkSeriesView {
 				..
 			} => 21,
+			OperatorDef::Lookup {
+				..
+			} => 22,
 		}
 	}
 
@@ -347,6 +367,9 @@ impl OperatorDef {
 			}
 			| OperatorDef::Window {
 				..
+			}
+			| OperatorDef::Lookup {
+				..
 			} => None,
 		}
 	}
@@ -373,11 +396,14 @@ impl FlowNode {
 
 #[cfg(test)]
 mod tests {
-	use super::OperatorDef;
+	use reifydb_value::value::duration::Duration;
+
+	use super::{LookupObject, OperatorDef};
 	use crate::{
 		common::JoinType,
-		interface::catalog::id::ViewId,
-		operator_with::{ApplyWith, DistinctWith, JoinWith},
+		interface::catalog::id::{TableId, ViewId},
+		operator_with::{ApplyWith, DistinctWith, JoinWith, LookupWith},
+		row::OperatorRetention,
 	};
 
 	fn join() -> OperatorDef {
@@ -441,5 +467,65 @@ mod tests {
 			conditions: vec![]
 		}
 		.ticks());
+	}
+
+	fn lookup(right: LookupObject) -> OperatorDef {
+		OperatorDef::Lookup {
+			join_type: JoinType::Left,
+			right,
+			left: vec![],
+			alias: Some("price".to_string()),
+			with: LookupWith {
+				retention: Some(OperatorRetention {
+					duration: Duration::from_seconds(10).unwrap(),
+				}),
+			},
+		}
+	}
+
+	#[test]
+	fn lookup_always_requests_ticks() {
+		// Left retention frees rows on ticks; without them the read-version lease never moves.
+		assert!(lookup(LookupObject::Table(TableId(1))).ticks());
+	}
+
+	#[test]
+	fn lookup_is_not_a_source_and_has_no_source_object() {
+		// A source flag would route the right side's CDC into the flow, which the lookup must never read.
+		let node = lookup(LookupObject::View(ViewId(7)));
+		assert!(!node.is_source());
+		assert!(node.source_object_id().is_none());
+	}
+
+	#[test]
+	fn lookup_discriminator_is_appended_after_every_existing_operator() {
+		// Stored operator rows keep their type byte, so a lookup must not reuse or shift an existing number.
+		let node = lookup(LookupObject::Table(TableId(1)));
+		assert_eq!(node.discriminator(), 22);
+		assert_eq!(node.label(), "Lookup");
+	}
+
+	#[test]
+	fn lookup_survives_the_persisted_encoding_with_its_right_object_and_retention() {
+		// The DAG is stored with postcard, so a lost field registers a different lookup after restart.
+		for right in [LookupObject::Table(TableId(3)), LookupObject::View(ViewId(4))] {
+			let node = lookup(right);
+			let bytes = postcard::to_stdvec(&node).expect("a lookup node must encode");
+			let decoded: OperatorDef = postcard::from_bytes(&bytes).expect("a lookup node must decode");
+			let OperatorDef::Lookup {
+				join_type,
+				right: decoded_right,
+				alias,
+				with,
+				..
+			} = decoded
+			else {
+				panic!("a lookup must decode as a lookup, got {decoded:?}");
+			};
+			assert_eq!(join_type, JoinType::Left);
+			assert_eq!(decoded_right, right);
+			assert_eq!(alias.as_deref(), Some("price"));
+			assert_eq!(with.retention.map(|r| r.duration), Some(Duration::from_seconds(10).unwrap()));
+		}
 	}
 }

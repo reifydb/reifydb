@@ -23,7 +23,7 @@ use crate::{
 	},
 };
 
-fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
+pub(crate) fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
 	let compiler = JoinConditionCompiler::new(Some(alias.to_owned()));
 	let fragment = using.token.fragment.to_owned();
 
@@ -155,7 +155,7 @@ impl<'bump> Compiler<'bump> {
 		self.compile_join_subquery_nodes(subquery, alias, tx)
 	}
 
-	fn compile_join_subquery_nodes(
+	pub(crate) fn compile_join_subquery_nodes(
 		&self,
 		subquery: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,

@@ -6,7 +6,7 @@ use arrow_schema::FieldRef;
 use postcard::from_bytes;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
-	flow::operator::OperatorDef,
+	flow::operator::{LookupObject, OperatorDef},
 	internal,
 	sort::SortKey,
 	value::column::factory::utf8,
@@ -91,6 +91,12 @@ pub enum JsonOperatorDef {
 		kind: WindowKind,
 		group_by: Vec<JsonExpression>,
 		aggregations: Vec<JsonExpression>,
+	},
+	Lookup {
+		join_type: JoinType,
+		right: LookupObject,
+		left: Vec<JsonExpression>,
+		alias: Option<String>,
 	},
 }
 
@@ -219,6 +225,18 @@ impl From<&OperatorDef> for JsonOperatorDef {
 				kind: with.kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),
 				aggregations: aggregations.iter().map(|e| e.into()).collect(),
+			},
+			OperatorDef::Lookup {
+				join_type,
+				right,
+				left,
+				alias,
+				with: _,
+			} => JsonOperatorDef::Lookup {
+				join_type: *join_type,
+				right: *right,
+				left: left.iter().map(|e| e.into()).collect(),
+				alias: alias.clone(),
 			},
 		}
 	}

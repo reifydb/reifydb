@@ -11,10 +11,11 @@ use std::{
 
 use reifydb_core::{
 	actors::flow::FlowActorMessage,
-	common::CommitVersion,
-	interface::catalog::{flow::FlowId, object::ObjectId},
+	common::{CommitVersion, SourceVersion},
+	interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId},
 	lifecycle::watermark::ConsumerPositions,
 };
+use reifydb_flow_async::transaction::LookupVersions;
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -64,6 +65,7 @@ pub type FlowUpstreams = FxHashMap<FlowId, FxHashSet<ObjectId>>;
 struct Completion {
 	commit: CommitVersion,
 	position: CommitVersion,
+	source: SourceVersion,
 }
 
 const COMPLETION_HISTORY: usize = 65_536;
@@ -130,6 +132,8 @@ struct FlowProgress {
 	readers: HashMap<FlowId, HashSet<FlowId>>,
 	wakers: HashMap<FlowId, FlowWaker>,
 	source_counts: HashMap<FlowId, usize>,
+	sources: HashMap<FlowId, SourceVersion>,
+	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 }
 
 impl FlowProgress {
@@ -151,6 +155,13 @@ impl FlowProgress {
 		let current = self.last_commits.entry(flow_id).or_insert(version);
 		if version > *current {
 			*current = version;
+		}
+	}
+
+	fn advance_source(&mut self, flow_id: FlowId, source: SourceVersion) {
+		let current = self.sources.entry(flow_id).or_insert(source);
+		if source > *current {
+			*current = source;
 		}
 	}
 
@@ -177,11 +188,14 @@ impl FlowProgress {
 	}
 
 	fn record_completion(&mut self, flow_id: FlowId, commit: CommitVersion, position: CommitVersion) {
+		let source = self.sources.get(&flow_id).copied().unwrap_or(SourceVersion(position.0));
 		let history = self.completions.entry(flow_id).or_default();
+		let source = history.back().map_or(source, |last| last.source.max(source));
 		match history.back_mut() {
 			Some(last) if commit < last.commit => return,
 			Some(last) if commit == last.commit => {
 				last.position = last.position.max(position);
+				last.source = source;
 				return;
 			}
 			_ => {}
@@ -189,6 +203,7 @@ impl FlowProgress {
 		history.push_back(Completion {
 			commit,
 			position,
+			source,
 		});
 		if history.len() > COMPLETION_HISTORY {
 			history.pop_front();
@@ -199,6 +214,18 @@ impl FlowProgress {
 		let history = self.completions.get(&flow_id)?;
 		let above = history.partition_point(|entry| entry.commit <= read_to);
 		history.get(above.checked_sub(1)?).map(|entry| entry.position)
+	}
+
+	fn commit_through_source(&self, flow_id: FlowId, source: SourceVersion) -> Option<CommitVersion> {
+		let history = self.completions.get(&flow_id)?;
+		let above = history.partition_point(|entry| entry.source <= source);
+		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
+	}
+
+	fn commit_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<CommitVersion> {
+		let history = self.completions.get(&flow_id)?;
+		let above = history.partition_point(|entry| entry.commit <= commit);
+		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
 	}
 
 	fn folds(&self, flow_id: FlowId) -> bool {
@@ -256,10 +283,17 @@ impl FlowPositionTracker {
 		wake(readers);
 	}
 
-	pub fn update_committed(&self, flow_id: FlowId, version: CommitVersion, commit: CommitVersion) {
+	pub fn update_committed(
+		&self,
+		flow_id: FlowId,
+		version: CommitVersion,
+		commit: CommitVersion,
+		source: SourceVersion,
+	) {
 		let readers = {
 			let mut progress = self.inner.write();
 			progress.advance_last_commit(flow_id, commit);
+			progress.advance_source(flow_id, source);
 			if !progress.advance_position(flow_id, version) {
 				return;
 			}
@@ -275,6 +309,30 @@ impl FlowPositionTracker {
 
 	pub fn upstream_complete_through(&self, flow_id: FlowId, read_to: CommitVersion) -> Option<CommitVersion> {
 		self.inner.read().complete_through(flow_id, read_to)
+	}
+
+	pub fn commit_through_source(&self, flow_id: FlowId, source: SourceVersion) -> Option<CommitVersion> {
+		self.inner.read().commit_through_source(flow_id, source)
+	}
+
+	pub fn commit_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<CommitVersion> {
+		self.inner.read().commit_through_commit(flow_id, commit)
+	}
+
+	pub fn set_lookup_producers(&self, flow_id: FlowId, producers: BTreeMap<ViewId, FlowId>) {
+		let mut progress = self.inner.write();
+		if producers.is_empty() {
+			progress.lookup_producers.remove(&flow_id);
+		} else {
+			progress.lookup_producers.insert(flow_id, producers);
+		}
+	}
+
+	pub fn lookup_versions(&self, flow_id: FlowId) -> FlowLookupVersions {
+		FlowLookupVersions {
+			tracker: self.clone(),
+			flow_id,
+		}
 	}
 
 	pub fn set_upstreams(&self, flow_id: FlowId, upstreams: FlowUpstreams) {
@@ -331,10 +389,29 @@ impl FlowPositionTracker {
 		progress.unlink_reader(flow_id);
 		progress.wakers.remove(&flow_id);
 		progress.source_counts.remove(&flow_id);
+		progress.sources.remove(&flow_id);
+		progress.lookup_producers.remove(&flow_id);
 	}
 
 	pub fn all(&self) -> HashMap<FlowId, CommitVersion> {
 		self.inner.read().positions.clone()
+	}
+}
+
+pub struct FlowLookupVersions {
+	tracker: FlowPositionTracker,
+	flow_id: FlowId,
+}
+
+impl LookupVersions for FlowLookupVersions {
+	fn view_version(&self, view: ViewId, source: SourceVersion) -> Option<CommitVersion> {
+		let producer = *self.tracker.inner.read().lookup_producers.get(&self.flow_id)?.get(&view)?;
+		self.tracker.commit_through_source(producer, source)
+	}
+
+	fn view_commit_through(&self, view: ViewId, commit: CommitVersion) -> Option<CommitVersion> {
+		let producer = *self.tracker.inner.read().lookup_producers.get(&self.flow_id)?.get(&view)?;
+		self.tracker.commit_through_commit(producer, commit)
 	}
 }
 
@@ -371,7 +448,11 @@ mod tests {
 		},
 	};
 
-	use reifydb_core::{actors::flow::FlowActorMessage, common::CommitVersion, interface::catalog::flow::FlowId};
+	use reifydb_core::{
+		actors::flow::FlowActorMessage,
+		common::{CommitVersion, SourceVersion},
+		interface::catalog::flow::FlowId,
+	};
 	use reifydb_runtime::{
 		actor::{
 			context::Context,
@@ -520,8 +601,8 @@ mod tests {
 	#[test]
 	fn a_checkpoint_carrying_no_output_records_at_the_commit_that_last_landed() {
 		let tracker = FlowPositionTracker::new();
-		tracker.update_committed(PRODUCER, cv(34), cv(22));
-		tracker.update_committed(PRODUCER, cv(38), cv(0));
+		tracker.update_committed(PRODUCER, cv(34), cv(22), SourceVersion(34));
+		tracker.update_committed(PRODUCER, cv(38), cv(0), SourceVersion(38));
 
 		assert_eq!(
 			tracker.upstream_complete_through(PRODUCER, cv(38)),
@@ -534,7 +615,7 @@ mod tests {
 	#[test]
 	fn a_position_published_without_a_commit_still_reaches_readers() {
 		let tracker = FlowPositionTracker::new();
-		tracker.update_committed(PRODUCER, cv(4), cv(10));
+		tracker.update_committed(PRODUCER, cv(4), cv(10), SourceVersion(4));
 		tracker.update(PRODUCER, cv(7));
 
 		assert_eq!(
@@ -603,7 +684,7 @@ mod tests {
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		tracker.update(PRODUCER, CommitVersion(2));
-		tracker.update_committed(PRODUCER, CommitVersion(3), CommitVersion(3));
+		tracker.update_committed(PRODUCER, CommitVersion(3), CommitVersion(3), SourceVersion(3));
 		send_marker(&reader, FlowActorMessage::Sample);
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake the reader");
 		assert_eq!(
@@ -613,7 +694,7 @@ mod tests {
 		);
 
 		pending.store(false, Ordering::SeqCst);
-		tracker.update_committed(PRODUCER, CommitVersion(4), CommitVersion(4));
+		tracker.update_committed(PRODUCER, CommitVersion(4), CommitVersion(4), SourceVersion(4));
 		send_marker(&reader, FlowActorMessage::Tick);
 		assert_eq!(
 			next_message(&received),
@@ -736,5 +817,154 @@ mod tests {
 		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		tracker.remove(READER);
 		assert!(!tracker.has_readers(PRODUCER), "removing the last reader must clear it");
+	}
+}
+
+#[cfg(test)]
+mod lookup_tests {
+	use std::collections::BTreeMap;
+
+	use reifydb_core::{
+		common::{CommitVersion, SourceVersion},
+		interface::catalog::{flow::FlowId, id::ViewId},
+	};
+	use reifydb_flow_async::transaction::LookupVersions;
+
+	use super::FlowPositionTracker;
+
+	const PRODUCER: FlowId = FlowId(1);
+	const READER: FlowId = FlowId(2);
+	const PRICES: ViewId = ViewId(7);
+
+	fn cv(version: u64) -> CommitVersion {
+		CommitVersion(version)
+	}
+
+	fn sv(version: u64) -> SourceVersion {
+		SourceVersion(version)
+	}
+
+	fn sources(tracker: &FlowPositionTracker, flow: FlowId) -> Vec<u64> {
+		tracker.inner
+			.read()
+			.completions
+			.get(&flow)
+			.map(|h| h.iter().map(|e| e.source.0).collect())
+			.unwrap_or_default()
+	}
+
+	#[test]
+	fn commit_through_source_answers_by_source_not_by_position() {
+		// Keyed by position, source 14 would read C20 and miss the source-12 rows committed at C30.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(5), cv(10), sv(5));
+		tracker.update_committed(PRODUCER, cv(8), cv(20), sv(8));
+		tracker.update_committed(PRODUCER, cv(15), cv(30), sv(12));
+
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(5)), Some(cv(10)));
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(9)), Some(cv(20)));
+		assert_eq!(
+			tracker.commit_through_source(PRODUCER, sv(14)),
+			Some(cv(30)),
+			"source 12 landed at C30, so a lookup at source 14 must read C30"
+		);
+		assert_eq!(
+			tracker.commit_through_source(PRODUCER, sv(4)),
+			None,
+			"no commit covers source 4, so the lookup must not be handed a version"
+		);
+	}
+
+	#[test]
+	fn commit_through_commit_answers_the_last_commit_at_or_below_a_version() {
+		// A lookup below its lease floor may read at the floor only if this finds no commit after its own.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(5), cv(10), sv(5));
+		tracker.update_committed(PRODUCER, cv(8), cv(20), sv(8));
+
+		assert_eq!(tracker.commit_through_commit(PRODUCER, cv(19)), Some(cv(10)));
+		assert_eq!(tracker.commit_through_commit(PRODUCER, cv(20)), Some(cv(20)));
+		assert_eq!(tracker.commit_through_commit(PRODUCER, cv(9)), None, "no commit at or below 9");
+	}
+
+	#[test]
+	fn a_tick_between_two_sourced_commits_never_lowers_a_completion_source() {
+		// A tick must keep the last slice's source, otherwise the history unsorts and source lookups miss rows.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(10), cv(20), sv(10));
+		tracker.record_commit(PRODUCER, cv(25));
+		tracker.update(PRODUCER, cv(12));
+		tracker.update_committed(PRODUCER, cv(15), cv(30), sv(15));
+
+		let recorded = sources(&tracker, PRODUCER);
+		assert_eq!(recorded, vec![10, 10, 15], "each landing must keep or raise the source");
+		assert!(recorded.is_sorted(), "sources must never decrease across a tick");
+		assert_eq!(
+			tracker.commit_through_source(PRODUCER, sv(12)),
+			Some(cv(25)),
+			"the tick commit holds everything through source 10 plus the tick's own output"
+		);
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(15)), Some(cv(30)));
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(9)), None);
+	}
+
+	#[test]
+	fn a_lower_source_after_a_higher_one_is_clamped_not_recorded() {
+		// A lower stamp after a higher one must never unsort the history, otherwise the answer misses rows.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(10), cv(20), sv(10));
+		tracker.update_committed(PRODUCER, cv(11), cv(30), sv(7));
+
+		assert_eq!(sources(&tracker, PRODUCER), vec![10, 10]);
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(10)), Some(cv(30)));
+	}
+
+	#[test]
+	fn an_equal_commit_keeps_the_highest_source() {
+		// An empty slice lands on the previous commit; its source is still complete there.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(10), cv(20), sv(10));
+		tracker.update_committed(PRODUCER, cv(14), cv(0), sv(14));
+
+		assert_eq!(sources(&tracker, PRODUCER), vec![14]);
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(14)), Some(cv(20)));
+	}
+
+	#[test]
+	fn lookup_versions_resolve_the_view_through_its_producer() {
+		// The operator only knows the view; without the producer map it cannot find whose commits to read.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(8), cv(20), sv(8));
+		tracker.set_lookup_producers(READER, BTreeMap::from([(PRICES, PRODUCER)]));
+		let versions = tracker.lookup_versions(READER);
+
+		assert_eq!(versions.view_version(PRICES, sv(9)), Some(cv(20)));
+		assert_eq!(versions.view_version(ViewId(8), sv(9)), None, "an unmapped view has no producer");
+		assert_eq!(
+			tracker.lookup_versions(PRODUCER).view_version(PRICES, sv(9)),
+			None,
+			"the map is per reading flow"
+		);
+
+		tracker.remove(READER);
+		assert_eq!(versions.view_version(PRICES, sv(9)), None, "a removed reader keeps no producer map");
+	}
+
+	#[test]
+	fn pruning_for_a_lookup_reader_keeps_the_entry_its_next_source_needs() {
+		// Pruning must keep the newest entry at or below the reader, otherwise IP2 fires on a version that
+		// exists.
+		let tracker = FlowPositionTracker::new();
+		tracker.set_upstreams(
+			READER,
+			rustc_hash::FxHashMap::from_iter([(PRODUCER, rustc_hash::FxHashSet::default())]),
+		);
+		tracker.update(READER, cv(25));
+		for step in 1..=5u64 {
+			tracker.update_committed(PRODUCER, cv(step * 10), cv(step * 10), sv(step * 10));
+		}
+
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(26)), Some(cv(20)));
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(50)), Some(cv(50)));
 	}
 }

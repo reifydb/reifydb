@@ -29,11 +29,7 @@ impl FlowEngineInner {
 		version: ChangeVersion,
 		topo: &[OperatorId],
 	) -> Result<u32> {
-		let sources: Vec<OperatorId> = topo
-			.iter()
-			.copied()
-			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
-			.collect();
+		let sources = self.watermark_sources(flow);
 		if sources.is_empty() {
 			return Ok(0);
 		}

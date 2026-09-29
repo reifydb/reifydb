@@ -17,7 +17,7 @@ use reifydb_core::{
 		operator::{
 			FlowNode,
 			OperatorDef::{
-				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
+				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Lookup, Map,
 				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
 				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
 				Window,
@@ -82,6 +82,10 @@ impl FlowEngineInner {
 					entries.retain(|(fid, _)| *fid != flow.id);
 				}
 				self.sources.retain(|_, v| !v.is_empty());
+				for entries in self.lookup_sources.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.lookup_sources.retain(|_, v| !v.is_empty());
 				for entries in self.sinks.values_mut() {
 					entries.retain(|(fid, _)| *fid != flow.id);
 				}
@@ -267,6 +271,24 @@ impl FlowEngineInner {
 				aggregations,
 				with,
 			} => self.add_window(flow_id, operator_id, &inputs, group_by, aggregations, with, ctx)?,
+			Lookup {
+				join_type,
+				right,
+				left,
+				alias,
+				with,
+			} => self.add_lookup(
+				txn,
+				flow_id,
+				operator_id,
+				&inputs,
+				join_type,
+				right,
+				left,
+				alias,
+				with,
+				ctx,
+			)?,
 		}
 
 		Ok(())

@@ -179,6 +179,10 @@ fn inject_plan<'a>(
 			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
 			Ok(LogicalPlan::JoinNatural(node))
 		}
+		LogicalPlan::Lookup(mut node) => {
+			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
+			Ok(LogicalPlan::Lookup(node))
+		}
 		LogicalPlan::InsertTable(mut node) => {
 			node.source = inject_boxed(node.source, bump, catalog, tx)?;
 			Ok(LogicalPlan::InsertTable(node))

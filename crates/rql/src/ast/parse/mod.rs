@@ -35,6 +35,7 @@ pub mod join;
 pub mod r#let;
 pub mod list;
 pub mod literal;
+pub mod lookup;
 pub mod loop_construct;
 pub mod map;
 pub mod match_expr;

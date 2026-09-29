@@ -10,6 +10,7 @@ pub mod extend;
 pub mod filter;
 pub mod gate;
 pub mod join;
+pub mod lookup;
 pub mod map;
 pub mod sort;
 pub mod take;

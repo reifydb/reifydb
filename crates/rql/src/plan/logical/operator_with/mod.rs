@@ -3,6 +3,7 @@
 
 pub mod apply;
 pub mod join;
+pub mod lookup;
 pub mod window;
 
 use reifydb_core::operator_with::{AggregateWith, DistinctWith};

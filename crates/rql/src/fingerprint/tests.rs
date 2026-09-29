@@ -155,3 +155,56 @@ fn create_user_and_create_service_differ() {
 fn create_service_fingerprint_is_stable() {
 	assert_eq!(fp("CREATE SERVICE alice"), fp("CREATE SERVICE alice"));
 }
+
+#[test]
+fn inner_and_left_lookup_differ() {
+	// Inner drops unmatched rows and left keeps them, so the two forms must never share a cached plan.
+	assert_ne!(
+		fp(
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+		),
+		fp(
+			"FROM orders LEFT LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+		),
+	);
+}
+
+#[test]
+fn lookup_and_join_differ() {
+	// A lookup reads the right side at a version and a join keeps its own copy; they must not collide.
+	assert_ne!(
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id)"),
+		fp("FROM orders INNER JOIN { FROM users } AS u USING (user_id, u.id)"),
+	);
+}
+
+#[test]
+fn lookup_right_object_is_part_of_the_fingerprint() {
+	// The right object decides which partition is read, so a different object must change the fingerprint.
+	assert_ne!(
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id)"),
+		fp("FROM orders INNER LOOKUP { FROM accounts } AS u USING (user_id, u.id)"),
+	);
+}
+
+#[test]
+fn lookup_retention_value_is_not_part_of_the_pattern() {
+	// Only the literal kind of a retention counts, like any other literal, so equal shapes share a pattern.
+	assert_eq!(
+		fp(
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+		),
+		fp(
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 1h } }"
+		),
+	);
+}
+
+#[test]
+fn lookup_using_columns_are_part_of_the_fingerprint() {
+	// The using columns pick the partition, so a different key column must change the fingerprint.
+	assert_ne!(
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id)"),
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (buyer_id, u.id)"),
+	);
+}

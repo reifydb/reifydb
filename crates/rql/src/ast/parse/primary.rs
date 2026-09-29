@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::JoinType;
 use reifydb_value::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
@@ -139,6 +140,14 @@ impl<'bump> Parser<'bump> {
 					} else {
 						self.try_parse_keyword_as_function_call()
 					}
+				}
+				Keyword::Inner if self.is_next_keyword(Keyword::Lookup) => {
+					let lookup = self.parse_lookup(JoinType::Inner)?;
+					Ok(Ast::Lookup(BumpBox::new_in(lookup, self.bump())))
+				}
+				Keyword::Left if self.is_next_keyword(Keyword::Lookup) => {
+					let lookup = self.parse_lookup(JoinType::Left)?;
+					Ok(Ast::Lookup(BumpBox::new_in(lookup, self.bump())))
 				}
 				Keyword::Inner => {
 					let join = self.parse_inner_join()?;

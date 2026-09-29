@@ -22,6 +22,9 @@ mod aggregate;
 #[path = "parity/join.rs"]
 mod join;
 
+#[path = "parity/lookup.rs"]
+mod lookup;
+
 #[path = "parity/sort.rs"]
 mod sort;
 

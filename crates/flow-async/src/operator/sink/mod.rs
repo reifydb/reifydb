@@ -153,6 +153,7 @@ mod tests {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
 			substrate: FlowSubstrate::with_dictionary(registry.clone(), engine.inner().operator_state()),
+			lookup: None,
 		})
 	}
 

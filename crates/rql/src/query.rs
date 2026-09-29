@@ -10,9 +10,10 @@ use reifydb_value::value::constraint::Constraint;
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode, RingBufferScanNode,
-	RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode,
-	TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
+	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode,
+	RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode,
+	SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode,
+	WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,7 @@ pub enum QueryPlan {
 	JoinInner(JoinInnerNode),
 	JoinLeft(JoinLeftNode),
 	JoinNatural(JoinNaturalNode),
+	Lookup(LookupNode),
 	Append(AppendQueryNode),
 	Take(TakeNode),
 	Sort(SortNode),
@@ -85,6 +87,7 @@ impl QueryPlan {
 			QueryPlan::JoinInner(_) => "join",
 			QueryPlan::JoinLeft(_) => "join",
 			QueryPlan::JoinNatural(_) => "join",
+			QueryPlan::Lookup(_) => "lookup",
 			QueryPlan::Append(_) => "append",
 			QueryPlan::Take(_) => "take",
 			QueryPlan::Sort(_) => "sort",

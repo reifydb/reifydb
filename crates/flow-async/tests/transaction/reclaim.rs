@@ -51,6 +51,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	});
 	// The substrate derives an intern's position from the change coordinate, so it is set here.
 	txn.set_change_coordinate(ChangeCoordinate {

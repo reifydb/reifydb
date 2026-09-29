@@ -100,6 +100,7 @@ pub enum Ast<'bump> {
 	Insert(AstInsert<'bump>),
 	Update(AstUpdate<'bump>),
 	Join(BumpBox<'bump, AstJoin<'bump>>),
+	Lookup(BumpBox<'bump, AstLookup<'bump>>),
 	Take(AstTake<'bump>),
 	Skip(AstSkip<'bump>),
 	List(AstList<'bump>),
@@ -201,6 +202,7 @@ impl<'bump> Ast<'bump> {
 					..
 				} => token,
 			},
+			Ast::Lookup(node) => &node.token,
 			Ast::Nop => unreachable!(),
 			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
@@ -1501,6 +1503,17 @@ pub enum AstJoin<'bump> {
 		with: Option<AstOperatorWith<'bump>>,
 		rql: &'bump str,
 	},
+}
+
+#[derive(Debug)]
+pub struct AstLookup<'bump> {
+	pub token: Token<'bump>,
+	pub join_type: JoinType,
+	pub subquery: AstSubQuery<'bump>,
+	pub using_clause: AstUsingClause<'bump>,
+	pub alias: BumpFragment<'bump>,
+	pub with: Option<AstOperatorWith<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::JoinType;
+
 use crate::{
 	ast::{
 		ast::*,
@@ -93,6 +95,8 @@ mod tag {
 	pub const JOIN_INNER: u8 = 0x60;
 	pub const JOIN_LEFT: u8 = 0x61;
 	pub const JOIN_NATURAL: u8 = 0x62;
+	pub const LOOKUP_INNER: u8 = 0x63;
+	pub const LOOKUP_LEFT: u8 = 0x64;
 
 	pub const IF: u8 = 0x70;
 	pub const FOR: u8 = 0x71;
@@ -440,6 +444,16 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				write_operator_with(buf, with);
 			}
 		},
+		Ast::Lookup(node) => {
+			buf.write_u8(match node.join_type {
+				JoinType::Inner => tag::LOOKUP_INNER,
+				JoinType::Left => tag::LOOKUP_LEFT,
+			});
+			buf.write_str(node.alias.text());
+			write_statement(buf, &node.subquery.statement);
+			write_using_clause(buf, &node.using_clause);
+			write_operator_with(buf, &node.with);
+		}
 
 		Ast::If(node) => {
 			buf.write_u8(tag::IF);

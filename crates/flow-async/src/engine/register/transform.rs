@@ -4,15 +4,24 @@
 use std::sync::Arc;
 
 use arrow_schema::Schema;
+use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	common::JoinType,
+	error::diagnostic::operation::{lookup_key_type_mismatch, lookup_right_unsupported},
 	expression::{ColumnExpression, Expression},
-	flow::dag::FlowDag,
+	flow::{dag::FlowDag, operator::LookupObject},
 	interface::{
-		catalog::flow::{FlowId, OperatorId},
+		catalog::{
+			column::Column,
+			flow::{FlowId, OperatorId},
+			object::ObjectId,
+			storage::StorageId,
+			view::{View, ViewKind},
+		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
+	row::row_shape_from_columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -24,7 +33,15 @@ use reifydb_flow::{
 		map::MapOperator,
 	},
 };
-use reifydb_value::{Result, config::ExtensionParams, error::Error, fragment::Fragment};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{
+	Result,
+	config::ExtensionParams,
+	error,
+	error::Error,
+	fragment::Fragment,
+	value::value_type::{ValueType, field::from_field},
+};
 
 use crate::{
 	engine::{
@@ -37,6 +54,8 @@ use crate::{
 		distinct::operator::DistinctOperator,
 		gate::GateOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
+		lookup::{LookupConfig, LookupOperator},
+		scan::catalog_schema,
 		sort::SortOperator,
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
@@ -258,6 +277,91 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	pub(super) fn add_lookup(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow_id: FlowId,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		join_type: JoinType,
+		right: LookupObject,
+		left: Vec<Expression>,
+		alias: Option<String>,
+		with: LookupWith,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
+		if inputs.len() != 1 {
+			return Err(Error::from(FlowGraphError::NodeInputArity {
+				operator: "Lookup",
+				expected: "exactly 1",
+				found: inputs.len(),
+			}));
+		}
+
+		let left_node = inputs[0];
+		let left_schema = self
+			.operators
+			.get(&(flow_id, left_node))
+			.ok_or_else(|| {
+				Error::from(FlowGraphError::ParentOperatorNotFound {
+					input: "left parent".to_string(),
+				})
+			})?
+			.output_schema()
+			.unwrap_or_else(|| Arc::new(Schema::empty()));
+
+		let (storage, deferred, columns, partition_by) = match right {
+			LookupObject::Table(table) => {
+				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
+				(StorageId::Table(table.id), false, table.columns, table.partition_by)
+			}
+			LookupObject::View(view) => match self.catalog.get_view(&mut txn.reborrow(), view)? {
+				View::Table(view) if view.sort.is_empty() => (
+					StorageId::View(view.id),
+					view.kind == ViewKind::Deferred,
+					view.columns,
+					view.partition_by,
+				),
+				other => {
+					return Err(error!(lookup_right_unsupported(Fragment::None, other.name())));
+				}
+			},
+		};
+
+		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
+
+		let shape = row_shape_from_columns(RowFamily::Table, &columns);
+		let right_schema = catalog_schema(&columns);
+		let left_retention = with.retention.as_ref().map(|retention| retention.duration);
+
+		let operator = LookupOperator::new(LookupConfig {
+			operator: operator_id,
+			left_node,
+			join_type,
+			right,
+			deferred,
+			storage,
+			columns,
+			partition_by,
+			shape,
+			left,
+			left_schema,
+			right_schema,
+			alias,
+			left_retention,
+			routines: self.routines.clone(),
+			runtime_context: self.runtime_context.clone(),
+			ctx: Arc::clone(ctx),
+		})?;
+		self.operators.insert((flow_id, operator_id), Box::new(operator));
+		if let (LookupObject::View(view), true) = (right, deferred) {
+			self.add_lookup_source(flow_id, operator_id, ObjectId::view(view));
+		}
+		Ok(())
+	}
+
+	#[inline]
 	pub(super) fn add_distinct(
 		&mut self,
 		flow_id: FlowId,
@@ -397,6 +501,47 @@ impl FlowEngineInner {
 		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		Ok(())
 	}
+}
+
+fn ensure_lookup_key_types(
+	left: &[Expression],
+	left_schema: &Schema,
+	columns: &[Column],
+	partition_by: &[String],
+) -> Result<()> {
+	for (key, name) in left.iter().zip(partition_by) {
+		let Some(right_column) = columns.iter().find(|column| &column.name == name) else {
+			continue;
+		};
+		let Some(left_type) = left_key_type(key, left_schema)? else {
+			continue;
+		};
+		let right_type = right_column.constraint.get_type();
+		if !lookup_key_types_compatible(left_type.inner_type(), right_type.inner_type()) {
+			return Err(error!(lookup_key_type_mismatch(
+				key.full_fragment_owned(),
+				left_type.inner_type().clone(),
+				right_type.inner_type().clone()
+			)));
+		}
+	}
+	Ok(())
+}
+
+fn left_key_type(key: &Expression, left_schema: &Schema) -> Result<Option<ValueType>> {
+	let name = match key {
+		Expression::Column(ColumnExpression(column)) => column.name.text(),
+		Expression::AccessSource(access) => access.column.name.text(),
+		_ => return Ok(None),
+	};
+	let Some(field) = left_schema.fields().iter().find(|field| field.name() == name) else {
+		return Ok(None);
+	};
+	Ok(from_field(field)?.value_type)
+}
+
+fn lookup_key_types_compatible(left: &ValueType, right: &ValueType) -> bool {
+	left == right || (left.is_number() && right.is_number())
 }
 
 fn common_column_names(left: &Schema, right: &Schema) -> Vec<String> {

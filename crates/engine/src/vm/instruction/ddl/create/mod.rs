@@ -16,6 +16,7 @@ use reifydb_core::{
 			flow_operator_with_window_size_duration, flow_transactional_not_supported,
 			flow_transactional_reads_deferred_view, flow_view_calls_script_routine,
 		},
+		operation::lookup_outside_deferred_view,
 		query,
 	},
 	expression::Expression,
@@ -136,6 +137,7 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		QueryPlan::JoinInner(node) => (node.on.iter_mut().collect(), vec![&mut node.left, &mut node.right]),
 		QueryPlan::JoinLeft(node) => (node.on.iter_mut().collect(), vec![&mut node.left, &mut node.right]),
 		QueryPlan::JoinNatural(node) => (Vec::new(), vec![&mut node.left, &mut node.right]),
+		QueryPlan::Lookup(node) => (node.on.iter_mut().collect(), vec![&mut node.left, &mut node.right]),
 		QueryPlan::Append(node) => (Vec::new(), vec![&mut node.left, &mut node.right]),
 		QueryPlan::Distinct(node) => (Vec::new(), vec![&mut node.input]),
 		QueryPlan::Sort(node) => (Vec::new(), vec![&mut node.input]),
@@ -218,6 +220,14 @@ fn ensure_flow_expressions_compile(plan: &mut QueryPlan, symbols: &SymbolTable) 
 		compile_expression(&compile_ctx, expression)?;
 	}
 	inputs.into_iter().try_for_each(|input| ensure_flow_expressions_compile(input, symbols))
+}
+
+fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<()> {
+	if let QueryPlan::Lookup(node) = plan {
+		return Err(error!(lookup_outside_deferred_view(node.alias.clone().unwrap_or(Fragment::None))));
+	}
+	let (_, inputs) = plan_expressions_and_inputs(plan);
+	inputs.into_iter().try_for_each(ensure_no_lookup)
 }
 
 fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorLibrary) -> Result<()> {
@@ -420,6 +430,9 @@ fn transactional_unsupported(ty: &OperatorDef) -> Option<&'static str> {
 		OperatorDef::Join {
 			..
 		} => Some("join"),
+		OperatorDef::Lookup {
+			..
+		} => Some("lookup"),
 		OperatorDef::Aggregate {
 			..
 		} => Some("aggregate"),
@@ -456,6 +469,7 @@ pub(crate) fn create_transactional_view_flow(
 	view: &View,
 	mut plan: QueryPlan,
 ) -> Result<()> {
+	ensure_no_lookup(&mut plan)?;
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;

@@ -62,6 +62,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
 			substrate: self.substrate.clone(),
+			lookup: None,
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(

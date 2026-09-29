@@ -40,7 +40,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith},
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
@@ -224,6 +224,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Gate(node) => self.compile_gate(node),
 			Ast::From(node) => self.compile_from(node, tx),
 			Ast::Join(node) => self.compile_join(BumpBox::into_inner(node), tx),
+			Ast::Lookup(node) => self.compile_lookup(BumpBox::into_inner(node), tx),
 			Ast::Take(node) => self.compile_take(node),
 			Ast::Sort(node) => self.compile_sort(node),
 			Ast::Distinct(node) => self.compile_distinct(node),
@@ -438,6 +439,7 @@ pub enum LogicalPlan<'bump> {
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
+	Lookup(LookupNode<'bump>),
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode),
@@ -841,6 +843,15 @@ pub struct JoinNaturalNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub with: JoinWith,
 	pub rql: String,
+}
+
+#[derive(Debug)]
+pub struct LookupNode<'bump> {
+	pub join_type: JoinType,
+	pub subquery: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub on: Vec<Expression>,
+	pub alias: BumpFragment<'bump>,
+	pub with: LookupWith,
 }
 
 #[derive(Debug)]

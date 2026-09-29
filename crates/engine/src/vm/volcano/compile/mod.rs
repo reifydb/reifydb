@@ -38,6 +38,7 @@ use crate::vm::volcano::{
 	filter::FilterNode,
 	generator::GeneratorNode,
 	inline::InlineDataNode,
+	lookup::UnsupportedLookupNode,
 	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
@@ -166,6 +167,9 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::JoinInner(node) => join::compile_inner_join(node, rx, context),
 		RqlQueryPlan::JoinLeft(node) => join::compile_left_join(node, rx, context),
 		RqlQueryPlan::JoinNatural(node) => join::compile_natural_join(node, rx, context),
+		RqlQueryPlan::Lookup(node) => {
+			Box::new(UnsupportedLookupNode::new(node.alias.unwrap_or(Fragment::None)))
+		}
 
 		RqlQueryPlan::Assert(RqlAssertNode {
 			conditions,

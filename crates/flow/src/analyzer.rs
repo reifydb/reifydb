@@ -4,7 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::{
-	flow::{dag::FlowDag, operator::OperatorDef},
+	flow::{
+		dag::FlowDag,
+		operator::{LookupObject, OperatorDef},
+	},
 	interface::catalog::{
 		flow::{FlowId, OperatorId},
 		id::{RingBufferId, SeriesId, TableId, ViewId},
@@ -52,11 +55,13 @@ pub struct FlowDependencyGraph {
 	pub source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>>,
 	pub source_series: BTreeMap<SeriesId, Vec<FlowId>>,
 	pub sink_views: BTreeMap<ViewId, FlowId>,
+	pub lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
 }
 
 impl FlowDependencyGraph {
 	pub fn upstream_closure(&self) -> BTreeMap<ViewId, BTreeSet<ObjectId>> {
 		let flows_by_id: BTreeMap<FlowId, &FlowSummary> = self.flows.iter().map(|f| (f.id, f)).collect();
+		let lookups_by_flow = lookups_by_flow(&self.lookup_views);
 
 		let mut result = BTreeMap::new();
 		for &view in self.sink_views.keys() {
@@ -78,12 +83,26 @@ impl FlowDependencyGraph {
 						stack.push(*v);
 					}
 				}
+				for &v in lookups_by_flow.get(&flow.id).into_iter().flatten() {
+					upstream.insert(ObjectId::View(v));
+					stack.push(v);
+				}
 			}
 
 			result.insert(view, upstream);
 		}
 		result
 	}
+}
+
+fn lookups_by_flow(lookup_views: &BTreeMap<ViewId, Vec<FlowId>>) -> BTreeMap<FlowId, Vec<ViewId>> {
+	let mut result: BTreeMap<FlowId, Vec<ViewId>> = BTreeMap::new();
+	for (&view, readers) in lookup_views {
+		for &reader in readers {
+			result.entry(reader).or_default().push(view);
+		}
+	}
+	result
 }
 
 fn object_reference_to_id(reference: &ObjectReference) -> ObjectId {
@@ -112,6 +131,7 @@ impl FlowGraphAnalyzer {
 				source_ringbuffers: BTreeMap::new(),
 				source_series: BTreeMap::new(),
 				sink_views: BTreeMap::new(),
+				lookup_views: BTreeMap::new(),
 			},
 		}
 	}
@@ -218,6 +238,23 @@ impl FlowGraphAnalyzer {
 		sinks
 	}
 
+	fn get_lookup_views(flow: &FlowDag) -> BTreeSet<ViewId> {
+		let mut views = BTreeSet::new();
+
+		for node_id in flow.get_operator_ids() {
+			if let Some(node) = flow.get_operator(&node_id)
+				&& let OperatorDef::Lookup {
+					right: LookupObject::View(view),
+					..
+				} = &node.ty
+			{
+				views.insert(*view);
+			}
+		}
+
+		views
+	}
+
 	pub fn get_dependency_graph(&self) -> &FlowDependencyGraph {
 		&self.dependency_graph
 	}
@@ -229,9 +266,14 @@ impl FlowGraphAnalyzer {
 		let mut source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
+		let mut lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 
 		for flow in &self.flows {
 			let summary = Self::analyze_flow(flow);
+
+			for view_id in Self::get_lookup_views(flow) {
+				lookup_views.entry(view_id).or_default().push(flow.id());
+			}
 
 			for source in &summary.sources {
 				match source {
@@ -261,7 +303,7 @@ impl FlowGraphAnalyzer {
 			flow_summaries.push(summary);
 		}
 
-		let dependencies = self.find_flow_dependencies(&flow_summaries, &sink_views);
+		let dependencies = self.find_flow_dependencies(&flow_summaries, &sink_views, &lookup_views);
 
 		FlowDependencyGraph {
 			flows: flow_summaries,
@@ -271,6 +313,7 @@ impl FlowGraphAnalyzer {
 			source_ringbuffers,
 			source_series,
 			sink_views,
+			lookup_views,
 		}
 	}
 
@@ -278,13 +321,20 @@ impl FlowGraphAnalyzer {
 		&self,
 		summaries: &[FlowSummary],
 		sink_views: &BTreeMap<ViewId, FlowId>,
+		lookup_views: &BTreeMap<ViewId, Vec<FlowId>>,
 	) -> Vec<FlowDependency> {
 		let mut dependencies = Vec::new();
+		let lookups_by_flow = lookups_by_flow(lookup_views);
 
 		for flow_summary in summaries {
-			for source in &flow_summary.sources {
-				if let ObjectReference::View(view_id) = source
-					&& let Some(&producer_flow_id) = sink_views.get(view_id)
+			let source_views = flow_summary.sources.iter().filter_map(|source| match source {
+				ObjectReference::View(view_id) => Some(view_id),
+				_ => None,
+			});
+			let read_views =
+				source_views.chain(lookups_by_flow.get(&flow_summary.id).into_iter().flatten());
+			for view_id in read_views {
+				if let Some(&producer_flow_id) = sink_views.get(view_id)
 					&& producer_flow_id != flow_summary.id
 				{
 					dependencies.push(FlowDependency {
@@ -325,6 +375,7 @@ impl FlowGraphAnalyzer {
 			source_ringbuffers: BTreeMap::new(),
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
+			lookup_views: BTreeMap::new(),
 		};
 	}
 }
@@ -348,7 +399,7 @@ pub mod tests {
 			flow::{FlowId, OperatorId},
 			id::{TableId, ViewId},
 		},
-		operator_with::JoinWith,
+		operator_with::{JoinWith, LookupWith},
 	};
 
 	use super::*;
@@ -878,5 +929,107 @@ pub mod tests {
 			closure[&ViewId(300)],
 			BTreeSet::from([ObjectId::View(ViewId(200)), ObjectId::View(ViewId(300))])
 		);
+	}
+
+	fn lookup(right: LookupObject) -> OperatorDef {
+		OperatorDef::Lookup {
+			join_type: JoinType::Inner,
+			right,
+			left: vec![],
+			alias: None,
+			with: LookupWith::default(),
+		}
+	}
+
+	fn lookup_reader_and_producer() -> FlowGraphAnalyzer {
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(create_test_flow_with_nodes(
+			10,
+			vec![
+				SourceTable {
+					table: TableId(100),
+					time_domain: TimeDomain::None,
+				},
+				SinkTableView {
+					view: ViewId(500),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			20,
+			vec![
+				SourceTable {
+					table: TableId(200),
+					time_domain: TimeDomain::None,
+				},
+				lookup(LookupObject::Table(TableId(300))),
+				lookup(LookupObject::View(ViewId(500))),
+				lookup(LookupObject::View(ViewId(500))),
+				SinkTableView {
+					view: ViewId(600),
+				},
+			],
+		));
+		analyzer
+	}
+
+	#[test]
+	fn test_lookup_view_is_listed_once_per_reader_and_never_as_a_source() {
+		// A lookup view in source_views would route its CDC into the reader, which MD32 forbids.
+		let analyzer = lookup_reader_and_producer();
+		let graph = analyzer.get_dependency_graph();
+
+		assert_eq!(
+			graph.lookup_views.get(&ViewId(500)),
+			Some(&vec![FlowId(20)]),
+			"two lookups on one view list the reader once"
+		);
+		assert!(!graph.source_views.contains_key(&ViewId(500)), "a lookup view must stay out of source_views");
+		assert!(
+			!graph.source_tables.contains_key(&TableId(300)),
+			"a lookup table must stay out of source_tables"
+		);
+		assert_eq!(graph.lookup_views.len(), 1, "a table read by a lookup is not a lookup view");
+	}
+
+	#[test]
+	fn test_lookup_view_makes_its_producer_an_upstream_dependency() {
+		// Without the dependency the reader could run ahead of the flow that writes the view it reads.
+		let analyzer = lookup_reader_and_producer();
+		let graph = analyzer.get_dependency_graph();
+
+		let via_lookup: Vec<_> = graph.dependencies.iter().filter(|d| d.via_view == ViewId(500)).collect();
+		assert_eq!(via_lookup.len(), 1, "one dependency per lookup view and reader: {:?}", graph.dependencies);
+		assert_eq!(via_lookup[0].source_flow, FlowId(10));
+		assert_eq!(via_lookup[0].target_flow, FlowId(20));
+	}
+
+	#[test]
+	fn test_upstream_closure_walks_through_a_lookup_view() {
+		// A read of the reader's view must see the lookup view and everything behind it as upstream.
+		let analyzer = lookup_reader_and_producer();
+
+		let closure = analyzer.get_dependency_graph().upstream_closure();
+
+		assert_eq!(
+			closure[&ViewId(600)],
+			BTreeSet::from([
+				ObjectId::Table(TableId(200)),
+				ObjectId::View(ViewId(500)),
+				ObjectId::Table(TableId(100)),
+			]),
+			"the lookup view and its producer's source are upstream; the looked-up table is not"
+		);
+	}
+
+	#[test]
+	fn test_removing_the_reader_clears_its_lookup_views() {
+		// A stale entry would keep gating a producer for a flow that no longer exists.
+		let mut analyzer = lookup_reader_and_producer();
+
+		analyzer.remove(FlowId(20));
+
+		assert!(analyzer.get_dependency_graph().lookup_views.is_empty());
+		assert!(analyzer.get_dependency_graph().dependencies.is_empty());
 	}
 }

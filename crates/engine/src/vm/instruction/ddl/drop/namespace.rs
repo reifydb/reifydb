@@ -5,7 +5,10 @@ use std::collections::HashSet;
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{flow::operator::OperatorDef, value::batch::single_row};
+use reifydb_core::{
+	flow::operator::{LookupObject, OperatorDef},
+	value::batch::single_row,
+};
 use reifydb_rql::nodes::DropNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{Value, constraint::Constraint};
@@ -114,13 +117,10 @@ pub(crate) fn drop_namespace(
 			.cloned()
 			.collect();
 
-		dependents.extend(find_flow_dependents(
-			&services.catalog,
-			txn,
-			&external_dags,
-			&flows,
-			|node_type| matches!(node_type, OperatorDef::SourceTable { table, .. } if table_ids.contains(table)),
-		)?);
+		dependents.extend(find_flow_dependents(&services.catalog, txn, &external_dags, &flows, |node_type| {
+			matches!(node_type, OperatorDef::SourceTable { table, .. } if table_ids.contains(table))
+				|| matches!(node_type, OperatorDef::Lookup { right: LookupObject::Table(table), .. } if table_ids.contains(table))
+		})?);
 
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
@@ -130,6 +130,7 @@ pub(crate) fn drop_namespace(
 			|node_type| {
 				matches!(node_type, OperatorDef::SourceView { view } if view_ids.contains(view))
 					|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } if view_ids.contains(view))
+					|| matches!(node_type, OperatorDef::Lookup { right: LookupObject::View(view), .. } if view_ids.contains(view))
 			},
 		)?);
 

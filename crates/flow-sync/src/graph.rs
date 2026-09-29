@@ -7,10 +7,14 @@ use arrow_schema::SchemaRef;
 use reifydb_core::{
 	flow::{
 		dag::FlowDag,
-		operator::OperatorDef::{
-			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
-			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceInlineData, SourceRingBuffer,
-			SourceSeries, SourceTable, SourceView, Take, Window,
+		operator::{
+			OperatorDef,
+			OperatorDef::{
+				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
+				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				Window,
+			},
 		},
 	},
 	interface::catalog::flow::OperatorId,
@@ -150,6 +154,9 @@ pub fn build<T: Lookup>(
 				..
 			}
 			| Window {
+				..
+			}
+			| OperatorDef::Lookup {
 				..
 			} => panic!("transactional flow {:?} holds unsupported operator {}", flow.id, operator_id),
 		};

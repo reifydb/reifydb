@@ -18,7 +18,7 @@ use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::{CommitVersion, SourceVersion},
 	error::diagnostic::flow::flow_step_panicked,
-	flow::dag::FlowDag,
+	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -35,7 +35,7 @@ use reifydb_flow_async::transaction::read::{ReadFrom, read_from};
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
-	transaction::substrate::FlowSubstrate,
+	transaction::{LookupContext, substrate::FlowSubstrate},
 };
 use reifydb_runtime::{
 	actor::{
@@ -49,7 +49,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_store_operator::store::pin::CheckpointPin;
-use reifydb_transaction::multi::lease::VersionLeaseGuard;
+use reifydb_transaction::{error::TransactionError, multi::lease::VersionLeaseGuard};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -117,6 +117,7 @@ pub struct FlowActor {
 	flow: FlowDag,
 	flow_id: FlowId,
 	ticks_enabled: bool,
+	has_lookup: bool,
 	computer: SliceComputer,
 	config: SliceConfig,
 	pull_batch_bytes: ByteSize,
@@ -152,12 +153,16 @@ pub struct FlowActorState {
 	loading_from: CommitVersion,
 	backfilling: bool,
 	snapshot: Option<Snapshot>,
+	lookup_lease: Option<VersionLeaseGuard>,
 }
 
 impl FlowActor {
 	pub fn new(params: FlowActorParams) -> Self {
 		let flow_id = params.flow.id;
 		let ticks_enabled = params.flow.ticks();
+		let has_lookup = params.flow.get_operator_ids().any(|id| {
+			params.flow.get_operator(&id).is_some_and(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+		});
 		Self {
 			computer: SliceComputer::new(params.engine.clone()),
 			config: SliceConfig {
@@ -180,6 +185,7 @@ impl FlowActor {
 			flow: params.flow,
 			flow_id,
 			ticks_enabled,
+			has_lookup,
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
 			checkpoint_max_age: params.checkpoint_max_age,
@@ -224,6 +230,67 @@ impl FlowActor {
 
 	fn publish_position(&self, cursor: CommitVersion) {
 		self.flow_tracker.update(self.flow_id, cursor);
+	}
+
+	fn restore_lookup_lease(&self) -> Result<Option<VersionLeaseGuard>> {
+		if !self.has_lookup {
+			return Ok(None);
+		}
+		match self.engine.acquire_version_lease(self.initial_cursor) {
+			Ok(lease) => Ok(Some(lease)),
+			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED => {
+				let multi = self.engine.multi();
+				let cutoff = multi
+					.leases()
+					.min_active()
+					.unwrap_or(CommitVersion(u64::MAX))
+					.min(multi.query_done_until());
+				warn!(
+					flow_id = self.flow_id.0,
+					cursor = self.initial_cursor.0,
+					cutoff = cutoff.0,
+					"lookup lease below the gc cutoff, holding from the cutoff"
+				);
+				self.engine.acquire_version_lease(cutoff).map(Some)
+			}
+			Err(e) => Err(e),
+		}
+	}
+
+	fn lookup_computer(&self, state: &FlowActorState) -> SliceComputer {
+		self.computer.with_lookup(state.lookup_lease.as_ref().map(|lease| LookupContext {
+			versions: Arc::new(self.flow_tracker.lookup_versions(self.flow_id)),
+			floor: lease.version(),
+		}))
+	}
+
+	fn move_lookup_lease(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let Some(held) = state.lookup_lease.as_ref().map(VersionLeaseGuard::version) else {
+			return;
+		};
+		let oldest = match self.lookup_computer(state).oldest_read(
+			&mut state.flow_engine,
+			self.flow_id,
+			state.cursor,
+		) {
+			Ok(oldest) => oldest,
+			Err(e) => {
+				self.retry_or_poison(state, ctx, format!("lookup oldest read version failed: {e}"));
+				return;
+			}
+		};
+		let target = oldest.map_or(state.cursor, |oldest| oldest.min(state.cursor));
+		if target <= held {
+			return;
+		}
+		let lease = match self.engine.acquire_version_lease(target) {
+			Ok(lease) => lease,
+			Err(e) => panic!(
+				"flow {} could not move its lookup lease from {} to {}: {e}",
+				self.flow_id.0, held.0, target.0
+			),
+		};
+		state.lookup_lease = Some(lease);
 	}
 
 	fn retry_or_poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {
@@ -432,6 +499,21 @@ impl FlowActor {
 		};
 		let mut froms: HashMap<FlowId, CommitVersion> = HashMap::with_capacity(upstreams.len());
 		for (producer, views) in upstreams {
+			if views.is_empty() {
+				upstream_reads.reads.insert(
+					*producer,
+					UpstreamRead {
+						views: views.clone(),
+						position: self.flow_tracker.upstream_complete_through(*producer, safe),
+						read: StreamRead {
+							items: Vec::new().into(),
+							read_to: safe,
+							more: false,
+						},
+					},
+				);
+				continue;
+			}
 			let from = state.view_cursors.get(producer).copied().unwrap_or(cursor).max(cursor);
 			let Some(read) = self.read_stream(state, ctx, ReadStream::Upstream(*producer), from, safe)
 			else {
@@ -564,8 +646,9 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 	) -> Result<SliceStep> {
+		let computer = self.lookup_computer(state);
 		catch_unwind(AssertUnwindSafe(|| {
-			self.computer.compute_pulled(
+			computer.compute_pulled(
 				&mut state.flow_engine,
 				items,
 				SliceCursor {
@@ -605,6 +688,7 @@ impl FlowActor {
 				for hold in holds {
 					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
 				}
+				self.move_lookup_lease(state, ctx);
 				self.publish_position(advance_to);
 				if more {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -774,6 +858,7 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
 				state.last_checkpoint_at = self.clock.now();
+				self.move_lookup_lease(state, ctx);
 				self.publish_position(advance_to);
 				self.resume_after_commit(state, ctx, more);
 			}
@@ -789,6 +874,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
+				self.move_lookup_lease(state, ctx);
 				self.resume_after_commit(state, ctx, false);
 			}
 			Err(e) => {
@@ -828,7 +914,11 @@ impl FlowActor {
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let mut retrying = false;
 		if self.ticks_enabled && !state.poisoned && !state.committing && !state.backfilling {
-			let ticked = self.computer.tick(&mut state.flow_engine, self.flow_id, state.durable_cursor);
+			let ticked = self.lookup_computer(state).tick(
+				&mut state.flow_engine,
+				self.flow_id,
+				state.durable_cursor,
+			);
 			match ticked {
 				Ok((pending, view_changes)) => {
 					state.retry_count = 0;
@@ -936,12 +1026,21 @@ impl Actor for FlowActor {
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		let mut flow_engine = self.build_flow_engine();
-		let poisoned = match self.register_flow(&mut flow_engine) {
+		let mut poisoned = match self.register_flow(&mut flow_engine) {
 			Ok(()) => false,
 			Err(e) => {
 				error!(flow_id = self.flow_id.0, error = %e, "failed to register flow, poisoning");
 				self.health.mark_poisoned(self.flow_id, format!("registration failed: {e}"));
 				true
+			}
+		};
+		let lookup_lease = match self.restore_lookup_lease() {
+			Ok(lease) => lease,
+			Err(e) => {
+				error!(flow_id = self.flow_id.0, error = %e, "failed to take the lookup lease, poisoning");
+				self.health.mark_poisoned(self.flow_id, format!("lookup lease failed: {e}"));
+				poisoned = true;
+				None
 			}
 		};
 
@@ -975,6 +1074,7 @@ impl Actor for FlowActor {
 			loading_from: self.initial_cursor,
 			backfilling: self.backfill,
 			snapshot: None,
+			lookup_lease,
 		};
 
 		if !state.poisoned {
@@ -1424,6 +1524,7 @@ mod pull_protocol {
 				interceptors: self.engine.create_interceptors(),
 				clock: self.engine.clock().clone(),
 				substrate: substrate.clone(),
+				lookup: None,
 			});
 			for source in sources {
 				SourceWatermarks::advance(source, &mut txn, at).expect("advance watermark");
@@ -2639,6 +2740,7 @@ mod tick_failures {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			substrate: substrate.clone(),
+			lookup: None,
 		});
 		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(WATERMARK_MS)).expect("advance watermark");
 		TimerWheel::arm(

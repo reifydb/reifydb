@@ -34,6 +34,33 @@ impl FlowEngineInner {
 		}
 	}
 
+	pub fn add_lookup_source(&mut self, flow: FlowId, operator: OperatorId, object: ObjectId) {
+		let operators = self.lookup_sources.entry(object).or_default();
+
+		let entry = (flow, operator);
+		if !operators.contains(&entry) {
+			operators.push(entry);
+		}
+	}
+
+	pub fn watermark_sources(&self, flow: &FlowDag) -> Vec<OperatorId> {
+		let lookups: Vec<OperatorId> = self
+			.lookup_sources
+			.values()
+			.flatten()
+			.filter(|(registered, _)| *registered == flow.id)
+			.map(|(_, operator)| *operator)
+			.collect();
+		flow.topological_order()
+			.iter()
+			.copied()
+			.filter(|id| {
+				lookups.contains(id)
+					|| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time())
+			})
+			.collect()
+	}
+
 	pub fn add_sink(&mut self, flow: FlowId, operator: OperatorId, sink: ObjectId) {
 		let operators = self.sinks.entry(sink).or_default();
 
@@ -55,6 +82,7 @@ impl FlowEngineInner {
 		self.durable_sinks.clear();
 		self.flows.clear();
 		self.sources.clear();
+		self.lookup_sources.clear();
 		self.sinks.clear();
 		self.sinks_by_flow.clear();
 		self.analyzer.clear();
@@ -82,6 +110,11 @@ impl FlowEngineInner {
 			entries.retain(|(fid, _)| *fid != flow_id);
 		}
 		self.sources.retain(|_, v| !v.is_empty());
+
+		for entries in self.lookup_sources.values_mut() {
+			entries.retain(|(fid, _)| *fid != flow_id);
+		}
+		self.lookup_sources.retain(|_, v| !v.is_empty());
 
 		for entries in self.sinks.values_mut() {
 			entries.retain(|(fid, _)| *fid != flow_id);

@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{
+	common::CommitVersion,
 	flow::dag::FlowDag,
 	interface::catalog::{
 		flow::{FlowId, OperatorId},
@@ -14,7 +15,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedHostOperator, state::seal::rule::seal_horizon},
+	operator::{BoxedHostOperator, host::TxnHostContext, state::seal::rule::seal_horizon},
 	transaction::{FlowTransaction, watermark::SourceWatermarks},
 };
 
@@ -41,7 +42,14 @@ impl FlowEngineInner {
 		}
 
 		let topo = flow.topological_order();
-		let frontiers = output_frontiers(txn, flow, &self.operators, topo)?;
+		let lookups: Vec<OperatorId> = self
+			.lookup_sources
+			.values()
+			.flatten()
+			.filter(|(registered, _)| *registered == flow_id)
+			.map(|(_, operator)| *operator)
+			.collect();
+		let frontiers = output_frontiers(txn, flow, &self.operators, topo, &lookups)?;
 
 		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks.iter().copied() {
@@ -58,6 +66,29 @@ impl FlowEngineInner {
 		}
 		Ok(held)
 	}
+
+	pub fn oldest_read_version<T: FlowTransaction>(
+		&self,
+		txn: &mut T,
+		flow_id: FlowId,
+	) -> Result<Option<CommitVersion>> {
+		let Some(flow) = self.flows.get(&flow_id) else {
+			return Ok(None);
+		};
+
+		let mut oldest: Option<CommitVersion> = None;
+		for operator_id in flow.topological_order() {
+			let Some(operator) = self.operators.get(&(flow_id, *operator_id)) else {
+				continue;
+			};
+			let mut host = TxnHostContext::new(txn, *operator_id);
+			let Some(version) = operator.oldest_read_version(&mut host)? else {
+				continue;
+			};
+			oldest = Some(oldest.map_or(version, |current| current.min(version)));
+		}
+		Ok(oldest)
+	}
 }
 
 fn output_frontiers<T: FlowTransaction>(
@@ -65,6 +96,7 @@ fn output_frontiers<T: FlowTransaction>(
 	flow: &FlowDag,
 	operators: &BTreeMap<(FlowId, OperatorId), BoxedHostOperator>,
 	topo: &[OperatorId],
+	lookups: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let mut computed: BTreeMap<OperatorId, DateTime> = BTreeMap::new();
 
@@ -82,6 +114,10 @@ fn output_frontiers<T: FlowTransaction>(
 					continue;
 				};
 				merged = Some(merged.map_or(frontier, |current: DateTime| current.min(frontier)));
+			}
+			if lookups.contains(operator_id) {
+				let right = SourceWatermarks::source_watermark(*operator_id, txn)?;
+				merged = Some(merged.map_or(right, |current: DateTime| current.min(right)));
 			}
 			merged
 		};

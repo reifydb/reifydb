@@ -370,7 +370,7 @@ impl Committer {
 		if slice.produced_output() {
 			self.materialization.record_output(version);
 		}
-		self.post_commit_slice(version, &slice.checkpoints, &slice.checkpoint_deletes);
+		self.post_commit_slice(version, slice.source, &slice.checkpoints, &slice.checkpoint_deletes);
 		Ok(version)
 	}
 
@@ -380,11 +380,13 @@ impl Committer {
 	fn post_commit_slice(
 		&self,
 		commit: CommitVersion,
+		source: Option<SourceVersion>,
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
 	) {
 		for (flow_id, version) in checkpoints {
-			self.flow_tracker.update_committed(*flow_id, *version, commit);
+			let source = source.unwrap_or(SourceVersion(version.0));
+			self.flow_tracker.update_committed(*flow_id, *version, commit, source);
 		}
 
 		for flow_id in checkpoint_deletes {

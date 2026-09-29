@@ -1034,6 +1034,27 @@ mod join_row_expiry_guard_tests {
 		) -> Result<Option<Value>> {
 			Ok(None)
 		}
+
+		fn lookup_read(
+			&mut self,
+			_storage: reifydb_core::interface::catalog::storage::StorageId,
+			_partition: reifydb_value::value::partition::Partition,
+			_version: CommitVersion,
+		) -> Result<Option<(RowNumber, reifydb_codec::row::bytes::EncodedBytes)>> {
+			unreachable!()
+		}
+
+		fn lookup_view_version(
+			&self,
+			_view: reifydb_core::interface::catalog::id::ViewId,
+			_source: reifydb_core::common::SourceVersion,
+		) -> CommitVersion {
+			unreachable!()
+		}
+
+		fn lookup_floor(&self) -> Option<CommitVersion> {
+			unreachable!()
+		}
 	}
 
 	fn framed(keyspace: KeyspaceId) -> Vec<u8> {

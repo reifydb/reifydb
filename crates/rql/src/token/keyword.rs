@@ -71,6 +71,7 @@ Left       => "LEFT",
 Inner      => "INNER",
 Natural    => "NATURAL",
 Join       => "JOIN",
+Lookup     => "LOOKUP",
 On         => "ON",
 Using      => "USING",
 
@@ -202,6 +203,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("INNER", Keyword::Inner);
 	map.insert("NATURAL", Keyword::Natural);
 	map.insert("JOIN", Keyword::Join);
+	map.insert("LOOKUP", Keyword::Lookup);
 	map.insert("ON", Keyword::On);
 	map.insert("USING", Keyword::Using);
 	map.insert("INSERT", Keyword::Insert);
@@ -411,6 +413,7 @@ pub mod tests {
 	test_keyword_inner => (Inner, "INNER"),
 	test_keyword_natural => (Natural, "NATURAL"),
 	test_keyword_join => (Join, "JOIN"),
+	test_keyword_lookup => (Lookup, "LOOKUP"),
 	test_keyword_on => (On, "ON"),
 	test_keyword_using => (Using, "USING"),
 	test_keyword_let => (Let, "LET"),
@@ -556,6 +559,7 @@ pub mod tests {
 	test_not_keyword_inner => ( "inner"),
 	test_not_keyword_natural => ( "natural"),
 	test_not_keyword_join => ( "join"),
+	test_not_keyword_lookup => ( "lookup"),
 	test_not_keyword_on => ( "on"),
 	test_not_keyword_using => ( "using"),
 	test_not_keyword_let => ( "let"),

@@ -10,7 +10,7 @@ use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::{flow::FlowId, id::ViewId},
 	internal,
-	operator_with::{JoinWith, WindowWith},
+	operator_with::{JoinWith, LookupWith, WindowWith},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
@@ -128,21 +128,22 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 		let Some(operator) = flow.get_operator(operator_id) else {
 			continue;
 		};
-		let OperatorDef::Join {
-			with: JoinWith {
-				retention: Some(retention),
+		match &operator.ty {
+			OperatorDef::Join {
+				with: JoinWith {
+					retention: Some(retention),
+					..
+				},
 				..
-			},
-			..
-		} = &operator.ty
-		else {
-			continue;
-		};
-		if retention.left.is_none() && retention.right.is_none() {
-			continue;
+			} if retention.left.is_some() || retention.right.is_some() => declared = true,
+			OperatorDef::Lookup {
+				with: LookupWith {
+					retention: Some(_),
+				},
+				..
+			} => declared = true,
+			_ => {}
 		}
-
-		declared = true;
 	}
 
 	if declared && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
@@ -159,15 +160,20 @@ mod tests {
 		test_utils::{create_namespace, create_view},
 	};
 	use reifydb_core::{
-		flow::{dag::FlowBuilder, operator::FlowNode},
+		common::JoinType,
+		flow::{
+			dag::FlowBuilder,
+			operator::{FlowNode, LookupObject},
+		},
 		interface::catalog::{
 			flow::{FlowEdge, FlowStatus, OperatorId},
 			id::TableId,
 		},
+		row::OperatorRetention,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_value::fragment::Fragment;
+	use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 	use super::*;
 
@@ -443,5 +449,74 @@ mod tests {
 		let result = Harness::new().node(view_source(1, orphan)).node(sink(2)).edge(1, 2).resolve(&mut txn);
 
 		assert!(result.is_err(), "a view with no flow must not resolve to a domain");
+	}
+
+	fn lookup(id: u64, retention: Option<Duration>) -> FlowNode {
+		FlowNode::new(
+			OperatorId(id),
+			OperatorDef::Lookup {
+				join_type: JoinType::Inner,
+				right: LookupObject::Table(TableId(9_000)),
+				left: vec![],
+				alias: None,
+				with: LookupWith {
+					retention: retention.map(|duration| OperatorRetention {
+						duration,
+					}),
+				},
+			},
+		)
+	}
+
+	fn check_retention(harness: Harness, txn: &mut AdminTransaction) -> Result<()> {
+		check_join_retention_requirements(
+			&Catalog::testing(),
+			&mut Transaction::Admin(txn),
+			&harness.builder.build(),
+		)
+	}
+
+	#[test]
+	fn a_lookup_retention_over_a_processing_source_is_rejected_with_flow_049() {
+		// The lookup frees left rows by event time like the join; an ingest clock frees them at random.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::Processing))
+			.node(lookup(2, Some(Duration::from_seconds(10).unwrap())))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3);
+
+		let err = check_retention(harness, &mut txn).expect_err("a lookup retention needs event time");
+
+		assert_eq!(err.diagnostic().code, "FLOW_049");
+	}
+
+	#[test]
+	fn a_lookup_retention_over_an_event_source_is_accepted() {
+		// Event time is exactly what the left expiry measures against, so this is the shape polaris ships.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::Event))
+			.node(lookup(2, Some(Duration::from_seconds(10).unwrap())))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3);
+
+		check_retention(harness, &mut txn).expect("event time satisfies a lookup retention");
+	}
+
+	#[test]
+	fn a_lookup_without_retention_does_not_demand_event_time() {
+		// Only a declared retention frees rows by event time; without one the check must stay silent.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::Processing))
+			.node(lookup(2, None))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3);
+
+		check_retention(harness, &mut txn).expect("no retention means no event-time requirement");
 	}
 }

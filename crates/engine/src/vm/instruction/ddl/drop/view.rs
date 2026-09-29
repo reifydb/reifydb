@@ -3,7 +3,10 @@
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{flow::operator::OperatorDef, value::batch::single_row};
+use reifydb_core::{
+	flow::operator::{LookupObject, OperatorDef},
+	value::batch::single_row,
+};
 use reifydb_rql::nodes::DropViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -33,6 +36,7 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 	let dependents = find_flow_dependents(&services.catalog, txn, &external_dags, &flows, |node_type| {
 		matches!(node_type, OperatorDef::SourceView { view } if *view == view_id)
 			|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } if *view == view_id)
+			|| matches!(node_type, OperatorDef::Lookup { right: LookupObject::View(view), .. } if *view == view_id)
 	})?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");

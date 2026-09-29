@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::take,
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -13,9 +14,9 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::{
-		catalog::{flow::OperatorId, object::ObjectId},
+		catalog::{flow::OperatorId, id::ViewId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -67,6 +68,20 @@ pub struct DeferredParams {
 	pub clock: Clock,
 
 	pub substrate: FlowSubstrate,
+
+	pub lookup: Option<LookupContext>,
+}
+
+pub trait LookupVersions: Send + Sync {
+	fn view_version(&self, view: ViewId, source: SourceVersion) -> Option<CommitVersion>;
+
+	fn view_commit_through(&self, view: ViewId, commit: CommitVersion) -> Option<CommitVersion>;
+}
+
+#[derive(Clone)]
+pub struct LookupContext {
+	pub versions: Arc<dyn LookupVersions>,
+	pub floor: CommitVersion,
 }
 
 impl DeferredParams {
@@ -91,6 +106,7 @@ impl DeferredParams {
 					.expect("admin transaction reached a flow without a dictionary registry"),
 				operators,
 			),
+			lookup: None,
 		}
 	}
 }
@@ -146,6 +162,18 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		keys: Vec<EncodedKey>,
 		items: &mut Vec<MultiVersionRow<TaggedKey>>,
 	) -> Result<()>;
+
+	fn lookup_floor(&self) -> Option<CommitVersion> {
+		None
+	}
+
+	fn lookup_view_version(&self, _view: ViewId, _source: SourceVersion) -> Option<CommitVersion> {
+		None
+	}
+
+	fn lookup_view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
+		None
+	}
 
 	fn take_pending(&mut self) -> Pending {
 		take(self.pending_mut())

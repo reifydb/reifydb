@@ -315,6 +315,96 @@ pub fn join_key_type_mismatch(fragment: Fragment, left: ValueType, right: ValueT
 	}
 }
 
+pub fn lookup_right_unsupported(fragment: Fragment, right: &str) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_001".to_string(),
+		rql: None,
+		message: format!("LOOKUP right side {} is not a table or an unsorted table-backed view", right),
+		column: None,
+		fragment,
+		label: Some("unsupported right side".to_string()),
+		help: Some("Look up a table, or a table-backed view with no sort".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn lookup_using_not_partition(fragment: Fragment, right: &str) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_002".to_string(),
+		rql: None,
+		message: format!("LOOKUP using columns must be exactly the partition columns of {}", right),
+		column: None,
+		fragment,
+		label: Some("using differs from the partition columns".to_string()),
+		help: Some("Match every partition column of the right side once, joined with 'and'".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn lookup_key_type_mismatch(fragment: Fragment, left: ValueType, right: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_003".to_string(),
+		rql: None,
+		message: format!("LOOKUP key types differ: {} on the left, {} on the right", left, right),
+		column: None,
+		fragment,
+		label: Some("key types differ".to_string()),
+		help: Some("Cast the left key to the type of the right partition column".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn lookup_outside_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_004".to_string(),
+		rql: None,
+		message: "LOOKUP is only supported inside a deferred view".to_string(),
+		column: None,
+		fragment,
+		label: Some("lookup outside a deferred view".to_string()),
+		help: Some("Move the lookup into a deferred view".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn lookup_block_not_bare_from(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_005".to_string(),
+		rql: None,
+		message: "LOOKUP block must be a bare from of one table or view".to_string(),
+		column: None,
+		fragment,
+		label: Some("block is not a bare from".to_string()),
+		help: Some("Write the block as '{ from namespace::object }'".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn lookup_retention_left_missing(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "LOOKUP_006".to_string(),
+		rql: None,
+		message: "LOOKUP requires with { retention: { left: <duration> } }".to_string(),
+		column: None,
+		fragment,
+		label: Some("retention left missing".to_string()),
+		help: Some("Add 'with { retention: { left: 10s } }' to the lookup".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),

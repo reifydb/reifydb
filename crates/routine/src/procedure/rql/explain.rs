@@ -20,8 +20,8 @@ use reifydb_rql::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
-			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan,
-			SortNode, TakeNode, compile_physical,
+			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode,
+			PhysicalPlan, SortNode, TakeNode, compile_physical,
 		},
 		system_columns::check_system_columns,
 	},
@@ -182,6 +182,14 @@ impl PhysicalWalker {
 				self.walk(right, depth, parent);
 			}
 			PhysicalPlan::JoinNatural(JoinNaturalNode {
+				left,
+				right,
+				..
+			}) => {
+				self.walk(left, depth, parent);
+				self.walk(right, depth, parent);
+			}
+			PhysicalPlan::Lookup(LookupNode {
 				left,
 				right,
 				..
@@ -387,6 +395,17 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				JoinType::Left => "Left",
 			};
 			("JoinNatural", format!("type={}", kind))
+		}
+		PhysicalPlan::Lookup(LookupNode {
+			join_type,
+			on,
+			..
+		}) => {
+			let kind = match join_type {
+				JoinType::Inner => "Inner",
+				JoinType::Left => "Left",
+			};
+			("Lookup", format!("type={} on=[{}]", kind, expressions_inline(on)))
 		}
 		PhysicalPlan::IndexScan(node) => (
 			"IndexScan",

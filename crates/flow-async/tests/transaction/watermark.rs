@@ -36,6 +36,7 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	})
 }
 

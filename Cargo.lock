@@ -3956,6 +3956,7 @@ dependencies = [
  "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
+ "reifydb-sub-lifecycle",
  "reifydb-test-harness",
  "reifydb-testing-chaos",
  "reifydb-testing-flow",

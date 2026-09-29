@@ -118,7 +118,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>> {
+	pub(crate) fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>> {
 		let using_token = self.consume_keyword(Using)?;
 		let mut pairs = Vec::new();
 

@@ -24,6 +24,9 @@ mod flow_key_identity;
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 
+#[path = "regression/lookup.rs"]
+mod lookup;
+
 #[path = "regression/natural_join_input_schema.rs"]
 mod natural_join_input_schema;
 

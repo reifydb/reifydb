@@ -119,6 +119,7 @@ pub mod generator;
 pub mod inline;
 pub mod join;
 pub(crate) mod key_rows;
+pub mod lookup;
 pub mod map;
 pub mod patch;
 pub mod query;

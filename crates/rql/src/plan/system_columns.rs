@@ -208,6 +208,7 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 		PhysicalPlan::JoinInner(node) => join(&node.left, &node.right, &node.on, scope),
 		PhysicalPlan::JoinLeft(node) => join(&node.left, &node.right, &node.on, scope),
 		PhysicalPlan::JoinNatural(node) => join(&node.left, &node.right, &[], scope),
+		PhysicalPlan::Lookup(node) => join(&node.left, &node.right, &node.on, scope),
 		PhysicalPlan::Append(AppendPhysicalNode::Query {
 			left,
 			right,

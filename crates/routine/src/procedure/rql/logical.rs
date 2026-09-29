@@ -16,8 +16,8 @@ use reifydb_rql::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
 		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode, InlineDataNode,
-		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, ObjectScanNode, OrderNode,
-		PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, compile_logical,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LookupNode, MapNode, ObjectScanNode,
+		OrderNode, PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, compile_logical,
 	},
 };
 use reifydb_value::value::value_type::ValueType;
@@ -127,6 +127,10 @@ impl LogicalWalker {
 				..
 			})
 			| LogicalPlan::JoinNatural(JoinNaturalNode {
+				subquery,
+				..
+			})
+			| LogicalPlan::Lookup(LookupNode {
 				subquery,
 				..
 			}) => {
@@ -414,6 +418,17 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 				JoinType::Left => "Left",
 			};
 			("JoinNatural", format!("type={}", kind))
+		}
+		LogicalPlan::Lookup(LookupNode {
+			join_type,
+			on,
+			..
+		}) => {
+			let kind = match join_type {
+				JoinType::Inner => "Inner",
+				JoinType::Left => "Left",
+			};
+			("Lookup", format!("type={} {}", kind, expressions_inline(on)))
 		}
 		LogicalPlan::SourceScan(ObjectScanNode {
 			source,

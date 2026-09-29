@@ -36,7 +36,7 @@ impl SystemOperatorTypes {
 	}
 }
 
-const OPERATOR_TYPE_NAMES: [&str; 22] = [
+const OPERATOR_TYPE_NAMES: [&str; 23] = [
 	"source_inline_data",
 	"source_table",
 	"source_view",
@@ -59,6 +59,7 @@ const OPERATOR_TYPE_NAMES: [&str; 22] = [
 	"sink_table_view",
 	"sink_ring_buffer_view",
 	"sink_series_view",
+	"lookup",
 ];
 
 impl BaseVTable for SystemOperatorTypes {
@@ -90,5 +91,31 @@ impl BaseVTable for SystemOperatorTypes {
 
 	fn vtable(&self) -> &VTable {
 		&self.vtable
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::JoinType,
+		flow::operator::{LookupObject, OperatorDef},
+		interface::catalog::id::TableId,
+		operator_with::LookupWith,
+	};
+
+	use super::OPERATOR_TYPE_NAMES;
+
+	#[test]
+	fn the_lookup_discriminator_names_the_lookup_row() {
+		// The row id is the stored type byte; a shifted entry labels stored lookups as another operator.
+		let lookup = OperatorDef::Lookup {
+			join_type: JoinType::Inner,
+			right: LookupObject::Table(TableId(1)),
+			left: vec![],
+			alias: None,
+			with: LookupWith::default(),
+		};
+		assert_eq!(OPERATOR_TYPE_NAMES[lookup.discriminator() as usize], "lookup");
+		assert_eq!(OPERATOR_TYPE_NAMES.len(), lookup.discriminator() as usize + 1, "lookup is the last type");
 	}
 }

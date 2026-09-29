@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
-	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
+	transaction::{DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction},
 };
 use reifydb_transaction::{accumulator::ChangeAccumulator, transaction::Transaction};
 use reifydb_value::{Result, value::identity::IdentityId};
@@ -56,13 +56,42 @@ pub enum SliceStep {
 
 pub struct SliceComputer {
 	engine: StandardEngine,
+	lookup: Option<LookupContext>,
 }
 
 impl SliceComputer {
 	pub fn new(engine: StandardEngine) -> Self {
 		Self {
 			engine,
+			lookup: None,
 		}
+	}
+
+	pub fn with_lookup(&self, lookup: Option<LookupContext>) -> Self {
+		Self {
+			engine: self.engine.clone(),
+			lookup,
+		}
+	}
+
+	pub fn oldest_read(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		flow_id: FlowId,
+		state_version: CommitVersion,
+	) -> Result<Option<CommitVersion>> {
+		let mut txn = DeferredTransaction::new(DeferredParams {
+			version: state_version,
+			pending: Pending::new(),
+			query: None,
+			state_query: None,
+			catalog: self.engine.catalog(),
+			interceptors: self.engine.create_interceptors(),
+			clock: self.engine.clock().clone(),
+			substrate: flow_engine.substrate().clone(),
+			lookup: self.lookup.clone(),
+		});
+		flow_engine.oldest_read_version(&mut txn, flow_id)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -185,6 +214,7 @@ impl SliceComputer {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			substrate: flow_engine.substrate().clone(),
+			lookup: None,
 		});
 
 		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
@@ -219,6 +249,7 @@ impl SliceComputer {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			substrate: flow_engine.substrate().clone(),
+			lookup: self.lookup.clone(),
 		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
@@ -261,6 +292,7 @@ impl SliceComputer {
 			interceptors: self.engine.create_interceptors(),
 			clock: self.engine.clock().clone(),
 			substrate: flow_engine.substrate().clone(),
+			lookup: self.lookup.clone(),
 		});
 
 		flow_engine.process_tick(&mut txn, flow_id, checkpoint)?;
@@ -673,6 +705,7 @@ mod integration {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			substrate: flow_engine.substrate().clone(),
+			lookup: None,
 		})
 	}
 
@@ -972,6 +1005,7 @@ mod integration {
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),
 						substrate: flow_engine.substrate().clone(),
+						lookup: None,
 					});
 					for key in &row_keys {
 						assert!(
@@ -1087,6 +1121,7 @@ mod integration {
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),
 						substrate: flow_engine.substrate().clone(),
+						lookup: None,
 					});
 					for key in &live_keys {
 						assert!(

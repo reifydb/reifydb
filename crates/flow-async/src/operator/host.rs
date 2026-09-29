@@ -5,13 +5,15 @@ use std::{borrow::Cow, collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{pod::EncodedPodRow, shape::RowShape},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		flow::OperatorId,
+		id::ViewId,
+		storage::StorageId,
 	},
 	internal_err,
 	key::{
@@ -23,6 +25,7 @@ use reifydb_core::{
 				node_prefix,
 			},
 		},
+		row::StoragePartitionedRowKey,
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 };
@@ -35,6 +38,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
+		partition::Partition,
 		row_number::RowNumber,
 		value_type::ValueType,
 	},
@@ -129,6 +133,17 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
 
 	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
+
+	fn lookup_read(
+		&mut self,
+		storage: StorageId,
+		partition: Partition,
+		version: CommitVersion,
+	) -> Result<Option<(RowNumber, EncodedBytes)>>;
+
+	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion;
+
+	fn lookup_floor(&self) -> Option<CommitVersion>;
 }
 
 pub struct TxnHostContext<'a, T: FlowTransaction> {
@@ -348,6 +363,64 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
+	}
+
+	fn lookup_read(
+		&mut self,
+		storage: StorageId,
+		partition: Partition,
+		version: CommitVersion,
+	) -> Result<Option<(RowNumber, EncodedBytes)>> {
+		if let Some(floor) = self.txn.lookup_floor()
+			&& version < floor
+		{
+			panic!("lookup of storage {storage:?} must read at version {version:?}, below the held lease \
+				 floor {floor:?}: that version may be collected, so the read could return a different row");
+		}
+		let mut query = self.txn.query();
+		query.read_as_of_version_inclusive(version);
+		let key = |row: u64| StoragePartitionedRowKey::new(partition, RowNumber(row));
+		let first = query
+			.range_partitioned_row(
+				storage,
+				Bound::Included(key(u64::MAX)),
+				Bound::Included(key(0)),
+				RangeScope::All,
+				1,
+			)
+			.next();
+		match first {
+			Some(row) => {
+				let row = row?;
+				Ok(Some((row.key.row.0, row.bytes)))
+			}
+			None => Ok(None),
+		}
+	}
+
+	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {
+		let commit = self.txn.lookup_view_version(view, source);
+		let floor = self.txn.lookup_floor();
+		if let Some(floor) = floor
+			&& floor.0 > source.0
+			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
+		{
+			panic!(
+				"lookup of view {view:?} for source {source:?} sits below the held lease floor {floor:?} and its \
+				 producer committed after {commit:?}: the producer commit it needs may be collected"
+			);
+		}
+		let Some(commit) = commit else {
+			panic!(
+				"lookup of view {view:?} found no completion of its producer flow with a source at or below \
+				 {source:?}: the tracker history no longer covers it"
+			);
+		};
+		floor.map_or(commit, |floor| commit.max(floor))
+	}
+
+	fn lookup_floor(&self) -> Option<CommitVersion> {
+		self.txn.lookup_floor()
 	}
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {

@@ -172,7 +172,7 @@ fn collect_equal_conditions(expr: &Expression, out: &mut Vec<Expression>) {
 	}
 }
 
-fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
+pub(crate) fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
 	let mut left_keys = Vec::new();
 	let mut right_keys = Vec::new();
 

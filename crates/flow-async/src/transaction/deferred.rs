@@ -13,8 +13,12 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
-	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
+	common::{CommitVersion, SourceVersion},
+	interface::{
+		catalog::{flow::OperatorId, id::ViewId},
+		change::Change,
+		store::MultiVersionRow,
+	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -86,7 +90,7 @@ use crate::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction,
+		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
 		read::{OperatorStateRangeIter, ReadFrom, read_from},
 		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
 		substrate::FlowSubstrate,
@@ -113,6 +117,8 @@ pub struct DeferredTransaction {
 	pub row_shape_cache: HashMap<OperatorId, HashMap<EncodedKey, RowShape>>,
 
 	pub substrate: FlowSubstrate,
+
+	pub lookup: Option<LookupContext>,
 }
 
 impl DeferredTransaction {
@@ -138,6 +144,7 @@ impl DeferredTransaction {
 			source_watermark_cache: HashMap::new(),
 			row_shape_cache: HashMap::new(),
 			substrate: params.substrate,
+			lookup: params.lookup,
 		}
 	}
 }
@@ -290,6 +297,18 @@ pub(crate) fn deferred_fetch_state_external(
 impl FlowTransaction for DeferredTransaction {
 	fn version(&self) -> CommitVersion {
 		self.version
+	}
+
+	fn lookup_floor(&self) -> Option<CommitVersion> {
+		self.lookup.as_ref().map(|lookup| lookup.floor)
+	}
+
+	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> Option<CommitVersion> {
+		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_version(view, source))
+	}
+
+	fn lookup_view_commit_through(&self, view: ViewId, commit: CommitVersion) -> Option<CommitVersion> {
+		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_commit_through(view, commit))
 	}
 
 	fn clock(&self) -> &Clock {

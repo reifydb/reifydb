@@ -90,6 +90,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	})
 }
 
@@ -505,6 +506,7 @@ fn deferred_read_sees_state_committed_above_object_version() {
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	});
 
 	let batch = txn.state_get_many(operator_id, &[inner_key]).unwrap();
@@ -549,6 +551,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
 		substrate: FlowSubstrate::new(engine.inner().dictionary_allocators()),
+		lookup: None,
 	});
 	assert_eq!(
 		txn.get(&row_key_encoded).unwrap(),

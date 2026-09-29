@@ -57,6 +57,7 @@ reifydb-rql = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-macro = { workspace = true }
 arrow-schema = { workspace = true }
+reifydb-sub-lifecycle = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow", "testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }

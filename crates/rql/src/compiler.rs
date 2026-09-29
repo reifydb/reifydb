@@ -463,6 +463,14 @@ fn materialize_query_plan_with(
 			alias: node.alias,
 			with: node.with,
 		}),
+		PhysicalPlan::Lookup(node) => QueryPlan::Lookup(nodes::LookupNode {
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
+			on: node.on,
+			alias: Some(node.alias),
+			join_type: node.join_type,
+			with: node.with,
+		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			take: node.take,
@@ -1639,6 +1647,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))?));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::Lookup(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Lookup(node))?));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Take(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))?));
 				self.emit(Instruction::Emit);
@@ -1984,6 +1996,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::JoinNatural(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))?));
+			}
+			PhysicalPlan::Lookup(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Lookup(node))?));
 			}
 			PhysicalPlan::Take(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))?));

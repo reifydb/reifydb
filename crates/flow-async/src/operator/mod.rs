@@ -6,12 +6,13 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray};
 #[cfg(feature = "runtime")]
 use arrow_schema::SchemaRef;
-use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
+	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
+use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_value::value::duration::Duration;
 use reifydb_value::{
@@ -49,6 +50,8 @@ pub mod guard;
 pub mod host;
 #[cfg(feature = "runtime")]
 pub mod join;
+#[cfg(feature = "runtime")]
+pub mod lookup;
 #[cfg(feature = "runtime")]
 pub mod map;
 #[cfg(feature = "runtime")]
@@ -115,6 +118,10 @@ pub trait HostOperator: Send {
 
 	fn output_schema(&self) -> Option<SchemaRef> {
 		None
+	}
+
+	fn oldest_read_version(&self, _host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
+		Ok(None)
 	}
 }
 

@@ -12,9 +12,12 @@ use bumpalo::Bump;
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	common::{JoinType, TimeSource},
-	error::diagnostic::catalog::{
-		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
-		ringbuffer_not_found, series_not_found, table_not_found,
+	error::diagnostic::{
+		catalog::{
+			dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
+			ringbuffer_not_found, series_not_found, table_not_found,
+		},
+		operation::{lookup_block_not_bare_from, lookup_right_unsupported},
 	},
 	expression::{
 		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
@@ -32,7 +35,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
 	row::Ttl,
 	sort::SortKey,
 };
@@ -49,6 +52,7 @@ use crate::{
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
 	bump::{BumpBox, FragmentInterner},
 	convert_data_type_with_constraints,
+	diagnostic::AstError,
 	error::RqlError,
 	expression::ExpressionCompiler,
 	nodes,
@@ -165,6 +169,7 @@ pub enum PhysicalPlan<'bump> {
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
+	Lookup(LookupNode<'bump>),
 	Take(TakeNode<'bump>),
 	Sort(SortNode<'bump>),
 	Map(MapNode<'bump>),
@@ -531,6 +536,16 @@ pub struct JoinNaturalNode<'bump> {
 	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
 	pub with: JoinWith,
+}
+
+#[derive(Debug)]
+pub struct LookupNode<'bump> {
+	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub on: Vec<Expression>,
+	pub alias: Fragment,
+	pub join_type: JoinType,
+	pub with: LookupWith,
 }
 
 #[derive(Debug)]
@@ -2024,6 +2039,36 @@ impl<'bump> Compiler<'bump> {
 						fragment: self.interner.intern_fragment(&join.fragment),
 						alias,
 						with: join.with,
+					}));
+				}
+
+				LogicalPlan::Lookup(lookup) => {
+					let alias = self.interner.intern_fragment(&lookup.alias);
+					let Some(left) = stack.pop() else {
+						return Err(AstError::UnsupportedAstNode {
+							node_type: "lookup without a left input".to_string(),
+							fragment: alias,
+						}
+						.into());
+					};
+					let right = match self.compile(rx, lookup.subquery)? {
+						Some(PhysicalPlan::RemoteScan(remote)) => {
+							return_error!(lookup_right_unsupported(
+								alias,
+								&remote.remote_name
+							));
+						}
+						Some(right) => right,
+						None => return_error!(lookup_block_not_bare_from(alias)),
+					};
+
+					stack.push(PhysicalPlan::Lookup(LookupNode {
+						left: self.bump_box(left),
+						right: self.bump_box(right),
+						on: lookup.on,
+						alias,
+						join_type: lookup.join_type,
+						with: lookup.with,
 					}));
 				}
 

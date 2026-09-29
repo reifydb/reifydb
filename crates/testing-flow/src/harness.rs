@@ -108,6 +108,7 @@ impl<O> Harness<O> {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(self.clock.clone()),
 			substrate: self.substrate.clone(),
+			lookup: None,
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(at),

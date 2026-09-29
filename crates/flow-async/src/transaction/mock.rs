@@ -49,6 +49,7 @@ impl<'a> FlowTxnBuilder<'a> {
 				self.engine.inner().dictionary_allocators(),
 				self.engine.inner().operator_state(),
 			),
+			lookup: None,
 		});
 		txn.set_change_coordinate(default_coordinate());
 		txn

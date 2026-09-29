@@ -63,6 +63,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	})
 }
 

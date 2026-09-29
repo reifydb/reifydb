@@ -15,7 +15,7 @@ use crate::{
 	common::{WindowKind, WindowSize},
 	error::CoreError,
 	internal_error,
-	row::{JoinPick, JoinRetention},
+	row::{JoinPick, JoinRetention, OperatorRetention},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +36,11 @@ pub struct JoinWith {
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub pick: Option<JoinPick>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookupWith {
+	pub retention: Option<OperatorRetention>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

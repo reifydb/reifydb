@@ -9,6 +9,7 @@ use reifydb_core::{
 			flow_remote_source_unsupported, flow_sort_must_be_terminal, flow_source_required,
 			flow_window_requires_a_timed_source,
 		},
+		operation::lookup_outside_deferred_view,
 		subscription::subscription_operation_unsupported,
 	},
 	flow::{
@@ -24,7 +25,7 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
-use reifydb_value::{Result, error::Error, value::duration::Duration};
+use reifydb_value::{Result, error::Error, fragment::Fragment, value::duration::Duration};
 
 pub mod operator;
 pub mod source;
@@ -35,7 +36,8 @@ use crate::compiler::{
 	operator::{
 		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, distinct::DistinctCompiler,
 		extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler, join::JoinCompiler,
-		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
+		lookup::LookupCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
+		window::WindowCompiler,
 	},
 	source::{
 		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
@@ -264,6 +266,7 @@ impl FlowCompiler {
 			QueryPlan::JoinInner(join) => JoinCompiler::from(join).compile(self, txn),
 			QueryPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self, txn),
 			QueryPlan::JoinNatural(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::Lookup(lookup) => LookupCompiler::from(lookup).compile(self, txn),
 			QueryPlan::Append(append) => AppendCompiler::from(append).compile(self, txn),
 			QueryPlan::Patch(_) => {
 				unimplemented!("Patch compilation not yet implemented for flow")
@@ -335,6 +338,9 @@ fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
 		| QueryPlan::RingBufferScan(_)
 		| QueryPlan::SeriesScan(_)
 		| QueryPlan::InlineData(_) => Ok(()),
+		QueryPlan::Lookup(n) => {
+			Err(Error(Box::new(lookup_outside_deferred_view(n.alias.clone().unwrap_or(Fragment::None)))))
+		}
 		other => Err(Error(Box::new(subscription_operation_unsupported(other.name())))),
 	}
 }
@@ -372,6 +378,7 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		QueryPlan::JoinInner(n) => vec![&n.left, &n.right],
 		QueryPlan::JoinLeft(n) => vec![&n.left, &n.right],
 		QueryPlan::JoinNatural(n) => vec![&n.left, &n.right],
+		QueryPlan::Lookup(n) => vec![&n.left, &n.right],
 		QueryPlan::Append(n) => vec![&n.left, &n.right],
 		QueryPlan::RemoteScan(_)
 		| QueryPlan::TableScan(_)

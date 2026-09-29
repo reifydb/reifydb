@@ -221,6 +221,15 @@ impl AstWalker {
 					}
 				}
 			}
+			Ast::Lookup(node) => {
+				for node in &node.subquery.statement.nodes {
+					ref_children.push(node);
+				}
+				for pair in &node.using_clause.pairs {
+					ref_children.push(&pair.first);
+					ref_children.push(&pair.second);
+				}
+			}
 			Ast::Map(s) => {
 				for node in &s.nodes {
 					ref_children.push(node);
@@ -319,6 +328,7 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::Insert(_) => "Insert",
 		Ast::Update(_) => "Update",
 		Ast::Join(_) => "Join",
+		Ast::Lookup(_) => "Lookup",
 		Ast::List(_) => "List",
 		Ast::Literal(_) => "Literal",
 		Ast::Nop => "Nop",

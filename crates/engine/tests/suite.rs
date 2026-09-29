@@ -130,6 +130,8 @@ mod join_using_condition_fragment;
 mod join_using_unknown_key_column;
 #[path = "list_param_insert.rs"]
 mod list_param_insert;
+#[path = "lookup_ddl.rs"]
+mod lookup_ddl;
 #[path = "map_ends_in_a_comment.rs"]
 mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]

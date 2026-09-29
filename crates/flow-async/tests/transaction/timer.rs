@@ -42,6 +42,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
 		),
+		lookup: None,
 	})
 }
 

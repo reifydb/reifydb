@@ -41,7 +41,31 @@ pub fn flow_upstreams(
 		};
 		upstreams.entry(*producer).or_default().insert(ObjectId::View(*view_id));
 	}
+	for (view_id, consumer_flows) in &graph.lookup_views {
+		if !consumer_flows.contains(&flow) {
+			continue;
+		}
+		if view_kind(*view_id) == Some(ViewKind::Transactional) {
+			continue;
+		}
+		let Some(producer) = graph.sink_views.get(view_id) else {
+			continue;
+		};
+		if *producer == flow {
+			continue;
+		}
+		upstreams.entry(*producer).or_default();
+	}
 	upstreams
+}
+
+pub fn lookup_producers(graph: &FlowDependencyGraph, flow: FlowId) -> BTreeMap<ViewId, FlowId> {
+	graph.lookup_views
+		.iter()
+		.filter(|(_, consumer_flows)| consumer_flows.contains(&flow))
+		.filter_map(|(view_id, _)| graph.sink_views.get(view_id).map(|producer| (*view_id, *producer)))
+		.filter(|(_, producer)| *producer != flow)
+		.collect()
 }
 
 pub fn flow_source_objects(
@@ -123,6 +147,7 @@ mod tests {
 			source_ringbuffers: BTreeMap::new(),
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
+			lookup_views: BTreeMap::new(),
 		}
 	}
 
@@ -326,5 +351,81 @@ mod tests {
 		let closure = BTreeMap::from([(ViewId(5), BTreeSet::from([ObjectId::Series(SeriesId(9))]))]);
 
 		assert_eq!(flow_completeness_objects(&graph, FlowId(10), &closure), Some(BTreeSet::from([9])));
+	}
+}
+
+#[cfg(test)]
+mod lookup_tests {
+	use std::collections::BTreeMap;
+
+	use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::ViewKind};
+	use reifydb_flow::analyzer::FlowDependencyGraph;
+
+	use super::{flow_upstreams, lookup_producers};
+
+	const PRODUCER: FlowId = FlowId(1);
+	const READER: FlowId = FlowId(2);
+	const PRICES: ViewId = ViewId(10);
+	const LEVELS: ViewId = ViewId(11);
+
+	fn graph(
+		lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
+		source_views: BTreeMap<ViewId, Vec<FlowId>>,
+	) -> FlowDependencyGraph {
+		FlowDependencyGraph {
+			flows: Vec::new(),
+			dependencies: Vec::new(),
+			source_tables: BTreeMap::new(),
+			source_views,
+			source_ringbuffers: BTreeMap::new(),
+			source_series: BTreeMap::new(),
+			sink_views: BTreeMap::from([(PRICES, PRODUCER), (LEVELS, PRODUCER)]),
+			lookup_views,
+		}
+	}
+
+	fn deferred(_: ViewId) -> Option<ViewKind> {
+		Some(ViewKind::Deferred)
+	}
+
+	#[test]
+	fn a_looked_up_view_gates_on_its_producer_with_no_view_to_read() {
+		// MD32: the producer must count for the gate, but an empty set keeps its CDC out of the merge.
+		let g = graph(BTreeMap::from([(PRICES, vec![READER])]), BTreeMap::new());
+		let upstreams = flow_upstreams(&g, READER, &deferred);
+
+		assert_eq!(upstreams.len(), 1);
+		assert!(upstreams.get(&PRODUCER).is_some_and(|views| views.is_empty()), "the view must not be read");
+		assert_eq!(lookup_producers(&g, READER), BTreeMap::from([(PRICES, PRODUCER)]));
+		assert!(lookup_producers(&g, PRODUCER).is_empty(), "the producer looks nothing up");
+	}
+
+	#[test]
+	fn a_producer_also_read_as_a_source_keeps_its_source_view() {
+		// A gate-only entry must never erase a real source view of the same producer.
+		let g = graph(BTreeMap::from([(PRICES, vec![READER])]), BTreeMap::from([(LEVELS, vec![READER])]));
+		let upstreams = flow_upstreams(&g, READER, &deferred);
+
+		let views = upstreams.get(&PRODUCER).expect("the producer is upstream");
+		assert_eq!(views.len(), 1);
+		assert!(views.contains(&reifydb_core::interface::catalog::object::ObjectId::View(LEVELS)));
+	}
+
+	#[test]
+	fn a_transactional_looked_up_view_has_no_gate() {
+		// A transactional view has no producer flow to wait for; it is read like a table.
+		let g = graph(BTreeMap::from([(PRICES, vec![READER])]), BTreeMap::new());
+		let upstreams = flow_upstreams(&g, READER, &|_| Some(ViewKind::Transactional));
+
+		assert!(upstreams.is_empty());
+	}
+
+	#[test]
+	fn a_flow_looking_up_its_own_view_is_not_gated_on_itself() {
+		// Gating a flow on its own completion would stall it forever.
+		let g = graph(BTreeMap::from([(PRICES, vec![PRODUCER])]), BTreeMap::new());
+
+		assert!(flow_upstreams(&g, PRODUCER, &deferred).is_empty());
+		assert!(lookup_producers(&g, PRODUCER).is_empty());
 	}
 }

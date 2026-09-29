@@ -114,14 +114,14 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
-		let topo = flow.topological_order();
-		let sources: Vec<OperatorId> = topo
-			.iter()
-			.copied()
-			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
-			.collect();
+		let sources = self.watermark_sources(&flow);
 
-		let (arrivals, silent) = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		let (mut arrivals, mut silent) =
+			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		let (lookup_arrivals, lookup_silent) =
+			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version);
+		arrivals.extend(lookup_arrivals);
+		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		freeze_arrival_frontier(txn, &sources, &arrivals)
 	}
@@ -151,11 +151,7 @@ impl FlowEngineInner {
 			self.seed_entry_nodes(flow, flow_id, change, pending);
 		}
 
-		let sources: Vec<OperatorId> = topo
-			.iter()
-			.copied()
-			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
-			.collect();
+		let sources = self.watermark_sources(flow);
 		let mut arrivals: SourceArrivals = views
 			.iter()
 			.chain(others.iter())
@@ -168,14 +164,22 @@ impl FlowEngineInner {
 			.filter_map(Result::transpose)
 			.collect::<Result<_>>()?;
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
-		let (published, silent) = published_arrivals(
+		let (published, mut silent) = published_arrivals(
 			&self.sources,
 			&self.substrate.frontiers,
 			flow_id,
 			CommitVersion(version.source.0),
 		);
+		let (lookup_published, lookup_silent) = published_arrivals(
+			&self.lookup_sources,
+			&self.substrate.frontiers,
+			flow_id,
+			CommitVersion(version.source.0),
+		);
+		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
+		arrivals.extend(lookup_published);
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, views, topo)?;
@@ -631,6 +635,110 @@ mod tests {
 			"the published frontier must reach the watermark through process_version, not only the \
 			 helper"
 		);
+	}
+
+	fn lookup_flow(right: reifydb_core::flow::operator::LookupObject) -> FlowDag {
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceTable {
+				table: TableId(3),
+				time_domain: TimeDomain::Event,
+			},
+		));
+		builder.add_node(FlowNode::new(
+			OperatorId(2),
+			OperatorDef::Lookup {
+				join_type: reifydb_core::common::JoinType::Inner,
+				right,
+				left: vec![],
+				alias: Some("price".to_string()),
+				with: reifydb_core::operator_with::LookupWith {
+					retention: None,
+				},
+			},
+		));
+		builder.add_edge(reifydb_core::interface::catalog::flow::FlowEdge::new(
+			1u64,
+			FlowId(1),
+			SOURCE,
+			OperatorId(2),
+		))
+		.unwrap();
+		builder.build()
+	}
+
+	fn lookup_engine(engine: &TestEngine) -> FlowEngineInner {
+		FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::with_dictionary(
+				engine.inner().dictionary_allocators(),
+				engine.inner().operator_state(),
+			),
+			OperatorSampleRegistry::new(),
+		)
+	}
+
+	#[test]
+	fn a_lookup_on_a_deferred_view_holds_the_flow_watermark_at_the_views_frontier() {
+		// Without the view's frontier hold the left side alone moves the watermark and a same-instant surface
+		// drops as late.
+		let engine = TestEngine::new();
+		let mut inner = lookup_engine(&engine);
+		let view = ObjectId::View(ViewId(9));
+		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::View(ViewId(9)));
+		inner.register_flow_dag(flow.clone());
+		inner.add_lookup_source(FlowId(1), OperatorId(2), view);
+		inner.add_sink(FlowId(2), OperatorId(4), view);
+		inner.substrate.frontiers.publish(view, at_millis(30_000), CommitVersion(1));
+
+		let mut txn = deferred(&engine);
+		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(90_000)).unwrap();
+		let topo = flow.topological_order();
+		inner.process_version(&mut txn, &flow, FlowId(1), ChangeVersion::from(CommitVersion(5)), vec![], topo)
+			.unwrap();
+
+		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE, OperatorId(2)]);
+		assert_eq!(
+			SourceWatermarks::source_watermark(OperatorId(2), &mut txn).unwrap(),
+			at_millis(30_000),
+			"the view's published frontier must reach the lookup's own watermark"
+		);
+		assert_eq!(
+			SourceWatermarks::flow_watermark(&inner.watermark_sources(&flow), &mut txn).unwrap(),
+			at_millis(30_000),
+			"the flow watermark must be the min of the left source and the lookup's view, not the left alone"
+		);
+	}
+
+	#[test]
+	fn a_lookup_on_a_table_never_holds_the_flow_watermark() {
+		// No flow publishes a frontier for a table, so counting it would pin the watermark at the epoch
+		// forever.
+		let engine = TestEngine::new();
+		let inner = lookup_engine(&engine);
+		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::Table(TableId(4)));
+
+		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE]);
+	}
+
+	#[test]
+	fn dropping_a_lookup_flow_forgets_its_watermark_source() {
+		// A stale registration would keep folding a removed flow's operator into a reused flow id.
+		let engine = TestEngine::new();
+		let mut inner = lookup_engine(&engine);
+		let view = ObjectId::View(ViewId(9));
+		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::View(ViewId(9)));
+		inner.register_flow_dag(flow.clone());
+		inner.add_lookup_source(FlowId(1), OperatorId(2), view);
+
+		inner.remove_flow(FlowId(1));
+
+		assert!(inner.lookup_sources.is_empty());
+		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE]);
 	}
 
 	#[test]

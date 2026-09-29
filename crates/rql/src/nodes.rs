@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
@@ -573,6 +573,16 @@ pub struct JoinNaturalNode {
 	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
 	pub with: JoinWith,
+}
+
+#[derive(Debug, Clone)]
+pub struct LookupNode {
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
+	pub join_type: JoinType,
+	pub with: LookupWith,
 }
 
 #[derive(Debug, Clone)]

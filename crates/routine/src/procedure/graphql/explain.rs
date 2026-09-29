@@ -6,7 +6,10 @@ use std::sync::LazyLock;
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use bumpalo::Bump;
-use reifydb_core::value::{batch::batch, column::factory};
+use reifydb_core::{
+	common::JoinType,
+	value::{batch::batch, column::factory},
+};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::ast::ast::{
 	Ast, AstAppend, AstAppendSource, AstFor, AstFrom, AstInline, AstJoin, AstLet, AstList, AstLiteral, AstSkip,
@@ -155,6 +158,7 @@ fn kind_of(ast: &Ast<'_>) -> &'static str {
 		Ast::Take(_) => "Take",
 		Ast::Skip(_) => "Skip",
 		Ast::Join(_) => "Join",
+		Ast::Lookup(_) => "Lookup",
 		Ast::Identifier(_) => "Identifier",
 		Ast::Literal(_) => "Literal",
 		Ast::Infix(_) => "Infix",
@@ -194,6 +198,10 @@ fn detail_of(ast: &Ast<'_>) -> String {
 			AstJoin::LeftJoin {
 				..
 			} => "left".to_string(),
+		},
+		Ast::Lookup(node) => match node.join_type {
+			JoinType::Inner => "inner".to_string(),
+			JoinType::Left => "left".to_string(),
 		},
 		Ast::Take(AstTake {
 			take: AstTakeValue::Literal(n),

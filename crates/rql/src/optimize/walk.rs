@@ -57,6 +57,13 @@ pub fn walk_expressions_mut(
 			walk_expressions_mut(&mut n.left, internal, projection);
 			walk_expressions_mut(&mut n.right, internal, projection);
 		}
+		PhysicalPlan::Lookup(n) => {
+			for e in &mut n.on {
+				internal(e);
+			}
+			walk_expressions_mut(&mut n.left, internal, projection);
+			walk_expressions_mut(&mut n.right, internal, projection);
+		}
 		PhysicalPlan::Take(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Sort(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Distinct(n) => walk_expressions_mut(&mut n.input, internal, projection),

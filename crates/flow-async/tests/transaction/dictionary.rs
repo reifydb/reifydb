@@ -51,6 +51,7 @@ fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> Defer
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(0)),
 		substrate: FlowSubstrate::with_dictionary(registry, engine.inner().operator_state()),
+		lookup: None,
 	})
 }
 

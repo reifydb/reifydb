@@ -198,7 +198,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x29;
+	pub const HIGHEST_DATA: u8 = 0x2C;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -298,6 +298,10 @@ impl KeyspaceId {
 
 	pub const GUEST_RETAINED_ENTRY: Self = Self(0x29);
 
+	pub const LOOKUP_READ: Self = Self(0x2A);
+
+	pub const LOOKUP_READ_BY_VERSION: Self = Self(0x2C);
+
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::NODE_COUNTER => "NODE_COUNTER",
@@ -349,6 +353,8 @@ impl KeyspaceId {
 			Self::CUSTOM_MANAGED_LATEST => "CUSTOM_MANAGED_LATEST",
 			Self::GUEST_WINDOW_PUBLISH => "GUEST_WINDOW_PUBLISH",
 			Self::GUEST_RETAINED_ENTRY => "GUEST_RETAINED_ENTRY",
+			Self::LOOKUP_READ => "LOOKUP_READ",
+			Self::LOOKUP_READ_BY_VERSION => "LOOKUP_READ_BY_VERSION",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -945,7 +951,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 49] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 51] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -995,6 +1001,8 @@ mod tests {
 		("CUSTOM_MANAGED_LATEST", KeyspaceId::CUSTOM_MANAGED_LATEST, Phase::Data, true),
 		("GUEST_WINDOW_PUBLISH", KeyspaceId::GUEST_WINDOW_PUBLISH, Phase::Data, true),
 		("GUEST_RETAINED_ENTRY", KeyspaceId::GUEST_RETAINED_ENTRY, Phase::Data, true),
+		("LOOKUP_READ", KeyspaceId::LOOKUP_READ, Phase::Data, true),
+		("LOOKUP_READ_BY_VERSION", KeyspaceId::LOOKUP_READ_BY_VERSION, Phase::Data, true),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated

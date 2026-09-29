@@ -14,9 +14,9 @@ use reifydb_cdc::{
 	rebuild::changed_objects,
 };
 use reifydb_core::{
-	actors::flow::{FlowActorHandle, FlowActorMessage},
-	common::CommitVersion,
-	flow::dag::FlowDag,
+	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
+	common::{CommitVersion, SourceVersion},
+	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
@@ -578,7 +578,7 @@ impl FlowSupervisor {
 			FlowStart::Backfill(..) => CommitVersion(0),
 		};
 
-		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until());
+		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until(), SourceVersion(cursor.0));
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committer.clone(),
@@ -620,6 +620,7 @@ impl FlowSupervisor {
 		let graph = state.analyzer.get_dependency_graph();
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
+		self.flow_tracker.set_lookup_producers(flow_id, routing::lookup_producers(graph, flow_id));
 	}
 
 	fn commit_control(&self, cursor: CommitVersion) {
