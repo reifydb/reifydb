@@ -6,8 +6,8 @@ use std::cmp::Ordering;
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 use reifydb_core::{
-	error::diagnostic::operation::join_pick_column_not_found, key::operator::state::GroupId, row::JoinPick,
-	sort::SortDirection,
+	error::diagnostic::operation::join_pick_column_not_found, interface::change::Diff,
+	key::operator::state::GroupId, row::JoinPick, sort::SortDirection,
 };
 use reifydb_value::{
 	Result, error,
@@ -25,7 +25,11 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::hash::{build_shape, columns_from_block, encode_row};
-use crate::operator::{host::HostContext, join::store::Store, row_times};
+use crate::operator::{
+	host::HostContext,
+	join::{Identity, operator::JoinOperator, store::Store},
+	row_times,
+};
 
 fn instant_values(columns: &RecordBatch) -> Result<Option<Vec<Value>>> {
 	let time = row_times(columns)?;
@@ -215,4 +219,23 @@ pub(crate) fn remove_right_rows(
 		right.remove_row_in(host, group, held)?;
 	}
 	Ok(())
+}
+
+pub(crate) fn republish(
+	host: &mut dyn HostContext,
+	operator: &JoinOperator,
+	pre: (&RecordBatch, Option<&RecordBatch>),
+	post: (&RecordBatch, Option<&RecordBatch>),
+	indices: &[usize],
+) -> Result<Vec<Diff>> {
+	let withdrawn = operator.latest_columns(host, pre.0, indices, pre.1, Identity::Existing)?;
+	let published = operator.latest_columns(host, post.0, indices, post.1, Identity::Mint)?;
+	let mut out = Vec::new();
+	if withdrawn.existing.num_rows() > 0 && published.existing.num_rows() > 0 {
+		out.push(Diff::update(withdrawn.existing, published.existing));
+	}
+	if published.fresh.num_rows() > 0 {
+		out.push(Diff::insert(published.fresh));
+	}
+	Ok(out)
 }

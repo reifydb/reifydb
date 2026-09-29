@@ -443,10 +443,22 @@ impl JoinOperator {
 		{
 			self.snapshot_ledger().retire(host, group, row_number, &content)?;
 		}
-		let composites: Vec<JoinRowMappingKey> = left_numbers
-			.iter()
-			.map(|left_number| Self::make_composite_key(*left_number, row_number))
-			.collect();
+		let composites: Vec<JoinRowMappingKey> = match self.strategy {
+			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => {
+				if state.right.get_row_in(host, group, row_number)?.is_none() {
+					Vec::new()
+				} else {
+					left_numbers
+						.iter()
+						.map(|left_number| Self::unmatched_left_key(*left_number))
+						.collect()
+				}
+			}
+			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => left_numbers
+				.iter()
+				.map(|left_number| Self::make_composite_key(*left_number, row_number))
+				.collect(),
+		};
 		host.remove_join_row_numbers(&composites)?;
 		state.right.remove_row_in(host, group, row_number)?;
 		host.join_expiry_free(entry)
@@ -719,11 +731,6 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn cleanup_left_row_joins(&self, host: &mut dyn HostContext, left_number: u64) -> Result<()> {
-		match self.strategy {
-			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => return Ok(()),
-			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => {}
-		}
-
 		host.remove_join_row_numbers_for_left(JOIN_MAPPING_TAG, left_number)
 	}
 
@@ -864,6 +871,45 @@ impl JoinOperator {
 		let builder =
 			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
 		builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)
+	}
+
+	pub(crate) fn latest_columns(
+		&self,
+		host: &mut dyn HostContext,
+		left: &RecordBatch,
+		left_indices: &[usize],
+		slot: Option<&RecordBatch>,
+		identity: Identity<'_>,
+	) -> Result<Emitted> {
+		if left_indices.is_empty() {
+			return Ok(Emitted::empty());
+		}
+		let left_numbers = require_row_numbers(left)?;
+		let keys: Vec<JoinRowMappingKey> =
+			left_indices.iter().map(|&idx| Self::unmatched_left_key(left_numbers[idx])).collect();
+		let (row_numbers, fresh, existing) = self.identities(host, &keys, identity)?;
+		let built = match slot {
+			Some(slot) => JoinedColumnsBuilder::new(
+				left.schema_ref(),
+				slot.schema_ref(),
+				&self.alias,
+				self.natural,
+			)
+			.join_cartesian(&row_numbers, left, left_indices, slot, &[0])?,
+			None => JoinedColumnsBuilder::new(
+				left.schema_ref(),
+				&self.right_schema,
+				&self.alias,
+				self.natural,
+			)
+			.unmatched_left_batch(
+				&row_numbers,
+				left,
+				left_indices,
+				&self.right_schema,
+			)?,
+		};
+		Self::split(built, &fresh, &existing)
 	}
 
 	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {

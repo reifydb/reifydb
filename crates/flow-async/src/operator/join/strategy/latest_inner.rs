@@ -16,11 +16,12 @@ use tracing::instrument;
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
-	latest::{overwrite_right_slot, read_right_slot, remove_right_rows, write_right_rows},
+	latest::{overwrite_right_slot, read_right_slot, remove_right_rows, republish, write_right_rows},
 };
 use crate::operator::{
 	host::HostContext,
 	join::{
+		Identity,
 		snapshot::{SnapshotJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
@@ -89,9 +90,10 @@ impl LatestInnerHashJoin {
 				}
 				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
 				match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => Ok(vec![Diff::insert(
-						ctx.operator.join_left_with_slot(post, indices, &slot)?,
-					)]),
+					Some(slot) => Ok(ctx
+						.operator
+						.latest_columns(host, post, indices, Some(&slot), Identity::Mint)?
+						.published()),
 					None => Ok(Vec::new()),
 				}
 			}
@@ -123,21 +125,19 @@ impl LatestInnerHashJoin {
 		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
-		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
+		for_each_left_block(host, &ctx.state.left, key_hash, |host, left| {
 			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
 			match (&old, &new) {
-				(Some(old_slot), Some(new_slot)) => {
-					let pre = operator.join_left_with_slot(left, &left_indices, old_slot)?;
-					let post = operator.join_left_with_slot(left, &left_indices, new_slot)?;
-					result.push(Diff::update(pre, post));
-				}
-				(None, Some(new_slot)) => {
-					result.push(Diff::insert(operator.join_left_with_slot(
-						left,
-						&left_indices,
-						new_slot,
-					)?));
-				}
+				(Some(old_slot), Some(new_slot)) => result.extend(republish(
+					host,
+					operator,
+					(left, Some(old_slot)),
+					(left, Some(new_slot)),
+					&left_indices,
+				)?),
+				(None, Some(new_slot)) => result.extend(operator
+					.latest_columns(host, left, &left_indices, Some(new_slot), Identity::Mint)?
+					.published()),
 				_ => {}
 			}
 			Ok(())
@@ -187,9 +187,12 @@ impl LatestInnerHashJoin {
 					return Ok(Vec::new());
 				}
 				Ok(match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => {
-						vec![Diff::remove(ctx.operator.join_left_with_slot(pre, &held, &slot)?)]
-					}
+					Some(slot) => ctx
+						.operator
+						.latest_columns(host, pre, &held, Some(&slot), Identity::Consume)?
+						.withdrawn()
+						.into_iter()
+						.collect(),
 					None => Vec::new(),
 				})
 			}
@@ -231,15 +234,19 @@ impl LatestInnerHashJoin {
 		{
 			return Ok(result);
 		}
-		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
+		for_each_left_block(host, &ctx.state.left, key_hash, |host, left| {
 			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
-			let pre_joined = operator.join_left_with_slot(left, &left_indices, &old_slot)?;
 			match &new {
-				Some(new_slot) => result.push(Diff::update(
-					pre_joined,
-					operator.join_left_with_slot(left, &left_indices, new_slot)?,
-				)),
-				None => result.push(Diff::remove(pre_joined)),
+				Some(new_slot) => result.extend(republish(
+					host,
+					operator,
+					(left, Some(&old_slot)),
+					(left, Some(new_slot)),
+					&left_indices,
+				)?),
+				None => result.extend(operator
+					.latest_columns(host, left, &left_indices, Some(&old_slot), Identity::Consume)?
+					.withdrawn()),
 			}
 			Ok(())
 		})?;
@@ -312,26 +319,33 @@ impl LatestInnerHashJoin {
 				}
 
 				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, post)?;
+				let mut held = Vec::with_capacity(indices.len());
+				let mut expired = Vec::new();
 				for &idx in indices {
-					update_row_in_entry(
+					match update_row_in_entry(
 						host,
 						&ctx.state.left,
 						&prepared,
 						require_row_numbers(pre)?[idx],
 						post,
 						idx,
-					)?;
-				}
-				match read_right_slot(host, &ctx.state.right, keys.pre)? {
-					Some(slot) => {
-						let pre_joined =
-							ctx.operator.join_left_with_slot(pre, indices, &slot)?;
-						let post_joined =
-							ctx.operator.join_left_with_slot(post, indices, &slot)?;
-						Ok(vec![Diff::update(pre_joined, post_joined)])
+					)? {
+						true => held.push(idx),
+						false => expired.push(idx),
 					}
-					None => Ok(Vec::new()),
 				}
+				let mut result = match read_right_slot(host, &ctx.state.right, keys.pre)? {
+					Some(slot) => republish(
+						host,
+						ctx.operator,
+						(pre, Some(&slot)),
+						(post, Some(&slot)),
+						&held,
+					)?,
+					None => Vec::new(),
+				};
+				result.extend(self.handle_insert(host, post, &expired, keys.post, ctx)?);
+				Ok(result)
 			}
 			JoinSide::Right => self.handle_right_insert(host, post, indices, keys.post, ctx),
 		}
