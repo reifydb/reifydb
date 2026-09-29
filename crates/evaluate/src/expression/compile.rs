@@ -1534,6 +1534,25 @@ mod tests {
 	}
 
 	#[test]
+	fn a_none_first_row_does_not_fix_the_result_type() {
+		// Typing the result from the first row's none branch made it Any, so the first int after it aborted the process.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			batch(vec![bools("flag", [false, true, false, true]), ints("hi", [7, 8, 9, 10])]).unwrap(),
+			4,
+		);
+
+		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], Some(none_literal())))
+			.expect("a none first row must not fix the result type");
+
+		let view = ColumnView::try_from(&result).unwrap();
+		assert!(matches!(view.get_value(0), Value::None { .. }));
+		assert_eq!(view.get_value(1), Value::Int4(8));
+		assert!(matches!(view.get_value(2), Value::None { .. }));
+		assert_eq!(view.get_value(3), Value::Int4(10));
+	}
+
+	#[test]
 	fn branches_of_different_widths_are_rejected() {
 		// A narrower branch used to leave its unfilled columns short, silently misaligning every
 		// value after the first switch; a wider one had its surplus columns dropped.
