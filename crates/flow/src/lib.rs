@@ -10,6 +10,7 @@
 pub mod aggregate;
 #[cfg(feature = "runtime")]
 pub mod analyzer;
+pub mod backfill;
 #[cfg(feature = "runtime")]
 pub mod compiler;
 #[cfg(feature = "runtime")]
