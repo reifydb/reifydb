@@ -188,16 +188,20 @@ impl LatestLeftHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let removed = match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot)?,
-					None => ctx.operator.unmatched_left_latest(pre, indices)?,
-				};
-				let result = vec![Diff::remove(removed)];
-				let group = ctx.state.left.group_of(key_hash);
+				let mut held = Vec::with_capacity(indices.len());
 				for &idx in indices {
-					ctx.state.left.remove_row_in(host, group, require_row_numbers(pre)?[idx])?;
+					if ctx.state.left.remove_row(host, key_hash, require_row_numbers(pre)?[idx])? {
+						held.push(idx);
+					}
 				}
-				Ok(result)
+				if held.is_empty() {
+					return Ok(Vec::new());
+				}
+				let removed = match read_right_slot(host, &ctx.state.right, key_hash)? {
+					Some(slot) => ctx.operator.join_left_with_slot(pre, &held, &slot)?,
+					None => ctx.operator.unmatched_left_latest(pre, &held)?,
+				};
+				Ok(vec![Diff::remove(removed)])
 			}
 			JoinSide::Right => self.handle_right_remove(host, pre, indices, key_hash, ctx),
 		}
