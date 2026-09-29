@@ -11,6 +11,7 @@ use reifydb_value::params::Params;
 
 use crate::{
 	Result,
+	flow_sync::sync_transactional_views,
 	vm::{services::Services, vm::Vm},
 };
 
@@ -35,6 +36,7 @@ impl<'a> Vm<'a> {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, params.clone(), &self.symbols)?;
+		sync_transactional_views(services, txn)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
@@ -51,6 +53,7 @@ impl<'a> Vm<'a> {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, &mut self.symbols)?;
+		sync_transactional_views(services, txn)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}

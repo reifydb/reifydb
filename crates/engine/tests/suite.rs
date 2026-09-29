@@ -218,6 +218,8 @@ mod top_k_system_columns;
 mod transaction;
 #[path = "transactional_view_create.rs"]
 mod transactional_view_create;
+#[path = "transactional_view_maintain.rs"]
+mod transactional_view_maintain;
 #[path = "udf.rs"]
 mod udf;
 #[path = "udf_arity.rs"]

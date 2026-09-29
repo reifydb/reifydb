@@ -10,6 +10,7 @@ use reifydb_core::{
 		catalog::{
 			id::{NamespaceId, ViewId},
 			object::ObjectId,
+			view::ViewKind,
 		},
 		resolved::ResolvedView,
 	},
@@ -78,6 +79,9 @@ pub(crate) fn partition_array(partitions: &[Partition]) -> ArrayRef {
 }
 
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
+	if view.def().kind() == ViewKind::Transactional {
+		return Ok(());
+	}
 	if matches!(rx, Transaction::Test(_)) {
 		unimplemented!("RUN TESTS view reads; see plan-operator.md follow-up");
 	}

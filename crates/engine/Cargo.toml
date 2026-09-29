@@ -35,6 +35,7 @@ reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }
+reifydb-flow-sync = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }

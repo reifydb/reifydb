@@ -10,7 +10,10 @@ use super::{
 	operator::{FlowNode, OperatorDef},
 };
 use crate::{
-	interface::catalog::flow::{FlowEdge, FlowId, OperatorId},
+	interface::catalog::{
+		flow::{FlowEdge, FlowId, OperatorId},
+		id::ViewId,
+	},
 	internal,
 };
 
@@ -128,6 +131,24 @@ impl FlowDag {
 
 	pub fn get_operator_ids(&self) -> impl Iterator<Item = OperatorId> + '_ {
 		self.inner.graph.nodes().map(|e| *e.0)
+	}
+
+	pub fn sink_views(&self) -> impl Iterator<Item = ViewId> + '_ {
+		self.get_operator_ids().filter_map(|id| match self.get_operator(&id).map(|operator| &operator.ty) {
+			Some(OperatorDef::SinkTableView {
+				view,
+				..
+			})
+			| Some(OperatorDef::SinkRingBufferView {
+				view,
+				..
+			})
+			| Some(OperatorDef::SinkSeriesView {
+				view,
+				..
+			}) => Some(*view),
+			_ => None,
+		})
 	}
 
 	pub fn node_count(&self) -> usize {

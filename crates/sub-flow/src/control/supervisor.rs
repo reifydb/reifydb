@@ -17,7 +17,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
-	flow::{dag::FlowDag, operator::OperatorDef},
+	flow::dag::FlowDag,
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
@@ -498,35 +498,9 @@ impl FlowSupervisor {
 	}
 
 	fn is_transactional_flow(&self, flow: &FlowDag) -> bool {
-		for operator_id in flow.get_operator_ids() {
-			let Some(operator) = flow.get_operator(&operator_id) else {
-				continue;
-			};
-			let view = match &operator.ty {
-				OperatorDef::SinkTableView {
-					view,
-					..
-				}
-				| OperatorDef::SinkRingBufferView {
-					view,
-					..
-				}
-				| OperatorDef::SinkSeriesView {
-					view,
-					..
-				} => view,
-				_ => continue,
-			};
-			if self.engine
-				.catalog()
-				.cache()
-				.find_view(*view)
-				.is_some_and(|def| def.kind() == ViewKind::Transactional)
-			{
-				return true;
-			}
-		}
-		false
+		flow.sink_views().any(|view| {
+			self.engine.catalog().cache().find_view(view).is_some_and(|def| def.kind() == ViewKind::Transactional)
+		})
 	}
 
 	fn publish_lineage(&self, state: &SupervisorState) {

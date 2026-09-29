@@ -3353,6 +3353,7 @@ dependencies = [
  "reifydb-evaluate",
  "reifydb-extension",
  "reifydb-flow",
+ "reifydb-flow-sync",
  "reifydb-policy",
  "reifydb-routine",
  "reifydb-routine-abi",
