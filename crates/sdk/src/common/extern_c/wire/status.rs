@@ -18,3 +18,5 @@ pub const EXTERN_C_ERROR_ALLOC: i32 = -3;
 pub const EXTERN_C_ERROR_INVALID_UTF8: i32 = -4;
 
 pub const EXTERN_C_ERROR_MARSHAL: i32 = -5;
+
+pub const EXTERN_C_ERROR_ROW_NUMBER_MISMATCH: i32 = -6;

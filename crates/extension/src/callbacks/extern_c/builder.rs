@@ -26,7 +26,7 @@ use reifydb_sdk::common::{
 		callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 		status::{
 			EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL,
-			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_OK,
+			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_ERROR_ROW_NUMBER_MISMATCH, EXTERN_C_OK,
 		},
 	},
 	family::{cell_width, decode_family_column, family_params, is_family},
@@ -460,6 +460,20 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
+	if matches!(kind, EmitDiffKind::Update) {
+		let pre_rows = match row_numbers_of(pre_row_numbers_ptr, pre_row_numbers_len) {
+			Ok(rows) => rows,
+			Err(code) => return code,
+		};
+		let post_rows = match row_numbers_of(post_row_numbers_ptr, post_row_numbers_len) {
+			Ok(rows) => rows,
+			Err(code) => return code,
+		};
+		if pre_rows != post_rows {
+			return EXTERN_C_ERROR_ROW_NUMBER_MISMATCH;
+		}
+	}
+
 	let mut inner = registry.inner.lock();
 	let now = DateTime::from_nanos(written_at_nanos);
 
@@ -502,6 +516,17 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		post: post_columns,
 	});
 	EXTERN_C_OK
+}
+
+fn row_numbers_of<'a>(ptr: *const u64, len: usize) -> Result<&'a [u64], i32> {
+	if len == 0 {
+		return Ok(&[]);
+	}
+	if ptr.is_null() {
+		return Err(EXTERN_C_ERROR_NULL_PTR);
+	}
+	// SAFETY: `ptr` is non-null and the caller of `host_builder_emit_diff` guarantees `len` initialized elements.
+	Ok(unsafe { slice::from_raw_parts(ptr, len) })
 }
 
 fn assemble_columns_opt(
@@ -837,8 +862,11 @@ mod tests {
 	use reifydb_core::value::{batch::batch, column::factory};
 	use reifydb_sdk::{
 		common::extern_c::wire::{
-			callbacks::builder::ColumnBufferHandle,
-			status::{EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_OK},
+			callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
+			status::{
+				EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_ERROR_ROW_NUMBER_MISMATCH,
+				EXTERN_C_OK,
+			},
 		},
 		flow::operator::{change::BorrowedColumns, extern_c::binding::arena::Arena},
 	};
@@ -853,7 +881,8 @@ mod tests {
 
 	use super::{
 		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
-		host_builder_data_ptr, host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
+		host_builder_data_ptr, host_builder_emit_diff, host_builder_offsets_ptr, numeric_bytes_to_vec,
+		with_registry,
 	};
 
 	fn decimals(texts: &[&str]) -> Vec<Decimal> {
@@ -880,6 +909,37 @@ mod tests {
 					offsets.len(),
 				);
 				(host_builder_commit(handle, rows), handle)
+			}
+		})
+	}
+
+	fn emit_update(registry: &BuilderRegistry, pre_rows: &[u64], post_rows: &[u64]) -> i32 {
+		// One committed one-row column per side, so only the row numbers can make the emit fail.
+		let (_, pre) = commit_varlen(registry, ValueKind::Utf8, b"a", &[0, 1]);
+		let (_, post) = commit_varlen(registry, ValueKind::Utf8, b"b", &[0, 1]);
+		let name = b"c".as_ptr();
+		let len = 1usize;
+		with_registry(registry, || {
+			// SAFETY: a registry is installed and every pointer is a live local valid for the count passed with it.
+			unsafe {
+				host_builder_emit_diff(
+					0,
+					EmitDiffKind::Update,
+					&pre,
+					&name,
+					&len,
+					1,
+					pre_rows.len(),
+					pre_rows.as_ptr(),
+					pre_rows.len(),
+					&post,
+					&name,
+					&len,
+					1,
+					post_rows.len(),
+					post_rows.as_ptr(),
+					post_rows.len(),
+				)
 			}
 		})
 	}
@@ -987,6 +1047,22 @@ mod tests {
 			committed_buffer(&registry, handle),
 			factory::blob("", [Blob::new(vec![0xff]), Blob::new(vec![]), Blob::new(vec![1, 2, 0xfe])])
 		);
+	}
+
+	#[test]
+	fn an_update_that_changes_its_row_number_is_rejected_without_a_diff() {
+		// a downstream join keys its output by row number, so a renumbering update would leave a stale live row.
+		let registry = BuilderRegistry::new();
+		assert_eq!(emit_update(&registry, &[1], &[2]), EXTERN_C_ERROR_ROW_NUMBER_MISMATCH);
+		assert!(registry.inner.lock().accumulator.is_empty(), "a rejected update must not emit a diff");
+	}
+
+	#[test]
+	fn an_update_that_keeps_its_row_number_is_emitted() {
+		// the mismatch check must not reject well formed updates, otherwise every guest update fails.
+		let registry = BuilderRegistry::new();
+		assert_eq!(emit_update(&registry, &[1], &[1]), EXTERN_C_OK);
+		assert_eq!(registry.inner.lock().accumulator.len(), 1, "a well formed update emits exactly one diff");
 	}
 
 	#[test]
