@@ -358,7 +358,7 @@ mod tests {
 mod lookup_tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::ViewKind};
+	use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 	use reifydb_flow::analyzer::FlowDependencyGraph;
 
 	use super::{flow_upstreams, lookup_producers};
@@ -408,7 +408,7 @@ mod lookup_tests {
 
 		let views = upstreams.get(&PRODUCER).expect("the producer is upstream");
 		assert_eq!(views.len(), 1);
-		assert!(views.contains(&reifydb_core::interface::catalog::object::ObjectId::View(LEVELS)));
+		assert!(views.contains(&ObjectId::View(LEVELS)));
 	}
 
 	#[test]

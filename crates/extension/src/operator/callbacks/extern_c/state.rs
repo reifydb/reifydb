@@ -744,9 +744,9 @@ mod join_row_expiry_guard_tests {
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::shape::RowShape};
 	use reifydb_core::{
-		common::{CommitVersion, OperatorClass},
+		common::{CommitVersion, OperatorClass, SourceVersion},
 		interface::{
-			catalog::{config::ConfigKey, flow::OperatorId},
+			catalog::{config::ConfigKey, flow::OperatorId, id::ViewId, storage::StorageId},
 			store::MultiVersionRow,
 		},
 		key::{
@@ -775,6 +775,7 @@ mod join_row_expiry_guard_tests {
 		value::{
 			Value,
 			dictionary::{DictionaryEntryId, DictionaryId},
+			partition::Partition,
 			row_number::RowNumber,
 			value_type::ValueType,
 		},
@@ -1037,18 +1038,14 @@ mod join_row_expiry_guard_tests {
 
 		fn lookup_read(
 			&mut self,
-			_storage: reifydb_core::interface::catalog::storage::StorageId,
-			_partition: reifydb_value::value::partition::Partition,
+			_storage: StorageId,
+			_partition: Partition,
 			_version: CommitVersion,
-		) -> Result<Option<(RowNumber, reifydb_codec::row::bytes::EncodedBytes)>> {
+		) -> Result<Option<(RowNumber, EncodedBytes)>> {
 			unreachable!()
 		}
 
-		fn lookup_view_version(
-			&self,
-			_view: reifydb_core::interface::catalog::id::ViewId,
-			_source: reifydb_core::common::SourceVersion,
-		) -> CommitVersion {
+		fn lookup_view_version(&self, _view: ViewId, _source: SourceVersion) -> CommitVersion {
 			unreachable!()
 		}
 

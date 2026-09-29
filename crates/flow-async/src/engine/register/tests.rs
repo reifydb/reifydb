@@ -209,7 +209,6 @@ fn lookup_flow(left: TableId, right: LookupObject, key: &str) -> FlowDag {
 
 #[test]
 fn a_lookup_whose_left_key_is_text_against_an_int4_partition_column_fails_registration_with_lookup_003() {
-	// A text key can never cast to int4, so the flow must be refused instead of matching nothing at runtime.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::l { k: utf8, a: int4 }");
@@ -233,7 +232,6 @@ fn a_lookup_whose_left_key_is_text_against_an_int4_partition_column_fails_regist
 
 #[test]
 fn a_lookup_whose_int8_left_key_meets_an_int4_partition_column_registers() {
-	// G4: a number casts to the right column's type at runtime, so only an out-of-range value may fail later.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::l { k: int8, a: int4 }");
@@ -250,7 +248,6 @@ fn a_lookup_whose_int8_left_key_meets_an_int4_partition_column_registers() {
 
 #[test]
 fn a_lookup_whose_text_left_key_meets_a_dictionary_partition_column_registers() {
-	// The flow carries plain text and the lookup maps it to the id itself, so a dictionary column is text here.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE DICTIONARY s::syms FOR utf8 AS uint2");
@@ -270,7 +267,6 @@ fn a_lookup_whose_text_left_key_meets_a_dictionary_partition_column_registers() 
 
 #[test]
 fn a_lookup_on_a_sorted_view_fails_registration_with_lookup_001() {
-	// A sorted view keys its rows by sort value, so a partition read would find nothing.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::l { k: int4, a: int4 }");
@@ -292,7 +288,6 @@ fn a_lookup_on_a_sorted_view_fails_registration_with_lookup_001() {
 
 #[test]
 fn a_lookup_on_a_ringbuffer_view_fails_registration_with_lookup_001() {
-	// A ring buffer view is out of the MVP (MD2), even when partitioned like the using columns.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::l { k: int4, a: int4 }");
@@ -314,7 +309,6 @@ fn a_lookup_on_a_ringbuffer_view_fails_registration_with_lookup_001() {
 
 #[test]
 fn a_lookup_with_two_inputs_fails_registration_instead_of_reading_the_second_as_a_side() {
-	// The right side is read from storage and gets no edge, so a second input means a malformed graph.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::l { k: int4, a: int4 }");

@@ -396,6 +396,7 @@ impl FlowNode {
 
 #[cfg(test)]
 mod tests {
+	use postcard::{from_bytes, to_stdvec};
 	use reifydb_value::value::duration::Duration;
 
 	use super::{LookupObject, OperatorDef};
@@ -510,8 +511,8 @@ mod tests {
 		// The DAG is stored with postcard, so a lost field registers a different lookup after restart.
 		for right in [LookupObject::Table(TableId(3)), LookupObject::View(ViewId(4))] {
 			let node = lookup(right);
-			let bytes = postcard::to_stdvec(&node).expect("a lookup node must encode");
-			let decoded: OperatorDef = postcard::from_bytes(&bytes).expect("a lookup node must decode");
+			let bytes = to_stdvec(&node).expect("a lookup node must encode");
+			let decoded: OperatorDef = from_bytes(&bytes).expect("a lookup node must decode");
 			let OperatorDef::Lookup {
 				join_type,
 				right: decoded_right,

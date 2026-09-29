@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
@@ -403,8 +403,8 @@ impl LookupOperator {
 	}
 
 	fn finish(&mut self, host: &mut dyn HostContext, mut output: Output, result: &mut Vec<Diff>) -> Result<()> {
-		let cleared = std::mem::take(&mut output.cleared);
-		let armed = std::mem::take(&mut output.armed);
+		let cleared = mem::take(&mut output.cleared);
+		let armed = mem::take(&mut output.armed);
 		self.expiry.move_rows(host, &cleared, &armed)?;
 		output.into_diffs(result)
 	}
@@ -510,7 +510,7 @@ mod tests {
 		row::row_shape_from_columns,
 		value::{
 			batch::batch,
-			column::factory::{int4, utf8},
+			column::factory::{int4, utf8, utf8_with_bitvec},
 		},
 	};
 	use reifydb_rql::expression::parse_expression;
@@ -619,8 +619,7 @@ mod tests {
 	fn rows(keys: &[Option<&str>], numbers: &[u64], at: DateTime) -> RecordBatch {
 		let values: Vec<String> = keys.iter().map(|key| key.unwrap_or_default().to_string()).collect();
 		let valid: Vec<bool> = keys.iter().map(Option::is_some).collect();
-		let columns = batch(vec![reifydb_core::value::column::factory::utf8_with_bitvec("lk", values, valid)])
-			.unwrap();
+		let columns = batch(vec![utf8_with_bitvec("lk", values, valid)]).unwrap();
 		let columns = with_system_column(
 			columns,
 			SystemColumn::RowNumbers,
@@ -707,6 +706,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::disallowed_methods)]
 	fn lookup_partition_equals_the_partition_a_table_and_a_view_stored() {
 		// S1: the lookup hashes the dictionary id, as both writers do; a plain-value hash would land elsewhere.
 		let engine = TestEngine::new();
@@ -794,7 +794,6 @@ mod tests {
 		.fold(batch(vec![utf8("k", ["a"]), int4("v", [5])]).unwrap(), |columns, (column, array)| {
 			with_system_column(columns, column, array).unwrap()
 		});
-		drop(host);
 		let mut sink_txn = txn_at(&engine, version);
 		sink.apply(
 			&mut sink_txn,

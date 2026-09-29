@@ -829,6 +829,7 @@ mod lookup_tests {
 		interface::catalog::{flow::FlowId, id::ViewId},
 	};
 	use reifydb_flow_async::transaction::LookupVersions;
+	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::FlowPositionTracker;
 
@@ -955,10 +956,7 @@ mod lookup_tests {
 		// Pruning must keep the newest entry at or below the reader, otherwise IP2 fires on a version that
 		// exists.
 		let tracker = FlowPositionTracker::new();
-		tracker.set_upstreams(
-			READER,
-			rustc_hash::FxHashMap::from_iter([(PRODUCER, rustc_hash::FxHashSet::default())]),
-		);
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		tracker.update(READER, cv(25));
 		for step in 1..=5u64 {
 			tracker.update_committed(PRODUCER, cv(step * 10), cv(step * 10), sv(step * 10));

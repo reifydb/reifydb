@@ -54,7 +54,7 @@ use crate::{
 		distinct::operator::DistinctOperator,
 		gate::GateOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
-		lookup::{LookupConfig, LookupOperator},
+		lookup::operator::{LookupConfig, LookupOperator},
 		scan::catalog_schema,
 		sort::SortOperator,
 		take::TakeOperator,

@@ -1535,7 +1535,8 @@ mod tests {
 
 	#[test]
 	fn a_none_first_row_does_not_fix_the_result_type() {
-		// Typing the result from the first row's none branch made it Any, so the first int after it aborted the process.
+		// Typing the result from the first row's none branch made it Any, so the first int after it aborted the
+		// process.
 		let base = EvalContext::testing();
 		let ctx = base.with_eval(
 			batch(vec![bools("flag", [false, true, false, true]), ints("hi", [7, 8, 9, 10])]).unwrap(),

@@ -357,12 +357,16 @@ mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		common::TimeDomain,
-		flow::operator::{FlowNode, OperatorDef},
+		common::{JoinType, TimeDomain},
+		flow::operator::{FlowNode, LookupObject, OperatorDef},
 		interface::{
-			catalog::id::{SeriesId, TableId, ViewId},
+			catalog::{
+				flow::FlowEdge,
+				id::{SeriesId, TableId, ViewId},
+			},
 			change::Diff,
 		},
+		operator_with::LookupWith,
 		value::batch::from_rows,
 	};
 	use reifydb_runtime::context::{
@@ -637,7 +641,7 @@ mod tests {
 		);
 	}
 
-	fn lookup_flow(right: reifydb_core::flow::operator::LookupObject) -> FlowDag {
+	fn lookup_flow(right: LookupObject) -> FlowDag {
 		let mut builder = FlowDag::builder(FlowId(1));
 		builder.add_node(FlowNode::new(
 			SOURCE,
@@ -649,22 +653,16 @@ mod tests {
 		builder.add_node(FlowNode::new(
 			OperatorId(2),
 			OperatorDef::Lookup {
-				join_type: reifydb_core::common::JoinType::Inner,
+				join_type: JoinType::Inner,
 				right,
 				left: vec![],
 				alias: Some("price".to_string()),
-				with: reifydb_core::operator_with::LookupWith {
+				with: LookupWith {
 					retention: None,
 				},
 			},
 		));
-		builder.add_edge(reifydb_core::interface::catalog::flow::FlowEdge::new(
-			1u64,
-			FlowId(1),
-			SOURCE,
-			OperatorId(2),
-		))
-		.unwrap();
+		builder.add_edge(FlowEdge::new(1u64, FlowId(1), SOURCE, OperatorId(2))).unwrap();
 		builder.build()
 	}
 
@@ -689,7 +687,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
 		let view = ObjectId::View(ViewId(9));
-		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::View(ViewId(9)));
+		let flow = lookup_flow(LookupObject::View(ViewId(9)));
 		inner.register_flow_dag(flow.clone());
 		inner.add_lookup_source(FlowId(1), OperatorId(2), view);
 		inner.add_sink(FlowId(2), OperatorId(4), view);
@@ -720,7 +718,7 @@ mod tests {
 		// forever.
 		let engine = TestEngine::new();
 		let inner = lookup_engine(&engine);
-		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::Table(TableId(4)));
+		let flow = lookup_flow(LookupObject::Table(TableId(4)));
 
 		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE]);
 	}
@@ -731,7 +729,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
 		let view = ObjectId::View(ViewId(9));
-		let flow = lookup_flow(reifydb_core::flow::operator::LookupObject::View(ViewId(9)));
+		let flow = lookup_flow(LookupObject::View(ViewId(9)));
 		inner.register_flow_dag(flow.clone());
 		inner.add_lookup_source(FlowId(1), OperatorId(2), view);
 
