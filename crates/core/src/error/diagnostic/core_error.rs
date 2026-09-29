@@ -77,6 +77,24 @@ impl IntoDiagnostic for CoreError {
 				operator_chain: None,
 			},
 
+			CoreError::AppendSystemColumnMismatch {
+				column,
+			} => Diagnostic {
+				code: "ENG_008".to_string(),
+				rql: None,
+				message: format!(
+					"cannot append rows: '{}' is present on one side but not the other",
+					column
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("pass row numbers for every append, or for none".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 			CoreError::FlowError {
 				message,
 			} => flow_error(message),

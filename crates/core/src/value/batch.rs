@@ -556,10 +556,10 @@ fn merge_system_columns(
 			(None, Some(new)) if batch.num_rows() == 0 => new.clone(),
 			(None, None) => continue,
 			_ => {
-				return internal_err!(
-					"cannot append rows: {} is present on one side but not the other",
-					column
-				);
+				return Err(CoreError::AppendSystemColumnMismatch {
+					column: column.to_string(),
+				}
+				.into());
 			}
 		};
 		out = with_system_column(out, column, merged)?;

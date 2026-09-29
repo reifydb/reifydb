@@ -28,6 +28,11 @@ pub enum CoreError {
 		message: String,
 	},
 
+	#[error("cannot append rows: '{column}' is present on one side but not the other")]
+	AppendSystemColumnMismatch {
+		column: String,
+	},
+
 	#[error("Flow processing error: {message}")]
 	FlowError {
 		message: String,
