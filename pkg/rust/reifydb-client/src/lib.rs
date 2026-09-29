@@ -51,8 +51,6 @@ pub use reifydb_client_derive::FromFrame;
 #[cfg(any(feature = "http", feature = "ws"))]
 use reifydb_codec::json::{to::value_to_json, wire_type::WireValueType};
 pub use reifydb_value as value;
-#[cfg(any(feature = "ws", feature = "grpc"))]
-use reifydb_value::error::Error;
 pub use reifydb_value::{
 	params::Params,
 	value::{
@@ -108,11 +106,6 @@ pub struct QueryResult {
 pub struct LoginResult {
 	pub token: String,
 	pub identity: String,
-}
-
-#[cfg(any(feature = "ws", feature = "grpc"))]
-pub fn connection_lost_error() -> Error {
-	ClientError::ConnectionLost.into()
 }
 
 #[cfg(any(feature = "ws", feature = "grpc"))]

@@ -85,7 +85,7 @@ impl JoinRow {
 	}
 }
 
-/// A zero-row `Columns` naming one side's shape. The join needs the right one at construction time
+/// A zero-row schema naming one side's shape. The join needs the right one at construction time
 /// to know which columns an unmatched left row fills with none, and their types decide which
 /// `Value::None` variant it fills them with.
 pub fn schema(spec: &[(&str, ValueType)]) -> SchemaRef {
@@ -110,7 +110,7 @@ fn columns_of(rows: &[&JoinRow]) -> RecordBatch {
 	}
 	let columns = spec.iter().zip(buffers).map(|((name, _), buffer)| buffer.finish(name)).collect();
 
-	// `with_row_numbers` leaves every system time empty, so the times must be written alongside the numbers.
+	// Row numbers alone leave every system time empty, so the times must be written alongside the numbers.
 	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
 	let stamps = [
 		(SystemColumn::RowNumbers, factory::uint8("#rownum", rows.iter().map(|row| row.number.0)).1),

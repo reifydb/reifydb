@@ -227,19 +227,6 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
-	pub fn apply_emitting(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
-		let at = coordinate_of(&change)?;
-		let operator = self.operator.id();
-		let mut txn = self.begin(at);
-		{
-			let mut host = TxnHostContext::new(&mut txn, operator);
-			self.operator.apply(&mut host, change)?;
-		}
-		let emitted = txn.take_accumulator_entries();
-		self.end(txn);
-		Ok(emitted)
-	}
-
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(timer.due);
@@ -356,8 +343,8 @@ mod tests {
 	}
 
 	fn change_at(times: &[DateTime]) -> Change {
-		// The event time lives on the encoded row, not on Columns, so this has to go through the same
-		// builder the window workload uses rather than assembling Columns directly.
+		// The event time lives on the encoded row, not on the batch, so this has to go through the same
+		// builder the window workload uses rather than assembling a batch directly.
 		insert(times
 			.iter()
 			.enumerate()

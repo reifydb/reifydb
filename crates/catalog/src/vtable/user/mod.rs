@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod builder;
 pub mod registry;
 
 use arrow_array::RecordBatch;
 use reifydb_core::metrics::sample::MetricKind;
-use reifydb_value::value::{Value, value_type::ValueType};
-
-use crate::Result;
+use reifydb_value::value::value_type::ValueType;
 
 #[derive(Debug, Clone)]
 pub struct UserVTableColumn {
@@ -45,17 +42,4 @@ pub trait UserVTable: Clone + Send + Sync + 'static {
 	fn vtable(&self) -> Vec<UserVTableColumn>;
 
 	fn get(&self) -> RecordBatch;
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct UserVTablePushdownContext {
-	pub limit: Option<usize>,
-}
-
-pub trait UserVTableIterator: Send + Sync + 'static {
-	fn columns(&self) -> Vec<UserVTableColumn>;
-
-	fn initialize(&mut self, ctx: Option<&UserVTablePushdownContext>) -> Result<()>;
-
-	fn next_batch(&mut self, batch_size: usize) -> Result<Option<Vec<Vec<Value>>>>;
 }

@@ -225,7 +225,7 @@ fn finalize_ringbuffer_insert(
 		assert!(
 			returning_rows_match,
 			"ringbuffer insert with a RETURNING clause must capture one stored row per inserted row \
-			 so the returned Columns reflect every insert; captured {} rows but inserted {}",
+			 so the returned batch reflects every insert; captured {} rows but inserted {}",
 			returned_rows.len(),
 			inserted_count
 		);

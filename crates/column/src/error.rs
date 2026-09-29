@@ -4,7 +4,6 @@
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
-	value::value_type::ValueType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -19,35 +18,6 @@ pub enum ColumnError {
 	FixedArrayRequired {
 		operation: &'static str,
 	},
-
-	#[error("Canonical::from_column_buffer: {variant} not yet supported")]
-	FromColumnDataUnsupported {
-		variant: &'static str,
-	},
-
-	#[error("Canonical::to_column_buffer: unexpected VarLen type {ty}")]
-	ToColumnDataUnexpectedVarLen {
-		ty: ValueType,
-	},
-
-	#[error("Canonical::to_column_buffer: unexpected BigNum type {ty}")]
-	ToColumnDataUnexpectedBigNum {
-		ty: ValueType,
-	},
-
-	#[error("Canonical::to_column_buffer: invalid UTF-8: {reason}")]
-	ToColumnDataInvalidUtf8 {
-		reason: String,
-	},
-
-	#[error("compare: column storage `{storage}` requires rhs `{expected}`")]
-	CompareRhsTypeMismatch {
-		storage: &'static str,
-		expected: &'static str,
-	},
-
-	#[error("compare: BigNum comparison not yet implemented")]
-	CompareBigNumUnsupported,
 
 	#[error("predicate::evaluate: compare did not return a bool array")]
 	PredicateCompareNotBool,
@@ -105,95 +75,6 @@ impl IntoDiagnostic for ColumnError {
 				code: "COL_004".to_string(),
 				rql: None,
 				message: format!("{operation}: only FixedArray storage supported in v1"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::FromColumnDataUnsupported {
-				variant,
-			} => Diagnostic {
-				code: "COL_007".to_string(),
-				rql: None,
-				message: format!("Canonical::from_column_buffer: {variant} not yet supported"),
-				column: None,
-				fragment: Fragment::None,
-				label: Some(format!("{variant} column")),
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::ToColumnDataUnexpectedVarLen {
-				ty,
-			} => Diagnostic {
-				code: "COL_008".to_string(),
-				rql: None,
-				message: format!("Canonical::to_column_buffer: unexpected VarLen type {ty}"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::ToColumnDataUnexpectedBigNum {
-				ty,
-			} => Diagnostic {
-				code: "COL_009".to_string(),
-				rql: None,
-				message: format!("Canonical::to_column_buffer: unexpected BigNum type {ty}"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::ToColumnDataInvalidUtf8 {
-				reason,
-			} => Diagnostic {
-				code: "COL_010".to_string(),
-				rql: None,
-				message: format!("Canonical::to_column_buffer: invalid UTF-8: {reason}"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::CompareRhsTypeMismatch {
-				storage,
-				expected,
-			} => Diagnostic {
-				code: "COL_011".to_string(),
-				rql: None,
-				message: format!("compare: column storage `{storage}` requires rhs `{expected}`"),
-				column: None,
-				fragment: Fragment::None,
-				label: Some("rhs type mismatch".to_string()),
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::CompareBigNumUnsupported => Diagnostic {
-				code: "COL_012".to_string(),
-				rql: None,
-				message: "compare: BigNum comparison not yet implemented".to_string(),
 				column: None,
 				fragment: Fragment::None,
 				label: None,

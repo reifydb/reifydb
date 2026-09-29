@@ -1527,7 +1527,7 @@ fn a_distinct_operator_publishes_one_row_per_key_and_promotes_on_retraction() {
 	);
 }
 
-/// The payload column of one row of a `Columns`, looked up by name so a change in column order cannot
+/// The payload column of one row of a batch, looked up by name so a change in column order cannot
 /// make an assertion read a different column and still pass.
 fn payload(columns: &RecordBatch, idx: usize) -> i64 {
 	let names: Vec<String> = user_columns(columns).map(|(field, _)| field.name().to_string()).collect();

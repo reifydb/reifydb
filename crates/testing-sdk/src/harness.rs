@@ -3,13 +3,7 @@
 
 use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ops::Index};
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::EncodedBytes,
-		shape::{RowFamily, RowShape},
-	},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -266,17 +260,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		result
 	}
 
-	pub fn assert_state<K>(&self, key: K, expected: Value)
-	where
-		TaggedKey: From<K>,
-	{
-		let encoded_key = TaggedKey::from(key).encode();
-		let store = self.state();
-		let shape = RowShape::testing(RowFamily::Pod, &[expected.get_type()]);
-
-		store.assert_value(&encoded_key, &[expected], &shape);
-	}
-
 	pub fn logs(&self) -> Vec<String> {
 		(*self.context).logs()
 	}
@@ -314,10 +297,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 	pub fn operator(&self) -> &T {
 		&self.operator
-	}
-
-	pub fn operator_mut(&mut self) -> &mut T {
-		&mut self.operator
 	}
 
 	pub fn operator_id(&self) -> OperatorId {

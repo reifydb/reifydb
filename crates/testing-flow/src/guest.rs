@@ -3,7 +3,6 @@
 
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
-use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -23,25 +22,15 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sdk::flow::operator::{
-	MountedOperator, OperatorMetadata, extern_c::binding::operator::ExternCOperatorAdapter,
-};
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarness};
+use reifydb_testing_sdk::builders::TestChangeBuilder;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	config::ExtensionParams,
-	value::{
-		Value,
-		column_view::ColumnView,
-		datetime::DateTime,
-		diff_type::DiffType,
-		duration::Duration,
-		row_number::RowNumber,
-		system_columns::{row_numbers, user_columns},
-	},
+	value::{Value, datetime::DateTime, duration::Duration},
 };
 
 pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
@@ -148,10 +137,6 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		self.history.last()
 	}
 
-	pub fn clear_history(&mut self) {
-		self.history.clear();
-	}
-
 	pub fn operator_id(&self) -> OperatorId {
 		self.operator_id
 	}
@@ -244,92 +229,6 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			history: Vec::new(),
 			_phantom: PhantomData,
 		})
-	}
-}
-
-#[derive(Debug, PartialEq)]
-struct ColumnsRender {
-	names: Vec<String>,
-	row_numbers: Vec<RowNumber>,
-	rows: Vec<Vec<Value>>,
-}
-
-#[derive(Debug, PartialEq)]
-struct DiffRender {
-	kind: DiffType,
-	pre: Option<ColumnsRender>,
-	post: Option<ColumnsRender>,
-}
-
-fn render_columns(cols: &RecordBatch) -> ColumnsRender {
-	let views: Vec<ColumnView<'_>> = user_columns(cols)
-		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).expect("a user column reads"))
-		.collect();
-	ColumnsRender {
-		names: views.iter().map(|view| view.field.name().to_string()).collect(),
-		row_numbers: row_numbers(cols).expect("#rownum reads").to_vec(),
-		rows: (0..cols.num_rows()).map(|r| views.iter().map(|view| view.get_value(r)).collect()).collect(),
-	}
-}
-
-fn render_change(change: &Change) -> Vec<DiffRender> {
-	change.diffs
-		.iter()
-		.map(|d| DiffRender {
-			kind: d.kind(),
-			pre: d.pre().map(render_columns),
-			post: d.post().map(render_columns),
-		})
-		.collect()
-}
-
-fn run_extern_c<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
-where
-	C: MountedOperator + OperatorMetadata + 'static,
-{
-	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
-		.with_params(params.iter().cloned())
-		.with(with)
-		.build()
-		.expect("extern-C harness build");
-	inputs.iter().map(|input| harness.apply(input.clone()).expect("extern-C apply")).collect()
-}
-
-fn run_guest<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
-where
-	C: MountedOperator + OperatorMetadata + 'static,
-{
-	let mut harness = GuestOperatorHarness::<C>::builder()
-		.with_params(params.iter().cloned())
-		.with(with)
-		.build()
-		.expect("host harness build");
-	inputs.iter().map(|input| harness.apply(input.clone()).expect("host apply")).collect()
-}
-
-pub fn assert_backend_parity<C>(params: Vec<(&str, Value)>, with: ApplyWith, scenarios: &[(&str, Vec<Change>)])
-where
-	C: MountedOperator + OperatorMetadata + 'static,
-{
-	for (name, inputs) in scenarios {
-		let extern_c = run_extern_c::<C>(&params, with.clone(), inputs);
-		let host = run_guest::<C>(&params, with.clone(), inputs);
-
-		assert_eq!(
-			extern_c.len(),
-			host.len(),
-			"scenario '{name}': extern-C emitted {} outputs, host emitted {}",
-			extern_c.len(),
-			host.len()
-		);
-
-		for (i, (f, n)) in extern_c.iter().zip(host.iter()).enumerate() {
-			assert_eq!(
-				render_change(f),
-				render_change(n),
-				"scenario '{name}' apply #{i}: extern-C vs host emitted-output mismatch"
-			);
-		}
 	}
 }
 

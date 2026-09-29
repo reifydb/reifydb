@@ -338,130 +338,6 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	#[inline]
-	pub fn bool_at(&self, index: usize) -> Option<bool> {
-		if self.type_code() != ValueKind::Boolean || !self.is_defined_at(index) {
-			return None;
-		}
-		let bytes = self.data_bytes();
-		let byte = bytes.get(index / 8).copied()?;
-		Some((byte >> (index % 8)) & 1 == 1)
-	}
-
-	#[inline]
-	pub fn u64_at(&self, index: usize) -> Option<u64> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Uint8 means the buffer is a marshalled &[u64]: aligned, initialized.
-			ValueKind::Uint8 => unsafe { self.as_slice::<u64>()?.get(index).copied() },
-			// SAFETY: type_code Uint4 means the buffer is a marshalled &[u32]: aligned, initialized.
-			ValueKind::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied().map(u64::from) },
-			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
-			ValueKind::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u64::from) },
-			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
-			ValueKind::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u64::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn u32_at(&self, index: usize) -> Option<u32> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Uint4 means the buffer is a marshalled &[u32]: aligned, initialized.
-			ValueKind::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied() },
-			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
-			ValueKind::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u32::from) },
-			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
-			ValueKind::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u32::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn u16_at(&self, index: usize) -> Option<u16> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
-			ValueKind::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied() },
-			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
-			ValueKind::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u16::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn u8_at(&self, index: usize) -> Option<u8> {
-		if self.type_code() != ValueKind::Uint1 || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Uint1 check above means the buffer is a marshalled &[u8]: aligned, initialized.
-		unsafe { self.as_slice::<u8>()?.get(index).copied() }
-	}
-
-	#[inline]
-	pub fn i64_at(&self, index: usize) -> Option<i64> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Int8 means the buffer is a marshalled &[i64]: aligned, initialized.
-			ValueKind::Int8 => unsafe { self.as_slice::<i64>()?.get(index).copied() },
-			// SAFETY: type_code Int4 means the buffer is a marshalled &[i32]: aligned, initialized.
-			ValueKind::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied().map(i64::from) },
-			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
-			ValueKind::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i64::from) },
-			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
-			ValueKind::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i64::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn i32_at(&self, index: usize) -> Option<i32> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Int4 means the buffer is a marshalled &[i32]: aligned, initialized.
-			ValueKind::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied() },
-			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
-			ValueKind::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i32::from) },
-			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
-			ValueKind::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i32::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn i16_at(&self, index: usize) -> Option<i16> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
-			ValueKind::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied() },
-			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
-			ValueKind::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i16::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn i8_at(&self, index: usize) -> Option<i8> {
-		if self.type_code() != ValueKind::Int1 || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Int1 check above means the buffer is a marshalled &[i8]: aligned, initialized.
-		unsafe { self.as_slice::<i8>()?.get(index).copied() }
-	}
-
-	#[inline]
 	pub fn u128_at(&self, index: usize) -> Option<u128> {
 		if self.type_code() != ValueKind::Uint16 || !self.is_defined_at(index) {
 			return None;
@@ -469,16 +345,6 @@ impl<'a> BorrowedColumn<'a> {
 		// SAFETY: the Uint16 check above means the buffer is a marshalled &[u128], so it carries u128's
 		// 16-byte alignment and is initialized.
 		unsafe { self.as_slice::<u128>()?.get(index).copied() }
-	}
-
-	#[inline]
-	pub fn i128_at(&self, index: usize) -> Option<i128> {
-		if self.type_code() != ValueKind::Int16 || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Int16 check above means the buffer is a marshalled &[i128], so it carries i128's
-		// 16-byte alignment and is initialized.
-		unsafe { self.as_slice::<i128>()?.get(index).copied() }
 	}
 
 	#[inline]
@@ -514,29 +380,6 @@ impl<'a> BorrowedColumn<'a> {
 	pub(crate) fn expect_family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
 		self.family_cell_at(index)
 			.unwrap_or_else(|err| panic!("decoding column {} at row {index} failed: {err}", self.name()))
-	}
-
-	#[inline]
-	pub fn f64_at(&self, index: usize) -> Option<f64> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		match self.type_code() {
-			// SAFETY: type_code Float8 means the buffer is a marshalled &[f64]: aligned, initialized.
-			ValueKind::Float8 => unsafe { self.as_slice::<f64>()?.get(index).copied() },
-			// SAFETY: type_code Float4 means the buffer is a marshalled &[f32]: aligned, initialized.
-			ValueKind::Float4 => unsafe { self.as_slice::<f32>()?.get(index).copied().map(f64::from) },
-			_ => None,
-		}
-	}
-
-	#[inline]
-	pub fn f32_at(&self, index: usize) -> Option<f32> {
-		if self.type_code() != ValueKind::Float4 || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Float4 check above means the buffer is a marshalled &[f32]: aligned, initialized.
-		unsafe { self.as_slice::<f32>()?.get(index).copied() }
 	}
 
 	#[inline]
@@ -602,5 +445,3 @@ unsafe fn read_buffer_str(buf: &ExternCBuffer) -> &str {
 	let bytes: &[u8] = unsafe { read_buffer(buf) };
 	str::from_utf8(bytes).unwrap_or("")
 }
-
-pub type DiffKind = DiffType;

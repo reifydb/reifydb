@@ -1049,13 +1049,8 @@ fn negate_column(col: (FieldRef, ArrayRef), fragment: Fragment) -> (FieldRef, Ar
 			let mut bitvec = Vec::with_capacity(len);
 
 			for i in 0..len {
-				if i < container.len() {
-					data.push(!container.value(i));
-					bitvec.push(true);
-				} else {
-					data.push(false);
-					bitvec.push(false);
-				}
+				data.push(!container.value(i));
+				bitvec.push(true);
 			}
 
 			Ok(factory::bool_with_bitvec(fragment.text(), data, bitvec))

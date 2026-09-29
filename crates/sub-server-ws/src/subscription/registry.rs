@@ -297,15 +297,6 @@ fn encode_batch(
 	})
 }
 
-pub fn encode_change_for_handler(
-	subscription_id: SubscriptionId,
-	op: DiffType,
-	columns: RecordBatch,
-	format: WireFormat,
-) -> Option<PushMessage> {
-	encode_change(subscription_id, op, columns, format)
-}
-
 fn encode_change(
 	subscription_id: SubscriptionId,
 	op: DiffType,

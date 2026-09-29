@@ -76,20 +76,6 @@ impl Variable {
 		)
 	}
 
-	pub fn as_columns(&self) -> Option<&RecordBatch> {
-		match self {
-			Variable::Columns {
-				batch,
-				..
-			}
-			| Variable::ForIterator {
-				batch,
-				..
-			} => Some(batch),
-			Variable::Closure(_) => None,
-		}
-	}
-
 	pub fn into_column(self) -> Result<(FieldRef, ArrayRef)> {
 		let batch = match self {
 			Variable::Columns {
@@ -264,16 +250,6 @@ impl SymbolTable {
 		false
 	}
 
-	pub fn all_variable_names(&self) -> Vec<String> {
-		let mut names = Vec::new();
-		for (scope_idx, scope) in self.inner.scopes.iter().enumerate() {
-			for name in scope.variables.keys() {
-				names.push(format!("{}@scope{}", name, scope_idx));
-			}
-		}
-		names
-	}
-
 	pub fn visible_variable_names(&self) -> Vec<String> {
 		let mut visible = HashMap::new();
 
@@ -302,10 +278,6 @@ impl SymbolTable {
 
 	pub fn get_function(&self, name: &str) -> Option<&CompiledFunction> {
 		self.inner.functions.get(name)
-	}
-
-	pub fn function_exists(&self, name: &str) -> bool {
-		self.inner.functions.contains_key(name)
 	}
 
 	pub fn resolve_callable(&self, name: &str) -> Option<Callable> {

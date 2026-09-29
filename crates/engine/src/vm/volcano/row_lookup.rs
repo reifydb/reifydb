@@ -275,8 +275,6 @@ impl QueryNode for RowListLookupNode {
 
 pub(crate) struct RowRangeScanNode {
 	source: ResolvedObject,
-	#[allow(dead_code)]
-	start: u64,
 	end: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -294,7 +292,6 @@ impl RowRangeScanNode {
 
 		Ok(Self {
 			source,
-			start,
 			end,
 			context: Some(context),
 			headers,

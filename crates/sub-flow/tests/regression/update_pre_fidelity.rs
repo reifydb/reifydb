@@ -507,7 +507,7 @@ mod join {
 
 	#[test]
 	fn no_join_strategy_publishes_a_row_less_diff() {
-		// Regression. `Emitted::published` gated on `Columns::is_empty`, which asks whether there are
+		// Regression. `Emitted::published` gated on an emptiness check that asked whether there were
 		// any COLUMNS, not any rows - and `retain_rows` with an empty index list returns the full column
 		// set with zero rows in it. Every publish where all identities were fresh therefore carried a
 		// second, row-less Update, and `snapshot` without `latest` was where it reached the output.

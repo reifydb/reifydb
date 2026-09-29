@@ -22,7 +22,6 @@ use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 pub const CONTENT_TYPE_JSON: &str = "application/vnd.reifydb.json";
 pub const CONTENT_TYPE_FRAMES: &str = "application/vnd.reifydb.frames";
 pub const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
-pub const CONTENT_TYPE_PROTO: &str = "application/vnd.reifydb.proto";
 
 pub fn encode_frames_rbcf(frames: &[Frame]) -> Result<Vec<u8>, String> {
 	encode_frames(frames, &EncodeOptions::fast()).map_err(|e| e.to_string())

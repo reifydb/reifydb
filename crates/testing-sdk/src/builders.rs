@@ -9,7 +9,7 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
-		catalog::{flow::OperatorId, id::TableId, object::ObjectId},
+		catalog::{id::TableId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
@@ -170,18 +170,8 @@ impl TestChangeBuilder {
 		self
 	}
 
-	pub fn changed_by_node(mut self, operator: OperatorId) -> Self {
-		self.origin = ChangeOrigin::Flow(operator);
-		self
-	}
-
 	pub fn with_version(mut self, version: CommitVersion) -> Self {
 		self.version = version;
-		self
-	}
-
-	pub fn with_changed_at(mut self, changed_at: DateTime) -> Self {
-		self.changed_at = changed_at;
 		self
 	}
 
@@ -277,26 +267,10 @@ impl TestLayoutBuilder {
 }
 
 pub mod helpers {
-	use reifydb_codec::row::shape::RowShape;
 	use reifydb_core::{interface::change::Change, row::Row};
-	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
-
-	pub fn counter_layout() -> RowShape {
-		TestLayoutBuilder::new().add_type(ValueType::Int8).build()
-	}
-
-	pub fn key_value_layout() -> RowShape {
-		TestLayoutBuilder::new().add_type(ValueType::Utf8).add_type(ValueType::Int8).build()
-	}
-
-	pub fn named_key_value_layout() -> RowShape {
-		TestLayoutBuilder::new()
-			.add_field("key", ValueType::Utf8)
-			.add_field("value", ValueType::Int8)
-			.build_named()
-	}
 
 	pub fn int_row(row_number: impl Into<RowNumber>, value: i8) -> Row {
 		TestRowBuilder::new(row_number).with_values(vec![Value::Int8(value as i64)]).build()
@@ -306,10 +280,6 @@ pub mod helpers {
 		TestRowBuilder::new(row_number)
 			.with_values(vec![Value::Utf8(key.into()), Value::Int8(value as i64)])
 			.build()
-	}
-
-	pub fn empty_change() -> Change {
-		TestChangeBuilder::new().build()
 	}
 
 	pub fn insert_change(row: Row) -> Change {

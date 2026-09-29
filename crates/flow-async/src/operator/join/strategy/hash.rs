@@ -660,7 +660,7 @@ mod tests {
 	}
 
 	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> RecordBatch {
-		// with_row_numbers carries no #time, so a timed row must set it through with_system.
+		// A batch with only #rownum carries no #time, so a timed row must add #time as its own column.
 		let columns = columns_with_fields(fields, row_number);
 		match time {
 			Some(time) => with_system_column(columns, SystemColumn::Time, Arc::new(datetime_array([time])))

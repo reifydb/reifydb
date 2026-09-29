@@ -184,10 +184,6 @@ impl Diff {
 			} => *origin = new_origin,
 		}
 	}
-
-	pub fn effective_origin<'a>(&'a self, parent: &'a ChangeOrigin) -> &'a ChangeOrigin {
-		self.origin().unwrap_or(parent)
-	}
 }
 
 #[derive(Debug, Clone)]

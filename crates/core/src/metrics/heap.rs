@@ -89,14 +89,6 @@ pub struct StateCompleteness {
 }
 
 impl StateCompleteness {
-	pub const MERGE_IDENTITY: Self = Self {
-		values_complete: true,
-		membership_complete: true,
-		absences_served: Count::ZERO,
-		false_positives: Count::ZERO,
-		revocations: Count::ZERO,
-	};
-
 	pub fn merge(self, rhs: Self) -> Self {
 		Self {
 			values_complete: self.values_complete && rhs.values_complete,

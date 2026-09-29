@@ -113,7 +113,7 @@ fn join(engine: &TestEngine) -> JoinOperator {
 	.expect("the join operator must build")
 }
 
-/// The right-side value carried by a single-row `Columns`, looked up by name so a change in column
+/// The right-side value carried by a single-row batch, looked up by name so a change in column
 /// order cannot make the assertion read a different column and still pass.
 fn right_value(columns: &RecordBatch) -> i64 {
 	let names: Vec<String> = user_columns(columns).map(|(field, _)| field.name().to_string()).collect();
