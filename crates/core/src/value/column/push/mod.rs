@@ -36,7 +36,7 @@ macro_rules! impl_native_push {
 						builder.append_value(value);
 					}
 					other => panic!(
-						"called `push::<{}>()` on ColumnBuffer::{:?}",
+						"called `push::<{}>()` on ColumnBuilder::{:?}",
 						stringify!($t),
 						other.get_type()
 					),
@@ -55,7 +55,7 @@ macro_rules! impl_temporal_push {
 						builder.append_value($to_native(value));
 					}
 					other => panic!(
-						"called `push::<{}>()` on ColumnBuffer::{:?}",
+						"called `push::<{}>()` on ColumnBuilder::{:?}",
 						stringify!($t),
 						other.get_type()
 					),
@@ -83,7 +83,7 @@ macro_rules! impl_numeric_push {
 					}
 					other => {
 						panic!(
-							"called `push::<{}>()` on incompatible ColumnBuffer::{:?}",
+							"called `push::<{}>()` on incompatible ColumnBuilder::{:?}",
 							stringify!($from),
 							other.get_type()
 						);
@@ -98,7 +98,7 @@ impl Push<bool> for ColumnBuilder {
 	fn push(&mut self, value: bool) {
 		match &mut self.inner {
 			TypedBuilder::Bool(builder) => builder.append_value(value),
-			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
+			other => panic!("called `push::<bool>()` on ColumnBuilder::{:?}", other.get_type()),
 		}
 	}
 }
@@ -179,7 +179,7 @@ impl Push<Blob> for ColumnBuilder {
 			} => {
 				builder.append_value(value.as_bytes());
 			}
-			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
+			other => panic!("called `push::<Blob>()` on ColumnBuilder::{:?}", other.get_type()),
 		}
 	}
 }
@@ -194,7 +194,7 @@ impl Push<String> for ColumnBuilder {
 				builder.append_value(value);
 			}
 			other => {
-				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
+				panic!("called `push::<String>()` on ColumnBuilder::{:?}", other.get_type())
 			}
 		}
 	}
@@ -207,7 +207,9 @@ impl Push<DictionaryEntryId> for ColumnBuilder {
 				builder,
 				..
 			} => append_fixed(builder, &dictionary_array::encode(value)),
-			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
+			other => {
+				panic!("called `push::<DictionaryEntryId>()` on ColumnBuilder::{:?}", other.get_type())
+			}
 		}
 	}
 }

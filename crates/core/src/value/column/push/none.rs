@@ -12,13 +12,25 @@ impl ColumnBuilder {
 
 #[cfg(test)]
 pub mod tests {
+	use arrow_array::ArrayRef;
+	use arrow_schema::FieldRef;
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_value::value::{dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType};
+	use reifydb_value::value::{
+		column_view::ColumnView, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType,
+	};
 
-	use crate::value::column::ColumnBuffer;
+	use crate::value::column::{builder::ColumnBuilder, factory};
+
+	fn builder_of(column: (FieldRef, ArrayRef)) -> ColumnBuilder {
+		ColumnBuilder::from_view(&ColumnView::try_from(&column).unwrap())
+	}
+
+	fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+		ColumnView::try_from(column).unwrap()
+	}
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -29,10 +41,11 @@ pub mod tests {
 
 	#[test]
 	fn test_bool() {
-		let mut col = ColumnBuffer::bool(vec![true]).into_builder();
+		let mut col = builder_of(factory::bool("c", vec![true]));
 		col.push_none();
 		// push_none must add a null row and make the bare column optional, never a default value.
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -40,9 +53,10 @@ pub mod tests {
 
 	#[test]
 	fn test_float4() {
-		let mut col = ColumnBuffer::float4(vec![1.0]).into_builder();
+		let mut col = builder_of(factory::float4("c", vec![1.0]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -50,9 +64,10 @@ pub mod tests {
 
 	#[test]
 	fn test_float8() {
-		let mut col = ColumnBuffer::float8(vec![1.0]).into_builder();
+		let mut col = builder_of(factory::float8("c", vec![1.0]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -60,9 +75,10 @@ pub mod tests {
 
 	#[test]
 	fn test_int1() {
-		let mut col = ColumnBuffer::int1(vec![1]).into_builder();
+		let mut col = builder_of(factory::int1("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -70,9 +86,10 @@ pub mod tests {
 
 	#[test]
 	fn test_int2() {
-		let mut col = ColumnBuffer::int2(vec![1]).into_builder();
+		let mut col = builder_of(factory::int2("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -80,9 +97,10 @@ pub mod tests {
 
 	#[test]
 	fn test_int4() {
-		let mut col = ColumnBuffer::int4(vec![1]).into_builder();
+		let mut col = builder_of(factory::int4("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -90,9 +108,10 @@ pub mod tests {
 
 	#[test]
 	fn test_int8() {
-		let mut col = ColumnBuffer::int8(vec![1]).into_builder();
+		let mut col = builder_of(factory::int8("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -100,9 +119,10 @@ pub mod tests {
 
 	#[test]
 	fn test_int16() {
-		let mut col = ColumnBuffer::int16(vec![1]).into_builder();
+		let mut col = builder_of(factory::int16("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -110,9 +130,10 @@ pub mod tests {
 
 	#[test]
 	fn test_string() {
-		let mut col = ColumnBuffer::utf8(vec!["a"]).into_builder();
+		let mut col = builder_of(factory::utf8("c", vec!["a"]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -120,9 +141,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uint1() {
-		let mut col = ColumnBuffer::uint1(vec![1]).into_builder();
+		let mut col = builder_of(factory::uint1("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -130,9 +152,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uint2() {
-		let mut col = ColumnBuffer::uint2(vec![1]).into_builder();
+		let mut col = builder_of(factory::uint2("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -140,9 +163,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uint4() {
-		let mut col = ColumnBuffer::uint4(vec![1]).into_builder();
+		let mut col = builder_of(factory::uint4("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -150,9 +174,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uint8() {
-		let mut col = ColumnBuffer::uint8(vec![1]).into_builder();
+		let mut col = builder_of(factory::uint8("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -160,9 +185,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uint16() {
-		let mut col = ColumnBuffer::uint16(vec![1]).into_builder();
+		let mut col = builder_of(factory::uint16("c", vec![1]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -171,9 +197,10 @@ pub mod tests {
 	#[test]
 	fn test_identity_id() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let mut col = ColumnBuffer::identity_id(vec![IdentityId::generate(&clock, &rng)]).into_builder();
+		let mut col = builder_of(factory::identity_id("c", vec![IdentityId::generate(&clock, &rng)]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -181,9 +208,10 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id() {
-		let mut col = ColumnBuffer::dictionary_id(vec![DictionaryEntryId::U4(10)]).into_builder();
+		let mut col = builder_of(factory::dictionary_id("c", vec![DictionaryEntryId::U4(10)]));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
 		assert_eq!(col.len(), 2);
@@ -191,9 +219,10 @@ pub mod tests {
 
 	#[test]
 	fn test_none_on_option() {
-		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 5).into_builder();
+		let mut col = builder_of(factory::none_typed("c", ValueType::Boolean, 5));
 		col.push_none();
-		let col = col.finish();
+		let col = col.finish("c");
+		let col = view(&col);
 		assert_eq!(col.len(), 6);
 		assert!(!col.is_defined(0));
 		assert!(!col.is_defined(5));

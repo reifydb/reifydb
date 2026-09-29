@@ -3,12 +3,13 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_value::value::duration::Duration;
 
-use crate::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use crate::interface::catalog::id::SubscriptionId;
 
 pub trait SubscriptionInspector: Send + Sync {
-	fn inspect(&self, id: SubscriptionId) -> Option<Columns>;
+	fn inspect(&self, id: SubscriptionId) -> Option<RecordBatch>;
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
 }

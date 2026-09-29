@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Borrow, result::Result as StdResult};
+use std::{borrow::Borrow, result::Result as StdResult, sync::Arc};
 
-use arrow_array::{Array, Decimal128Array, Decimal256Array, PrimitiveArray};
+use arrow_array::{Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray};
 use arrow_buffer::{ScalarBuffer, i256};
 use arrow_schema::DataType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
@@ -47,11 +47,19 @@ impl DecimalArray {
 		}
 	}
 
-	pub fn len(&self) -> usize {
+	pub fn view(&self) -> DecimalView<'_> {
+		DecimalView::from(self)
+	}
+
+	pub fn into_array(self) -> ArrayRef {
 		match self {
-			DecimalArray::Decimal128(array) => array.len(),
-			DecimalArray::Decimal256(array) => array.len(),
+			DecimalArray::Decimal128(array) => Arc::new(array),
+			DecimalArray::Decimal256(array) => Arc::new(array),
 		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.view().len()
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -59,42 +67,106 @@ impl DecimalArray {
 	}
 
 	pub fn precision(&self) -> Precision {
-		Precision::new(match self {
-			DecimalArray::Decimal128(array) => array.precision(),
-			DecimalArray::Decimal256(array) => array.precision(),
+		self.view().precision()
+	}
+
+	pub fn scale(&self) -> Scale {
+		self.view().scale()
+	}
+
+	pub fn data_type(&self) -> &DataType {
+		self.view().data_type()
+	}
+
+	pub fn unscaled_at(&self, index: usize) -> Option<i256> {
+		self.view().unscaled_at(index)
+	}
+
+	pub fn unscaled_values(&self) -> Vec<i256> {
+		self.view().unscaled_values()
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum DecimalView<'a> {
+	Decimal128(&'a Decimal128Array),
+	Decimal256(&'a Decimal256Array),
+}
+
+impl<'a> From<&'a DecimalArray> for DecimalView<'a> {
+	fn from(array: &'a DecimalArray) -> Self {
+		match array {
+			DecimalArray::Decimal128(array) => DecimalView::Decimal128(array),
+			DecimalArray::Decimal256(array) => DecimalView::Decimal256(array),
+		}
+	}
+}
+
+impl<'a> From<&DecimalView<'a>> for DecimalView<'a> {
+	fn from(view: &DecimalView<'a>) -> Self {
+		*view
+	}
+}
+
+impl From<DecimalView<'_>> for DecimalArray {
+	fn from(view: DecimalView<'_>) -> Self {
+		match view {
+			DecimalView::Decimal128(array) => DecimalArray::Decimal128(array.clone()),
+			DecimalView::Decimal256(array) => DecimalArray::Decimal256(array.clone()),
+		}
+	}
+}
+
+impl<'a> DecimalView<'a> {
+	pub fn array(&self) -> &'a dyn Array {
+		match *self {
+			DecimalView::Decimal128(array) => array,
+			DecimalView::Decimal256(array) => array,
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.array().len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn precision(&self) -> Precision {
+		Precision::new(match *self {
+			DecimalView::Decimal128(array) => array.precision(),
+			DecimalView::Decimal256(array) => array.precision(),
 		})
 	}
 
 	pub fn scale(&self) -> Scale {
-		let scale = match self {
-			DecimalArray::Decimal128(array) => array.scale(),
-			DecimalArray::Decimal256(array) => array.scale(),
+		let scale = match *self {
+			DecimalView::Decimal128(array) => array.scale(),
+			DecimalView::Decimal256(array) => array.scale(),
 		};
 		Scale::new(u8::try_from(scale).expect("decimal arrays are built with a non-negative scale"))
 	}
 
-	pub fn data_type(&self) -> &DataType {
-		match self {
-			DecimalArray::Decimal128(array) => array.data_type(),
-			DecimalArray::Decimal256(array) => array.data_type(),
-		}
+	pub fn data_type(&self) -> &'a DataType {
+		self.array().data_type()
 	}
 
 	pub fn unscaled_at(&self, index: usize) -> Option<i256> {
-		match self {
-			DecimalArray::Decimal128(array) => {
+		match *self {
+			DecimalView::Decimal128(array) => {
 				array.values().get(index).map(|&value| i256::from_i128(value))
 			}
-			DecimalArray::Decimal256(array) => array.values().get(index).copied(),
+			DecimalView::Decimal256(array) => array.values().get(index).copied(),
 		}
 	}
 
 	pub fn unscaled_values(&self) -> Vec<i256> {
-		match self {
-			DecimalArray::Decimal128(array) => {
+		match *self {
+			DecimalView::Decimal128(array) => {
 				array.values().iter().map(|&value| i256::from_i128(value)).collect()
 			}
-			DecimalArray::Decimal256(array) => array.values().to_vec(),
+			DecimalView::Decimal256(array) => array.values().to_vec(),
 		}
 	}
 }
@@ -128,21 +200,23 @@ pub fn decimal_array<B: Borrow<Decimal>>(
 	DecimalArray::from_unscaled(precision, scale, unscaled)
 }
 
-pub fn decimal_at(array: &DecimalArray, index: usize) -> Option<Decimal> {
+pub fn decimal_at<'a>(array: impl Into<DecimalView<'a>>, index: usize) -> Option<Decimal> {
+	let array = array.into();
 	let scale = array.scale().value();
 	array.unscaled_at(index)
 		.map(|value| Decimal::from_parts(value, scale).expect("a decimal array holds only valid decimals"))
 }
 
-pub fn decimals(array: &DecimalArray) -> Vec<Decimal> {
+pub fn decimals<'a>(array: impl Into<DecimalView<'a>>) -> Vec<Decimal> {
+	let array = array.into();
 	(0..array.len()).filter_map(|index| decimal_at(array, index)).collect()
 }
 
-pub fn decimal_get_value(array: &DecimalArray, index: usize) -> Value {
+pub fn decimal_get_value<'a>(array: impl Into<DecimalView<'a>>, index: usize) -> Value {
 	decimal_at(array, index).map(Value::Decimal).unwrap_or_else(Value::none)
 }
 
-pub fn decimal_as_string(array: &DecimalArray, index: usize) -> String {
+pub fn decimal_as_string<'a>(array: impl Into<DecimalView<'a>>, index: usize) -> String {
 	decimal_at(array, index).map(|value| value.to_string()).unwrap_or_else(|| "none".to_string())
 }
 

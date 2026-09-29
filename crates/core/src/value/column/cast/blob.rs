@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	value::{blob::Blob, value_type::ValueType},
+	value::{
+		blob::Blob,
+		column_view::{ColumnView, ViewData},
+		value_type::ValueType,
+	},
 };
 
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	match data {
-		ColumnBuffer::Utf8 {
+pub fn to_blob(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+	match &data.data {
+		ViewData::Utf8 {
 			container,
 			..
 		} => {
@@ -26,7 +31,7 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 					out.push_none()
 				}
 			}
-			Ok(out.finish())
+			Ok(out.finish(data.field.name()))
 		}
 		_ => {
 			let from = data.get_type();
@@ -46,22 +51,23 @@ pub mod tests {
 	use reifydb_value::{fragment::Fragment, value::container::varlen_array::get};
 
 	use super::*;
+	use crate::value::column::factory::{int4_with_bitvec, utf8_with_bitvec};
 
 	#[test]
 	fn test_from_utf8() {
 		let strings = vec!["Hello".to_string(), "World".to_string()];
 		let bitvec = BooleanBuffer::new_set(2);
-		let container = ColumnBuffer::utf8_with_bitvec(strings, bitvec);
+		let container = utf8_with_bitvec("x", strings, bitvec);
 
-		let result = to_blob(&container, Fragment::testing_empty).unwrap();
+		let result = to_blob(&ColumnView::try_from(&container).unwrap(), Fragment::testing_empty).unwrap();
 
-		match result {
-			ColumnBuffer::Blob {
+		match ColumnView::try_from(&result).unwrap().data {
+			ViewData::Blob {
 				container,
 				..
 			} => {
-				assert_eq!(get(&container, 0), Some(b"Hello".as_slice()));
-				assert_eq!(get(&container, 1), Some(b"World".as_slice()));
+				assert_eq!(get(container, 0), Some(b"Hello".as_slice()));
+				assert_eq!(get(container, 1), Some(b"World".as_slice()));
 			}
 			_ => panic!("Expected BLOB column data"),
 		}
@@ -71,9 +77,9 @@ pub mod tests {
 	fn test_unsupported() {
 		let ints = vec![42i32];
 		let bitvec = BooleanBuffer::new_set(1);
-		let container = ColumnBuffer::int4_with_bitvec(ints, bitvec);
+		let container = int4_with_bitvec("x", ints, bitvec);
 
-		let result = to_blob(&container, Fragment::testing_empty);
+		let result = to_blob(&ColumnView::try_from(&container).unwrap(), Fragment::testing_empty);
 		assert!(result.is_err());
 	}
 }

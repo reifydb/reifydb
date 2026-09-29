@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
+use std::{result::Result as StdResult, sync::Arc};
 
-use arrow_schema::{ArrowError, DataType, Field, IntervalUnit, TimeUnit, extension::ExtensionType};
-use serde::{Deserialize, de::DeserializeOwned};
+use arrow_array::ArrayRef;
+use arrow_schema::{ArrowError, DataType, Field, FieldRef, IntervalUnit, TimeUnit, extension::ExtensionType};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{from_str, json};
 
 use crate::{
@@ -20,12 +21,21 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldType {
 	pub value_type: Option<ValueType>,
 	pub max_bytes: Option<MaxBytes>,
 	pub dictionary_id: Option<DictionaryId>,
 	pub declared_type: Option<ValueType>,
+}
+
+impl From<ValueType> for FieldType {
+	fn from(value_type: ValueType) -> Self {
+		FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		}
+	}
 }
 
 pub fn to_field(name: &str, field_type: &FieldType) -> Field {
@@ -86,6 +96,10 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 			panic!("field {name}: a nested Option has no arrow field, found {field_type:?}")
 		}
 	}
+}
+
+pub fn named(name: &str, field_type: FieldType, array: ArrayRef) -> (FieldRef, ArrayRef) {
+	(Arc::new(to_field(name, &field_type)), array)
 }
 
 pub fn from_field(field: &Field) -> Result<FieldType> {
@@ -190,7 +204,7 @@ fn tagged<E: ExtensionType>(field: &Field) -> Result<E> {
 	field.try_extension_type::<E>().map_err(|error| field_error(format!("field {}: {error}", field.name())))
 }
 
-fn field_error(message: String) -> Error {
+pub(crate) fn field_error(message: String) -> Error {
 	Error(Box::new(Diagnostic {
 		code: "INTERNAL_ERROR".to_string(),
 		message,
@@ -655,5 +669,21 @@ mod tests {
 	fn a_nested_option_panics() {
 		// Arrow has one nullable flag, so a second Option layer can not be written and must not be dropped.
 		to_field("c", &plain(ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Int4))))));
+	}
+
+	#[test]
+	fn from_a_value_type_sets_only_the_value_type() {
+		// A conversion that invented a dictionary id or size limit would change what the column accepts.
+		let optional = ValueType::Option(Box::new(ValueType::Utf8));
+		assert_eq!(
+			FieldType::from(optional.clone()),
+			FieldType {
+				value_type: Some(optional),
+				max_bytes: None,
+				dictionary_id: None,
+				declared_type: None,
+			}
+		);
+		assert_eq!(FieldType::from(ValueType::Int4), plain(ValueType::Int4));
 	}
 }

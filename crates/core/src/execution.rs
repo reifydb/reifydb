@@ -5,7 +5,10 @@ use std::ops::Deref;
 
 use reifydb_value::{
 	error::Error,
-	value::{frame::frame::Frame, system_columns::SystemColumn},
+	value::{
+		frame::frame::Frame,
+		system_columns::{SystemColumn, keep_system_columns},
+	},
 };
 
 use crate::{internal_err, metrics::execution::ExecutionMetrics};
@@ -37,7 +40,9 @@ impl ExecutionResult {
 			);
 		}
 		for (frame, named) in self.frames.iter_mut().zip(&self.named_system_columns) {
-			frame.system.keep_row_numbers_and(named);
+			let mut keep = named.clone();
+			keep.push(SystemColumn::RowNumbers);
+			frame.batch = keep_system_columns(&frame.batch, &keep)?;
 		}
 		Ok(())
 	}

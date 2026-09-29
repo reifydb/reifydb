@@ -1,84 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	fmt::{self, Display, Formatter},
-	ops::{Deref, Index},
-};
+use std::fmt::{self, Display, Formatter};
 
-use serde::{Deserialize, Serialize};
+use arrow_array::RecordBatch;
 
-use super::column::FrameColumn;
 use crate::{
 	util::unicode::UnicodeWidthStr,
-	value::{
-		Value,
-		datetime::DateTime,
-		diff_type::DiffType,
-		row_number::RowNumber,
-		system_columns::{SystemColumn, SystemColumns},
-	},
+	value::{Value, column_view::ColumnView, diff_type::DiffType, system_columns::SystemColumn},
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Frame {
-	pub system: SystemColumns,
-	pub columns: Vec<FrameColumn>,
+	pub batch: RecordBatch,
 	pub op: Option<DiffType>,
 }
 
-impl Frame {
-	#[inline]
-	pub fn row_numbers(&self) -> &[RowNumber] {
-		self.system.row_numbers()
-	}
-
-	#[inline]
-	pub fn has_row_numbers(&self) -> bool {
-		self.system.has_row_numbers()
-	}
-
-	#[inline]
-	pub fn created_at(&self) -> &[DateTime] {
-		self.system.created_at()
-	}
-
-	#[inline]
-	pub fn updated_at(&self) -> &[DateTime] {
-		self.system.updated_at()
-	}
-
-	#[inline]
-	pub fn time(&self) -> &[DateTime] {
-		self.system.time()
-	}
-}
-
-impl Deref for Frame {
-	type Target = [FrameColumn];
-
-	fn deref(&self) -> &Self::Target {
-		&self.columns
-	}
-}
-
-impl Index<usize> for Frame {
-	type Output = FrameColumn;
-
-	fn index(&self, index: usize) -> &Self::Output {
-		self.columns.index(index)
+impl From<RecordBatch> for Frame {
+	fn from(batch: RecordBatch) -> Self {
+		Self {
+			batch,
+			op: None,
+		}
 	}
 }
 
 fn escape_control_chars(s: &str) -> String {
 	s.replace('\n', "\\n").replace('\t', "\\t")
-}
-
-fn present_system_columns(frame: &Frame) -> Vec<(&'static str, Vec<String>)> {
-	if !frame.has_row_numbers() {
-		return Vec::new();
-	}
-	vec![(SystemColumn::RowNumbers.name(), frame.row_numbers().iter().map(|v| v.to_string()).collect())]
 }
 
 fn centered(width: usize, content: &str) -> String {
@@ -89,39 +37,28 @@ fn centered(width: usize, content: &str) -> String {
 }
 
 impl Frame {
-	pub fn new(columns: Vec<FrameColumn>) -> Self {
-		Self {
-			system: SystemColumns::empty(),
-			columns,
-			op: None,
-		}
-	}
-
 	pub fn with_op(mut self, op: DiffType) -> Self {
 		self.op = Some(op);
 		self
 	}
 
-	pub fn with_row_numbers(columns: Vec<FrameColumn>, row_numbers: Vec<RowNumber>) -> Self {
-		Self {
-			system: SystemColumns::new(
-				row_numbers,
-				Vec::new(),
-				Vec::new(),
-				Vec::new(),
-				Vec::new(),
-				Vec::new(),
-			),
-			columns,
-			op: None,
-		}
+	pub fn to_rows(&self) -> Vec<Vec<(String, Value)>> {
+		let views = self.views().expect("a frame column does not match its field");
+		(0..self.batch.num_rows())
+			.map(|row_idx| {
+				views.iter().map(|(name, view)| (name.clone(), view.get_value(row_idx))).collect()
+			})
+			.collect()
 	}
 
-	pub fn to_rows(&self) -> Vec<Vec<(String, Value)>> {
-		let row_count = self.first().map_or(0, |c| c.data.len());
-		(0..row_count)
-			.map(|row_idx| {
-				self.columns.iter().map(|col| (col.name.clone(), col.data.get_value(row_idx))).collect()
+	fn views(&self) -> crate::Result<Vec<(String, ColumnView<'_>)>> {
+		let schema = self.batch.schema_ref();
+		self.batch
+			.columns()
+			.iter()
+			.zip(schema.fields().iter())
+			.map(|(array, field)| {
+				Ok((field.name().clone(), ColumnView::try_from((array, field.as_ref()))?))
 			})
 			.collect()
 	}
@@ -129,21 +66,20 @@ impl Frame {
 
 impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let row_count = self.first().map_or(0, |c| c.data.len());
-		let system = present_system_columns(self);
+		let row_count = self.batch.num_rows();
+		let mut columns = self.views().map_err(|_| fmt::Error)?;
+		if let Some(index) = columns.iter().position(|(name, _)| name == SystemColumn::RowNumbers.name()) {
+			let rownum = columns.remove(index);
+			columns.insert(0, rownum);
+		}
 
 		let mut col_widths: Vec<usize> = Vec::new();
 
-		for (header, cells) in &system {
-			let max_val_width = cells.iter().map(|c| c.width()).max().unwrap_or(0);
-			col_widths.push(header.width().max(max_val_width));
-		}
-
-		for col in &self.columns {
-			let header_width = escape_control_chars(&col.name).width();
+		for (name, view) in &columns {
+			let header_width = escape_control_chars(name).width();
 			let mut max_val_width = 0;
-			for i in 0..col.data.len() {
-				max_val_width = max_val_width.max(escape_control_chars(&col.data.as_string(i)).width());
+			for i in 0..view.len() {
+				max_val_width = max_val_width.max(escape_control_chars(&view.as_string(i)).width());
 			}
 			col_widths.push(header_width.max(max_val_width));
 		}
@@ -161,24 +97,17 @@ impl Display for Frame {
 		writeln!(f, "{}", sep)?;
 
 		let mut header_parts = Vec::new();
-		for (col_idx, (header, _)) in system.iter().enumerate() {
-			header_parts.push(centered(col_widths[col_idx], header));
-		}
-		for (offset, col) in self.columns.iter().enumerate() {
-			let name = escape_control_chars(&col.name);
-			header_parts.push(centered(col_widths[system.len() + offset], &name));
+		for (col_idx, (name, _)) in columns.iter().enumerate() {
+			header_parts.push(centered(col_widths[col_idx], &escape_control_chars(name)));
 		}
 		writeln!(f, "|{}|", header_parts.join("|"))?;
 		writeln!(f, "{}", sep)?;
 
 		for row_idx in 0..row_count {
 			let mut row_parts = Vec::new();
-			for (col_idx, (_, cells)) in system.iter().enumerate() {
-				row_parts.push(centered(col_widths[col_idx], &cells[row_idx]));
-			}
-			for (offset, col) in self.columns.iter().enumerate() {
-				let val = escape_control_chars(&col.data.as_string(row_idx));
-				row_parts.push(centered(col_widths[system.len() + offset], &val));
+			for (col_idx, (_, view)) in columns.iter().enumerate() {
+				let val = escape_control_chars(&view.as_string(row_idx));
+				row_parts.push(centered(col_widths[col_idx], &val));
 			}
 			writeln!(f, "|{}|", row_parts.join("|"))?;
 		}

@@ -3,19 +3,20 @@
 
 use std::collections::HashMap;
 
+use arrow_array::RecordBatch;
 use indexmap::IndexMap;
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{diff_type::DiffType, row_number::RowNumber, system_columns::row_numbers},
 };
 
 use crate::{
 	interface::change::{ChangeOrigin, Diff},
-	value::column::columns::Columns,
+	value::batch::{append, take_rows},
 };
 
 pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
-	if has_cross_kind_overlap(&diffs) {
+	if has_cross_kind_overlap(&diffs)? {
 		consolidate_diffs(diffs)
 	} else {
 		merge_adjacent(diffs)
@@ -27,13 +28,13 @@ pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	if diffs.is_empty() {
 		return Ok(diffs);
 	}
-	if !diffs.iter().all(diff_is_row_keyed) {
+	if !all_row_keyed(diffs.iter())? {
 		return merge_adjacent(diffs);
 	}
 	consolidate_row_keyed(diffs)
 }
 
-fn has_cross_kind_overlap(diffs: &[Diff]) -> bool {
+fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 	let mut first_kind: Option<DiffType> = None;
 	let mut mixed = false;
 	for diff in diffs {
@@ -50,10 +51,10 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> bool {
 		}
 	}
 	if !mixed {
-		return false;
+		return Ok(false);
 	}
-	if !diffs.iter().filter(|diff| diff.row_count() > 0).all(diff_is_row_keyed) {
-		return false;
+	if !all_row_keyed(diffs.iter().filter(|diff| diff.row_count() > 0))? {
+		return Ok(false);
 	}
 	let mut seen: HashMap<(Option<&ChangeOrigin>, RowNumber), u8> = HashMap::new();
 	for diff in diffs {
@@ -62,15 +63,15 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> bool {
 		}
 		let bit = kind_bit(diff.kind());
 		let origin = diff.origin();
-		for &row in key_rows(diff) {
+		for &row in key_rows(diff)? {
 			let mask = seen.entry((origin, row)).or_insert(0);
 			if *mask & !bit != 0 {
-				return true;
+				return Ok(true);
 			}
 			*mask |= bit;
 		}
 	}
-	false
+	Ok(false)
 }
 
 fn kind_bit(kind: DiffType) -> u8 {
@@ -81,20 +82,20 @@ fn kind_bit(kind: DiffType) -> u8 {
 	}
 }
 
-fn key_rows(diff: &Diff) -> &[RowNumber] {
+fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 	match diff {
 		Diff::Insert {
 			post,
 			..
-		} => post.row_numbers(),
+		} => row_numbers(post),
 		Diff::Update {
 			post,
 			..
-		} => post.row_numbers(),
+		} => row_numbers(post),
 		Diff::Remove {
 			pre,
 			..
-		} => pre.row_numbers(),
+		} => row_numbers(pre),
 	}
 }
 
@@ -129,7 +130,7 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				post: s,
 				..
 			},
-		) => t.append(s),
+		) => append_in_place(t, &s),
 		(
 			Diff::Update {
 				pre: tp,
@@ -142,8 +143,8 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				..
 			},
 		) => {
-			tp.append(sp)?;
-			tpost.append(spost)
+			append_in_place(tp, &sp)?;
+			append_in_place(tpost, &spost)
 		}
 		(
 			Diff::Remove {
@@ -154,21 +155,21 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				pre: s,
 				..
 			},
-		) => t.append(s),
+		) => append_in_place(t, &s),
 		_ => unreachable!("merge_into requires matching diff kinds"),
 	}
 }
 
 enum RowState {
 	Inserted {
-		post: Columns,
+		post: RecordBatch,
 	},
 	Updated {
-		pre: Columns,
-		post: Columns,
+		pre: RecordBatch,
+		post: RecordBatch,
 	},
 	Removed {
-		pre: Columns,
+		pre: RecordBatch,
 	},
 }
 
@@ -176,10 +177,10 @@ type StateKey = (Option<ChangeOrigin>, RowNumber);
 
 #[derive(Default)]
 struct OriginGroup {
-	inserts: Option<Columns>,
-	update_pre: Option<Columns>,
-	update_post: Option<Columns>,
-	removes: Option<Columns>,
+	inserts: Option<RecordBatch>,
+	update_pre: Option<RecordBatch>,
+	update_post: Option<RecordBatch>,
+	removes: Option<RecordBatch>,
 }
 
 fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
@@ -190,12 +191,8 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 				post,
 				origin,
 			} => {
-				for i in 0..post.row_count() {
-					apply_insert(
-						&mut states,
-						(origin.clone(), post.row_numbers()[i]),
-						post.extract_row(i)?,
-					);
+				for (i, &row) in row_numbers(&post)?.iter().enumerate() {
+					apply_insert(&mut states, (origin.clone(), row), take_rows(&post, &[i])?);
 				}
 			}
 			Diff::Update {
@@ -205,21 +202,21 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 			} => {
 				reifydb_assertions! {
 					assert!(
-						pre.row_numbers() == post.row_numbers(),
+						row_numbers(&pre)? == row_numbers(&post)?,
 						"diff consolidation keys an update row by its post row number and pairs \
 						 the pre row positionally; a pre row carrying a different row number \
 						 would retract a different row than the one this update claims to \
 						 replace (pre={:?}, post={:?})",
-						pre.row_numbers(),
-						post.row_numbers()
+						row_numbers(&pre)?,
+						row_numbers(&post)?
 					);
 				}
-				for i in 0..post.row_count() {
+				for (i, &row) in row_numbers(&post)?.iter().enumerate() {
 					apply_update(
 						&mut states,
-						(origin.clone(), post.row_numbers()[i]),
-						pre.extract_row(i)?,
-						post.extract_row(i)?,
+						(origin.clone(), row),
+						take_rows(&pre, &[i])?,
+						take_rows(&post, &[i])?,
 					);
 				}
 			}
@@ -227,12 +224,8 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 				pre,
 				origin,
 			} => {
-				for i in 0..pre.row_count() {
-					apply_remove(
-						&mut states,
-						(origin.clone(), pre.row_numbers()[i]),
-						pre.extract_row(i)?,
-					);
+				for (i, &row) in row_numbers(&pre)?.iter().enumerate() {
+					apply_remove(&mut states, (origin.clone(), row), take_rows(&pre, &[i])?);
 				}
 			}
 		}
@@ -283,29 +276,33 @@ fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	Ok(result)
 }
 
-fn diff_is_row_keyed(diff: &Diff) -> bool {
+fn all_row_keyed<'a>(mut diffs: impl Iterator<Item = &'a Diff>) -> Result<bool> {
+	diffs.try_fold(true, |keyed, diff| Ok(keyed && diff_is_row_keyed(diff)?))
+}
+
+fn diff_is_row_keyed(diff: &Diff) -> Result<bool> {
 	match diff {
 		Diff::Insert {
 			post,
 			..
-		} => columns_row_keyed(post),
+		} => batch_row_keyed(post),
 		Diff::Update {
 			pre,
 			post,
 			..
-		} => columns_row_keyed(pre) && columns_row_keyed(post) && pre.row_count() == post.row_count(),
+		} => Ok(batch_row_keyed(pre)? && batch_row_keyed(post)? && pre.num_rows() == post.num_rows()),
 		Diff::Remove {
 			pre,
 			..
-		} => columns_row_keyed(pre),
+		} => batch_row_keyed(pre),
 	}
 }
 
-fn columns_row_keyed(columns: &Columns) -> bool {
-	columns.row_count() > 0 && columns.row_numbers().len() == columns.row_count()
+fn batch_row_keyed(batch: &RecordBatch) -> Result<bool> {
+	Ok(batch.num_rows() > 0 && row_numbers(batch)?.len() == batch.num_rows())
 }
 
-fn apply_insert(states: &mut IndexMap<StateKey, RowState>, key: StateKey, post: Columns) {
+fn apply_insert(states: &mut IndexMap<StateKey, RowState>, key: StateKey, post: RecordBatch) {
 	let next = match states.get(&key) {
 		Some(RowState::Updated {
 			pre,
@@ -324,7 +321,7 @@ fn apply_insert(states: &mut IndexMap<StateKey, RowState>, key: StateKey, post: 
 	states.insert(key, next);
 }
 
-fn apply_update(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: Columns, post: Columns) {
+fn apply_update(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: RecordBatch, post: RecordBatch) {
 	let next = match states.get(&key) {
 		None => RowState::Updated {
 			pre,
@@ -349,7 +346,7 @@ fn apply_update(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: C
 	states.insert(key, next);
 }
 
-fn apply_remove(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: Columns) {
+fn apply_remove(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: RecordBatch) {
 	match states.get(&key) {
 		None => {
 			states.insert(
@@ -382,9 +379,9 @@ fn apply_remove(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: C
 	}
 }
 
-fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
+fn append_into(target: &mut Option<RecordBatch>, source: RecordBatch) -> Result<()> {
 	match target {
-		Some(existing) => existing.append(source),
+		Some(existing) => append_in_place(existing, &source),
 		None => {
 			*target = Some(source);
 			Ok(())
@@ -392,20 +389,39 @@ fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
 	}
 }
 
+fn append_in_place(target: &mut RecordBatch, source: &RecordBatch) -> Result<()> {
+	*target = append(target, source)?;
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::Value;
+	use std::sync::Arc;
+
+	use arrow_array::UInt64Array;
+	use reifydb_value::value::{
+		Value,
+		system_columns::{SystemColumn, column_view, with_system_column},
+	};
 
 	use super::*;
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId},
-		value::column::ColumnWithName,
+		value::{
+			batch::{batch, empty_batch},
+			column::factory::int4,
+		},
 	};
 
-	fn cols(rows: &[(u64, i32)]) -> Columns {
-		let rns: Vec<RowNumber> = rows.iter().map(|&(rn, _)| RowNumber::new(rn)).collect();
+	fn cols(rows: &[(u64, i32)]) -> RecordBatch {
+		let rns: Vec<u64> = rows.iter().map(|&(rn, _)| rn).collect();
 		let vals: Vec<i32> = rows.iter().map(|&(_, v)| v).collect();
-		Columns::new(vec![ColumnWithName::int4("v", vals)]).with_row_numbers(rns)
+		with_system_column(
+			batch(vec![int4("v", vals)]).unwrap(),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(rns)),
+		)
+		.unwrap()
 	}
 
 	fn insert(rows: &[(u64, i32)]) -> Diff {
@@ -420,11 +436,11 @@ mod tests {
 		Diff::remove(cols(rows))
 	}
 
-	fn rows_of(columns: &Columns) -> Vec<(u64, i32)> {
-		(0..columns.row_count())
+	fn rows_of(columns: &RecordBatch) -> Vec<(u64, i32)> {
+		(0..columns.num_rows())
 			.map(|i| {
-				let rn = columns.row_numbers()[i].value();
-				let val = match columns.column("v").unwrap().data().get_value(i) {
+				let rn = row_numbers(columns).unwrap()[i].value();
+				let val = match column_view(columns, "v").unwrap().unwrap().get_value(i) {
 					Value::Int4(v) => v,
 					other => panic!("expected Int4, got {:?}", other),
 				};
@@ -592,9 +608,8 @@ mod tests {
 	fn zero_row_diff_does_not_block_consolidation() {
 		// The accumulator used to fall back to append-only merging whenever any diff was empty,
 		// letting an unrelated empty diff disable annihilation for the whole batch.
-		let out =
-			consolidate_diffs(vec![insert(&[(1, 10)]), Diff::insert(Columns::empty()), remove(&[(1, 10)])])
-				.unwrap();
+		let out = consolidate_diffs(vec![insert(&[(1, 10)]), Diff::insert(empty_batch()), remove(&[(1, 10)])])
+			.unwrap();
 		assert!(out.is_empty(), "an empty diff must not disable row consolidation");
 	}
 
@@ -604,7 +619,7 @@ mod tests {
 		// batches through the whole DAG.
 		let out = coalesce_diffs(vec![
 			insert(&[(1, 10)]),
-			Diff::update(Columns::empty(), Columns::empty()),
+			Diff::update(empty_batch(), empty_batch()),
 			remove(&[(2, 20)]),
 		])
 		.unwrap();

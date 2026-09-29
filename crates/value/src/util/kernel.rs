@@ -38,9 +38,9 @@ pub fn kept_nulls<A>(source: &A, selected: &A) -> Option<NullBuffer>
 where
 	A: Array,
 {
-	match (source.nulls().is_some(), selected.nulls().is_some()) {
+	match (source.logical_nulls().is_some(), selected.logical_nulls().is_some()) {
 		(true, false) => Some(NullBuffer::new_valid(selected.len())),
-		(true, true) => selected.nulls().cloned(),
+		(true, true) => selected.logical_nulls(),
 		(false, _) => None,
 	}
 }

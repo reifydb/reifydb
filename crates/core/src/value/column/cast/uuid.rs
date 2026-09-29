@@ -1,33 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, FixedSizeBinaryArray, LargeStringArray};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
+		column_view::{ColumnView, ViewData},
 		identity::IdentityId,
 		uuid::{
 			Uuid4, Uuid7,
 			parse::{parse_identity_id, parse_uuid4, parse_uuid7},
 		},
-		value_type::ValueType,
+		value_type::{
+			ValueType,
+			field::{FieldType, named},
+		},
 	},
 };
 
 use super::error::CastError;
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	match data {
-		ColumnBuffer::Utf8 {
+pub fn to_uuid(data: &ColumnView, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+	match &data.data {
+		ViewData::Utf8 {
 			container,
 			..
-		} => from_text(container, target, lazy_fragment),
-		ColumnBuffer::Uuid4(container) => from_uuid4(container, target, lazy_fragment),
-		ColumnBuffer::Uuid7(container) => from_uuid7(container, target, lazy_fragment),
-		ColumnBuffer::IdentityId(container) => from_identity_id(container, target, lazy_fragment),
+		} => from_text(container, data.field.name(), target, lazy_fragment),
+		ViewData::Uuid4(container) => from_uuid4(data, container, target, lazy_fragment),
+		ViewData::Uuid7(container) => from_uuid7(data, container, target, lazy_fragment),
+		ViewData::IdentityId(container) => from_identity_id(data, container, target, lazy_fragment),
 		_ => {
 			let object_type = data.get_type();
 			Err(TypeError::UnsupportedCast {
@@ -43,13 +50,14 @@ pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyF
 #[inline]
 fn from_text(
 	container: &LargeStringArray,
+	name: &str,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	match target {
-		ValueType::Uuid4 => to_uuid4(container, lazy_fragment),
-		ValueType::Uuid7 => to_uuid7(container, lazy_fragment),
-		ValueType::IdentityId => to_identity_id(container, lazy_fragment),
+		ValueType::Uuid4 => to_uuid4(container, name, lazy_fragment),
+		ValueType::Uuid7 => to_uuid7(container, name, lazy_fragment),
+		ValueType::IdentityId => to_identity_id(container, name, lazy_fragment),
 		_ => {
 			let object_type = ValueType::Utf8;
 			Err(TypeError::UnsupportedCast {
@@ -65,7 +73,11 @@ fn from_text(
 macro_rules! impl_to_uuid {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &LargeStringArray, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+		fn $fn_name(
+			container: &LargeStringArray,
+			name: &str,
+			lazy_fragment: impl LazyFragment,
+		) -> Result<(FieldRef, ArrayRef)> {
 			let mut out = ColumnBuilder::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_valid(idx) {
@@ -89,7 +101,7 @@ macro_rules! impl_to_uuid {
 					out.push_none();
 				}
 			}
-			Ok(out.finish())
+			Ok(out.finish(name))
 		}
 	};
 }
@@ -100,12 +112,13 @@ impl_to_uuid!(to_identity_id, IdentityId, ValueType::IdentityId, parse_identity_
 
 #[inline]
 fn from_uuid4(
+	data: &ColumnView,
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	match target {
-		ValueType::Uuid4 => Ok(ColumnBuffer::Uuid4(container.clone())),
+		ValueType::Uuid4 => Ok(retag(data, container, ValueType::Uuid4)),
 		_ => {
 			let object_type = ValueType::Uuid4;
 			Err(TypeError::UnsupportedCast {
@@ -120,13 +133,14 @@ fn from_uuid4(
 
 #[inline]
 fn from_uuid7(
+	data: &ColumnView,
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	match target {
-		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(container.clone())),
-		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(container.clone())),
+		ValueType::Uuid7 => Ok(retag(data, container, ValueType::Uuid7)),
+		ValueType::IdentityId => Ok(retag(data, container, ValueType::IdentityId)),
 		_ => {
 			let object_type = ValueType::Uuid7;
 			Err(TypeError::UnsupportedCast {
@@ -141,13 +155,14 @@ fn from_uuid7(
 
 #[inline]
 fn from_identity_id(
+	data: &ColumnView,
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	match target {
-		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(container.clone())),
-		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(container.clone())),
+		ValueType::IdentityId => Ok(retag(data, container, ValueType::IdentityId)),
+		ValueType::Uuid7 => Ok(retag(data, container, ValueType::Uuid7)),
 		_ => Err(TypeError::UnsupportedCast {
 			from: ValueType::IdentityId,
 			to: target,
@@ -155,4 +170,19 @@ fn from_identity_id(
 		}
 		.into()),
 	}
+}
+
+fn retag(data: &ColumnView, container: &FixedSizeBinaryArray, target: ValueType) -> (FieldRef, ArrayRef) {
+	let value_type = match data.is_nullable() {
+		true => ValueType::Option(Box::new(target)),
+		false => target,
+	};
+	named(
+		data.field.name(),
+		FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		},
+		Arc::new(container.clone()),
+	)
 }

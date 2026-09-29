@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_value::value::{Value, duration::Duration};
 
 use crate::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	value::column::columns::Columns,
 };
 
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct CapturedEvent {
 	pub event: String,
 	pub variant: String,
 	pub depth: u8,
-	pub columns: Columns,
+	pub columns: RecordBatch,
 }
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,7 @@
 
 use std::mem;
 
+use arrow_array::RecordBatch;
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, diff_type::DiffType},
@@ -16,12 +17,11 @@ use crate::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		consolidate::coalesce_diffs,
 	},
-	value::column::columns::Columns,
 };
 
 pub type Diffs = SmallVec<[Diff; 4]>;
 
-pub type StagedBatch = (DiffType, Columns);
+pub type StagedBatch = (DiffType, RecordBatch);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChangeOrigin {
@@ -29,32 +29,32 @@ pub enum ChangeOrigin {
 	Flow(OperatorId),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Diff {
 	Insert {
-		post: Columns,
+		post: RecordBatch,
 		origin: Option<ChangeOrigin>,
 	},
 	Update {
-		pre: Columns,
-		post: Columns,
+		pre: RecordBatch,
+		post: RecordBatch,
 		origin: Option<ChangeOrigin>,
 	},
 	Remove {
-		pre: Columns,
+		pre: RecordBatch,
 		origin: Option<ChangeOrigin>,
 	},
 }
 
 impl Diff {
-	pub fn insert(post: Columns) -> Self {
+	pub fn insert(post: RecordBatch) -> Self {
 		Self::Insert {
 			post,
 			origin: None,
 		}
 	}
 
-	pub fn update(pre: Columns, post: Columns) -> Self {
+	pub fn update(pre: RecordBatch, post: RecordBatch) -> Self {
 		Self::Update {
 			pre,
 			post,
@@ -62,14 +62,14 @@ impl Diff {
 		}
 	}
 
-	pub fn remove(pre: Columns) -> Self {
+	pub fn remove(pre: RecordBatch) -> Self {
 		Self::Remove {
 			pre,
 			origin: None,
 		}
 	}
 
-	pub fn pre(&self) -> Option<&Columns> {
+	pub fn pre(&self) -> Option<&RecordBatch> {
 		match self {
 			Diff::Insert {
 				..
@@ -85,7 +85,7 @@ impl Diff {
 		}
 	}
 
-	pub fn post(&self) -> Option<&Columns> {
+	pub fn post(&self) -> Option<&RecordBatch> {
 		match self {
 			Diff::Insert {
 				post,
@@ -101,8 +101,8 @@ impl Diff {
 		}
 	}
 
-	pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut Columns> {
-		let pair: [Option<&mut Columns>; 2] = match self {
+	pub fn batches_mut(&mut self) -> impl Iterator<Item = &mut RecordBatch> {
+		let pair: [Option<&mut RecordBatch>; 2] = match self {
 			Diff::Insert {
 				post,
 				..
@@ -139,15 +139,15 @@ impl Diff {
 			Diff::Insert {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			Diff::Update {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			Diff::Remove {
 				pre,
 				..
-			} => pre.row_count(),
+			} => pre.num_rows(),
 		}
 	}
 
@@ -190,7 +190,7 @@ impl Diff {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Change {
 	pub origin: ChangeOrigin,
 

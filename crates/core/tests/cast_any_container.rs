@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
 	cast::{cast_column_data, convert::TargetConvert},
+	factory,
 };
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 
-fn cast_any(value: Value, target: ValueType) -> Result<ColumnBuffer> {
-	let column = ColumnBuffer::any(vec![value]);
+fn cast_any(value: Value, target: ValueType) -> Result<(FieldRef, ArrayRef)> {
+	let column = factory::any("payload", vec![value]);
 	cast_column_data(
 		TargetConvert {
 			target: None,
 		},
-		&column,
+		&ColumnView::try_from(&column).unwrap(),
 		target,
 		|| Fragment::internal("payload"),
 	)
@@ -103,18 +105,18 @@ fn a_list_nested_in_any_is_refused_like_a_bare_list() {
 fn a_scalar_nested_in_any_still_casts() {
 	// Refusing containers must not refuse scalars that sit behind an extra Any wrapper.
 	let cast = cast_any(Value::Any(Box::new(Value::Int4(7))), ValueType::Utf8).expect("an int4 casts to utf8");
-	assert_eq!(cast.get_value(0), Value::Utf8("7".to_string()));
+	assert_eq!(ColumnView::try_from(&cast).unwrap().get_value(0), Value::Utf8("7".to_string()));
 }
 
 #[test]
 fn a_none_entry_next_to_a_list_does_not_mask_the_refusal() {
 	// The refusal must come from the list row even when an earlier row is none.
-	let column = ColumnBuffer::any_optional([None, Some(Value::List(vec![Value::Int4(1)]))]);
+	let column = factory::any_optional("payload", [None, Some(Value::List(vec![Value::Int4(1)]))]);
 	let err = cast_column_data(
 		TargetConvert {
 			target: None,
 		},
-		&column,
+		&ColumnView::try_from(&column).unwrap(),
 		ValueType::Utf8,
 		|| Fragment::internal("payload"),
 	)

@@ -12,7 +12,7 @@ impl Push<Decimal> for ColumnBuilder {
 	fn push(&mut self, value: Decimal) {
 		match &mut self.inner {
 			TypedBuilder::Decimal(builder) => builder.push(&value),
-			_ => unreachable!("Push<Decimal> for ColumnBuffer with incompatible type"),
+			_ => unreachable!("Push<Decimal> for ColumnBuilder with incompatible type"),
 		}
 	}
 }

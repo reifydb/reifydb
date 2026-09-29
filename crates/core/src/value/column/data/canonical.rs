@@ -3,50 +3,61 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_array::{Array, ArrayRef};
 use arrow_buffer::NullBuffer;
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
-	value::{Value, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, named, to_field},
+		},
+	},
 };
 
-use crate::value::column::{buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId};
+use crate::value::column::{data::ColumnData, encoding::EncodingId};
 
 #[derive(Clone, Debug)]
 pub struct Canonical {
-	pub ty: ValueType,
-	pub nullable: bool,
-	pub buffer: ColumnBuffer,
+	field_type: FieldType,
+	field: FieldRef,
+	buffer: ArrayRef,
 }
 
 impl Canonical {
-	pub fn new(ty: ValueType, nullable: bool, mut buffer: ColumnBuffer) -> Self {
-		buffer.freeze();
-		Self {
-			ty,
-			nullable,
+	pub fn new(field_type: FieldType, buffer: ArrayRef) -> Result<Self> {
+		let field: FieldRef = Arc::new(to_field("", &field_type));
+		ColumnView::try_from((&buffer, field.as_ref()))?;
+		Ok(Self {
+			field_type,
+			field,
 			buffer,
-		}
+		})
 	}
 
-	pub fn from_buffer(mut buffer: ColumnBuffer) -> Self {
-		buffer.freeze();
-		Self {
-			ty: buffer.base_type(),
-			nullable: buffer.nulls().is_some(),
-			buffer,
-		}
+	pub fn from_column(column: &(FieldRef, ArrayRef)) -> Result<Self> {
+		Self::new(from_field(&column.0)?, column.1.clone())
 	}
 
-	pub fn from_column_buffer(cd: &ColumnBuffer) -> Result<Self> {
-		Ok(Self::from_buffer(cd.clone()))
+	pub fn to_column(&self, name: &str) -> (FieldRef, ArrayRef) {
+		named(name, self.field_type.clone(), self.buffer.clone())
 	}
 
-	pub fn to_buffer(&self) -> ColumnBuffer {
-		self.buffer.clone()
+	pub fn field_type(&self) -> &FieldType {
+		&self.field_type
 	}
 
-	pub fn to_column_buffer(&self) -> Result<ColumnBuffer> {
-		Ok(self.to_buffer())
+	pub fn buffer(&self) -> &ArrayRef {
+		&self.buffer
+	}
+
+	pub fn view(&self) -> ColumnView<'_> {
+		ColumnView::try_from((&self.buffer, self.field.as_ref())).unwrap_or_else(|error| {
+			panic!("canonical buffer does not match its field type: {error}")
+		})
 	}
 
 	pub fn len(&self) -> usize {
@@ -76,19 +87,19 @@ impl ColumnData for Canonical {
 	}
 
 	fn encoding(&self) -> EncodingId {
-		encoding_for_type(&self.ty)
+		encoding_for_type(&self.view().base_type())
 	}
 
-	fn nones(&self) -> Option<&NullBuffer> {
-		self.buffer.nulls()
+	fn nones(&self) -> Option<NullBuffer> {
+		self.buffer.logical_nulls()
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
-		self.buffer.get_value(idx)
+		self.view().get_value(idx)
 	}
 
 	fn as_string(&self, idx: usize) -> String {
-		self.buffer.as_string(idx)
+		self.view().as_string(idx)
 	}
 
 	fn as_any(&self) -> &dyn Any {

@@ -1,33 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_buffer::BooleanBuffer;
+use arrow_schema::FieldRef;
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	row::Row,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, from_row, take_rows},
+		column::{builder::ColumnBuilder, factory, scatter::scatter_merge},
+	},
 };
 use reifydb_value::value::{
 	Value,
+	column_view::{ColumnView, ViewData},
 	constraint::{TypeConstraint, precision::Precision, scale::Scale},
-	container::decimal_array::DecimalArray,
+	container::decimal_array::DecimalView,
 	decimal::Decimal,
-	frame::data::FrameColumnData,
 	row_number::RowNumber,
+	system_columns::is_system_field,
 	value_type::ValueType,
 };
 
-fn family_array(buffer: &ColumnBuffer) -> &DecimalArray {
-	match buffer {
-		ColumnBuffer::Decimal(array) => array,
-		other => panic!("expected an int, uint or decimal column, got {:?}", other.get_type()),
-	}
+fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+	ColumnView::try_from(column).unwrap()
 }
 
-fn is_decimal256(buffer: &ColumnBuffer) -> bool {
-	match family_array(buffer) {
-		DecimalArray::Decimal128(_) => false,
-		DecimalArray::Decimal256(_) => true,
+fn take_column(column: &(FieldRef, ArrayRef), indices: &[usize]) -> (FieldRef, ArrayRef) {
+	let rows = take_rows(&batch(vec![column.clone()]).unwrap(), indices).unwrap();
+	(rows.schema_ref().fields()[0].clone(), rows.column(0).clone())
+}
+
+fn user_column(rows: &RecordBatch, index: usize) -> ColumnView<'_> {
+	let schema = rows.schema_ref();
+	let position = (0..rows.num_columns()).filter(|&i| !is_system_field(schema.field(i))).nth(index).unwrap();
+	ColumnView::try_from((rows.column(position), schema.field(position))).unwrap()
+}
+
+fn user_column_count(rows: &RecordBatch) -> usize {
+	rows.schema_ref().fields().iter().filter(|field| !is_system_field(field)).count()
+}
+
+fn is_decimal256(column: &(FieldRef, ArrayRef)) -> bool {
+	let column = view(column);
+	match &column.data {
+		ViewData::Decimal(DecimalView::Decimal128(_)) => false,
+		ViewData::Decimal(DecimalView::Decimal256(_)) => true,
+		_ => panic!("expected an int, uint or decimal column, got {:?}", column.get_type()),
 	}
 }
 
@@ -55,12 +75,13 @@ fn round_trips(buffer: &ColumnBuffer) -> Vec<ColumnBuffer> {
 	]
 }
 
-fn sample_columns() -> [ColumnBuffer; 1] {
-	[ColumnBuffer::decimal(Precision::new(12), Scale::new(3), [decimal("1.25"), decimal("-0.5")])]
+fn sample_columns() -> [(FieldRef, ArrayRef); 1] {
+	[factory::decimal("c", Precision::new(12), Scale::new(3), [decimal("1.25"), decimal("-0.5")])]
 }
 
-fn sample_columns_with_a_none() -> [ColumnBuffer; 1] {
-	[ColumnBuffer::decimal_with_bitvec(
+fn sample_columns_with_a_none() -> [(FieldRef, ArrayRef); 1] {
+	[factory::decimal_with_bitvec(
+		"c",
 		Precision::new(12),
 		Scale::new(3),
 		[decimal("1.25"), decimal("2.5"), decimal("-0.5")],
@@ -72,37 +93,41 @@ fn sample_columns_with_a_none() -> [ColumnBuffer; 1] {
 fn precision_38_is_decimal128_for_every_family_type() {
 	// Precision 38 must stay on the 16 byte layout, otherwise every narrow column doubles its memory.
 	for ty in family_types(38) {
-		assert!(!is_decimal256(&ColumnBuilder::with_capacity(ty.clone(), 1).finish()), "{ty:?} builder");
-		assert!(!is_decimal256(&ColumnBuffer::none_typed(ty.clone(), 2)), "{ty:?} none typed");
-		assert_eq!(ColumnBuffer::none_typed(ty.clone(), 2).get_type(), ValueType::Option(Box::new(ty)));
+		assert!(!is_decimal256(&ColumnBuilder::with_capacity(ty.clone(), 1).finish("c")), "{ty:?} builder");
+		assert!(!is_decimal256(&factory::none_typed("c", ty.clone(), 2)), "{ty:?} none typed");
+		assert_eq!(view(&factory::none_typed("c", ty.clone(), 2)).get_type(), ValueType::Option(Box::new(ty)));
 	}
-	assert!(!is_decimal256(&ColumnBuffer::decimal(Precision::new(38), Scale::new(4), [decimal("1.5")])));
+	assert!(!is_decimal256(&factory::decimal("c", Precision::new(38), Scale::new(4), [decimal("1.5")])));
 }
 
 #[test]
 fn precision_39_is_decimal256_for_every_family_type() {
 	// Precision 39 needs more than 128 bits, otherwise a full width value overflows the native storage.
 	for ty in family_types(39) {
-		assert!(is_decimal256(&ColumnBuilder::with_capacity(ty.clone(), 1).finish()), "{ty:?} builder");
-		assert!(is_decimal256(&ColumnBuffer::none_typed(ty.clone(), 2)), "{ty:?} none typed");
-		assert_eq!(ColumnBuffer::none_typed(ty.clone(), 2).get_type(), ValueType::Option(Box::new(ty)));
+		assert!(is_decimal256(&ColumnBuilder::with_capacity(ty.clone(), 1).finish("c")), "{ty:?} builder");
+		assert!(is_decimal256(&factory::none_typed("c", ty.clone(), 2)), "{ty:?} none typed");
+		assert_eq!(view(&factory::none_typed("c", ty.clone(), 2)).get_type(), ValueType::Option(Box::new(ty)));
 	}
-	assert!(is_decimal256(&ColumnBuffer::decimal(Precision::new(39), Scale::new(4), [decimal("1.5")])));
+	assert!(is_decimal256(&factory::decimal("c", Precision::new(39), Scale::new(4), [decimal("1.5")])));
 }
 
 #[test]
 fn scatter_merge_keeps_precision_and_scale() {
 	// A merged column must keep the declared type, otherwise a CASE result widens to the default precision.
-	for buffer in sample_columns() {
+	for column in sample_columns() {
+		let buffer = view(&column);
 		let ty = buffer.get_type();
-		let merged = buffer
-			.scatter_merge(
-				&buffer.gather(&[1, 0]).unwrap(),
-				&BooleanBuffer::from(vec![true, false]),
-				&BooleanBuffer::from(vec![false, true]),
-				2,
-			)
-			.unwrap();
+		let gathered = take_column(&column, &[1, 0]);
+		let merged = scatter_merge(
+			&buffer,
+			&view(&gathered),
+			&BooleanBuffer::from(vec![true, false]),
+			&BooleanBuffer::from(vec![false, true]),
+			2,
+			"c",
+		)
+		.unwrap();
+		let merged = view(&merged);
 		assert_eq!(merged.get_type(), ty);
 		assert_eq!(merged.get_value(0), buffer.get_value(0), "{ty:?} then row");
 		assert_eq!(merged.get_value(1), buffer.get_value(0), "{ty:?} else row");
@@ -112,19 +137,22 @@ fn scatter_merge_keeps_precision_and_scale() {
 #[test]
 fn scatter_merge_of_optional_columns_keeps_precision_and_scale() {
 	// The none split must not drop the declared type, otherwise optional merged columns widen.
-	for buffer in sample_columns() {
+	for column in sample_columns() {
+		let buffer = view(&column);
 		let ty = buffer.get_type();
-		let mut optional = buffer.clone().into_builder();
+		let mut optional = ColumnBuilder::from_view(&buffer);
 		optional.push_none();
-		let optional = optional.finish();
-		let merged = optional
-			.scatter_merge(
-				&optional,
-				&BooleanBuffer::from(vec![true, false, true]),
-				&BooleanBuffer::from(vec![false, true, false]),
-				3,
-			)
-			.unwrap();
+		let optional = optional.finish("c");
+		let merged = scatter_merge(
+			&view(&optional),
+			&view(&optional),
+			&BooleanBuffer::from(vec![true, false, true]),
+			&BooleanBuffer::from(vec![false, true, false]),
+			3,
+			"c",
+		)
+		.unwrap();
+		let merged = view(&merged);
 		assert_eq!(merged.get_type(), ValueType::Option(Box::new(ty.clone())));
 		assert_eq!(merged.get_value(1), buffer.get_value(1), "{ty:?} defined row");
 		assert!(!merged.is_defined(2), "{ty:?} none row");
@@ -160,13 +188,12 @@ fn reset_from_row_keeps_precision_and_scale() {
 		encoded: encoded.freeze().into(),
 		shape,
 	};
-	let mut columns = Columns::new(vec![ColumnWithName::undefined_typed("stale", ValueType::Int4, 1)]);
-	columns.reset_from_row(&row);
-	assert_eq!(columns.len(), 1);
+	let columns = from_row(&row).unwrap();
+	assert_eq!(user_column_count(&columns), 1);
 	for (index, ty) in types.iter().enumerate() {
-		assert_eq!(&columns[index].get_type(), ty);
+		assert_eq!(&user_column(&columns, index).get_type(), ty);
 	}
-	assert_eq!(columns[0].as_string(0), "1.250");
+	assert_eq!(user_column(&columns, 0).as_string(0), "1.250");
 }
 
 #[test]
@@ -177,7 +204,8 @@ fn a_none_survives_when_a_later_value_widens_the_builder() {
 		builder.push_value(Value::Decimal(decimal("1.5")));
 		builder.push_value(Value::none());
 		builder.push_value(Value::Decimal(decimal(wide)));
-		let column = builder.finish();
+		let column = builder.finish("c");
+		let column = view(&column);
 
 		assert_eq!(column.len(), 3, "widening to {wide}");
 		assert!(column.is_defined(0), "widening to {wide}");
@@ -193,10 +221,11 @@ fn a_none_survives_when_a_later_value_widens_the_builder() {
 fn a_none_in_a_family_column_survives_reorder() {
 	// Reorder must move the null bit with its value, otherwise a shuffled none becomes a stale number.
 	for original in sample_columns_with_a_none() {
-		let ty = original.get_type();
-		let mut column = original.clone();
 		let indices = [2, 0, 1];
-		column.reorder(&indices).unwrap();
+		let column = take_column(&original, &indices);
+		let original = view(&original);
+		let column = view(&column);
+		let ty = original.get_type();
 		assert_eq!(column.len(), 3, "{ty:?}");
 		for (new_index, &old_index) in indices.iter().enumerate() {
 			assert_eq!(
@@ -219,9 +248,11 @@ fn a_none_in_a_family_column_survives_reorder() {
 fn a_none_in_a_family_column_survives_gather_with_a_repeated_index() {
 	// A repeated index must read the null bit on every read, otherwise a duplicated none returns a stale value.
 	for original in sample_columns_with_a_none() {
-		let ty = original.get_type();
 		let indices = [1, 1, 2, 0];
-		let gathered = original.gather(&indices).unwrap();
+		let gathered = take_column(&original, &indices);
+		let original = view(&original);
+		let gathered = view(&gathered);
+		let ty = original.get_type();
 		assert_eq!(gathered.len(), indices.len(), "{ty:?}");
 		for (new_index, &old_index) in indices.iter().enumerate() {
 			assert_eq!(

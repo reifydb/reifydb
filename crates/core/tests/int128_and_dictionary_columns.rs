@@ -1,17 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, BooleanArray, RecordBatch};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
-use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use arrow_schema::FieldRef;
+use arrow_select::filter::filter_record_batch;
+use reifydb_core::value::{
+	batch::{batch, take_rows},
+	column::{builder::ColumnBuilder, nulls::with_nulls},
+};
 use reifydb_value::value::{
 	Value,
+	column_view::{ColumnView, ViewData},
 	container::{
 		dictionary_array::{self, dictionary_array},
 		wide_int_array::wides,
 	},
 	dictionary::{DictionaryEntryId, DictionaryId},
-	frame::data::FrameColumnData,
-	value_type::ValueType,
+	value_type::{
+		ValueType,
+		field::{FieldType, named},
+	},
 };
 
 const ENTRIES: [DictionaryEntryId; 4] = [
@@ -25,20 +36,50 @@ const INTS: [i128; 3] = [i128::MIN, 0, i128::MAX];
 
 const UINTS: [u128; 4] = [0, 1 << 64, 1 << 127, u128::MAX];
 
-fn tagged(entries: &[DictionaryEntryId], id: u64) -> ColumnBuffer {
-	ColumnBuffer::DictionaryId {
-		container: dictionary_array(entries.iter().copied()),
-		dictionary_id: Some(DictionaryId(id)),
-	}
+fn tagged(entries: &[DictionaryEntryId], id: u64) -> (FieldRef, ArrayRef) {
+	named(
+		"c",
+		FieldType {
+			value_type: Some(ValueType::DictionaryId),
+			dictionary_id: Some(DictionaryId(id)),
+			..FieldType::default()
+		},
+		Arc::new(dictionary_array(entries.iter().copied())),
+	)
 }
 
-fn dictionary_parts(buffer: &ColumnBuffer) -> (Vec<DictionaryEntryId>, Option<DictionaryId>) {
-	match buffer {
-		ColumnBuffer::DictionaryId {
+fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+	ColumnView::try_from(column).unwrap()
+}
+
+fn one_column(column: &(FieldRef, ArrayRef)) -> RecordBatch {
+	batch(vec![column.clone()]).unwrap()
+}
+
+fn only_column(rows: &RecordBatch) -> (FieldRef, ArrayRef) {
+	(rows.schema_ref().fields()[0].clone(), rows.column(0).clone())
+}
+
+fn filter_column(column: &(FieldRef, ArrayRef), mask: Vec<bool>) -> (FieldRef, ArrayRef) {
+	only_column(&filter_record_batch(&one_column(column), &BooleanArray::from(mask)).unwrap())
+}
+
+fn take_column(column: &(FieldRef, ArrayRef), indices: &[usize]) -> (FieldRef, ArrayRef) {
+	only_column(&take_rows(&one_column(column), indices).unwrap())
+}
+
+fn slice_column(column: &(FieldRef, ArrayRef), start: usize, end: usize) -> (FieldRef, ArrayRef) {
+	(column.0.clone(), column.1.slice(start, end - start))
+}
+
+fn dictionary_parts(column: &(FieldRef, ArrayRef)) -> (Vec<DictionaryEntryId>, Option<DictionaryId>) {
+	let column = view(column);
+	match &column.data {
+		ViewData::DictionaryId {
 			container,
 			dictionary_id,
 		} => (dictionary_array::iter(container).collect(), *dictionary_id),
-		other => panic!("expected a dictionary id column, got {:?}", other.get_type()),
+		_ => panic!("expected a dictionary id column, got {:?}", column.get_type()),
 	}
 }
 
@@ -103,8 +144,9 @@ fn dictionary_id_survives_every_buffer_op() {
 #[test]
 fn extend_keeps_the_receiving_columns_dictionary_id() {
 	// The receiving column owns the dictionary; taking the appended column's id would remap every row.
-	let mut extended = tagged(&ENTRIES, 7);
-	extended.extend(tagged(&ENTRIES[1..2], 99)).unwrap();
+	let mut extended = ColumnBuilder::from_view(&view(&tagged(&ENTRIES, 7)));
+	extended.extend(&view(&tagged(&ENTRIES[1..2], 99))).unwrap();
+	let extended = extended.finish("c");
 	assert_eq!(dictionary_parts(&extended), ([ENTRIES.as_slice(), &ENTRIES[1..2]].concat(), Some(DictionaryId(7))));
 }
 
@@ -112,49 +154,47 @@ fn extend_keeps_the_receiving_columns_dictionary_id() {
 fn dictionary_id_survives_the_builder_round_trip() {
 	// A builder that drops the id turns every appended batch into an undecodable column.
 	let id = Some(DictionaryId(7));
-	let mut builder = tagged(&ENTRIES, 7).into_builder();
+	let mut builder = ColumnBuilder::from_view(&view(&tagged(&ENTRIES, 7)));
 	builder.push_value(Value::DictionaryId(DictionaryEntryId::U4(5)));
 	builder.push(DictionaryEntryId::U2(6));
-	builder.extend(tagged(&ENTRIES[..1], 99)).unwrap();
-	let finished = builder.finish();
+	builder.extend(&view(&tagged(&ENTRIES[..1], 99))).unwrap();
+	let finished = builder.finish("c");
 	let pushed = [DictionaryEntryId::U4(5), DictionaryEntryId::U2(6)];
 	assert_eq!(dictionary_parts(&finished), ([ENTRIES.as_slice(), &pushed, &ENTRIES[..1]].concat(), id));
-	assert_eq!(dictionary_parts(&ColumnBuilder::like(&finished, 4).finish()), (vec![], id));
+	assert_eq!(dictionary_parts(&ColumnBuilder::like(&view(&finished), 4).finish("c")), (vec![], id));
 
 	let mut fresh = ColumnBuilder::with_capacity(ValueType::DictionaryId, 2);
 	fresh.set_dictionary_id(DictionaryId(3));
 	fresh.push(ENTRIES[3]);
-	assert_eq!(dictionary_parts(&fresh.finish()), (vec![ENTRIES[3]], Some(DictionaryId(3))));
+	assert_eq!(dictionary_parts(&fresh.finish("c")), (vec![ENTRIES[3]], Some(DictionaryId(3))));
 }
 
 #[test]
 fn option_wrapped_dictionary_column_keeps_its_id() {
 	// A nullable dictionary column must keep its id through every op, never drop it with the nones.
 	let id = Some(DictionaryId(7));
-	let buffer =
-		tagged(&ENTRIES, 7).with_nulls(NullBuffer::new(BooleanBuffer::from(vec![true, false, true, true])));
+	let nulls = NullBuffer::new(BooleanBuffer::from(vec![true, false, true, true]));
+	let buffer = with_nulls(tagged(&ENTRIES, 7), nulls).unwrap();
 
-	let mut filtered = buffer.clone();
-	filtered.filter(&BooleanBuffer::from(vec![false, true, true, true])).unwrap();
+	let filtered = filter_column(&buffer, vec![false, true, true, true]);
 	assert_eq!(dictionary_parts(&filtered), (ENTRIES[1..].to_vec(), id));
 
-	let mut reordered = buffer.clone();
-	reordered.reorder(&[3, 0]).unwrap();
+	let reordered = take_column(&buffer, &[3, 0]);
 	assert_eq!(dictionary_parts(&reordered), (vec![ENTRIES[3], ENTRIES[0]], id));
 
-	assert_eq!(dictionary_parts(&buffer.slice(0, 2)), (ENTRIES[..2].to_vec(), id));
-	assert_eq!(dictionary_parts(&buffer.take(3)), (ENTRIES[..3].to_vec(), id));
+	assert_eq!(dictionary_parts(&slice_column(&buffer, 0, 2)), (ENTRIES[..2].to_vec(), id));
+	assert_eq!(dictionary_parts(&slice_column(&buffer, 0, 3)), (ENTRIES[..3].to_vec(), id));
 
-	let mut builder = buffer.into_builder();
+	let mut builder = ColumnBuilder::from_view(&view(&buffer));
 	builder.push_none();
 	builder.push_value(Value::DictionaryId(ENTRIES[0]));
-	let finished = builder.finish();
+	let finished = builder.finish("c");
 	assert_eq!(
 		dictionary_parts(&finished),
 		([ENTRIES.as_slice(), &[DictionaryEntryId::default(), ENTRIES[0]]].concat(), id)
 	);
-	assert_eq!(finished.get_value(4), Value::none_of(ValueType::DictionaryId));
-	assert_eq!(finished.get_value(5), Value::DictionaryId(ENTRIES[0]));
+	assert_eq!(view(&finished).get_value(4), Value::none_of(ValueType::DictionaryId));
+	assert_eq!(view(&finished).get_value(5), Value::DictionaryId(ENTRIES[0]));
 }
 
 #[test]
@@ -163,25 +203,27 @@ fn shared_or_offset_dictionary_buffer_copies_whole_rows_into_the_builder() {
 	let id = Some(DictionaryId(7));
 	let buffer = tagged(&ENTRIES, 7);
 
-	let mut shared = buffer.clone().into_builder();
+	let shared_column = buffer.clone();
+	let mut shared = ColumnBuilder::from_view(&view(&shared_column));
 	shared.push(DictionaryEntryId::U1(1));
 	assert_eq!(
-		dictionary_parts(&shared.finish()),
+		dictionary_parts(&shared.finish("c")),
 		([ENTRIES.as_slice(), &[DictionaryEntryId::U1(1)]].concat(), id)
 	);
 	assert_eq!(dictionary_parts(&buffer), (ENTRIES.to_vec(), id));
 
-	let offset = buffer.slice(1, 3);
-	let prefix = buffer.take(2);
+	let offset = slice_column(&buffer, 1, 3);
+	let prefix = slice_column(&buffer, 0, 2);
 	drop(buffer);
+	drop(shared_column);
 
-	let mut offset = offset.into_builder();
+	let mut offset = ColumnBuilder::from_view(&view(&offset));
 	offset.push(ENTRIES[0]);
-	assert_eq!(dictionary_parts(&offset.finish()), (vec![ENTRIES[1], ENTRIES[2], ENTRIES[0]], id));
+	assert_eq!(dictionary_parts(&offset.finish("c")), (vec![ENTRIES[1], ENTRIES[2], ENTRIES[0]], id));
 
-	let mut prefix = prefix.into_builder();
+	let mut prefix = ColumnBuilder::from_view(&view(&prefix));
 	prefix.push(ENTRIES[3]);
-	assert_eq!(dictionary_parts(&prefix.finish()), (vec![ENTRIES[0], ENTRIES[1], ENTRIES[3]], id));
+	assert_eq!(dictionary_parts(&prefix.finish("c")), (vec![ENTRIES[0], ENTRIES[1], ENTRIES[3]], id));
 }
 
 #[test]

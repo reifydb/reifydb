@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, LargeStringArray};
+use arrow_array::{Array, ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
+		column_view::{ColumnView, ViewData},
 		date::Date,
 		datetime::DateTime,
 		duration::Duration,
@@ -19,19 +21,24 @@ use reifydb_value::{
 };
 
 use super::error::CastError;
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	if let ColumnBuffer::Utf8 {
+pub fn to_temporal(
+	data: &ColumnView,
+	target: ValueType,
+	lazy_fragment: impl LazyFragment,
+) -> Result<(FieldRef, ArrayRef)> {
+	if let ViewData::Utf8 {
 		container,
 		..
-	} = data
+	} = &data.data
 	{
+		let name = data.field.name();
 		match target {
-			ValueType::Date => to_date(container, lazy_fragment),
-			ValueType::DateTime => to_datetime(container, lazy_fragment),
-			ValueType::Time => to_time(container, lazy_fragment),
-			ValueType::Duration => to_duration(container, lazy_fragment),
+			ValueType::Date => to_date(container, name, lazy_fragment),
+			ValueType::DateTime => to_datetime(container, name, lazy_fragment),
+			ValueType::Time => to_time(container, name, lazy_fragment),
+			ValueType::Duration => to_duration(container, name, lazy_fragment),
 			_ => {
 				let object_type = data.get_type();
 				Err(TypeError::UnsupportedCast {
@@ -56,7 +63,11 @@ pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl L
 macro_rules! impl_to_temporal {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &LargeStringArray, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+		fn $fn_name(
+			container: &LargeStringArray,
+			name: &str,
+			lazy_fragment: impl LazyFragment,
+		) -> Result<(FieldRef, ArrayRef)> {
 			let mut out = ColumnBuilder::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_valid(idx) {
@@ -103,7 +114,7 @@ macro_rules! impl_to_temporal {
 					out.push_none();
 				}
 			}
-			Ok(out.finish())
+			Ok(out.finish(name))
 		}
 	};
 }

@@ -6,8 +6,11 @@ use std::{
 	fmt::{self, Display, Formatter},
 };
 
-use super::{column::FrameColumn, frame::Frame};
-use crate::value::try_from::{FromValueError, TryFromValue};
+use super::frame::Frame;
+use crate::value::{
+	column_view::ColumnView,
+	try_from::{FromValueError, TryFromValue},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameError {
@@ -24,6 +27,11 @@ pub enum FrameError {
 		column: String,
 		row: usize,
 		error: FromValueError,
+	},
+
+	InvalidColumn {
+		name: String,
+		message: String,
 	},
 }
 
@@ -48,6 +56,12 @@ impl Display for FrameError {
 			} => {
 				write!(f, "error extracting column '{}' row {}: {}", column, row, error)
 			}
+			FrameError::InvalidColumn {
+				name,
+				message,
+			} => {
+				write!(f, "column '{}' does not match its field: {}", name, message)
+			}
 		}
 	}
 }
@@ -55,23 +69,32 @@ impl Display for FrameError {
 impl error::Error for FrameError {}
 
 impl Frame {
-	pub fn column(&self, name: &str) -> Option<&FrameColumn> {
-		self.columns.iter().find(|c| c.name == name)
+	pub fn column(&self, name: &str) -> Result<Option<ColumnView<'_>>, FrameError> {
+		let schema = self.batch.schema_ref();
+		let Some(index) = schema.fields().iter().position(|field| field.name() == name) else {
+			return Ok(None);
+		};
+		ColumnView::try_from((self.batch.column(index), schema.field(index))).map(Some).map_err(|error| {
+			FrameError::InvalidColumn {
+				name: name.to_string(),
+				message: error.to_string(),
+			}
+		})
 	}
 
-	pub fn try_column(&self, name: &str) -> Result<&FrameColumn, FrameError> {
-		self.column(name).ok_or_else(|| FrameError::ColumnNotFound {
+	pub fn try_column(&self, name: &str) -> Result<ColumnView<'_>, FrameError> {
+		self.column(name)?.ok_or_else(|| FrameError::ColumnNotFound {
 			name: name.to_string(),
 		})
 	}
 
 	pub fn row_count(&self) -> usize {
-		self.columns.first().map(|c| c.data.len()).unwrap_or(0)
+		self.batch.num_rows()
 	}
 
 	pub fn get<T: TryFromValue>(&self, column: &str, row: usize) -> Result<Option<T>, FrameError> {
 		let col = self.try_column(column)?;
-		let len = col.data.len();
+		let len = col.len();
 
 		if row >= len {
 			return Err(FrameError::RowOutOfBounds {
@@ -80,11 +103,11 @@ impl Frame {
 			});
 		}
 
-		if !col.data.is_defined(row) {
+		if !col.is_defined(row) {
 			return Ok(None);
 		}
 
-		let value = col.data.get_value(row);
+		let value = col.get_value(row);
 		T::try_from_value(&value).map(Some).map_err(|e| FrameError::ValueError {
 			column: column.to_string(),
 			row,
@@ -95,41 +118,60 @@ impl Frame {
 
 #[cfg(test)]
 pub mod tests {
-	use arrow_array::{Int32Array, Int64Array, LargeStringArray};
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, Int32Array, Int64Array, LargeStringArray, RecordBatch, UInt64Array};
+	use arrow_schema::{FieldRef, Schema};
 
 	use super::*;
-	use crate::value::frame::data::FrameColumnData;
+	use crate::value::{
+		system_columns::{SystemColumn, with_system_column},
+		value_type::{
+			ValueType,
+			field::{FieldType, to_field},
+		},
+	};
+
+	fn column(name: &str, value_type: ValueType, array: ArrayRef) -> (FieldRef, ArrayRef) {
+		let field_type = FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		};
+		(Arc::new(to_field(name, &field_type)), array)
+	}
 
 	fn make_test_frame() -> Frame {
-		Frame::with_row_numbers(
-			vec![
-				FrameColumn {
-					name: "id".to_string(),
-					data: FrameColumnData::Int8(Int64Array::from(vec![1i64, 2, 3])),
-				},
-				FrameColumn {
-					name: "name".to_string(),
-					data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-						"Alice".to_string(),
-						"Bob".to_string(),
-						String::new(),
-					])),
-				},
-				FrameColumn {
-					name: "score".to_string(),
-					data: FrameColumnData::Int4(Int32Array::from(vec![100i32, 85, 92])),
-				},
-			],
-			vec![1.into(), 2.into(), 3.into()],
+		let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = vec![
+			column("id", ValueType::Int8, Arc::new(Int64Array::from(vec![1i64, 2, 3]))),
+			column(
+				"name",
+				ValueType::Utf8,
+				Arc::new(LargeStringArray::from(vec![
+					"Alice".to_string(),
+					"Bob".to_string(),
+					String::new(),
+				])),
+			),
+			column("score", ValueType::Int4, Arc::new(Int32Array::from(vec![100i32, 85, 92]))),
+		]
+		.into_iter()
+		.unzip();
+		let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap();
+		let batch = with_system_column(
+			batch,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64, 2, 3])),
 		)
+		.unwrap();
+		Frame::from(batch)
 	}
 
 	#[test]
 	fn test_column_by_name() {
 		let frame = make_test_frame();
-		assert!(frame.column("id").is_some());
-		assert!(frame.column("name").is_some());
-		assert!(frame.column("nonexistent").is_none());
+		assert!(frame.column("id").unwrap().is_some());
+		assert!(frame.column("name").unwrap().is_some());
+		assert!(frame.column("nonexistent").unwrap().is_none());
 	}
 
 	#[test]
@@ -137,7 +179,7 @@ pub mod tests {
 		let frame = make_test_frame();
 		assert_eq!(frame.row_count(), 3);
 
-		let empty = Frame::new(vec![]);
+		let empty = Frame::from(RecordBatch::new_empty(Arc::new(Schema::empty())));
 		assert_eq!(empty.row_count(), 0);
 	}
 

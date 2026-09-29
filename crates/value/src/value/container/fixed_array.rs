@@ -47,7 +47,7 @@ pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> Result<FixedS
 	for &idx in indices {
 		reordered.extend_from_slice(&bytes[idx * width..(idx + 1) * width]);
 	}
-	Ok(attach_nulls(from_buffer(width, reordered), bitmap::reorder_nulls(array.nulls(), indices)))
+	Ok(attach_nulls(from_buffer(width, reordered), bitmap::reorder_nulls(array.logical_nulls().as_ref(), indices)))
 }
 
 pub fn attach_nulls(array: FixedSizeBinaryArray, nulls: Option<NullBuffer>) -> FixedSizeBinaryArray {

@@ -31,7 +31,10 @@ pub fn as_string(array: &BooleanArray, index: usize) -> String {
 }
 
 pub fn slice(array: &BooleanArray, start: usize, end: usize) -> BooleanArray {
-	BooleanArray::new(bitmap::slice(array.values(), start, end), bitmap::slice_nulls(array.nulls(), start, end))
+	BooleanArray::new(
+		bitmap::slice(array.values(), start, end),
+		bitmap::slice_nulls(array.logical_nulls().as_ref(), start, end),
+	)
 }
 
 pub fn take(array: &BooleanArray, num: usize) -> BooleanArray {
@@ -50,7 +53,10 @@ pub fn filter_with(array: &BooleanArray, predicate: &FilterPredicate) -> Boolean
 
 pub fn reorder(array: &BooleanArray, indices: &[usize]) -> Result<BooleanArray> {
 	kernel::rows_in_range(indices, array.len())?;
-	Ok(BooleanArray::new(bitmap::reorder(array.values(), indices), bitmap::reorder_nulls(array.nulls(), indices)))
+	Ok(BooleanArray::new(
+		bitmap::reorder(array.values(), indices),
+		bitmap::reorder_nulls(array.logical_nulls().as_ref(), indices),
+	))
 }
 
 pub fn attach_nulls(array: BooleanArray, nulls: Option<NullBuffer>) -> BooleanArray {

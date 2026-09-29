@@ -16,7 +16,10 @@ impl Push<Uuid4> for ColumnBuilder {
 		match &mut self.inner {
 			TypedBuilder::Uuid4(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
-				panic!("called `push::<Uuid4>()` on incompatible ColumnBuffer::{:?}", other.get_type());
+				panic!(
+					"called `push::<Uuid4>()` on incompatible ColumnBuilder::{:?}",
+					other.get_type()
+				);
 			}
 		}
 	}
@@ -27,7 +30,10 @@ impl Push<Uuid7> for ColumnBuilder {
 		match &mut self.inner {
 			TypedBuilder::Uuid7(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
-				panic!("called `push::<Uuid7>()` on incompatible ColumnBuffer::{:?}", other.get_type());
+				panic!(
+					"called `push::<Uuid7>()` on incompatible ColumnBuilder::{:?}",
+					other.get_type()
+				);
 			}
 		}
 	}
@@ -39,7 +45,7 @@ impl Push<IdentityId> for ColumnBuilder {
 			TypedBuilder::IdentityId(builder) => append_fixed(builder, value.as_bytes()),
 			other => {
 				panic!(
-					"called `push::<IdentityId>()` on incompatible ColumnBuffer::{:?}",
+					"called `push::<IdentityId>()` on incompatible ColumnBuilder::{:?}",
 					other.get_type()
 				);
 			}

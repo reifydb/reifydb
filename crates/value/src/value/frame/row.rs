@@ -4,49 +4,65 @@
 use std::{collections::HashMap, rc::Rc};
 
 use super::{extract::FrameError, frame::Frame};
-use crate::value::try_from::TryFromValue;
+use crate::{
+	error::Error,
+	value::{column_view::ColumnView, try_from::TryFromValue},
+};
 
 #[derive(Debug)]
-struct ColumnIndex {
+struct ColumnIndex<'a> {
 	by_name: HashMap<String, usize>,
+	views: Vec<Result<ColumnView<'a>, Error>>,
 }
 
-impl ColumnIndex {
-	fn new(frame: &Frame) -> Self {
-		let mut by_name = HashMap::with_capacity(frame.columns.len());
-		for (idx, col) in frame.columns.iter().enumerate() {
-			by_name.insert(col.name.clone(), idx);
+impl<'a> ColumnIndex<'a> {
+	fn new(frame: &'a Frame) -> Self {
+		let schema = frame.batch.schema_ref();
+		let mut by_name = HashMap::with_capacity(schema.fields().len());
+		let mut views = Vec::with_capacity(schema.fields().len());
+		for (idx, (field, array)) in schema.fields().iter().zip(frame.batch.columns()).enumerate() {
+			by_name.insert(field.name().clone(), idx);
+			views.push(ColumnView::try_from((array, field.as_ref())));
 		}
 		Self {
 			by_name,
+			views,
 		}
 	}
 
-	fn get(&self, name: &str) -> Option<usize> {
-		self.by_name.get(name).copied()
+	fn get(&self, name: &str) -> Option<&Result<ColumnView<'a>, Error>> {
+		self.by_name.get(name).map(|&idx| &self.views[idx])
 	}
 }
 
 #[derive(Debug)]
 pub struct FrameRow<'a> {
-	frame: &'a Frame,
-	index: Rc<ColumnIndex>,
+	index: Rc<ColumnIndex<'a>>,
 	row_idx: usize,
 }
 
 impl<'a> FrameRow<'a> {
 	pub fn get<T: TryFromValue>(&self, column: &str) -> Result<Option<T>, FrameError> {
-		let col_idx = self.index.get(column).ok_or_else(|| FrameError::ColumnNotFound {
-			name: column.to_string(),
-		})?;
+		let col = match self.index.get(column) {
+			Some(Ok(view)) => view,
+			Some(Err(error)) => {
+				return Err(FrameError::InvalidColumn {
+					name: column.to_string(),
+					message: error.to_string(),
+				});
+			}
+			None => {
+				return Err(FrameError::ColumnNotFound {
+					name: column.to_string(),
+				});
+			}
+		};
 
-		let col = &self.frame.columns[col_idx];
-
-		if !col.data.is_defined(self.row_idx) {
+		if !col.is_defined(self.row_idx) {
 			return Ok(None);
 		}
 
-		let value = col.data.get_value(self.row_idx);
+		let value = col.get_value(self.row_idx);
 		T::try_from_value(&value).map(Some).map_err(|e| FrameError::ValueError {
 			column: column.to_string(),
 			row: self.row_idx,
@@ -56,20 +72,17 @@ impl<'a> FrameRow<'a> {
 }
 
 pub struct FrameRows<'a> {
-	frame: &'a Frame,
-	index: Rc<ColumnIndex>,
+	index: Rc<ColumnIndex<'a>>,
 	current: usize,
 	len: usize,
 }
 
 impl<'a> FrameRows<'a> {
 	pub(super) fn new(frame: &'a Frame) -> Self {
-		let len = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
 		Self {
-			frame,
 			index: Rc::new(ColumnIndex::new(frame)),
 			current: 0,
-			len,
+			len: frame.batch.num_rows(),
 		}
 	}
 }
@@ -83,7 +96,6 @@ impl<'a> Iterator for FrameRows<'a> {
 		}
 
 		let row = FrameRow {
-			frame: self.frame,
 			index: Rc::clone(&self.index),
 			row_idx: self.current,
 		};
@@ -109,7 +121,6 @@ impl<'a> DoubleEndedIterator for FrameRows<'a> {
 		self.len -= 1;
 
 		Some(FrameRow {
-			frame: self.frame,
 			index: Rc::clone(&self.index),
 			row_idx: self.len,
 		})
@@ -124,29 +135,51 @@ impl Frame {
 
 #[cfg(test)]
 pub mod tests {
-	use arrow_array::{Int64Array, LargeStringArray};
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, Int64Array, LargeStringArray, RecordBatch, UInt64Array};
+	use arrow_schema::{FieldRef, Schema};
 
 	use super::*;
-	use crate::value::frame::{column::FrameColumn, data::FrameColumnData};
+	use crate::value::{
+		system_columns::{SystemColumn, with_system_column},
+		value_type::{
+			ValueType,
+			field::{FieldType, to_field},
+		},
+	};
+
+	fn column(name: &str, value_type: ValueType, array: ArrayRef) -> (FieldRef, ArrayRef) {
+		let field_type = FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		};
+		(Arc::new(to_field(name, &field_type)), array)
+	}
 
 	fn make_test_frame() -> Frame {
-		Frame::with_row_numbers(
-			vec![
-				FrameColumn {
-					name: "id".to_string(),
-					data: FrameColumnData::Int8(Int64Array::from(vec![1i64, 2, 3])),
-				},
-				FrameColumn {
-					name: "name".to_string(),
-					data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-						"Alice".to_string(),
-						"Bob".to_string(),
-						String::new(),
-					])),
-				},
-			],
-			vec![100.into(), 200.into(), 300.into()],
+		let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = vec![
+			column("id", ValueType::Int8, Arc::new(Int64Array::from(vec![1i64, 2, 3]))),
+			column(
+				"name",
+				ValueType::Utf8,
+				Arc::new(LargeStringArray::from(vec![
+					"Alice".to_string(),
+					"Bob".to_string(),
+					String::new(),
+				])),
+			),
+		]
+		.into_iter()
+		.unzip();
+		let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap();
+		let batch = with_system_column(
+			batch,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![100u64, 200, 300])),
 		)
+		.unwrap();
+		Frame::from(batch)
 	}
 
 	#[test]

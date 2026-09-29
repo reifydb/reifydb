@@ -1,33 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+	fmt::{self, Display, Formatter},
+	slice,
+	sync::Arc,
+};
 
-use arrow_buffer::BooleanBuffer;
-use serde::{Deserialize, Serialize};
+use arrow_array::{
+	Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, RecordBatchOptions, TimestampNanosecondArray, UInt64Array,
+};
+use arrow_schema::{ArrowError, Field, FieldRef, Schema};
 
-use crate::value::{datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType};
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SystemColumns {
-	row_numbers: Vec<RowNumber>,
-	has_row_numbers: bool,
-	partitions: Vec<Partition>,
-	created_at: Vec<DateTime>,
-	updated_at: Vec<DateTime>,
-	time: Vec<DateTime>,
-	commit_versions: Vec<u64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RowStamps {
-	pub row_number: Option<RowNumber>,
-	pub partition: Option<Partition>,
-	pub created_at: Option<DateTime>,
-	pub updated_at: Option<DateTime>,
-	pub time: Option<DateTime>,
-	pub commit_version: Option<u64>,
-}
+use crate::{
+	Result,
+	error::Error,
+	value::{
+		column_view::ColumnView,
+		container::{temporal_array::datetimes, wide_int_array::wides},
+		datetime::DateTime,
+		partition::Partition,
+		row_number::RowNumber,
+		value_type::{
+			ValueType,
+			field::{FieldType, field_error, to_field},
+		},
+	},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemColumn {
@@ -74,6 +73,10 @@ impl SystemColumn {
 	pub fn from_name(name: &str) -> Option<SystemColumn> {
 		SystemColumn::ALL.into_iter().find(|column| column.name() == name)
 	}
+
+	fn rank(self) -> usize {
+		SystemColumn::ALL.iter().position(|column| *column == self).expect("every system column is in ALL")
+	}
 }
 
 impl Display for SystemColumn {
@@ -82,690 +85,446 @@ impl Display for SystemColumn {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum SystemColumnsError {
-	#[error("cannot append rows: {column} is present on one side but not the other")]
-	PresenceMismatch {
-		column: SystemColumn,
-		target_present: bool,
-		source_present: bool,
-	},
-
-	#[error("{column} holds {len} entries but the batch has {row_count} rows")]
-	LengthMismatch {
-		column: SystemColumn,
-		len: usize,
-		row_count: usize,
-	},
+pub fn system_column(batch: &RecordBatch, column: SystemColumn) -> Option<&ArrayRef> {
+	position(batch, column.name()).map(|index| batch.column(index))
 }
 
-#[inline]
-fn gather<T: Copy + PartialEq + Default>(src: &[T], indices: &[usize]) -> Vec<T> {
-	if src.is_empty() {
-		return Vec::new();
-	}
-	indices.iter().map(|&i| src.get(i).copied().unwrap_or_default()).collect()
+pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+	let Some(array) = present::<UInt64Array>(batch, SystemColumn::RowNumbers)? else {
+		return Ok(&[]);
+	};
+	let values: &[u64] = array.values();
+	// SAFETY: RowNumber is repr(transparent) over u64 with no niche, so the cast keeps the bounds and lifetime.
+	Ok(unsafe { slice::from_raw_parts(values.as_ptr().cast::<RowNumber>(), values.len()) })
 }
 
-#[inline]
-fn retain<T: Copy + PartialEq>(src: &[T], mask: &BooleanBuffer) -> Vec<T> {
-	if src.is_empty() {
-		return Vec::new();
-	}
-	src.iter().enumerate().filter(|(i, _)| *i < mask.len() && mask.value(*i)).map(|(_, &v)| v).collect()
+pub fn partitions(batch: &RecordBatch) -> Result<Vec<Partition>> {
+	let Some(array) = present::<FixedSizeBinaryArray>(batch, SystemColumn::Partitions)? else {
+		return Ok(Vec::new());
+	};
+	Ok(wides::<u128>(array).into_iter().map(Partition).collect())
 }
 
-#[inline]
-fn head<T: Copy + PartialEq>(src: &[T], n: usize) -> Vec<T> {
-	if src.is_empty() {
-		return Vec::new();
-	}
-	src[..n.min(src.len())].to_vec()
+pub fn created_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+	datetime_column(batch, SystemColumn::CreatedAt)
 }
 
-#[inline]
-fn concat<T: Copy + PartialEq>(dst: &mut Vec<T>, src: &Vec<T>) {
-	if src.is_empty() {
-		return;
-	}
-	dst.extend_from_slice(src.as_slice());
+pub fn updated_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+	datetime_column(batch, SystemColumn::UpdatedAt)
 }
 
-impl SystemColumns {
-	pub fn empty() -> Self {
-		Self::default()
-	}
+pub fn time(batch: &RecordBatch) -> Result<&[DateTime]> {
+	datetime_column(batch, SystemColumn::Time)
+}
 
-	pub fn new(
-		row_numbers: Vec<RowNumber>,
-		partitions: Vec<Partition>,
-		created_at: Vec<DateTime>,
-		updated_at: Vec<DateTime>,
-		time: Vec<DateTime>,
-		commit_versions: Vec<u64>,
-	) -> Self {
-		Self {
-			has_row_numbers: !row_numbers.is_empty(),
-			row_numbers,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
+pub fn require_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+	require(batch, SystemColumn::RowNumbers)?;
+	row_numbers(batch)
+}
+
+pub fn require_created_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+	require(batch, SystemColumn::CreatedAt)?;
+	created_at(batch)
+}
+
+pub fn require_updated_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+	require(batch, SystemColumn::UpdatedAt)?;
+	updated_at(batch)
+}
+
+pub fn require_time(batch: &RecordBatch) -> Result<&[DateTime]> {
+	require(batch, SystemColumn::Time)?;
+	time(batch)
+}
+
+pub fn commit_versions(batch: &RecordBatch) -> Result<&[u64]> {
+	match present::<UInt64Array>(batch, SystemColumn::CommitVersion)? {
+		Some(array) => Ok(array.values()),
+		None => Ok(&[]),
+	}
+}
+
+pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: ArrayRef) -> Result<RecordBatch> {
+	let value_type = match array.logical_null_count() > 0 {
+		true => ValueType::Option(Box::new(column.ty())),
+		false => column.ty(),
+	};
+	let field: FieldRef = Arc::new(to_field(
+		column.name(),
+		&FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		},
+	));
+	let row_count = match batch.num_columns() == 0 && batch.num_rows() == 0 {
+		true => array.len(),
+		false => batch.num_rows(),
+	};
+	let schema = batch.schema();
+	let mut fields: Vec<FieldRef> = schema.fields().iter().cloned().collect();
+	let mut columns: Vec<ArrayRef> = batch.columns().to_vec();
+	match position(&batch, column.name()) {
+		Some(index) => {
+			fields[index] = field;
+			columns[index] = array;
+		}
+		None => {
+			let index = fields
+				.iter()
+				.position(|other| {
+					SystemColumn::from_name(other.name())
+						.is_some_and(|other| other.rank() > column.rank())
+				})
+				.unwrap_or(fields.len());
+			fields.insert(index, field);
+			columns.insert(index, array);
 		}
 	}
+	RecordBatch::try_new_with_options(
+		Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
+		columns,
+		&RecordBatchOptions::new().with_row_count(Some(row_count)),
+	)
+	.map_err(arrow_error)
+}
 
-	pub fn mark_row_numbers(&mut self) {
-		self.has_row_numbers = true;
-	}
+pub fn keep_system_columns(batch: &RecordBatch, keep: &[SystemColumn]) -> Result<RecordBatch> {
+	let indices: Vec<usize> = batch
+		.schema_ref()
+		.fields()
+		.iter()
+		.enumerate()
+		.filter(|(_, field)| SystemColumn::from_name(field.name()).is_none_or(|column| keep.contains(&column)))
+		.map(|(index, _)| index)
+		.collect();
+	batch.project(&indices).map_err(arrow_error)
+}
 
-	pub fn set_partitions(&mut self, partitions: Vec<Partition>) {
-		self.partitions = partitions;
-	}
+pub fn is_system_field(field: &Field) -> bool {
+	field.name().starts_with('#')
+}
 
-	pub fn set_time(&mut self, time: Vec<DateTime>) {
-		self.time = time;
-	}
+pub fn user_columns(batch: &RecordBatch) -> impl Iterator<Item = (&FieldRef, &ArrayRef)> {
+	batch.schema_ref().fields().iter().zip(batch.columns()).filter(|(field, _)| !is_system_field(field))
+}
 
-	pub fn set_commit_versions(&mut self, commit_versions: Vec<u64>) {
-		self.commit_versions = commit_versions;
+pub fn column_view<'a>(batch: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+	match position(batch, name) {
+		Some(index) => ColumnView::try_from((batch.column(index), batch.schema_ref().field(index))).map(Some),
+		None => Ok(None),
 	}
 }
 
-impl SystemColumns {
-	#[inline]
-	pub fn row_numbers(&self) -> &[RowNumber] {
-		self.row_numbers.as_slice()
-	}
-
-	#[inline]
-	pub fn has_row_numbers(&self) -> bool {
-		self.has_row_numbers
-	}
-
-	#[inline]
-	pub fn partitions(&self) -> &[Partition] {
-		self.partitions.as_slice()
-	}
-
-	#[inline]
-	pub fn created_at(&self) -> &[DateTime] {
-		self.created_at.as_slice()
-	}
-
-	#[inline]
-	pub fn updated_at(&self) -> &[DateTime] {
-		self.updated_at.as_slice()
-	}
-
-	#[inline]
-	pub fn time(&self) -> &[DateTime] {
-		self.time.as_slice()
-	}
-
-	#[inline]
-	pub fn commit_versions(&self) -> &[u64] {
-		self.commit_versions.as_slice()
-	}
-
-	pub fn row_count(&self) -> Option<usize> {
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		[
-			row_numbers.len(),
-			partitions.len(),
-			created_at.len(),
-			updated_at.len(),
-			time.len(),
-			commit_versions.len(),
-		]
+pub fn resolve_column(batch: &RecordBatch, name: &str) -> Option<usize> {
+	let bare = name.strip_prefix('#').unwrap_or(name);
+	SystemColumn::ALL
 		.into_iter()
-		.find(|&len| len > 0)
-	}
+		.find(|column| &column.name()[1..] == bare)
+		.and_then(|column| position(batch, column.name()))
+		.or_else(|| position(batch, name))
+}
 
-	pub fn is_empty(&self) -> bool {
-		self.row_count().is_none()
+pub fn check_user_columns(batch: &RecordBatch) -> Result<()> {
+	if batch.num_rows() > 0 && batch.num_columns() == 0 {
+		return Err(field_error(format!("a batch of {} rows has no columns", batch.num_rows())));
 	}
+	Ok(())
+}
 
-	pub fn heap_size(&self) -> usize {
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		row_numbers.len() * size_of::<RowNumber>()
-			+ partitions.len() * size_of::<Partition>()
-			+ created_at.len() * size_of::<DateTime>()
-			+ updated_at.len() * size_of::<DateTime>()
-			+ time.len() * size_of::<DateTime>()
-			+ commit_versions.len() * size_of::<u64>()
+fn position(batch: &RecordBatch, name: &str) -> Option<usize> {
+	batch.schema_ref().fields().iter().position(|field| field.name() == name)
+}
+
+fn present<T: 'static>(batch: &RecordBatch, column: SystemColumn) -> Result<Option<&T>> {
+	let Some(array) = system_column(batch, column) else {
+		return Ok(None);
+	};
+	if array.logical_null_count() > 0 {
+		return Err(field_error(format!(
+			"system column {} holds {} none rows",
+			column.name(),
+			array.logical_null_count()
+		)));
+	}
+	array.as_any().downcast_ref::<T>().map(Some).ok_or_else(|| {
+		field_error(format!("system column {} holds arrow type {}", column.name(), array.data_type()))
+	})
+}
+
+fn require(batch: &RecordBatch, column: SystemColumn) -> Result<()> {
+	match system_column(batch, column) {
+		Some(_) => Ok(()),
+		None => Err(field_error(format!("system column {} is missing", column.name()))),
 	}
 }
 
-impl SystemColumns {
-	pub fn permute(&self, indices: &[usize]) -> Self {
-		let Self {
-			row_numbers,
-			has_row_numbers,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		Self {
-			row_numbers: gather(row_numbers, indices),
-			has_row_numbers: *has_row_numbers,
-			partitions: gather(partitions, indices),
-			created_at: gather(created_at, indices),
-			updated_at: gather(updated_at, indices),
-			time: gather(time, indices),
-			commit_versions: gather(commit_versions, indices),
-		}
+fn datetime_column(batch: &RecordBatch, column: SystemColumn) -> Result<&[DateTime]> {
+	match present::<TimestampNanosecondArray>(batch, column)? {
+		Some(array) => Ok(datetimes(array)),
+		None => Ok(&[]),
 	}
+}
 
-	pub fn permute_in_place(&mut self, indices: &[usize]) {
-		*self = self.permute(indices);
-	}
-
-	pub fn filter(&mut self, mask: &BooleanBuffer) {
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		*row_numbers = retain(row_numbers, mask);
-		*partitions = retain(partitions, mask);
-		*created_at = retain(created_at, mask);
-		*updated_at = retain(updated_at, mask);
-		*time = retain(time, mask);
-		*commit_versions = retain(commit_versions, mask);
-	}
-
-	pub fn take(&mut self, n: usize) {
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		*row_numbers = head(row_numbers, n);
-		*partitions = head(partitions, n);
-		*created_at = head(created_at, n);
-		*updated_at = head(updated_at, n);
-		*time = head(time, n);
-		*commit_versions = head(commit_versions, n);
-	}
-
-	pub fn extend(&mut self, source: &Self) -> Result<(), SystemColumnsError> {
-		self.check_extendable(source)?;
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		concat(row_numbers, &source.row_numbers);
-		concat(partitions, &source.partitions);
-		concat(created_at, &source.created_at);
-		concat(updated_at, &source.updated_at);
-		concat(time, &source.time);
-		concat(commit_versions, &source.commit_versions);
-		Ok(())
-	}
-
-	pub fn append_indices(&mut self, source: &Self, indices: &[usize]) {
-		let gathered = source.permute(indices);
-		let Self {
-			row_numbers,
-			has_row_numbers,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		concat(row_numbers, &gathered.row_numbers);
-		*has_row_numbers |= gathered.has_row_numbers;
-		concat(partitions, &gathered.partitions);
-		concat(created_at, &gathered.created_at);
-		concat(updated_at, &gathered.updated_at);
-		concat(time, &gathered.time);
-		concat(commit_versions, &gathered.commit_versions);
-	}
-
-	pub fn push(&mut self, stamps: RowStamps) {
-		let RowStamps {
-			row_number,
-			partition,
-			created_at,
-			updated_at,
-			time,
-			commit_version,
-		} = stamps;
-		if let Some(row_number) = row_number {
-			self.row_numbers.push(row_number);
-			self.has_row_numbers = true;
-		}
-		if let Some(partition) = partition {
-			self.partitions.push(partition);
-		}
-		if let Some(created_at) = created_at {
-			self.created_at.push(created_at);
-		}
-		if let Some(updated_at) = updated_at {
-			self.updated_at.push(updated_at);
-		}
-		if let Some(time) = time {
-			self.time.push(time);
-		}
-		if let Some(commit_version) = commit_version {
-			self.commit_versions.push(commit_version);
-		}
-	}
-
-	pub fn keep_row_numbers_and(&mut self, named: &[SystemColumn]) {
-		let Self {
-			row_numbers: _,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		if !named.contains(&SystemColumn::Partitions) {
-			partitions.clear();
-		}
-		if !named.contains(&SystemColumn::CreatedAt) {
-			created_at.clear();
-		}
-		if !named.contains(&SystemColumn::UpdatedAt) {
-			updated_at.clear();
-		}
-		if !named.contains(&SystemColumn::Time) {
-			time.clear();
-		}
-		if !named.contains(&SystemColumn::CommitVersion) {
-			commit_versions.clear();
-		}
-	}
-
-	pub fn clear(&mut self) {
-		let Self {
-			row_numbers,
-			has_row_numbers: _,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		row_numbers.clear();
-		partitions.clear();
-		created_at.clear();
-		updated_at.clear();
-		time.clear();
-		commit_versions.clear();
-	}
-
-	fn check_extendable(&self, source: &Self) -> Result<(), SystemColumnsError> {
-		let Self {
-			row_numbers: _,
-			has_row_numbers,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		let pairs = [
-			(SystemColumn::RowNumbers, *has_row_numbers, source.has_row_numbers),
-			(SystemColumn::Partitions, !partitions.is_empty(), !source.partitions.is_empty()),
-			(SystemColumn::CreatedAt, !created_at.is_empty(), !source.created_at.is_empty()),
-			(SystemColumn::UpdatedAt, !updated_at.is_empty(), !source.updated_at.is_empty()),
-			(SystemColumn::Time, !time.is_empty(), !source.time.is_empty()),
-			(SystemColumn::CommitVersion, !commit_versions.is_empty(), !source.commit_versions.is_empty()),
-		];
-		for (column, target_present, source_present) in pairs {
-			if target_present != source_present {
-				return Err(SystemColumnsError::PresenceMismatch {
-					column,
-					target_present,
-					source_present,
-				});
-			}
-		}
-		Ok(())
-	}
-
-	pub fn validate(&self, row_count: usize) -> Result<(), SystemColumnsError> {
-		let Self {
-			row_numbers,
-			has_row_numbers,
-			partitions,
-			created_at,
-			updated_at,
-			time,
-			commit_versions,
-		} = self;
-		if *has_row_numbers && row_numbers.len() != row_count {
-			return Err(SystemColumnsError::LengthMismatch {
-				column: SystemColumn::RowNumbers,
-				len: row_numbers.len(),
-				row_count,
-			});
-		}
-		let lengths = [
-			(SystemColumn::RowNumbers, row_numbers.len()),
-			(SystemColumn::Partitions, partitions.len()),
-			(SystemColumn::CreatedAt, created_at.len()),
-			(SystemColumn::UpdatedAt, updated_at.len()),
-			(SystemColumn::Time, time.len()),
-			(SystemColumn::CommitVersion, commit_versions.len()),
-		];
-		for (column, len) in lengths {
-			if len != 0 && len != row_count {
-				return Err(SystemColumnsError::LengthMismatch {
-					column,
-					len,
-					row_count,
-				});
-			}
-		}
-		Ok(())
-	}
-
-	#[track_caller]
-	pub fn assert_invariants(&self, row_count: usize, ctx: &str) {
-		if let Err(err) = self.validate(row_count) {
-			panic!("{ctx}: {err}");
-		}
-	}
+fn arrow_error(error: ArrowError) -> Error {
+	field_error(error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+	use arrow_array::{Int32Array, UInt64Array};
+
 	use super::*;
+	use crate::value::container::{temporal_array::datetime_array, wide_int_array::wide_array};
 
-	fn dt(n: i64) -> DateTime {
-		DateTime::from_nanos(n)
+	fn user(name: &str, values: Vec<i32>) -> (FieldRef, ArrayRef) {
+		let field = to_field(
+			name,
+			&FieldType {
+				value_type: Some(ValueType::Int4),
+				..FieldType::default()
+			},
+		);
+		(Arc::new(field), Arc::new(Int32Array::from(values)))
 	}
 
-	fn partition(n: u128) -> Partition {
-		Partition::from(n)
+	fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> RecordBatch {
+		let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
+		RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap()
 	}
 
-	fn populated() -> SystemColumns {
-		SystemColumns::new(
-			(1..5).map(RowNumber::from).collect(),
-			(0..4).map(|i| partition(i as u128)).collect(),
-			(0..4).map(|i| dt(1000 + i)).collect(),
-			(0..4).map(|i| dt(2000 + i)).collect(),
-			(0..4).map(|i| dt(3000 + i)).collect(),
-			Vec::new(),
+	fn names(batch: &RecordBatch) -> Vec<String> {
+		batch.schema_ref().fields().iter().map(|field| field.name().clone()).collect()
+	}
+
+	fn stamps(values: Vec<i64>) -> ArrayRef {
+		Arc::new(datetime_array(values.into_iter().map(DateTime::from_nanos)))
+	}
+
+	#[test]
+	fn row_numbers_read_the_rownum_column_and_are_empty_when_it_is_absent() {
+		// A getter that fails on an absent column would break every batch that never carried row numbers.
+		let plain = batch(vec![user("a", vec![1, 2])]);
+		assert!(row_numbers(&plain).unwrap().is_empty());
+		let numbered =
+			with_system_column(plain, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![7u64, 9])))
+				.unwrap();
+		assert_eq!(row_numbers(&numbered).unwrap(), &[RowNumber(7), RowNumber(9)]);
+	}
+
+	#[test]
+	fn partitions_decode_the_sixteen_byte_column() {
+		// Reading #partition as a u16 column would truncate every partition id above 65535.
+		let wide: ArrayRef = Arc::new(wide_array([1u128 << 100, 3]));
+		let with =
+			with_system_column(batch(vec![user("a", vec![1, 2])]), SystemColumn::Partitions, wide).unwrap();
+		assert_eq!(partitions(&with).unwrap(), vec![Partition(1u128 << 100), Partition(3)]);
+	}
+
+	#[test]
+	fn datetime_getters_read_their_own_column() {
+		// Mixing up #created_at, #updated_at and #time would stamp rows with the wrong instant.
+		let base = batch(vec![user("a", vec![1])]);
+		let base = with_system_column(base, SystemColumn::CreatedAt, stamps(vec![10])).unwrap();
+		let base = with_system_column(base, SystemColumn::UpdatedAt, stamps(vec![20])).unwrap();
+		let base = with_system_column(base, SystemColumn::Time, stamps(vec![30])).unwrap();
+		let base =
+			with_system_column(base, SystemColumn::CommitVersion, Arc::new(UInt64Array::from(vec![5u64])))
+				.unwrap();
+		assert_eq!(created_at(&base).unwrap(), &[DateTime::from_nanos(10)]);
+		assert_eq!(updated_at(&base).unwrap(), &[DateTime::from_nanos(20)]);
+		assert_eq!(time(&base).unwrap(), &[DateTime::from_nanos(30)]);
+		assert_eq!(commit_versions(&base).unwrap(), &[5]);
+	}
+
+	#[test]
+	fn a_getter_rejects_a_none_row() {
+		// A slice getter has no way to say none, so a none row read as a value would invent a timestamp.
+		let mixed: ArrayRef =
+			Arc::new(TimestampNanosecondArray::from(vec![Some(1), None]).with_timezone("+00:00"));
+		let with = with_system_column(batch(vec![user("a", vec![1, 2])]), SystemColumn::Time, mixed).unwrap();
+		assert!(with.schema_ref().field_with_name("#time").unwrap().is_nullable());
+		assert!(time(&with).is_err());
+	}
+
+	#[test]
+	fn a_getter_rejects_a_column_of_the_wrong_arrow_type() {
+		// Reinterpreting an int32 column as row numbers would read garbage rows.
+		let (_, wrong) = user("#rownum", vec![1]);
+		let field = Arc::new(Field::new("#rownum", wrong.data_type().clone(), false));
+		let bad = batch(vec![(field, wrong)]);
+		assert!(row_numbers(&bad).is_err());
+	}
+
+	#[test]
+	fn system_columns_are_inserted_after_user_columns_in_all_order() {
+		// Index based readers break if a system column lands between user columns or out of order.
+		let base = batch(vec![user("a", vec![1]), user("b", vec![2])]);
+		let base = with_system_column(base, SystemColumn::Time, stamps(vec![3])).unwrap();
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))
+			.unwrap();
+		let base = with_system_column(base, SystemColumn::CreatedAt, stamps(vec![4])).unwrap();
+		assert_eq!(names(&base), ["a", "b", "#rownum", "#created_at", "#time"]);
+	}
+
+	#[test]
+	fn a_present_system_column_is_replaced_in_place() {
+		// Appending a second #rownum would leave two columns under one name.
+		let base = with_system_column(
+			batch(vec![user("a", vec![1])]),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64])),
 		)
-	}
-
-	#[track_caller]
-	fn assert_row_matches(actual: &SystemColumns, at: usize, source: &SystemColumns, from: usize) {
-		assert_eq!(actual.row_numbers()[at], source.row_numbers()[from], "row_numbers[{at}]");
-		assert_eq!(actual.partitions()[at], source.partitions()[from], "partitions[{at}]");
-		assert_eq!(actual.created_at()[at], source.created_at()[from], "created_at[{at}]");
-		assert_eq!(actual.updated_at()[at], source.updated_at()[from], "updated_at[{at}]");
-		assert_eq!(actual.time()[at], source.time()[from], "time[{at}]");
+		.unwrap();
+		let replaced =
+			with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![8u64])))
+				.unwrap();
+		assert_eq!(names(&replaced), ["a", "#rownum"]);
+		assert_eq!(row_numbers(&replaced).unwrap(), &[RowNumber(8)]);
 	}
 
 	#[test]
-	fn permute_moves_every_sidecar_with_its_row() {
-		let source = populated();
-		let indices = [3, 0, 2, 1];
-		let permuted = source.permute(&indices);
-
-		assert_eq!(permuted.row_count(), Some(4));
-		for (at, &from) in indices.iter().enumerate() {
-			assert_row_matches(&permuted, at, &source, from);
-		}
+	fn a_system_column_on_an_empty_batch_sets_the_row_count() {
+		// A named-only #rownum result must keep its rows, not collapse to the empty batch's zero rows.
+		let empty = RecordBatch::new_empty(Arc::new(Schema::empty()));
+		let with = with_system_column(
+			empty,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64, 2, 3])),
+		)
+		.unwrap();
+		assert_eq!(with.num_rows(), 3);
 	}
 
 	#[test]
-	fn permute_trims_when_given_fewer_indices_than_rows() {
-		let source = populated();
-		let indices = [2, 0];
-		let permuted = source.permute(&indices);
-
-		assert_eq!(permuted.row_count(), Some(2));
-		for (at, &from) in indices.iter().enumerate() {
-			assert_row_matches(&permuted, at, &source, from);
-		}
-	}
-
-	#[test]
-	fn permute_duplicates_a_repeated_index() {
-		let source = populated();
-		let permuted = source.permute(&[1, 1, 1]);
-
-		assert_eq!(permuted.row_count(), Some(3));
-		for at in 0..3 {
-			assert_row_matches(&permuted, at, &source, 1);
-		}
-	}
-
-	#[test]
-	fn filter_keeps_masked_rows_intact() {
-		let source = populated();
-		let mut filtered = source.clone();
-		filtered.filter(&BooleanBuffer::from(vec![false, true, false, true]));
-
-		assert_eq!(filtered.row_count(), Some(2));
-		assert_row_matches(&filtered, 0, &source, 1);
-		assert_row_matches(&filtered, 1, &source, 3);
-	}
-
-	#[test]
-	fn take_trims_every_sidecar() {
-		let source = populated();
-		let mut taken = source.clone();
-		taken.take(2);
-
-		assert_eq!(taken.row_count(), Some(2));
-		assert_row_matches(&taken, 0, &source, 0);
-		assert_row_matches(&taken, 1, &source, 1);
-	}
-
-	#[test]
-	fn take_beyond_the_row_count_is_a_noop() {
-		let source = populated();
-		let mut taken = source.clone();
-		taken.take(99);
-		assert_eq!(taken, source);
-	}
-
-	#[test]
-	fn extend_concatenates_every_sidecar() {
-		let source = populated();
-		let mut acc = source.clone();
-		acc.extend(&source).unwrap();
-
-		assert_eq!(acc.row_count(), Some(8));
-		for i in 0..4 {
-			assert_row_matches(&acc, i, &source, i);
-			assert_row_matches(&acc, i + 4, &source, i);
-		}
-	}
-
-	#[test]
-	fn extend_rejects_a_presence_mismatch() {
-		let mut acc = populated();
-		let mut source = populated();
-		source.set_partitions(Vec::new());
-
-		assert_eq!(
-			acc.extend(&source).unwrap_err(),
-			SystemColumnsError::PresenceMismatch {
-				column: SystemColumn::Partitions,
-				target_present: true,
-				source_present: false,
-			}
+	fn a_system_column_of_the_wrong_length_is_rejected() {
+		// A short #rownum would pair rows with the wrong row numbers.
+		let result = with_system_column(
+			batch(vec![user("a", vec![1, 2])]),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64])),
 		);
+		assert!(result.is_err());
 	}
 
 	#[test]
-	fn append_indices_appends_only_the_named_rows() {
-		let source = populated();
-		let mut acc = source.clone();
-		acc.append_indices(&source, &[3, 1]);
-
-		assert_eq!(acc.row_count(), Some(6));
-		assert_row_matches(&acc, 4, &source, 3);
-		assert_row_matches(&acc, 5, &source, 1);
+	fn keep_drops_only_unnamed_system_columns() {
+		// Dropping #rownum or a user column named with a hash, like #op, would lose data the caller needs.
+		let op = Arc::new(Field::new("#op", arrow_schema::DataType::Int32, false));
+		let base = batch(vec![user("a", vec![1]), (op, Arc::new(Int32Array::from(vec![1])))]);
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))
+			.unwrap();
+		let base = with_system_column(base, SystemColumn::CreatedAt, stamps(vec![1])).unwrap();
+		let base = with_system_column(base, SystemColumn::Time, stamps(vec![1])).unwrap();
+		let kept = keep_system_columns(&base, &[SystemColumn::RowNumbers, SystemColumn::Time]).unwrap();
+		assert_eq!(names(&kept), ["a", "#op", "#rownum", "#time"]);
+		assert_eq!(kept.num_rows(), 1);
 	}
 
 	#[test]
-	fn every_operation_leaves_an_absent_sidecar_absent() {
-		let mut source = populated();
-		source.set_partitions(Vec::new());
-
-		assert!(source.permute(&[1, 0]).partitions().is_empty(), "permute");
-
-		let mut filtered = source.clone();
-		filtered.filter(&BooleanBuffer::from(vec![true, false, true, false]));
-		assert!(filtered.partitions().is_empty(), "filter");
-
-		let mut taken = source.clone();
-		taken.take(2);
-		assert!(taken.partitions().is_empty(), "take");
-
-		let mut extended = source.clone();
-		extended.extend(&source).unwrap();
-		assert!(extended.partitions().is_empty(), "extend");
-
-		let mut appended = source.clone();
-		appended.append_indices(&source, &[0]);
-		assert!(appended.partitions().is_empty(), "append_indices");
+	fn a_bare_name_resolves_to_the_system_column_first() {
+		// A user column named rownum must not shadow #rownum for a bare lookup, as today.
+		let base = batch(vec![user("rownum", vec![5]), user("x", vec![6])]);
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))
+			.unwrap();
+		assert_eq!(resolve_column(&base, "rownum"), Some(2));
+		assert_eq!(resolve_column(&base, "#rownum"), Some(2));
+		assert_eq!(resolve_column(&base, "x"), Some(1));
+		assert_eq!(resolve_column(&base, "created_at"), None);
+		assert_eq!(resolve_column(&base, "missing"), None);
 	}
 
 	#[test]
-	fn permuting_by_the_inverse_restores_the_original() {
-		let source = populated();
-		let forward = [2, 3, 1, 0];
-		let mut inverse = [0usize; 4];
-		for (at, &from) in forward.iter().enumerate() {
-			inverse[from] = at;
+	fn rows_without_any_column_are_rejected() {
+		// A row count with no column to carry it is the hazard; a named-only #rownum result is valid.
+		let counted = RecordBatch::try_new_with_options(
+			Arc::new(Schema::empty()),
+			vec![],
+			&RecordBatchOptions::new().with_row_count(Some(2)),
+		)
+		.unwrap();
+		assert!(check_user_columns(&counted).is_err());
+		let named = with_system_column(
+			RecordBatch::new_empty(Arc::new(Schema::empty())),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64, 2])),
+		)
+		.unwrap();
+		assert!(check_user_columns(&named).is_ok());
+		assert!(check_user_columns(&RecordBatch::new_empty(Arc::new(Schema::empty()))).is_ok());
+	}
+
+	#[test]
+	fn a_hash_prefix_marks_a_system_field() {
+		// Counting #op as a user column would give subscriptions a phantom column.
+		assert!(is_system_field(&Field::new("#rownum", arrow_schema::DataType::UInt64, false)));
+		assert!(is_system_field(&Field::new("#op", arrow_schema::DataType::Int32, false)));
+		assert!(!is_system_field(&Field::new("rownum", arrow_schema::DataType::UInt64, false)));
+	}
+
+	#[test]
+	fn column_view_finds_a_column_by_its_exact_name() {
+		// A lookup that strips the hash would read the user column rownum for #rownum.
+		let base = batch(vec![user("rownum", vec![5])]);
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![9u64])))
+			.unwrap();
+		let user_view = column_view(&base, "rownum").unwrap().unwrap();
+		assert_eq!(user_view.get_value(0), crate::value::Value::Int4(5));
+		let system_view = column_view(&base, "#rownum").unwrap().unwrap();
+		assert_eq!(system_view.get_value(0), crate::value::Value::Uint8(9));
+		assert!(column_view(&base, "missing").unwrap().is_none());
+	}
+
+	#[test]
+	fn require_getters_fail_naming_the_absent_column() {
+		// An absent column read as empty would pair a non-empty batch with no row numbers or stamps.
+		let plain = batch(vec![user("a", vec![1])]);
+		for (result, name) in [
+			(require_row_numbers(&plain).map(|_| ()), "#rownum"),
+			(require_created_at(&plain).map(|_| ()), "#created_at"),
+			(require_updated_at(&plain).map(|_| ()), "#updated_at"),
+			(require_time(&plain).map(|_| ()), "#time"),
+		] {
+			let message = format!("{:?}", result.unwrap_err());
+			assert!(message.contains(name), "{name} missing from {message}");
 		}
-		assert_eq!(source.permute(&forward).permute(&inverse), source);
 	}
 
 	#[test]
-	fn push_appends_one_row_to_every_sidecar() {
-		let mut acc = SystemColumns::empty();
-		acc.push(RowStamps {
-			row_number: Some(RowNumber::from(7)),
-			partition: Some(partition(2)),
-			created_at: Some(dt(10)),
-			updated_at: Some(dt(20)),
-			time: Some(dt(30)),
-			commit_version: None,
-		});
-
-		assert_eq!(acc.row_count(), Some(1));
-		assert_eq!(acc.row_numbers(), &[RowNumber::from(7)]);
-		assert_eq!(acc.partitions(), &[partition(2)]);
-		assert_eq!(acc.created_at(), &[dt(10)]);
-		assert_eq!(acc.updated_at(), &[dt(20)]);
-		assert_eq!(acc.time(), &[dt(30)]);
+	fn require_getters_read_a_present_column() {
+		// A require getter that read the wrong column would stamp rows with another column's values.
+		let base = batch(vec![user("a", vec![1])]);
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![4u64])))
+			.unwrap();
+		let base = with_system_column(base, SystemColumn::CreatedAt, stamps(vec![10])).unwrap();
+		let base = with_system_column(base, SystemColumn::UpdatedAt, stamps(vec![20])).unwrap();
+		let base = with_system_column(base, SystemColumn::Time, stamps(vec![30])).unwrap();
+		assert_eq!(require_row_numbers(&base).unwrap(), &[RowNumber(4)]);
+		assert_eq!(require_created_at(&base).unwrap(), &[DateTime::from_nanos(10)]);
+		assert_eq!(require_updated_at(&base).unwrap(), &[DateTime::from_nanos(20)]);
+		assert_eq!(require_time(&base).unwrap(), &[DateTime::from_nanos(30)]);
 	}
 
 	#[test]
-	fn pushing_rows_without_a_time_leaves_the_time_sidecar_absent() {
-		// A time-less object's rows must produce an empty #time vector, not a vector of sentinels.
-		// Absence is what downstream reads as "this source has no clock"; a filled vector of epochs
-		// would instead read as a source whose every row happened in 1970.
-		let mut acc = SystemColumns::empty();
-		for i in 0..3 {
-			acc.push(RowStamps {
-				row_number: Some(RowNumber::from(i + 1)),
-				partition: None,
-				created_at: Some(dt(10)),
-				updated_at: Some(dt(20)),
-				time: None,
-				commit_version: None,
-			});
-		}
-
-		assert_eq!(acc.row_count(), Some(3));
-		assert!(acc.time().is_empty(), "#time must stay absent rather than fill with sentinels");
-		acc.assert_invariants(3, "time-less push");
+	fn require_getters_still_reject_a_none_row() {
+		// Presence alone must not let a none row through as an invented timestamp.
+		let mixed: ArrayRef =
+			Arc::new(TimestampNanosecondArray::from(vec![Some(1), None]).with_timezone("+00:00"));
+		let with = with_system_column(batch(vec![user("a", vec![1, 2])]), SystemColumn::Time, mixed).unwrap();
+		assert!(require_time(&with).is_err());
 	}
 
 	#[test]
-	fn a_time_less_batch_may_not_be_extended_by_a_timed_one() {
-		// Mixing the two would leave #time shorter than the row count, so every later positional read
-		// would silently attribute one row's time to a different row.
-		let mut untimed = SystemColumns::empty();
-		untimed.push(RowStamps {
-			row_number: Some(RowNumber::from(1)),
-			partition: None,
-			created_at: Some(dt(10)),
-			updated_at: Some(dt(20)),
-			time: None,
-			commit_version: None,
-		});
-
-		let mut timed = SystemColumns::empty();
-		timed.push(RowStamps {
-			row_number: Some(RowNumber::from(2)),
-			partition: None,
-			created_at: Some(dt(10)),
-			updated_at: Some(dt(20)),
-			time: Some(dt(30)),
-			commit_version: None,
-		});
-
-		assert_eq!(
-			untimed.extend(&timed).unwrap_err(),
-			SystemColumnsError::PresenceMismatch {
-				column: SystemColumn::Time,
-				target_present: false,
-				source_present: true,
-			}
-		);
-	}
-
-	#[test]
-	fn clear_empties_every_sidecar() {
-		let mut acc = populated();
-		acc.clear();
-		assert_eq!(acc.row_count(), None);
-		assert!(acc.is_empty());
-	}
-
-	#[test]
-	#[should_panic(expected = "time")]
-	fn assert_invariants_rejects_a_partial_sidecar() {
-		let mut partial = populated();
-		partial.time = vec![dt(1)];
-		partial.assert_invariants(4, "test");
+	fn user_columns_skip_every_hash_column_in_order() {
+		// Counting #rownum or #op as a user column would give callers a phantom column.
+		let op = Arc::new(Field::new("#op", arrow_schema::DataType::Int32, false));
+		let base =
+			batch(vec![user("a", vec![1]), (op, Arc::new(Int32Array::from(vec![2]))), user("b", vec![3])]);
+		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))
+			.unwrap();
+		let names: Vec<&str> = user_columns(&base).map(|(field, _)| field.name().as_str()).collect();
+		assert_eq!(names, ["a", "b"]);
+		let (_, b) = user_columns(&base).nth(1).unwrap();
+		assert_eq!(b.as_any().downcast_ref::<Int32Array>().unwrap().value(0), 3);
+		assert_eq!(user_columns(&RecordBatch::new_empty(Arc::new(Schema::empty()))).count(), 0);
 	}
 }

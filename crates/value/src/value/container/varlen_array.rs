@@ -83,7 +83,7 @@ where
 	let start = start.min(len);
 	let end = end.min(len);
 	if start >= end {
-		return attach_nulls(empty(), bitmap::slice_nulls(array.nulls(), start, end));
+		return attach_nulls(empty(), bitmap::slice_nulls(array.logical_nulls().as_ref(), start, end));
 	}
 	array.slice(start, end - start)
 }
@@ -120,7 +120,7 @@ where
 	for &idx in indices {
 		builder.append_value(array.value(idx));
 	}
-	Ok(attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices)))
+	Ok(attach_nulls(builder.finish(), bitmap::reorder_nulls(array.logical_nulls().as_ref(), indices)))
 }
 
 pub fn attach_nulls<T>(array: GenericByteArray<T>, nulls: Option<NullBuffer>) -> GenericByteArray<T>

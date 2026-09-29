@@ -3,13 +3,15 @@
 
 use std::fmt::Debug;
 
-use arrow_array::{Array, PrimitiveArray};
+use arrow_array::{Array, ArrayRef, PrimitiveArray};
 use arrow_buffer::i256;
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::{Decimal, parse::parse_decimal, unscaled},
 		is::IsNumber,
@@ -22,14 +24,18 @@ use reifydb_value::{
 };
 
 use super::{convert::Convert, error::CastError};
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
+use crate::value::column::{
+	builder::ColumnBuilder,
+	nulls::{split_nulls, with_nulls},
+	push::Push,
+};
 
 pub fn to_number(
 	ctx: impl Convert,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	if !target.is_number() {
 		let from = data.get_type();
 		return Err(TypeError::UnsupportedCast {
@@ -68,23 +74,27 @@ pub fn to_number(
 }
 
 fn boolean_to_number(
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	if !matches!(target, ValueType::Decimal { .. }) {
 		return boolean_to_primitive(data, target, lazy_fragment);
 	}
-	let (ones, nulls) = boolean_to_primitive(data, ValueType::Int1, || lazy_fragment.fragment())?.split_nulls();
-	Ok(number_to_number(&ones, target, ctx, lazy_fragment)?.replace_nulls(nulls))
+	let (ones, nulls) = split_nulls(boolean_to_primitive(data, ValueType::Int1, || lazy_fragment.fragment())?)?;
+	let cast = number_to_number(&ColumnView::try_from(&ones)?, target, ctx, lazy_fragment)?;
+	match nulls {
+		Some(nulls) => with_nulls(cast, nulls),
+		None => Ok(cast),
+	}
 }
 
 fn boolean_to_primitive(
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnBuilder, val: bool| {
@@ -97,8 +107,8 @@ fn boolean_to_primitive(
 		}};
 	}
 
-	match data {
-		ColumnBuffer::Bool(container) => {
+	match &data.data {
+		ViewData::Bool(container) => {
 			let converter = match &target {
 				ValueType::Int1 => boolean_to_number!(i8, 1i8, 0i8),
 				ValueType::Int2 => {
@@ -152,7 +162,7 @@ fn boolean_to_primitive(
 					out.push_none();
 				}
 			}
-			Ok(out.finish())
+			Ok(out.finish(data.field.name()))
 		}
 		_ => {
 			let from = data.get_type();
@@ -191,9 +201,13 @@ macro_rules! parse_and_push {
 	}};
 }
 
-fn text_to_integer(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	match data {
-		ColumnBuffer::Utf8 {
+fn text_to_integer(
+	data: &ColumnView,
+	target: ValueType,
+	lazy_fragment: impl LazyFragment,
+) -> Result<(FieldRef, ArrayRef)> {
+	match &data.data {
+		ViewData::Utf8 {
 			container,
 			..
 		} => {
@@ -319,7 +333,7 @@ fn text_to_integer(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl L
 					out.push_none();
 				}
 			}
-			Ok(out.finish())
+			Ok(out.finish(data.field.name()))
 		}
 		_ => {
 			let from = data.get_type();
@@ -334,14 +348,14 @@ fn text_to_integer(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl L
 }
 
 fn text_to_float(
-	column_data: &ColumnBuffer,
+	column_data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
-	if let ColumnBuffer::Utf8 {
+) -> Result<(FieldRef, ArrayRef)> {
+	if let ViewData::Utf8 {
 		container,
 		..
-	} = column_data
+	} = &column_data.data
 	{
 		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnBuilder::with_capacity(target.clone(), container.len());
@@ -387,7 +401,7 @@ fn text_to_float(
 				out.push_none();
 			}
 		}
-		Ok(out.finish())
+		Ok(out.finish(column_data.field.name()))
 	} else {
 		let from = column_data.get_type();
 		Err(TypeError::UnsupportedCast {
@@ -400,15 +414,15 @@ fn text_to_float(
 }
 
 fn text_to_decimal(
-	column_data: &ColumnBuffer,
+	column_data: &ColumnView,
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
-	if let ColumnBuffer::Utf8 {
+) -> Result<(FieldRef, ArrayRef)> {
+	if let ViewData::Utf8 {
 		container,
 		..
-	} = column_data
+	} = &column_data.data
 	{
 		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnBuilder::with_capacity(target.clone(), container.len());
@@ -430,7 +444,7 @@ fn text_to_decimal(
 				out.push_none();
 			}
 		}
-		Ok(out.finish())
+		Ok(out.finish(column_data.field.name()))
 	} else {
 		let from = column_data.get_type();
 		Err(TypeError::UnsupportedCast {
@@ -443,11 +457,11 @@ fn text_to_decimal(
 }
 
 fn number_to_number(
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	if !target.is_number() {
 		return Err(TypeError::UnsupportedCast {
 			from: data.get_type(),
@@ -474,12 +488,13 @@ fn number_to_number(
                 to => [ $( ($dst_variant:ident, $dst_ty:ty) ),* ]
                 $(, family => [ $( ($family_variant:ident, $family_ty:ty) ),* ])?
             ) => {
-            if let ColumnBuffer::$src_variant(container) = data {
+            if let ViewData::$src_variant(container) = &data.data {
                     let values = $values(container);
                     match target {
                         $(
                         ValueType::$dst_variant => return convert_vec::<$src_ty, $dst_ty>(
                             &values,
+                                data.field.name(),
                                 ctx,
                                 lazy_fragment,
                                 ValueType::$dst_variant,
@@ -489,6 +504,7 @@ fn number_to_number(
                         $($(
                         ValueType::$family_variant { .. } => return convert_family::<$src_ty, $family_ty>(
                             &values,
+                                data.field.name(),
                                 ctx,
                                 lazy_fragment,
                                 target,
@@ -561,12 +577,13 @@ fn number_to_number(
 	    family => [(Decimal, Decimal)]
 	);
 
-	if let ColumnBuffer::Decimal(container) = data {
+	if let ViewData::Decimal(container) = &data.data {
 		let container = &decimals(container);
 		match target {
 			ValueType::Int1 => {
 				return convert_vec_clone::<Decimal, i8>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Int1,
@@ -576,6 +593,7 @@ fn number_to_number(
 			ValueType::Int2 => {
 				return convert_vec_clone::<Decimal, i16>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Int2,
@@ -585,6 +603,7 @@ fn number_to_number(
 			ValueType::Int4 => {
 				return convert_vec_clone::<Decimal, i32>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Int4,
@@ -594,6 +613,7 @@ fn number_to_number(
 			ValueType::Int8 => {
 				return convert_vec_clone::<Decimal, i64>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Int8,
@@ -603,6 +623,7 @@ fn number_to_number(
 			ValueType::Int16 => {
 				return convert_vec_clone::<Decimal, i128>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Int16,
@@ -612,6 +633,7 @@ fn number_to_number(
 			ValueType::Uint1 => {
 				return convert_vec_clone::<Decimal, u8>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Uint1,
@@ -621,6 +643,7 @@ fn number_to_number(
 			ValueType::Uint2 => {
 				return convert_vec_clone::<Decimal, u16>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Uint2,
@@ -630,6 +653,7 @@ fn number_to_number(
 			ValueType::Uint4 => {
 				return convert_vec_clone::<Decimal, u32>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Uint4,
@@ -639,6 +663,7 @@ fn number_to_number(
 			ValueType::Uint8 => {
 				return convert_vec_clone::<Decimal, u64>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Uint8,
@@ -648,6 +673,7 @@ fn number_to_number(
 			ValueType::Uint16 => {
 				return convert_vec_clone::<Decimal, u128>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Uint16,
@@ -657,6 +683,7 @@ fn number_to_number(
 			ValueType::Float4 => {
 				return convert_vec_clone::<Decimal, f32>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Float4,
@@ -666,6 +693,7 @@ fn number_to_number(
 			ValueType::Float8 => {
 				return convert_vec_clone::<Decimal, f64>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					ValueType::Float8,
@@ -677,6 +705,7 @@ fn number_to_number(
 			} => {
 				return convert_family::<Decimal, Decimal>(
 					container,
+					data.field.name(),
 					ctx,
 					lazy_fragment,
 					target,
@@ -771,11 +800,12 @@ where
 
 fn convert_family<From, To>(
 	values: &[From],
+	name: &str,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
 	target: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<ColumnBuffer>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	From: Clone + SafeConvert<To> + GetType,
 	To: GetType,
@@ -794,16 +824,17 @@ where
 			None => out.push_none(),
 		}
 	}
-	Ok(out.finish())
+	Ok(out.finish(name))
 }
 
 pub(crate) fn convert_vec<From, To>(
 	container: &[From],
+	name: &str,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
 	target_kind: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<ColumnBuffer>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	From: Copy + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -816,16 +847,17 @@ where
 			None => out.push_none(),
 		}
 	}
-	Ok(out.finish())
+	Ok(out.finish(name))
 }
 
 pub(crate) fn convert_vec_clone<From, To>(
 	container: &[From],
+	name: &str,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
 	target_kind: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<ColumnBuffer>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	From: Clone + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -839,7 +871,7 @@ where
 			None => out.push_none(),
 		}
 	}
-	Ok(out.finish())
+	Ok(out.finish(name))
 }
 
 #[cfg(test)]
@@ -851,6 +883,7 @@ pub mod tests {
 			Result,
 			fragment::Fragment,
 			value::{
+				column_view::ColumnView,
 				number::safe::convert::SafeConvert,
 				value_type::{ValueType, get::GetType},
 			},
@@ -863,14 +896,16 @@ pub mod tests {
 			let data = [1i8, 2i8];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i8, i16>(
+			let column = convert_vec::<i8, i16>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			let slice: &[i16] = result.as_slice();
 			assert_eq!(slice, &[1i16, 2i16]);
@@ -882,14 +917,16 @@ pub mod tests {
 			let data = [42i8];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i8, i16>(
+			let column = convert_vec::<i8, i16>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			assert!(!result.is_defined(0));
 		}
@@ -901,14 +938,16 @@ pub mod tests {
 			let data = [1i8];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i8, i16>(
+			let column = convert_vec::<i8, i16>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			assert!(result.is_defined(0));
 			let slice = result.as_slice::<i16>();
@@ -921,14 +960,16 @@ pub mod tests {
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i8, i16>(
+			let column = convert_vec::<i8, i16>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int2,
 				|col, v| col.push::<i16>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			let slice = result.as_slice::<i16>();
 			assert_eq!(slice, &[1i16, 0, 3i16, 4i16]);
@@ -978,14 +1019,16 @@ pub mod tests {
 			let data = [1i16, 2i16];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i16, i8>(
+			let column = convert_vec::<i16, i8>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			let slice: &[i8] = result.as_slice();
 			assert_eq!(slice, &[1i8, 2i8]);
@@ -998,14 +1041,16 @@ pub mod tests {
 			let data = [42i16];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i16, i8>(
+			let column = convert_vec::<i16, i8>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			assert!(!result.is_defined(0));
 		}
@@ -1017,14 +1062,16 @@ pub mod tests {
 			let data = [1i16];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i16, i8>(
+			let column = convert_vec::<i16, i8>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			assert!(result.is_defined(0));
 			let slice: &[i8] = result.as_slice();
@@ -1037,14 +1084,16 @@ pub mod tests {
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let ctx = TestCtx::new();
 
-			let result = convert_vec::<i16, i8>(
+			let column = convert_vec::<i16, i8>(
 				&data,
+				"x",
 				&ctx,
 				Fragment::testing_empty,
 				ValueType::Int1,
 				|col, v| col.push::<i8>(v),
 			)
 			.unwrap();
+			let result = ColumnView::try_from(&column).unwrap();
 
 			let slice: &[i8] = result.as_slice();
 			assert_eq!(slice, &[1i8, 0, 3i8, 4i8]);

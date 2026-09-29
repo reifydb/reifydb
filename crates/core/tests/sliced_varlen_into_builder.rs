@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_value::value::{Value, blob::Blob};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{builder::ColumnBuilder, factory};
+use reifydb_value::value::{Value, blob::Blob, column_view::ColumnView};
 
 const START: usize = 2;
 
@@ -14,8 +16,21 @@ fn blobs() -> Vec<Blob> {
 	strings().into_iter().map(|s| Blob::new(s.into_bytes())).collect()
 }
 
-fn rows(buffer: &ColumnBuffer) -> Vec<Value> {
+fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+	ColumnView::try_from(column).unwrap()
+}
+
+fn rows(buffer: &(FieldRef, ArrayRef)) -> Vec<Value> {
+	let buffer = view(buffer);
 	(0..buffer.len()).map(|i| buffer.get_value(i)).collect()
+}
+
+fn slice(column: &(FieldRef, ArrayRef), start: usize, end: usize) -> (FieldRef, ArrayRef) {
+	(column.0.clone(), column.1.slice(start, end - start))
+}
+
+fn into_builder(column: &(FieldRef, ArrayRef)) -> ColumnBuilder {
+	ColumnBuilder::from_view(&view(column))
 }
 
 fn utf8_values(values: &[String]) -> Vec<Value> {
@@ -41,11 +56,11 @@ fn pushed_blob() -> Blob {
 #[test]
 fn utf8_slice_into_builder_while_parent_is_alive() {
 	// A push on a slice past row 0 while the parent shares its buffers must never shift rows or write the parent.
-	let parent = ColumnBuffer::utf8(strings());
-	let len = parent.len();
-	let mut builder = parent.slice(START, len).into_builder();
+	let parent = factory::utf8("c", strings());
+	let len = parent.1.len();
+	let mut builder = into_builder(&slice(&parent, START, len));
 	builder.push_value(Value::Utf8(pushed_utf8()));
-	let out = builder.finish();
+	let out = builder.finish("c");
 	let mut expected = utf8_values(&strings()[START..]);
 	expected.push(Value::Utf8(pushed_utf8()));
 	assert_eq!(rows(&out), expected);
@@ -55,12 +70,12 @@ fn utf8_slice_into_builder_while_parent_is_alive() {
 #[test]
 fn utf8_slice_into_builder_after_parent_is_dropped() {
 	// Arrow into_builder on a unique slice past value offset 0 breaks the array; rows must never shift.
-	let parent = ColumnBuffer::utf8(strings());
-	let slice = parent.slice(START, parent.len());
+	let parent = factory::utf8("c", strings());
+	let slice = slice(&parent, START, parent.1.len());
 	drop(parent);
-	let mut builder = slice.into_builder();
+	let mut builder = into_builder(&slice);
 	builder.push_value(Value::Utf8(pushed_utf8()));
-	let out = builder.finish();
+	let out = builder.finish("c");
 	let mut expected = utf8_values(&strings()[START..]);
 	expected.push(Value::Utf8(pushed_utf8()));
 	assert_eq!(rows(&out), expected);
@@ -69,11 +84,11 @@ fn utf8_slice_into_builder_after_parent_is_dropped() {
 #[test]
 fn blob_slice_into_builder_while_parent_is_alive() {
 	// A push on a slice past row 0 while the parent shares its buffers must never shift rows or write the parent.
-	let parent = ColumnBuffer::blob(blobs());
-	let len = parent.len();
-	let mut builder = parent.slice(START, len).into_builder();
+	let parent = factory::blob("c", blobs());
+	let len = parent.1.len();
+	let mut builder = into_builder(&slice(&parent, START, len));
 	builder.push_value(Value::Blob(pushed_blob()));
-	let out = builder.finish();
+	let out = builder.finish("c");
 	let mut expected = blob_values(&blobs()[START..]);
 	expected.push(Value::Blob(pushed_blob()));
 	assert_eq!(rows(&out), expected);
@@ -83,20 +98,20 @@ fn blob_slice_into_builder_while_parent_is_alive() {
 #[test]
 fn blob_push_on_a_mid_slice_never_writes_the_next_parent_row() {
 	// A push through a clone of a mid slice must copy first, otherwise it overwrites the parent row after the view.
-	let parent = ColumnBuffer::blob(patterned_blobs(500));
-	let s = parent.slice(100, 350);
-	let mut w = s.clone().into_builder();
+	let parent = factory::blob("c", patterned_blobs(500));
+	let s = slice(&parent, 100, 350);
+	let mut w = into_builder(&s.clone());
 	w.push_value(Value::Blob(Blob::new(vec![0xAA, 0xBB])));
-	let w = w.finish();
-	assert_eq!(w.get_value(250), Value::Blob(Blob::new(vec![0xAA, 0xBB])));
-	assert_eq!(s.len(), 250, "a push through a clone of the slice must never change the slice");
+	let w = w.finish("c");
+	assert_eq!(view(&w).get_value(250), Value::Blob(Blob::new(vec![0xAA, 0xBB])));
+	assert_eq!(s.1.len(), 250, "a push through a clone of the slice must never change the slice");
 	assert_eq!(
 		rows(&s),
 		blob_values(&patterned_blobs(500)[100..350]),
 		"a push through a clone of the slice must never change the slice"
 	);
 	assert_eq!(
-		parent.get_value(350),
+		view(&parent).get_value(350),
 		Value::Blob(patterned_blobs(500)[350].clone()),
 		"a slice push must never write the parent row"
 	);
@@ -106,12 +121,12 @@ fn blob_push_on_a_mid_slice_never_writes_the_next_parent_row() {
 #[test]
 fn blob_slice_into_builder_after_parent_is_dropped() {
 	// Arrow into_builder on a unique slice past value offset 0 breaks the array; rows must never shift.
-	let parent = ColumnBuffer::blob(blobs());
-	let slice = parent.slice(START, parent.len());
+	let parent = factory::blob("c", blobs());
+	let slice = slice(&parent, START, parent.1.len());
 	drop(parent);
-	let mut builder = slice.into_builder();
+	let mut builder = into_builder(&slice);
 	builder.push_value(Value::Blob(pushed_blob()));
-	let out = builder.finish();
+	let out = builder.finish("c");
 	let mut expected = blob_values(&blobs()[START..]);
 	expected.push(Value::Blob(pushed_blob()));
 	assert_eq!(rows(&out), expected);

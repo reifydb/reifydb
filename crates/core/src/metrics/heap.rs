@@ -19,6 +19,10 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
+		container::{
+			bool_array, decimal_array::DecimalView, digest_array, fixed_array, primitive, varlen_array,
+		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -319,6 +323,65 @@ impl HeapSize for Value {
 						.sum::<usize>()
 			}
 			_ => 0,
+		}
+	}
+}
+
+impl HeapSize for ColumnView<'_> {
+	fn heap_size(&self) -> usize {
+		let nulls = self.logical_nulls().map_or(0, |nulls| nulls.len().div_ceil(8));
+		nulls + match &self.data {
+			ViewData::Digest {
+				container,
+				..
+			} => {
+				varlen_array::heap_size(*container)
+					+ digest_array::iter(container)
+						.flatten()
+						.map(|digest| mem::size_of::<Digest>() + digest.heap_size())
+						.sum::<usize>()
+			}
+			ViewData::Bool(a) => bool_array::heap_size(a),
+			ViewData::Decimal(DecimalView::Decimal128(d)) => primitive::heap_size(*d),
+			ViewData::Decimal(DecimalView::Decimal256(d)) => primitive::heap_size(*d),
+			ViewData::None {
+				..
+			} => 0,
+			ViewData::Float4(a) => primitive::heap_size(*a),
+			ViewData::Float8(a) => primitive::heap_size(*a),
+			ViewData::Int1(a) => primitive::heap_size(*a),
+			ViewData::Int2(a) => primitive::heap_size(*a),
+			ViewData::Int4(a) => primitive::heap_size(*a),
+			ViewData::Int8(a) => primitive::heap_size(*a),
+			ViewData::Uint1(a) => primitive::heap_size(*a),
+			ViewData::Uint2(a) => primitive::heap_size(*a),
+			ViewData::Uint4(a) => primitive::heap_size(*a),
+			ViewData::Uint8(a) => primitive::heap_size(*a),
+			ViewData::Date(t) => primitive::heap_size(*t),
+			ViewData::DateTime(t) => primitive::heap_size(*t),
+			ViewData::Time(t) => primitive::heap_size(*t),
+			ViewData::Duration(t) => primitive::heap_size(*t),
+			ViewData::IdentityId(u)
+			| ViewData::Uuid4(u)
+			| ViewData::Uuid7(u)
+			| ViewData::Int16(u)
+			| ViewData::Uint16(u)
+			| ViewData::DictionaryId {
+				container: u,
+				..
+			} => fixed_array::heap_size(u),
+			ViewData::Utf8 {
+				container: v,
+				..
+			} => varlen_array::heap_size(*v),
+			ViewData::Blob {
+				container: v,
+				..
+			}
+			| ViewData::Any {
+				container: v,
+				..
+			} => varlen_array::heap_size(*v),
 		}
 	}
 }

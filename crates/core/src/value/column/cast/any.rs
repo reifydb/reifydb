@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
 		blob::Blob,
+		column_view::{ColumnView, ViewData},
 		container::{
 			any_array,
 			decimal_array::decimal_at,
@@ -21,19 +23,20 @@ use reifydb_value::{
 };
 
 use super::{cast_column_data, convert::Convert};
-use crate::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
+use crate::value::column::{builder::ColumnBuilder, factory::from_many};
 
 pub fn from_any(
 	ctx: impl Convert + Copy,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<ColumnBuffer> {
-	let any_container = match data {
-		ColumnBuffer::Any {
+) -> Result<(FieldRef, ArrayRef)> {
+	let name = data.field.name();
+	let any_container = match &data.data {
+		ViewData::Any {
 			container,
 			..
-		} => container,
+		} => *container,
 		_ => {
 			return Err(TypeError::UnsupportedCast {
 				from: data.get_type(),
@@ -45,7 +48,7 @@ pub fn from_any(
 	};
 
 	if any_container.is_empty() {
-		return Ok(ColumnBuilder::with_capacity(target.clone(), 0).finish());
+		return Ok(ColumnBuilder::with_capacity(target.clone(), 0).finish(name));
 	}
 
 	let mut temp_results = Vec::with_capacity(any_container.len());
@@ -58,10 +61,11 @@ pub fn from_any(
 
 		let value = row.unwrap_any();
 
-		let single_column = ColumnBuffer::from(value.clone());
-		if let ColumnBuffer::Any {
+		let single_column = from_many(name, value.clone(), 1);
+		let single_view = ColumnView::try_from(&single_column)?;
+		if let ViewData::Any {
 			..
-		} = single_column
+		} = single_view.data
 		{
 			return Err(TypeError::UnsupportedCast {
 				from: data.get_type(),
@@ -70,7 +74,7 @@ pub fn from_any(
 			}
 			.into());
 		}
-		match cast_column_data(ctx, &single_column, target.clone(), lazy_fragment.clone()) {
+		match cast_column_data(ctx, &single_view, target.clone(), lazy_fragment.clone()) {
 			Ok(result) => temp_results.push(Some(result)),
 			Err(e) => {
 				return Err(e);
@@ -85,96 +89,96 @@ pub fn from_any(
 			None => {
 				result.push_none();
 			}
-			Some(casted_column) if casted_column.nulls().is_some() => {
-				result.push_value(casted_column.get_value(0));
+			Some(casted_column) if casted_column.0.is_nullable() => {
+				result.push_value(ColumnView::try_from(&casted_column)?.get_value(0));
 			}
-			Some(casted_column) => match &casted_column {
-				ColumnBuffer::Bool(c) => {
+			Some(casted_column) => match &ColumnView::try_from(&casted_column)?.data {
+				ViewData::Bool(c) => {
 					if !c.is_empty() {
 						result.push::<bool>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int1(c) => {
+				ViewData::Int1(c) => {
 					if !c.is_empty() {
 						result.push::<i8>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int2(c) => {
+				ViewData::Int2(c) => {
 					if !c.is_empty() {
 						result.push::<i16>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int4(c) => {
+				ViewData::Int4(c) => {
 					if !c.is_empty() {
 						result.push::<i32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int8(c) => {
+				ViewData::Int8(c) => {
 					if !c.is_empty() {
 						result.push::<i64>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Int16(c) => match wide_at::<i128>(c, 0) {
+				ViewData::Int16(c) => match wide_at::<i128>(c, 0) {
 					Some(value) => result.push::<i128>(value),
 					None => result.push_none(),
 				},
-				ColumnBuffer::Uint1(c) => {
+				ViewData::Uint1(c) => {
 					if !c.is_empty() {
 						result.push::<u8>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint2(c) => {
+				ViewData::Uint2(c) => {
 					if !c.is_empty() {
 						result.push::<u16>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint4(c) => {
+				ViewData::Uint4(c) => {
 					if !c.is_empty() {
 						result.push::<u32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint8(c) => {
+				ViewData::Uint8(c) => {
 					if !c.is_empty() {
 						result.push::<u64>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uint16(c) => match wide_at::<u128>(c, 0) {
+				ViewData::Uint16(c) => match wide_at::<u128>(c, 0) {
 					Some(value) => result.push::<u128>(value),
 					None => result.push_none(),
 				},
-				ColumnBuffer::Float4(c) => {
+				ViewData::Float4(c) => {
 					if !c.is_empty() {
 						result.push::<f32>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Float8(c) => {
+				ViewData::Float8(c) => {
 					if !c.is_empty() {
 						result.push::<f64>(c.value(0));
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: c,
 					..
 				} => {
@@ -184,7 +188,7 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Blob {
+				ViewData::Blob {
 					container: c,
 					..
 				} => {
@@ -194,87 +198,85 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Date(c) => {
+				ViewData::Date(c) => {
 					if !c.is_empty() {
 						result.push(dates(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::DateTime(c) => {
+				ViewData::DateTime(c) => {
 					if !c.is_empty() {
 						result.push(datetimes(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Time(c) => {
+				ViewData::Time(c) => {
 					if !c.is_empty() {
 						result.push(times(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Duration(c) => {
+				ViewData::Duration(c) => {
 					if !c.is_empty() {
 						result.push(durations(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::IdentityId(c) => {
+				ViewData::IdentityId(c) => {
 					if !c.is_empty() {
 						result.push(identity_ids(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uuid4(c) => {
+				ViewData::Uuid4(c) => {
 					if !c.is_empty() {
 						result.push(uuid4s(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Uuid7(c) => {
+				ViewData::Uuid7(c) => {
 					if !c.is_empty() {
 						result.push(uuid7s(c)[0]);
 					} else {
 						result.push_none();
 					}
 				}
-				ColumnBuffer::Decimal(c) => match decimal_at(c, 0) {
+				ViewData::Decimal(c) => match decimal_at(c, 0) {
 					Some(value) => result.push(value),
 					None => result.push_none(),
 				},
-				ColumnBuffer::DictionaryId {
+				ViewData::DictionaryId {
 					container,
 					..
 				} => match dictionary_array::get(container, 0) {
 					Some(entry) => result.push(entry),
 					None => result.push_none(),
 				},
-				ColumnBuffer::Any {
+				ViewData::Any {
 					..
 				} => {
 					unreachable!("Casting from Any should not produce Any")
 				}
-				ColumnBuffer::Digest {
+				ViewData::Digest {
 					..
 				} => {
-					let value = casted_column.get_value(0);
+					let value = ColumnView::try_from(&casted_column)?.get_value(0);
 					result.push_value(value);
 				}
-				ColumnBuffer::None {
+				ViewData::None {
 					..
 				} => {
-					unreachable!(
-						"a none column carries a null buffer, so it takes the null buffer arm"
-					)
+					unreachable!("a none column is always nullable, so it takes the nullable arm")
 				}
 			},
 		}
 	}
 
-	Ok(result.finish())
+	Ok(result.finish(name))
 }

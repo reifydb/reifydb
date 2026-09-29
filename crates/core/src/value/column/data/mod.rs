@@ -20,7 +20,7 @@ pub trait ColumnData: Send + Sync + 'static {
 
 	fn encoding(&self) -> EncodingId;
 
-	fn nones(&self) -> Option<&NullBuffer>;
+	fn nones(&self) -> Option<NullBuffer>;
 
 	fn get_value(&self, idx: usize) -> Value;
 	fn as_string(&self, idx: usize) -> String;
@@ -63,7 +63,7 @@ impl Column {
 		self.0.encoding()
 	}
 
-	pub fn nones(&self) -> Option<&NullBuffer> {
+	pub fn nones(&self) -> Option<NullBuffer> {
 		self.0.nones()
 	}
 
@@ -79,6 +79,6 @@ impl Column {
 fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);
 	assert!(end <= canon.len());
-	let new_buffer = canon.buffer.slice(start, end);
-	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_buffer))
+	let new_buffer = canon.buffer().slice(start, end - start);
+	Canonical::new(canon.field_type().clone(), new_buffer)
 }

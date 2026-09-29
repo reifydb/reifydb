@@ -1,26 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
-use reifydb_core::value::column::{buffer::ColumnBuffer, builder::ColumnBuilder};
-use reifydb_value::value::{Value, value_type::ValueType};
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::builder::ColumnBuilder;
+use reifydb_value::value::{
+	Value,
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
-fn any_column_with_a_none_between_values() -> ColumnBuffer {
+fn any_column_with_a_none_between_values() -> (FieldRef, ArrayRef) {
 	let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(ValueType::Any)), 3);
 	builder.push_value(Value::Any(Box::new(Value::Int4(1))));
 	builder.push_none();
 	builder.push_value(Value::Any(Box::new(Value::Utf8("x".to_string()))));
-	builder.finish()
+	builder.finish("c")
 }
 
 #[test]
 fn a_none_pushed_into_an_any_column_is_a_null_row_with_no_encoded_value() {
 	// Otherwise the none is spelled twice: a null bit over an encoded Value::none(), the B3 bug.
 	let column = any_column_with_a_none_between_values();
-	let ColumnBuffer::Any {
+	let column = ColumnView::try_from(&column).unwrap();
+	let ViewData::Any {
 		container,
 		..
-	} = &column
+	} = &column.data
 	else {
 		panic!("expected an any column, got {:?}", column.get_type());
 	};

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType},
+	value::{Value, datetime::DateTime, sumtype::SumTypeId, system_columns::column_view, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +18,7 @@ use crate::{
 		key::PrimaryKey,
 	},
 	return_internal_error,
-	value::column::{buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::column::{builder::ColumnBuilder, factory},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -54,11 +56,8 @@ impl SeriesKey {
 		}
 	}
 
-	pub fn extract_key(&self, columns: &Columns, row_idx: usize) -> Option<u64> {
-		let key_column = self.column();
-		columns.iter()
-			.find(|col| col.name().text() == key_column)
-			.and_then(|col| self.key_to_u64(col.data().get_value(row_idx)))
+	pub fn extract_key(&self, columns: &RecordBatch, row_idx: usize) -> Result<Option<u64>> {
+		Ok(column_view(columns, self.column())?.and_then(|view| self.key_to_u64(view.get_value(row_idx))))
 	}
 
 	pub fn key_to_u64(&self, value: Value) -> Option<u64> {
@@ -178,7 +177,7 @@ impl Series {
 		self.key.key_from_u64(v, self.key_column_type())
 	}
 
-	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnBuffer {
+	pub fn key_column_data(&self, keys: Vec<u64>) -> (FieldRef, ArrayRef) {
 		let key_type = self.key_column_type();
 		match &key_type {
 			Some(ty) => {
@@ -186,9 +185,9 @@ impl Series {
 				for k in keys {
 					builder.push_value(self.key_from_u64(k));
 				}
-				builder.finish()
+				builder.finish(self.key.column())
 			}
-			None => ColumnBuffer::uint8(keys),
+			None => factory::uint8(self.key.column(), keys),
 		}
 	}
 

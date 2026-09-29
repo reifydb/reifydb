@@ -108,8 +108,11 @@ where
 	kernel::rows_in_range(indices, array.len())?;
 	let values = array.values();
 	let reordered: Vec<A::Native> = indices.iter().map(|&idx| values[idx]).collect();
-	Ok(PrimitiveArray::new(ScalarBuffer::from(reordered), bitmap::reorder_nulls(array.nulls(), indices))
-		.with_data_type(array.data_type().clone()))
+	Ok(PrimitiveArray::new(
+		ScalarBuffer::from(reordered),
+		bitmap::reorder_nulls(array.logical_nulls().as_ref(), indices),
+	)
+	.with_data_type(array.data_type().clone()))
 }
 
 pub fn attach_nulls<A>(array: PrimitiveArray<A>, nulls: Option<NullBuffer>) -> PrimitiveArray<A>

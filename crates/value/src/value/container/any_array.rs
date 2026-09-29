@@ -92,7 +92,7 @@ pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> Result<LargeBinar
 	for &index in indices {
 		builder.append_value(array.value(index));
 	}
-	Ok(varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.nulls(), indices)))
+	Ok(varlen_array::attach_nulls(builder.finish(), bitmap::reorder_nulls(array.logical_nulls().as_ref(), indices)))
 }
 
 pub fn equals(left: &LargeBinaryArray, right: &LargeBinaryArray) -> bool {
@@ -198,7 +198,7 @@ mod tests {
 		// A lossy row silently changes an Any cell; re-encoding catches -0.0 and 1.50 that == would hide.
 		let cells = every_variant();
 		let array = any_array(&cells);
-		assert!(array.nulls().is_none());
+		assert!(array.logical_nulls().is_none());
 		for (index, value) in cells.iter().enumerate() {
 			let back = get(&array, index).unwrap();
 			assert_eq!(&back, value);

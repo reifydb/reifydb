@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	borrow::Cow,
 	iter::{Enumerate, FilterMap},
 	mem,
 	sync::Arc,
@@ -11,11 +10,13 @@ use std::{
 
 use arrow_array::{
 	Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray,
+	cast::AsArray,
+	make_array,
 	types::{Float32Type, Float64Type},
 };
 use arrow_buffer::{NullBuffer, ScalarBuffer, i256};
 use arrow_row::{RowConverter, Rows, SortField};
-use arrow_schema::ArrowError;
+use arrow_schema::{ArrowError, DataType};
 use indexmap::IndexMap;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
@@ -24,6 +25,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		column_view::ColumnView,
 		constraint::{precision::Precision, scale::Scale},
 		container::decimal_array::{DECIMAL128_MAX_PRECISION, DecimalArray, data_type},
 		decimal::unscaled,
@@ -31,12 +33,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	error::CoreError,
-	internal_error,
-	metrics::heap::HeapSize,
-	value::column::{ColumnBuffer, columns::Columns},
-};
+use crate::{internal_error, metrics::heap::HeapSize, value::column::key::extend_key};
 
 pub type GroupKey = Vec<Value>;
 
@@ -174,7 +171,12 @@ impl GroupKeyDict {
 		self.entries.values().enumerate().map(|(index, values)| (GroupId(index as u32), values))
 	}
 
-	fn intern(&mut self, encoded: &EncodedKey, row_len: usize, materialize: impl FnOnce() -> GroupKey) -> GroupId {
+	pub(crate) fn intern(
+		&mut self,
+		encoded: &EncodedKey,
+		row_len: usize,
+		materialize: impl FnOnce() -> GroupKey,
+	) -> GroupId {
 		if let Some(index) = self.entries.get_index_of(encoded) {
 			return GroupId(index as u32);
 		}
@@ -183,8 +185,8 @@ impl GroupKeyDict {
 		GroupId(index as u32)
 	}
 
-	fn row_keys(&mut self, columns: &[&ColumnBuffer]) -> Result<Rows> {
-		let batch_types: Vec<ValueType> = columns.iter().map(|column| column.get_type()).collect();
+	pub(crate) fn row_keys(&mut self, views: &[&ColumnView]) -> Result<Rows> {
+		let batch_types: Vec<ValueType> = views.iter().map(|view| view.get_type()).collect();
 		if self.converter.is_some() {
 			let targets: Vec<ValueType> = self
 				.key_types
@@ -196,21 +198,19 @@ impl GroupKeyDict {
 				self.rekey(targets)?;
 			}
 		} else {
-			let fields = columns
-				.iter()
-				.map(|column| SortField::new(column.to_array_ref().data_type().clone()))
-				.collect();
+			let fields =
+				views.iter().map(|view| SortField::new(view.array().data_type().clone())).collect();
 			self.converter = Some(Arc::new(RowConverter::new(fields).map_err(group_key_error)?));
 			self.key_types = batch_types;
 		}
 		let converter = self.converter.clone().ok_or_else(|| internal_error!("group key converter missing"))?;
-		let mut arrays: Vec<ArrayRef> = Vec::with_capacity(columns.len());
-		for (column, target) in columns.iter().zip(&self.key_types) {
-			let (cast, dropped) = cast_key(column, target);
+		let mut arrays: Vec<ArrayRef> = Vec::with_capacity(views.len());
+		for (view, target) in views.iter().zip(&self.key_types) {
+			let (cast, dropped) = cast_key(&make_array(view.array().to_data()), target);
 			if dropped > 0 {
 				return Err(key_out_of_range(target));
 			}
-			arrays.push(cast.to_array_ref());
+			arrays.push(cast);
 		}
 		converter.convert_columns(&arrays).map_err(group_key_error)
 	}
@@ -280,20 +280,14 @@ pub fn common_key_type(left: &ValueType, right: &ValueType) -> Option<ValueType>
 	}
 }
 
-pub fn cast_key<'a>(column: &'a ColumnBuffer, target: &ValueType) -> (Cow<'a, ColumnBuffer>, usize) {
+pub fn cast_key(array: &ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
 	let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
-		return (Cow::Borrowed(column), 0);
+		return (array.clone(), 0);
 	};
-	if column.get_type() == *target {
-		return (Cow::Borrowed(column), 0);
+	if *array.data_type() == data_type(precision, scale) {
+		return (array.clone(), 0);
 	}
-	match column {
-		ColumnBuffer::Decimal(array) => {
-			let (array, dropped) = rescale_exact(array, precision, scale);
-			(Cow::Owned(ColumnBuffer::Decimal(array)), dropped)
-		}
-		_ => (Cow::Borrowed(column), 0),
-	}
+	cast_key_array(array.clone(), target)
 }
 
 fn cast_key_array(array: ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
@@ -369,8 +363,8 @@ fn group_key_error(error: ArrowError) -> Error {
 	internal_error!("Failed to build group keys: {}", error)
 }
 
-fn row_format_matches_value_key(column: &ColumnBuffer) -> bool {
-	let ty = column.get_type();
+fn row_format_matches_value_key(view: &ColumnView) -> bool {
+	let ty = view.get_type();
 	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8)
 }
 
@@ -392,19 +386,25 @@ macro_rules! needs_canonical {
 	};
 }
 
-pub fn key_column(column: &ColumnBuffer) -> Cow<'_, ColumnBuffer> {
-	match column {
-		ColumnBuffer::Float4(container) if container.values().iter().any(|f| needs_canonical!(f)) => {
-			Cow::Owned(ColumnBuffer::Float4(
-				container.unary::<_, Float32Type>(|f| canonical_float!(f, f32)),
-			))
+pub fn key_column(array: &ArrayRef) -> ArrayRef {
+	match array.data_type() {
+		DataType::Float32
+			if array.as_primitive::<Float32Type>().values().iter().any(|f| needs_canonical!(f)) =>
+		{
+			Arc::new(
+				array.as_primitive::<Float32Type>()
+					.unary::<_, Float32Type>(|f| canonical_float!(f, f32)),
+			)
 		}
-		ColumnBuffer::Float8(container) if container.values().iter().any(|f| needs_canonical!(f)) => {
-			Cow::Owned(ColumnBuffer::Float8(
-				container.unary::<_, Float64Type>(|f| canonical_float!(f, f64)),
-			))
+		DataType::Float64
+			if array.as_primitive::<Float64Type>().values().iter().any(|f| needs_canonical!(f)) =>
+		{
+			Arc::new(
+				array.as_primitive::<Float64Type>()
+					.unary::<_, Float64Type>(|f| canonical_float!(f, f64)),
+			)
 		}
-		other => Cow::Borrowed(other),
+		_ => array.clone(),
 	}
 }
 
@@ -417,64 +417,45 @@ impl HeapSize for GroupKeyDict {
 	}
 }
 
-impl Columns {
-	pub fn group_by_ids(&self, keys: &[&str], dict: &mut GroupKeyDict) -> Result<GroupRows> {
-		let row_count = self.columns.first().map_or(0, |c| c.len());
-		let key_columns = self.key_columns(keys)?;
+pub(crate) fn group_rows(views: &[ColumnView<'_>], row_count: usize, dict: &mut GroupKeyDict) -> Result<GroupRows> {
+	let arrays: Vec<ArrayRef> = views.iter().map(|view| key_column(&make_array(view.array().to_data()))).collect();
+	let normalized: Vec<ColumnView<'_>> = arrays
+		.iter()
+		.zip(views)
+		.map(|(array, view)| ColumnView::try_from((array, view.field)))
+		.collect::<Result<_>>()?;
 
-		let normalized: Vec<Cow<'_, ColumnBuffer>> = key_columns.iter().copied().map(key_column).collect();
+	let row_columns: Vec<&ColumnView> =
+		normalized.iter().filter(|view| row_format_matches_value_key(view)).collect();
+	let value_columns: Vec<&ColumnView> =
+		normalized.iter().filter(|view| !row_format_matches_value_key(view)).collect();
+	let row_keys = match row_columns.is_empty() {
+		true => None,
+		false => Some(dict.row_keys(&row_columns)?),
+	};
 
-		let row_columns: Vec<&ColumnBuffer> = normalized
-			.iter()
-			.filter(|column| row_format_matches_value_key(column))
-			.map(Cow::as_ref)
-			.collect();
-		let value_columns: Vec<&ColumnBuffer> = normalized
-			.iter()
-			.filter(|column| !row_format_matches_value_key(column))
-			.map(Cow::as_ref)
-			.collect();
-		let row_keys = match row_columns.is_empty() {
-			true => None,
-			false => Some(dict.row_keys(&row_columns)?),
-		};
+	let mut rows_by_group: IndexMap<GroupId, Vec<usize>> = IndexMap::new();
+	let mut bytes: Vec<u8> = Vec::new();
 
-		let mut rows_by_group: IndexMap<GroupId, Vec<usize>> = IndexMap::new();
-		let mut bytes: Vec<u8> = Vec::new();
-
-		for row in 0..row_count {
-			bytes.clear();
-			if let Some(row_keys) = &row_keys {
-				bytes.extend_from_slice(row_keys.row(row).as_ref());
+	for row in 0..row_count {
+		bytes.clear();
+		if let Some(row_keys) = &row_keys {
+			bytes.extend_from_slice(row_keys.row(row).as_ref());
+		}
+		if !value_columns.is_empty() {
+			let mut serializer = KeySerializer::new();
+			for view in &value_columns {
+				extend_key(view, row, &mut serializer)?;
 			}
-			if !value_columns.is_empty() {
-				let mut serializer = KeySerializer::new();
-				for column in &value_columns {
-					column.extend_key(row, &mut serializer)?;
-				}
-				bytes.extend_from_slice(serializer.to_encoded_key().as_bytes());
-			}
-
-			let row_len = row_keys.as_ref().map_or(0, |row_keys| row_keys.row(row).as_ref().len());
-			let group = dict.intern(&EncodedKey::new(&bytes), row_len, || {
-				key_columns.iter().map(|column| column.get_value(row)).collect()
-			});
-			rows_by_group.entry(group).or_default().push(row);
+			bytes.extend_from_slice(serializer.to_encoded_key().as_bytes());
 		}
 
-		Ok(rows_by_group.into_iter().collect())
+		let row_len = row_keys.as_ref().map_or(0, |row_keys| row_keys.row(row).as_ref().len());
+		let group = dict.intern(&EncodedKey::new(&bytes), row_len, || {
+			views.iter().map(|view| view.get_value(row)).collect()
+		});
+		rows_by_group.entry(group).or_default().push(row);
 	}
 
-	fn key_columns(&self, keys: &[&str]) -> Result<Vec<&ColumnBuffer>> {
-		let mut key_columns: Vec<&ColumnBuffer> = Vec::with_capacity(keys.len());
-		for &key in keys {
-			let pos = self.names.iter().position(|n| n.text() == key).ok_or_else(|| {
-				Error::from(CoreError::FrameError {
-					message: format!("Column '{}' not found", key),
-				})
-			})?;
-			key_columns.push(&self.columns[pos]);
-		}
-		Ok(key_columns)
-	}
+	Ok(rows_by_group.into_iter().collect())
 }

@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
+use reifydb_core::value::{
+	batch::{append_rows, batch, from_encoded_bytes},
+	column::builder::ColumnBuilder,
+};
 use reifydb_value::{
 	Result,
-	value::{Value, digest::Digest, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		digest::Digest,
+		row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 
 const ACCURACY: u32 = 10_000;
@@ -45,26 +55,26 @@ fn encode_rows(shape: &RowShape, rows: &[Vec<Value>]) -> Vec<EncodedBytes> {
 		.collect()
 }
 
-fn empty_columns(shape: &RowShape) -> Columns {
-	Columns::new(
-		shape.fields()
-			.iter()
-			.map(|field| {
-				ColumnWithName::new(
-					field.name.as_str(),
-					ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(),
-				)
-			})
-			.collect(),
-	)
+fn empty_columns(shape: &RowShape) -> RecordBatch {
+	let columns = shape
+		.fields()
+		.iter()
+		.map(|field| ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(field.name.as_str()))
+		.collect();
+	batch(columns).unwrap()
 }
 
-fn append(shape: &RowShape, columns: &mut Columns, rows: &[Vec<Value>]) -> Result<()> {
+fn append(shape: &RowShape, columns: &mut RecordBatch, rows: &[Vec<Value>]) -> Result<()> {
 	let row_numbers = (1..=rows.len() as u64).map(RowNumber).collect();
-	columns.append_rows(shape, encode_rows(shape, rows), row_numbers)
+	*columns = append_rows(columns.clone(), shape, encode_rows(shape, rows), row_numbers)?;
+	Ok(())
 }
 
-fn cells(column: &ColumnBuffer) -> Vec<Value> {
+fn column(columns: &RecordBatch, index: usize) -> ColumnView<'_> {
+	ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))).unwrap()
+}
+
+fn cells(column: &ColumnView) -> Vec<Value> {
 	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
@@ -80,16 +90,13 @@ fn all_defined_rows_decode_into_a_digest_column_with_the_field_inner_type_and_ac
 	let mut columns = empty_columns(&shape);
 	append(&shape, &mut columns, &rows).unwrap();
 
-	let column = &columns[1];
-	assert!(
-		matches!(
-			column,
-			ColumnBuffer::Digest { inner, accuracy, .. } if *inner == ValueType::Int4 && *accuracy == ACCURACY
-		),
-		"expected a plain digest column, got {:?}",
-		column.get_type()
+	let column = column(&columns, 1);
+	let plain_digest = matches!(
+		&column.data,
+		ViewData::Digest { inner, accuracy, .. } if *inner == ValueType::Int4 && *accuracy == ACCURACY
 	);
-	assert_eq!(cells(column), vec![rows[0][1].clone(), rows[1][1].clone()]);
+	assert!(plain_digest && !column.is_nullable(), "expected a plain digest column, got {:?}", column.get_type());
+	assert_eq!(cells(&column), vec![rows[0][1].clone(), rows[1][1].clone()]);
 }
 
 #[test]
@@ -113,11 +120,11 @@ fn a_none_digest_row_decodes_into_an_option_over_a_digest_column() {
 		append(&shape, &mut columns, &rows).unwrap();
 
 		assert_eq!(
-			columns[0].get_type(),
+			column(&columns, 0).get_type(),
 			ValueType::Option(Box::new(ty.clone())),
 			"option field {option_field}"
 		);
-		let values = cells(&columns[0]);
+		let values = cells(&column(&columns, 0));
 		assert_eq!(values[0], present);
 		assert!(matches!(values[1], Value::None { .. }));
 		assert_eq!(values[2], present);
@@ -128,10 +135,8 @@ fn a_none_digest_row_decodes_into_an_option_over_a_digest_column() {
 fn a_digest_column_of_another_accuracy_is_a_type_mismatch_naming_the_column() {
 	// Appending into a column of another accuracy would put incompatible digests in one column.
 	let shape = shape_of(&[("lat", digest_type(ValueType::Int4, ACCURACY))]);
-	let mut columns = Columns::new(vec![ColumnWithName::new(
-		"lat",
-		ColumnBuilder::with_capacity(digest_type(ValueType::Int4, 20_000), 0).finish(),
-	)]);
+	let lat = ColumnBuilder::with_capacity(digest_type(ValueType::Int4, 20_000), 0).finish("lat");
+	let mut columns = batch(vec![lat]).unwrap();
 	let err = append(&shape, &mut columns, &[vec![digest_value(ValueType::Int4, ACCURACY, &[1])]]).unwrap_err();
 	assert!(err.to_string().contains("'lat'"), "{err}");
 }
@@ -144,8 +149,8 @@ fn a_scan_decode_of_digest_rows_keeps_the_digest_type_under_the_option() {
 	let rows = vec![vec![digest_value(ValueType::Int4, ACCURACY, &[1, 2, 3])], vec![Value::none_of(ty.clone())]];
 	let encoded = encode_rows(&shape, &rows);
 
-	let scanned = Columns::from_encoded_bytes(&shape, &[RowNumber(1), RowNumber(2)], &encoded);
-	assert_eq!(scanned[0].get_type(), ValueType::Option(Box::new(ty.clone())));
-	assert_eq!(scanned[0].get_value(0), rows[0][0]);
-	assert!(matches!(scanned[0].get_value(1), Value::None { .. }));
+	let scanned = from_encoded_bytes(&shape, &[RowNumber(1), RowNumber(2)], &encoded).unwrap();
+	assert_eq!(column(&scanned, 0).get_type(), ValueType::Option(Box::new(ty.clone())));
+	assert_eq!(column(&scanned, 0).get_value(0), rows[0][0]);
+	assert!(matches!(column(&scanned, 0).get_value(1), Value::None { .. }));
 }

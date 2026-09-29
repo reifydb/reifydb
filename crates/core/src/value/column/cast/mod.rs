@@ -11,102 +11,104 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, BooleanArray, UInt32Array};
 use arrow_buffer::NullBuffer;
+use arrow_schema::FieldRef;
+use arrow_select::{filter::filter, take::take};
 use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	value::{Value, value_type::ValueType},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		value_type::ValueType,
+	},
 };
 
 use self::{
 	convert::{Convert, TargetConvert},
 	uuid::to_uuid,
 };
-use crate::value::column::buffer::ColumnBuffer;
+use crate::value::{
+	batch::frame_error,
+	column::{
+		factory::{from_many, none_typed},
+		nulls::{split_nulls, with_nulls},
+	},
+};
 
 pub fn cast_value(value: Value, target: &ValueType) -> Result<Value> {
 	if value.get_type() == *target {
 		return Ok(value);
 	}
-	let data = ColumnBuffer::from(value.clone());
 	let display = value.to_string();
+	let data = from_many("", value, 1);
 	let cast = cast_column_data(
 		TargetConvert {
 			target: None,
 		},
-		&data,
+		&ColumnView::try_from(&data)?,
 		target.clone(),
 		|| Fragment::internal(display.clone()),
 	)?;
-	Ok(cast.get_value(0))
+	Ok(ColumnView::try_from(&cast)?.get_value(0))
 }
 
 pub fn cast_column_data(
 	ctx: impl Convert + Copy,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<ColumnBuffer> {
-	if let Some(nulls) = data.nulls()
-		&& !data.keeps_own_nulls()
-	{
-		let (inner, _) = data.clone().split_nulls();
-		let bitvec = nulls.inner();
+) -> Result<(FieldRef, ArrayRef)> {
+	if data.is_nullable() && !keeps_own_nulls(data) {
+		let total_len = data.len();
+		let nulls = data.logical_nulls().unwrap_or_else(|| NullBuffer::new_valid(total_len));
 		let inner_target = match &target {
 			ValueType::Option(t) => t.as_ref().clone(),
 			other => other.clone(),
 		};
-		let total_len = inner.len();
-		let defined_count = bitvec.count_set_bits();
+		let defined_count = total_len - nulls.null_count();
 
 		if defined_count == 0 {
-			return Ok(ColumnBuffer::none_typed(inner_target, total_len));
+			return Ok(none_typed(data.field.name(), inner_target, total_len));
 		}
+
+		let (inner, _) = split_nulls(owned_column(data))?;
 
 		if defined_count < total_len {
-			let mut compacted = inner;
-			compacted.filter(bitvec)?;
-
-			let cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
-
-			let mut expand_picks = Vec::with_capacity(total_len);
-			let mut src_idx = 0usize;
-			for i in 0..total_len {
-				if bitvec.value(i) {
-					expand_picks.push(Some(src_idx));
-					src_idx += 1;
-				} else {
-					expand_picks.push(None);
-				}
-			}
-			return cast_compacted.extract_rows_or_none(&expand_picks);
+			let compacted = compact(&inner, &nulls)?;
+			let cast_compacted =
+				cast_column_data(ctx, &ColumnView::try_from(&compacted)?, inner_target, lazy_fragment)?;
+			return expand(cast_compacted, &nulls);
 		}
 
-		let cast_inner = cast_column_data(ctx, &inner, inner_target, lazy_fragment)?;
-		return Ok(match cast_inner.nulls() {
-			Some(_) => cast_inner,
-			None => cast_inner.with_nulls(nulls.clone()),
-		});
+		let cast_inner = cast_column_data(ctx, &ColumnView::try_from(&inner)?, inner_target, lazy_fragment)?;
+		return match cast_inner.0.is_nullable() {
+			true => Ok(cast_inner),
+			false => with_nulls(cast_inner, nulls),
+		};
 	}
 
 	if let ValueType::Option(inner_target) = &target {
 		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
-		return Ok(match cast_inner.nulls() {
-			Some(_) => cast_inner,
-			None => {
-				let len = cast_inner.len();
-				cast_inner.with_nulls(NullBuffer::new_valid(len))
+		return match cast_inner.0.is_nullable() {
+			true => Ok(cast_inner),
+			false => {
+				let len = cast_inner.1.len();
+				with_nulls(cast_inner, NullBuffer::new_valid(len))
 			}
-		});
+		};
 	}
 
 	let object_type = match data.get_type() {
-		ValueType::Option(inner) if data.keeps_own_nulls() => *inner,
+		ValueType::Option(inner) if keeps_own_nulls(data) => *inner,
 		other => other,
 	};
 	if target == object_type {
-		return Ok(data.clone());
+		return Ok(owned_column(data));
 	}
 	match (&object_type, &target) {
 		(ValueType::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
@@ -126,4 +128,34 @@ pub fn cast_column_data(
 		}
 		.into()),
 	}
+}
+
+fn keeps_own_nulls(data: &ColumnView) -> bool {
+	matches!(data.data, ViewData::Any { .. } | ViewData::Digest { .. })
+}
+
+fn owned_column(data: &ColumnView) -> (FieldRef, ArrayRef) {
+	(Arc::new(data.field.clone()), data.array().slice(0, data.len()))
+}
+
+fn compact(column: &(FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef)> {
+	let predicate = BooleanArray::new(nulls.inner().clone(), None);
+	let array = filter(column.1.as_ref(), &predicate).map_err(frame_error)?;
+	Ok((column.0.clone(), array))
+}
+
+fn expand(column: (FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef)> {
+	let mut src_idx = 0u32;
+	let picks: UInt32Array = (0..nulls.len())
+		.map(|i| match nulls.is_valid(i) {
+			true => {
+				src_idx += 1;
+				Some(src_idx - 1)
+			}
+			false => None,
+		})
+		.collect();
+	let (field, array) = column;
+	let array = take(array.as_ref(), &picks, None).map_err(frame_error)?;
+	Ok((Arc::new(field.as_ref().clone().with_nullable(true)), array))
 }
