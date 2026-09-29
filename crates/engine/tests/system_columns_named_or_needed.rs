@@ -4,7 +4,12 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId, row_number::RowNumber},
+	value::{
+		frame::frame::Frame,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{self, SystemColumn},
+	},
 };
 
 fn seeded() -> TestEngine {
@@ -45,34 +50,53 @@ fn assert_rownum_without_other_unnamed_system_columns(t: &TestEngine, rql: &str)
 	let internal = query_internal(t, rql);
 	let full = only_frame(&internal);
 	assert!(
-		!full.created_at().is_empty(),
+		!system_columns::created_at(&full.batch).unwrap().is_empty(),
 		"`{rql}` must build #created_at inside, or its absence below proves nothing"
 	);
 	assert!(
-		!full.updated_at().is_empty(),
+		!system_columns::updated_at(&full.batch).unwrap().is_empty(),
 		"`{rql}` must build #updated_at inside, or its absence below proves nothing"
 	);
-	assert!(!full.time().is_empty(), "`{rql}` must build #time inside, or its absence below proves nothing");
 	assert!(
-		!full.system.partitions().is_empty(),
+		!system_columns::time(&full.batch).unwrap().is_empty(),
+		"`{rql}` must build #time inside, or its absence below proves nothing"
+	);
+	assert!(
+		!system_columns::partitions(&full.batch).unwrap().is_empty(),
 		"`{rql}` must build #partition inside, or its absence below proves nothing"
 	);
 	assert!(
-		!full.system.commit_versions().is_empty(),
+		!system_columns::commit_versions(&full.batch).unwrap().is_empty(),
 		"`{rql}` must build #commit_version inside, or its absence below proves nothing"
 	);
 
 	let frames = t.query(rql);
 	let frame = only_frame(&frames);
 	assert_eq!(ids(frame), vec![2, 1], "the edge must keep the scan's rows in the scan's order, newest first");
-	assert_eq!(frame.row_numbers(), &[RowNumber(2), RowNumber(1)], "`{rql}` must carry #rownum, named or not");
+	assert_eq!(
+		system_columns::row_numbers(&frame.batch).unwrap(),
+		&[RowNumber(2), RowNumber(1)],
+		"`{rql}` must carry #rownum, named or not"
+	);
 	assert!(frame.to_string().contains("#rownum"), "`{rql}` must print its #rownum column:\n{frame}");
-	assert!(frame.created_at().is_empty(), "`{rql}` never names #created_at, so it must not carry it");
-	assert!(frame.updated_at().is_empty(), "`{rql}` never names #updated_at, so it must not carry it");
-	assert!(frame.time().is_empty(), "`{rql}` never names #time, so it must not carry it");
-	assert!(frame.system.partitions().is_empty(), "`{rql}` never names #partition, so it must not carry it");
 	assert!(
-		frame.system.commit_versions().is_empty(),
+		system_columns::created_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #created_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::updated_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #updated_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::time(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #time, so it must not carry it"
+	);
+	assert!(
+		system_columns::partitions(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #partition, so it must not carry it"
+	);
+	assert!(
+		system_columns::commit_versions(&frame.batch).unwrap().is_empty(),
 		"`{rql}` never names #commit_version, so it must not carry it"
 	);
 }
@@ -99,11 +123,24 @@ fn returning_a_plain_column_carries_the_written_rows_rownum() {
 	let frames = t.command(rql);
 	let frame = only_frame(&frames);
 	assert_eq!(ids(frame), vec![3], "returning must still answer with the written row");
-	assert_eq!(frame.row_numbers(), &[RowNumber(3)], "`{rql}` must carry the written row's #rownum");
+	assert_eq!(
+		system_columns::row_numbers(&frame.batch).unwrap(),
+		&[RowNumber(3)],
+		"`{rql}` must carry the written row's #rownum"
+	);
 	assert!(frame.to_string().contains("#rownum"), "`{rql}` must print its #rownum column:\n{frame}");
-	assert!(frame.created_at().is_empty(), "`{rql}` never names #created_at, so it must not carry it");
-	assert!(frame.updated_at().is_empty(), "`{rql}` never names #updated_at, so it must not carry it");
-	assert!(frame.time().is_empty(), "`{rql}` never names #time, so it must not carry it");
+	assert!(
+		system_columns::created_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #created_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::updated_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #updated_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::time(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #time, so it must not carry it"
+	);
 }
 
 #[test]
@@ -114,11 +151,24 @@ fn returning_an_expression_carries_the_updated_rows_rownum() {
 	let frames = t.command(rql);
 	let frame = only_frame(&frames);
 	assert_eq!(ids(frame), vec![2], "returning must still answer with the updated row");
-	assert_eq!(frame.row_numbers(), &[RowNumber(2)], "`{rql}` must carry the updated row's #rownum");
+	assert_eq!(
+		system_columns::row_numbers(&frame.batch).unwrap(),
+		&[RowNumber(2)],
+		"`{rql}` must carry the updated row's #rownum"
+	);
 	assert!(frame.to_string().contains("#rownum"), "`{rql}` must print its #rownum column:\n{frame}");
-	assert!(frame.created_at().is_empty(), "`{rql}` never names #created_at, so it must not carry it");
-	assert!(frame.updated_at().is_empty(), "`{rql}` never names #updated_at, so it must not carry it");
-	assert!(frame.time().is_empty(), "`{rql}` never names #time, so it must not carry it");
+	assert!(
+		system_columns::created_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #created_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::updated_at(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #updated_at, so it must not carry it"
+	);
+	assert!(
+		system_columns::time(&frame.batch).unwrap().is_empty(),
+		"`{rql}` never names #time, so it must not carry it"
+	);
 }
 
 #[test]
@@ -128,8 +178,15 @@ fn a_query_that_names_rownum_carries_it() {
 	let frames = t.query("FROM test::t | filter { #rownum > 1 }");
 	let frame = only_frame(&frames);
 	assert_eq!(ids(frame), vec![2], "the filter must read the real row numbers");
-	assert!(frame.has_row_numbers(), "a query that names #rownum must carry it");
-	assert_eq!(frame.row_numbers(), &[RowNumber(2)], "the carried row number must be the row's own");
+	assert!(
+		system_columns::system_column(&frame.batch, SystemColumn::RowNumbers).is_some(),
+		"a query that names #rownum must carry it"
+	);
+	assert_eq!(
+		system_columns::row_numbers(&frame.batch).unwrap(),
+		&[RowNumber(2)],
+		"the carried row number must be the row's own"
+	);
 }
 
 #[test]
@@ -139,7 +196,11 @@ fn a_query_that_sorts_by_rownum_carries_it() {
 	let frames = t.query("FROM test::t | sort { #rownum:DESC }");
 	let frame = only_frame(&frames);
 	assert_eq!(ids(frame), vec![2, 1], "the sort must order by the real row numbers");
-	assert_eq!(frame.row_numbers(), &[RowNumber(2), RowNumber(1)], "the sorted rows keep their own numbers");
+	assert_eq!(
+		system_columns::row_numbers(&frame.batch).unwrap(),
+		&[RowNumber(2), RowNumber(1)],
+		"the sorted rows keep their own numbers"
+	);
 }
 
 #[test]
@@ -221,8 +282,12 @@ fn queue_claim_keeps_the_row_numbers_of_the_claimed_items() {
 	let frames = t.command(r#"CALL queue::claim("w1", "test::jobs", 2, duration::seconds(30))"#);
 	let frame = only_frame(&frames);
 	assert_eq!(frame.row_count(), 2, "both items must be claimed");
-	assert!(frame.has_row_numbers(), "a claim result must carry the items' row numbers");
-	let mut claimed: Vec<u64> = frame.row_numbers().iter().map(|row| row.value()).collect();
+	assert!(
+		system_columns::system_column(&frame.batch, SystemColumn::RowNumbers).is_some(),
+		"a claim result must carry the items' row numbers"
+	);
+	let mut claimed: Vec<u64> =
+		system_columns::row_numbers(&frame.batch).unwrap().iter().map(|row| row.value()).collect();
 	claimed.sort();
 	assert_eq!(claimed, vec![1, 2], "the carried row numbers must be the items' own");
 }

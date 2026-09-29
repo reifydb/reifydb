@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	Result,
@@ -79,20 +79,20 @@ impl BaseVTable for SystemRowShapeFields {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints.finish()),
-			ColumnWithName::new(Fragment::internal("field_index"), field_indices.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("type"), types.finish()),
-			ColumnWithName::new(Fragment::internal("constraint_type"), constraint_types.finish()),
-			ColumnWithName::new(Fragment::internal("constraint_p1"), constraint_p1s.finish()),
-			ColumnWithName::new(Fragment::internal("constraint_p2"), constraint_p2s.finish()),
-			ColumnWithName::new(Fragment::internal("offset"), offsets.finish()),
-			ColumnWithName::new(Fragment::internal("size"), sizes.finish()),
+			fingerprints.finish("fingerprint"),
+			field_indices.finish("field_index"),
+			names.finish("name"),
+			types.finish("type"),
+			constraint_types.finish("constraint_type"),
+			constraint_p1s.finish("constraint_p1"),
+			constraint_p2s.finish("constraint_p2"),
+			offsets.finish("offset"),
+			sizes.finish("size"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

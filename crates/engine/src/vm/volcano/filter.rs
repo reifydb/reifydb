@@ -3,12 +3,14 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_buffer::BooleanBuffer;
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	expression::{Expression, IsVariantExpression},
 	interface::resolved::ResolvedObject,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{batch::filter, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -16,7 +18,10 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{
+	reifydb_assertions,
+	value::column_view::{ColumnView, ViewData},
+};
 use tracing::instrument;
 
 use super::NoopNode;
@@ -37,7 +42,7 @@ pub(crate) struct FilterNode {
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 	emitted: bool,
 
-	empty: Option<Columns>,
+	empty: Option<RecordBatch>,
 }
 
 impl FilterNode {
@@ -65,17 +70,17 @@ impl FilterNode {
 	fn eval_predicate(
 		session: &EvalContext,
 		compiled: &CompiledExpr,
-		columns: &Columns,
+		columns: &RecordBatch,
 		row_count: usize,
-	) -> Result<ColumnWithName> {
+	) -> Result<(FieldRef, ArrayRef)> {
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 		compiled.execute(&exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::mask")]
-	fn build_mask(result: &ColumnBuffer, row_count: usize) -> BooleanBuffer {
-		match result {
-			ColumnBuffer::Bool(container) => {
+	fn build_mask(result: &ColumnView<'_>, row_count: usize) -> BooleanBuffer {
+		match &result.data {
+			ViewData::Bool(container) => {
 				BooleanBuffer::collect_bool(row_count, |i| result.is_defined(i) && container.value(i))
 			}
 			_ => panic!("filter expression must evaluate to a boolean column"),
@@ -83,8 +88,8 @@ impl FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::compact")]
-	fn compact(columns: &mut Columns, mask: &BooleanBuffer) -> Result<()> {
-		columns.filter(mask)
+	fn compact(columns: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch> {
+		filter(columns, mask)
 	}
 }
 
@@ -120,7 +125,7 @@ impl QueryNode for FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		}
@@ -135,9 +140,9 @@ impl QueryNode for FilterNode {
 						runtime_context: &stored_ctx.services.runtime_context,
 						params: &stored_ctx.params,
 					};
-					let mut columns = self.apply(&transform_ctx, columns)?;
-					strip_udf_columns(&mut columns, &self.udf_names);
-					if columns.row_count() > 0 {
+					let columns = self.apply(&transform_ctx, columns)?;
+					let columns = strip_udf_columns(columns, &self.udf_names)?;
+					if columns.num_rows() > 0 {
 						self.emitted = true;
 						return Ok(Some(columns));
 					}
@@ -162,13 +167,13 @@ impl QueryNode for FilterNode {
 }
 
 impl Transform for FilterNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
 		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut columns = input;
-		let mut row_count = columns.row_count();
+		let mut row_count = columns.num_rows();
 
 		for compiled_expr in compiled {
 			if row_count == 0 {
@@ -176,10 +181,10 @@ impl Transform for FilterNode {
 			}
 
 			let result = Self::eval_predicate(&session, compiled_expr, &columns, row_count)?;
-			let filter_mask = Self::build_mask(result.data(), row_count);
+			let filter_mask = Self::build_mask(&ColumnView::try_from(&result)?, row_count);
 
-			Self::compact(&mut columns, &filter_mask)?;
-			row_count = columns.row_count();
+			columns = Self::compact(&columns, &filter_mask)?;
+			row_count = columns.num_rows();
 		}
 
 		Ok(columns)

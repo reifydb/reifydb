@@ -7,11 +7,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{
-		Value,
-		frame::{column::FrameColumn, frame::Frame},
-		value_type::ValueType,
-	},
+	value::{Value, column_view::ColumnView, frame::frame::Frame, value_type::ValueType},
 };
 
 fn engine() -> TestEngine {
@@ -36,10 +32,10 @@ fn call(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, Box<Dia
 	}
 }
 
-fn column<'a>(frames: &'a [Frame], name: &str) -> &'a FrameColumn {
+fn column<'a>(frames: &'a [Frame], name: &str) -> ColumnView<'a> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	assert_eq!(frames[0].row_count(), 1, "expected exactly one row in {:?}", frames[0]);
-	frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name} missing"))
+	frames[0].column(name).unwrap().unwrap_or_else(|| panic!("column {name} missing"))
 }
 
 const ADD: &str = "CALL test::add($id, $note, $count)";
@@ -62,9 +58,9 @@ fn a_typed_none_binds_as_a_none_of_the_parameter_type() {
 	.expect("typed none into Option(utf8)");
 
 	let note = column(&frames, "note");
-	assert_eq!(note.data.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+	assert_eq!(note.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
 	assert_eq!(
-		note.data.get_value(0),
+		note.get_value(0),
 		Value::None {
 			inner: ValueType::Utf8
 		}
@@ -72,13 +68,13 @@ fn a_typed_none_binds_as_a_none_of_the_parameter_type() {
 
 	let stored = t.query("FROM test::rows");
 	assert_eq!(
-		column(&stored, "note").data.get_value(0),
+		column(&stored, "note").get_value(0),
 		Value::None {
 			inner: ValueType::Utf8
 		}
 	);
 	assert_eq!(
-		column(&stored, "count").data.get_value(0),
+		column(&stored, "count").get_value(0),
 		Value::None {
 			inner: ValueType::Int2
 		}
@@ -96,15 +92,15 @@ fn an_untyped_none_binds_as_a_none_of_the_parameter_type() {
 			.expect("untyped none into Option(utf8)");
 
 	let note = column(&frames, "note");
-	assert_eq!(note.data.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+	assert_eq!(note.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
 	assert_eq!(
-		note.data.get_value(0),
+		note.get_value(0),
 		Value::None {
 			inner: ValueType::Utf8
 		}
 	);
 	assert_eq!(
-		column(&frames, "count").data.get_value(0),
+		column(&frames, "count").get_value(0),
 		Value::None {
 			inner: ValueType::Int2
 		}
@@ -126,12 +122,12 @@ fn a_value_binds_as_the_parameter_type_and_is_stored() {
 	)
 	.expect("value into Option(utf8)");
 
-	assert_eq!(column(&frames, "note").data.get_value(0), Value::Utf8("hello".to_string()));
-	assert_eq!(column(&frames, "count").data.get_value(0), Value::Int2(3));
+	assert_eq!(column(&frames, "note").get_value(0), Value::Utf8("hello".to_string()));
+	assert_eq!(column(&frames, "count").get_value(0), Value::Int2(3));
 
 	let stored = t.query("FROM test::rows");
-	assert_eq!(column(&stored, "note").data.get_value(0), Value::Utf8("hello".to_string()));
-	assert_eq!(column(&stored, "count").data.get_value(0), Value::Int2(3));
+	assert_eq!(column(&stored, "note").get_value(0), Value::Utf8("hello".to_string()));
+	assert_eq!(column(&stored, "count").get_value(0), Value::Int2(3));
 }
 
 #[test]
@@ -193,23 +189,23 @@ fn a_binding_call_binds_named_request_params_by_name_and_coerces_them() {
 	.expect("named params bound by name");
 
 	let note = column(&frames, "note");
-	assert_eq!(note.data.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+	assert_eq!(note.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
 	assert_eq!(
-		note.data.get_value(0),
+		note.get_value(0),
 		Value::None {
 			inner: ValueType::Utf8
 		}
 	);
-	assert_eq!(column(&frames, "count").data.get_value(0), Value::Int2(7));
+	assert_eq!(column(&frames, "count").get_value(0), Value::Int2(7));
 
 	let stored = t.query("FROM test::rows");
 	assert_eq!(
-		column(&stored, "note").data.get_value(0),
+		column(&stored, "note").get_value(0),
 		Value::None {
 			inner: ValueType::Utf8
 		}
 	);
-	assert_eq!(column(&stored, "count").data.get_value(0), Value::Int2(7));
+	assert_eq!(column(&stored, "count").get_value(0), Value::Int2(7));
 }
 
 #[test]
@@ -254,11 +250,13 @@ fn int4_into_utf8_and_into_option_utf8_both_bind_the_text() {
 	let opt = call(&t, "CALL test::text_opt($v)", named(vec![("v", Value::Int4(42))]))
 		.expect("int4 into Option(utf8)");
 
-	assert_eq!(column(&plain, "v").data.get_value(0), Value::Utf8("42".to_string()));
-	assert_eq!(column(&opt, "v").data.get_value(0), column(&plain, "v").data.get_value(0));
+	assert_eq!(column(&plain, "v").get_value(0), Value::Utf8("42".to_string()));
+	assert_eq!(column(&opt, "v").get_value(0), column(&plain, "v").get_value(0));
 
-	let stored_plain = column(&t.query("FROM test::text_plain"), "v").data.clone();
-	let stored_opt = column(&t.query("FROM test::text_opt"), "v").data.clone();
+	let stored_plain_frames = t.query("FROM test::text_plain");
+	let stored_opt_frames = t.query("FROM test::text_opt");
+	let stored_plain = column(&stored_plain_frames, "v");
+	let stored_opt = column(&stored_opt_frames, "v");
 	assert_eq!(stored_plain.get_value(0), Value::Utf8("42".to_string()));
 	assert_eq!(stored_opt.get_value(0), stored_plain.get_value(0));
 	assert_eq!(stored_plain.get_type(), ValueType::Utf8);
@@ -295,12 +293,12 @@ fn none_into_int4_and_into_option_int4_both_bind_a_none_of_int4() {
 		call(&t, "CALL test::int4_opt($v)", named(vec![("v", Value::none())])).expect("none into Option(int4)");
 
 	assert_eq!(
-		column(&plain, "v").data.get_value(0),
+		column(&plain, "v").get_value(0),
 		Value::None {
 			inner: ValueType::Int4
 		}
 	);
-	assert_eq!(column(&opt, "v").data.get_value(0), column(&plain, "v").data.get_value(0));
-	assert_eq!(column(&plain, "v").data.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
-	assert_eq!(column(&opt, "v").data.get_type(), column(&plain, "v").data.get_type());
+	assert_eq!(column(&opt, "v").get_value(0), column(&plain, "v").get_value(0));
+	assert_eq!(column(&plain, "v").get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+	assert_eq!(column(&opt, "v").get_type(), column(&plain, "v").get_type());
 }

@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, system_columns::user_columns, value_type::ValueType},
 };
 
 #[test]
@@ -28,6 +28,11 @@ fn a_closure_parameter_typed_with_a_parameterised_type_parses_and_binds() {
 		if let Some(err) = result.error {
 			panic!("{param_type}: the closure must parse and run, got {:?}", err.diagnostic());
 		}
-		assert_eq!(result.frames[0].columns[0].data.get_value(0), expected, "{param_type}");
+		let (field, array) = user_columns(&result.frames[0].batch).next().unwrap();
+		assert_eq!(
+			ColumnView::try_from((array, field.as_ref())).unwrap().get_value(0),
+			expected,
+			"{param_type}"
+		);
 	}
 }

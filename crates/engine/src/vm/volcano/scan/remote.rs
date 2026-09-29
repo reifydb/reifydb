@@ -7,12 +7,13 @@ use std::collections::VecDeque;
 #[cfg(not(reifydb_single_threaded))]
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use arrow_array::RecordBatch;
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_core::value::batch::{is_scalar, scalar_value};
+use reifydb_core::value::column::headers::ColumnHeaders;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_evaluate::stack::Variable;
 use reifydb_transaction::transaction::Transaction;
-#[cfg(not(reifydb_single_threaded))]
-use reifydb_value::fragment::Fragment;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{params::Params, value::Value};
 use tracing::instrument;
@@ -28,7 +29,7 @@ pub(crate) struct RemoteFetchNode {
 	token: Option<String>,
 	remote_rql: String,
 	variable_names: Vec<String>,
-	batches: VecDeque<Columns>,
+	batches: VecDeque<RecordBatch>,
 	headers: Option<ColumnHeaders>,
 }
 
@@ -54,11 +55,11 @@ impl QueryNode for RemoteFetchNode {
 				let mut named_params: HashMap<String, Value> = HashMap::new();
 				for var_name in &self.variable_names {
 					if let Some(Variable::Columns {
-						columns,
+						batch,
 					}) = _ctx.symbols.get(var_name)
-						&& columns.is_scalar()
+						&& is_scalar(batch)
 					{
-						named_params.insert(var_name.clone(), columns.scalar_value().clone());
+						named_params.insert(var_name.clone(), scalar_value(batch)?);
 					}
 				}
 
@@ -82,18 +83,11 @@ impl QueryNode for RemoteFetchNode {
 				)?;
 
 				for frame in frames {
-					let cols: Columns = frame.into();
+					let batch = frame.batch;
 					if self.headers.is_none() {
-						self.headers = Some(ColumnHeaders {
-							columns: cols
-								.names
-								.iter()
-								.map(|n| Fragment::internal(n.text()))
-								.collect(),
-							row_numbers: cols.system.has_row_numbers(),
-						});
+						self.headers = Some(ColumnHeaders::from_batch(&batch));
 					}
-					self.batches.push_back(cols);
+					self.batches.push_back(batch);
 				}
 			}
 		}
@@ -101,7 +95,7 @@ impl QueryNode for RemoteFetchNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::remote::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		Ok(self.batches.pop_front())
 	}
 

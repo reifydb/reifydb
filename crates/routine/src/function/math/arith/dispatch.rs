@@ -3,12 +3,22 @@
 
 use std::convert::identity;
 
+use arrow_array::ArrayRef;
 use arrow_buffer::{BooleanBuffer, NullBuffer, i256};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{
+	factory::{
+		decimal_with_bitvec, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec,
+		int4_with_bitvec, int8_with_bitvec, int16_with_bitvec, none, uint1_with_bitvec, uint2_with_bitvec,
+		uint4_with_bitvec, uint8_with_bitvec, uint16_with_bitvec,
+	},
+	nulls::split_nulls,
+};
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
 	value::{
+		column_view::{ColumnView, ViewData},
 		constraint::{precision::Precision, scale::Scale},
 		container::{decimal_array::decimals, varlen_array, wide_int_array::wides},
 		decimal::{Decimal, unscaled},
@@ -20,7 +30,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::op::{ArithOp, FamilyDigits, SafeNum},
-	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_pair},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_pair},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -63,15 +73,16 @@ impl BasicStrategy {
 
 pub(crate) fn ensure_numeric(
 	ctx: &mut FunctionContext,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	argument_index: usize,
 ) -> Result<(), RoutineError> {
-	if !data.get_type().is_number() && data.get_type() != ValueType::Any {
+	let actual = bare_type(data);
+	if !actual.is_number() && actual != ValueType::Any {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
 			argument_index,
 			expected: InputTypes::numeric().expected_at(0).to_vec(),
-			actual: data.get_type(),
+			actual,
 		});
 	}
 	Ok(())
@@ -160,12 +171,12 @@ fn family_bound(precision: Precision, negative: bool) -> i256 {
 	}
 }
 
-fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnBuffer, i: usize) -> RoutineError {
-	let reason = match msg_col {
-		ColumnBuffer::Utf8 {
+fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnView, i: usize) -> RoutineError {
+	let reason = match &msg_col.data {
+		ViewData::Utf8 {
 			container,
 			..
-		} => varlen_array::get(container, i).unwrap_or("overflow").to_string(),
+		} => varlen_array::get(*container, i).unwrap_or("overflow").to_string(),
 		_ => "overflow".to_string(),
 	};
 	RoutineError::FunctionExecutionFailed {
@@ -176,26 +187,34 @@ fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnBuffer, i: usize) ->
 
 pub fn dispatch_two<Op: ArithOp>(
 	ctx: &mut FunctionContext,
-	args: &Columns,
+	args: &[(FieldRef, ArrayRef)],
 	strategy: BasicStrategy,
-) -> Result<Columns, RoutineError> {
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	execute_arith::<Op>(ctx, &args[0], &args[1], strategy.row_mode(), strategy.coerce_mode(), None, None)
 }
 
-pub fn dispatch_fallback<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	let (d_data, _) = args[2].clone().split_nulls();
-	ensure_numeric(ctx, &d_data, 2)?;
+pub fn dispatch_fallback<Op: ArithOp>(
+	ctx: &mut FunctionContext,
+	args: &[(FieldRef, ArrayRef)],
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let (d_bare, _) = split_nulls(args[2].clone())?;
+	ensure_numeric(ctx, &ColumnView::try_from(&d_bare)?, 2)?;
 	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Fallback, CoerceMode::Error, Some(&args[2]), None)
 }
 
-pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	let (msg_data, _) = args[2].clone().split_nulls();
-	if msg_data.get_type() != ValueType::Utf8 {
+pub fn dispatch_strict<Op: ArithOp>(
+	ctx: &mut FunctionContext,
+	args: &[(FieldRef, ArrayRef)],
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let (msg_bare, _) = split_nulls(args[2].clone())?;
+	let msg_data = ColumnView::try_from(&msg_bare)?;
+	let actual = bare_type(&msg_data);
+	if actual != ValueType::Utf8 {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
 			argument_index: 2,
 			expected: vec![ValueType::Utf8],
-			actual: msg_data.get_type(),
+			actual,
 		});
 	}
 	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Strict, CoerceMode::Error, None, Some(&msg_data))
@@ -203,23 +222,28 @@ pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -
 
 fn execute_arith<Op: ArithOp>(
 	ctx: &mut FunctionContext,
-	a_col: &ColumnBuffer,
-	b_col: &ColumnBuffer,
+	a_col: &(FieldRef, ArrayRef),
+	b_col: &(FieldRef, ArrayRef),
 	mode: RowMode,
 	coerce_mode: CoerceMode,
-	fallback_col: Option<&ColumnBuffer>,
-	strict_msg: Option<&ColumnBuffer>,
-) -> Result<Columns, RoutineError> {
-	let (a_data, _) = a_col.clone().split_nulls();
-	let (b_data, _) = b_col.clone().split_nulls();
+	fallback_col: Option<&(FieldRef, ArrayRef)>,
+	strict_msg: Option<&ColumnView>,
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let (a_bare, _) = split_nulls(a_col.clone())?;
+	let (b_bare, _) = split_nulls(b_col.clone())?;
+	let a_data = ColumnView::try_from(&a_bare)?;
+	let b_data = ColumnView::try_from(&b_bare)?;
 	ensure_numeric(ctx, &a_data, 0)?;
 	ensure_numeric(ctx, &b_data, 1)?;
 
-	let promoted = promote_pair(a_data.get_type(), b_data.get_type());
+	let a_view = ColumnView::try_from(a_col)?;
+	let b_view = ColumnView::try_from(b_col)?;
+	let d_view = fallback_col.map(ColumnView::try_from).transpose()?;
+
+	let promoted = promote_pair(bare_type(&a_data), bare_type(&b_data));
 	if promoted == ValueType::Any {
-		if all_rows_none(a_col) && all_rows_none(b_col) {
-			let result = ColumnBuffer::none(a_data.len());
-			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
+		if all_rows_none(&a_view) && all_rows_none(&b_view) {
+			return Ok(none(ctx.fragment.text(), a_data.len()));
 		}
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
@@ -228,31 +252,37 @@ fn execute_arith<Op: ArithOp>(
 			actual: ValueType::Any,
 		});
 	}
-	let a_operand = family_operand(&a_data.get_type(), &promoted);
-	let b_operand = family_operand(&b_data.get_type(), &promoted);
-	let d_operand = fallback_col.map(|d| family_operand(&unwrap_option(d.get_type()), &promoted));
+	let a_operand = family_operand(&bare_type(&a_data), &promoted);
+	let b_operand = family_operand(&bare_type(&b_data), &promoted);
+	let d_operand = d_view.as_ref().map(|d| family_operand(&unwrap_option(d.get_type()), &promoted));
 	let target = family_target::<Op>(&promoted, &a_operand, &b_operand, d_operand.as_ref());
 
-	let a_cast = coerce_column(ctx, a_col, a_operand.coerce_to.clone(), coerce_mode)?;
-	let b_cast = coerce_column(ctx, b_col, b_operand.coerce_to.clone(), coerce_mode)?;
-	let d_cast = match (fallback_col, &d_operand) {
+	let a_cast = coerce_column(ctx, &a_view, a_operand.coerce_to.clone(), coerce_mode)?;
+	let b_cast = coerce_column(ctx, &b_view, b_operand.coerce_to.clone(), coerce_mode)?;
+	let d_cast = match (&d_view, &d_operand) {
 		(Some(d), Some(operand)) => Some(coerce_column(ctx, d, operand.coerce_to.clone(), CoerceMode::Error)?),
 		_ => None,
 	};
 
-	let (a_inner, a_bv) = (&a_cast, a_cast.nulls().map(NullBuffer::inner));
-	let (b_inner, b_bv) = (&b_cast, b_cast.nulls().map(NullBuffer::inner));
-	let d_parts = d_cast.as_ref().map(|d| (d, d.nulls().map(NullBuffer::inner)));
+	let a_inner = ColumnView::try_from(&a_cast)?;
+	let b_inner = ColumnView::try_from(&b_cast)?;
+	let d_inner = d_cast.as_ref().map(ColumnView::try_from).transpose()?;
+	let a_nulls = a_inner.logical_nulls();
+	let b_nulls = b_inner.logical_nulls();
+	let d_nulls = d_inner.as_ref().and_then(ColumnView::logical_nulls);
+	let a_bv = a_nulls.as_ref().map(NullBuffer::inner);
+	let b_bv = b_nulls.as_ref().map(NullBuffer::inner);
+	let d_parts = d_inner.as_ref().map(|d| (d, d_nulls.as_ref().map(NullBuffer::inner)));
 
 	macro_rules! run {
 		($container_variant:ident) => {{
-			let (ColumnBuffer::$container_variant(l), ColumnBuffer::$container_variant(r)) =
-				(a_inner, b_inner)
+			let (ViewData::$container_variant(l), ViewData::$container_variant(r)) =
+				(&a_inner.data, &b_inner.data)
 			else {
 				unreachable!()
 			};
 			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ColumnBuffer::$container_variant(c) = inner else {
+				let ViewData::$container_variant(c) = &inner.data else {
 					unreachable!()
 				};
 				(&c.values()[..], *bv)
@@ -270,13 +300,13 @@ fn execute_arith<Op: ArithOp>(
 			)?
 		}};
 		($container_variant:ident(..), $decode:ident, $fit:expr, $clamp:expr) => {{
-			let (ColumnBuffer::$container_variant(l), ColumnBuffer::$container_variant(r)) =
-				(a_inner, b_inner)
+			let (ViewData::$container_variant(l), ViewData::$container_variant(r)) =
+				(&a_inner.data, &b_inner.data)
 			else {
 				unreachable!()
 			};
 			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ColumnBuffer::$container_variant(c) = inner else {
+				let ViewData::$container_variant(c) = &inner.data else {
 					unreachable!()
 				};
 				($decode(c), *bv)
@@ -298,26 +328,26 @@ fn execute_arith<Op: ArithOp>(
 	let result = match target {
 		ValueType::Int1 => {
 			let (values, bits) = run!(Int1);
-			ColumnBuffer::int1_with_bitvec(values, bits)
+			int1_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Int2 => {
 			let (values, bits) = run!(Int2);
-			ColumnBuffer::int2_with_bitvec(values, bits)
+			int2_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Int4 => {
 			let (values, bits) = run!(Int4);
-			ColumnBuffer::int4_with_bitvec(values, bits)
+			int4_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Int8 => {
 			let (values, bits) = run!(Int8);
-			ColumnBuffer::int8_with_bitvec(values, bits)
+			int8_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Int16 => {
-			let (ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) = (a_inner, b_inner) else {
+			let (ViewData::Int16(l), ViewData::Int16(r)) = (&a_inner.data, &b_inner.data) else {
 				unreachable!()
 			};
 			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ColumnBuffer::Int16(c) = inner else {
+				let ViewData::Int16(c) = &inner.data else {
 					unreachable!()
 				};
 				(wides::<i128>(c), *bv)
@@ -333,30 +363,30 @@ fn execute_arith<Op: ArithOp>(
 				Some,
 				identity,
 			)?;
-			ColumnBuffer::int16_with_bitvec(values, bits)
+			int16_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Uint1 => {
 			let (values, bits) = run!(Uint1);
-			ColumnBuffer::uint1_with_bitvec(values, bits)
+			uint1_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Uint2 => {
 			let (values, bits) = run!(Uint2);
-			ColumnBuffer::uint2_with_bitvec(values, bits)
+			uint2_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Uint4 => {
 			let (values, bits) = run!(Uint4);
-			ColumnBuffer::uint4_with_bitvec(values, bits)
+			uint4_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Uint8 => {
 			let (values, bits) = run!(Uint8);
-			ColumnBuffer::uint8_with_bitvec(values, bits)
+			uint8_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Uint16 => {
-			let (ColumnBuffer::Uint16(l), ColumnBuffer::Uint16(r)) = (a_inner, b_inner) else {
+			let (ViewData::Uint16(l), ViewData::Uint16(r)) = (&a_inner.data, &b_inner.data) else {
 				unreachable!()
 			};
 			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ColumnBuffer::Uint16(c) = inner else {
+				let ViewData::Uint16(c) = &inner.data else {
 					unreachable!()
 				};
 				(wides::<u128>(c), *bv)
@@ -372,15 +402,15 @@ fn execute_arith<Op: ArithOp>(
 				Some,
 				identity,
 			)?;
-			ColumnBuffer::uint16_with_bitvec(values, bits)
+			uint16_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Float4 => {
 			let (values, bits) = run!(Float4);
-			ColumnBuffer::float4_with_bitvec(values, bits)
+			float4_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Float8 => {
 			let (values, bits) = run!(Float8);
-			ColumnBuffer::float8_with_bitvec(values, bits)
+			float8_with_bitvec(ctx.fragment.text(), values, bits)
 		}
 		ValueType::Decimal {
 			precision,
@@ -402,7 +432,7 @@ fn execute_arith<Op: ArithOp>(
 						})
 				}
 			);
-			ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits)
+			decimal_with_bitvec(ctx.fragment.text(), precision, scale, values, bits)
 		}
 		other => {
 			return Err(RoutineError::FunctionInvalidArgumentType {
@@ -414,7 +444,7 @@ fn execute_arith<Op: ArithOp>(
 		}
 	};
 
-	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
+	Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -425,7 +455,7 @@ fn compute_rows<T: SafeNum, Op: ArithOp>(
 	r: (&[T], Option<&BooleanBuffer>),
 	mode: &RowMode,
 	fallback: Option<(&[T], Option<&BooleanBuffer>)>,
-	strict_msg: Option<&ColumnBuffer>,
+	strict_msg: Option<&ColumnView>,
 	fit: impl Fn(T) -> Option<T>,
 	clamp: impl Fn(T) -> T,
 ) -> Result<(Vec<T>, Vec<bool>), RoutineError> {

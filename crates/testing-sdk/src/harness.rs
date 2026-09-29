@@ -23,6 +23,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	row::Row,
 	state::timer::TimerKind,
+	value::batch::reattach_dictionary_ids,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
@@ -114,9 +115,9 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 		let emitted = self.builder_registry.drain_diffs();
 		let mut diffs = into_diffs(emitted);
-		for columns in diffs.iter_mut().flat_map(Diff::columns_mut) {
+		for batch in diffs.iter_mut().flat_map(Diff::batches_mut) {
 			for source in input.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
-				columns.reattach_dictionary_ids(source);
+				*batch = reattach_dictionary_ids(batch.clone(), source)?;
 			}
 		}
 		drop(input);

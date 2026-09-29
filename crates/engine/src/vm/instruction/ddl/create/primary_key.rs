@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
 use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
 	interface::catalog::object::ObjectId,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreatePrimaryKeyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -17,7 +18,7 @@ pub(crate) fn create_primary_key(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreatePrimaryKeyNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
@@ -48,9 +49,9 @@ pub(crate) fn create_primary_key(
 		},
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("operation", Value::Utf8("CREATE PRIMARY KEY".to_string())),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("table", Value::Utf8(table.name)),
-	]))
+	])
 }

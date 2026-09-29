@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{BooleanArray, LargeStringArray, builder::LargeBinaryBuilder};
+use std::sync::Arc;
+
+use arrow_array::{
+	ArrayRef, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
+	LargeStringArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, builder::LargeBinaryBuilder,
+};
 use arrow_buffer::BooleanBuffer;
+use arrow_schema::FieldRef;
 use reifydb_value::{
 	fragment::Fragment,
 	util::hex::decode,
@@ -25,12 +31,10 @@ use reifydb_value::{
 		diff_type::DiffType,
 		digest::Digest,
 		duration::Duration,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+		frame::frame::Frame,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
-		row_number::RowNumber,
-		system_columns::{SystemColumn, SystemColumns},
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
@@ -47,6 +51,7 @@ use serde_json::{Error, Value as JsonValue, from_str, from_value};
 
 use crate::{
 	error::DecodeError,
+	frame::decode::{decoded_column, frame_batch},
 	json::{excerpt, none_marker_depth, types::ResponseFrame},
 	tag::peel_options,
 	unscaled::decimal_unscaled,
@@ -76,21 +81,26 @@ fn frames_from_response(response_frames: Vec<ResponseFrame>) -> Result<Vec<Frame
 }
 
 fn response_frame_to_frame(frame: ResponseFrame) -> Result<Frame, DecodeError> {
+	for (key, present) in [
+		("row_numbers", !frame.row_numbers.is_empty()),
+		("created_at", !frame.created_at.is_empty()),
+		("updated_at", !frame.updated_at.is_empty()),
+		("time", !frame.time.is_empty()),
+	] {
+		if present {
+			return Err(DecodeError::InvalidData(format!(
+				"frame key {key} is not supported, system columns travel as # columns"
+			)));
+		}
+	}
+
 	let columns = frame
 		.columns
 		.into_iter()
-		.map(|col| {
-			Ok(FrameColumn {
-				data: convert_column_to_data(&col.name, col.r#type.0, col.payload)?,
-				name: col.name,
-			})
-		})
-		.collect::<Result<_, DecodeError>>()?;
+		.map(|col| convert_column_to_data(&col.name, col.r#type.0, col.payload))
+		.collect::<Result<Vec<_>, DecodeError>>()?;
+	let row_count = columns.first().map_or(0, |(_, array)| array.len());
 
-	let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
-	let created_at = system_timestamps(SystemColumn::CreatedAt, &frame.created_at)?;
-	let updated_at = system_timestamps(SystemColumn::UpdatedAt, &frame.updated_at)?;
-	let time = system_timestamps(SystemColumn::Time, &frame.time)?;
 	let op =
 		frame.op.map(|raw| {
 			DiffType::from_u8(raw)
@@ -99,20 +109,9 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Result<Frame, DecodeError> {
 		.transpose()?;
 
 	Ok(Frame {
-		system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
-		columns,
+		batch: frame_batch(columns, row_count)?,
 		op,
 	})
-}
-
-fn system_timestamps(column: SystemColumn, texts: &[String]) -> Result<Vec<DateTime>, DecodeError> {
-	texts.iter()
-		.enumerate()
-		.map(|(row, text)| {
-			parse_datetime(Fragment::internal(text))
-				.map_err(|_| cell_error(column.name(), row, &ValueType::DateTime, text))
-		})
-		.collect()
 }
 
 fn cell_error(column: &str, row: usize, ty: &ValueType, text: &str) -> DecodeError {
@@ -319,8 +318,17 @@ pub fn convert_column_to_data(
 	name: &str,
 	target: ValueType,
 	data: Vec<JsonValue>,
-) -> Result<FrameColumnData, DecodeError> {
+) -> Result<(FieldRef, ArrayRef), DecodeError> {
 	let (base, depth) = peel_options(&target);
+	if depth > 1 {
+		return Err(DecodeError::ColumnDecodeFailed {
+			column_name: name.to_string(),
+			row_index: None,
+			source: Box::new(DecodeError::InvalidData(format!(
+				"type {target} has {depth} option layers, but a column holds at most one"
+			))),
+		});
+	}
 	if matches!(base, ValueType::List(_) | ValueType::Record(_)) {
 		return convert_list_or_record_column(name, &target, base, depth, data);
 	}
@@ -366,11 +374,23 @@ pub fn convert_column_to_data(
 			}
 		}
 	}
-	let base = base_column(name, base, rows)?;
-	Ok(layers.into_iter().rev().fold(base, |inner, layer| FrameColumnData::Option {
-		inner: Box::new(inner),
-		bitvec: BooleanBuffer::from(layer),
-	}))
+	let (value_type, array) = base_column(name, base, rows)?;
+	column(name, value_type, array, layers)
+}
+
+fn column(
+	name: &str,
+	value_type: ValueType,
+	array: ArrayRef,
+	layers: Vec<Vec<bool>>,
+) -> Result<(FieldRef, ArrayRef), DecodeError> {
+	decoded_column(name, value_type, array, layers.into_iter().next().map(BooleanBuffer::from)).map_err(|error| {
+		DecodeError::ColumnDecodeFailed {
+			column_name: name.to_string(),
+			row_index: None,
+			source: Box::new(error),
+		}
+	})
 }
 
 fn convert_list_or_record_column(
@@ -379,7 +399,7 @@ fn convert_list_or_record_column(
 	base: &ValueType,
 	depth: u32,
 	data: Vec<JsonValue>,
-) -> Result<FrameColumnData, DecodeError> {
+) -> Result<(FieldRef, ArrayRef), DecodeError> {
 	let mut layers = vec![vec![true; data.len()]; depth as usize];
 	let mut values = Vec::with_capacity(data.len());
 	for (row, payload) in data.into_iter().enumerate() {
@@ -423,102 +443,80 @@ fn convert_list_or_record_column(
 			}
 		}
 	}
-	let base_col = FrameColumnData::Any {
-		container: any_array_optional(values),
-		declared_type: Some(base.clone()),
-	};
-	Ok(layers.into_iter().rev().fold(base_col, |inner, layer| FrameColumnData::Option {
-		inner: Box::new(inner),
-		bitvec: BooleanBuffer::from(layer),
-	}))
+	column(name, base.clone(), Arc::new(any_array_optional(values)), layers)
 }
 
-fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Result<FrameColumnData, DecodeError> {
-	Ok(match base {
-		ValueType::Option(inner) => base_column(name, inner, rows)?,
-		ValueType::Boolean => {
-			FrameColumnData::Bool(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?))
-		}
-		ValueType::Float4 => {
-			FrameColumnData::Float4(cells(name, base, rows, 0.0f32, |s| s.parse().ok())?.into())
-		}
-		ValueType::Float8 => {
-			FrameColumnData::Float8(cells(name, base, rows, 0.0f64, |s| s.parse().ok())?.into())
-		}
-		ValueType::Int1 => FrameColumnData::Int1(cells(name, base, rows, 0i8, |s| s.parse().ok())?.into()),
-		ValueType::Int2 => FrameColumnData::Int2(cells(name, base, rows, 0i16, |s| s.parse().ok())?.into()),
-		ValueType::Int4 => FrameColumnData::Int4(cells(name, base, rows, 0i32, |s| s.parse().ok())?.into()),
-		ValueType::Int8 => FrameColumnData::Int8(cells(name, base, rows, 0i64, |s| s.parse().ok())?.into()),
-		ValueType::Int16 => {
-			FrameColumnData::Int16(wide_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?))
-		}
-		ValueType::Uint1 => FrameColumnData::Uint1(cells(name, base, rows, 0u8, |s| s.parse().ok())?.into()),
-		ValueType::Uint2 => FrameColumnData::Uint2(cells(name, base, rows, 0u16, |s| s.parse().ok())?.into()),
-		ValueType::Uint4 => FrameColumnData::Uint4(cells(name, base, rows, 0u32, |s| s.parse().ok())?.into()),
-		ValueType::Uint8 => FrameColumnData::Uint8(cells(name, base, rows, 0u64, |s| s.parse().ok())?.into()),
-		ValueType::Uint16 => {
-			FrameColumnData::Uint16(wide_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?))
-		}
-		ValueType::Date => FrameColumnData::Date(date_array(cells(
+fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Result<(ValueType, ArrayRef), DecodeError> {
+	let array: ArrayRef = match base {
+		ValueType::Option(inner) => return base_column(name, inner, rows),
+		ValueType::Boolean => Arc::new(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?)),
+		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| s.parse().ok())?)),
+		ValueType::Float8 => Arc::new(Float64Array::from(cells(name, base, rows, 0.0f64, |s| s.parse().ok())?)),
+		ValueType::Int1 => Arc::new(Int8Array::from(cells(name, base, rows, 0i8, |s| s.parse().ok())?)),
+		ValueType::Int2 => Arc::new(Int16Array::from(cells(name, base, rows, 0i16, |s| s.parse().ok())?)),
+		ValueType::Int4 => Arc::new(Int32Array::from(cells(name, base, rows, 0i32, |s| s.parse().ok())?)),
+		ValueType::Int8 => Arc::new(Int64Array::from(cells(name, base, rows, 0i64, |s| s.parse().ok())?)),
+		ValueType::Int16 => Arc::new(wide_array(cells(name, base, rows, 0i128, |s| s.parse().ok())?)),
+		ValueType::Uint1 => Arc::new(UInt8Array::from(cells(name, base, rows, 0u8, |s| s.parse().ok())?)),
+		ValueType::Uint2 => Arc::new(UInt16Array::from(cells(name, base, rows, 0u16, |s| s.parse().ok())?)),
+		ValueType::Uint4 => Arc::new(UInt32Array::from(cells(name, base, rows, 0u32, |s| s.parse().ok())?)),
+		ValueType::Uint8 => Arc::new(UInt64Array::from(cells(name, base, rows, 0u64, |s| s.parse().ok())?)),
+		ValueType::Uint16 => Arc::new(wide_array(cells(name, base, rows, 0u128, |s| s.parse().ok())?)),
+		ValueType::Date => Arc::new(date_array(cells(
 			name,
 			base,
 			rows,
 			Date::from_ymd(1970, 1, 1).unwrap(),
 			parse_date_text,
 		)?)),
-		ValueType::DateTime => FrameColumnData::DateTime(datetime_array(cells(
+		ValueType::DateTime => Arc::new(datetime_array(cells(
 			name,
 			base,
 			rows,
 			DateTime::from_epoch_secs(0).unwrap(),
 			parse_datetime_text,
 		)?)),
-		ValueType::Time => FrameColumnData::Time(time_array(cells(
+		ValueType::Time => Arc::new(time_array(cells(
 			name,
 			base,
 			rows,
 			Time::from_hms(0, 0, 0).unwrap(),
 			parse_time_text,
 		)?)),
-		ValueType::Duration => FrameColumnData::Duration(duration_array(cells(
-			name,
-			base,
-			rows,
-			Duration::zero(),
-			parse_duration_text,
-		)?)),
-		ValueType::Uuid4 => FrameColumnData::Uuid4(uuid4_array(cells(
+		ValueType::Duration => {
+			Arc::new(duration_array(cells(name, base, rows, Duration::zero(), parse_duration_text)?))
+		}
+		ValueType::Uuid4 => Arc::new(uuid4_array(cells(
 			name,
 			base,
 			rows,
 			parse_uuid4_text("00000000-0000-4000-8000-000000000000").unwrap(),
 			parse_uuid4_text,
 		)?)),
-		ValueType::Uuid7 => FrameColumnData::Uuid7(uuid7_array(cells(
+		ValueType::Uuid7 => Arc::new(uuid7_array(cells(
 			name,
 			base,
 			rows,
 			parse_uuid7_text("00000000-0000-7000-8000-000000000000").unwrap(),
 			parse_uuid7_text,
 		)?)),
-		ValueType::IdentityId => FrameColumnData::IdentityId(identity_id_array(cells(
+		ValueType::IdentityId => Arc::new(identity_id_array(cells(
 			name,
 			base,
 			rows,
 			parse_identity_id("00000000-0000-7000-8000-000000000000").unwrap(),
 			parse_identity_id,
 		)?)),
-		ValueType::Blob => {
-			FrameColumnData::Blob(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?))
-		}
+		ValueType::Blob => Arc::new(blob_array(&cells(name, base, rows, Blob::new(vec![]), parse_blob)?)),
 		ValueType::Decimal {
 			precision,
 			scale,
-		} => FrameColumnData::Decimal(decimal_array(
+		} => decimal_array(
 			*precision,
 			*scale,
 			cells(name, base, rows, Decimal::zero(), |text| parse_decimal_text(text, *precision, *scale))?,
-		)),
+		)
+		.into_array(),
 		ValueType::Digest {
 			inner,
 			accuracy,
@@ -534,11 +532,7 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 					}
 				}
 			}
-			FrameColumnData::Digest {
-				container: builder.finish(),
-				inner: inner.as_ref().clone(),
-				accuracy: *accuracy,
-			}
+			Arc::new(builder.finish())
 		}
 		ValueType::Utf8
 		| ValueType::Any
@@ -546,9 +540,9 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		| ValueType::List(_)
 		| ValueType::Record(_)
 		| ValueType::Tuple(_) => {
-			FrameColumnData::Utf8(LargeStringArray::from(cells(name, base, rows, String::new(), |s| {
-				Some(s.to_string())
-			})?))
+			let strings = cells(name, base, rows, String::new(), |s| Some(s.to_string()))?;
+			return Ok((ValueType::Utf8, Arc::new(LargeStringArray::from(strings))));
 		}
-	})
+	};
+	Ok((base.clone(), array))
 }

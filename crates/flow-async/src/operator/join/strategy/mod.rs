@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::JoinType, interface::change::Diff, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::{common::JoinType, interface::change::Diff};
 use reifydb_value::util::hash::Hash128;
 
 use crate::operator::{
@@ -58,7 +59,7 @@ impl JoinStrategy {
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -73,7 +74,7 @@ impl JoinStrategy {
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -88,8 +89,8 @@ impl JoinStrategy {
 	pub(crate) fn handle_update_both_undefined(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -104,7 +105,7 @@ impl JoinStrategy {
 	pub(crate) fn handle_insert(
 		&self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -120,7 +121,7 @@ impl JoinStrategy {
 	pub(crate) fn handle_remove(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -136,8 +137,8 @@ impl JoinStrategy {
 	pub(crate) fn handle_update(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,

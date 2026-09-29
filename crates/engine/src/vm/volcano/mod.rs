@@ -1,45 +1,92 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	value::column::{builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, dictionary::DictionaryEntryId};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{
+		Value,
+		column_view::ColumnView,
+		dictionary::DictionaryEntryId,
+		system_columns::{is_system_field, user_columns},
+	},
+};
 use tracing::instrument;
 
 use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 
 #[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(
-	columns: &mut Columns,
+	input: RecordBatch,
 	dictionaries: &[Option<Dictionary>],
 	rx: &mut Transaction,
-) -> Result<()> {
-	for (col_idx, dict_opt) in dictionaries.iter().enumerate() {
-		if let Some(dictionary) = dict_opt {
-			if col_idx >= columns.len() {
-				continue;
-			}
-			let col = &columns[col_idx];
-			let row_count = col.len();
-			let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
-			for row_idx in 0..row_count {
-				let id_value = col.get_value(row_idx);
-				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-					match rx.get_from_dictionary(dictionary, entry_id)? {
-						Some(decoded) => new_data.push_value(decoded),
-						None => new_data.push_value(Value::none()),
-					}
-				} else {
-					new_data.push_value(Value::none());
+) -> Result<RecordBatch> {
+	if dictionaries.iter().all(Option::is_none) {
+		return Ok(input);
+	}
+	let schema = input.schema();
+	let mut columns = Vec::with_capacity(input.num_columns());
+	let mut user_index = 0usize;
+	for (field, array) in schema.fields().iter().zip(input.columns()) {
+		if is_system_field(field) {
+			columns.push((field.clone(), array.clone()));
+			continue;
+		}
+		let dictionary = dictionaries.get(user_index).and_then(Option::as_ref);
+		user_index += 1;
+		let Some(dictionary) = dictionary else {
+			columns.push((field.clone(), array.clone()));
+			continue;
+		};
+		let view = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = view.len();
+		let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
+		for row_idx in 0..row_count {
+			let id_value = view.get_value(row_idx);
+			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
+				match rx.get_from_dictionary(dictionary, entry_id)? {
+					Some(decoded) => new_data.push_value(decoded),
+					None => new_data.push_value(Value::none()),
 				}
+			} else {
+				new_data.push_value(Value::none());
 			}
-			columns.columns[col_idx] = new_data.finish();
+		}
+		columns.push(new_data.finish(field.name()));
+	}
+	batch(columns)
+}
+
+pub(crate) fn user_pairs(batch: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
+	user_columns(batch).map(|(field, array)| (field.clone(), array.clone())).collect()
+}
+
+pub(crate) fn user_header_names(headers: &ColumnHeaders) -> Vec<Fragment> {
+	headers.columns.iter().filter(|name| !name.text().starts_with('#')).cloned().collect()
+}
+
+pub(crate) fn with_system_headers(user: Vec<Fragment>, from: &ColumnHeaders) -> ColumnHeaders {
+	let mut columns = user;
+	columns.extend(from.columns.iter().filter(|name| name.text().starts_with('#')).cloned());
+	ColumnHeaders {
+		columns,
+	}
+}
+
+pub(crate) fn with_user_columns(user: Vec<(FieldRef, ArrayRef)>, from: &RecordBatch) -> Result<RecordBatch> {
+	let mut columns = user;
+	for (field, array) in from.schema_ref().fields().iter().zip(from.columns()) {
+		if is_system_field(field) {
+			columns.push((field.clone(), array.clone()));
 		}
 	}
-	Ok(())
+	batch(columns)
 }
 
 use query::{QueryContext, QueryNode};
@@ -51,7 +98,7 @@ impl QueryNode for NoopNode {
 	fn initialize<'a>(&mut self, _: &mut Transaction<'a>, _: &QueryContext) -> Result<()> {
 		Ok(())
 	}
-	fn next<'a>(&mut self, _: &mut Transaction<'a>, _: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _: &mut Transaction<'a>, _: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		Ok(None)
 	}
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -73,7 +120,6 @@ pub mod inline;
 pub mod join;
 pub(crate) mod key_rows;
 pub mod map;
-pub mod merge;
 pub mod patch;
 pub mod query;
 pub(crate) mod rank;

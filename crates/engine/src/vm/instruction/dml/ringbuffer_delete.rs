@@ -3,6 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	error::diagnostic::{
@@ -22,7 +23,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteRingBufferNode, query::QueryPlan};
@@ -31,7 +32,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, partition::Partition, row_number::RowNumber},
+	value::{Value, partition::Partition, row_number::RowNumber, system_columns::row_numbers},
 };
 
 use super::{
@@ -58,7 +59,7 @@ pub(crate) fn delete_ringbuffer(
 	plan: DeleteRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let DeleteRingBufferNode {
 		input,
 		target,
@@ -100,12 +101,12 @@ pub(crate) fn delete_ringbuffer(
 	)?;
 
 	if let Some(returning_exprs) = &returning {
-		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
-		let columns = with_pre_image(columns.clone(), &columns);
+		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, columns)?;
+		let columns = with_pre_image(columns.clone(), &columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(delete_ringbuffer_result(namespace.name(), &ringbuffer.name, deleted_count))
+	delete_ringbuffer_result(namespace.name(), &ringbuffer.name, deleted_count)
 }
 
 #[inline]
@@ -182,7 +183,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		if columns.row_count() == 0 {
+		if columns.num_rows() == 0 {
 			continue;
 		}
 		PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
@@ -193,10 +194,10 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if columns.row_numbers().is_empty() {
+		if row_numbers(&columns)?.is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
-		row_numbers_to_delete.extend(columns.row_numbers().iter().copied());
+		row_numbers_to_delete.extend(row_numbers(&columns)?.iter().copied());
 	}
 	Ok(row_numbers_to_delete)
 }
@@ -262,8 +263,8 @@ fn delete_ringbuffer_partitions(
 }
 
 #[inline]
-fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> Columns {
-	Columns::single_row([
+fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("deleted", Value::Uint8(deleted)),

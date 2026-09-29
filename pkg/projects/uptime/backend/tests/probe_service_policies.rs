@@ -65,8 +65,8 @@ fn lookup_identity(db: &Database, name: &str) -> IdentityId {
 	)
 	.expect("identity lookup");
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-	match col.data.get_value(0) {
+	let col = frame.column("id").expect("the column reads").expect("id column");
+	match col.get_value(0) {
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected identity value for {name}: {other:?}"),
 	}
@@ -265,8 +265,8 @@ fn service_reports_result_user_denied() {
 		params(&[("m", f.monitor_id.into_value())]),
 	)
 	.expect("root region read");
-	let cf = region.first().and_then(|fr| fr.columns.iter().find(|c| c.name == "consecutive_failures"));
-	let cf = cf.expect("consecutive_failures column").data.get_value(0);
+	let cf = region.first().and_then(|fr| fr.column("consecutive_failures").expect("the column reads"));
+	let cf = cf.expect("consecutive_failures column").get_value(0);
 	assert_eq!(cf, Value::Int4(1), "one failure must have been recorded by the service report");
 }
 
@@ -326,8 +326,8 @@ fn service_finds_monitor_across_owner_user_denied() {
 
 	let found = command_as(&f.db, f.service, "CALL uptime::find_monitor($monitor_id)", mp).expect("service find");
 	assert_eq!(rows(&found), 1, "service must read the monitor it does not own via the procedure");
-	let owner = found.first().and_then(|fr| fr.columns.iter().find(|c| c.name == "owner")).expect("owner column");
-	assert_eq!(owner.data.get_value(0), Value::IdentityId(f.owner), "row must be the alice-owned monitor");
+	let owner = found.first().and_then(|fr| fr.column("owner").expect("the column reads")).expect("owner column");
+	assert_eq!(owner.get_value(0), Value::IdentityId(f.owner), "row must be the alice-owned monitor");
 }
 
 #[test]
@@ -349,10 +349,10 @@ fn values(frames: &[Frame], name: &str) -> Vec<Value> {
 	let Some(frame) = frames.first() else {
 		return Vec::new();
 	};
-	let Some(col) = frame.columns.iter().find(|c| c.name == name) else {
+	let Some(col) = frame.column(name).expect("the column reads") else {
 		return Vec::new();
 	};
-	(0..frame.row_count()).map(|i| col.data.get_value(i)).collect()
+	(0..frame.row_count()).map(|i| col.get_value(i)).collect()
 }
 
 #[test]

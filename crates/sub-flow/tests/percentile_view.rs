@@ -12,7 +12,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	expression::Expression,
 	interface::catalog::flow::OperatorId,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_flow::{
 	aggregate::{AggregateContext, DIGEST_FUNCTION, PERCENTILE_FUNCTION, SlotKind},
@@ -26,7 +26,10 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::{assert::rows, engine::TestEngine};
-use reifydb_value::value::{Value, datetime::DateTime, digest::Digest, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{
+	Value, datetime::DateTime, digest::Digest, duration::Duration, system_columns::user_columns,
+	value_type::ValueType,
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(60);
 const ROWS: usize = 1200;
@@ -317,7 +320,7 @@ fn every_bad_percentile_call_is_refused_at_view_create_with_its_code_and_the_fun
 fn a_digest_input_error_at_runtime_names_the_percentile_function_the_user_wrote() {
 	// An error naming stats::digest sends a user who wrote stats::approx_percentile after a call that is not there.
 	for (operator, core) in cores(&[("p", "stats::approx_percentile(latency, 0.5)")]) {
-		let columns = Columns::single_row([("latency", Value::float8(1.5))]);
+		let columns = single_row([("latency", Value::float8(1.5))]).expect("one row");
 		let error = core
 			.evaluate_slot_inputs(&columns)
 			.expect_err("a raw input without an accuracy must be refused");
@@ -380,7 +383,7 @@ fn every_runtime_digest_input_error_names_the_function_written_for_the_slot_that
 	];
 	for (calls, x, code, function) in cases {
 		for (operator, core) in cores(&calls) {
-			let columns = Columns::single_row([("x", x.clone()), ("y", digest())]);
+			let columns = single_row([("x", x.clone()), ("y", digest())]).expect("one row");
 			let error = core.evaluate_slot_inputs(&columns).expect_err("the x slot must refuse its input");
 			let other = if function == DIGEST_FUNCTION {
 				PERCENTILE_FUNCTION
@@ -415,7 +418,7 @@ fn digest_accuracy_help_shows_the_syntax_of_the_function_the_user_wrote() {
 	];
 	for (call, help) in runtime {
 		for (operator, core) in cores(&[("p", call)]) {
-			let columns = Columns::single_row([("latency", Value::float8(1.5))]);
+			let columns = single_row([("latency", Value::float8(1.5))]).expect("one row");
 			let error = core
 				.evaluate_slot_inputs(&columns)
 				.expect_err("a raw input without an accuracy must fail");
@@ -585,7 +588,7 @@ fn assert_percentile_views_match_batch(db: &TestDb, step: &str) {
 		assert_eq!(got, expected, "{step}: {view} must read the same percentiles as {batch}");
 		let frames = db.query(view);
 		assert!(
-			frames[0].columns.iter().all(|column| !column.name.starts_with("__aggregate")),
+			user_columns(&frames[0].batch).all(|(field, _)| !field.name().starts_with("__aggregate")),
 			"{step}: {view} must not expose a slot column"
 		);
 	}
@@ -791,10 +794,11 @@ fn user_columns_named_like_slot_columns_neither_clash_nor_leak_into_the_view() {
 		let got =
 			await_value(expected.clone(), TIMEOUT, || keyed(&db.query("FROM app::clash"), &["g"], &names));
 		assert_eq!(got, expected, "{step}: the view must equal the batch query");
-		let view_names: Vec<String> =
-			db.query("FROM app::clash")[0].columns.iter().map(|column| column.name.clone()).collect();
+		let view_names: Vec<String> = user_columns(&db.query("FROM app::clash")[0].batch)
+			.map(|(field, _)| field.name().clone())
+			.collect();
 		let batch_names: Vec<String> =
-			db.query(&batch)[0].columns.iter().map(|column| column.name.clone()).collect();
+			user_columns(&db.query(&batch)[0].batch).map(|(field, _)| field.name().clone()).collect();
 		assert_eq!(view_names, batch_names, "{step}: the view must expose exactly the declared outputs");
 	};
 

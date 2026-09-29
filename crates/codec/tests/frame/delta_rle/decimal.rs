@@ -5,11 +5,16 @@ use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	container::decimal_array::decimal_array,
 	decimal::Decimal,
-	frame::data::FrameColumnData,
+	value_type::{ValueType, field::FieldType},
 };
 
-fn column(precision: u8, values: Vec<Decimal>) -> FrameColumnData {
-	FrameColumnData::Decimal(decimal_array(Precision::new(precision), Scale::new(9), values))
+use crate::common::ColumnData;
+
+fn column(precision: u8, values: Vec<Decimal>) -> ColumnData {
+	(
+		FieldType::from(ValueType::decimal(Precision::new(precision), Scale::new(9))),
+		decimal_array(Precision::new(precision), Scale::new(9), values).into_array(),
+	)
 }
 
 fn dec(text: &str) -> Decimal {
@@ -19,7 +24,7 @@ fn dec(text: &str) -> Decimal {
 mod narrow {
 	use super::*;
 
-	fn make(values: Vec<Decimal>) -> FrameColumnData {
+	fn make(values: Vec<Decimal>) -> ColumnData {
 		column(38, values)
 	}
 
@@ -32,7 +37,7 @@ mod narrow {
 mod wide {
 	use super::*;
 
-	fn make(values: Vec<Decimal>) -> FrameColumnData {
+	fn make(values: Vec<Decimal>) -> ColumnData {
 		column(76, values)
 	}
 

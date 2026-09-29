@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	container::temporal_array::{date_array, dates},
 	date::Date,
 	value_type::ValueType,
 };
+
+use crate::function::support::column::array_column;
 
 pub struct DateStartOfYear {
 	info: RoutineInfo,
@@ -38,12 +44,16 @@ impl<'a> Routine<FunctionContext<'a>> for DateStartOfYear {
 		ValueType::Date
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		let result_data = match data {
-			ColumnBuffer::Date(container) => {
+		let result_data = match &data.data {
+			ViewData::Date(container) => {
 				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -57,19 +67,19 @@ impl<'a> Routine<FunctionContext<'a>> for DateStartOfYear {
 					}
 				}
 
-				ColumnBuffer::Date(date_array(result))
+				array_column(ctx.fragment.text(), ValueType::Date, Arc::new(date_array(result)))
 			}
-			other => {
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![ValueType::Date],
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

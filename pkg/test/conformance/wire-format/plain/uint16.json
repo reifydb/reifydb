@@ -11,10 +11,7 @@
             ],
             "type": "Uint16"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -27,10 +24,7 @@
             "payload": [],
             "type": "Uint16"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -45,10 +39,7 @@
             ],
             "type": "Uint16"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -67,10 +58,7 @@
               "Option": "Uint16"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -87,10 +75,7 @@
               "Option": "Uint16"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -124,10 +109,7 @@
             ],
             "type": "Uint16"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -146,10 +128,7 @@
             ],
             "type": "Uint16"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   }

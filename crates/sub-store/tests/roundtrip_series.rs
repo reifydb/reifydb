@@ -15,7 +15,7 @@ use reifydb_sub_store::{
 	subsystem::{StorageConfig, StorageSubsystem},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
 #[test]
 fn series_materialization_populates_block_store() {
@@ -99,17 +99,17 @@ fn series_materialization_populates_block_store() {
 		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
-		assert_eq!(batch.row_count(), block.len());
+		assert_eq!(batch.num_rows(), block.len());
 
-		let k_col = batch.column("k").expect("k column");
-		let v_col = batch.column("value").expect("value column");
+		let k_col = column_view(&batch, "k").expect("k view").expect("k column");
+		let v_col = column_view(&batch, "value").expect("value view").expect("value column");
 
 		for i in 0..block.len() {
-			let k = match k_col.data().get_value(i) {
+			let k = match k_col.get_value(i) {
 				Value::Uint8(v) => v,
 				other => panic!("row {i}: expected Uint8, got {other:?}"),
 			};
-			let v = match v_col.data().get_value(i) {
+			let v = match v_col.get_value(i) {
 				Value::Float8(v) => f64::from(v),
 				other => panic!("row {i}: expected Float8, got {other:?}"),
 			};

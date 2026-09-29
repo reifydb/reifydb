@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::datetime;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::datetime_array, datetime::DateTime, value_type::ValueType};
+use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 pub struct DateTimeNow {
 	info: RoutineInfo,
@@ -34,8 +36,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNow {
 		ValueType::DateTime
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let row_count = args.row_count().max(1);
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let row_count = ctx.row_count.max(1);
 
 		let millis = ctx.runtime_context.clock.now().to_millis();
 		let dt = DateTime::from_epoch_millis(millis)?;
@@ -45,10 +51,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNow {
 			container.push(dt);
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(
-			ctx.fragment.clone(),
-			ColumnBuffer::DateTime(datetime_array(container)),
-		)]))
+		Ok(datetime(ctx.fragment.text(), container))
 	}
 }
 

@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -12,7 +13,6 @@ use reifydb_core::{
 	key::tag::KeyTag,
 	operator_with::ApplyWith,
 	row::Row,
-	value::column::columns::Columns,
 };
 use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
@@ -33,7 +33,15 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	config::ExtensionParams,
-	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, row_number::RowNumber},
+	value::{
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		diff_type::DiffType,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{row_numbers, user_columns},
+	},
 };
 
 pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
@@ -253,11 +261,14 @@ struct DiffRender {
 	post: Option<ColumnsRender>,
 }
 
-fn render_columns(cols: &Columns) -> ColumnsRender {
+fn render_columns(cols: &RecordBatch) -> ColumnsRender {
+	let views: Vec<ColumnView<'_>> = user_columns(cols)
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).expect("a user column reads"))
+		.collect();
 	ColumnsRender {
-		names: (0..cols.len()).map(|i| cols.name_at(i).text().to_string()).collect(),
-		row_numbers: cols.row_numbers().to_vec(),
-		rows: (0..cols.row_count()).map(|r| cols.row(r)).collect(),
+		names: views.iter().map(|view| view.field.name().to_string()).collect(),
+		row_numbers: row_numbers(cols).expect("#rownum reads").to_vec(),
+		rows: (0..cols.num_rows()).map(|r| views.iter().map(|view| view.get_value(r)).collect()).collect(),
 	}
 }
 

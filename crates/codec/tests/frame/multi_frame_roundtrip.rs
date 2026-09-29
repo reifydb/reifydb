@@ -5,16 +5,22 @@
 //! whose metadata arrays are present shifts the byte offsets of everything after it, so a decoder
 //! that mistakes their length reads the next column descriptor misaligned.
 
-use arrow_array::{Int32Array, LargeStringArray};
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, Int32Array, LargeStringArray, UInt64Array};
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 use reifydb_value::value::{
+	column_view::ColumnView,
+	container::temporal_array::datetime_array,
 	datetime::DateTime,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	row_number::RowNumber,
-	system_columns::SystemColumns,
+	frame::frame::Frame,
+	system_columns::{SystemColumn, created_at, row_numbers, time, updated_at},
+	value_type::ValueType,
 };
 
-fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
+use crate::common::{ColumnData, data, frame_of, view_at, with_system};
+
+fn assert_col_data_eq(a: &ColumnView<'_>, b: &ColumnView<'_>) {
 	assert_eq!(a.len(), b.len(), "column length mismatch");
 	for i in 0..a.len() {
 		let va = a.get_value(i);
@@ -23,27 +29,35 @@ fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 	}
 }
 
+fn names(frame: &Frame) -> Vec<&str> {
+	frame.batch.schema_ref().fields().iter().map(|field| field.name().as_str()).collect()
+}
+
 fn assert_frame_eq(a: &Frame, b: &Frame) {
-	assert_eq!(a.row_numbers().len(), b.row_numbers().len(), "row_numbers length mismatch");
-	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
+	let (rows_a, rows_b) = (row_numbers(&a.batch).unwrap(), row_numbers(&b.batch).unwrap());
+	assert_eq!(rows_a.len(), rows_b.len(), "row_numbers length mismatch");
+	for (i, (ra, rb)) in rows_a.iter().zip(rows_b).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
 	}
-	assert_eq!(a.created_at().len(), b.created_at().len(), "created_at length mismatch");
-	for (i, (ca, cb)) in a.created_at().iter().zip(b.created_at()).enumerate() {
+	let (created_a, created_b) = (created_at(&a.batch).unwrap(), created_at(&b.batch).unwrap());
+	assert_eq!(created_a.len(), created_b.len(), "created_at length mismatch");
+	for (i, (ca, cb)) in created_a.iter().zip(created_b).enumerate() {
 		assert_eq!(ca.to_nanos(), cb.to_nanos(), "created_at mismatch at {}", i);
 	}
-	assert_eq!(a.updated_at().len(), b.updated_at().len(), "updated_at length mismatch");
-	for (i, (ua, ub)) in a.updated_at().iter().zip(b.updated_at()).enumerate() {
+	let (updated_a, updated_b) = (updated_at(&a.batch).unwrap(), updated_at(&b.batch).unwrap());
+	assert_eq!(updated_a.len(), updated_b.len(), "updated_at length mismatch");
+	for (i, (ua, ub)) in updated_a.iter().zip(updated_b).enumerate() {
 		assert_eq!(ua.to_nanos(), ub.to_nanos(), "updated_at mismatch at {}", i);
 	}
-	assert_eq!(a.time().len(), b.time().len(), "time length mismatch");
-	for (i, (ta, tb)) in a.time().iter().zip(b.time()).enumerate() {
+	let (time_a, time_b) = (time(&a.batch).unwrap(), time(&b.batch).unwrap());
+	assert_eq!(time_a.len(), time_b.len(), "time length mismatch");
+	for (i, (ta, tb)) in time_a.iter().zip(time_b).enumerate() {
 		assert_eq!(ta.to_nanos(), tb.to_nanos(), "time mismatch at {}", i);
 	}
-	assert_eq!(a.columns.len(), b.columns.len(), "column count mismatch");
-	for (ca, cb) in a.columns.iter().zip(&b.columns) {
-		assert_eq!(ca.name, cb.name);
-		assert_col_data_eq(&ca.data, &cb.data);
+	assert_eq!(a.batch.num_columns(), b.batch.num_columns(), "column count mismatch");
+	for (index, (na, nb)) in names(a).into_iter().zip(names(b)).enumerate() {
+		assert_eq!(na, nb);
+		assert_col_data_eq(&view_at(a, index), &view_at(b, index));
 	}
 }
 
@@ -57,37 +71,44 @@ fn round_trip_multi(frames: Vec<Frame>) {
 }
 
 fn assert_frame_eq_with_idx(idx: usize, a: &Frame, b: &Frame) {
-	assert_eq!(a.columns.len(), b.columns.len(), "frame[{idx}] column count mismatch");
-	for (ca, cb) in a.columns.iter().zip(&b.columns) {
-		assert_eq!(ca.name, cb.name, "frame[{idx}] column name mismatch");
+	assert_eq!(a.batch.num_columns(), b.batch.num_columns(), "frame[{idx}] column count mismatch");
+	for (na, nb) in names(a).into_iter().zip(names(b)) {
+		assert_eq!(na, nb, "frame[{idx}] column name mismatch");
 	}
 	assert_frame_eq(a, b);
 }
 
+fn int4(values: Vec<i32>) -> ColumnData {
+	data(ValueType::Int4, Int32Array::from(values))
+}
+
+fn utf8(values: Vec<&str>) -> ColumnData {
+	data(ValueType::Utf8, LargeStringArray::from(values.into_iter().map(str::to_string).collect::<Vec<_>>()))
+}
+
+fn row_number_array(values: Vec<u64>) -> ArrayRef {
+	Arc::new(UInt64Array::from(values))
+}
+
+fn datetimes(nanos: impl IntoIterator<Item = i64>) -> ArrayRef {
+	Arc::new(datetime_array(nanos.into_iter().map(DateTime::from_nanos)))
+}
+
 fn frame_int4(name: &str, values: Vec<i32>) -> Frame {
-	Frame::new(vec![FrameColumn {
-		name: name.to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(values)),
-	}])
+	frame_of(vec![(name, int4(values))])
 }
 
 fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 	let n = values.len();
-	Frame {
-		system: SystemColumns::new(
-			(0..n).map(|i| RowNumber::new((i as u64) + 1)).collect(),
-			Vec::new(),
-			(0..n).map(|i| DateTime::from_nanos((i as i64) * 1_000_000)).collect(),
-			(0..n).map(|i| DateTime::from_nanos((i as i64) * 2_000_000)).collect(),
-			(0..n).map(|i| DateTime::from_nanos((i as i64) * 3_000_000)).collect(),
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: name.to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(values)),
-		}],
-	}
+	let frame = frame_int4(name, values);
+	let frame = with_system(
+		frame,
+		SystemColumn::RowNumbers,
+		row_number_array((0..n).map(|i| (i as u64) + 1).collect()),
+	);
+	let frame = with_system(frame, SystemColumn::CreatedAt, datetimes((0..n).map(|i| (i as i64) * 1_000_000)));
+	let frame = with_system(frame, SystemColumn::UpdatedAt, datetimes((0..n).map(|i| (i as i64) * 2_000_000)));
+	with_system(frame, SystemColumn::Time, datetimes((0..n).map(|i| (i as i64) * 3_000_000)))
 }
 
 #[test]
@@ -121,64 +142,15 @@ fn three_frames_alternating_metadata() {
 
 #[test]
 fn two_frames_only_row_numbers() {
-	let frame1 = Frame {
-		system: SystemColumns::new(
-			vec![RowNumber::new(1), RowNumber::new(2)],
-			Vec::new(),
-			vec![],
-			vec![],
-			vec![],
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "v".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![10, 20])),
-		}],
-	};
-	let frame2 = Frame {
-		system: SystemColumns::new(vec![RowNumber::new(3)], Vec::new(), vec![], vec![], vec![], Vec::new()),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "w".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![30])),
-		}],
-	};
+	let frame1 = with_system(frame_int4("v", vec![10, 20]), SystemColumn::RowNumbers, row_number_array(vec![1, 2]));
+	let frame2 = with_system(frame_int4("w", vec![30]), SystemColumn::RowNumbers, row_number_array(vec![3]));
 	round_trip_multi(vec![frame1, frame2]);
 }
 
 #[test]
 fn two_frames_only_created_at() {
-	let frame1 = Frame {
-		system: SystemColumns::new(
-			vec![],
-			Vec::new(),
-			vec![DateTime::from_nanos(100), DateTime::from_nanos(200)],
-			vec![],
-			vec![],
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "v".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![1, 2])),
-		}],
-	};
-	let frame2 = Frame {
-		system: SystemColumns::new(
-			vec![],
-			Vec::new(),
-			vec![DateTime::from_nanos(300)],
-			vec![],
-			vec![],
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "w".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![3])),
-		}],
-	};
+	let frame1 = with_system(frame_int4("v", vec![1, 2]), SystemColumn::CreatedAt, datetimes([100, 200]));
+	let frame2 = with_system(frame_int4("w", vec![3]), SystemColumn::CreatedAt, datetimes([300]));
 	round_trip_multi(vec![frame1, frame2]);
 }
 
@@ -186,41 +158,26 @@ fn two_frames_only_created_at() {
 fn frame_with_only_metadata_take_one_then_aggregate() {
 	// The narrowest case: a single-row frame whose metadata arrays are length 1, followed by a
 	// multi-row frame with none, so a decoder that reuses the first frame's lengths misaligns.
-	let sort_take_frame = Frame {
-		system: SystemColumns::new(
-			vec![RowNumber::new(42)],
-			Vec::new(),
-			vec![DateTime::from_nanos(1_777_056_096_000_000_000i64)],
-			vec![DateTime::from_nanos(1_777_056_096_000_000_000i64)],
-			vec![DateTime::from_nanos(1_777_056_096_000_000_000i64)],
-			Vec::new(),
+	let sort_take_frame = frame_of(vec![
+		("base_mint", utf8(vec!["So11111111111111111111111111111111111111112"])),
+		("close_usd", int4(vec![86])),
+	]);
+	let sort_take_frame = with_system(sort_take_frame, SystemColumn::RowNumbers, row_number_array(vec![42]));
+	let sort_take_frame =
+		with_system(sort_take_frame, SystemColumn::CreatedAt, datetimes([1_777_056_096_000_000_000i64]));
+	let sort_take_frame =
+		with_system(sort_take_frame, SystemColumn::UpdatedAt, datetimes([1_777_056_096_000_000_000i64]));
+	let sort_take_frame =
+		with_system(sort_take_frame, SystemColumn::Time, datetimes([1_777_056_096_000_000_000i64]));
+	let aggregate_frame = frame_of(vec![
+		(
+			"quote_mint",
+			utf8(vec![
+				"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+				"Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+			]),
 		),
-		op: None,
-		columns: vec![
-			FrameColumn {
-				name: "base_mint".to_string(),
-				data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-					"So11111111111111111111111111111111111111112".to_string(),
-				])),
-			},
-			FrameColumn {
-				name: "close_usd".to_string(),
-				data: FrameColumnData::Int4(Int32Array::from(vec![86])),
-			},
-		],
-	};
-	let aggregate_frame = Frame::new(vec![
-		FrameColumn {
-			name: "quote_mint".to_string(),
-			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-				"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
-				"Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
-			])),
-		},
-		FrameColumn {
-			name: "c".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![19, 21])),
-		},
+		("c", int4(vec![19, 21])),
 	]);
 	round_trip_multi(vec![sort_take_frame, aggregate_frame]);
 }

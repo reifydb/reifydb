@@ -11,14 +11,6 @@ pub const FRAME_HEADER_SIZE: usize = 12;
 
 pub const COLUMN_DESCRIPTOR_SIZE: usize = 28;
 
-pub const META_HAS_ROW_NUMBERS: u8 = 1 << 0;
-
-pub const META_HAS_CREATED_AT: u8 = 1 << 1;
-
-pub const META_HAS_UPDATED_AT: u8 = 1 << 2;
-
-pub const META_HAS_TIME: u8 = 1 << 3;
-
 pub const COL_FLAG_HAS_NONES: u8 = 1 << 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

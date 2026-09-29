@@ -3,12 +3,13 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb::{
 	Clock, MockClock,
 	codec::wire::{RawChangePayload, WireFormat as ClientWireFormat},
 	core::{
 		interface::{catalog::id::SubscriptionId, change::StagedBatch},
-		value::column::columns::Columns,
+		value::batch::single_row,
 	},
 	runtime::{context::rng::Rng, sync::mutex::Mutex},
 	sub_core::{
@@ -17,7 +18,10 @@ use reifydb::{
 	},
 	sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore},
 	subscription::{batch::BatchId, delivery::DeliveryResult},
-	value::value::{Value, diff_type::DiffType, duration::Duration, frame::frame::Frame, uuid::Uuid7},
+	value::value::{
+		Value, column_view::ColumnView, diff_type::DiffType, duration::Duration, frame::frame::Frame,
+		uuid::Uuid7,
+	},
 };
 
 #[derive(Clone)]
@@ -56,7 +60,7 @@ impl WireSink for RecordingSink {
 		&self,
 		_sub_id: SubscriptionId,
 		_op: DiffType,
-		columns: Columns,
+		columns: RecordBatch,
 		_format: Self::Format,
 	) -> DeliveryResult {
 		self.seen.lock().push(first_value(&columns));
@@ -90,8 +94,9 @@ impl WireSink for RecordingSink {
 	}
 }
 
-fn first_value(columns: &Columns) -> i64 {
-	match columns.iter().next().expect("one column").data().get_value(0) {
+fn first_value(columns: &RecordBatch) -> i64 {
+	match ColumnView::try_from((columns.column(0), columns.schema_ref().field(0))).expect("one column").get_value(0)
+	{
 		Value::Int8(value) => value,
 		other => panic!("expected Int8, got {other:?}"),
 	}
@@ -103,7 +108,7 @@ fn stage(id: SubscriptionId, values: &[i64]) -> HashMap<SubscriptionId, Vec<Stag
 		id,
 		values.iter()
 			.copied()
-			.map(|value| (DiffType::Insert, Columns::single_row([("v", Value::Int8(value))])))
+			.map(|value| (DiffType::Insert, single_row([("v", Value::Int8(value))]).unwrap()))
 			.collect(),
 	);
 	staged

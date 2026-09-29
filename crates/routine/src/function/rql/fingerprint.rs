@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use bumpalo::Bump;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
@@ -10,7 +12,10 @@ use reifydb_rql::{
 	ast::parse_str,
 	fingerprint::{request::fingerprint_request, statement::fingerprint_statement},
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
 pub struct RqlFingerprint {
 	info: RoutineInfo,
@@ -39,12 +44,16 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Utf8 {
+		match &data.data {
+			ViewData::Utf8 {
 				container,
 				..
 			} => {
@@ -64,15 +73,13 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 					result_data.push(req.to_hex());
 				}
 
-				let inner_data = ColumnBuffer::utf8(result_data);
-
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), inner_data)]))
+				Ok(utf8(ctx.fragment.text(), result_data))
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

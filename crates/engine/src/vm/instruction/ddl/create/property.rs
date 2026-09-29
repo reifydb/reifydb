@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
 	interface::catalog::{
@@ -8,7 +9,7 @@ use reifydb_core::{
 		object::ObjectId,
 		table::Table,
 	},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateColumnPropertyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -20,7 +21,7 @@ pub(crate) fn create_column_property(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateColumnPropertyNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
@@ -50,12 +51,12 @@ pub(crate) fn create_column_property(
 		};
 		txn.track_table_updated(pre_table, post_table)?;
 
-		Ok(Columns::single_row([
+		single_row([
 			("operation", Value::Utf8("CREATE COLUMN PROPERTY".to_string())),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("table", Value::Utf8(table.name)),
 			("column", Value::Utf8(column.name)),
-		]))
+		])
 	} else {
 		let Some(series) =
 			services.catalog.find_series_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?
@@ -82,11 +83,11 @@ pub(crate) fn create_column_property(
 		let post_series = services.catalog.get_series(&mut Transaction::Admin(txn), series.id)?;
 		txn.track_series_updated(pre_series, post_series)?;
 
-		Ok(Columns::single_row([
+		single_row([
 			("operation", Value::Utf8("CREATE COLUMN PROPERTY".to_string())),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("series", Value::Utf8(series.name)),
 			("column", Value::Utf8(column.name)),
-		]))
+		])
 	}
 }

@@ -3,13 +3,11 @@
 
 use std::{future::Future, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::wire::{RawChangePayload, WireFormat as ClientWireFormat};
-use reifydb_core::{
-	interface::catalog::{
-		id::SubscriptionId,
-		subscription::{SubscribeOptions, SubscribeOutcome},
-	},
-	value::column::columns::Columns,
+use reifydb_core::interface::catalog::{
+	id::SubscriptionId,
+	subscription::{SubscribeOptions, SubscribeOutcome},
 };
 use reifydb_sub_core::{
 	handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
@@ -60,7 +58,7 @@ impl WireSink for TestSink {
 		&self,
 		_sub_id: SubscriptionId,
 		_op: DiffType,
-		_columns: Columns,
+		_columns: RecordBatch,
 		_format: (),
 	) -> DeliveryResult {
 		self.result()

@@ -3,7 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow};
+use arrow_array::RecordBatch;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
@@ -21,7 +22,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::single_row, column::builder::ColumnBuilder},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
@@ -31,14 +32,22 @@ use reifydb_value::{
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::SystemColumns,
+		Value,
+		column_view::ColumnView,
+		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{column_view, partitions, row_numbers, user_columns},
 	},
 };
 use tracing::instrument;
 
 use super::{
 	context::{SeriesTarget, WriteExecCtx},
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
+	returning::{
+		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image,
+		with_series_stamps,
+	},
 };
 use crate::{
 	Result,
@@ -62,7 +71,7 @@ pub(crate) fn delete_series(
 	plan: DeleteSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let DeleteSeriesNode {
 		input,
 		target,
@@ -95,12 +104,12 @@ pub(crate) fn delete_series(
 
 	if let Some(returning_exprs) = &returning {
 		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
-		let cols = with_pre_image(cols.clone(), &cols);
+		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
+		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;
+		let cols = with_pre_image(cols.clone(), &cols)?;
 		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
 	}
-	Ok(delete_series_result(namespace.name(), &series.name, deleted_count))
+	delete_series_result(namespace.name(), &series.name, deleted_count)
 }
 
 #[inline]
@@ -187,7 +196,7 @@ fn drive_series_delete_input(
 	let mut mutable_context = context.clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			continue;
 		}
@@ -200,7 +209,7 @@ fn drive_series_delete_input(
 			PolicyTargetType::Series,
 		)?;
 
-		let row_numbers = columns.row_numbers();
+		let row_numbers = row_numbers(&columns)?;
 		reifydb_assertions! {
 			let row_numbers_len = row_numbers.len();
 			assert!(
@@ -210,7 +219,8 @@ fn drive_series_delete_input(
 			);
 		}
 		let partitioned = !series.partition_by.is_empty();
-		if partitioned && columns.partitions().len() != row_count {
+		let sidecar_partitions = partitions(&columns)?;
+		if partitioned && sidecar_partitions.len() != row_count {
 			return Err(EngineError::MissingPartitionAddress {
 				object: ObjectId::series(series.id),
 				operation: "DELETE",
@@ -219,10 +229,10 @@ fn drive_series_delete_input(
 		}
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
-			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
-			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
+			let key_value = extract_series_delete_key_value(&columns, series, row_idx)?;
+			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx)?;
 			let partition = if partitioned {
-				columns.partitions()[row_idx]
+				sidecar_partitions[row_idx]
 			} else {
 				Partition::default()
 			};
@@ -261,7 +271,7 @@ fn drive_series_delete_input(
 				key_value,
 				row_number,
 				row_idx,
-			);
+			)?;
 			remove_series_row(txn, series, &key, pre_for_cdc, committed.is_some(), Some(pre))?;
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
@@ -274,63 +284,47 @@ fn drive_series_delete_input(
 }
 
 #[inline]
-fn extract_series_delete_key_value(columns: &Columns, series: &Series, row_idx: usize) -> u64 {
-	columns.iter()
-		.find(|c| c.name().text() == series.key.column())
-		.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
-		.unwrap_or(0)
+fn extract_series_delete_key_value(columns: &RecordBatch, series: &Series, row_idx: usize) -> Result<u64> {
+	Ok(column_view(columns, series.key.column())?
+		.and_then(|c| series.key_to_u64(c.get_value(row_idx)))
+		.unwrap_or(0))
 }
 
 #[inline]
-fn extract_series_delete_variant_tag(columns: &Columns, has_tag: bool, row_idx: usize) -> Option<u8> {
+fn extract_series_delete_variant_tag(columns: &RecordBatch, has_tag: bool, row_idx: usize) -> Result<Option<u8>> {
 	if !has_tag {
-		return None;
+		return Ok(None);
 	}
-	columns.iter().find(|c| c.name().text() == "tag").and_then(|c| match c.data().get_value(row_idx) {
+	Ok(column_view(columns, "tag")?.and_then(|c| match c.get_value(row_idx) {
 		Value::Uint1(v) => Some(v),
 		_ => None,
-	})
+	}))
 }
 
 fn build_series_delete_pre_columns_from_input(
 	series: &Series,
-	columns: &Columns,
+	columns: &RecordBatch,
 	encoded_bytes: &EncodedBytes,
 	key_value: u64,
 	row_number: RowNumber,
 	row_idx: usize,
-) -> Columns {
+) -> Result<RecordBatch> {
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(ColumnWithName::new(
-		Fragment::internal(series.key.column()),
-		series.key_column_data(vec![key_value]),
-	));
-	for col in columns.iter() {
-		if col.name().text() != series.key.column() && col.name().text() != "tag" {
-			let mut data = ColumnBuilder::with_capacity(col.data().get_type(), 1);
-			data.push_value(col.data().get_value(row_idx));
-			pre_col_vec.push(ColumnWithName {
-				name: col.name().clone(),
-				data: data.finish(),
-			});
+	pre_col_vec.push(series.key_column_data(vec![key_value]));
+	for (field, array) in user_columns(columns) {
+		if field.name() != series.key.column() && field.name() != "tag" {
+			let col = ColumnView::try_from((array, field.as_ref()))?;
+			let mut data = ColumnBuilder::with_capacity(col.get_type(), 1);
+			data.push_value(col.get_value(row_idx));
+			pre_col_vec.push(data.finish(field.name()));
 		}
 	}
-	Columns::with_system(
-		pre_col_vec,
-		SystemColumns::new(
-			vec![row_number],
-			Vec::new(),
-			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
-			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
-			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
-			Vec::new(),
-		),
-	)
+	with_series_stamps(pre_col_vec, row_number, encoded_bytes)
 }
 
 #[inline]
-fn delete_series_result(namespace: &str, series: &str, deleted: u64) -> Columns {
-	Columns::single_row([
+fn delete_series_result(namespace: &str, series: &str, deleted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),
 		("deleted", Value::Uint8(deleted)),

@@ -3,9 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal,
-	value::column::{ColumnWithName, columns::Columns},
+	value::batch::{is_scalar, single_row},
 };
 use reifydb_rql::{
 	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
@@ -13,8 +15,7 @@ use reifydb_rql::{
 };
 use reifydb_value::{
 	error,
-	fragment::Fragment,
-	value::{Value, constraint::TypeConstraint},
+	value::{Value, constraint::TypeConstraint, system_columns::user_columns},
 };
 
 use crate::{Result, error::EvaluateError};
@@ -40,11 +41,11 @@ pub struct Callable {
 #[derive(Debug, Clone)]
 pub enum Variable {
 	Columns {
-		columns: Columns,
+		batch: RecordBatch,
 	},
 
 	ForIterator {
-		columns: Columns,
+		batch: RecordBatch,
 		index: usize,
 	},
 
@@ -53,63 +54,58 @@ pub enum Variable {
 
 impl Variable {
 	pub fn scalar(value: Value) -> Self {
-		Variable::Columns {
-			columns: Columns::single_row([("value", value)]),
-		}
+		Self::scalar_named("value", value)
 	}
 
 	pub fn scalar_named(name: &str, value: Value) -> Self {
-		let mut columns = Columns::single_row([("value", value)]);
-		columns.names[0] = Fragment::internal(name);
 		Variable::Columns {
-			columns,
+			batch: single_row([(name, value)]).expect("one value always forms a one row batch"),
 		}
 	}
 
-	pub fn columns(columns: Columns) -> Self {
+	pub fn columns(batch: RecordBatch) -> Self {
 		Variable::Columns {
-			columns,
+			batch,
 		}
 	}
 
 	pub fn is_scalar(&self) -> bool {
 		matches!(
 			self,
-			Variable::Columns { columns } if columns.is_scalar()
+			Variable::Columns { batch } if is_scalar(batch)
 		)
 	}
 
-	pub fn as_columns(&self) -> Option<&Columns> {
+	pub fn as_columns(&self) -> Option<&RecordBatch> {
 		match self {
 			Variable::Columns {
-				columns,
+				batch,
 				..
 			}
 			| Variable::ForIterator {
-				columns,
+				batch,
 				..
-			} => Some(columns),
+			} => Some(batch),
 			Variable::Closure(_) => None,
 		}
 	}
 
-	pub fn into_column(self) -> Result<ColumnWithName> {
-		let cols = match self {
+	pub fn into_column(self) -> Result<(FieldRef, ArrayRef)> {
+		let batch = match self {
 			Variable::Columns {
-				columns: c,
+				batch,
 				..
 			}
 			| Variable::ForIterator {
-				columns: c,
+				batch,
 				..
-			} => c,
-			Variable::Closure(_) => Columns::single_row([("value", Value::none())]),
+			} => batch,
+			Variable::Closure(_) => single_row([("value", Value::none())])?,
 		};
-		let actual = cols.len();
-		if actual == 1 {
-			let name = cols.names.into_iter().next().unwrap();
-			let data = cols.columns.into_iter().next().unwrap();
-			Ok(ColumnWithName::new(name, data))
+		let user: Vec<(&FieldRef, &ArrayRef)> = user_columns(&batch).collect();
+		let actual = user.len();
+		if let [(field, array)] = user.as_slice() {
+			Ok(((*field).clone(), (*array).clone()))
 		} else {
 			Err(error::TypeError::Runtime {
 				kind: error::RuntimeErrorKind::ExpectedSingleColumn {
@@ -341,25 +337,26 @@ impl Default for SymbolTable {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-	use reifydb_value::value::{Value, value_type::ValueType};
+	use reifydb_core::value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory::none_typed},
+	};
+	use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
 	use super::*;
 
-	fn create_test_columns(values: Vec<Value>) -> Columns {
+	fn create_test_columns(values: Vec<Value>) -> RecordBatch {
 		if values.is_empty() {
-			let column_data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
-			let column = ColumnWithName::new("test_col", column_data);
-			return Columns::new(vec![column]);
+			return batch(vec![none_typed("test_col", ValueType::Boolean, 0)]).unwrap();
 		}
 
-		let mut builder = ColumnBuffer::none_typed(values[0].get_type(), 0).into_builder();
+		let empty = none_typed("test_col", values[0].get_type(), 0);
+		let mut builder = ColumnBuilder::from_view(&ColumnView::try_from(&empty).unwrap());
 		for value in values {
 			builder.push_value(value);
 		}
 
-		let column = ColumnWithName::new("test_col", builder.finish());
-		Columns::new(vec![column])
+		batch(vec![builder.finish("test_col")]).unwrap()
 	}
 
 	#[test]

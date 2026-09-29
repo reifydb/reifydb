@@ -152,11 +152,11 @@ mod tests {
 		sync::atomic::{AtomicBool, Ordering},
 	};
 
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+	use arrow_array::RecordBatch;
+	use reifydb_core::value::{batch::batch, column::factory::uint1};
 	use reifydb_value::{
 		error::Diagnostic,
-		fragment::Fragment,
-		value::{Value, diff_type::DiffType},
+		value::{Value, column_view::ColumnView, diff_type::DiffType},
 	};
 
 	use super::*;
@@ -189,7 +189,7 @@ mod tests {
 			&self,
 			subscription: &SubscriptionId,
 			_op: DiffType,
-			columns: Columns,
+			columns: RecordBatch,
 		) -> DeliveryResult {
 			if self.disconnected.load(Ordering::SeqCst) {
 				return DeliveryResult::Disconnected;
@@ -207,12 +207,14 @@ mod tests {
 		}
 	}
 
-	fn columns(value: u8) -> Columns {
-		Columns::new(vec![ColumnWithName::new(Fragment::internal("test"), ColumnBuffer::uint1(vec![value]))])
+	fn columns(value: u8) -> RecordBatch {
+		batch(vec![uint1("test", vec![value])]).unwrap()
 	}
 
-	fn first_value(columns: &Columns) -> u8 {
-		match columns.iter().next().expect("one column").data().get_value(0) {
+	fn first_value(columns: &RecordBatch) -> u8 {
+		let first =
+			ColumnView::try_from((columns.column(0), columns.schema_ref().field(0))).expect("one column");
+		match first.get_value(0) {
 			Value::Uint1(value) => value,
 			other => panic!("expected Uint1, got {other:?}"),
 		}

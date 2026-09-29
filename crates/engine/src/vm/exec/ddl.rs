@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::internal_error;
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
@@ -28,7 +29,7 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Services, &mut AdminTransaction) -> Result<Columns>,
+		F: FnOnce(&Services, &mut AdminTransaction) -> Result<RecordBatch>,
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn)?;
@@ -43,7 +44,7 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Services, &mut AdminTransaction, &SymbolTable) -> Result<Columns>,
+		F: FnOnce(&Services, &mut AdminTransaction, &SymbolTable) -> Result<RecordBatch>,
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn, &self.symbols)?;

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::{handler::HandlerToCreate, procedure::ProcedureToCreate};
-use reifydb_core::{interface::catalog::procedure::RqlTrigger, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::procedure::RqlTrigger, value::batch::single_row};
 use reifydb_rql::nodes::CreateProcedureNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
@@ -13,7 +14,7 @@ pub(crate) fn create_procedure(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateProcedureNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let is_handler = matches!(plan.trigger, RqlTrigger::Event { .. });
 
 	let to_create = if plan.is_test {
@@ -53,15 +54,15 @@ pub(crate) fn create_procedure(
 			)?;
 		}
 
-		Ok(Columns::single_row([
+		single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("handler", Value::Utf8(procedure.name().to_string())),
 			("created", Value::Boolean(true)),
-		]))
+		])
 	} else {
-		Ok(Columns::single_row([
+		single_row([
 			("procedure", Value::Utf8(procedure.name().to_string())),
 			("created", Value::Boolean(true)),
-		]))
+		])
 	}
 }

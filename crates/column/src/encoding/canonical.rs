@@ -10,7 +10,7 @@ use reifydb_value::{Result, value::value_type::ValueType};
 use crate::{
 	compress::CompressConfig,
 	encoding::Encoding,
-	persist::{PersistedArray, unexpected_payload},
+	persist::{PersistedArray, load_canonical, persist_canonical, unexpected_payload},
 };
 
 pub struct CanonicalEncoding {
@@ -40,16 +40,16 @@ impl Encoding for CanonicalEncoding {
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {
 		let canonical = array.to_canonical()?;
-		Ok(PersistedArray::Canonical {
-			buffer: canonical.to_buffer(),
-		})
+		Ok(persist_canonical(&canonical))
 	}
 
 	fn load(&self, persisted: PersistedArray, _ty: &ValueType) -> Result<Column> {
 		match persisted {
 			PersistedArray::Canonical {
-				buffer,
-			} => Ok(Column::from_canonical(Canonical::from_buffer(buffer))),
+				field_type,
+				data,
+				nones,
+			} => Ok(Column::from_canonical(load_canonical(field_type, data, nones)?)),
 			_ => Err(unexpected_payload(self.id)),
 		}
 	}
@@ -57,15 +57,14 @@ impl Encoding for CanonicalEncoding {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_core::value::column::factory;
 
 	use super::*;
 	use crate::encoding::EncodingRegistry;
 
 	#[test]
 	fn canonical_fixed_round_trips_via_try_compress_then_canonicalize() {
-		let cd = ColumnBuffer::int4([1i32, 2, 3, 4]);
-		let canon = Canonical::from_column_buffer(&cd).unwrap();
+		let canon = Canonical::from_column(&factory::int4("c", [1i32, 2, 3, 4])).unwrap();
 		let compressed = CanonicalEncoding::FIXED
 			.try_compress(&canon, &CompressConfig::default())
 			.unwrap()

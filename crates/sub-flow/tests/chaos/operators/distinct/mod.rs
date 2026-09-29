@@ -6,8 +6,8 @@ pub mod workload;
 
 use std::sync::Arc;
 
+use arrow_schema::Schema;
 use rand::{RngExt, rngs::StdRng};
-use reifydb_core::value::column::columns::Columns;
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::distinct::operator::DistinctOperator;
 use reifydb_rql::expression::parse_expression;
@@ -34,7 +34,7 @@ use crate::{
 
 pub fn build(runtime: RuntimeContext) -> DistinctOperator {
 	DistinctOperator::new(
-		Some(Columns::empty()),
+		Some(Arc::new(Schema::empty())),
 		DISTINCT_OPERATOR,
 		parse_expression(KEY_COLUMN).expect("the distinct key parses"),
 		routines(),

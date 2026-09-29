@@ -30,7 +30,7 @@ fn read_after_upstream_write_in_one_command_fails_with_txn_015() {
 
 	// The failed request must not have committed anything.
 	let frames = db.query("FROM app::orders");
-	let row_count = frames.first().and_then(|f| f.columns.first()).map(|c| c.data.len()).unwrap_or(0);
+	let row_count = frames.first().map(|f| f.row_count()).unwrap_or(0);
 	assert_eq!(row_count, 0, "the rejected transaction must have rolled back its insert");
 }
 
@@ -159,7 +159,7 @@ fn deferred_view_created_and_written_in_one_request_is_guarded() {
 	);
 
 	let frames = db.query("FROM app::orders");
-	let row_count = frames.first().and_then(|f| f.columns.first()).map(|c| c.data.len()).unwrap_or(0);
+	let row_count = frames.first().map(|f| f.row_count()).unwrap_or(0);
 	assert_eq!(row_count, 0, "the rejected transaction must have rolled back its insert");
 }
 

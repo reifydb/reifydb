@@ -3,15 +3,16 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{FieldRef, Schema};
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
-use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
+use reifydb_core::value::column::builder::ColumnBuilder;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::fragment::Fragment;
 
 #[derive(Clone)]
 pub struct CurrentCache {
 	columns: Vec<UserVTableColumn>,
-	data: Arc<RwLock<Columns>>,
+	data: Arc<RwLock<RecordBatch>>,
 }
 
 impl CurrentCache {
@@ -23,11 +24,11 @@ impl CurrentCache {
 		}
 	}
 
-	pub fn store(&self, columns: Columns) {
+	pub fn store(&self, columns: RecordBatch) {
 		*self.data.write() = columns;
 	}
 
-	pub fn load(&self) -> Columns {
+	pub fn load(&self) -> RecordBatch {
 		self.data.read().clone()
 	}
 
@@ -36,17 +37,12 @@ impl CurrentCache {
 	}
 }
 
-fn empty_columns(columns: &[UserVTableColumn]) -> Columns {
-	Columns::new(
-		columns.iter()
-			.map(|c| {
-				ColumnWithName::new(
-					Fragment::internal(c.name.clone()),
-					ColumnBuilder::with_capacity(c.data_type.clone(), 0).finish(),
-				)
-			})
-			.collect(),
-	)
+fn empty_columns(columns: &[UserVTableColumn]) -> RecordBatch {
+	let fields: Vec<FieldRef> = columns
+		.iter()
+		.map(|c| ColumnBuilder::with_capacity(c.data_type.clone(), 0).finish(&c.name).0)
+		.collect();
+	RecordBatch::new_empty(Arc::new(Schema::new(fields)))
 }
 
 #[derive(Clone)]
@@ -67,7 +63,7 @@ impl UserVTable for CurrentVTable {
 		self.cache.columns()
 	}
 
-	fn get(&self) -> Columns {
+	fn get(&self) -> RecordBatch {
 		self.cache.load()
 	}
 }

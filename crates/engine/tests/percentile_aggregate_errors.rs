@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{frame::frame::Frame, identity::IdentityId, system_columns::user_columns};
 
 fn create_table(t: &TestEngine) {
 	t.admin("CREATE NAMESPACE test");
@@ -250,7 +250,10 @@ fn a_type_error_on_an_empty_table_without_by_passes_like_any_aggregate_until_the
 	let counted = t.query("FROM test::t | aggregate { n: math::count(a) }");
 
 	assert_eq!(row_count(&frames), row_count(&counted), "the percentile must follow the aggregate row rule");
-	assert!(frames[0].columns.iter().any(|c| c.name == "p"), "the read column must still come back");
+	assert!(
+		user_columns(&frames[0].batch).any(|(field, _)| field.name() == "p"),
+		"the read column must still come back"
+	);
 }
 
 #[test]

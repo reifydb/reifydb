@@ -16,9 +16,9 @@ fn db() -> TestDb {
 fn single(db: &TestDb, rql: &str, column: &str) -> Value {
 	let frames = db.query(rql);
 	let frame = frames.first().unwrap_or_else(|| panic!("{rql}: no frame"));
-	let col = frame.columns.iter().find(|c| c.name == column).unwrap_or_else(|| panic!("{rql}: no `{column}`"));
-	assert_eq!(col.data.len(), 1, "{rql}: expected exactly one row");
-	col.data.get_value(0)
+	let col = frame.column(column).expect("the column reads").unwrap_or_else(|| panic!("{rql}: no `{column}`"));
+	assert_eq!(col.len(), 1, "{rql}: expected exactly one row");
+	col.get_value(0)
 }
 
 #[test]

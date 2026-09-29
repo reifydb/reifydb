@@ -3,13 +3,14 @@
 
 use std::mem;
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::operation,
 	metrics::heap::HeapSize,
 	value::column::{
-		buffer::ColumnBuffer,
 		builder::ColumnBuilder,
-		columns::Columns,
+		factory::none,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
 };
@@ -22,6 +23,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		container::digest_array,
 		digest::{Digest, DigestError, literal::parse_accuracy},
 		value_type::ValueType,
@@ -59,7 +61,11 @@ impl<'a> Routine<FunctionContext<'a>> for StatsDigest {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		Err(RoutineError::FunctionExecutionFailed {
 			function: ctx.fragment.clone(),
 			reason: "stats::digest is only supported inside window or aggregate".to_string(),
@@ -224,13 +230,13 @@ impl Accumulator for DigestAccumulator {
 		self.digests.heap_size()
 	}
 
-	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
-		let column = &args[0];
-		if let ColumnBuffer::Digest {
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let column = ColumnView::try_from(&args[0])?;
+		if let ViewData::Digest {
 			inner,
 			accuracy,
 			..
-		} = column
+		} = &column.data
 			&& self.seen.is_none()
 		{
 			self.seen = Some((inner.clone(), *accuracy));
@@ -238,8 +244,8 @@ impl Accumulator for DigestAccumulator {
 		for &(group, ref rows) in groups.iter() {
 			let mut slot = self.digests.remove(group).flatten();
 			for &row in rows {
-				match column {
-					ColumnBuffer::Digest {
+				match &column.data {
+					ViewData::Digest {
 						container,
 						..
 					} => {
@@ -264,14 +270,14 @@ impl Accumulator for DigestAccumulator {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
 		let digests = mem::take(&mut self.digests);
 		let output = match (self.seen.take(), self.accuracy) {
 			(Some((inner, accuracy)), _) => digest_type(inner, accuracy),
 			(None, Some(accuracy)) => digest_type(ValueType::Float8, accuracy),
 			(None, None) => {
 				let keys: Vec<GroupId> = digests.into_iter().map(|(group, _)| group).collect();
-				let data = ColumnBuffer::none(keys.len());
+				let data = none(self.kind_name(), keys.len());
 				return Ok((keys, data));
 			}
 		};
@@ -284,6 +290,6 @@ impl Accumulator for DigestAccumulator {
 				None => data.push_none(),
 			}
 		}
-		Ok((keys, data.finish()))
+		Ok((keys, data.finish(self.kind_name())))
 	}
 }

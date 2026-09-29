@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::durations, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	container::temporal_array::durations,
+	value_type::ValueType,
+};
 
 pub struct DurationGetDays {
 	info: RoutineInfo,
@@ -34,26 +40,30 @@ impl<'a> Routine<FunctionContext<'a>> for DurationGetDays {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Duration(container) => {
+		match &data.data {
+			ViewData::Duration(container) => {
 				let mut result = Vec::with_capacity(row_count);
 
 				for dur in durations(container) {
 					result.push(dur.get_days());
 				}
 
-				let result_data = ColumnBuffer::int4(result);
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				let result_data = int4(ctx.fragment.text(), result);
+				Ok(result_data)
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Duration],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

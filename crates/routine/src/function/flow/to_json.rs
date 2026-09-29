@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Array;
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use postcard::from_bytes;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	flow::operator::OperatorDef,
 	internal,
 	sort::SortKey,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::factory::utf8,
 };
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -16,7 +17,11 @@ use reifydb_routine_abi::{
 use reifydb_rql::expression::json::JsonExpression;
 use reifydb_value::{
 	error::Error,
-	value::{container::varlen_array, value_type::ValueType},
+	value::{
+		column_view::{ColumnView, ViewData},
+		container::varlen_array,
+		value_type::ValueType,
+	},
 };
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
@@ -246,19 +251,20 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		if args.is_empty() {
-			return Ok(Columns::new(vec![ColumnWithName::new(
-				ctx.fragment.clone(),
-				ColumnBuffer::utf8(Vec::<String>::new()),
-			)]));
+			return Ok(utf8(ctx.fragment.text(), Vec::<String>::new()));
 		}
 
-		let data = &args[0];
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Blob {
+		match &data.data {
+			ViewData::Blob {
 				container,
 				..
 			} => {
@@ -310,8 +316,7 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 					}
 				}
 
-				let result_col_data = ColumnBuffer::utf8(result_data);
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(utf8(ctx.fragment.text(), result_data))
 			}
 			_ => Err(RoutineError::FunctionExecutionFailed {
 				function: ctx.fragment.clone(),

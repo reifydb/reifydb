@@ -3,8 +3,10 @@
 
 use std::{cmp::Reverse, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_column::snapshot::Schema;
 use reifydb_core::{
+	common::TimeSource,
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::{
 		catalog::{
@@ -15,13 +17,12 @@ use reifydb_core::{
 		resolved::ResolvedSeries,
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
+	value::column::{builder::ColumnBuilder, headers::ColumnHeaders},
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	error::Error,
-	fragment::Fragment,
 	value::{partition::Partition, system_columns::SystemColumn},
 };
 
@@ -31,7 +32,7 @@ use crate::{
 		query::{QueryContext, QueryNode},
 		scan::{
 			column_block_sequence::BlockSequenceReader, column_predicate::series_scan_predicate,
-			column_prune::prune_series_snapshots,
+			column_prune::prune_series_snapshots, empty_scan, scan_headers, source_system_columns,
 		},
 	},
 };
@@ -66,13 +67,16 @@ impl ColumnSeriesScanNode {
 		context: Arc<QueryContext>,
 	) -> Self {
 		let def = series.def();
-		let mut columns = vec![Fragment::internal(def.key.column())];
+		let mut columns = vec![def.key.column()];
 		if def.tag.is_some() {
-			columns.push(Fragment::internal("tag"));
+			columns.push("tag");
 		}
 		for col in def.data_columns() {
-			columns.push(Fragment::internal(&col.name));
+			columns.push(col.name.as_str());
 		}
+		let system_columns =
+			source_system_columns(!def.partition_by.is_empty(), def.time != TimeSource::None, false);
+		let headers = scan_headers(columns.into_iter(), &system_columns);
 		Self {
 			series,
 			key_range_start,
@@ -80,10 +84,7 @@ impl ColumnSeriesScanNode {
 			variant_tag,
 			partition,
 			context,
-			headers: ColumnHeaders {
-				columns,
-				row_numbers: true,
-			},
+			headers,
 			state: ScanState::Unopened,
 		}
 	}
@@ -182,20 +183,15 @@ fn bucket_order(snapshot: &ColumnSnapshot) -> (u64, Option<Partition>) {
 	}
 }
 
-fn empty_columns(schema: &Schema) -> Columns {
+fn empty_columns(schema: &Schema) -> Result<RecordBatch> {
 	let columns = schema
 		.iter()
 		.filter(|(name, _, _)| SystemColumn::from_name(name).is_none())
-		.map(|(name, ty, _)| {
-			ColumnWithName::new(
-				Fragment::internal(name.clone()),
-				ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
-			)
-		})
+		.map(|(name, ty, _)| ColumnBuilder::with_capacity(ty.clone(), 0).finish(name))
 		.collect();
-	let mut columns = Columns::new(columns);
-	columns.system.mark_row_numbers();
-	columns
+	let system: Vec<SystemColumn> =
+		schema.iter().filter_map(|(name, _, _)| SystemColumn::from_name(name)).collect();
+	empty_scan(columns, &system)
 }
 
 impl QueryNode for ColumnSeriesScanNode {
@@ -203,7 +199,7 @@ impl QueryNode for ColumnSeriesScanNode {
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if matches!(self.state, ScanState::Unopened) {
 			self.state = self.open(rx)?;
 		}
@@ -220,7 +216,10 @@ impl QueryNode for ColumnSeriesScanNode {
 				Ok(Some(batch))
 			}
 			None => {
-				let empty = (!*emitted).then(|| reader.schema().map(empty_columns)).flatten();
+				let empty = (!*emitted)
+					.then(|| reader.schema().map(empty_columns))
+					.flatten()
+					.transpose()?;
 				self.state = ScanState::Done;
 				Ok(empty)
 			}

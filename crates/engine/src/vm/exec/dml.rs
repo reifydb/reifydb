@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::internal_error;
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
@@ -29,7 +30,7 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, Params, &SymbolTable) -> Result<Columns>,
+		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, Params, &SymbolTable) -> Result<RecordBatch>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
@@ -45,7 +46,7 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, &mut SymbolTable) -> Result<Columns>,
+		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, &mut SymbolTable) -> Result<RecordBatch>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();

@@ -4,10 +4,12 @@
 use std::iter::repeat_n;
 
 use arrow_array::Int16Array;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<i16>) -> FrameColumnData {
-	FrameColumnData::Int2(Int16Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<i16>) -> ColumnData {
+	data(ValueType::Int2, Int16Array::from(v))
 }
 
 crate::rle_tests! {

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::id::SubscriptionId, value::batch::single_row};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -39,7 +40,7 @@ impl WireSink for OpenSink {
 		&self,
 		_sub_id: SubscriptionId,
 		_op: DiffType,
-		_columns: Columns,
+		_columns: RecordBatch,
 		_format: (),
 	) -> DeliveryResult {
 		DeliveryResult::Delivered
@@ -87,7 +88,7 @@ fn a_remote_batch_change_that_fails_to_decode_stops_the_proxy() {
 		&clock,
 		&rng,
 	);
-	let frames = vec![Frame::from(Columns::single_row([("v", Value::Int8(99))])).with_op(DiffType::Insert)];
+	let frames = vec![Frame::from(single_row([("v", Value::Int8(99))]).unwrap()).with_op(DiffType::Insert)];
 	let bytes = encode_frames(&frames, &EncodeOptions::fast()).unwrap();
 	let mut corrupt = bytes.clone();
 	corrupt.truncate(corrupt.len() / 2);
@@ -125,7 +126,7 @@ fn a_remote_change_for_a_released_batch_member_is_refused() {
 		&clock,
 		&rng,
 	);
-	let frames = vec![Frame::from(Columns::single_row([("v", Value::Int8(99))])).with_op(DiffType::Insert)];
+	let frames = vec![Frame::from(single_row([("v", Value::Int8(99))]).unwrap()).with_op(DiffType::Insert)];
 	let bytes = encode_frames(&frames, &EncodeOptions::fast()).unwrap();
 	assert!(
 		registry.push_batch_payload(batch_id, released, RawChangePayload::Rbcf(bytes.clone())),

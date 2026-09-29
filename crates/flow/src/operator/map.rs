@@ -3,13 +3,15 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::empty_batch, column::factory::rename},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -19,15 +21,20 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	fragment::Fragment,
-	value::{system_columns::SystemColumns, value_type::ValueType},
+	value::value_type::{
+		ValueType,
+		field::{FieldType, to_field},
+	},
 };
 use tracing::instrument;
 
-use crate::context::FlowContext;
+use crate::{
+	context::FlowContext,
+	operator::{forward_system_columns, with_system_columns_of},
+};
 
 pub struct MapOperator {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
@@ -38,7 +45,7 @@ pub struct MapOperator {
 
 impl MapOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -62,17 +69,20 @@ impl MapOperator {
 		})
 	}
 
-	pub fn output_schema(&self) -> Option<Columns> {
-		Some(Columns::new(
-			self.expressions.iter().map(|expr| schema_column(self.parent_schema.as_ref(), expr)).collect(),
-		))
+	pub fn output_schema(&self) -> Option<SchemaRef> {
+		Some(Arc::new(Schema::new(
+			self.expressions
+				.iter()
+				.map(|expr| schema_column(self.parent_schema.as_ref(), expr))
+				.collect::<Vec<FieldRef>>(),
+		)))
 	}
 
-	#[instrument(name = "flow::operator::map::project", level = "trace", skip_all, fields(rows = columns.row_count()))]
-	fn project(&self, columns: &Columns) -> Result<Columns> {
-		let row_count = columns.row_count();
+	#[instrument(name = "flow::operator::map::project", level = "trace", skip_all, fields(rows = columns.num_rows()))]
+	fn project(&self, columns: &RecordBatch) -> Result<RecordBatch> {
+		let row_count = columns.num_rows();
 		if row_count == 0 {
-			return Ok(Columns::empty());
+			return Ok(empty_batch());
 		}
 
 		let session = EvalContext {
@@ -82,7 +92,7 @@ impl MapOperator {
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
@@ -97,47 +107,27 @@ impl MapOperator {
 			let expr = &self.expressions[i];
 			let field_name = display_label(expr).text().to_string();
 
-			let named_column =
-				ColumnWithName::new(Fragment::internal(field_name), evaluated_col.data().clone());
-
-			result_columns.push(named_column);
+			result_columns.push(rename(evaluated_col, &field_name));
 		}
 
-		let row_numbers = if columns.row_numbers().is_empty() {
-			Vec::new()
-		} else {
-			columns.row_numbers().to_vec()
-		};
-
-		Ok(Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers,
-				Vec::new(),
-				columns.created_at().to_vec(),
-				columns.updated_at().to_vec(),
-				columns.time().to_vec(),
-				Vec::new(),
-			),
-		))
+		forward_system_columns(&with_system_columns_of(result_columns, columns)?)
 	}
 }
 
-pub fn schema_column(parent: Option<&Columns>, expression: &Expression) -> ColumnWithName {
+pub fn schema_column(parent: Option<&SchemaRef>, expression: &Expression) -> FieldRef {
 	let source = match expression {
 		Expression::Alias(alias) => alias.expression.as_ref(),
 		other => other,
 	};
-	let ty = match (parent, source) {
-		(Some(parent), Expression::Column(column)) => {
-			parent.column(column.0.name.text()).map(|col| col.data().get_type())
-		}
+	let label = display_label(expression);
+	let parent_field = match (parent, source) {
+		(Some(parent), Expression::Column(column)) => parent.field_with_name(column.0.name.text()).ok(),
 		_ => None,
 	};
-	ColumnWithName::new(
-		Fragment::internal(display_label(expression).text()),
-		ColumnBuilder::with_capacity(ty.unwrap_or(ValueType::Any), 0).finish(),
-	)
+	match parent_field {
+		Some(field) => Arc::new(field.clone().with_name(label.text())),
+		None => Arc::new(to_field(label.text(), &FieldType::from(ValueType::Any))),
+	}
 }
 
 impl MapOperator {
@@ -156,7 +146,7 @@ impl MapOperator {
 				} => {
 					let projected = self.project(&post)?;
 
-					if !projected.is_empty() {
+					if projected.num_columns() > 0 {
 						result.push(Diff::insert(projected));
 					}
 				}
@@ -168,7 +158,7 @@ impl MapOperator {
 					let projected_post = self.project(&post)?;
 					let projected_pre = self.project(&pre)?;
 
-					if !projected_post.is_empty() {
+					if projected_post.num_columns() > 0 {
 						result.push(Diff::update(projected_pre, projected_post));
 					}
 				}
@@ -177,7 +167,7 @@ impl MapOperator {
 					..
 				} => {
 					let projected_pre = self.project(&pre)?;
-					if !projected_pre.is_empty() {
+					if projected_pre.num_columns() > 0 {
 						result.push(Diff::remove(projected_pre));
 					}
 				}

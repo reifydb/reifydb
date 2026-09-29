@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	error::diagnostic::query::window_requires_deferred_view,
-	value::column::{columns::Columns, headers::ColumnHeaders},
-};
+use arrow_array::RecordBatch;
+use reifydb_core::{error::diagnostic::query::window_requires_deferred_view, value::column::headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, fragment::Fragment};
 
@@ -30,7 +28,7 @@ impl QueryNode for UnsupportedWindowNode {
 		Err(Error(Box::new(window_requires_deferred_view(self.fragment.clone()))))
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		Err(Error(Box::new(window_requires_deferred_view(self.fragment.clone()))))
 	}
 

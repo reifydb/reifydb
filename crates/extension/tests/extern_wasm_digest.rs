@@ -3,7 +3,12 @@
 
 #![cfg(feature = "wasm")]
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
+use reifydb_core::value::{
+	batch::batch,
+	column::{builder::ColumnBuilder, factory, nulls::split_nulls},
+};
 use reifydb_extension::{
 	function::extern_wasm::ExternWasmScalarFunction,
 	transform::{Transform, context::TransformContext, extern_wasm::ExternWasmTransform},
@@ -14,7 +19,7 @@ use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, digest::Digest, identity::IdentityId, value_type::ValueType},
+	value::{Value, column_view::ColumnView, digest::Digest, identity::IdentityId, value_type::ValueType},
 };
 
 fn digest_value() -> Value {
@@ -25,11 +30,15 @@ fn digest_value() -> Value {
 	Value::Digest(Box::new(digest))
 }
 
-fn digest_columns() -> Columns {
-	let (buffer, _) = ColumnBuffer::none_typed(digest_value().get_type(), 0).split_nulls();
-	let mut builder = buffer.into_builder();
+fn digest_column() -> (FieldRef, ArrayRef) {
+	let (buffer, _) = split_nulls(factory::none_typed("d", digest_value().get_type(), 0)).unwrap();
+	let mut builder = ColumnBuilder::from_view(&ColumnView::try_from(&buffer).unwrap());
 	builder.push_value(digest_value());
-	Columns::new(vec![ColumnWithName::new(Fragment::internal("d"), builder.finish())])
+	builder.finish("d")
+}
+
+fn digest_columns() -> RecordBatch {
+	batch(vec![digest_column()]).unwrap()
 }
 
 fn assert_extern_001(diagnostic: &Diagnostic) {
@@ -71,7 +80,7 @@ fn wasm_scalar_function_given_a_digest_argument_reports_extern_001_before_loadin
 		runtime_context: &runtime_context,
 	};
 
-	let Err(err) = function.execute(&mut ctx, &digest_columns()) else {
+	let Err(err) = function.execute(&mut ctx, &[digest_column()]) else {
 		panic!("a digest argument to a wasm function must fail");
 	};
 

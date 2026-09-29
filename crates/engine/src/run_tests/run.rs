@@ -3,11 +3,12 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::policy::SessionOp,
 	internal_error,
 	testing::{CapturedEvent, CapturedInvocation},
-	value::column::columns::Columns,
+	value::batch::{concat, single_row},
 };
 use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
@@ -15,7 +16,9 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
+use reifydb_value::value::{
+	Value, column_view::ColumnView, duration::Duration, frame::frame::Frame, system_columns::user_columns,
+};
 
 use crate::{
 	Result,
@@ -122,7 +125,7 @@ pub(crate) fn run_tests(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RunTestsNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		Transaction::Test(t) => &mut *t.inner,
@@ -155,16 +158,16 @@ pub(crate) fn run_tests(
 	tests.sort_by(|a, b| a.name.cmp(&b.name));
 
 	if tests.is_empty() {
-		return Ok(Columns::single_row([
+		return single_row([
 			("name", Value::Utf8("(no tests found)".to_string())),
 			("namespace", Value::Utf8("".to_string())),
 			("outcome", Value::Utf8("skip".to_string())),
 			("duration", Value::Duration(Duration::zero())),
 			("message", Value::Utf8("".to_string())),
-		]));
+		]);
 	}
 
-	let mut result_columns = Columns::empty();
+	let mut result_rows = Vec::new();
 
 	for test in &tests {
 		let ns_name = services
@@ -203,32 +206,29 @@ pub(crate) fn run_tests(
 				let elapsed = start.elapsed();
 				let duration = Duration::from_nanoseconds(elapsed.as_nanos() as i64)?;
 
-				let row = Columns::single_row([
+				result_rows.push(single_row([
 					("name", Value::Utf8(test.name.clone())),
 					("namespace", Value::Utf8(ns_name.clone())),
 					("outcome", Value::Utf8(outcome)),
 					("duration", Value::Duration(duration)),
 					("message", Value::Utf8(message)),
-				]);
-
-				if result_columns.is_empty() {
-					result_columns = row;
-				} else {
-					result_columns.append_columns(row)?;
-				}
+				])?);
 			}
 			Some(source) => {
 				let cases_frame =
 					resolve_params(vm, services, &mut Transaction::Admin(&mut *txn), source)?;
 
+				let case_columns = user_columns(&cases_frame.batch)
+					.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+					.collect::<Result<Vec<_>>>()?;
 				let col_names: Vec<String> =
-					cases_frame.columns.iter().map(|c| c.name.clone()).collect();
+					case_columns.iter().map(|c| c.field.name().clone()).collect();
 
-				let row_count = cases_frame.columns.first().map_or(0, |c| c.data.len());
+				let row_count = case_columns.first().map_or(0, |c| c.len());
 
 				for row_idx in 0..row_count {
 					let row_values: Vec<Value> =
-						cases_frame.columns.iter().map(|c| c.data.get_value(row_idx)).collect();
+						case_columns.iter().map(|c| c.get_value(row_idx)).collect();
 					let row_label = format_row_label(&col_names, &row_values);
 
 					let mut named_vars = HashMap::new();
@@ -264,23 +264,17 @@ pub(crate) fn run_tests(
 
 					let display_name = format!("{} {}", test.name, row_label);
 
-					let row = Columns::single_row([
+					result_rows.push(single_row([
 						("name", Value::Utf8(display_name)),
 						("namespace", Value::Utf8(ns_name.clone())),
 						("outcome", Value::Utf8(outcome)),
 						("duration", Value::Duration(duration)),
 						("message", Value::Utf8(message)),
-					]);
-
-					if result_columns.is_empty() {
-						result_columns = row;
-					} else {
-						result_columns.append_columns(row)?;
-					}
+					])?);
 				}
 			}
 		}
 	}
 
-	Ok(result_columns)
+	concat(&result_rows)
 }

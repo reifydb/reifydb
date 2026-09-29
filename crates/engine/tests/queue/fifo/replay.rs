@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, frame::frame::Frame, system_columns::row_numbers};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -99,14 +99,14 @@ fn claim_one(t: &TestEngine, worker: &str) -> String {
 	let frames = t.command(&format!(r#"CALL queue::claim("{worker}", "test::jobs", 1, duration::seconds(30))"#));
 	let frame = frames.first().expect("claim must return a frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one claimed item");
-	match frame.columns.iter().find(|c| c.name == "token").unwrap().data.get_value(0) {
+	match frame.column("token").unwrap().unwrap().get_value(0) {
 		Value::Utf8(t) => t,
 		other => panic!("token must be Utf8, got {other:?}"),
 	}
 }
 
 fn status_of(frames: &[Frame]) -> String {
-	match frames[0].columns.iter().find(|c| c.name == "status").unwrap().data.get_value(0) {
+	match frames[0].column("status").unwrap().unwrap().get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("status must be Utf8, got {other:?}"),
 	}
@@ -129,7 +129,7 @@ fn replay(t: &TestEngine, item: u64) -> Vec<Frame> {
 }
 
 fn utf8_of(frames: &[Frame], column: &str) -> String {
-	match frames[0].columns.iter().find(|c| c.name == column).unwrap().data.get_value(0) {
+	match frames[0].column(column).unwrap().unwrap().get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("{column} must be Utf8, got {other:?}"),
 	}
@@ -180,7 +180,7 @@ fn test_replay_reports_what_it_did() {
 
 	assert_eq!(utf8_of(&frames, "queue"), "test::jobs");
 	assert_eq!(utf8_of(&frames, "state"), "ready");
-	match frames[0].columns.iter().find(|c| c.name == "item").unwrap().data.get_value(0) {
+	match frames[0].column("item").unwrap().unwrap().get_value(0) {
 		Value::Uint8(v) => assert_eq!(v, item.0),
 		other => panic!("item must be Uint8, got {other:?}"),
 	}
@@ -360,12 +360,12 @@ fn test_replay_finds_an_item_in_any_partition() {
 		.command(r#"CALL queue::claim("w1", "test::jobs", 16, duration::seconds(30))"#)
 		.first()
 		.map(|frame| {
-			let index = frame
-				.row_numbers()
+			let index = row_numbers(&frame.batch)
+				.unwrap()
 				.iter()
 				.position(|row| *row == item)
 				.expect("every inserted item must be claimable");
-			match frame.columns.iter().find(|c| c.name == "token").unwrap().data.get_value(index) {
+			match frame.column("token").unwrap().unwrap().get_value(index) {
 				Value::Utf8(t) => t,
 				other => panic!("token must be Utf8, got {other:?}"),
 			}

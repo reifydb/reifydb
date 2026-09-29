@@ -25,6 +25,7 @@ reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 
+arrow-array = { workspace = true }
 dashmap = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }

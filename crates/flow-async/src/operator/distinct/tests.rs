@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use arrow_array::Int64Array;
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -14,14 +14,15 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory::int8},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+use reifydb_value::value::{
+	container::temporal_array::datetime_array,
+	datetime::DateTime,
+	system_columns::{SystemColumn, row_numbers, with_system_column},
 };
 
 use crate::{
@@ -47,27 +48,28 @@ fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'
 	TxnHostContext::new(txn, operator)
 }
 
+fn keyed_row(value: i64, row_num: u64, now: DateTime) -> RecordBatch {
+	let user = batch(vec![int8("k", [value])]).unwrap();
+	let system: [(SystemColumn, ArrayRef); 4] = [
+		(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![row_num]))),
+		(SystemColumn::CreatedAt, Arc::new(datetime_array([now]))),
+		(SystemColumn::UpdatedAt, Arc::new(datetime_array([now]))),
+		(SystemColumn::Time, Arc::new(datetime_array([now]))),
+	];
+	system.into_iter().fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
+}
+
 fn build_insert(value: i64, row_num: u64) -> Change {
-	let cols =
-		vec![ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::Int8(Int64Array::from(vec![value])))];
 	let now = DateTime::default();
-	let columns = Columns::with_system(
-		cols,
-		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now], Vec::new()),
-	);
+	let columns = keyed_row(value, row_num, now);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
 	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
 }
 
 fn build_remove(value: i64, row_num: u64) -> Change {
-	let cols =
-		vec![ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::Int8(Int64Array::from(vec![value])))];
 	let now = DateTime::default();
-	let columns = Columns::with_system(
-		cols,
-		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now], Vec::new()),
-	);
+	let columns = keyed_row(value, row_num, now);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));
 	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
@@ -168,7 +170,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	else {
 		panic!("the first sighting of a value must be an insert");
 	};
-	let published = post.row_numbers()[0];
+	let published = row_numbers(post).unwrap()[0];
 	let groups = entry_groups(&op, &mut txn);
 	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
@@ -197,7 +199,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 		panic!("republishing over a row the sink still holds must be an update, got {diff:?}");
 	};
 	assert_eq!(
-		post.row_numbers()[0],
+		row_numbers(post).unwrap()[0],
 		published,
 		"and it must reuse the row number the sink already knows, or the value now occupies two rows"
 	);

@@ -3,16 +3,70 @@
 
 #![allow(dead_code)]
 
-use std::slice::from_ref;
+use std::{slice::from_ref, sync::Arc};
 
+use arrow_array::{Array, ArrayRef, RecordBatch, make_array};
+use arrow_buffer::NullBuffer;
+use arrow_schema::{FieldRef, Schema};
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions};
 use reifydb_value::value::{
 	Value,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	value_type::ValueType,
+	column_view::ColumnView,
+	frame::frame::Frame,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::{
+		ValueType,
+		field::{FieldType, named},
+	},
 };
 
-pub fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
+pub type ColumnData = (FieldType, ArrayRef);
+
+pub fn data(value_type: ValueType, array: impl Array + 'static) -> ColumnData {
+	(FieldType::from(value_type), Arc::new(array))
+}
+
+pub fn optional((field_type, array): ColumnData, defined: &[bool]) -> ColumnData {
+	let value_type = field_type.value_type.clone().expect("an optional column needs a value type");
+	let nulls = NullBuffer::from(defined);
+	let array =
+		make_array(array.to_data().into_builder().nulls(Some(nulls)).build().expect("nulls fit the column"));
+	(
+		FieldType {
+			value_type: Some(ValueType::Option(Box::new(value_type))),
+			..field_type
+		},
+		array,
+	)
+}
+
+pub fn column_of(name: &str, (field_type, array): ColumnData) -> (FieldRef, ArrayRef) {
+	named(name, field_type, array)
+}
+
+pub fn frame_of(columns: Vec<(&str, ColumnData)>) -> Frame {
+	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) =
+		columns.into_iter().map(|(name, data)| column_of(name, data)).unzip();
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("valid batch"))
+}
+
+pub fn frame_without_columns() -> Frame {
+	Frame::from(RecordBatch::new_empty(Arc::new(Schema::empty())))
+}
+
+pub fn with_system(frame: Frame, column: SystemColumn, array: ArrayRef) -> Frame {
+	let op = frame.op;
+	Frame {
+		batch: with_system_column(frame.batch, column, array).expect("system column fits the batch"),
+		op,
+	}
+}
+
+pub fn view_at(frame: &Frame, index: usize) -> ColumnView<'_> {
+	ColumnView::try_from((frame.batch.column(index), frame.batch.schema_ref().field(index))).expect("valid column")
+}
+
+pub fn assert_col_data_eq(a: &ColumnView<'_>, b: &ColumnView<'_>) {
 	assert_eq!(a.len(), b.len(), "column length mismatch");
 	assert_eq!(a.get_type(), b.get_type(), "column type mismatch");
 	for i in 0..a.len() {
@@ -23,28 +77,20 @@ pub fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 }
 
 pub fn assert_frame_eq(a: &Frame, b: &Frame) {
-	assert_eq!(a.row_numbers().len(), b.row_numbers().len());
-	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
-		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
-	}
-	assert_eq!(a.created_at().len(), b.created_at().len());
-	assert_eq!(a.updated_at().len(), b.updated_at().len());
-	assert_eq!(a.columns.len(), b.columns.len());
-	for (ca, cb) in a.columns.iter().zip(&b.columns) {
-		assert_eq!(ca.name, cb.name);
-		assert_col_data_eq(&ca.data, &cb.data);
+	assert_eq!(a.batch.num_rows(), b.batch.num_rows());
+	assert_eq!(a.batch.num_columns(), b.batch.num_columns());
+	for (index, (fa, fb)) in a.batch.schema_ref().fields().iter().zip(b.batch.schema_ref().fields()).enumerate() {
+		assert_eq!(fa.name(), fb.name());
+		assert_col_data_eq(&view_at(a, index), &view_at(b, index));
 	}
 }
 
-pub fn round_trip_column(name: &str, data: FrameColumnData) {
+pub fn round_trip_column(name: &str, data: ColumnData) {
 	round_trip_column_with(name, data, &EncodeOptions::default());
 }
 
-pub fn round_trip_column_with(name: &str, data: FrameColumnData, options: &EncodeOptions) {
-	let frame = Frame::new(vec![FrameColumn {
-		name: name.to_string(),
-		data,
-	}]);
+pub fn round_trip_column_with(name: &str, data: ColumnData, options: &EncodeOptions) {
+	let frame = frame_of(vec![(name, data)]);
 	let encoded = encode_frames(from_ref(&frame), options).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);
@@ -52,11 +98,8 @@ pub fn round_trip_column_with(name: &str, data: FrameColumnData, options: &Encod
 }
 
 /// Encode a column and assert it compresses to fewer bytes than plain encoding.
-pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
-	let frame = Frame::new(vec![FrameColumn {
-		name: name.to_string(),
-		data,
-	}]);
+pub fn assert_compresses_well(name: &str, data: ColumnData) {
+	let frame = frame_of(vec![(name, data)]);
 	let compressed = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let plain = encode_frames(&[frame], &EncodeOptions::none()).expect("encode failed");
 	assert!(
@@ -67,11 +110,8 @@ pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
 	);
 }
 
-pub fn assert_forced_round_trip_beats_plain(name: &str, data: FrameColumnData, encoding: Encoding) {
-	let frame = Frame::new(vec![FrameColumn {
-		name: name.to_string(),
-		data,
-	}]);
+pub fn assert_forced_round_trip_beats_plain(name: &str, data: ColumnData, encoding: Encoding) {
+	let frame = frame_of(vec![(name, data)]);
 	let forced = encode_frames(from_ref(&frame), &EncodeOptions::forced(encoding)).expect("encode failed");
 	let plain = encode_frames(from_ref(&frame), &EncodeOptions::none()).expect("encode failed");
 	assert!(
@@ -89,8 +129,8 @@ pub fn assert_forced_round_trip_beats_plain(name: &str, data: FrameColumnData, e
 // The generation macros below use fully-qualified paths throughout, so they cannot collide with
 // the type-specific imports in each test file that expands them.
 
-/// The calling module must define `fn make(Vec<T>) -> FrameColumnData` and have
-/// `FrameColumnData` in scope.
+/// The calling module must define `fn make(Vec<T>) -> ColumnData` and have
+/// `ColumnData` in scope.
 #[macro_export]
 macro_rules! plain_tests {
 	(typical: $typical:expr, boundary: $boundary:expr, single: $single:expr $(,)?) => {
@@ -119,13 +159,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 
 		#[test]
@@ -133,13 +167,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined = vec![false; len];
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 
 		#[test]
@@ -147,13 +175,7 @@ macro_rules! plain_tests {
 			let values = $typical;
 			let len = values.len();
 			let defined = vec![true; len];
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 
 		#[test]
@@ -190,13 +212,7 @@ macro_rules! dict_tests {
 			let values = $low;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 3 != 0).collect();
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 
 		#[test]
@@ -237,13 +253,7 @@ macro_rules! rle_tests {
 			let values = $repeated;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 
 		#[test]
@@ -289,29 +299,21 @@ macro_rules! delta_tests {
 			let values = $asc;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 	};
 }
 
 /// Checks that undefined rows survive the round trip as `none` still carrying their inner type,
 /// not as a bare `none` or a defaulted value.
-pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: ValueType, expected_defined: &[bool]) {
-	let frame = Frame::new(vec![FrameColumn {
-		name: "test".to_string(),
-		data: col.clone(),
-	}]);
+pub fn assert_option_round_trip(col: ColumnData, expected_inner_type: ValueType, expected_defined: &[bool]) {
+	let frame = frame_of(vec![("test", col)]);
 	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let decoded_frames = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded_frames.len(), 1, "expected one frame");
 
-	let decoded_col = &decoded_frames[0].columns[0].data;
+	let col = view_at(&frame, 0);
+	let decoded_col = view_at(&decoded_frames[0], 0);
 	assert_eq!(
 		decoded_col.get_type(),
 		ValueType::Option(Box::new(expected_inner_type.clone())),
@@ -346,17 +348,14 @@ pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Value
 	}
 }
 
-/// The calling module must define `fn make(Vec<T>) -> FrameColumnData`; the inner `ValueType`
+/// The calling module must define `fn make(Vec<T>) -> ColumnData`; the inner `ValueType`
 /// arrives through the `inner_type` argument.
 #[macro_export]
 macro_rules! nones_tests {
 	(values: $values:expr, inner_type: $inner_type:expr $(,)?) => {
 		macro_rules! __opt_col {
 			($defined:expr) => {
-				reifydb_value::value::frame::data::FrameColumnData::Option {
-					inner: Box::new(make($values)),
-					bitvec: arrow_buffer::BooleanBuffer::from($defined.as_slice()),
-				}
+				$crate::common::optional(make($values), &$defined)
 			};
 		}
 
@@ -413,10 +412,7 @@ macro_rules! nones_tests {
 				let mut v = $values;
 				v.truncate(1);
 				assert_eq!(v.len(), 1);
-				reifydb_value::value::frame::data::FrameColumnData::Option {
-					inner: Box::new(make(v)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				}
+				$crate::common::optional(make(v), &defined)
 			};
 			$crate::common::assert_option_round_trip(col, $inner_type, &defined);
 		}
@@ -428,10 +424,7 @@ macro_rules! nones_tests {
 				let mut v = $values;
 				v.truncate(1);
 				assert_eq!(v.len(), 1);
-				reifydb_value::value::frame::data::FrameColumnData::Option {
-					inner: Box::new(make(v)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				}
+				$crate::common::optional(make(v), &defined)
 			};
 			$crate::common::assert_option_round_trip(col, $inner_type, &defined);
 		}
@@ -441,12 +434,7 @@ macro_rules! nones_tests {
 			let values = $values;
 			let defined = vec![true; values.len()];
 			let col = __opt_col!(defined);
-			let frame = reifydb_value::value::frame::frame::Frame::new(vec![
-				reifydb_value::value::frame::column::FrameColumn {
-					name: "test".to_string(),
-					data: col,
-				},
-			]);
+			let frame = $crate::common::frame_of(vec![("test", col)]);
 			let encoded = reifydb_codec::frame::encode::encode_frames(
 				std::slice::from_ref(&frame),
 				&reifydb_codec::frame::options::EncodeOptions::none(),
@@ -486,13 +474,7 @@ macro_rules! delta_rle_tests {
 			let values = $cs;
 			let len = values.len();
 			let defined: Vec<bool> = (0..len).map(|i| i % 2 == 0).collect();
-			$crate::common::round_trip_column(
-				"test",
-				FrameColumnData::Option {
-					inner: Box::new(make(values)),
-					bitvec: arrow_buffer::BooleanBuffer::from(defined.as_slice()),
-				},
-			);
+			$crate::common::round_trip_column("test", $crate::common::optional(make(values), &defined));
 		}
 	};
 }

@@ -15,6 +15,7 @@ doctest = false
 reifydb-build = { workspace = true }
 
 [dependencies]
+arrow-array = { workspace = true }
 reifydb-test-harness = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }

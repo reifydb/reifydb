@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::temporal_array::{dates, duration_array},
 		date::Date,
 		duration::Duration,
 		value_type::ValueType,
 	},
 };
+
+use crate::function::support::column::array_column;
 
 pub struct DateAge {
 	info: RoutineInfo,
@@ -80,13 +86,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 		ValueType::Duration
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data1 = &args[0];
-		let data2 = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data1 = ColumnView::try_from(&args[0])?;
+		let data2 = ColumnView::try_from(&args[1])?;
 		let row_count = data1.len();
 
-		let result_data = match (data1, data2) {
-			(ColumnBuffer::Date(container1), ColumnBuffer::Date(container2)) => {
+		let result_data = match (&data1.data, &data2.data) {
+			(ViewData::Date(container1), ViewData::Date(container2)) => {
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -98,27 +108,31 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 					}
 				}
 
-				ColumnBuffer::Duration(duration_array(container))
+				array_column(
+					ctx.fragment.text(),
+					ValueType::Duration,
+					Arc::new(duration_array(container)),
+				)
 			}
-			(ColumnBuffer::Date(_), other) => {
+			(ViewData::Date(_), _) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
 					expected: vec![ValueType::Date],
-					actual: other.get_type(),
+					actual: data2.get_type(),
 				});
 			}
-			(other, _) => {
+			(_, _) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![ValueType::Date],
-					actual: other.get_type(),
+					actual: data1.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

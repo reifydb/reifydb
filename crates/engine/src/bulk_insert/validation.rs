@@ -3,14 +3,13 @@
 
 use std::iter;
 
-use reifydb_core::{
-	interface::catalog::column::Column,
-	value::column::{buffer::ColumnBuffer, builder::ColumnBuilder},
-};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::{interface::catalog::column::Column, value::column::builder::ColumnBuilder};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
 use super::coerce::RowCoercer;
@@ -28,7 +27,7 @@ pub fn coerce_rows(
 
 	let column_data = collect_rows_to_columns(rows, columns, source_name, &RowCoercer::new(identity))?;
 
-	Ok(columns_to_rows(&column_data, rows.len(), columns.len()))
+	columns_to_rows(&column_data, rows.len(), columns.len())
 }
 
 fn collect_rows_to_columns(
@@ -36,7 +35,7 @@ fn collect_rows_to_columns(
 	columns: &[Column],
 	source_name: &str,
 	coercer: &RowCoercer,
-) -> Result<Vec<ColumnBuffer>> {
+) -> Result<Vec<(FieldRef, ArrayRef)>> {
 	let num_cols = columns.len();
 	let mut column_data: Vec<ColumnBuilder> =
 		columns.iter().map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), rows.len())).collect();
@@ -95,19 +94,20 @@ fn collect_rows_to_columns(
 		}
 	}
 
-	Ok(column_data.into_iter().map(ColumnBuilder::finish).collect())
+	Ok(column_data.into_iter().zip(columns).map(|(builder, column)| builder.finish(&column.name)).collect())
 }
 
-fn columns_to_rows(columns: &[ColumnBuffer], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
+fn columns_to_rows(columns: &[(FieldRef, ArrayRef)], num_rows: usize, num_cols: usize) -> Result<Vec<Vec<Value>>> {
+	let views = columns.iter().take(num_cols).map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 	let mut result = Vec::with_capacity(num_rows);
 
 	for row_idx in 0..num_rows {
 		let mut row_values = Vec::with_capacity(num_cols);
-		for col in columns.iter().take(num_cols) {
+		for col in views.iter() {
 			row_values.push(col.get_value(row_idx));
 		}
 		result.push(row_values);
 	}
 
-	result
+	Ok(result)
 }

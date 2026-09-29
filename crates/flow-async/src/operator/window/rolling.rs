@@ -6,11 +6,12 @@ use std::{
 	hash::Hash,
 };
 
+use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	metrics::heap::HeapSize,
-	value::column::columns::Columns,
+	value::batch::from_row,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -20,7 +21,7 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use super::operator::{RollingEngineSlot, WindowOperator};
+use super::operator::{RollingEngineSlot, WindowOperator, required_row_numbers};
 use crate::{
 	operator::{
 		aggregation::{
@@ -60,7 +61,7 @@ pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Se
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
 
-	fn slot(columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> Self;
+	fn slot(row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> Self;
 
 	fn slot_key(slot: Self, row_number: u64) -> WindowSlotKey;
 
@@ -86,8 +87,8 @@ impl RollingDomain for OrdinalCoord {
 		)
 	}
 
-	fn slot(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
-		OrdinalCoord::from_row_number(columns.row_numbers()[row_idx])
+	fn slot(row_numbers: &[RowNumber], row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
+		OrdinalCoord::from_row_number(row_numbers[row_idx])
 	}
 
 	fn slot_key(_slot: OrdinalCoord, row_number: u64) -> WindowSlotKey {
@@ -119,7 +120,7 @@ impl RollingDomain for DateTime {
 		}
 	}
 
-	fn slot(_columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> DateTime {
+	fn slot(_row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> DateTime {
 		timestamps[row_idx]
 	}
 
@@ -219,18 +220,19 @@ fn combine_rolling<S: RollingDomain>(
 #[allow(clippy::too_many_arguments)]
 fn route_rolling_columns<S: RollingDomain>(
 	operator: &WindowOperator,
-	columns: &Columns,
+	columns: &RecordBatch,
 	is_add: bool,
 	buckets: &mut RollingEngineBuckets<S>,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
 	touched: &mut Vec<Hash128>,
 	touched_set: &mut HashSet<Hash128>,
 ) -> Result<()> {
-	let row_count = columns.row_count();
+	let row_count = columns.num_rows();
 	if row_count == 0 {
 		return Ok(());
 	}
 	let groups = operator.core.compute_groups(columns)?;
+	let row_numbers = required_row_numbers(columns)?;
 	let timestamps = if S::arms_timer() || operator.core.needs_event_time() {
 		operator.row_times(columns, row_count)?
 	} else {
@@ -238,8 +240,8 @@ fn route_rolling_columns<S: RollingDomain>(
 	};
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let slot = S::slot(columns, row_idx, &timestamps);
-		let slot_key = S::slot_key(slot, columns.row_numbers()[row_idx].0);
+		let slot = S::slot(row_numbers, row_idx, &timestamps);
+		let slot_key = S::slot_key(slot, row_numbers[row_idx].0);
 		let contribution = (
 			slot_key,
 			operator.core.build_contribution(
@@ -247,7 +249,7 @@ fn route_rolling_columns<S: RollingDomain>(
 				&slot_cols,
 				row_idx,
 				timestamps.get(row_idx).copied().unwrap_or_default(),
-			),
+			)?,
 		);
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
@@ -452,7 +454,7 @@ fn finish_rolling_results(
 					ts,
 					None,
 				)?;
-				diffs.push(Diff::remove(Columns::from_row(&pre)));
+				diffs.push(Diff::remove(from_row(&pre)?));
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 			continue;
@@ -460,7 +462,7 @@ fn finish_rolling_results(
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, None)?;
 		match (r.kind, prior) {
-			(EmitKind::Insert, _) => diffs.push(Diff::insert(Columns::from_row(&post))),
+			(EmitKind::Insert, _) => diffs.push(Diff::insert(from_row(&post)?)),
 			(_, Some(m)) => {
 				let pre = operator.core.build_engine_row(
 					&gvals,
@@ -469,9 +471,9 @@ fn finish_rolling_results(
 					ts,
 					None,
 				)?;
-				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
+				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
 			}
-			(_, None) => diffs.push(Diff::update(Columns::from_row(&post), Columns::from_row(&post))),
+			(_, None) => diffs.push(Diff::update(from_row(&post)?, from_row(&post)?)),
 		}
 		operator.meta_slot().put_rolling_meta(
 			host,
@@ -551,7 +553,7 @@ pub fn seal_rolling_engine(
 					ts,
 					None,
 				)?;
-				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
+				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
 				operator.meta_slot().put_rolling_meta(
 					host,
 					group_id,
@@ -578,7 +580,7 @@ pub fn seal_rolling_engine(
 					ts,
 					None,
 				)?;
-				diffs.push(Diff::remove(Columns::from_row(&pre)));
+				diffs.push(Diff::remove(from_row(&pre)?));
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 		}

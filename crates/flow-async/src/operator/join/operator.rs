@@ -6,6 +6,8 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::{FieldRef, SchemaRef};
 use postcard::to_extend;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -24,7 +26,7 @@ use reifydb_core::{
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	row::JoinPick,
 	state::timer::TimerKind,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::empty_batch, column::factory::none},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -39,7 +41,15 @@ use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
-	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{require_row_numbers, resolve_column},
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -55,6 +65,7 @@ use crate::{
 		HostOperator, InputOrder,
 		host::HostContext,
 		join::{Emitted, Identity, expiry::JoinExpiryIndex},
+		row_times,
 		state::{
 			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
 			seal::{ledger::FiredAt, rule::SealRule},
@@ -143,7 +154,7 @@ mod group_by_key_tests {
 pub struct JoinSideConfig {
 	pub operator: OperatorId,
 	pub exprs: Vec<Expression>,
-	pub schema: Columns,
+	pub schema: SchemaRef,
 }
 
 pub struct JoinOperator {
@@ -154,8 +165,8 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
-	left_schema: Columns,
-	right_schema: Columns,
+	left_schema: SchemaRef,
+	right_schema: SchemaRef,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
@@ -340,19 +351,20 @@ impl JoinOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
-		columns: &Columns,
+		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<()> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
-		let times = columns.time();
+		let times = row_times(columns)?;
+		let row_numbers = require_row_numbers(columns)?;
 		let mut armed = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
-			let (Some(hash), Some(at)) = (key, times.get(row_idx)) else {
+			let (Some(hash), Some(at)) = (key, times.get(row_idx).copied().flatten()) else {
 				continue;
 			};
-			armed.push((*hash, columns.row_numbers()[row_idx], *at));
+			armed.push((*hash, row_numbers[row_idx], at));
 		}
 		self.move_join_expiries(host, side, &[], &armed)
 	}
@@ -361,18 +373,19 @@ impl JoinOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
-		columns: &Columns,
+		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<()> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
+		let row_numbers = require_row_numbers(columns)?;
 		let mut cleared = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
 			let Some(hash) = key else {
 				continue;
 			};
-			cleared.push((*hash, columns.row_numbers()[row_idx]));
+			cleared.push((*hash, row_numbers[row_idx]));
 		}
 		self.move_join_expiries(host, side, &cleared, &[])
 	}
@@ -381,8 +394,8 @@ impl JoinOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
 	) -> Result<()> {
@@ -391,11 +404,11 @@ impl JoinOperator {
 		}
 		let mut cleared: Vec<(Hash128, RowNumber)> = Vec::new();
 		if let Some(hash) = keys.0 {
-			cleared.push((hash, pre.row_numbers()[row_idx]));
+			cleared.push((hash, require_row_numbers(pre)?[row_idx]));
 		}
 		let mut armed: Vec<(Hash128, RowNumber, DateTime)> = Vec::new();
-		if let (Some(hash), Some(at)) = (keys.1, post.time().get(row_idx).copied()) {
-			armed.push((hash, post.row_numbers()[row_idx], at));
+		if let (Some(hash), Some(at)) = (keys.1, row_times(post)?.get(row_idx).copied().flatten()) {
+			armed.push((hash, require_row_numbers(post)?[row_idx], at));
 		}
 		self.move_join_expiries(host, side, &cleared, &armed)
 	}
@@ -535,13 +548,13 @@ impl JoinOperator {
 		})
 	}
 
-	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.row_count()))]
+	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.num_rows()))]
 	pub(crate) fn compute_join_keys(
 		&self,
-		columns: &Columns,
+		columns: &RecordBatch,
 		compiled_exprs: &[CompiledExpr],
 	) -> Result<Vec<Option<Hash128>>> {
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -553,29 +566,35 @@ impl JoinOperator {
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
 		};
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
+		let mut expr_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
-			let col: ColumnWithName = if let Some(col_name) = compiled_expr.access_column_name() {
-				columns.column(col_name)
-					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
-					.unwrap_or_else(|| ColumnWithName::new(col_name, ColumnBuffer::none(row_count)))
+			let col = if let Some(col_name) = compiled_expr.access_column_name() {
+				match resolve_column(columns, col_name) {
+					Some(index) => (
+						columns.schema_ref().fields()[index].clone(),
+						columns.column(index).clone(),
+					),
+					None => none(col_name, row_count),
+				}
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};
 			expr_columns.push(col);
 		}
 
-		for col in &expr_columns {
-			let ty = col.data().get_type();
+		let expr_views: Vec<ColumnView> =
+			expr_columns.iter().map(|col| ColumnView::try_from(col)).collect::<Result<_>>()?;
+		for (view, (field, _)) in expr_views.iter().zip(&expr_columns) {
+			let ty = view.get_type();
 			if matches!(ty.inner_type(), ValueType::Digest { .. }) {
-				return Err(error!(join_key_unkeyable(col.name().clone(), ty)));
+				return Err(error!(join_key_unkeyable(Fragment::internal(field.name()), ty)));
 			}
 		}
 
@@ -585,8 +604,8 @@ impl JoinOperator {
 			buf.clear();
 			let mut has_undefined = false;
 
-			for col in &expr_columns {
-				let value = col.data().get_value(row_idx);
+			for view in &expr_views {
+				let value = view.get_value(row_idx);
 
 				if matches!(value, Value::None { .. }) {
 					has_undefined = true;
@@ -614,11 +633,11 @@ impl JoinOperator {
 	pub(crate) fn unmatched_left_columns(
 		&self,
 		host: &mut dyn HostContext,
-		left: &Columns,
+		left: &RecordBatch,
 		left_idx: usize,
 		identity: Identity<'_>,
 	) -> Result<Emitted> {
-		let left_row_number = left.row_numbers()[left_idx];
+		let left_row_number = require_row_numbers(left)?[left_idx];
 
 		let (row_numbers, fresh, existing) =
 			self.identities(host, &[Self::unmatched_left_key(left_row_number)], identity)?;
@@ -626,8 +645,9 @@ impl JoinOperator {
 			return Ok(Emitted::empty());
 		}
 
-		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
-		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema);
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
+		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -668,7 +688,7 @@ impl JoinOperator {
 		}
 	}
 
-	fn split(built: Columns, fresh: &[usize], existing: &[usize]) -> Result<Emitted> {
+	fn split(built: RecordBatch, fresh: &[usize], existing: &[usize]) -> Result<Emitted> {
 		Ok(Emitted {
 			fresh: JoinedColumnsBuilder::retain_rows(&built, fresh)?,
 			existing: JoinedColumnsBuilder::retain_rows(&built, existing)?,
@@ -678,7 +698,7 @@ impl JoinOperator {
 	pub(crate) fn unmatched_left_columns_batch(
 		&self,
 		host: &mut dyn HostContext,
-		left: &Columns,
+		left: &RecordBatch,
 		left_indices: &[usize],
 		identity: Identity<'_>,
 	) -> Result<Emitted> {
@@ -686,13 +706,15 @@ impl JoinOperator {
 			return Ok(Emitted::empty());
 		}
 
+		let left_numbers = require_row_numbers(left)?;
 		let composite_keys: Vec<JoinRowMappingKey> =
-			left_indices.iter().map(|&idx| Self::unmatched_left_key(left.row_numbers()[idx])).collect();
+			left_indices.iter().map(|&idx| Self::unmatched_left_key(left_numbers[idx])).collect();
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
-		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema);
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
+		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -724,67 +746,71 @@ impl JoinOperator {
 	pub(crate) fn join_columns_one_to_many(
 		&self,
 		host: &mut dyn HostContext,
-		left: &Columns,
+		left: &RecordBatch,
 		left_idx: usize,
-		right: &Columns,
+		right: &RecordBatch,
 		identity: Identity<'_>,
 	) -> Result<Emitted> {
-		let right_count = right.row_count();
+		let right_count = right.num_rows();
 		if right_count == 0 {
 			return Ok(Emitted::empty());
 		}
 
-		let left_row_number = left.row_numbers()[left_idx];
+		let left_row_number = require_row_numbers(left)?[left_idx];
+		let right_numbers = require_row_numbers(right)?;
 
 		let composite_keys: Vec<JoinRowMappingKey> = (0..right_count)
 			.map(|right_idx| {
-				let right_row_number = right.row_numbers()[right_idx];
+				let right_row_number = right_numbers[right_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
 			})
 			.collect();
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right);
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right)?;
 		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn join_columns_many_to_one(
 		&self,
 		host: &mut dyn HostContext,
-		left: &Columns,
-		right: &Columns,
+		left: &RecordBatch,
+		right: &RecordBatch,
 		right_idx: usize,
 		identity: Identity<'_>,
 	) -> Result<Emitted> {
-		let left_count = left.row_count();
+		let left_count = left.num_rows();
 		if left_count == 0 {
 			return Ok(Emitted::empty());
 		}
 
-		let right_row_number = right.row_numbers()[right_idx];
+		let right_row_number = require_row_numbers(right)?[right_idx];
+		let left_numbers = require_row_numbers(left)?;
 
 		let composite_keys: Vec<JoinRowMappingKey> = (0..left_count)
 			.map(|left_idx| {
-				let left_row_number = left.row_numbers()[left_idx];
+				let left_row_number = left_numbers[left_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
 			})
 			.collect();
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx);
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx)?;
 		Self::split(built, &fresh, &existing)
 	}
 
 	pub(crate) fn join_columns_cartesian(
 		&self,
 		host: &mut dyn HostContext,
-		left: &Columns,
+		left: &RecordBatch,
 		left_indices: &[usize],
-		right: &Columns,
+		right: &RecordBatch,
 		right_indices: &[usize],
 		identity: Identity<'_>,
 	) -> Result<Emitted> {
@@ -797,18 +823,21 @@ impl JoinOperator {
 		let total_results = left_count * right_count;
 		let mut composite_keys = Vec::with_capacity(total_results);
 
+		let left_numbers = require_row_numbers(left)?;
+		let right_numbers = require_row_numbers(right)?;
 		for &left_idx in left_indices {
-			let left_row_number = left.row_numbers()[left_idx];
+			let left_row_number = left_numbers[left_idx];
 			for &right_idx in right_indices {
-				let right_row_number = right.row_numbers()[right_idx];
+				let right_row_number = right_numbers[right_idx];
 				composite_keys.push(Self::make_composite_key(left_row_number, right_row_number));
 			}
 		}
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices);
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices)?;
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -816,15 +845,24 @@ impl JoinOperator {
 		self.pick.as_ref().expect("a latest strategy runs only when the join carries a pick")
 	}
 
-	pub(crate) fn join_left_with_slot(&self, left: &Columns, left_indices: &[usize], slot: &Columns) -> Columns {
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
-		let builder = JoinedColumnsBuilder::new(left, slot, &self.alias, self.natural);
+	pub(crate) fn join_left_with_slot(
+		&self,
+		left: &RecordBatch,
+		left_indices: &[usize],
+		slot: &RecordBatch,
+	) -> Result<RecordBatch> {
+		let left_numbers = require_row_numbers(left)?;
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left_numbers[idx]).collect();
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), slot.schema_ref(), &self.alias, self.natural);
 		builder.join_cartesian(&row_numbers, left, left_indices, slot, &[0])
 	}
 
-	pub(crate) fn unmatched_left_latest(&self, left: &Columns, left_indices: &[usize]) -> Columns {
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
-		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
+	pub(crate) fn unmatched_left_latest(&self, left: &RecordBatch, left_indices: &[usize]) -> Result<RecordBatch> {
+		let left_numbers = require_row_numbers(left)?;
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left_numbers[idx]).collect();
+		let builder =
+			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
 		builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)
 	}
 
@@ -861,10 +899,10 @@ impl HostOperator for JoinOperator {
 		InputOrder::Reversed
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		let builder =
 			JoinedColumnsBuilder::new(&self.left_schema, &self.right_schema, &self.alias, self.natural);
-		Some(builder.unmatched_left_batch(&[], &self.left_schema, &[], &self.right_schema))
+		Some(builder.schema(&self.left_schema, &self.right_schema))
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
@@ -930,11 +968,11 @@ impl HostOperator for JoinOperator {
 impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_join_insert(
 		&mut self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
@@ -967,11 +1005,11 @@ impl JoinOperator {
 
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
+	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
 	fn apply_join_remove(
 		&mut self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
@@ -1004,19 +1042,19 @@ impl JoinOperator {
 
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_join_update(
 		&mut self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let pre_keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
-		let row_count = post.row_count();
+		let row_count = post.num_rows();
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
@@ -1080,6 +1118,8 @@ impl JoinOperator {
 mod seal_tests {
 	use std::ops::Bound;
 
+	use arrow_array::UInt64Array;
+	use arrow_schema::Schema;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
 		key::encoded::EncodedKeyRange,
@@ -1097,7 +1137,7 @@ mod seal_tests {
 				traits::Keyspace,
 			},
 		},
-		value::column::buffer::ColumnBuffer,
+		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
@@ -1106,7 +1146,13 @@ mod seal_tests {
 		accumulator::ChangeAccumulator,
 		multi::{RangeScope, transaction::read::MultiReadTransaction},
 	};
-	use reifydb_value::{factory::time::at_millis, fragment::Fragment};
+	use reifydb_value::{
+		factory::time::at_millis,
+		value::{
+			container::temporal_array::datetime_array,
+			system_columns::{SystemColumn, with_system_column},
+		},
+	};
 
 	use super::*;
 	use crate::{
@@ -1138,12 +1184,12 @@ mod seal_tests {
 			JoinSideConfig {
 				operator: OperatorId(operator + 1_000),
 				exprs: parse_expression("k").expect("the left key parses"),
-				schema: Columns::empty(),
+				schema: Arc::new(Schema::empty()),
 			},
 			JoinSideConfig {
 				operator: OperatorId(operator + 2_000),
 				exprs: parse_expression("k").expect("the right key parses"),
-				schema: Columns::empty(),
+				schema: Arc::new(Schema::empty()),
 			},
 			OperatorId(operator),
 			JoinType::Left,
@@ -1174,12 +1220,15 @@ mod seal_tests {
 		txn
 	}
 
-	fn rows(keys: &[i32], numbers: &[u64], at: DateTime) -> Columns {
-		let column = ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::int4(keys.to_vec()));
-		let mut columns =
-			Columns::new(vec![column]).with_row_numbers(numbers.iter().map(|n| RowNumber(*n)).collect());
-		columns.system.set_time(vec![at; keys.len()]);
-		columns
+	fn rows(keys: &[i32], numbers: &[u64], at: DateTime) -> RecordBatch {
+		let columns = batch(vec![int4("k", keys.to_vec())]).unwrap();
+		let columns = with_system_column(
+			columns,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(numbers.to_vec())),
+		)
+		.unwrap();
+		with_system_column(columns, SystemColumn::Time, Arc::new(datetime_array(vec![at; keys.len()]))).unwrap()
 	}
 
 	fn exprs(op: &JoinOperator, side: JoinSide) -> &[CompiledExpr] {
@@ -1189,7 +1238,12 @@ mod seal_tests {
 		}
 	}
 
-	fn insert(op: &mut JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, post: &Columns) -> Vec<Diff> {
+	fn insert(
+		op: &mut JoinOperator,
+		txn: &mut DeferredTransaction,
+		side: JoinSide,
+		post: &RecordBatch,
+	) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
 		let operator = op.operator;
@@ -1198,7 +1252,12 @@ mod seal_tests {
 		result
 	}
 
-	fn remove(op: &mut JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, pre: &Columns) -> Vec<Diff> {
+	fn remove(
+		op: &mut JoinOperator,
+		txn: &mut DeferredTransaction,
+		side: JoinSide,
+		pre: &RecordBatch,
+	) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
 		let operator = op.operator;
@@ -1211,8 +1270,8 @@ mod seal_tests {
 		op: &mut JoinOperator,
 		txn: &mut DeferredTransaction,
 		side: JoinSide,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 	) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
@@ -1222,7 +1281,7 @@ mod seal_tests {
 		result
 	}
 
-	fn hash_of(op: &JoinOperator, side: JoinSide, columns: &Columns, row_idx: usize) -> Hash128 {
+	fn hash_of(op: &JoinOperator, side: JoinSide, columns: &RecordBatch, row_idx: usize) -> Hash128 {
 		op.compute_join_keys(columns, exprs(op, side)).unwrap()[row_idx].expect("the join key is defined")
 	}
 

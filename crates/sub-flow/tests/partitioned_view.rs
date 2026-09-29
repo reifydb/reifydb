@@ -6,7 +6,7 @@
 // read path surfaces as a wrong count: a non-partitioned scan of a partitioned view returns zero.
 
 use reifydb::{Params, WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, system_columns::row_numbers};
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
@@ -362,7 +362,7 @@ fn series_backed_partitioned_view_rows_keep_distinct_row_numbers() {
 	let mut seen: Vec<u64> = db
 		.query("FROM test::s")
 		.iter()
-		.flat_map(|frame| frame.row_numbers().iter().map(|rn| rn.0).collect::<Vec<_>>())
+		.flat_map(|frame| row_numbers(&frame.batch).expect("#rownum").iter().map(|rn| rn.0).collect::<Vec<_>>())
 		.collect();
 	seen.sort();
 	let mut distinct = seen.clone();

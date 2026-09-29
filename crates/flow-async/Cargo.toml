@@ -33,6 +33,8 @@ runtime = [
 ]
 
 [dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }

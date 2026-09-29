@@ -17,6 +17,7 @@ use reifydb_value::{
 		duration::Duration,
 		frame::frame::Frame,
 		identity::IdentityId,
+		system_columns::user_columns,
 		time::Time,
 		uuid::Uuid4,
 		value_type::ValueType,
@@ -37,18 +38,17 @@ fn query_err(rql: &str, params: Params) -> Diagnostic {
 	let r = t.inner().query_as(TestEngine::identity(), rql, params);
 	match r.error {
 		Some(e) => e.diagnostic(),
-		None => panic!("expected an error, got columns {:?}\nrql: {rql}", r.frames[0].columns),
+		None => panic!("expected an error, got columns {:?}\nrql: {rql}", r.frames[0].batch.schema()),
 	}
 }
 
 fn column(frames: &[Frame], name: &str) -> (ValueType, Vec<Value>) {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	(column.data.get_type(), (0..column.data.len()).map(|row| column.data.get_value(row)).collect())
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	(column.get_type(), (0..column.len()).map(|row| column.get_value(row)).collect())
 }
 
 fn assert_values_between_none_rows_keep_type(first: Value, second: Value, expected: ValueType) {
@@ -441,7 +441,7 @@ fn constructor_without_a_target_names_each_expanded_column() {
 	);
 	assert!(r.error.is_none(), "got: {:?}", r.error);
 
-	let names: Vec<&str> = r.frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&r.frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 	assert_eq!(names, vec!["v_square_side", "v_tag"]);
 	assert_eq!(column(&r.frames, "v_tag").1, vec![Value::Int1(1)]);
 }

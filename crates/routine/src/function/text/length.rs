@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, Int64Array, types::Int32Type};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int64Array, types::Int32Type};
+use arrow_schema::FieldRef;
 use arrow_string::length::length;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
+
+use crate::function::support::column::array_column;
 
 pub struct TextLength {
 	info: RoutineInfo,
@@ -36,16 +43,20 @@ impl<'a> Routine<FunctionContext<'a>> for TextLength {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 
-		match data {
-			ColumnBuffer::Utf8 {
+		match &data.data {
+			ViewData::Utf8 {
 				container,
 				..
 			} => {
 				let byte_lengths =
-					length(container).map_err(|err| RoutineError::FunctionExecutionFailed {
+					length(*container).map_err(|err| RoutineError::FunctionExecutionFailed {
 						function: ctx.fragment.clone(),
 						reason: err.to_string(),
 					})?;
@@ -58,15 +69,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextLength {
 						}
 					})?;
 
-				let result_data =
-					ColumnBuffer::Int4(byte_lengths.unary::<_, Int32Type>(|len| len as i32));
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				let result_data = Arc::new(byte_lengths.unary::<_, Int32Type>(|len| len as i32));
+				Ok(array_column(ctx.fragment.text(), ValueType::Int4, result_data))
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

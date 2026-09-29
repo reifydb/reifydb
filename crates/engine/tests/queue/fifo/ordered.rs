@@ -104,16 +104,16 @@ fn claim(t: &TestEngine, worker: &str, max_n: u32) -> Vec<(u64, String)> {
 		t.command(&format!(r#"CALL queue::claim("{worker}", "test::jobs", {max_n}, duration::seconds(30))"#));
 	let frame: &Frame = frames.first().expect("claim must always return a frame");
 
-	let items = frame.columns.iter().find(|c| c.name == "item").expect("claim must return an item column");
-	let tokens = frame.columns.iter().find(|c| c.name == "token").expect("claim must return a token column");
+	let items = frame.column("item").unwrap().expect("claim must return an item column");
+	let tokens = frame.column("token").unwrap().expect("claim must return a token column");
 
 	(0..frame.row_count())
 		.map(|i| {
-			let item = match items.data.get_value(i) {
+			let item = match items.get_value(i) {
 				Value::Uint8(n) => n,
 				other => panic!("item column must be Uint8, got {other:?}"),
 			};
-			let token = match tokens.data.get_value(i) {
+			let token = match tokens.get_value(i) {
 				Value::Utf8(t) => t,
 				other => panic!("token column must be Utf8, got {other:?}"),
 			};
@@ -145,7 +145,7 @@ fn fail(t: &TestEngine, token: &str) {
 
 fn replay(t: &TestEngine, row: u64) -> String {
 	let frames = t.command(&format!(r#"CALL queue::replay("test::jobs", {row})"#));
-	match frames[0].columns.iter().find(|c| c.name == "state").unwrap().data.get_value(0) {
+	match frames[0].column("state").unwrap().unwrap().get_value(0) {
 		Value::Utf8(state) => state,
 		other => panic!("state must be Utf8, got {other:?}"),
 	}

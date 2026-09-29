@@ -7,7 +7,7 @@ use reifydb::{
 	Database, IdentityId, Value, WithSubsystem, server,
 	value::{
 		params::Params,
-		value::{frame::frame::Frame, identity::IdentityKind},
+		value::{frame::frame::Frame, identity::IdentityKind, system_columns::user_columns},
 	},
 };
 use reifydb_uptime::migration_path;
@@ -26,11 +26,11 @@ fn params(entries: &[(&str, Value)]) -> Params {
 fn column(frames: &[Frame], name: &str) -> Value {
 	let frame = frames.first().expect("frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one row when reading column {name}");
-	frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name}")).data.get_value(0)
+	frame.column(name).expect("the column reads").unwrap_or_else(|| panic!("column {name}")).get_value(0)
 }
 
 fn column_names(frames: &[Frame]) -> Vec<&str> {
-	frames.first().expect("frame").columns.iter().map(|c| c.name.as_str()).collect()
+	user_columns(&frames.first().expect("frame").batch).map(|(field, _)| field.name().as_str()).collect()
 }
 
 fn me(db: &Database, id: IdentityId) -> Vec<Frame> {

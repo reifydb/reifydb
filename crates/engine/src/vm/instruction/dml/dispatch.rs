@@ -3,10 +3,14 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::{Array, RecordBatch};
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{ColumnWithName, columns::Columns},
+	value::{
+		batch::{batch, empty_batch, single_row},
+		column::factory::rename,
+	},
 };
 use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::evaluate},
@@ -18,7 +22,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, duration::Duration, sumtype::VariantRef},
+	value::{Value, column_view::ColumnView, duration::Duration, sumtype::VariantRef},
 };
 
 use crate::{
@@ -39,7 +43,7 @@ pub(crate) fn dispatch(
 	plan: DispatchNode,
 	params: &Params,
 	dispatch_depth: u8,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if dispatch_depth >= MAX_DISPATCH_DEPTH {
 		return Err(internal_error!(
 			"Max dispatch depth ({}) exceeded for event variant '{}'",
@@ -82,7 +86,7 @@ pub(crate) fn dispatch(
 		runtime_context: &services.runtime_context,
 		identity: tx.identity(),
 		is_aggregate_context: false,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
@@ -91,9 +95,9 @@ pub(crate) fn dispatch(
 	for (field_name, expr) in &plan.fields {
 		let eval_ctx = base.with_eval_empty();
 		let col = evaluate(&eval_ctx, expr)?;
-		event_columns.push(ColumnWithName::new(Fragment::internal(field_name), col.data));
+		event_columns.push(rename(col, field_name));
 	}
-	let event_payload = Columns::new(event_columns);
+	let event_payload = batch(event_columns)?;
 
 	tx.record_test_event(
 		plan.namespace.name().to_string(),
@@ -132,12 +136,11 @@ pub(crate) fn dispatch(
 				let saved_ip = vm.ip;
 
 				vm.symbols.enter_scope(ScopeType::Function);
-				for (idx, name) in event_payload.names.iter().enumerate() {
-					let var_name = format!("event_{}", name.text());
-					let scalar = Columns::new(vec![ColumnWithName::new(
-						name.clone(),
-						event_payload.columns[idx].clone(),
-					)]);
+				for (field, array) in
+					event_payload.schema_ref().fields().iter().zip(event_payload.columns())
+				{
+					let var_name = format!("event_{}", field.name());
+					let scalar = batch(vec![(field.clone(), array.clone())])?;
 					vm.symbols.set(var_name, Variable::columns(scalar), true)?;
 				}
 
@@ -185,10 +188,10 @@ pub(crate) fn dispatch(
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
 		let mut named_map = HashMap::new();
-		for (idx, name) in event_payload.names.iter().enumerate() {
-			let key = name.text().to_string();
-			if let Some(val) = event_payload.columns[idx].iter().next() {
-				named_map.insert(key, val);
+		for (field, array) in event_payload.schema_ref().fields().iter().zip(event_payload.columns()) {
+			let key = field.name().to_string();
+			if !array.is_empty() {
+				named_map.insert(key, ColumnView::try_from((array, field.as_ref()))?.get_value(0));
 			}
 		}
 		let call_params = Params::Named(Arc::new(named_map));
@@ -216,5 +219,5 @@ pub(crate) fn dispatch(
 	}
 
 	let total_fired = handler_count + native_count;
-	Ok(Columns::single_row([("handlers_fired", Value::Uint1(total_fired as u8))]))
+	single_row([("handlers_fired", Value::Uint1(total_fired as u8))])
 }

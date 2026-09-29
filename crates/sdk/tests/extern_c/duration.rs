@@ -1,42 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::duration::Duration;
 
 use super::common::{assert_column_eq, round_trip_column};
 
 #[test]
 fn duration_zero() {
-	let input = ColumnBuffer::duration([Duration::new(0, 0, 0).expect("valid")]);
+	let input = factory::duration("c", [Duration::new(0, 0, 0).expect("valid")]);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_zero", &input, &output);
 }
 
 #[test]
 fn duration_pure_months() {
-	let input = ColumnBuffer::duration([Duration::new(12, 0, 0).expect("valid")]);
+	let input = factory::duration("c", [Duration::new(12, 0, 0).expect("valid")]);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_months", &input, &output);
 }
 
 #[test]
 fn duration_pure_days() {
-	let input = ColumnBuffer::duration([Duration::new(0, 31, 0).expect("valid")]);
+	let input = factory::duration("c", [Duration::new(0, 31, 0).expect("valid")]);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_days", &input, &output);
 }
 
 #[test]
 fn duration_pure_nanos() {
-	let input = ColumnBuffer::duration([Duration::new(0, 0, 1_000_000_000).expect("valid")]);
+	let input = factory::duration("c", [Duration::new(0, 0, 1_000_000_000).expect("valid")]);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_nanos", &input, &output);
 }
 
 #[test]
 fn duration_negative_components() {
-	let input = ColumnBuffer::duration([Duration::new(-3, -7, -1_500_000_000).expect("valid")]);
+	let input = factory::duration("c", [Duration::new(-3, -7, -1_500_000_000).expect("valid")]);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_negative", &input, &output);
 }
@@ -44,10 +44,13 @@ fn duration_negative_components() {
 #[test]
 fn duration_extremes() {
 	// Halved i64 bounds because Duration::new normalises components and rejects anything that overflows.
-	let input = ColumnBuffer::duration([
-		Duration::new(-1_000_000, -1_000_000, i64::MIN / 2).expect("valid"),
-		Duration::new(1_000_000, 1_000_000, i64::MAX / 2).expect("valid"),
-	]);
+	let input = factory::duration(
+		"c",
+		[
+			Duration::new(-1_000_000, -1_000_000, i64::MIN / 2).expect("valid"),
+			Duration::new(1_000_000, 1_000_000, i64::MAX / 2).expect("valid"),
+		],
+	);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_extremes", &input, &output);
 }
@@ -56,14 +59,15 @@ fn duration_extremes() {
 fn duration_thirty_two_rows() {
 	let values: Vec<Duration> =
 		(0..32i32).map(|i| Duration::new(i, i * 2, (i as i64) * 1_000_000_000).expect("valid")).collect();
-	let input = ColumnBuffer::duration(values);
+	let input = factory::duration("c", values);
 	let output = round_trip_column("dur", input.clone());
 	assert_column_eq("duration_thirty_two_rows", &input, &output);
 }
 
 #[test]
 fn duration_with_undefined() {
-	let input = ColumnBuffer::duration_with_bitvec(
+	let input = factory::duration_with_bitvec(
+		"c",
 		[
 			Duration::new(1, 2, 3).unwrap(),
 			Duration::default(),

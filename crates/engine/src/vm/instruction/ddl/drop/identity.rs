@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropIdentityNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -13,7 +14,7 @@ pub(crate) fn drop_identity(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropIdentityNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let name = plan.name.text();
 
 	let identity = services.catalog.find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)?;
@@ -38,17 +39,14 @@ pub(crate) fn drop_identity(
 				.into());
 			}
 			services.catalog.drop_identity(txn, identity.id)?;
-			Ok(Columns::single_row([
-				("identity", Value::Utf8(name.to_string())),
-				("dropped", Value::Boolean(true)),
-			]))
+			single_row([("identity", Value::Utf8(name.to_string())), ("dropped", Value::Boolean(true))])
 		}
 		None => {
 			if plan.if_exists {
-				Ok(Columns::single_row([
+				single_row([
 					("identity", Value::Utf8(name.to_string())),
 					("dropped", Value::Boolean(false)),
-				]))
+				])
 			} else {
 				Err(CatalogError::NotFound {
 					kind: CatalogObjectKind::Identity,

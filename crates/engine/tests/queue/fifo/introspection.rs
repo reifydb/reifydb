@@ -4,7 +4,9 @@
 use std::collections::BTreeSet;
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{Value, datetime::DateTime, frame::frame::Frame, value_type::ValueType};
+use reifydb_value::value::{
+	Value, datetime::DateTime, frame::frame::Frame, system_columns::user_columns, value_type::ValueType,
+};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -15,13 +17,13 @@ fn engine_with_queue(declaration: &str) -> TestEngine {
 
 fn column(frames: &[Frame], name: &str) -> Vec<Value> {
 	let frame = frames.first().expect("a query must always return a frame");
-	let column = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| {
+	let column = frame.column(name).unwrap().unwrap_or_else(|| {
 		panic!(
 			"result has no column {name}; got {:?}",
-			frame.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+			user_columns(&frame.batch).map(|(field, _)| field.name()).collect::<Vec<_>>()
 		)
 	});
-	(0..frame.row_count()).map(|i| column.data.get_value(i)).collect()
+	(0..frame.row_count()).map(|i| column.get_value(i)).collect()
 }
 
 fn uint8s(frames: &[Frame], name: &str) -> Vec<u64> {

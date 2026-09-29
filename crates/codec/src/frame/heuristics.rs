@@ -5,70 +5,66 @@ use std::collections::HashSet;
 
 use arrow_buffer::i256;
 use reifydb_value::value::{
-	container::{decimal_array::DecimalArray, temporal_array::times, wide_int_array::wides},
-	frame::data::FrameColumnData,
+	column_view::{ColumnView, ViewData},
+	container::{decimal_array::DecimalView, temporal_array::times, wide_int_array::wides},
 };
 
 use crate::frame::{format::Encoding, options::CompressionLevel};
 
 const MIN_ROWS: usize = 4;
 
-pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) -> Encoding {
+pub fn choose_encoding(data: &ColumnView<'_>, compression: CompressionLevel) -> Encoding {
 	if compression == CompressionLevel::None {
 		return Encoding::Plain;
 	}
 
-	let mut inner = data;
-	while let FrameColumnData::Option {
-		inner: next,
-		..
-	} = inner
-	{
-		inner = next;
-	}
-
-	if inner.len() < MIN_ROWS {
+	if data.len() < MIN_ROWS {
 		return Encoding::Plain;
 	}
 
-	match inner {
-		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
+	match &data.data {
+		ViewData::Utf8 {
+			..
+		}
+		| ViewData::Blob {
+			..
+		} => try_dict_heuristic(data),
 
-		FrameColumnData::Decimal(c) => match c {
-			DecimalArray::Decimal128(array) => try_numeric_heuristic_i128(array.values()),
-			DecimalArray::Decimal256(array) => try_numeric_heuristic_i256(array.values()),
+		ViewData::Decimal(c) => match c {
+			DecimalView::Decimal128(array) => try_numeric_heuristic_i128(array.values()),
+			DecimalView::Decimal256(array) => try_numeric_heuristic_i256(array.values()),
 		},
 
-		FrameColumnData::Int1(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		ViewData::Int1(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|&v| v as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Int2(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		ViewData::Int2(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|&v| v as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c.values()),
-		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c.values()),
-		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(&wides::<i128>(c)),
-		FrameColumnData::Uint1(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		ViewData::Int4(c) => try_numeric_heuristic_i32(c.values()),
+		ViewData::Int8(c) => try_numeric_heuristic_i64(c.values()),
+		ViewData::Int16(c) => try_numeric_heuristic_i128(&wides::<i128>(c)),
+		ViewData::Uint1(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|&v| v as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Uint2(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		ViewData::Uint2(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|&v| v as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Uint4(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		ViewData::Uint4(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|&v| v as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c.values()),
-		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(&wides::<u128>(c)),
-		FrameColumnData::Float4(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
+		ViewData::Uint8(c) => try_numeric_heuristic_u64(c.values()),
+		ViewData::Uint16(c) => try_numeric_heuristic_u128(&wides::<u128>(c)),
+		ViewData::Float4(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|v| v.to_bits() as i64).collect::<Vec<_>>())
 		}
-		FrameColumnData::Float8(c) => {
-			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
+		ViewData::Float8(c) => {
+			try_numeric_heuristic_i64(&c.values().iter().map(|v| v.to_bits() as i64).collect::<Vec<_>>())
 		}
 
-		FrameColumnData::Date(c) => try_numeric_heuristic_i32(c.values()),
-		FrameColumnData::DateTime(c) => try_numeric_heuristic_i64(c.values()),
-		FrameColumnData::Time(c) => {
+		ViewData::Date(c) => try_numeric_heuristic_i32(c.values()),
+		ViewData::DateTime(c) => try_numeric_heuristic_i64(c.values()),
+		ViewData::Time(c) => {
 			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			try_numeric_heuristic_u64(&raw)
 		}
@@ -77,18 +73,29 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	}
 }
 
-fn try_dict_heuristic(data: &FrameColumnData) -> Encoding {
+fn try_dict_heuristic(data: &ColumnView<'_>) -> Encoding {
 	let len = data.len();
 	if len == 0 {
 		return Encoding::Plain;
 	}
 
+	let rows: Vec<&[u8]> = match &data.data {
+		ViewData::Utf8 {
+			container,
+			..
+		} => (0..len).map(|i| container.value(i).as_bytes()).collect(),
+		ViewData::Blob {
+			container,
+			..
+		} => (0..len).map(|i| container.value(i)).collect(),
+		_ => return Encoding::Plain,
+	};
+
 	let budget = (len / 2).min(10_000);
 	let mut seen = HashSet::new();
 
-	for i in 0..len {
-		let s = data.as_string(i);
-		seen.insert(s);
+	for row in rows {
+		seen.insert(row);
 		if seen.len() > budget {
 			return Encoding::Plain;
 		}
@@ -291,8 +298,10 @@ fn count_runs_generic<T: PartialEq>(slice: &[T]) -> usize {
 
 #[cfg(test)]
 mod tests {
-	use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
-	use arrow_buffer::BooleanBuffer;
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, BooleanArray, Int32Array, LargeStringArray};
+	use arrow_schema::FieldRef;
 	use reifydb_value::value::{
 		constraint::{precision::Precision, scale::Scale},
 		container::{
@@ -303,9 +312,25 @@ mod tests {
 		datetime::DateTime,
 		decimal::Decimal,
 		time::Time,
+		value_type::{
+			ValueType,
+			field::{FieldType, named},
+		},
 	};
 
 	use super::*;
+
+	fn column(value_type: ValueType, array: ArrayRef) -> (FieldRef, ArrayRef) {
+		named("c", FieldType::from(value_type), array)
+	}
+
+	fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+		ColumnView::try_from(column).unwrap()
+	}
+
+	fn utf8(values: Vec<String>) -> (FieldRef, ArrayRef) {
+		column(ValueType::Utf8, Arc::new(LargeStringArray::from(values)))
+	}
 
 	#[test]
 	fn count_runs_generic_counts_value_transitions_not_elements() {
@@ -352,23 +377,17 @@ mod tests {
 
 	#[test]
 	fn try_dict_heuristic_picks_dict_only_below_the_half_cardinality_threshold() {
-		let repeated = FrameColumnData::Utf8(LargeStringArray::from(
-			(0..100).map(|i| format!("v{}", i % 5)).collect::<Vec<String>>(),
-		));
-		assert_eq!(try_dict_heuristic(&repeated), Encoding::Dict);
+		let repeated = utf8((0..100).map(|i| format!("v{}", i % 5)).collect());
+		assert_eq!(try_dict_heuristic(&view(&repeated)), Encoding::Dict);
 
-		let unique = FrameColumnData::Utf8(LargeStringArray::from(
-			(0..100).map(|i| format!("v{i}")).collect::<Vec<String>>(),
-		));
-		assert_eq!(try_dict_heuristic(&unique), Encoding::Plain);
+		let unique = utf8((0..100).map(|i| format!("v{i}")).collect());
+		assert_eq!(try_dict_heuristic(&view(&unique)), Encoding::Plain);
 
-		let half = FrameColumnData::Utf8(LargeStringArray::from(
-			(0..100).map(|i| format!("v{}", i % 50)).collect::<Vec<String>>(),
-		));
-		assert_eq!(try_dict_heuristic(&half), Encoding::Plain);
+		let half = utf8((0..100).map(|i| format!("v{}", i % 50)).collect());
+		assert_eq!(try_dict_heuristic(&view(&half)), Encoding::Plain);
 
-		let empty = FrameColumnData::Utf8(LargeStringArray::from(Vec::<String>::new()));
-		assert_eq!(try_dict_heuristic(&empty), Encoding::Plain);
+		let empty = utf8(Vec::new());
+		assert_eq!(try_dict_heuristic(&view(&empty)), Encoding::Plain);
 	}
 
 	#[test]
@@ -414,50 +433,55 @@ mod tests {
 
 	#[test]
 	fn choose_encoding_ignores_the_heuristic_entirely_when_compression_is_off() {
-		let data = FrameColumnData::Int4(Int32Array::from_iter_values((0..100).map(|i| i * 3)));
-		assert_eq!(choose_encoding(&data, CompressionLevel::None), Encoding::Plain);
+		let data = column(ValueType::Int4, Arc::new(Int32Array::from_iter_values((0..100).map(|i| i * 3))));
+		assert_eq!(choose_encoding(&view(&data), CompressionLevel::None), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_stays_plain_below_min_rows_even_with_compression_on() {
-		let data = FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3]));
-		assert_eq!(choose_encoding(&data, CompressionLevel::Fast), Encoding::Plain);
+		let data = column(ValueType::Int4, Arc::new(Int32Array::from(vec![1, 2, 3])));
+		assert_eq!(choose_encoding(&view(&data), CompressionLevel::Fast), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_peels_the_option_wrapper_before_applying_the_heuristic() {
-		let inner = FrameColumnData::Utf8(LargeStringArray::from(
-			(0..100).map(|i| format!("v{}", i % 5)).collect::<Vec<String>>(),
-		));
-		let wrapped = FrameColumnData::Option {
-			inner: Box::new(inner),
-			bitvec: BooleanBuffer::from(vec![true; 100]),
-		};
-		assert_eq!(choose_encoding(&wrapped, CompressionLevel::Fast), Encoding::Dict);
+		let wrapped = column(
+			ValueType::Option(Box::new(ValueType::Utf8)),
+			Arc::new(LargeStringArray::from(
+				(0..100).map(|i| format!("v{}", i % 5)).collect::<Vec<String>>(),
+			)),
+		);
+		assert_eq!(choose_encoding(&view(&wrapped), CompressionLevel::Fast), Encoding::Dict);
 	}
 
 	#[test]
 	fn choose_encoding_falls_back_to_plain_for_types_with_no_dedicated_heuristic() {
-		let data = FrameColumnData::Bool(BooleanArray::from(vec![true, false, true, false, true]));
-		assert_eq!(choose_encoding(&data, CompressionLevel::Fast), Encoding::Plain);
+		let data =
+			column(ValueType::Boolean, Arc::new(BooleanArray::from(vec![true, false, true, false, true])));
+		assert_eq!(choose_encoding(&view(&data), CompressionLevel::Fast), Encoding::Plain);
 	}
 
 	#[test]
 	fn choose_encoding_dispatches_temporal_columns_through_their_raw_representation() {
-		let dates = FrameColumnData::Date(date_array(
-			(0..100).map(|i| Date::from_days_since_epoch(i * 2).unwrap()),
-		));
-		assert_eq!(choose_encoding(&dates, CompressionLevel::Fast), Encoding::DeltaRle);
+		let dates = column(
+			ValueType::Date,
+			Arc::new(date_array((0..100).map(|i| Date::from_days_since_epoch(i * 2).unwrap()))),
+		);
+		assert_eq!(choose_encoding(&view(&dates), CompressionLevel::Fast), Encoding::DeltaRle);
 
-		let datetimes = FrameColumnData::DateTime(datetime_array(
-			(0..100).map(|i| DateTime::from_nanos(i as i64 * 1_000)),
-		));
-		assert_eq!(choose_encoding(&datetimes, CompressionLevel::Fast), Encoding::DeltaRle);
+		let datetimes = column(
+			ValueType::DateTime,
+			Arc::new(datetime_array((0..100).map(|i| DateTime::from_nanos(i as i64 * 1_000)))),
+		);
+		assert_eq!(choose_encoding(&view(&datetimes), CompressionLevel::Fast), Encoding::DeltaRle);
 
-		let times = FrameColumnData::Time(time_array(
-			(0..100).map(|i| Time::from_nanos_since_midnight(i as u64 * 1_000).unwrap()),
-		));
-		assert_eq!(choose_encoding(&times, CompressionLevel::Fast), Encoding::DeltaRle);
+		let times = column(
+			ValueType::Time,
+			Arc::new(time_array(
+				(0..100).map(|i| Time::from_nanos_since_midnight(i as u64 * 1_000).unwrap()),
+			)),
+		);
+		assert_eq!(choose_encoding(&view(&times), CompressionLevel::Fast), Encoding::DeltaRle);
 	}
 
 	#[test]
@@ -467,19 +491,15 @@ mod tests {
 		let wide = Precision::new(76);
 
 		let runny: Vec<Decimal> = (0..100i64).map(|i| Decimal::from_i64(i / 10)).collect();
-		assert_eq!(
-			choose_encoding(
-				&FrameColumnData::Decimal(decimal_array(narrow, Scale::new(2), &runny)),
-				CompressionLevel::Fast
-			),
-			Encoding::Rle
+		let narrow_column = column(
+			ValueType::decimal(narrow, Scale::new(2)),
+			decimal_array(narrow, Scale::new(2), &runny).into_array(),
 		);
-		assert_eq!(
-			choose_encoding(
-				&FrameColumnData::Decimal(decimal_array(wide, Scale::new(2), &runny)),
-				CompressionLevel::Fast
-			),
-			Encoding::Rle
+		assert_eq!(choose_encoding(&view(&narrow_column), CompressionLevel::Fast), Encoding::Rle);
+		let wide_column = column(
+			ValueType::decimal(wide, Scale::new(2)),
+			decimal_array(wide, Scale::new(2), &runny).into_array(),
 		);
+		assert_eq!(choose_encoding(&view(&wide_column), CompressionLevel::Fast), Encoding::Rle);
 	}
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Value, WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{column_view::ColumnView, duration::Duration, system_columns::user_columns};
 
 const SETTLE: Duration = Duration::from_seconds_const(5);
 
@@ -25,9 +25,11 @@ fn make_db() -> TestDb {
 
 fn total(db: &TestDb) -> i64 {
 	let frames = db.query("FROM app::total");
-	let column = frames.first().and_then(|f| f.columns.first()).expect("the total view must have a column");
-	assert_eq!(column.data.len(), 1, "the ungrouped aggregate must hold exactly one row");
-	match column.data.get_value(0) {
+	let (field, array) =
+		frames.first().and_then(|f| user_columns(&f.batch).next()).expect("the total view must have a column");
+	let column = ColumnView::try_from((array, field.as_ref())).expect("the total column reads");
+	assert_eq!(column.len(), 1, "the ungrouped aggregate must hold exactly one row");
+	match column.get_value(0) {
 		Value::Int8(v) => v,
 		other => panic!("total must be an int8, got {other:?}"),
 	}

@@ -30,31 +30,34 @@ pub fn run_test_str(content: &str) -> Result<(), String> {
 	match result {
 		Ok(frames) => {
 			if let Some(frame) = frames.last() {
-				let outcome_idx = frame.columns.iter().position(|c| c.name == "outcome");
-				let name_idx = frame.columns.iter().position(|c| c.name == "name");
-				let ns_idx = frame.columns.iter().position(|c| c.name == "namespace");
-				let msg_idx = frame.columns.iter().position(|c| c.name == "message");
+				let column = |name: &str| frame.column(name).map_err(|e| format!("{}", e));
+				let outcome_column = column("outcome")?;
+				let name_column = column("name")?;
+				let ns_column = column("namespace")?;
+				let msg_column = column("message")?;
 
-				if let Some(oi) = outcome_idx {
-					let outcome_col = &frame.columns[oi];
-					let row_count = outcome_col.data.len();
+				if let Some(outcome_col) = outcome_column {
+					let row_count = outcome_col.len();
 					let mut failures = Vec::new();
 
 					for i in 0..row_count {
-						let outcome = outcome_col.data.get_value(i);
+						let outcome = outcome_col.get_value(i);
 						if matches!(&outcome, Value::Utf8(s) if s == "fail" || s == "error") {
 							let prefix = match &outcome {
 								Value::Utf8(s) if s == "fail" => "FAIL",
 								_ => "ERROR",
 							};
-							let ns = ns_idx
-								.map(|idx| frame.columns[idx].data.as_string(i))
+							let ns = ns_column
+								.as_ref()
+								.map(|col| col.as_string(i))
 								.unwrap_or_default();
-							let name = name_idx
-								.map(|idx| frame.columns[idx].data.as_string(i))
+							let name = name_column
+								.as_ref()
+								.map(|col| col.as_string(i))
 								.unwrap_or_default();
-							let msg = msg_idx
-								.map(|idx| frame.columns[idx].data.as_string(i))
+							let msg = msg_column
+								.as_ref()
+								.map(|col| col.as_string(i))
 								.unwrap_or_default();
 							failures.push(format!("{} {}::{}: {}", prefix, ns, name, msg));
 						}

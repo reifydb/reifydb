@@ -15,11 +15,10 @@ fn engine() -> TestEngine {
 fn column_text(frames: &[Frame], name: &str) -> Vec<String> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	(0..column.data.len()).map(|i| column.data.as_string(i)).collect()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	(0..column.len()).map(|i| column.as_string(i)).collect()
 }
 
 #[test]

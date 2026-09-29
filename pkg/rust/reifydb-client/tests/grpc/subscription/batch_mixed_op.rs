@@ -46,7 +46,7 @@ fn test_batch_subscription_entry_reports_per_frame_changes() {
 			.expect("the insert should be reported with an Insert kind");
 
 		let id = find_column(&insert.frame, "id").expect("id column should exist");
-		assert_eq!(id.data.get_value(0), reifydb_client::Value::Int4(1));
+		assert_eq!(id.get_value(0), reifydb_client::Value::Int4(1));
 		assert!(
 			find_column(&insert.frame, "_op").is_none(),
 			"the op must ride the frame, so it must never appear as a column"

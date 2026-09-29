@@ -4,7 +4,10 @@
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestOperatorRowBuilder};
-use reifydb_value::value::{Value, diff_type::DiffType, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{
+	Value, column_view::ColumnView, diff_type::DiffType, row_number::RowNumber, system_columns::user_columns,
+	value_type::ValueType,
+};
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
 	TestOperatorRowBuilder::new(RowNumber(row_number))
@@ -23,9 +26,11 @@ pub fn trigger() -> Change {
 
 pub fn row_ints(change: &Change) -> Vec<i64> {
 	let cols = change.diffs[0].post().expect("emitted diff has post columns");
-	assert_eq!(cols.row_count(), 1, "expected exactly one emitted row");
-	cols.row(0)
-		.into_iter()
+	assert_eq!(cols.num_rows(), 1, "expected exactly one emitted row");
+	user_columns(cols)
+		.map(|(field, array)| {
+			ColumnView::try_from((array, field.as_ref())).expect("an emitted column reads").get_value(0)
+		})
 		.map(|v| match v {
 			Value::Int8(n) => n,
 			other => panic!("expected Int8 emitted value, got {other:?}"),

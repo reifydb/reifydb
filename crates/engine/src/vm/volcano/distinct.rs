@@ -3,26 +3,35 @@
 
 use std::collections::HashSet;
 
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_row::Row;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::operation,
 	interface::resolved::ResolvedColumn,
 	internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{concat, heap_size, take_rows},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	value::{column_view::ColumnView, system_columns::user_columns},
+};
 use tracing::instrument;
 
 use crate::{
 	Result,
 	vm::volcano::{
 		key_rows::{key_rows, key_types},
-		query::{QueryContext, QueryNode, charge_query_memory},
+		query::{QueryContext, QueryNode, charge_query_memory_bytes},
 	},
 };
 
-fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
+fn ensure_distinct_keyable(name: &Fragment, data: &ColumnView<'_>) -> Result<()> {
 	let ty = data.get_type();
 	if !ty.is_scalar() {
 		return Err(error!(operation::distinct_key_unkeyable(name.clone(), ty)));
@@ -46,46 +55,58 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::collect")]
-	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		let mut all_columns: Option<Columns> = None;
+	fn collect_input<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>> {
+		let mut batches = Vec::new();
 		let mut charged = 0usize;
+		let mut total = 0usize;
 
 		while let Some(cols) = self.input.next(rx, ctx)? {
-			match &mut all_columns {
-				None => all_columns = Some(cols),
-				Some(existing) => existing.append_columns(cols)?,
-			}
-			if let Some(acc) = &all_columns {
-				charge_query_memory(&ctx.memory, &mut charged, acc)?;
-			}
+			total += heap_size(&cols)?;
+			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
+			batches.push(cols);
 		}
 
-		Ok(all_columns)
+		if batches.is_empty() {
+			return Ok(None);
+		}
+		Ok(Some(concat(&batches)?))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::dedupe")]
-	fn dedupe(&self, all_columns: &Columns) -> Result<Vec<usize>> {
-		let mut key_columns: Vec<&ColumnBuffer> = Vec::new();
+	fn dedupe(&self, all_columns: &RecordBatch) -> Result<Vec<usize>> {
+		let schema = all_columns.schema_ref();
+		let mut key_columns: Vec<(&FieldRef, &ArrayRef)> = Vec::new();
 		if self.columns.is_empty() {
-			for col in all_columns.iter() {
-				ensure_distinct_keyable(col.name(), col.data())?;
-				key_columns.push(col.data());
+			for (field, array) in user_columns(all_columns) {
+				ensure_distinct_keyable(
+					&Fragment::internal(field.name()),
+					&ColumnView::try_from((array, field.as_ref()))?,
+				)?;
+				key_columns.push((field, array));
 			}
 		} else {
 			for column in &self.columns {
-				if let Some(col) = all_columns.column(column.name()) {
-					ensure_distinct_keyable(column.identifier(), col.data())?;
-					key_columns.push(col.data());
+				if let Some(index) =
+					schema.fields().iter().position(|field| field.name() == column.name())
+				{
+					let (field, array) = (&schema.fields()[index], all_columns.column(index));
+					let view = ColumnView::try_from((array, field.as_ref()))?;
+					ensure_distinct_keyable(column.identifier(), &view)?;
+					key_columns.push((field, array));
 				}
 			}
 		}
 
-		let row_count = all_columns.row_count();
+		let row_count = all_columns.num_rows();
 		if key_columns.is_empty() {
 			return Ok((0..row_count).take(1).collect());
 		}
 
-		let (converter, arrays) = key_rows(&key_columns, &key_types(&key_columns))?;
+		let (converter, arrays) = key_rows(&key_columns, &key_types(&key_columns)?)?;
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build distinct keys: {}", e))?;
@@ -102,8 +123,8 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::extract")]
-	fn extract(all_columns: &Columns, kept_indices: &[usize]) -> Result<Columns> {
-		all_columns.extract_by_indices(kept_indices)
+	fn extract(all_columns: &RecordBatch, kept_indices: &[usize]) -> Result<RecordBatch> {
+		take_rows(all_columns, kept_indices)
 	}
 }
 
@@ -115,7 +136,7 @@ impl QueryNode for DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.headers.is_some() {
 			return Ok(None);
 		}
@@ -137,7 +158,7 @@ impl QueryNode for DistinctNode {
 		} else {
 			Self::extract(&all_columns, &kept_indices)?
 		};
-		self.headers = Some(ColumnHeaders::from_columns(&result));
+		self.headers = Some(ColumnHeaders::from_batch(&result));
 
 		Ok(Some(result))
 	}

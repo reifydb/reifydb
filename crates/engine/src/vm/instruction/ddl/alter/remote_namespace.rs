@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::AlterRemoteNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -12,20 +13,23 @@ pub(crate) fn alter_remote_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterRemoteNamespaceNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let ns_name = plan.namespace.text();
 	let ns_def = services.catalog.get_namespace_by_name(&mut Transaction::Admin(txn), ns_name)?;
 	let grpc_text = plan.grpc.text().to_string();
 
 	services.catalog.update_namespace_grpc(txn, ns_def.id(), Some(grpc_text))?;
 
-	Ok(Columns::single_row([("namespace", Value::Utf8(ns_name.to_string())), ("altered", Value::Boolean(true))]))
+	single_row([("namespace", Value::Utf8(ns_name.to_string())), ("altered", Value::Boolean(true))])
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -58,7 +62,14 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Utf8("remote_ns".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Boolean(true));
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

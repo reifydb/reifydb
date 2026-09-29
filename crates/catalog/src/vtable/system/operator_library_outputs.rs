@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use super::operator_libary::OperatorLibrary;
 use crate::{
@@ -65,16 +65,16 @@ impl BaseVTable for SystemOperatorLibraryOutputs {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("operator"), operators.finish()),
-			ColumnWithName::new(Fragment::internal("position"), positions.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("type"), column_types.finish()),
-			ColumnWithName::new(Fragment::internal("description"), descriptions.finish()),
+			operators.finish("operator"),
+			positions.finish("position"),
+			names.finish("name"),
+			column_types.finish("type"),
+			descriptions.finish("description"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

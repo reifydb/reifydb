@@ -4,11 +4,11 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{frame::frame::Frame, identity::IdentityId, system_columns::user_columns},
 };
 
 fn columns(frames: &[Frame]) -> Vec<Vec<String>> {
-	frames.iter().map(|f| f.columns.iter().map(|c| c.name.clone()).collect()).collect()
+	frames.iter().map(|f| user_columns(&f.batch).map(|(field, _)| field.name().clone()).collect()).collect()
 }
 
 fn in_transaction(t: &TestEngine, rql: &str) -> Vec<Frame> {

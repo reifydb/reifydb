@@ -3,18 +3,23 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_column::{
 	reader::SnapshotReader,
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
-	columns::Columns,
 	data::{Column, canonical::Canonical},
+	factory,
 };
 use reifydb_value::value::{
-	Value, container::varlen_array::compact_parts, datetime::DateTime, row_number::RowNumber,
-	system_columns::SystemColumn, value_type::ValueType,
+	Value,
+	column_view::{ColumnView, ViewData},
+	container::varlen_array::compact_parts,
+	datetime::DateTime,
+	row_number::RowNumber,
+	system_columns::{self, SystemColumn, column_view, user_columns},
+	value_type::ValueType,
 };
 
 const ROWS: usize = 10_007;
@@ -62,13 +67,20 @@ fn maybe(i: usize) -> Value {
 	}
 }
 
-fn utf8_bytes(buffer: &ColumnBuffer) -> &[u8] {
-	match buffer {
-		ColumnBuffer::Utf8 {
+fn utf8_bytes<'a>(view: &ColumnView<'a>) -> &'a [u8] {
+	match view.data {
+		ViewData::Utf8 {
 			container,
 			..
 		} => compact_parts(container).0,
-		other => panic!("expected a utf8 buffer, got {:?}", other.get_type()),
+		_ => panic!("expected a utf8 buffer, got {:?}", view.get_type()),
+	}
+}
+
+fn int4_slice<'a>(view: &ColumnView<'a>) -> &'a [i32] {
+	match view.data {
+		ViewData::Int4(container) => &container.values()[..],
+		_ => panic!("expected an int4 buffer, got {:?}", view.get_type()),
 	}
 }
 
@@ -109,31 +121,32 @@ fn fixture(bounds: &[usize]) -> Fixture {
 	for window in bounds.windows(2) {
 		let (start, end) = (window[0], window[1]);
 		let rows = start..end;
-		let value_buffer = ColumnBuffer::int4(rows.clone().map(value));
-		let label_buffer = ColumnBuffer::utf8(rows.clone().map(label));
-		let maybe_buffer = ColumnBuffer::int4_with_bitvec(
+		let value_buffer = factory::int4("value", rows.clone().map(value));
+		let label_buffer = factory::utf8("label", rows.clone().map(label));
+		let maybe_buffer = factory::int4_with_bitvec(
+			"maybe",
 			rows.clone().map(|i| -value(i)),
 			rows.clone().map(defined).collect::<Vec<_>>(),
 		);
 		chunks.push(ChunkBase {
 			start,
 			end,
-			value: value_buffer.as_slice::<i32>().as_ptr(),
-			label: utf8_bytes(&label_buffer).as_ptr(),
-			maybe: maybe_buffer.as_slice::<i32>().as_ptr(),
+			value: int4_slice(&ColumnView::try_from(&value_buffer).unwrap()).as_ptr(),
+			label: utf8_bytes(&ColumnView::try_from(&label_buffer).unwrap()).as_ptr(),
+			maybe: int4_slice(&ColumnView::try_from(&maybe_buffer).unwrap()).as_ptr(),
 		});
 		let buffers = [
-			ColumnBuffer::uint8(rows.clone().map(row_number)),
+			factory::uint8(SystemColumn::RowNumbers.name(), rows.clone().map(row_number)),
 			value_buffer,
-			ColumnBuffer::datetime(rows.clone().map(created_at)),
+			factory::datetime(SystemColumn::CreatedAt.name(), rows.clone().map(created_at)),
 			label_buffer,
-			ColumnBuffer::datetime(rows.clone().map(updated_at)),
+			factory::datetime(SystemColumn::UpdatedAt.name(), rows.clone().map(updated_at)),
 			maybe_buffer,
-			ColumnBuffer::datetime(rows.clone().map(time)),
-			ColumnBuffer::uint8(rows.clone().map(commit_version)),
+			factory::datetime(SystemColumn::Time.name(), rows.clone().map(time)),
+			factory::uint8(SystemColumn::CommitVersion.name(), rows.clone().map(commit_version)),
 		];
 		for (column, buffer) in per_column.iter_mut().zip(buffers) {
-			column.push(Column::from_canonical(Canonical::from_buffer(buffer)));
+			column.push(Column::from_canonical(Canonical::from_column(&buffer).unwrap()));
 		}
 	}
 	let columns = schema
@@ -152,21 +165,24 @@ fn containing(chunks: &[ChunkBase], start: usize, end: usize) -> Option<&ChunkBa
 }
 
 #[track_caller]
-fn assert_batch_rows(batch: &Columns, start: usize, end: usize) {
+fn assert_batch_rows(batch: &RecordBatch, start: usize, end: usize) {
 	let rows = start..end;
-	assert_eq!(batch.row_count(), end - start, "batch {start}..{end}");
-	assert_eq!(batch.columns.len(), 3, "system columns must never surface as user columns");
+	assert_eq!(batch.num_rows(), end - start, "batch {start}..{end}");
+	assert_eq!(user_columns(batch).count(), 3, "system columns must never surface as user columns");
 	let expected: Vec<RowNumber> = rows.clone().map(|i| RowNumber(row_number(i))).collect();
-	assert_eq!(batch.row_numbers(), &expected[..], "row numbers {start}..{end}");
-	assert_eq!(batch.created_at(), &rows.clone().map(created_at).collect::<Vec<_>>()[..]);
-	assert_eq!(batch.updated_at(), &rows.clone().map(updated_at).collect::<Vec<_>>()[..]);
-	assert_eq!(batch.time(), &rows.clone().map(time).collect::<Vec<_>>()[..]);
-	assert_eq!(batch.system.commit_versions(), &rows.clone().map(commit_version).collect::<Vec<_>>()[..]);
+	assert_eq!(system_columns::row_numbers(batch).unwrap(), &expected[..], "row numbers {start}..{end}");
+	assert_eq!(system_columns::created_at(batch).unwrap(), &rows.clone().map(created_at).collect::<Vec<_>>()[..]);
+	assert_eq!(system_columns::updated_at(batch).unwrap(), &rows.clone().map(updated_at).collect::<Vec<_>>()[..]);
+	assert_eq!(system_columns::time(batch).unwrap(), &rows.clone().map(time).collect::<Vec<_>>()[..]);
+	assert_eq!(
+		system_columns::commit_versions(batch).unwrap(),
+		&rows.clone().map(commit_version).collect::<Vec<_>>()[..]
+	);
 
-	let values = batch.column("value").expect("value column").data();
-	assert_eq!(values.as_slice::<i32>(), &rows.clone().map(value).collect::<Vec<_>>()[..]);
-	let labels = batch.column("label").expect("label column").data();
-	let maybes = batch.column("maybe").expect("maybe column").data();
+	let values = column_view(batch, "value").unwrap().expect("value column");
+	assert_eq!(int4_slice(&values), &rows.clone().map(value).collect::<Vec<_>>()[..]);
+	let labels = column_view(batch, "label").unwrap().expect("label column");
+	let maybes = column_view(batch, "maybe").unwrap().expect("maybe column");
 	assert_eq!(labels.len(), end - start);
 	assert_eq!(maybes.len(), end - start);
 	for (offset, row) in rows.enumerate() {
@@ -175,7 +191,7 @@ fn assert_batch_rows(batch: &Columns, start: usize, end: usize) {
 	}
 }
 
-fn scan(fixture: &Fixture, mut check: impl FnMut(&Columns, usize, usize)) {
+fn scan(fixture: &Fixture, mut check: impl FnMut(&RecordBatch, usize, usize)) {
 	let mut start = 0usize;
 	let mut batches = 0usize;
 	for batch in SnapshotReader::new(Arc::clone(&fixture.block), BATCH) {
@@ -197,24 +213,16 @@ fn single_chunk_scan_aliases_the_block_for_every_batch() {
 	let fixture = fixture(&[0, ROWS]);
 	let chunk = &fixture.chunks[0];
 	scan(&fixture, |batch, start, _end| {
-		let values = batch.column("value").unwrap().data();
+		let values = column_view(batch, "value").unwrap().unwrap();
+		assert_eq!(int4_slice(&values).as_ptr(), chunk.value.wrapping_add(start), "value batch at {start}");
+		let labels = column_view(batch, "label").unwrap().unwrap();
 		assert_eq!(
-			values.as_slice::<i32>().as_ptr(),
-			chunk.value.wrapping_add(start),
-			"value batch at {start}"
-		);
-		let labels = batch.column("label").unwrap().data();
-		assert_eq!(
-			utf8_bytes(labels).as_ptr(),
+			utf8_bytes(&labels).as_ptr(),
 			chunk.label.wrapping_add(label_byte_start(start)),
 			"label batch at {start}"
 		);
-		let maybes = batch.column("maybe").unwrap().data();
-		assert_eq!(
-			maybes.as_slice::<i32>().as_ptr(),
-			chunk.maybe.wrapping_add(start),
-			"maybe batch at {start}"
-		);
+		let maybes = column_view(batch, "maybe").unwrap().unwrap();
+		assert_eq!(int4_slice(&maybes).as_ptr(), chunk.maybe.wrapping_add(start), "maybe batch at {start}");
 	});
 }
 
@@ -227,8 +235,8 @@ fn multi_chunk_scan_aliases_inside_a_chunk_and_copies_across_a_boundary() {
 	let mut aliased = 0usize;
 	let mut copied = 0usize;
 	scan(&fixture, |batch, start, end| {
-		let values = batch.column("value").unwrap().data().as_slice::<i32>().as_ptr();
-		let labels = utf8_bytes(batch.column("label").unwrap().data()).as_ptr();
+		let values = int4_slice(&column_view(batch, "value").unwrap().unwrap()).as_ptr();
+		let labels = utf8_bytes(&column_view(batch, "label").unwrap().unwrap()).as_ptr();
 		match containing(&fixture.chunks, start, end) {
 			Some(chunk) => {
 				assert_eq!(
@@ -258,13 +266,9 @@ fn multi_chunk_scan_aliases_inside_a_chunk_and_copies_across_a_boundary() {
 	let chunk_rows = fixture.block.column_by_name("value").unwrap().1;
 	for (column, chunk) in chunk_rows.chunks.iter().zip(&fixture.chunks) {
 		let canonical = column.to_canonical().unwrap();
+		assert_eq!(int4_slice(&canonical.view()).as_ptr(), chunk.value, "the chunk must keep its allocation");
 		assert_eq!(
-			canonical.buffer.as_slice::<i32>().as_ptr(),
-			chunk.value,
-			"the chunk must keep its allocation"
-		);
-		assert_eq!(
-			canonical.buffer.as_slice::<i32>(),
+			int4_slice(&canonical.view()),
 			&(chunk.start..chunk.end).map(value).collect::<Vec<_>>()[..],
 			"a scan must never change the rows of chunk {}..{}",
 			chunk.start,
@@ -279,9 +283,9 @@ fn a_second_scan_over_the_same_block_reads_identical_rows() {
 	// addresses.
 	let fixture = fixture(&[0, 5_000, ROWS]);
 	let mut first = Vec::new();
-	scan(&fixture, |batch, _, _| first.push(batch.column("value").unwrap().data().as_slice::<i32>().as_ptr()));
+	scan(&fixture, |batch, _, _| first.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).as_ptr()));
 	let mut second = Vec::new();
-	scan(&fixture, |batch, _, _| second.push(batch.column("value").unwrap().data().as_slice::<i32>().as_ptr()));
+	scan(&fixture, |batch, _, _| second.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).as_ptr()));
 	assert_eq!(first.len(), second.len());
 	for (index, (a, b)) in first.iter().zip(&second).enumerate() {
 		let start = index * BATCH;
@@ -305,5 +309,5 @@ fn a_batch_keeps_its_rows_after_the_block_is_dropped() {
 	drop(fixture);
 	assert_batch_rows(&batch, 0, BATCH);
 	assert_batch_rows(&second, BATCH, 2 * BATCH);
-	assert_eq!(second.column("value").unwrap().data().as_slice::<i32>().as_ptr(), base.wrapping_add(BATCH));
+	assert_eq!(int4_slice(&column_view(&second, "value").unwrap().unwrap()).as_ptr(), base.wrapping_add(BATCH));
 }

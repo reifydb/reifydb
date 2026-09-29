@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::PrefixOperator,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+	value::{
+		batch::batch,
+		column::{cast::cast_column_data, factory},
+	},
 };
 use reifydb_evaluate::{
 	expression::{
@@ -16,7 +21,7 @@ use reifydb_evaluate::{
 use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{column_view::ColumnView, value_type::ValueType},
 };
 
 use super::broadcast::broadcast_many;
@@ -27,7 +32,7 @@ impl<'a> Vm<'a> {
 		let upper = self.pop_as_column()?;
 		let lower = self.pop_as_column()?;
 		let value = self.pop_as_column()?;
-		let cols = broadcast_many(vec![value, lower, upper]);
+		let cols = broadcast_many(vec![value, lower, upper])?;
 		let mut iter = cols.into_iter();
 		let value = iter.next().unwrap();
 		let lower = iter.next().unwrap();
@@ -53,7 +58,7 @@ impl<'a> Vm<'a> {
 			.into_diagnostic()
 		})?;
 		let result = execute_logical_op(&ge, &le, &frag, LogicalOp::And)?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 
@@ -69,12 +74,12 @@ impl<'a> Vm<'a> {
 		let mut all = Vec::with_capacity(count + 1);
 		all.push(probe);
 		all.extend(list_items);
-		let mut all = broadcast_many(all);
+		let mut all = broadcast_many(all)?;
 		let probe = all.remove(0);
 		let list_items = all;
 
 		let frag = Fragment::internal("vm_in_list");
-		let mut accumulator: Option<ColumnWithName> = None;
+		let mut accumulator: Option<(FieldRef, ArrayRef)> = None;
 		for item in &list_items {
 			let eq = compare_columns::<Equal>(&probe, item, frag.clone(), |frag, lt, rt| {
 				TypeError::BinaryOperatorNotApplicable {
@@ -100,12 +105,11 @@ impl<'a> Vm<'a> {
 				}
 			}
 			None => {
-				let len = probe.data.len().max(1);
-				let data = ColumnBuffer::bool(vec![negated; len]);
-				ColumnWithName::new(frag.clone(), data)
+				let len = probe.1.len().max(1);
+				factory::bool(frag.text(), vec![negated; len])
 			}
 		};
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 
@@ -113,8 +117,8 @@ impl<'a> Vm<'a> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_cast");
 		let ctx = self.eval_ctx();
-		let data = cast_column_data(&ctx, col.data(), target.clone(), frag.clone())?;
-		self.stack.push(Variable::columns(Columns::new(vec![ColumnWithName::new(col.name().clone(), data)])));
+		let cast = cast_column_data(&ctx, &ColumnView::try_from(&col)?, target.clone(), frag.clone())?;
+		self.stack.push(Variable::columns(batch(vec![cast])?));
 		Ok(())
 	}
 }

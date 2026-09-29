@@ -78,7 +78,7 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 		let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 		loop {
 			let frames = db.query("from app::v");
-			let n = frames.first().and_then(|f| f.columns.first()).map_or(0, |c| c.data.len());
+			let n = frames.first().map_or(0, |f| f.row_count());
 			if n >= 2 || Clock::Real.instant() >= deadline {
 				assert_eq!(n, 2, "precondition: the deferred view must materialize both rows");
 				break;

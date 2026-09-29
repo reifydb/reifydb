@@ -3,14 +3,21 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{batch, concat, heap_size},
+		column::{builder::ColumnBuilder, factory, headers::ColumnHeaders},
+	},
 };
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::params::Params;
+use reifydb_value::{
+	params::Params,
+	value::system_columns::{SystemColumn, with_system_column},
+};
 
 use crate::{
 	Result,
@@ -19,7 +26,7 @@ use crate::{
 		vm::Vm,
 		volcano::{
 			compile::compile,
-			query::{QueryContext, QueryNode, charge_query_memory, query_budget},
+			query::{QueryContext, QueryNode, charge_query_memory_bytes, query_budget},
 		},
 	},
 };
@@ -48,7 +55,7 @@ pub(crate) fn run_query_plan(
 	plan: QueryPlan,
 	params: Params,
 	symbols: &mut SymbolTable,
-) -> Result<Option<Columns>> {
+) -> Result<Option<RecordBatch>> {
 	let identity = txn.identity();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -63,36 +70,34 @@ pub(crate) fn run_query_plan(
 	let mut query_node = compile(plan, txn, context.clone());
 	query_node.initialize(txn, &context)?;
 
-	let mut all_columns: Option<Columns> = None;
+	let mut batches: Vec<RecordBatch> = Vec::new();
 	let mut charged = 0usize;
+	let mut total = 0usize;
 	let mut mutable_context = (*context).clone();
 
-	while let Some(batch) = query_node.next(txn, &mut mutable_context)? {
-		match &mut all_columns {
-			None => all_columns = Some(batch),
-			Some(existing) => existing.append_columns(batch)?,
-		}
-		if let Some(acc) = &all_columns {
-			charge_query_memory(&context.memory, &mut charged, acc)?;
-		}
+	while let Some(next) = query_node.next(txn, &mut mutable_context)? {
+		total += heap_size(&next)?;
+		batches.push(next);
+		charge_query_memory_bytes(&context.memory, &mut charged, total)?;
 	}
 
-	if all_columns.is_none() {
+	if batches.is_empty() {
 		let headers = query_node.headers().unwrap_or_else(ColumnHeaders::empty);
-		let empty_columns: Vec<ColumnWithName> = headers
-			.columns
-			.into_iter()
-			.map(|name| ColumnWithName {
-				name,
-				data: ColumnBuffer::none(0),
-			})
-			.collect();
-		let mut columns = Columns::new(empty_columns);
-		if headers.row_numbers {
-			columns.system.mark_row_numbers();
+		let mut user = Vec::new();
+		let mut system = Vec::new();
+		for name in headers.columns {
+			match SystemColumn::from_name(name.text()) {
+				Some(column) => system.push(column),
+				None => user.push(factory::none(name.text(), 0)),
+			}
 		}
-		return Ok(Some(columns));
+		let mut empty = batch(user)?;
+		for column in system {
+			let (_, array) = ColumnBuilder::with_capacity(column.ty(), 0).finish(column.name());
+			empty = with_system_column(empty, column, array)?;
+		}
+		return Ok(Some(empty));
 	}
 
-	Ok(all_columns)
+	Ok(Some(concat(&batches)?))
 }

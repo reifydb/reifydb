@@ -5,6 +5,10 @@
 //! RBCF Any column, a row Any field, and a keycode key must present the same leading kind byte and
 //! round-trip to the same value.
 
+use std::sync::Arc;
+
+use arrow_array::{LargeBinaryArray, RecordBatch};
+use arrow_schema::Schema;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	key::{deserializer::KeyDeserializer, serializer::KeySerializer},
@@ -17,9 +21,12 @@ use reifydb_value::value::{
 	constraint::TypeConstraint,
 	container::any_array::{self, any_array},
 	date::Date,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	frame::frame::Frame,
 	ordered_f64::OrderedF64,
-	value_type::ValueType,
+	value_type::{
+		ValueType,
+		field::{from_field, named},
+	},
 };
 
 fn cross_codec_values() -> Vec<Value> {
@@ -58,26 +65,16 @@ fn kind_byte_is_identical_across_codecs() {
 #[test]
 fn value_codec_and_rbcf_any_column_round_trip_identically() {
 	let values: Vec<Value> = cross_codec_values().into_iter().map(|value| Value::List(vec![value])).collect();
-	let column = FrameColumn {
-		name: "c".to_string(),
-		data: FrameColumnData::Any {
-			container: any_array(values.clone()),
-			declared_type: None,
-		},
-	};
-	let frame = Frame::new(vec![column]);
+	let (field, array) = named("c", ValueType::Any.into(), Arc::new(any_array(values.clone())));
+	let frame = Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap());
 	let bytes = encode_frames(&[frame], &EncodeOptions::fast()).unwrap();
 	let decoded = decode_frames(&bytes).unwrap();
-	match &decoded[0].columns[0].data {
-		FrameColumnData::Any {
-			container,
-			..
-		} => {
-			for (expected, actual) in values.iter().zip(any_array::values(container).iter()) {
-				assert_eq!(expected, actual, "wrapped value and its none inner type through RBCF");
-			}
-		}
-		other => panic!("expected any column, got {other:?}"),
+	let batch = &decoded[0].batch;
+	let field = batch.schema_ref().field(0);
+	assert_eq!(from_field(field).unwrap().value_type, Some(ValueType::Any), "expected any column, got {field:?}");
+	let container = batch.column(0).as_any().downcast_ref::<LargeBinaryArray>().expect("expected any column");
+	for (expected, actual) in values.iter().zip(any_array::values(container).iter()) {
+		assert_eq!(expected, actual, "wrapped value and its none inner type through RBCF");
 	}
 }
 

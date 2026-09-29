@@ -3,7 +3,9 @@
 
 use std::f64::consts::E;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::float8;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
@@ -36,8 +38,12 @@ impl<'a> Routine<FunctionContext<'a>> for Euler {
 		ValueType::Float8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::float8(vec![E]))]))
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		Ok(float8(ctx.fragment.text(), [E]))
 	}
 }
 

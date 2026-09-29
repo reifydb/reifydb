@@ -56,31 +56,27 @@ fn claim(t: &TestEngine, worker: &str, max_n: usize) -> Vec<Delivery> {
 		t.command(&format!(r#"CALL queue::claim("{worker}", "test::jobs", {max_n}, duration::seconds(60))"#));
 	let frame: &Frame = frames.first().expect("claim must always return a frame");
 
-	let column = |name: &str| {
-		frame.columns
-			.iter()
-			.find(|c| c.name == name)
-			.unwrap_or_else(|| panic!("claim must return a {name} column"))
-	};
+	let column =
+		|name: &str| frame.column(name).unwrap().unwrap_or_else(|| panic!("claim must return a {name} column"));
 	let (items, tenants, tokens, attempts) = (column("item"), column("tenant"), column("token"), column("attempt"));
 
 	(0..frame.row_count())
 		.map(|i| {
-			let item = match items.data.get_value(i) {
+			let item = match items.get_value(i) {
 				Value::Uint8(n) => n,
 				other => panic!("item must be Uint8, got {other:?}"),
 			};
 			Delivery {
 				item,
-				tenant: match tenants.data.get_value(i) {
+				tenant: match tenants.get_value(i) {
 					Value::Utf8(tenant) => tenant,
 					other => panic!("tenant must be Utf8, got {other:?}"),
 				},
-				token: match tokens.data.get_value(i) {
+				token: match tokens.get_value(i) {
 					Value::Utf8(t) => t,
 					other => panic!("token must be Utf8, got {other:?}"),
 				},
-				attempt: match attempts.data.get_value(i) {
+				attempt: match attempts.get_value(i) {
 					Value::Uint4(n) => n,
 					other => panic!("attempt must be Uint4, got {other:?}"),
 				},
@@ -312,9 +308,9 @@ fn test_a_claim_never_hands_out_an_item_whose_payload_it_cannot_read() {
 					continue;
 				}
 				idle = 0;
-				let tenants = frame.columns.iter().find(|c| c.name == "tenant").unwrap();
+				let tenants = frame.column("tenant").unwrap().unwrap();
 				for i in 0..frame.row_count() {
-					if matches!(tenants.data.get_value(i), Value::None { .. }) {
+					if matches!(tenants.get_value(i), Value::None { .. }) {
 						*missing.lock() += 1;
 					}
 				}

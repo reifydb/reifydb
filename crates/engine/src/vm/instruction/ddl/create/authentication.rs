@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_auth::error::AuthError;
 use reifydb_catalog::error::CatalogError;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -19,7 +20,7 @@ pub(crate) fn create_authentication(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateAuthenticationNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 
@@ -55,5 +56,5 @@ pub(crate) fn create_authentication(
 		row.push(("token", Value::Utf8(token)));
 	}
 
-	Ok(Columns::single_row(row))
+	single_row(row)
 }

@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -26,7 +28,7 @@ use reifydb_core::{
 	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
-	value::column::{builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_flow::{
 	error::FlowSinkError,
@@ -42,7 +44,10 @@ use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, column_view::ColumnView, datetime::DateTime, partition::Partition, row_number::RowNumber,
+		system_columns::require_row_numbers, value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -128,23 +133,28 @@ impl DurableSink for SinkTableViewOperator {
 
 impl SinkTableViewOperator {
 	#[inline]
-	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_table_view_insert(&mut self, txn: &mut DeferredTransaction, post: &Columns) -> Result<()> {
+	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn apply_table_view_insert(&mut self, txn: &mut DeferredTransaction, post: &RecordBatch) -> Result<()> {
 		let coerced = coerce_columns(post, self.view.def().columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, &self.shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[]
+		} else {
+			require_row_numbers(source)?
+		};
 
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			let (_, encoded) =
 				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) =
-					partition_of(self.view.def(), &self.partition_indices, source, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(
 					txn,
 					ObjectId::from(self.storage),
@@ -168,12 +178,12 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_table_view_update(
 		&mut self,
 		txn: &mut DeferredTransaction,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, self.view.def().columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, self.view.def().columns(), &self.runtime_context)?;
@@ -181,14 +191,19 @@ impl SinkTableViewOperator {
 		let dict_post = dictionary_encode_view_columns(txn, self.view.def(), &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
-		let row_count = source_post.row_count();
+		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, &self.shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
+			(&[][..], &[][..])
+		} else {
+			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+		};
 		for row_idx in 0..row_count {
-			let pre_row_number = source_pre.row_numbers()[row_idx];
-			let post_row_number = source_post.row_numbers()[row_idx];
+			let pre_row_number = pre_row_numbers[row_idx];
+			let post_row_number = post_row_numbers[row_idx];
 			let (_, mut post_encoded) = encode_row_at_index(
 				source_post,
 				row_idx,
@@ -199,9 +214,9 @@ impl SinkTableViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(self.view.def(), &self.partition_indices, source_pre, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source_pre, row_idx)?;
 				let (post_partition, post_values) =
-					partition_of(self.view.def(), &self.partition_indices, source_post, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source_post, row_idx)?;
 				ensure_partition_unchanged(
 					ObjectId::from(self.storage),
 					pre_partition,
@@ -303,19 +318,24 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_table_view_remove(&mut self, txn: &mut DeferredTransaction, pre: &Columns) -> Result<()> {
+	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
+	fn apply_table_view_remove(&mut self, txn: &mut DeferredTransaction, pre: &RecordBatch) -> Result<()> {
 		let coerced = coerce_columns(pre, self.view.def().columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[]
+		} else {
+			require_row_numbers(source)?
+		};
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
-					partition_of(self.view.def(), &self.partition_indices, source, row_idx);
+					partition_of(self.view.def(), &self.partition_indices, source, row_idx)?;
 				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
 			} else {
 				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
@@ -344,8 +364,8 @@ fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: Row
 pub(crate) fn dictionary_encode_view_columns(
 	txn: &mut DeferredTransaction,
 	view: &View,
-	columns: &Columns,
-) -> Result<Option<Columns>> {
+	columns: &RecordBatch,
+) -> Result<Option<RecordBatch>> {
 	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
 	{
 		let catalog = txn.catalog();
@@ -366,13 +386,15 @@ pub(crate) fn dictionary_encode_view_columns(
 		return Ok(None);
 	}
 
-	let mut encoded = columns.clone();
+	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
-		let row_count = encoded[*col_pos].len();
+		let (field, array) = &encoded[*col_pos];
+		let column = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = column.len();
 
 		let mut values: Vec<Value> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			let mut values_buf = [encoded[*col_pos].get_value(row_idx)];
+			let mut values_buf = [column.get_value(row_idx)];
 			DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
 			let [value] = values_buf;
 			values.push(value);
@@ -385,18 +407,19 @@ pub(crate) fn dictionary_encode_view_columns(
 		for outcome in &outcomes {
 			new_data.push_value(outcome.id.to_value());
 		}
-		encoded.columns[*col_pos] = new_data.finish();
+		let name = field.name().clone();
+		encoded[*col_pos] = new_data.finish(&name);
 	}
 
-	Ok(Some(encoded))
+	Ok(Some(batch(encoded)?))
 }
 
 #[inline]
 pub(crate) fn dictionary_lookup_view_columns(
 	txn: &mut DeferredTransaction,
 	view: &View,
-	columns: &Columns,
-) -> Result<Option<Columns>> {
+	columns: &RecordBatch,
+) -> Result<Option<RecordBatch>> {
 	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
 	{
 		let catalog = txn.catalog();
@@ -417,12 +440,14 @@ pub(crate) fn dictionary_lookup_view_columns(
 		return Ok(None);
 	}
 
-	let mut encoded = columns.clone();
+	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
-		let row_count = encoded[*col_pos].len();
+		let (field, array) = &encoded[*col_pos];
+		let column = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = column.len();
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
 		for row_idx in 0..row_count {
-			let value = encoded[*col_pos].get_value(row_idx);
+			let value = column.get_value(row_idx);
 			let id = txn.find_in_dictionary(dictionary, &value)?.ok_or_else(|| {
 				Error::from(FlowSinkError::DictionaryEntryNotFound {
 					dictionary_id: format!("{:?}", dictionary.id),
@@ -431,16 +456,22 @@ pub(crate) fn dictionary_lookup_view_columns(
 			})?;
 			new_data.push_value(id.to_value());
 		}
-		encoded.columns[*col_pos] = new_data.finish();
+		let name = field.name().clone();
+		encoded[*col_pos] = new_data.finish(&name);
 	}
 
-	Ok(Some(encoded))
+	Ok(Some(batch(encoded)?))
+}
+
+fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
+	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
 }
 
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
 
+	use arrow_array::UInt64Array;
 	use postcard::from_bytes;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
@@ -456,7 +487,7 @@ mod tests {
 			store::SingleVersionGet,
 		},
 		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey, row::RowKey},
-		value::column::{ColumnWithName, buffer::ColumnBuffer},
+		value::column::factory::float8,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
@@ -464,8 +495,13 @@ mod tests {
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
-			constraint::TypeConstraint, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
-			system_columns::SystemColumns, value_type::ValueType,
+			constraint::TypeConstraint,
+			container::temporal_array::datetime_array,
+			datetime::DateTime,
+			identity::IdentityId,
+			row_number::RowNumber,
+			system_columns::{SystemColumn, with_system_column},
+			value_type::ValueType,
 		},
 	};
 
@@ -507,18 +543,17 @@ mod tests {
 		)
 	}
 
-	fn one_row(v: f64, ts_nanos: i64) -> Columns {
-		Columns::with_system(
-			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::float8([v]))],
-			SystemColumns::new(
-				vec![RowNumber(1)],
-				Vec::new(),
-				vec![DateTime::from_nanos(ts_nanos)],
-				vec![DateTime::from_nanos(ts_nanos)],
-				vec![DateTime::from_nanos(ts_nanos)],
-				Vec::new(),
-			),
-		)
+	fn one_row(v: f64, ts_nanos: i64) -> RecordBatch {
+		let user = batch(vec![float8("v", [v])]).unwrap();
+		let stamp = || -> ArrayRef { Arc::new(datetime_array([DateTime::from_nanos(ts_nanos)])) };
+		let system: [(SystemColumn, ArrayRef); 4] = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))),
+			(SystemColumn::CreatedAt, stamp()),
+			(SystemColumn::UpdatedAt, stamp()),
+			(SystemColumn::Time, stamp()),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {

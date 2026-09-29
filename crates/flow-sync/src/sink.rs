@@ -3,6 +3,8 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use postcard::to_stdvec;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -26,7 +28,7 @@ use reifydb_core::{
 	key::partition::PartitionKey,
 	partition::{PartitionError, partition_col_indices},
 	row::row_shape_from_columns,
-	value::column::{builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_flow::{
 	error::FlowSinkError,
@@ -41,7 +43,10 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{Value, blob::Blob, partition::Partition, value_type::ValueType},
+	value::{
+		Value, blob::Blob, column_view::ColumnView, partition::Partition, system_columns::require_row_numbers,
+		value_type::ValueType,
+	},
 };
 
 use crate::txn::{Emit, Intern, Lookup, Rows};
@@ -105,22 +110,31 @@ impl TableSink {
 		!self.partition_indices.is_empty()
 	}
 
-	fn apply_table_view_insert<T: Rows + Emit + Lookup + Intern>(&self, txn: &mut T, post: &Columns) -> Result<()> {
+	fn apply_table_view_insert<T: Rows + Emit + Lookup + Intern>(
+		&self,
+		txn: &mut T,
+		post: &RecordBatch,
+	) -> Result<()> {
 		let coerced = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, &self.view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, &self.shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[][..]
+		} else {
+			require_row_numbers(source)?
+		};
 
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			let (_, encoded) =
 				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx);
+					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(txn, ObjectId::from(self.storage), partition, &values)?;
 				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
 			} else {
@@ -140,8 +154,8 @@ impl TableSink {
 	fn apply_table_view_update<T: Rows + Emit + Lookup + Intern>(
 		&self,
 		txn: &mut T,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
@@ -149,14 +163,19 @@ impl TableSink {
 		let dict_post = dictionary_encode_view_columns(txn, &self.view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
-		let row_count = source_post.row_count();
+		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, &self.shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
+			(&[][..], &[][..])
+		} else {
+			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+		};
 		for row_idx in 0..row_count {
-			let pre_row_number = source_pre.row_numbers()[row_idx];
-			let post_row_number = source_post.row_numbers()[row_idx];
+			let pre_row_number = pre_row_numbers[row_idx];
+			let post_row_number = post_row_numbers[row_idx];
 			let (_, mut post_encoded) = encode_row_at_index(
 				source_post,
 				row_idx,
@@ -167,9 +186,9 @@ impl TableSink {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(&self.view, &self.partition_indices, source_pre, row_idx);
+					partition_of(&self.view, &self.partition_indices, source_pre, row_idx)?;
 				let (post_partition, post_values) =
-					partition_of(&self.view, &self.partition_indices, source_post, row_idx);
+					partition_of(&self.view, &self.partition_indices, source_post, row_idx)?;
 				ensure_partition_unchanged(
 					ObjectId::from(self.storage),
 					pre_partition,
@@ -250,17 +269,26 @@ impl TableSink {
 		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
 	}
 
-	fn apply_table_view_remove<T: Rows + Emit + Lookup + Intern>(&self, txn: &mut T, pre: &Columns) -> Result<()> {
+	fn apply_table_view_remove<T: Rows + Emit + Lookup + Intern>(
+		&self,
+		txn: &mut T,
+		pre: &RecordBatch,
+	) -> Result<()> {
 		let coerced = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, &self.view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[][..]
+		} else {
+			require_row_numbers(source)?
+		};
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx);
+					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
 				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
 			} else {
 				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
@@ -279,8 +307,8 @@ impl TableSink {
 fn dictionary_encode_view_columns<T: Lookup + Intern>(
 	txn: &mut T,
 	view: &View,
-	columns: &Columns,
-) -> Result<Option<Columns>> {
+	columns: &RecordBatch,
+) -> Result<Option<RecordBatch>> {
 	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
 	for (pos, col) in view.columns().iter().enumerate() {
 		if let Some(dict_id) = col.dictionary_id {
@@ -292,25 +320,28 @@ fn dictionary_encode_view_columns<T: Lookup + Intern>(
 		return Ok(None);
 	}
 
-	let mut encoded = columns.clone();
+	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
-		let row_count = encoded[*col_pos].len();
+		let (field, array) = &encoded[*col_pos];
+		let column = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = column.len();
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
 		for row_idx in 0..row_count {
-			let value = encoded[*col_pos].get_value(row_idx);
+			let value = column.get_value(row_idx);
 			new_data.push_value(txn.intern(dictionary, &value)?.to_value());
 		}
-		encoded.columns[*col_pos] = new_data.finish();
+		let name = field.name().clone();
+		encoded[*col_pos] = new_data.finish(&name);
 	}
 
-	Ok(Some(encoded))
+	Ok(Some(batch(encoded)?))
 }
 
 fn dictionary_lookup_view_columns<T: Lookup + Intern>(
 	txn: &mut T,
 	view: &View,
-	columns: &Columns,
-) -> Result<Option<Columns>> {
+	columns: &RecordBatch,
+) -> Result<Option<RecordBatch>> {
 	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
 	for (pos, col) in view.columns().iter().enumerate() {
 		if let Some(dict_id) = col.dictionary_id {
@@ -322,12 +353,14 @@ fn dictionary_lookup_view_columns<T: Lookup + Intern>(
 		return Ok(None);
 	}
 
-	let mut encoded = columns.clone();
+	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
-		let row_count = encoded[*col_pos].len();
+		let (field, array) = &encoded[*col_pos];
+		let column = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = column.len();
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
 		for row_idx in 0..row_count {
-			let value = encoded[*col_pos].get_value(row_idx);
+			let value = column.get_value(row_idx);
 			let id = txn.find(dictionary, &value)?.ok_or_else(|| {
 				Error::from(FlowSinkError::DictionaryEntryNotFound {
 					dictionary_id: format!("{:?}", dictionary.id),
@@ -336,10 +369,15 @@ fn dictionary_lookup_view_columns<T: Lookup + Intern>(
 			})?;
 			new_data.push_value(id.to_value());
 		}
-		encoded.columns[*col_pos] = new_data.finish();
+		let name = field.name().clone();
+		encoded[*col_pos] = new_data.finish(&name);
 	}
 
-	Ok(Some(encoded))
+	Ok(Some(batch(encoded)?))
+}
+
+fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
+	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
 }
 
 fn resolve_partition_flow<T: Rows>(
@@ -372,6 +410,9 @@ fn resolve_partition_flow<T: Rows>(
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
 		row::{shape::RowFamily, table::EncodedTableRow},
@@ -393,7 +434,7 @@ mod tests {
 		partition::partition_of,
 		row::row_shape_from_columns,
 		sort::SortDirection,
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{batch::batch, column::factory},
 	};
 	use reifydb_flow::operator::sink::{
 		partition::ensure_partition_unchanged,
@@ -405,14 +446,15 @@ mod tests {
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
 		value::{
 			Value,
+			column_view::ColumnView,
 			constraint::{Constraint, TypeConstraint},
+			container::temporal_array::datetime_array,
 			datetime::DateTime,
 			dictionary::DictionaryId,
 			row_number::RowNumber,
-			system_columns::SystemColumns,
+			system_columns::{SystemColumn, row_numbers, with_system_column},
 			value_type::ValueType,
 		},
 	};
@@ -477,33 +519,26 @@ mod tests {
 		TableSink::new(OperatorId(1), view.clone(), runtime_context())
 	}
 
-	fn positions(rows: &[(u64, &str, i64)], created: DateTime, updated: DateTime) -> Columns {
+	fn positions(rows: &[(u64, &str, i64)], created: DateTime, updated: DateTime) -> RecordBatch {
 		let n = rows.len();
-		Columns::with_system(
-			vec![
-				ColumnWithName::new(
-					Fragment::internal("sym"),
-					ColumnBuffer::utf8(
-						rows.iter().map(|(_, sym, _)| sym.to_string()).collect::<Vec<_>>(),
-					),
-				),
-				ColumnWithName::new(
-					Fragment::internal("qty"),
-					ColumnBuffer::int8(rows.iter().map(|(_, _, qty)| *qty).collect::<Vec<_>>()),
-				),
-			],
-			SystemColumns::new(
-				rows.iter().map(|(row, _, _)| RowNumber(*row)).collect(),
-				Vec::new(),
-				vec![created; n],
-				vec![updated; n],
-				Vec::new(),
-				Vec::new(),
+		let user = batch(vec![
+			factory::utf8("sym", rows.iter().map(|(_, sym, _)| sym.to_string())),
+			factory::int8("qty", rows.iter().map(|(_, _, qty)| *qty)),
+		])
+		.unwrap();
+		let system: [(SystemColumn, ArrayRef); 3] = [
+			(
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from_iter_values(rows.iter().map(|(row, _, _)| *row))),
 			),
-		)
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(vec![created; n]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(vec![updated; n]))),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
-	fn inserted(rows: &[(u64, &str, i64)]) -> Columns {
+	fn inserted(rows: &[(u64, &str, i64)]) -> RecordBatch {
 		positions(rows, at_millis(10), at_millis(20))
 	}
 
@@ -517,8 +552,10 @@ mod tests {
 		(0..view.columns().len()).map(|index| shape.get_value(row, index)).collect()
 	}
 
-	fn values(columns: &Columns, position: usize) -> Vec<Value> {
-		(0..columns.row_count()).map(|row| columns[position].get_value(row)).collect()
+	fn values(columns: &RecordBatch, position: usize) -> Vec<Value> {
+		let column =
+			ColumnView::try_from((columns.column(position), columns.schema_ref().field(position))).unwrap();
+		(0..columns.num_rows()).map(|row| column.get_value(row)).collect()
 	}
 
 	fn utf8(text: &str) -> Value {
@@ -550,7 +587,7 @@ mod tests {
 			panic!("an insert must be emitted as an insert: {:?}", txn.emitted[0]);
 		};
 		assert_eq!(*emitted_view, VIEW);
-		assert_eq!(post.row_numbers(), &[RowNumber(1), RowNumber(2)]);
+		assert_eq!(row_numbers(post).unwrap(), &[RowNumber(1), RowNumber(2)]);
 		assert_eq!(values(post, 1), vec![Value::Int8(10), Value::Int8(20)]);
 	}
 
@@ -620,7 +657,7 @@ mod tests {
 			panic!("a remove must be emitted as a remove: {:?}", txn.emitted[1]);
 		};
 		assert_eq!(*emitted_view, VIEW);
-		assert_eq!(pre.row_numbers(), &[RowNumber(1)]);
+		assert_eq!(row_numbers(pre).unwrap(), &[RowNumber(1)]);
 	}
 
 	#[test]

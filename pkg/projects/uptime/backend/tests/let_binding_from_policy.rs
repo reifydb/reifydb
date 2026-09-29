@@ -7,7 +7,9 @@ use reifydb::{
 	Database, IdentityId, Value, WithSubsystem, server,
 	value::{
 		params::Params,
-		value::{duration::Duration, frame::frame::Frame, into::IntoValue, uuid::Uuid7},
+		value::{
+			column_view::ColumnView, duration::Duration, frame::frame::Frame, into::IntoValue, uuid::Uuid7,
+		},
 	},
 };
 use reifydb_uptime::migration_path;
@@ -46,7 +48,11 @@ fn new_user(db: &Database, name: &str) -> IdentityId {
 		"from system::identities filter { name == $name } map { id }",
 		params(&[("name", Value::Utf8(name.to_string()))]),
 	);
-	match r.frames.first().expect("identity frame").columns[0].data.get_value(0) {
+	let batch = &r.frames.first().expect("identity frame").batch;
+	match ColumnView::try_from((batch.column(0), batch.schema_ref().field(0)))
+		.expect("the first column reads")
+		.get_value(0)
+	{
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected identity value for {name}: {other:?}"),
 	}

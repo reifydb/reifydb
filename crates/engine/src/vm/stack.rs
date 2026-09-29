@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{internal, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::internal;
 use reifydb_evaluate::stack::Variable;
 use reifydb_value::error;
 
@@ -51,7 +52,7 @@ pub enum ControlFlow {
 	Normal,
 	Break,
 	Continue,
-	Return(Option<Columns>),
+	Return(Option<RecordBatch>),
 }
 
 impl ControlFlow {

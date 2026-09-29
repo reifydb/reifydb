@@ -17,10 +17,14 @@ reifydb-build = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }
 arrow-arith = { workspace = true }
+arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+uuid = { workspace = true }

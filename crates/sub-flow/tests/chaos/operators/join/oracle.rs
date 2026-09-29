@@ -14,7 +14,7 @@ use reifydb_testing_chaos::operator::{
 	model::Model,
 	view::{MaterializedRow, MaterializedView, OutputKey},
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
 use crate::operators::join::workload::{JoinRow, LEFT_COLUMNS, RIGHT_COLUMNS, Side};
 
@@ -24,8 +24,8 @@ use crate::operators::join::workload::{JoinRow, LEFT_COLUMNS, RIGHT_COLUMNS, Sid
 fn absent(ty: ValueType) -> Value {
 	let mut buffer = ColumnBuilder::with_capacity(ty, 1);
 	buffer.push_value(Value::none());
-	let buffer = buffer.finish();
-	buffer.get_value(0)
+	let column = buffer.finish("absent");
+	ColumnView::try_from(&column).expect("a finished column reads").get_value(0)
 }
 
 fn key_value(key: Option<i32>) -> Value {

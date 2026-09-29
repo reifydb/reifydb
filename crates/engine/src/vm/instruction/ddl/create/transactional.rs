@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{catalog::view::ViewToCreate, store::view::create::ViewStorage};
 use reifydb_core::{
 	error::diagnostic::{catalog::view_already_exists, flow::flow_transactional_not_supported},
 	interface::catalog::change::CatalogTrackViewChangeOperations,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateTransactionalViewNode};
@@ -20,19 +21,19 @@ pub(crate) fn create_transactional_view(
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateTransactionalViewNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.view.text(),
 	)? {
 		if plan.if_not_exists {
-			return Ok(Columns::single_row([
+			return single_row([
 				("id", Value::Uint8(view.id().0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("view", Value::Utf8(plan.view.text().to_string())),
 				("created", Value::Boolean(false)),
-			]));
+			]);
 		}
 
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
@@ -80,10 +81,10 @@ pub(crate) fn create_transactional_view(
 		*plan.as_clause,
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }

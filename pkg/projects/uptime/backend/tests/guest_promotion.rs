@@ -79,7 +79,7 @@ fn identity_column(db: &Database, identity: IdentityId, column: &str) -> Option<
 	if frame.row_count() == 0 {
 		return None;
 	}
-	match frame.columns.iter().find(|c| c.name == column)?.data.get_value(0) {
+	match frame.column(column).expect("the column reads")?.get_value(0) {
 		Value::Utf8(v) => Some(v.to_string()),
 		other => panic!("unexpected {column} value: {other:?}"),
 	}

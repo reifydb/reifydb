@@ -11,7 +11,12 @@ use reifydb_core::{
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, error::Error as TypeError, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	error::Error as TypeError,
+	params::Params,
+	value::{identity::IdentityId, system_columns::SystemColumn},
+};
 
 use crate::engine::StandardEngine;
 
@@ -21,6 +26,7 @@ pub struct SubscriptionContext {
 	pub identity: IdentityId,
 	pub symbols: SymbolTable,
 	pub params: Params,
+	pub named_system_columns: Vec<SystemColumn>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

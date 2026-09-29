@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	pod::EncodedPodRow,
@@ -33,7 +34,7 @@ use reifydb_core::{
 	internal_error,
 	key::catalog::IndexEntryKey,
 	partition::{partition_col_indices, partition_of, partition_values},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertTableNode;
@@ -42,7 +43,10 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value, column_view::ColumnView, identity::IdentityId, row_number::RowNumber,
+		system_columns::user_columns,
+	},
 };
 use tracing::instrument;
 
@@ -73,7 +77,7 @@ pub(crate) fn insert_table(
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
 	symbols: &mut SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let InsertTableNode {
 		input,
 		target,
@@ -112,7 +116,7 @@ pub(crate) fn insert_table(
 
 	let total_rows = validated.len();
 	if total_rows == 0 {
-		return Ok(insert_table_result(namespace.name(), &table.name, 0));
+		return insert_table_result(namespace.name(), &table.name, 0);
 	}
 
 	let row_numbers = services.catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
@@ -133,20 +137,20 @@ pub(crate) fn insert_table(
 	)?;
 
 	if let Some(returning_exprs) = &returning {
-		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
-		let columns = with_absent_pre_image(columns);
+		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
+		let columns = with_absent_pre_image(columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))
+	insert_table_result(namespace.name(), &table.name, total_rows as u64)
 }
 
 struct PkContext<'a> {
 	pk_def: &'a PrimaryKey,
 }
 
-struct ColumnView<'a> {
-	columns: &'a Columns,
+struct InputColumns<'a> {
+	columns: &'a [ColumnView<'a>],
 	column_map: &'a HashMap<&'a str, usize>,
 }
 
@@ -210,20 +214,23 @@ fn validate_and_encode_input_rows(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
-		if let Some(unknown) =
-			columns.names.iter().find(|name| !target.table.columns.iter().any(|c| c.name == name.text()))
+		if let Some((unknown, _)) = user_columns(&columns)
+			.find(|(field, _)| !target.table.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
+		let views: Vec<ColumnView<'_>> = user_columns(&columns)
+			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+			.collect::<Result<_>>()?;
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, col) in columns.iter().enumerate() {
-			column_map.insert(col.name().text(), idx);
+		for (idx, view) in views.iter().enumerate() {
+			column_map.insert(view.field.name().as_str(), idx);
 		}
-		let view = ColumnView {
-			columns: &columns,
+		let view = InputColumns {
+			columns: &views,
 			column_map: &column_map,
 		};
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 		for row_idx in 0..row_count {
 			validated.push(build_insert_table_row(services, txn, target, shape, &view, context, row_idx)?);
 		}
@@ -237,7 +244,7 @@ fn build_insert_table_row(
 	txn: &mut Transaction<'_>,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
-	view: &ColumnView<'_>,
+	view: &InputColumns<'_>,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
@@ -254,7 +261,7 @@ fn build_insert_table_row(
 		let column_ident = view
 			.column_map
 			.get(table_column.name.as_str())
-			.map(|&idx| view.columns.name_at(idx).clone())
+			.map(|&idx| Fragment::internal(view.columns[idx].field.name()))
 			.unwrap_or_else(|| Fragment::internal(table_column.name.clone()));
 		let resolved_column = ResolvedColumn::new(
 			column_ident.clone(),
@@ -342,8 +349,8 @@ fn write_insert_table_pk_index(
 }
 
 #[inline]
-fn insert_table_result(namespace: &str, table: &str, inserted: u64) -> Columns {
-	Columns::single_row([
+fn insert_table_result(namespace: &str, table: &str, inserted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),
 		("inserted", Value::Uint8(inserted)),

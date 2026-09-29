@@ -132,8 +132,8 @@ impl<'a> BorrowedColumns<'a> {
 		if self.extern_c.row_numbers.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
-			// SAFETY: `row_numbers` is non-null here and a non-empty system sidecar holds exactly
-			// `row_count` entries (`Columns::with_system` asserts it); `RowNumber` is
+			// SAFETY: `row_numbers` is non-null here and the host marshal takes it only from the batch's
+			// `#rownum` column, which a RecordBatch holds at exactly `row_count` entries; `RowNumber` is
 			// `repr(transparent)` over `u64`.
 			unsafe { slice::from_raw_parts(self.extern_c.row_numbers, self.extern_c.row_count) }
 		}
@@ -143,9 +143,9 @@ impl<'a> BorrowedColumns<'a> {
 		if self.extern_c.time.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
-			// SAFETY: `time` is non-null here and a non-empty system sidecar holds exactly `row_count`
-			// entries (`Columns::with_system` asserts it); `DateTime` is `repr(transparent)` over
-			// `i64`.
+			// SAFETY: `time` is non-null here and the host marshal takes it only from the batch's `#time`
+			// column with no nones, which a RecordBatch holds at exactly `row_count` entries; `DateTime`
+			// is `repr(transparent)` over `i64`.
 			unsafe { slice::from_raw_parts(self.extern_c.time, self.extern_c.row_count) }
 		}
 	}

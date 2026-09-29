@@ -13,18 +13,20 @@ use arrow_array::{
 };
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, i256};
 use arrow_ord::cmp;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::CoreError,
-	value::column::{ColumnWithName, buffer::ColumnBuffer},
+	value::column::{factory::none_typed, nulls::split_nulls},
 };
 use reifydb_value::{
 	error::{Diagnostic, Error, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	return_error,
 	value::{
+		column_view::{ColumnView, ViewData},
 		constraint::{precision::Precision, scale::Scale},
 		container::{
-			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalArray},
+			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalView},
 			fixed_array,
 			wide_int_array::{WideInt, wide_array, wides},
 		},
@@ -33,7 +35,7 @@ use reifydb_value::{
 	},
 };
 
-use super::option::is_all_none;
+use super::{logic::bool_column, option::is_all_none};
 use crate::Result;
 
 pub trait CompareOp {
@@ -249,14 +251,14 @@ fn wide_unary<W: WideInt, T: ArrowPrimitiveType>(
 	array: &FixedSizeBinaryArray,
 	f: impl Fn(W) -> T::Native,
 ) -> PrimitiveArray<T> {
-	PrimitiveArray::new(wides::<W>(array).into_iter().map(f).collect(), array.nulls().cloned())
+	PrimitiveArray::new(wides::<W>(array).into_iter().map(f).collect(), array.logical_nulls())
 }
 
 fn to_wide<T: ArrowPrimitiveType, W: WideInt>(
 	array: &PrimitiveArray<T>,
 	f: impl Fn(T::Native) -> W,
 ) -> FixedSizeBinaryArray {
-	fixed_array::attach_nulls(wide_array(array.values().iter().map(|&v| f(v))), array.nulls().cloned())
+	fixed_array::attach_nulls(wide_array(array.values().iter().map(|&v| f(v))), array.logical_nulls())
 }
 
 macro_rules! widen {
@@ -265,73 +267,70 @@ macro_rules! widen {
 	};
 }
 
-fn cast_to(column: &ColumnBuffer, target: &ValueType) -> ArrayRef {
-	if column.get_type().inner_type() == target {
-		return column.to_array_ref();
+fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Result<ArrayRef> {
+	let view = ColumnView::try_from(column)?;
+	if view.get_type().inner_type() == target {
+		return Ok(column.1.clone());
 	}
-	match (target, column) {
-		(ValueType::Float8, ColumnBuffer::Float4(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int1(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int2(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int4(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int8(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Int16(a)) => {
-			Arc::new(wide_unary::<i128, Float64Type>(a, |v| v as f64))
-		}
-		(ValueType::Float8, ColumnBuffer::Uint1(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Uint2(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Uint4(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Uint8(a)) => widen!(a, Float64Type, |v| v as f64),
-		(ValueType::Float8, ColumnBuffer::Uint16(a)) => {
-			Arc::new(wide_unary::<u128, Float64Type>(a, |v| v as f64))
-		}
-		(ValueType::Int2, ColumnBuffer::Int1(a)) => widen!(a, Int16Type, |v| v as i16),
-		(ValueType::Int2, ColumnBuffer::Uint1(a)) => widen!(a, Int16Type, |v| v as i16),
-		(ValueType::Int4, ColumnBuffer::Int1(a)) => widen!(a, Int32Type, |v| v as i32),
-		(ValueType::Int4, ColumnBuffer::Int2(a)) => widen!(a, Int32Type, |v| v as i32),
-		(ValueType::Int4, ColumnBuffer::Uint1(a)) => widen!(a, Int32Type, |v| v as i32),
-		(ValueType::Int4, ColumnBuffer::Uint2(a)) => widen!(a, Int32Type, |v| v as i32),
-		(ValueType::Int8, ColumnBuffer::Int1(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Int8, ColumnBuffer::Int2(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Int8, ColumnBuffer::Int4(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Int8, ColumnBuffer::Uint1(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Int8, ColumnBuffer::Uint2(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Int8, ColumnBuffer::Uint4(a)) => widen!(a, Int64Type, |v| v as i64),
-		(ValueType::Uint2, ColumnBuffer::Uint1(a)) => widen!(a, UInt16Type, |v| v as u16),
-		(ValueType::Uint4, ColumnBuffer::Uint1(a)) => widen!(a, UInt32Type, |v| v as u32),
-		(ValueType::Uint4, ColumnBuffer::Uint2(a)) => widen!(a, UInt32Type, |v| v as u32),
-		(ValueType::Uint8, ColumnBuffer::Uint1(a)) => widen!(a, UInt64Type, |v| v as u64),
-		(ValueType::Uint8, ColumnBuffer::Uint2(a)) => widen!(a, UInt64Type, |v| v as u64),
-		(ValueType::Uint8, ColumnBuffer::Uint4(a)) => widen!(a, UInt64Type, |v| v as u64),
-		(ValueType::Int16, ColumnBuffer::Int1(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Int2(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Int4(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Int8(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Uint1(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Uint2(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Uint4(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Int16, ColumnBuffer::Uint8(a)) => Arc::new(to_wide(a, |v| v as i128)),
-		(ValueType::Uint16, ColumnBuffer::Uint1(a)) => Arc::new(to_wide(a, |v| v as u128)),
-		(ValueType::Uint16, ColumnBuffer::Uint2(a)) => Arc::new(to_wide(a, |v| v as u128)),
-		(ValueType::Uint16, ColumnBuffer::Uint4(a)) => Arc::new(to_wide(a, |v| v as u128)),
-		(ValueType::Uint16, ColumnBuffer::Uint8(a)) => Arc::new(to_wide(a, |v| v as u128)),
-		(ValueType::Float8, ColumnBuffer::Decimal(a)) => family_to_float(a),
+	Ok(match (target, &view.data) {
+		(ValueType::Float8, ViewData::Float4(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Int1(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Int2(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Int4(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Int8(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Int16(a)) => Arc::new(wide_unary::<i128, Float64Type>(a, |v| v as f64)),
+		(ValueType::Float8, ViewData::Uint1(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Uint2(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Uint4(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Uint8(a)) => widen!(a, Float64Type, |v| v as f64),
+		(ValueType::Float8, ViewData::Uint16(a)) => Arc::new(wide_unary::<u128, Float64Type>(a, |v| v as f64)),
+		(ValueType::Int2, ViewData::Int1(a)) => widen!(a, Int16Type, |v| v as i16),
+		(ValueType::Int2, ViewData::Uint1(a)) => widen!(a, Int16Type, |v| v as i16),
+		(ValueType::Int4, ViewData::Int1(a)) => widen!(a, Int32Type, |v| v as i32),
+		(ValueType::Int4, ViewData::Int2(a)) => widen!(a, Int32Type, |v| v as i32),
+		(ValueType::Int4, ViewData::Uint1(a)) => widen!(a, Int32Type, |v| v as i32),
+		(ValueType::Int4, ViewData::Uint2(a)) => widen!(a, Int32Type, |v| v as i32),
+		(ValueType::Int8, ViewData::Int1(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Int8, ViewData::Int2(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Int8, ViewData::Int4(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Int8, ViewData::Uint1(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Int8, ViewData::Uint2(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Int8, ViewData::Uint4(a)) => widen!(a, Int64Type, |v| v as i64),
+		(ValueType::Uint2, ViewData::Uint1(a)) => widen!(a, UInt16Type, |v| v as u16),
+		(ValueType::Uint4, ViewData::Uint1(a)) => widen!(a, UInt32Type, |v| v as u32),
+		(ValueType::Uint4, ViewData::Uint2(a)) => widen!(a, UInt32Type, |v| v as u32),
+		(ValueType::Uint8, ViewData::Uint1(a)) => widen!(a, UInt64Type, |v| v as u64),
+		(ValueType::Uint8, ViewData::Uint2(a)) => widen!(a, UInt64Type, |v| v as u64),
+		(ValueType::Uint8, ViewData::Uint4(a)) => widen!(a, UInt64Type, |v| v as u64),
+		(ValueType::Int16, ViewData::Int1(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Int2(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Int4(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Int8(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Uint1(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Uint2(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Uint4(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Int16, ViewData::Uint8(a)) => Arc::new(to_wide(a, |v| v as i128)),
+		(ValueType::Uint16, ViewData::Uint1(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ViewData::Uint2(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ViewData::Uint4(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Uint16, ViewData::Uint8(a)) => Arc::new(to_wide(a, |v| v as u128)),
+		(ValueType::Float8, ViewData::Decimal(a)) => family_to_float(a),
 		(
 			ValueType::Decimal {
 				precision,
 				scale,
 			},
 			_,
-		) => family_array(column, *precision, *scale),
+		) => family_array(&column.1, &view, *precision, *scale),
 		_ => unreachable!(),
-	}
+	})
 }
 
-fn family_to_float(array: &DecimalArray) -> ArrayRef {
+fn family_to_float(array: &DecimalView) -> ArrayRef {
 	let divisor = 10f64.powi(i32::from(array.scale().value()));
 	match array {
-		DecimalArray::Decimal128(a) => widen!(a, Float64Type, |v| v as f64 / divisor),
-		DecimalArray::Decimal256(a) => widen!(a, Float64Type, |v| i256_to_f64(v) / divisor),
+		DecimalView::Decimal128(a) => widen!(a, Float64Type, |v| v as f64 / divisor),
+		DecimalView::Decimal256(a) => widen!(a, Float64Type, |v| i256_to_f64(v) / divisor),
 	}
 }
 
@@ -355,9 +354,9 @@ fn upscale_or_beyond(value: i256, by: u8) -> i256 {
 	})
 }
 
-fn family_scale(column: &ColumnBuffer) -> u8 {
-	match column {
-		ColumnBuffer::Decimal(a) => a.scale().value(),
+fn family_scale(view: &ColumnView) -> u8 {
+	match &view.data {
+		ViewData::Decimal(a) => a.scale().value(),
 		_ => 0,
 	}
 }
@@ -374,49 +373,49 @@ macro_rules! rescale256 {
 	};
 }
 
-fn family_array(column: &ColumnBuffer, precision: Precision, scale: Scale) -> ArrayRef {
+fn family_array(column: &ArrayRef, view: &ColumnView, precision: Precision, scale: Scale) -> ArrayRef {
 	let data_type = decimal_array::data_type(precision, scale);
-	if let ColumnBuffer::Decimal(a) = column
+	if let ViewData::Decimal(a) = &view.data
 		&& a.data_type() == &data_type
 	{
-		return column.to_array_ref();
+		return column.clone();
 	}
-	let by = scale.value() - family_scale(column);
+	let by = scale.value() - family_scale(view);
 	if precision.value() <= DECIMAL128_MAX_PRECISION {
 		let factor = 10i128.pow(u32::from(by));
-		let array = match column {
-			ColumnBuffer::Int1(a) => rescale128!(a, factor),
-			ColumnBuffer::Int2(a) => rescale128!(a, factor),
-			ColumnBuffer::Int4(a) => rescale128!(a, factor),
-			ColumnBuffer::Int8(a) => rescale128!(a, factor),
-			ColumnBuffer::Uint1(a) => rescale128!(a, factor),
-			ColumnBuffer::Uint2(a) => rescale128!(a, factor),
-			ColumnBuffer::Uint4(a) => rescale128!(a, factor),
-			ColumnBuffer::Uint8(a) => rescale128!(a, factor),
-			ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => rescale128!(a, factor),
+		let array = match &view.data {
+			ViewData::Int1(a) => rescale128!(a, factor),
+			ViewData::Int2(a) => rescale128!(a, factor),
+			ViewData::Int4(a) => rescale128!(a, factor),
+			ViewData::Int8(a) => rescale128!(a, factor),
+			ViewData::Uint1(a) => rescale128!(a, factor),
+			ViewData::Uint2(a) => rescale128!(a, factor),
+			ViewData::Uint4(a) => rescale128!(a, factor),
+			ViewData::Uint8(a) => rescale128!(a, factor),
+			ViewData::Decimal(DecimalView::Decimal128(a)) => rescale128!(a, factor),
 			_ => unreachable!(),
 		};
 		Arc::new(array.with_data_type(data_type))
 	} else {
-		let array = match column {
-			ColumnBuffer::Int1(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Int2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Int4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Int8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Int16(a) => {
+		let array = match &view.data {
+			ViewData::Int1(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Int2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Int4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Int8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Int16(a) => {
 				wide_unary::<i128, Decimal256Type>(a, |v| upscale_or_beyond(i256::from_i128(v), by))
 			}
-			ColumnBuffer::Uint1(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Uint2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Uint4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Uint8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
-			ColumnBuffer::Uint16(a) => {
+			ViewData::Uint1(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Uint2(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Uint4(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Uint8(a) => rescale256!(a, by, |v| i256::from_i128(i128::from(v))),
+			ViewData::Uint16(a) => {
 				wide_unary::<u128, Decimal256Type>(a, |v| upscale_or_beyond(i256::from_parts(v, 0), by))
 			}
-			ColumnBuffer::Decimal(DecimalArray::Decimal128(a)) => {
+			ViewData::Decimal(DecimalView::Decimal128(a)) => {
 				rescale256!(a, by, |v| i256::from_i128(v))
 			}
-			ColumnBuffer::Decimal(DecimalArray::Decimal256(a)) => rescale256!(a, by, |v| v),
+			ViewData::Decimal(DecimalView::Decimal256(a)) => rescale256!(a, by, |v| v),
 			_ => unreachable!(),
 		};
 		Arc::new(array.with_data_type(data_type))
@@ -435,15 +434,15 @@ where
 	let (values, nulls) = match (l.len(), r.len()) {
 		(1, n) if n != 1 => {
 			let fixed = l[0].into();
-			(pack_each(r, len, |v| Op::float(fixed, v.into())), right.nulls().cloned())
+			(pack_each(r, len, |v| Op::float(fixed, v.into())), right.logical_nulls())
 		}
 		(n, 1) if n != 1 => {
 			let fixed = r[0].into();
-			(pack_each(l, len, |v| Op::float(v.into(), fixed)), left.nulls().cloned())
+			(pack_each(l, len, |v| Op::float(v.into(), fixed)), left.logical_nulls())
 		}
 		_ => (
 			pack_pairs(l, r, len, |a, b| Op::float(a.into(), b.into())),
-			NullBuffer::union(left.nulls(), right.nulls()),
+			NullBuffer::union(left.logical_nulls().as_ref(), right.logical_nulls().as_ref()),
 		),
 	};
 	BooleanArray::new(values, nulls)
@@ -486,31 +485,32 @@ pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) ->
 }
 
 pub fn compare_columns<Op: CompareOp>(
-	left: &ColumnWithName,
-	right: &ColumnWithName,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, ValueType, ValueType) -> Diagnostic,
-) -> Result<ColumnWithName> {
-	let len = match (left.data().len(), right.data().len()) {
+) -> Result<(FieldRef, ArrayRef)> {
+	let len = match (left.1.len(), right.1.len()) {
 		(l, r) if l == r => l,
 		(1, r) => r,
 		(l, 1) => l,
 		(l, r) => return Err(length_mismatch(l, r, &fragment)),
 	};
-	let (left_data, left_nulls) = left.data().clone().split_nulls();
-	let (right_data, right_nulls) = right.data().clone().split_nulls();
-	if left.data().is_untyped_none() || right.data().is_untyped_none() {
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
+	let (left_data, left_nulls) = split_nulls(left.clone())?;
+	let (right_data, right_nulls) = split_nulls(right.clone())?;
+	if ColumnView::try_from(left)?.is_untyped_none() || ColumnView::try_from(right)?.is_untyped_none() {
+		return Ok(none_typed(fragment.text(), ValueType::Boolean, len));
 	}
-	let (left_type, right_type) = (left_data.get_type(), right_data.get_type());
+	let (left_type, right_type) =
+		(ColumnView::try_from(&left_data)?.get_type(), ColumnView::try_from(&right_data)?.get_type());
 	let Some(target) = compare_target(&left_type, &right_type) else {
 		return_error!(error_fn(fragment, left_type, right_type))
 	};
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
+		return Ok(none_typed(fragment.text(), ValueType::Boolean, len));
 	}
-	let left_array = cast_to(left.data(), &target);
-	let right_array = cast_to(right.data(), &target);
+	let left_array = cast_to(left, &target)?;
+	let right_array = cast_to(right, &target)?;
 	let result = match target {
 		ValueType::Float4 => {
 			compare_floats::<Op, Float32Type>(left_array.as_primitive(), right_array.as_primitive(), len)
@@ -520,7 +520,7 @@ pub fn compare_columns<Op: CompareOp>(
 		}
 		_ => kernel_compare::<Op>(left_array, right_array)?,
 	};
-	Ok(ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::Bool(result)))
+	Ok(bool_column(fragment.text(), result, left.0.is_nullable() || right.0.is_nullable()))
 }
 
 fn kernel_compare<Op: CompareOp>(left_array: ArrayRef, right_array: ArrayRef) -> Result<BooleanArray> {

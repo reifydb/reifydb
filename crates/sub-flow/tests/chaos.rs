@@ -10,11 +10,11 @@ mod operators;
 
 use std::collections::BTreeSet;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::change::{Change, Diff},
 	row::Row,
-	value::column::columns::Columns,
 };
 use reifydb_flow_async::operator::HostOperator;
 use reifydb_testing_chaos::{
@@ -26,7 +26,14 @@ use reifydb_testing_chaos::{
 	},
 };
 use reifydb_testing_macro::chaos_test;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::value::{
+	Value,
+	column_view::ColumnView,
+	datetime::DateTime,
+	duration::Duration,
+	row_number::RowNumber,
+	system_columns::{column_view, row_numbers, user_columns},
+};
 
 use crate::{
 	framework::{generator, harness::Harness},
@@ -580,8 +587,11 @@ fn an_append_operator_can_be_built_and_driven() {
 
 	let out = harness.apply(workload.insert(&[first, second])).expect("apply must succeed");
 	assert_eq!(out.diffs.len(), 2, "two inputs cannot share a diff, so one row from each is two diffs");
-	let numbers: Vec<RowNumber> =
-		out.diffs.iter().flat_map(|diff| diff.post().unwrap().row_numbers().to_vec()).collect();
+	let numbers: Vec<RowNumber> = out
+		.diffs
+		.iter()
+		.flat_map(|diff| row_numbers(diff.post().unwrap()).expect("#rownum").to_vec())
+		.collect();
 	assert_ne!(
 		numbers[0], numbers[1],
 		"row 1 on two different inputs is two unrelated rows and must not collapse onto one output row"
@@ -778,12 +788,15 @@ fn the_operator_emits_the_value_widths_the_oracle_renders() {
 			.expect("apply must succeed");
 
 		let post = out.diffs.iter().next().and_then(|diff| diff.post()).expect("one row is one aggregate row");
-		let names: Vec<String> = post.names.iter().map(|name| name.text().to_string()).collect();
+		let names: Vec<String> = user_columns(post).map(|(field, _)| field.name().to_string()).collect();
 		let idx = names.iter().position(|name| name == agg.column()).unwrap_or_else(|| {
 			panic!("{} must publish a {} column, got {names:?}", agg.label(), agg.column())
 		});
 
-		let emitted = post.columns[idx].get_value(0);
+		let emitted = column_view(post, &names[idx])
+			.expect("the column reads")
+			.expect("the named column")
+			.get_value(0);
 		let rendered = agg.fold(&[7]);
 		assert_eq!(
 			std::mem::discriminant(&emitted),
@@ -982,7 +995,7 @@ fn the_rowwise_operators_emit_what_their_oracles_render() {
 			panic!("{} must publish a row that passes, got {:?}", shape.label(), out.diffs)
 		});
 
-		let emitted: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
+		let emitted: Vec<Value> = user_values(post, 0);
 		assert_eq!(
 			emitted,
 			shape.render(&row),
@@ -1035,8 +1048,8 @@ fn a_rowwise_update_carries_the_previous_row_as_its_pre() {
 			panic!("{} must publish one update, got {:?}", shape.label(), out.diffs);
 		};
 
-		let emitted_pre: Vec<Value> = pre.columns.iter().map(|column| column.get_value(0)).collect();
-		let emitted_post: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
+		let emitted_pre: Vec<Value> = user_values(pre, 0);
+		let emitted_post: Vec<Value> = user_values(post, 0);
 		assert_eq!(
 			emitted_pre,
 			shape.render(&before),
@@ -1481,7 +1494,7 @@ fn a_distinct_operator_publishes_one_row_per_key_and_promotes_on_retraction() {
 		.diffs
 		.iter()
 		.filter_map(|diff| diff.post())
-		.flat_map(|post| (0..post.row_count()).map(|i| payload(post, i)).collect::<Vec<_>>())
+		.flat_map(|post| (0..post.num_rows()).map(|i| payload(post, i)).collect::<Vec<_>>())
 		.collect();
 	assert_eq!(
 		published.last(),
@@ -1516,16 +1529,24 @@ fn a_distinct_operator_publishes_one_row_per_key_and_promotes_on_retraction() {
 
 /// The payload column of one row of a `Columns`, looked up by name so a change in column order cannot
 /// make an assertion read a different column and still pass.
-fn payload(columns: &Columns, idx: usize) -> i64 {
-	let names: Vec<String> = columns.names.iter().map(|name| name.text().to_string()).collect();
+fn payload(columns: &RecordBatch, idx: usize) -> i64 {
+	let names: Vec<String> = user_columns(columns).map(|(field, _)| field.name().to_string()).collect();
 	let at = names
 		.iter()
 		.position(|name| name == "v")
 		.unwrap_or_else(|| panic!("the published row must carry the payload column, got {names:?}"));
-	match columns.columns[at].get_value(idx) {
+	match column_view(columns, &names[at]).expect("the payload reads").expect("the payload column").get_value(idx) {
 		Value::Int8(v) => v,
 		other => panic!("the payload must be an int8, got {other:?}"),
 	}
+}
+
+fn user_values(columns: &RecordBatch, row: usize) -> Vec<Value> {
+	user_columns(columns)
+		.map(|(field, array)| {
+			ColumnView::try_from((array, field.as_ref())).expect("a user column reads").get_value(row)
+		})
+		.collect()
 }
 
 #[test]
@@ -2062,7 +2083,10 @@ fn the_percentile_arm_asks_the_operator_for_the_median_at_the_oracle_accuracy() 
 	let out = harness.apply(workload.insert(&rows)).expect("apply must succeed");
 
 	let post = out.diffs.iter().next_back().and_then(|diff| diff.post()).expect("one group is one aggregate row");
-	let total = post.column("total").expect("the percentile arm publishes total").data().get_value(0);
+	let total = column_view(post, "total")
+		.expect("the total column reads")
+		.expect("the percentile arm publishes total")
+		.get_value(0);
 	assert_eq!(total, Agg::Percentile.fold(&values), "the operator must answer the arm's own p and accuracy");
 	assert_eq!(total, percentile::bucketed(50), "p 0.5 over 1 to 100 is rank 50; p 0.49 or 0.51 reads 49 or 51");
 }
@@ -2093,9 +2117,9 @@ fn a_percentile_window_publishes_its_total_where_the_projection_reads_it() {
 		let out = harness.apply(change).expect("apply must succeed");
 
 		let post = out.diffs.iter().next_back().and_then(|diff| diff.post()).expect("one window is one row");
-		let names: Vec<String> = post.names.iter().map(|name| name.text().to_string()).collect();
+		let names: Vec<String> = user_columns(post).map(|(field, _)| field.name().to_string()).collect();
 		assert_eq!(names[..2], ["g", "total"], "{fold:?} must publish g then total, got {names:?}");
-		assert_eq!(post.columns[1].get_value(0), fold.apply(&values), "{fold:?} total");
+		assert_eq!(user_values(post, 0)[1], fold.apply(&values), "{fold:?} total");
 	}
 }
 
@@ -2106,9 +2130,9 @@ fn totals_and_mins(change: &Change) -> Vec<(Value, Value)> {
 		.filter_map(|diff| diff.post())
 		.map(|post| {
 			let cell = |name: &str| {
-				post.column(name)
+				column_view(post, name)
+					.expect("the window row reads")
 					.unwrap_or_else(|| panic!("the window row has no column {name}"))
-					.data()
 					.get_value(0)
 			};
 			(cell("total"), cell("lo"))

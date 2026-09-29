@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use dashmap::DashMap;
 use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
 use reifydb_column::{compress::Compressor, snapshot::ColumnBlock};
@@ -14,7 +15,6 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -202,7 +202,7 @@ impl TableMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		table: &Table,
 		context: &Arc<QueryContext>,
-	) -> Result<Vec<Columns>> {
+	) -> Result<Vec<RecordBatch>> {
 		let mut tx: Transaction<'_> = query_txn.into();
 		let resolved = self.engine.catalog().resolve_table(&mut tx, table.id)?;
 		let mut scan = TableScanNode::new(resolved, None, Arc::clone(context), &mut tx)?;
@@ -219,7 +219,7 @@ impl TableMaterializationActor {
 	fn build_column_block(
 		&self,
 		table: &Table,
-		batches: Vec<Columns>,
+		batches: Vec<RecordBatch>,
 		version: CommitVersion,
 	) -> Result<ColumnBlock> {
 		let mut schema: Vec<(String, ValueType)> =

@@ -5,9 +5,17 @@ use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	json::{none_marker, wire_type::to_json as type_to_json},
 };
+use reifydb_core::value::batch::views;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{Value, diff_type::DiffType, frame::frame::Frame, system_columns::SystemColumn, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		diff_type::DiffType,
+		frame::frame::Frame,
+		system_columns::{SystemColumn, row_numbers},
+		value_type::ValueType,
+	},
 };
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
@@ -26,33 +34,20 @@ pub struct ResolvedResponse {
 }
 
 pub fn resolve_change_json(frames: Vec<Frame>) -> Result<ResolvedResponse, String> {
-	let envelopes: Vec<JsonValue> = frames.iter().map(change_envelope).collect();
+	let envelopes: Vec<JsonValue> = frames.iter().map(change_envelope).collect::<Result<_, String>>()?;
 	Ok(json_response(json_to_string(&envelopes).map_err(|e| e.to_string())?))
 }
 
-fn change_envelope(frame: &Frame) -> JsonValue {
-	let row_count = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
-	let row_numbers = frame.row_numbers();
-	let rows: Vec<JsonValue> = (0..row_count)
-		.map(|i| {
-			let mut obj = Map::new();
-			if let Some(rn) = row_numbers.get(i) {
-				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
-			}
-			for col in frame.iter() {
-				obj.insert(col.name.clone(), row_value(&col.data.get_type(), col.data.get_value(i)));
-			}
-			JsonValue::Object(obj)
-		})
-		.collect();
+fn change_envelope(frame: &Frame) -> Result<JsonValue, String> {
+	let rows = frame_json_rows(frame)?;
 
 	let mut envelope = Map::new();
 	if let Some(op) = frame.op {
 		envelope.insert("op".to_string(), JsonValue::from(DiffType::as_u8(op)));
 	}
-	envelope.insert("types".to_string(), frame_types(frame));
+	envelope.insert("types".to_string(), frame_types(frame)?);
 	envelope.insert("rows".to_string(), JsonValue::Array(rows));
-	JsonValue::Object(envelope)
+	Ok(JsonValue::Object(envelope))
 }
 
 pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<ResolvedResponse, String> {
@@ -62,10 +57,10 @@ pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<Resolve
 
 	if has_body_column(&frames) {
 		let frame = frames.into_iter().next().unwrap();
-		return Ok(json_response(render_body_column(frame, unwrap)));
+		return Ok(json_response(render_body_column(frame, unwrap)?));
 	}
 
-	Ok(json_response(render_frame_rows(&frames, unwrap)))
+	Ok(json_response(render_frame_rows(&frames, unwrap)?))
 }
 
 #[inline]
@@ -78,25 +73,24 @@ fn json_response(body: String) -> ResolvedResponse {
 
 #[inline]
 fn has_body_column(frames: &[Frame]) -> bool {
-	frames.first().map(|f| f.columns.iter().any(|c| c.name == "body")).unwrap_or(false)
+	frames.first().map(|f| f.batch.schema_ref().column_with_name("body").is_some()).unwrap_or(false)
 }
 
 #[inline]
-fn render_body_column(frame: Frame, unwrap: bool) -> String {
-	let body_col_idx = frame.columns.iter().position(|c| c.name == "body").unwrap();
-	let body_col = &frame.columns[body_col_idx];
+fn render_body_column(frame: Frame, unwrap: bool) -> Result<String, String> {
+	let body_col = frame.try_column("body").map_err(|e| e.to_string())?;
 
-	let row_count = body_col.data.len();
-	if body_col.data.is_utf8() {
-		let values: Vec<String> = (0..row_count).map(|i| body_col.data.as_string(i)).collect();
+	let row_count = body_col.len();
+	if body_col.is_utf8() {
+		let values: Vec<String> = (0..row_count).map(|i| body_col.as_string(i)).collect();
 		if unwrap || values.len() == 1 {
-			values.into_iter().next().unwrap()
+			Ok(values.into_iter().next().unwrap())
 		} else {
-			format!("[{}]", values.join(", "))
+			Ok(format!("[{}]", values.join(", ")))
 		}
 	} else {
 		let json_values: Vec<JsonValue> =
-			(0..row_count).map(|i| body_col.data.get_value(i).to_json_value()).collect();
+			(0..row_count).map(|i| body_col.get_value(i).to_json_value()).collect();
 		reifydb_assertions! {
 			let len = json_values.len();
 			assert!(
@@ -107,9 +101,9 @@ fn render_body_column(frame: Frame, unwrap: bool) -> String {
 			);
 		}
 		if unwrap {
-			json_to_string(&json_values[0]).unwrap()
+			Ok(json_to_string(&json_values[0]).unwrap())
 		} else {
-			json_to_string(&json_values).unwrap()
+			Ok(json_to_string(&json_values).unwrap())
 		}
 	}
 }
@@ -140,20 +134,26 @@ fn row_value(column_type: &ValueType, value: Value) -> JsonValue {
 	}
 }
 
-fn frame_types(frame: &Frame) -> JsonValue {
+fn frame_types(frame: &Frame) -> Result<JsonValue, String> {
 	let mut types = Map::new();
-	for col in frame.iter() {
-		types.insert(col.name.clone(), type_to_json(&col.data.get_type()));
+	for view in column_views(frame)? {
+		types.insert(view.field.name().clone(), type_to_json(&view.get_type()));
 	}
-	JsonValue::Object(types)
+	Ok(JsonValue::Object(types))
+}
+
+fn column_views(frame: &Frame) -> Result<Vec<ColumnView<'_>>, String> {
+	let mut columns = views(&frame.batch).map_err(|e| e.to_string())?;
+	columns.retain(|view| view.field.name() != SystemColumn::RowNumbers.name());
+	Ok(columns)
 }
 
 #[inline]
-fn render_frame_rows(frames: &[Frame], unwrap: bool) -> String {
-	let json_frames = frames_to_json_rows(frames);
+fn render_frame_rows(frames: &[Frame], unwrap: bool) -> Result<String, String> {
+	let json_frames = frames_to_json_rows(frames)?;
 
 	if unwrap && json_frames.len() == 1 && json_frames[0].len() == 1 {
-		return json_to_string(&json_frames[0][0]).unwrap();
+		return Ok(json_to_string(&json_frames[0][0]).unwrap());
 	}
 
 	let envelopes: Vec<JsonValue> = frames
@@ -161,37 +161,31 @@ fn render_frame_rows(frames: &[Frame], unwrap: bool) -> String {
 		.zip(json_frames)
 		.map(|(frame, rows)| {
 			let mut envelope = Map::new();
-			envelope.insert("types".to_string(), frame_types(frame));
+			envelope.insert("types".to_string(), frame_types(frame)?);
 			envelope.insert("rows".to_string(), JsonValue::Array(rows));
-			JsonValue::Object(envelope)
+			Ok(JsonValue::Object(envelope))
 		})
-		.collect();
-	json_to_string(&envelopes).unwrap()
+		.collect::<Result<_, String>>()?;
+	Ok(json_to_string(&envelopes).unwrap())
 }
 
-fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<JsonValue>> {
-	frames.iter()
-		.map(|frame| {
-			let row_count = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
-			let row_numbers = frame.row_numbers();
-			(0..row_count)
-				.map(|i| {
-					let mut obj = Map::new();
-					if let Some(rn) = row_numbers.get(i) {
-						obj.insert(
-							SystemColumn::RowNumbers.name().to_string(),
-							JsonValue::from(rn.value()),
-						);
-					}
-					for col in frame.iter() {
-						obj.insert(
-							col.name.clone(),
-							row_value(&col.data.get_type(), col.data.get_value(i)),
-						);
-					}
-					JsonValue::Object(obj)
-				})
-				.collect()
+fn frames_to_json_rows(frames: &[Frame]) -> Result<Vec<Vec<JsonValue>>, String> {
+	frames.iter().map(frame_json_rows).collect()
+}
+
+fn frame_json_rows(frame: &Frame) -> Result<Vec<JsonValue>, String> {
+	let numbers = row_numbers(&frame.batch).map_err(|e| e.to_string())?;
+	let columns = column_views(frame)?;
+	Ok((0..frame.batch.num_rows())
+		.map(|i| {
+			let mut obj = Map::new();
+			if let Some(rn) = numbers.get(i) {
+				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
+			}
+			for view in &columns {
+				obj.insert(view.field.name().clone(), row_value(&view.get_type(), view.get_value(i)));
+			}
+			JsonValue::Object(obj)
 		})
-		.collect()
+		.collect())
 }

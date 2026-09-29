@@ -3,21 +3,27 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
-	value::column::columns::Columns,
 };
 use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
 	util::hash::Hash128,
-	value::{datetime::DateTime, duration::Duration},
+	value::{
+		datetime::DateTime,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{require_row_numbers, require_time},
+	},
 };
 
 use super::{
@@ -46,7 +52,7 @@ use crate::{
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 pub struct WindowConfig {
-	pub parent_schema: Option<Columns>,
+	pub parent_schema: Option<SchemaRef>,
 	pub operator: OperatorId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
@@ -154,22 +160,19 @@ impl WindowOperator {
 		}
 	}
 
-	pub fn row_times(&self, columns: &Columns, row_count: usize) -> Result<Vec<DateTime>> {
+	pub fn row_times(&self, columns: &RecordBatch, row_count: usize) -> Result<Vec<DateTime>> {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		reifydb_assertions! {
-			assert!(
-				columns.time().len() >= row_count,
-				"a window buckets by #time, which the substrate populates on every row before any \
-				 operator sees it, in both time domains; a short #time vector means a producer \
-				 skipped stamping and the window would silently bucket by wall clock \
-				 (time={} rows={row_count})",
-				columns.time().len()
-			);
-		}
-		Ok((0..row_count).map(|i| columns.time().get(i).copied().unwrap_or_default()).collect())
+		Ok(require_time(columns)?.to_vec())
 	}
+}
+
+pub(crate) fn required_row_numbers(columns: &RecordBatch) -> Result<&[RowNumber]> {
+	if columns.num_rows() == 0 {
+		return Ok(&[]);
+	}
+	require_row_numbers(columns)
 }
 
 impl HostOperator for WindowOperator {
@@ -243,7 +246,7 @@ impl HostOperator for WindowOperator {
 			.map(|rule| rule.admissible().duration())
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		Some(self.core.output_schema.clone())
 	}
 }

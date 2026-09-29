@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::bool;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
 pub struct IsType {
 	info: RoutineInfo,
@@ -38,9 +40,13 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let value_column = &args[0];
-		let type_column = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let value_column = ColumnView::try_from(&args[0])?;
+		let type_column = ColumnView::try_from(&args[1])?;
 		let row_count = value_column.len();
 
 		let target_type = match type_column.get_value(0) {
@@ -79,7 +85,7 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 			})
 			.collect();
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
+		Ok(bool(ctx.fragment.text(), data))
 	}
 }
 

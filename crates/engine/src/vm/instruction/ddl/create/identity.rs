@@ -3,10 +3,11 @@
 
 use std::{collections::HashSet, sync::LazyLock};
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
 	interface::{catalog::identity::IdentityAttribute, evaluate::TargetColumn},
-	value::column::columns::Columns,
+	value::batch::{empty_batch, single_row},
 };
 use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::evaluate},
@@ -16,7 +17,7 @@ use reifydb_rql::nodes::{CreateIdentityNode, IdentityAttributeAssignment};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
 use crate::{Result, vm::services::Services};
@@ -26,7 +27,7 @@ pub(crate) fn create_identity(
 	txn: &mut AdminTransaction,
 	plan: CreateIdentityNode,
 	params: &Params,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let name = plan.name.text();
 
 	let resolved = resolve_attribute_assignments(services, txn, &plan.attributes, params)?;
@@ -43,7 +44,7 @@ pub(crate) fn create_identity(
 		services.catalog.set_identity_attribute_value(txn, identity.id, &attribute, value)?;
 	}
 
-	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
+	single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))])
 }
 
 pub(crate) fn resolve_attribute_assignments(
@@ -98,7 +99,7 @@ fn evaluate_attribute_value(
 		runtime_context: &services.runtime_context,
 		identity,
 		is_aggregate_context: false,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
@@ -111,7 +112,7 @@ fn evaluate_attribute_value(
 		properties: vec![],
 	});
 	let column = evaluate(&eval_ctx, &assignment.value)?;
-	let value = column.data().get_value(0);
+	let value = ColumnView::try_from(&column)?.get_value(0);
 	if value.get_type() != attribute.value_type {
 		return Err(CatalogError::IdentityAttributeValueInvalid {
 			name: assignment.name.text().to_string(),

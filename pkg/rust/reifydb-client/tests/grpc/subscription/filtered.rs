@@ -38,7 +38,7 @@ fn test_filtered_subscription() {
 
 		let change = change.unwrap();
 		let id_col = find_column(&change.changes[0].frame, "id").unwrap();
-		assert_eq!(id_col.data.get_value(0), Value::Int4(15));
+		assert_eq!(id_col.get_value(0), Value::Int4(15));
 
 		drop(sub);
 	});

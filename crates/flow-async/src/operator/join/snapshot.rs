@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	operator::state::{decode, encode},
@@ -16,7 +17,6 @@ use reifydb_core::{
 		typed::direction::Asc,
 	},
 	state::{join::ContentVersion, typed::typed_key},
-	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -24,7 +24,7 @@ use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
 	util::{cowvec::CowVec, hash::Hash128},
-	value::row_number::RowNumber,
+	value::{row_number::RowNumber, system_columns::require_row_numbers},
 };
 
 use crate::{
@@ -409,7 +409,7 @@ pub(crate) fn publish_joined(
 	host: &mut dyn HostContext,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
-	left: &Columns,
+	left: &RecordBatch,
 	left_indices: &[usize],
 	outer: bool,
 ) -> Result<Vec<Diff>> {
@@ -417,11 +417,12 @@ pub(crate) fn publish_joined(
 		return Ok(Vec::new());
 	}
 	let group = ctx.right_store.group_of(key_hash);
-	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
+	let row_numbers = require_row_numbers(left)?;
+	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| row_numbers[idx]).collect();
 
 	let mut diffs =
 		stream_join_blocks_encoded(host, ctx.right_store, key_hash, true, |host, opposite, encoded| {
-			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			let opposite_indices: Vec<usize> = (0..opposite.num_rows()).collect();
 			if opposite_indices.is_empty() {
 				return Ok(Vec::new());
 			}
@@ -476,11 +477,11 @@ pub(crate) fn withdraw_joined(
 	host: &mut dyn HostContext,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
-	left: &Columns,
+	left: &RecordBatch,
 	left_idx: usize,
 ) -> Result<Vec<Diff>> {
 	let group = ctx.right_store.group_of(key_hash);
-	let left_number = left.row_numbers()[left_idx];
+	let left_number = require_row_numbers(left)?[left_idx];
 	let mut out = Vec::new();
 	for entry in ctx.ledger.published(host, group, left_number)? {
 		let carried = [(entry.row_number, false)];
@@ -524,8 +525,8 @@ pub(crate) fn resync_joined(
 	host: &mut dyn HostContext,
 	ctx: &SnapshotJoinContext,
 	keys: UpdateKeys,
-	pre: &Columns,
-	post: &Columns,
+	pre: &RecordBatch,
+	post: &RecordBatch,
 	left_idx: usize,
 	outer: bool,
 ) -> Result<Vec<Diff>> {
@@ -538,15 +539,16 @@ pub(crate) fn publish_slot(
 	host: &mut dyn HostContext,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
-	left: &Columns,
+	left: &RecordBatch,
 	left_indices: &[usize],
 	outer: bool,
-) -> Result<Option<Columns>> {
+) -> Result<Option<RecordBatch>> {
 	if left_indices.is_empty() {
 		return Ok(None);
 	}
 	let group = ctx.right_store.group_of(key_hash);
-	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
+	let row_numbers = require_row_numbers(left)?;
+	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| row_numbers[idx]).collect();
 
 	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		if !outer {
@@ -555,28 +557,28 @@ pub(crate) fn publish_slot(
 		for left_number in &left_numbers {
 			ctx.ledger.publish_unmatched(host, group, *left_number)?;
 		}
-		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices)));
+		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices)?));
 	};
 
 	for left_number in &left_numbers {
 		ctx.ledger.publish(host, group, *left_number, number, &content)?;
 	}
-	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
+	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)?))
 }
 
 pub(crate) fn withdraw_slot(
 	host: &mut dyn HostContext,
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
-	left: &Columns,
+	left: &RecordBatch,
 	left_idx: usize,
-) -> Result<Option<Columns>> {
-	let left_number = left.row_numbers()[left_idx];
+) -> Result<Option<RecordBatch>> {
+	let left_number = require_row_numbers(left)?[left_idx];
 	for entry in ctx.ledger.published(host, group, left_number)? {
 		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
-				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])));
+				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])?));
 			}
 			PublishedRight::Row(right_number) => right_number,
 		};
@@ -592,7 +594,7 @@ pub(crate) fn withdraw_slot(
 			continue;
 		};
 		let slot = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
-		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)));
+		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)?));
 	}
 	Ok(None)
 }
@@ -602,7 +604,7 @@ pub(crate) fn retain_published_slot(
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: RowNumber,
-) -> Result<Option<Columns>> {
+) -> Result<Option<RecordBatch>> {
 	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		return Ok(None);
 	};

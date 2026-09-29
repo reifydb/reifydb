@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{pod::EncodedPodRow, queue::EncodedQueueRow};
 use reifydb_core::{
 	interface::{
@@ -16,14 +18,22 @@ use reifydb_core::{
 		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
+		Value,
+		datetime::DateTime,
+		duration::Duration,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, with_system_column},
 		value_type::ValueType,
 	},
 };
@@ -76,7 +86,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 		skip_all,
 		fields(queue = Empty, worker = Empty, requested = Empty, claimed = Empty)
 	)]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 4)?;
@@ -333,7 +347,7 @@ fn claimed_columns(
 	queue: &Queue,
 	worker: &str,
 	leases: &[Lease],
-) -> Result<Columns, RoutineError> {
+) -> Result<RecordBatch, RoutineError> {
 	let mut tokens = Vec::with_capacity(leases.len());
 	let mut items = Vec::with_capacity(leases.len());
 	let mut attempts = Vec::with_capacity(leases.len());
@@ -361,34 +375,19 @@ fn claimed_columns(
 	}
 
 	let mut columns = vec![
-		ColumnWithName {
-			name: Fragment::internal("token"),
-			data: ColumnBuffer::utf8(tokens),
-		},
-		ColumnWithName {
-			name: Fragment::internal("item"),
-			data: ColumnBuffer::uint8(items),
-		},
-		ColumnWithName {
-			name: Fragment::internal("attempt"),
-			data: ColumnBuffer::uint4(attempts),
-		},
-		ColumnWithName {
-			name: Fragment::internal("deadline"),
-			data: ColumnBuffer::datetime(deadlines),
-		},
+		factory::utf8("token", tokens),
+		factory::uint8("item", items),
+		factory::uint4("attempt", attempts),
+		factory::datetime("deadline", deadlines),
 	];
 
 	for (column, data) in queue.columns.iter().zip(payloads) {
-		columns.push(ColumnWithName {
-			name: Fragment::internal(column.name.clone()),
-			data: data.finish(),
-		});
+		columns.push(data.finish(&column.name));
 	}
 
-	let row_numbers = leases.iter().map(|lease| lease.row).collect();
+	let row_numbers: Vec<u64> = leases.iter().map(|lease| lease.row.0).collect();
 
-	Ok(Columns::new(columns).with_row_numbers(row_numbers))
+	Ok(with_system_column(batch(columns)?, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers)))?)
 }
 
 fn push_payload(

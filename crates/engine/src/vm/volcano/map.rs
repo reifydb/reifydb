@@ -3,13 +3,15 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+	value::{batch::batch, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -18,10 +20,10 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::system_columns::SystemColumns};
+use reifydb_value::{fragment::Fragment, reifydb_assertions, value::column_view::ColumnView};
 use tracing::instrument;
 
-use super::NoopNode;
+use super::{NoopNode, with_system_headers, with_user_columns};
 use crate::{
 	Result,
 	vm::volcano::{
@@ -87,15 +89,17 @@ impl QueryNode for MapNode {
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		let column_names = self.expressions.iter().map(display_label).collect();
-		self.headers = Some(ColumnHeaders {
-			columns: column_names,
-			row_numbers: self.input.headers().is_some_and(|h| h.row_numbers),
+		self.headers = Some(match self.input.headers() {
+			Some(input_headers) => with_system_headers(column_names, &input_headers),
+			None => ColumnHeaders {
+				columns: column_names,
+			},
 		});
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		}
@@ -107,8 +111,8 @@ impl QueryNode for MapNode {
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
-			let mut result = self.apply(&transform_ctx, columns)?;
-			strip_udf_columns(&mut result, &self.udf_names);
+			let result = self.apply(&transform_ctx, columns)?;
+			let result = strip_udf_columns(result, &self.udf_names)?;
 
 			Ok(Some(result))
 		} else {
@@ -122,11 +126,11 @@ impl QueryNode for MapNode {
 }
 
 impl Transform for MapNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
-		let row_count = input.row_count();
+		let row_count = input.num_rows();
 		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
@@ -145,47 +149,34 @@ impl Transform for MapNode {
 
 			let mut column = Self::eval_projection(compiled_expr, &exec_ctx)?;
 
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
-				&& column.data.get_type() != target_type
-			{
-				let data = cast_for_write(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = ColumnWithName {
-					name: column.name,
-					data,
-				};
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				let view = ColumnView::try_from(&column)?;
+				if view.get_type() != target_type {
+					column = cast_for_write(&exec_ctx, &view, target_type, &expr.lazy_fragment())?;
+				}
 			}
 
 			new_columns.push(column);
 		}
 
-		Ok(Self::assemble(input.system, new_columns))
+		Self::assemble(&input, new_columns)
 	}
 }
 
 impl MapNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::map::eval_context")]
-	fn eval_context<'e>(session: &EvalContext<'e>, input: &Columns, row_count: usize) -> EvalContext<'e> {
+	fn eval_context<'e>(session: &EvalContext<'e>, input: &RecordBatch, row_count: usize) -> EvalContext<'e> {
 		session.with_eval(input.clone(), row_count)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::map::eval")]
-	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
 		compiled.execute(exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::map::assemble")]
-	fn assemble(system: SystemColumns, new_columns: Vec<ColumnWithName>) -> Columns {
-		let mut names_vec = Vec::with_capacity(new_columns.len());
-		let mut buffers_vec = Vec::with_capacity(new_columns.len());
-		for c in new_columns {
-			names_vec.push(c.name);
-			buffers_vec.push(c.data);
-		}
-		Columns {
-			system,
-			columns: buffers_vec,
-			names: names_vec,
-		}
+	fn assemble(input: &RecordBatch, new_columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
+		with_user_columns(new_columns, input)
 	}
 }
 
@@ -193,7 +184,7 @@ pub(crate) struct MapWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
 
-	udf_columns: Option<Columns>,
+	udf_columns: Option<RecordBatch>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -235,7 +226,7 @@ impl QueryNode for MapWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		}
@@ -259,8 +250,8 @@ impl QueryNode for MapWithoutInputNode {
 			columns.push(column);
 		}
 
-		let columns = Columns::new(columns);
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		let columns = batch(columns)?;
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 		Ok(Some(columns))
 	}
 

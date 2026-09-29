@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{frame::frame::Frame, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::ColumnView, frame::frame::Frame, system_columns::user_columns, value_type::ValueType,
+};
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();
@@ -15,11 +17,10 @@ fn engine() -> TestEngine {
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	column.data.get_type()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	column.get_type()
 }
 
 fn assert_same_type_as_populated(t: &TestEngine, populated: &str, other: &str, rows: usize) {
@@ -93,5 +94,6 @@ fn an_operand_that_is_a_literal_none_still_gives_none() {
 	let frames = t.query("FROM test::t | filter { g == 1 } | map { x: a - none }");
 
 	assert_eq!(TestEngine::row_count(&frames), 1);
-	assert_eq!(frames[0].columns[0].data.as_string(0), "none");
+	let (field, array) = user_columns(&frames[0].batch).next().unwrap();
+	assert_eq!(ColumnView::try_from((array, field.as_ref())).unwrap().as_string(0), "none");
 }

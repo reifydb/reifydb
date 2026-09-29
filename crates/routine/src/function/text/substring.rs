@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, LargeStringArray};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{Array, ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
-use crate::function::support::coerce::read_i32;
+use crate::function::support::{coerce::read_i32, column::utf8_column};
 
 pub struct TextSubstring {
 	info: RoutineInfo,
@@ -37,21 +40,25 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let text_data = &args[0];
-		let start_data = &args[1];
-		let length_data = &args[2];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let text_data = ColumnView::try_from(&args[0])?;
+		let start_data = ColumnView::try_from(&args[1])?;
+		let length_data = ColumnView::try_from(&args[2])?;
 
 		let row_count = text_data.len();
 
-		match (text_data, start_data, length_data) {
+		match (&text_data.data, &start_data.data, &length_data.data) {
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: text_container,
 					max_bytes,
 				},
-				ColumnBuffer::Int4(start_container),
-				ColumnBuffer::Int4(length_container),
+				ViewData::Int4(start_container),
+				ViewData::Int4(length_container),
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.len());
 
@@ -91,21 +98,16 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					}
 				}
 
-				let result_col_data = ColumnBuffer::Utf8 {
-					container: LargeStringArray::from(result_data),
-					max_bytes: *max_bytes,
-				};
-
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))
 			}
 
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: text_container,
 					max_bytes,
 				},
-				start_d,
-				length_d,
+				_,
+				_,
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.len());
 
@@ -113,9 +115,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					if i < text_container.len() {
 						let original_str = text_container.value(i);
 
-						let start_pos = read_i32(&ctx.fragment, start_d, i)?.unwrap_or(0);
+						let start_pos = read_i32(&ctx.fragment, &start_data, i)?.unwrap_or(0);
 
-						let length = read_i32(&ctx.fragment, length_d, i)?.unwrap_or(0);
+						let length = read_i32(&ctx.fragment, &length_data, i)?.unwrap_or(0);
 
 						let chars: Vec<char> = original_str.chars().collect();
 						let chars_len = chars.len();
@@ -144,18 +146,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					}
 				}
 
-				let result_col_data = ColumnBuffer::Utf8 {
-					container: LargeStringArray::from(result_data),
-					max_bytes: *max_bytes,
-				};
-
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))
 			}
-			(other, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: text_data.get_type(),
 			}),
 		}
 	}

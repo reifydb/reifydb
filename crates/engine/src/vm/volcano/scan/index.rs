@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{id::IndexId, table::Table},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::headers::ColumnHeaders,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
@@ -35,7 +36,6 @@ impl IndexScanNode {
 
 		let headers = ColumnHeaders {
 			columns: table.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: false,
 		};
 
 		Ok(Self {
@@ -58,7 +58,7 @@ impl QueryNode for IndexScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::index::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		}

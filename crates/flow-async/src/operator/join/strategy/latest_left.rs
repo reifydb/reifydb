@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
-use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::change::Diff;
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{
+		row_number::RowNumber,
+		system_columns::{require_row_numbers, row_numbers},
+	},
+};
 use tracing::instrument;
 
 use super::{
@@ -25,12 +33,12 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
-			JoinSide::Left => Ok(vec![Diff::insert(ctx.operator.unmatched_left_latest(post, &[row_idx]))]),
+			JoinSide::Left => Ok(vec![Diff::insert(ctx.operator.unmatched_left_latest(post, &[row_idx])?)]),
 			JoinSide::Right => Ok(Vec::new()),
 		}
 	}
@@ -38,12 +46,12 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
-			JoinSide::Left => Ok(vec![Diff::remove(ctx.operator.unmatched_left_latest(pre, &[row_idx]))]),
+			JoinSide::Left => Ok(vec![Diff::remove(ctx.operator.unmatched_left_latest(pre, &[row_idx])?)]),
 			JoinSide::Right => Ok(Vec::new()),
 		}
 	}
@@ -51,15 +59,15 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_update_both_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				let pre_unmatched = ctx.operator.unmatched_left_latest(pre, &[row_idx]);
-				let post_unmatched = ctx.operator.unmatched_left_latest(post, &[row_idx]);
+				let pre_unmatched = ctx.operator.unmatched_left_latest(pre, &[row_idx])?;
+				let post_unmatched = ctx.operator.unmatched_left_latest(post, &[row_idx])?;
 				Ok(vec![Diff::update(pre_unmatched, post_unmatched)])
 			}
 			JoinSide::Right => Ok(Vec::new()),
@@ -70,7 +78,7 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -95,8 +103,8 @@ impl LatestLeftHashJoin {
 				}
 				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
 				let joined = match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot),
-					None => ctx.operator.unmatched_left_latest(post, indices),
+					Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot)?,
+					None => ctx.operator.unmatched_left_latest(post, indices)?,
 				};
 				Ok(vec![Diff::insert(joined)])
 			}
@@ -108,7 +116,7 @@ impl LatestLeftHashJoin {
 	fn handle_right_insert(
 		&self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -129,16 +137,16 @@ impl LatestLeftHashJoin {
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
-			let left_indices: Vec<usize> = (0..left.row_count()).collect();
+			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
 			match (&old, &new) {
 				(Some(old_slot), Some(new_slot)) => {
-					let pre = operator.join_left_with_slot(left, &left_indices, old_slot);
-					let post = operator.join_left_with_slot(left, &left_indices, new_slot);
+					let pre = operator.join_left_with_slot(left, &left_indices, old_slot)?;
+					let post = operator.join_left_with_slot(left, &left_indices, new_slot)?;
 					result.push(Diff::update(pre, post));
 				}
 				(None, Some(new_slot)) => {
-					let pre = operator.unmatched_left_latest(left, &left_indices);
-					let post = operator.join_left_with_slot(left, &left_indices, new_slot);
+					let pre = operator.unmatched_left_latest(left, &left_indices)?;
+					let post = operator.join_left_with_slot(left, &left_indices, new_slot)?;
 					result.push(Diff::update(pre, post));
 				}
 				_ => {}
@@ -152,7 +160,7 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_remove(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -181,13 +189,13 @@ impl LatestLeftHashJoin {
 					return Ok(withdrawn);
 				}
 				let removed = match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
-					None => ctx.operator.unmatched_left_latest(pre, indices),
+					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot)?,
+					None => ctx.operator.unmatched_left_latest(pre, indices)?,
 				};
 				let result = vec![Diff::remove(removed)];
 				let group = ctx.state.left.group_of(key_hash);
 				for &idx in indices {
-					ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
+					ctx.state.left.remove_row_in(host, group, require_row_numbers(pre)?[idx])?;
 				}
 				Ok(result)
 			}
@@ -198,12 +206,13 @@ impl LatestLeftHashJoin {
 	fn handle_right_remove(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre.row_numbers()[idx]).collect();
+		let pre_numbers = require_row_numbers(pre)?;
+		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
 			let snapshot_ctx = SnapshotJoinContext {
@@ -224,16 +233,16 @@ impl LatestLeftHashJoin {
 			return Ok(result);
 		};
 		if let Some(new_slot) = &new
-			&& new_slot.row_numbers() == old_slot.row_numbers()
+			&& row_numbers(new_slot)? == row_numbers(&old_slot)?
 		{
 			return Ok(result);
 		}
 		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
-			let left_indices: Vec<usize> = (0..left.row_count()).collect();
-			let pre_joined = operator.join_left_with_slot(left, &left_indices, &old_slot);
+			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
+			let pre_joined = operator.join_left_with_slot(left, &left_indices, &old_slot)?;
 			let post_joined = match &new {
-				Some(new_slot) => operator.join_left_with_slot(left, &left_indices, new_slot),
-				None => operator.unmatched_left_latest(left, &left_indices),
+				Some(new_slot) => operator.join_left_with_slot(left, &left_indices, new_slot)?,
+				None => operator.unmatched_left_latest(left, &left_indices)?,
 			};
 			result.push(Diff::update(pre_joined, post_joined));
 			Ok(())
@@ -245,8 +254,8 @@ impl LatestLeftHashJoin {
 	pub(crate) fn handle_update(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
@@ -282,8 +291,12 @@ impl LatestLeftHashJoin {
 							idx,
 						)? {
 							result.push(Diff::update(
-								ctx.operator.join_left_with_slot(pre, &[idx], &slot),
-								ctx.operator.join_left_with_slot(post, &[idx], &slot),
+								ctx.operator.join_left_with_slot(pre, &[idx], &slot)?,
+								ctx.operator.join_left_with_slot(
+									post,
+									&[idx],
+									&slot,
+								)?,
 							));
 							continue;
 						}
@@ -308,7 +321,7 @@ impl LatestLeftHashJoin {
 						host,
 						&ctx.state.left,
 						&prepared,
-						pre.row_numbers()[idx],
+						require_row_numbers(pre)?[idx],
 						post,
 						idx,
 					)?;
@@ -316,12 +329,12 @@ impl LatestLeftHashJoin {
 				let (pre_joined, post_joined) = match read_right_slot(host, &ctx.state.right, keys.pre)?
 				{
 					Some(slot) => (
-						ctx.operator.join_left_with_slot(pre, indices, &slot),
-						ctx.operator.join_left_with_slot(post, indices, &slot),
+						ctx.operator.join_left_with_slot(pre, indices, &slot)?,
+						ctx.operator.join_left_with_slot(post, indices, &slot)?,
 					),
 					None => (
-						ctx.operator.unmatched_left_latest(pre, indices),
-						ctx.operator.unmatched_left_latest(post, indices),
+						ctx.operator.unmatched_left_latest(pre, indices)?,
+						ctx.operator.unmatched_left_latest(post, indices)?,
 					),
 				};
 				Ok(vec![Diff::update(pre_joined, post_joined)])

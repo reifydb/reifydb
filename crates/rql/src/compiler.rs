@@ -268,7 +268,7 @@ impl Compiler {
 		tx: &mut Transaction<'_>,
 		statement: AstStatement<'b>,
 		policy: F,
-	) -> Result<Option<QueryPlan>>
+	) -> Result<Option<(QueryPlan, Vec<SystemColumn>)>>
 	where
 		F: for<'a> Fn(
 			BumpVec<'a, LogicalPlan<'a>>,
@@ -282,7 +282,9 @@ impl Compiler {
 		};
 		optimize_physical(&mut physical);
 		check_flow_system_columns(&physical)?;
-		materialize_query_plan_with(physical, |_| subscription::single_query_required()).map(Some)
+		let named_system_columns = named_system_columns(&physical)?;
+		let plan = materialize_query_plan_with(physical, |_| subscription::single_query_required())?;
+		Ok(Some((plan, named_system_columns)))
 	}
 
 	pub fn compile_next_with_policy<F>(

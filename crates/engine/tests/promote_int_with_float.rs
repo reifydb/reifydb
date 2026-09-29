@@ -19,8 +19,8 @@ fn clamp_of_an_int_by_a_float_bound_keeps_the_fraction() {
 	if let Some(e) = r.error {
 		panic!("query failed: {e:?}")
 	}
-	let column = r.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-	let values: Vec<String> = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
-	assert_eq!(column.data.get_type(), ValueType::Float8);
+	let column = r.frames[0].column("v").unwrap().expect("column v");
+	let values: Vec<String> = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
+	assert_eq!(column.get_type(), ValueType::Float8);
 	assert_eq!(values, vec!["0.5", "10"]);
 }

@@ -3,6 +3,10 @@
 
 //! The join family's corpus: a row belongs to one of two inputs, and a change carries both.
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -10,15 +14,19 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow_async::operator::InputOrder;
 use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 
 pub const LEFT_OPERATOR: OperatorId = OperatorId(10);
@@ -80,20 +88,15 @@ impl JoinRow {
 /// A zero-row `Columns` naming one side's shape. The join needs the right one at construction time
 /// to know which columns an unmatched left row fills with none, and their types decide which
 /// `Value::None` variant it fills them with.
-pub fn schema(spec: &[(&str, ValueType)]) -> Columns {
-	Columns::new(
+pub fn schema(spec: &[(&str, ValueType)]) -> SchemaRef {
+	Arc::new(Schema::new(
 		spec.iter()
-			.map(|(name, ty)| {
-				ColumnWithName::new(
-					Fragment::internal(*name),
-					ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
-				)
-			})
-			.collect(),
-	)
+			.map(|(name, ty)| ColumnBuilder::with_capacity(ty.clone(), 0).finish(name).0)
+			.collect::<Vec<_>>(),
+	))
 }
 
-fn columns_of(rows: &[&JoinRow]) -> Columns {
+fn columns_of(rows: &[&JoinRow]) -> RecordBatch {
 	let spec = rows[0].side.spec();
 	let mut buffers: Vec<ColumnBuilder> =
 		spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), rows.len())).collect();
@@ -105,19 +108,19 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 		});
 		buffers[2].push_value(Value::Int8(row.value));
 	}
-	let columns = spec
-		.iter()
-		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
-		.collect();
+	let columns = spec.iter().zip(buffers).map(|((name, _), buffer)| buffer.finish(name)).collect();
 
 	// `with_row_numbers` leaves every system time empty, so the times must be written alongside the numbers.
-	let numbers: Vec<RowNumber> = rows.iter().map(|row| row.number).collect();
 	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
-	Columns::with_system(
-		columns,
-		SystemColumns::new(numbers, Vec::new(), times.clone(), times.clone(), times, Vec::new()),
-	)
+	let stamps = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", rows.iter().map(|row| row.number.0)).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", times.clone()).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", times.clone()).1),
+		(SystemColumn::Time, factory::datetime("#time", times).1),
+	];
+	stamps.into_iter().fold(batch(columns).expect("the join columns form a batch"), |columns, (column, array)| {
+		with_system_column(columns, column, array).expect("a system column attaches")
+	})
 }
 
 fn tagged(mut diff: Diff, side: Side) -> Diff {

@@ -13,8 +13,8 @@ const CHILD: &str = "REIFYDB_PROCEDURE_NAMED_LIKE_A_BUILTIN_CHILD";
 
 fn r_text(frames: &[Frame]) -> Vec<String> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == "r").expect("r column");
-	(0..column.data.len()).map(|i| column.data.as_string(i)).collect()
+	let column = frames[0].column("r").unwrap().expect("r column");
+	(0..column.len()).map(|i| column.as_string(i)).collect()
 }
 
 #[test]

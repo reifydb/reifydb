@@ -14,6 +14,7 @@
 pub mod oracle;
 pub mod workload;
 
+use arrow_schema::SchemaRef;
 use rand::RngExt;
 use reifydb_core::{
 	common::TimeSource,
@@ -29,7 +30,6 @@ use reifydb_core::{
 		change::Change,
 		flow::OperatorCapability,
 	},
-	value::column::columns::Columns,
 };
 use reifydb_flow_async::operator::{
 	HostOperator,
@@ -109,7 +109,7 @@ impl HostOperator for SourceOp {
 		}
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		match self {
 			SourceOp::Series(o) => HostOperator::output_schema(o),
 			SourceOp::Table(o) => HostOperator::output_schema(o),

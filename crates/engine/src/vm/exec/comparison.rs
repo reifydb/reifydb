@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::batch;
 use reifydb_evaluate::{
 	expression::{
 		compare::{
@@ -24,7 +24,7 @@ impl<'a> Vm<'a> {
 	fn exec_columnar_cmp<Op: CompareOp>(&mut self, binary_op: BinaryOp) -> Result<()> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
-		let (left, right) = broadcast_to_match(left, right);
+		let (left, right) = broadcast_to_match(left, right)?;
 		let result = compare_columns::<Op>(&left, &right, Fragment::internal("vm_cmp"), |frag, lt, rt| {
 			TypeError::BinaryOperatorNotApplicable {
 				operator: binary_op.clone(),
@@ -34,17 +34,17 @@ impl<'a> Vm<'a> {
 			}
 			.into_diagnostic()
 		})?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 
 	fn exec_columnar_logic(&mut self, op: LogicalOp) -> Result<()> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
-		let (left, right) = broadcast_to_match(left, right);
+		let (left, right) = broadcast_to_match(left, right)?;
 		let frag = Fragment::internal("vm_logic");
 		let result = execute_logical_op(&left, &right, &frag, op)?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 

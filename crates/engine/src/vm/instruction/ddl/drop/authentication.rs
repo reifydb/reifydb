@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -12,7 +13,7 @@ pub(crate) fn drop_authentication(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropAuthenticationNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 
@@ -20,11 +21,11 @@ pub(crate) fn drop_authentication(
 		match services.catalog.find_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)? {
 			Some(u) => u,
 			None => {
-				return Ok(Columns::single_row([
+				return single_row([
 					("user", Value::Utf8(user_name.to_string())),
 					("method", Value::Utf8(method.to_string())),
 					("dropped", Value::Boolean(false)),
-				]));
+				]);
 			}
 		}
 	} else {
@@ -33,9 +34,9 @@ pub(crate) fn drop_authentication(
 
 	services.catalog.drop_authentication(txn, user.id, method)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("user", Value::Utf8(user_name.to_string())),
 		("method", Value::Utf8(method.to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

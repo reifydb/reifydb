@@ -18,13 +18,13 @@ fn engine(schema: &str, rows: &str) -> TestEngine {
 
 fn row_count(frames: &[Frame]) -> usize {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	frames[0].columns.first().map(|c| c.data.len()).unwrap_or(0)
+	frames[0].row_count()
 }
 
 fn column(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 fn query_error(t: &TestEngine, rql: &str) -> Diagnostic {

@@ -3,6 +3,7 @@
 
 use std::{mem, result::Result as StdResult};
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -10,7 +11,6 @@ use reifydb_core::{
 		change::{Change, Diff, StagedBatch},
 	},
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
-	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
 use reifydb_rql::fingerprint::request::fingerprint_request;
@@ -72,7 +72,7 @@ impl SubscriptionWorkerActor {
 		state: &mut SubscriptionWorkerState,
 		flow_id: FlowId,
 		version: CommitVersion,
-		source_frames: Vec<(ObjectId, Vec<Columns>)>,
+		source_frames: Vec<(ObjectId, Vec<RecordBatch>)>,
 		now: DateTime,
 	) -> Result<()> {
 		let SubscriptionWorkerState {
@@ -96,7 +96,7 @@ impl SubscriptionWorkerActor {
 		let mut changes = Vec::with_capacity(source_frames.len());
 		for (shape, shape_columns) in source_frames {
 			let diffs: Vec<Diff> =
-				shape_columns.into_iter().filter(|c| c.row_count() > 0).map(Diff::insert).collect();
+				shape_columns.into_iter().filter(|c| c.num_rows() > 0).map(Diff::insert).collect();
 			if diffs.is_empty() {
 				continue;
 			}

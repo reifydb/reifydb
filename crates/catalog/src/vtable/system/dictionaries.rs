@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -63,16 +62,16 @@ impl BaseVTable for SystemDictionaries {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(ids)),
-			ColumnWithName::new(Fragment::internal("namespace_id"), ColumnBuffer::uint8(namespace_ids)),
-			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(names)),
-			ColumnWithName::new(Fragment::internal("value_type"), ColumnBuffer::utf8(value_types)),
-			ColumnWithName::new(Fragment::internal("id_type"), ColumnBuffer::utf8(id_types)),
+			factory::uint8("id", ids),
+			factory::uint8("namespace_id", namespace_ids),
+			factory::utf8("name", names),
+			factory::utf8("value_type", value_types),
+			factory::utf8("id_type", id_types),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

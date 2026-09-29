@@ -3,9 +3,13 @@
 
 pub mod loader;
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
-use reifydb_value::Result;
+use reifydb_value::{
+	Result,
+	value::system_columns::{row_numbers, user_columns},
+};
 
 use super::{Transform, context::TransformContext};
 use crate::loader::extern_wasm::invoke_extern_wasm_module;
@@ -33,8 +37,10 @@ unsafe impl Send for ExternWasmTransform {}
 unsafe impl Sync for ExternWasmTransform {}
 
 impl Transform for ExternWasmTransform {
-	fn apply(&self, _ctx: &TransformContext, input: Columns) -> Result<Columns> {
-		let input_bytes = marshal_columns_to_bytes(&input)?;
+	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+		let columns: Vec<(FieldRef, ArrayRef)> =
+			user_columns(&input).map(|(field, array)| (field.clone(), array.clone())).collect();
+		let input_bytes = marshal_columns_to_bytes(&columns, input.num_rows(), row_numbers(&input)?)?;
 		let label = format!("WASM transform '{}'", self.name);
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "transform", &input_bytes, &label)?;

@@ -3,12 +3,22 @@
 
 use std::fmt::Display;
 
+use arrow_array::ArrayRef;
 use arrow_buffer::{BooleanBuffer, NullBuffer};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{
+	factory::{
+		decimal_with_bitvec, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec,
+		int4_with_bitvec, int8_with_bitvec, int16_with_bitvec, none, uint1_with_bitvec, uint2_with_bitvec,
+		uint4_with_bitvec, uint8_with_bitvec, uint16_with_bitvec,
+	},
+	nulls::split_nulls,
+};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	container::{decimal_array::decimals, wide_int_array::wides},
 	is::IsNumber,
 	value_type::ValueType,
@@ -16,7 +26,7 @@ use reifydb_value::value::{
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
-	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_all},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_all},
 };
 
 pub struct Clamp {
@@ -58,18 +68,25 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		}
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let mut types = Vec::with_capacity(3);
 		for i in 0..3 {
-			let (data, _) = args[i].clone().split_nulls();
+			let (bare, _) = split_nulls(args[i].clone())?;
+			let data = ColumnView::try_from(&bare)?;
 			ensure_numeric(ctx, &data, i)?;
+			types.push(bare_type(&data));
 		}
+		let views = args.iter().take(3).map(ColumnView::try_from).collect::<Result<Vec<_>, _>>()?;
 
-		let promoted = promote_all((0..3).map(|i| args[i].clone().split_nulls().0.get_type()));
+		let promoted = promote_all(types);
 		if promoted == ValueType::Any {
-			if (0..3).all(|i| all_rows_none(&args[i])) {
-				let row_count = args[0].len();
-				let result = ColumnBuffer::none(row_count);
-				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
+			if (0..3).all(|i| all_rows_none(&views[i])) {
+				let row_count = views[0].len();
+				return Ok(none(ctx.fragment.text(), row_count));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -78,26 +95,32 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				actual: ValueType::Any,
 			});
 		}
-		let v_cast = coerce_column(ctx, &args[0], promoted.clone(), CoerceMode::Error)?;
-		let lo_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
-		let hi_cast = coerce_column(ctx, &args[2], promoted.clone(), CoerceMode::Error)?;
+		let v_cast = coerce_column(ctx, &views[0], promoted.clone(), CoerceMode::Error)?;
+		let lo_cast = coerce_column(ctx, &views[1], promoted.clone(), CoerceMode::Error)?;
+		let hi_cast = coerce_column(ctx, &views[2], promoted.clone(), CoerceMode::Error)?;
 
-		let (v_inner, v_bv) = (&v_cast, v_cast.nulls().map(NullBuffer::inner));
-		let (lo_inner, lo_bv) = (&lo_cast, lo_cast.nulls().map(NullBuffer::inner));
-		let (hi_inner, hi_bv) = (&hi_cast, hi_cast.nulls().map(NullBuffer::inner));
+		let v_inner = ColumnView::try_from(&v_cast)?;
+		let lo_inner = ColumnView::try_from(&lo_cast)?;
+		let hi_inner = ColumnView::try_from(&hi_cast)?;
+		let v_nulls = v_inner.logical_nulls();
+		let lo_nulls = lo_inner.logical_nulls();
+		let hi_nulls = hi_inner.logical_nulls();
+		let v_bv = v_nulls.as_ref().map(NullBuffer::inner);
+		let lo_bv = lo_nulls.as_ref().map(NullBuffer::inner);
+		let hi_bv = hi_nulls.as_ref().map(NullBuffer::inner);
 
 		macro_rules! run {
 			($variant:ident) => {{
-				let (ColumnBuffer::$variant(v), ColumnBuffer::$variant(lo), ColumnBuffer::$variant(hi)) =
-					(v_inner, lo_inner, hi_inner)
+				let (ViewData::$variant(v), ViewData::$variant(lo), ViewData::$variant(hi)) =
+					(&v_inner.data, &lo_inner.data, &hi_inner.data)
 				else {
 					unreachable!()
 				};
 				clamp_rows(ctx, v.values(), v_bv, lo.values(), lo_bv, hi.values(), hi_bv)?
 			}};
 			($variant:ident(..), $decode:ident) => {{
-				let (ColumnBuffer::$variant(v), ColumnBuffer::$variant(lo), ColumnBuffer::$variant(hi)) =
-					(v_inner, lo_inner, hi_inner)
+				let (ViewData::$variant(v), ViewData::$variant(lo), ViewData::$variant(hi)) =
+					(&v_inner.data, &lo_inner.data, &hi_inner.data)
 				else {
 					unreachable!()
 				};
@@ -108,23 +131,23 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		let result = match promoted {
 			ValueType::Int1 => {
 				let (values, bits) = run!(Int1);
-				ColumnBuffer::int1_with_bitvec(values, bits)
+				int1_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Int2 => {
 				let (values, bits) = run!(Int2);
-				ColumnBuffer::int2_with_bitvec(values, bits)
+				int2_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Int4 => {
 				let (values, bits) = run!(Int4);
-				ColumnBuffer::int4_with_bitvec(values, bits)
+				int4_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Int8 => {
 				let (values, bits) = run!(Int8);
-				ColumnBuffer::int8_with_bitvec(values, bits)
+				int8_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Int16 => {
-				let (ColumnBuffer::Int16(v), ColumnBuffer::Int16(lo), ColumnBuffer::Int16(hi)) =
-					(v_inner, lo_inner, hi_inner)
+				let (ViewData::Int16(v), ViewData::Int16(lo), ViewData::Int16(hi)) =
+					(&v_inner.data, &lo_inner.data, &hi_inner.data)
 				else {
 					unreachable!()
 				};
@@ -137,27 +160,27 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 					&wides::<i128>(hi),
 					hi_bv,
 				)?;
-				ColumnBuffer::int16_with_bitvec(values, bits)
+				int16_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint1 => {
 				let (values, bits) = run!(Uint1);
-				ColumnBuffer::uint1_with_bitvec(values, bits)
+				uint1_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint2 => {
 				let (values, bits) = run!(Uint2);
-				ColumnBuffer::uint2_with_bitvec(values, bits)
+				uint2_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint4 => {
 				let (values, bits) = run!(Uint4);
-				ColumnBuffer::uint4_with_bitvec(values, bits)
+				uint4_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint8 => {
 				let (values, bits) = run!(Uint8);
-				ColumnBuffer::uint8_with_bitvec(values, bits)
+				uint8_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint16 => {
-				let (ColumnBuffer::Uint16(v), ColumnBuffer::Uint16(lo), ColumnBuffer::Uint16(hi)) =
-					(v_inner, lo_inner, hi_inner)
+				let (ViewData::Uint16(v), ViewData::Uint16(lo), ViewData::Uint16(hi)) =
+					(&v_inner.data, &lo_inner.data, &hi_inner.data)
 				else {
 					unreachable!()
 				};
@@ -170,27 +193,27 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 					&wides::<u128>(hi),
 					hi_bv,
 				)?;
-				ColumnBuffer::uint16_with_bitvec(values, bits)
+				uint16_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Float4 => {
 				let (values, bits) = run!(Float4);
-				ColumnBuffer::float4_with_bitvec(values, bits)
+				float4_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Float8 => {
 				let (values, bits) = run!(Float8);
-				ColumnBuffer::float8_with_bitvec(values, bits)
+				float8_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Decimal {
 				precision,
 				scale,
 			} => {
 				let (values, bits) = run!(Decimal(..), decimals);
-				ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits)
+				decimal_with_bitvec(ctx.fragment.text(), precision, scale, values, bits)
 			}
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
+		Ok(result)
 	}
 }
 

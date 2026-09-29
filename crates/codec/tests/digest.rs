@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use std::{slice::from_ref, sync::Arc};
+
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::Schema;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
 	json::{
@@ -17,11 +20,12 @@ use reifydb_codec::{
 };
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	container::digest_array::digest_array,
 	digest::Digest,
 	duration::Duration,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	value_type::ValueType,
+	frame::frame::Frame,
+	value_type::{ValueType, field::named},
 };
 use serde_json::json;
 
@@ -66,28 +70,21 @@ fn duration_digest(millis: &[i64]) -> Digest {
 	digest
 }
 
-fn digest_column(rows: Vec<Option<Digest>>, inner: ValueType) -> FrameColumnData {
-	let defined: Vec<bool> = rows.iter().map(Option::is_some).collect();
-	let data = FrameColumnData::Digest {
-		container: digest_array(rows),
-		inner,
-		accuracy: ACCURACY,
+fn digest_column(rows: Vec<Option<Digest>>, inner: ValueType) -> (ValueType, ArrayRef) {
+	let value_type = match rows.iter().all(Option::is_some) {
+		true => digest_type(inner, ACCURACY),
+		false => ValueType::Option(Box::new(digest_type(inner, ACCURACY))),
 	};
-	if defined.iter().all(|d| *d) {
-		data
-	} else {
-		FrameColumnData::Option {
-			inner: Box::new(data),
-			bitvec: BooleanBuffer::from(defined.as_slice()),
-		}
-	}
+	(value_type, Arc::new(digest_array(rows)))
 }
 
-fn frame(data: FrameColumnData) -> Frame {
-	Frame::new(vec![FrameColumn {
-		name: "d".to_string(),
-		data,
-	}])
+fn frame((value_type, array): (ValueType, ArrayRef)) -> Frame {
+	let (field, array) = named("d", value_type.into(), array);
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap())
+}
+
+fn view(frame: &Frame) -> ColumnView<'_> {
+	ColumnView::try_from((frame.batch.column(0), frame.batch.schema_ref().field(0))).unwrap()
 }
 
 fn sample_rows() -> Vec<Option<Digest>> {
@@ -99,7 +96,7 @@ fn sample_rows() -> Vec<Option<Digest>> {
 	]
 }
 
-fn assert_same_cells(expected: &FrameColumnData, actual: &FrameColumnData) {
+fn assert_same_cells(expected: &ColumnView, actual: &ColumnView) {
 	assert_eq!(expected.len(), actual.len(), "row count changed");
 	for row in 0..expected.len() {
 		assert_eq!(expected.get_value(row), actual.get_value(row), "row {row} changed");
@@ -188,7 +185,7 @@ fn value_codec_round_trips_a_digest_and_a_typed_none_of_digest() {
 #[test]
 fn frame_round_trip_keeps_digests_nones_and_column_params_for_every_compression() {
 	// Every compression level ends in plain for a digest; none of them may drop a row or the params.
-	let data = digest_column(sample_rows(), ValueType::Float8);
+	let data = frame(digest_column(sample_rows(), ValueType::Float8));
 	for options in [
 		EncodeOptions::default(),
 		EncodeOptions::none(),
@@ -197,41 +194,37 @@ fn frame_round_trip_keeps_digests_nones_and_column_params_for_every_compression(
 		EncodeOptions::forced(Encoding::Dict),
 		EncodeOptions::forced(Encoding::Rle),
 	] {
-		let bytes = encode_frames(&[frame(data.clone())], &options).unwrap();
+		let bytes = encode_frames(from_ref(&data), &options).unwrap();
 		let decoded = decode_frames(&bytes).unwrap();
-		let column = &decoded[0].columns[0].data;
-		assert_same_cells(&data, column);
-		let FrameColumnData::Option {
-			inner,
-			bitvec,
-		} = column
-		else {
-			panic!("a digest column with a none row must decode as an option, got {:?}", column.get_type());
-		};
-		assert_eq!(bitvec.iter().collect::<Vec<_>>(), vec![true, false, true, true]);
-		let FrameColumnData::Digest {
-			inner: decoded_inner,
-			accuracy,
-			..
-		} = inner.as_ref()
-		else {
-			panic!("the inner column must stay a digest column");
-		};
-		assert_eq!(*decoded_inner, ValueType::Float8);
-		assert_eq!(*accuracy, ACCURACY);
+		let column = view(&decoded[0]);
+		assert_same_cells(&view(&data), &column);
+		assert!(
+			column.is_nullable(),
+			"a digest column with a none row must decode as an option, got {:?}",
+			column.get_type()
+		);
+		assert_eq!(
+			(0..column.len()).map(|i| !column.none_at(i)).collect::<Vec<_>>(),
+			vec![true, false, true, true]
+		);
+		assert_eq!(
+			column.get_type(),
+			ValueType::Option(Box::new(digest_type(ValueType::Float8, ACCURACY))),
+			"the inner column must stay a digest column"
+		);
 	}
 }
 
 #[test]
 fn frame_round_trip_keeps_a_duration_digest_column_without_nones() {
-	let data = digest_column(
+	let data = frame(digest_column(
 		vec![Some(duration_digest(&[1, 2, 3])), Some(duration_digest(&[-7, 90_000]))],
 		ValueType::Duration,
-	);
-	let bytes = encode_frames(&[frame(data.clone())], &EncodeOptions::default()).unwrap();
+	));
+	let bytes = encode_frames(from_ref(&data), &EncodeOptions::default()).unwrap();
 	let decoded = decode_frames(&bytes).unwrap();
-	assert_same_cells(&data, &decoded[0].columns[0].data);
-	assert_eq!(decoded[0].columns[0].data.get_type(), digest_type(ValueType::Duration, ACCURACY));
+	assert_same_cells(&view(&data), &view(&decoded[0]));
+	assert_eq!(view(&decoded[0]).get_type(), digest_type(ValueType::Duration, ACCURACY));
 }
 
 #[test]
@@ -269,12 +262,12 @@ fn frame_decode_rejects_digest_column_params_that_are_not_a_valid_digest_type() 
 
 #[test]
 fn json_round_trip_keeps_digests_nones_and_column_params() {
-	let data = digest_column(sample_rows(), ValueType::Float8);
-	let json = frames_to_json(&[frame(data.clone())]).unwrap();
+	let data = frame(digest_column(sample_rows(), ValueType::Float8));
+	let json = frames_to_json(from_ref(&data)).unwrap();
 	let decoded = frames_from_json(&json).unwrap();
-	let column = &decoded[0].columns[0].data;
-	assert_same_cells(&data, column);
-	assert_eq!(column.get_type(), data.get_type());
+	let column = view(&decoded[0]);
+	assert_same_cells(&view(&data), &column);
+	assert_eq!(column.get_type(), view(&data).get_type());
 }
 
 #[test]

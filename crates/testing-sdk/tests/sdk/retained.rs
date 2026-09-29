@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -37,8 +38,18 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		diff_type::DiffType,
+		row_number::RowNumber,
+		system_columns::{row_numbers, user_columns},
+		value_type::ValueType,
+	},
 };
+
+use crate::read;
 
 #[derive(Clone, Debug, PartialEq)]
 struct RetainedOut {
@@ -146,18 +157,30 @@ fn throttled_harness() -> ExternCOperatorHarness<Retained> {
 fn only_update(out: &Change) -> (f64, f64) {
 	let updates: Vec<_> = out.diffs.iter().filter(|d| d.kind() == DiffType::Update).collect();
 	assert_eq!(updates.len(), 1, "exactly one update diff");
-	assert_eq!(updates[0].post().expect("post").row_count(), 1, "exactly one updated row");
-	let pre = updates[0].pre().expect("pre").row_ref(0).expect("r0").f64("volume").expect("pre volume");
-	let post = updates[0].post().expect("post").row_ref(0).expect("r0").f64("volume").expect("post volume");
+	assert_eq!(updates[0].post().expect("post").num_rows(), 1, "exactly one updated row");
+	let pre = read::<f64>((updates[0].pre().expect("pre"), 0), "volume").expect("pre volume");
+	let post = read::<f64>((updates[0].post().expect("post"), 0), "volume").expect("post volume");
 	(pre, post)
 }
 
 type Seen = Vec<(DiffType, Vec<(RowNumber, Vec<Value>)>, Vec<(RowNumber, Vec<Value>)>)>;
 
 fn seen(out: &Change) -> Seen {
-	let rows = |columns: Option<&reifydb_core::value::column::columns::Columns>| {
+	let rows = |columns: Option<&RecordBatch>| {
 		columns.map_or_else(Vec::new, |columns| {
-			(0..columns.row_count()).map(|i| (columns.row_numbers()[i], columns.row(i))).collect()
+			let numbers = row_numbers(columns).unwrap();
+			(0..columns.num_rows())
+				.map(|i| {
+					let values = user_columns(columns)
+						.map(|(field, array)| {
+							ColumnView::try_from((array, field.as_ref()))
+								.unwrap()
+								.get_value(i)
+						})
+						.collect();
+					(numbers[i], values)
+				})
+				.collect()
 		})
 	};
 	out.diffs.iter().map(|d| (d.kind(), rows(d.pre()), rows(d.post()))).collect()
@@ -206,7 +229,7 @@ fn a_new_throttled_window_publishes_its_first_row_at_once() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 1, 1_000, 7)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "a second new window inside the throttle still publishes at once");
 	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
-	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(7.0));
+	assert_eq!(read::<f64>((out.diffs[0].post().expect("post"), 0), "volume"), Some(7.0));
 }
 
 #[test]
@@ -253,8 +276,8 @@ fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
 		.expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
-	let pre = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(pre.f64("volume"), Some(10.0), "the removal retracts the row downstream holds");
+	let pre = (out.diffs[0].pre().expect("remove pre"), 0);
+	assert_eq!(read::<f64>(pre, "volume"), Some(10.0), "the removal retracts the row downstream holds");
 }
 
 #[test]
@@ -327,7 +350,7 @@ fn a_refilled_window_publishes_an_insert() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2, 1_000, 5)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "a refilled window publishes at once, like any new window");
 	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
-	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(5.0));
+	assert_eq!(read::<f64>((out.diffs[0].post().expect("post"), 0), "volume"), Some(5.0));
 }
 
 #[test]

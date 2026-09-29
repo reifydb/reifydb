@@ -139,11 +139,7 @@ mod tests {
 			"from system::identities filter { name == $name } map { id }",
 			params(&[("name", Value::Utf8(name.to_string()))]),
 		);
-		match r.frames
-			.first()
-			.and_then(|f| f.columns.iter().find(|c| c.name == "id"))
-			.map(|c| c.data.get_value(0))
-		{
+		match r.frames.first().and_then(|f| f.column("id").expect("the column reads")).map(|c| c.get_value(0)) {
 			Some(Value::IdentityId(id)) => id,
 			other => panic!("unexpected identity for {name}: {other:?}"),
 		}

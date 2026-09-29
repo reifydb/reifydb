@@ -5,13 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 use serde_json::to_string;
 
 use crate::{
@@ -85,16 +82,16 @@ impl BaseVTable for SystemProceduresTest {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("return_type"), return_types.finish()),
-			ColumnWithName::new(Fragment::internal("body"), bodies.finish()),
+			ids.finish("id"),
+			namespace_ids.finish("namespace_id"),
+			names.finish("name"),
+			return_types.finish("return_type"),
+			bodies.finish("body"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

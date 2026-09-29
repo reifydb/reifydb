@@ -5,13 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -80,17 +77,17 @@ impl BaseVTable for SystemQueuePartitions {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("queue_id"), queue_ids.finish()),
-			ColumnWithName::new(Fragment::internal("partition"), partitions.finish()),
-			ColumnWithName::new(Fragment::internal("depth"), depths.finish()),
-			ColumnWithName::new(Fragment::internal("in_flight"), in_flights.finish()),
-			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys.finish()),
-			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at.finish()),
+			queue_ids.finish("queue_id"),
+			partitions.finish("partition"),
+			depths.finish("depth"),
+			in_flights.finish("in_flight"),
+			blocked_keys.finish("blocked_keys"),
+			oldest_due_at.finish("oldest_due_at"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

@@ -37,7 +37,12 @@ pub(crate) fn register_ephemeral_flow(
 					.operator(flow.id, operator.inputs[0])
 					.expect("Parent operator not found")
 					.output_schema();
-				let op = EphemeralSinkSubscriptionOperator::new(*operator_id, ctx.id, delivery.clone());
+				let op = EphemeralSinkSubscriptionOperator::new(
+					*operator_id,
+					ctx.id,
+					&ctx.named_system_columns,
+					delivery.clone(),
+				);
 				engine.insert_operator(
 					flow.id,
 					*operator_id,

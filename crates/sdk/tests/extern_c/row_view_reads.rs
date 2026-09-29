@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, fmt::Debug};
+use std::{cell::RefCell, fmt::Debug, sync::Arc};
 
+use arrow_array::{RecordBatch, UInt64Array};
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -12,7 +13,10 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	operator_with::ApplyWith,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{
+		batch::batch,
+		column::factory::{self, rename},
+	},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -31,16 +35,15 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
 	config::ExtensionParams,
-	fragment::Fragment,
 	value::{
 		blob::Blob,
 		constraint::{precision::Precision, scale::Scale},
+		container::temporal_array::datetime_array,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
-		row_number::RowNumber,
-		system_columns::SystemColumns,
+		system_columns::{SystemColumn, user_columns, with_system_column},
 		time::Time,
 	},
 };
@@ -114,41 +117,44 @@ impl ExternCOperator for ReadEveryWayOperator {
 	}
 }
 
-fn one_row_of_every_type() -> Columns {
+fn one_row_of_every_type() -> RecordBatch {
 	let columns = vec![
-		("int1", ColumnBuffer::int1([i8::MIN])),
-		("int2", ColumnBuffer::int2([i16::MIN])),
-		("int4", ColumnBuffer::int4([i32::MIN])),
-		("int8", ColumnBuffer::int8([i64::MIN])),
-		("int16", ColumnBuffer::int16([i128::MIN])),
-		("uint1", ColumnBuffer::uint1([u8::MAX])),
-		("uint2", ColumnBuffer::uint2([u16::MAX])),
-		("uint4", ColumnBuffer::uint4([u32::MAX])),
-		("uint8", ColumnBuffer::uint8([u64::MAX])),
-		("uint16", ColumnBuffer::uint16([u128::MAX])),
-		("float4", ColumnBuffer::float4([1.5])),
-		("float8", ColumnBuffer::float8([1.5])),
-		("float8_nan", ColumnBuffer::float8([f64::NAN])),
-		("utf8", ColumnBuffer::utf8(["a"])),
-		("blob", ColumnBuffer::blob([Blob::new(vec![1, 2])])),
-		("bool", ColumnBuffer::bool([true])),
+		("int1", factory::int1("c", [i8::MIN])),
+		("int2", factory::int2("c", [i16::MIN])),
+		("int4", factory::int4("c", [i32::MIN])),
+		("int8", factory::int8("c", [i64::MIN])),
+		("int16", factory::int16("c", [i128::MIN])),
+		("uint1", factory::uint1("c", [u8::MAX])),
+		("uint2", factory::uint2("c", [u16::MAX])),
+		("uint4", factory::uint4("c", [u32::MAX])),
+		("uint8", factory::uint8("c", [u64::MAX])),
+		("uint16", factory::uint16("c", [u128::MAX])),
+		("float4", factory::float4("c", [1.5])),
+		("float8", factory::float8("c", [1.5])),
+		("float8_nan", factory::float8("c", [f64::NAN])),
+		("utf8", factory::utf8("c", ["a"])),
+		("blob", factory::blob("c", [Blob::new(vec![1, 2])])),
+		("bool", factory::bool("c", [true])),
 		(
 			"decimal",
-			ColumnBuffer::decimal(Precision::new(38), Scale::new(2), [Decimal::parse("-1.25").unwrap()]),
+			factory::decimal("c", Precision::new(38), Scale::new(2), [Decimal::parse("-1.25").unwrap()]),
 		),
-		("date", ColumnBuffer::date([Date::from_ymd(2026, 9, 24).unwrap()])),
-		("datetime", ColumnBuffer::datetime([DateTime::from_nanos(1)])),
-		("time", ColumnBuffer::time([Time::from_hms(1, 2, 3).unwrap()])),
-		("duration", ColumnBuffer::duration([Duration::new(1, 2, 3).unwrap()])),
+		("date", factory::date("c", [Date::from_ymd(2026, 9, 24).unwrap()])),
+		("datetime", factory::datetime("c", [DateTime::from_nanos(1)])),
+		("time", factory::time("c", [Time::from_hms(1, 2, 3).unwrap()])),
+		("duration", factory::duration("c", [Duration::new(1, 2, 3).unwrap()])),
 	];
 	let now = DateTime::default();
-	Columns::with_system(
-		columns.into_iter().map(|(name, data)| ColumnWithName::new(Fragment::internal(name), data)).collect(),
-		SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![now], vec![now], vec![now], Vec::new()),
-	)
+	let mut columns = batch(columns.into_iter().map(|(name, data)| rename(data, name)).collect()).unwrap();
+	columns =
+		with_system_column(columns, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))).unwrap();
+	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+		columns = with_system_column(columns, column, Arc::new(datetime_array(vec![now]))).unwrap();
+	}
+	columns
 }
 
-fn read_through_extern_c(columns: Columns) -> Vec<(String, Vec<String>)> {
+fn read_through_extern_c(columns: RecordBatch) -> Vec<(String, Vec<String>)> {
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
 	let change =
@@ -169,7 +175,9 @@ fn both_row_views_read_every_column_type_the_same_way() {
 	let in_process: Vec<(String, Vec<String>)> = {
 		let view = InProcessColumnsView::new(&columns);
 		let row = view.row(0).unwrap();
-		columns.iter().map(|col| (col.name().text().to_string(), read_all(&row, col.name().text()))).collect()
+		user_columns(&columns)
+			.map(|(field, _)| (field.name().to_string(), read_all(&row, field.name())))
+			.collect()
 	};
 	let extern_c = read_through_extern_c(columns.clone());
 	assert_eq!(extern_c.len(), in_process.len(), "the extern-c operator must read every column");

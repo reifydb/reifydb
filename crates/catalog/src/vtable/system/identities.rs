@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -62,15 +62,15 @@ impl BaseVTable for SystemIdentities {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("enabled"), enabled_flags.finish()),
-			ColumnWithName::new(Fragment::internal("kind"), kinds.finish()),
+			ids.finish("id"),
+			names.finish("name"),
+			enabled_flags.finish("enabled"),
+			kinds.finish("kind"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

@@ -3,39 +3,41 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{append, batch, single_row},
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, system_columns::user_columns},
 };
 
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_push_const(&mut self, value: &Value) {
+	pub(crate) fn exec_push_const(&mut self, value: &Value) -> Result<()> {
 		if self.batch_size != 1 {
 			let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
 			for _ in 0..self.batch_size {
 				data.push_value(value.clone());
 			}
-			let col = ColumnWithName::new(Fragment::internal("const"), data.finish());
-			self.stack.push(Variable::columns(Columns::new(vec![col])));
+			self.stack.push(Variable::columns(batch(vec![data.finish("const")])?));
 		} else {
 			self.stack.push(Variable::scalar(value.clone()));
 		}
+		Ok(())
 	}
 
-	pub(crate) fn exec_push_none(&mut self) {
+	pub(crate) fn exec_push_none(&mut self) -> Result<()> {
 		if self.batch_size != 1 {
-			let data = ColumnBuffer::none(self.batch_size);
-			let col = ColumnWithName::new(Fragment::internal("none"), data);
-			self.stack.push(Variable::columns(Columns::new(vec![col])));
+			self.stack.push(Variable::columns(batch(vec![factory::none("none", self.batch_size)])?));
 		} else {
 			self.stack.push(Variable::scalar(Value::none()));
 		}
+		Ok(())
 	}
 
 	pub(crate) fn exec_pop(&mut self) -> Result<()> {
@@ -51,32 +53,33 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_emit(&mut self, result: &mut Vec<Frame>) {
+	pub(crate) fn exec_emit(&mut self, result: &mut Vec<Frame>) -> Result<()> {
 		let Some(value) = self.stack.pop().ok() else {
-			return;
+			return Ok(());
 		};
 		match value {
 			Variable::Columns {
-				columns: c,
+				batch: c,
 				..
 			}
 			| Variable::ForIterator {
-				columns: c,
+				batch: c,
 				..
 			} => {
 				result.push(Frame::from(c));
 			}
 			Variable::Closure(_) => {
-				result.push(Frame::from(Columns::single_row([("value", Value::none())])));
+				result.push(Frame::from(single_row([("value", Value::none())])?));
 			}
 		}
+		Ok(())
 	}
 
 	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<()> {
 		let clean_name = strip_dollar_prefix(target.text());
 		let columns = match self.stack.pop()? {
 			Variable::Columns {
-				columns: cols,
+				batch: cols,
 				..
 			} => cols,
 			_ => {
@@ -86,12 +89,12 @@ impl<'a> Vm<'a> {
 
 		match self.symbols.get(clean_name) {
 			Some(Variable::Columns {
-				columns: existing,
+				batch: existing,
 			}) => {
 				let existing_names: Vec<String> =
-					existing.names.iter().map(|n| n.text().to_string()).collect();
+					user_columns(existing).map(|(field, _)| field.name().clone()).collect();
 				let incoming_names: Vec<String> =
-					columns.names.iter().map(|n| n.text().to_string()).collect();
+					user_columns(&columns).map(|(field, _)| field.name().clone()).collect();
 				if existing_names != incoming_names {
 					return Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::AppendColumnMismatch {
@@ -109,9 +112,8 @@ impl<'a> Vm<'a> {
 					}
 					.into());
 				}
-				let mut existing = existing.clone();
-				existing.append_columns(columns)?;
-				self.symbols.reassign(clean_name.to_string(), Variable::columns(existing))?;
+				let appended = append(existing, &columns)?;
+				self.symbols.reassign(clean_name.to_string(), Variable::columns(appended))?;
 			}
 			None => {
 				self.symbols.set(clean_name.to_string(), Variable::columns(columns), true)?;

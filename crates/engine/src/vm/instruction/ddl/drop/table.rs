@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_core::{flow::operator::OperatorDef, value::batch::single_row};
 use reifydb_rql::nodes::DropTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -10,13 +11,13 @@ use reifydb_value::value::Value;
 use super::dependent::find_flow_dependents;
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: DropTableNode) -> Result<Columns> {
+pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: DropTableNode) -> Result<RecordBatch> {
 	let Some(table_id) = plan.table_id else {
-		return Ok(Columns::single_row([
+		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 			("table", Value::Utf8(plan.table_name.text().to_string())),
 			("dropped", Value::Boolean(false)),
-		]));
+		]);
 	};
 
 	let def = services.catalog.get_table(&mut Transaction::Admin(txn), table_id)?;
@@ -44,9 +45,9 @@ pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: 
 
 	services.catalog.drop_table(txn, def)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 		("table", Value::Utf8(plan.table_name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

@@ -3,10 +3,17 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::Expression,
-	value::column::{
-		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	value::{
+		batch::{batch, is_scalar, scalar_value},
+		column::{
+			builder::ColumnBuilder,
+			factory::{none, rename},
+			headers::ColumnHeaders,
+		},
 	},
 };
 use reifydb_evaluate::{
@@ -19,7 +26,12 @@ use reifydb_evaluate::{
 };
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{
+	Value,
+	column_view::ColumnView,
+	frame::frame::Frame,
+	system_columns::{is_system_field, user_columns},
+};
 use tracing::instrument;
 
 use crate::{
@@ -30,7 +42,10 @@ use crate::{
 			declared_return_column, untyped_return_column,
 		},
 		vm::{EMPTY_PARAMS, UdfCall, Vm},
-		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
+		volcano::{
+			query::{QueryContext, QueryNode, eval_context_from_query},
+			user_pairs, with_user_columns,
+		},
 	},
 };
 
@@ -81,14 +96,11 @@ impl UdfEvalNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::args")]
-	fn eval_args(call: &CompiledUdfCall, eval_ctx: &EvalContext) -> Result<Vec<ColumnWithName>> {
+	fn eval_args(call: &CompiledUdfCall, eval_ctx: &EvalContext) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
 		for (compiled_arg, parameter) in call.compiled_args.iter().zip(call.udf.callable.parameters.iter()) {
 			let argument = compiled_arg.execute(eval_ctx)?;
-			arg_columns.push(ColumnWithName::new(
-				argument.name,
-				cast_to_parameter_type(eval_ctx, parameter, argument.data)?,
-			));
+			arg_columns.push(cast_to_parameter_type(eval_ctx, parameter, argument)?);
 		}
 		Ok(arg_columns)
 	}
@@ -99,9 +111,9 @@ impl UdfEvalNode {
 		stored_ctx: &QueryContext,
 		eval_ctx: &EvalContext,
 		call: &CompiledUdfCall,
-		arg_columns: &[ColumnWithName],
+		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> Result<ColumnWithName> {
+	) -> Result<(FieldRef, ArrayRef)> {
 		let mut func_symbols = stored_ctx.symbols.clone();
 		func_symbols.enter_scope(ScopeType::Function);
 
@@ -111,7 +123,7 @@ impl UdfEvalNode {
 
 		for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
-			let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
+			let col_var = Variable::columns(batch(vec![arg_col.clone()])?);
 			func_symbols.set(param_name, col_var, true)?;
 		}
 
@@ -130,34 +142,22 @@ impl UdfEvalNode {
 		vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
 
 		let result_var = collect_call_result(&mut vm, &mut func_result);
-		let column = match result_var {
+		let first = match &result_var {
 			Variable::Columns {
-				columns: c,
+				batch: c,
 				..
-			} if !c.is_empty() => {
-				let name = c.names.first().cloned().unwrap_or_else(|| call.udf.result_column.clone());
-				let data = c.columns.into_iter().next().unwrap();
-				ColumnWithName::new(name, data)
-			}
-			_ => {
-				let data = ColumnBuffer::none(row_count);
-				ColumnWithName {
-					name: call.udf.result_column.clone(),
-					data,
-				}
-			}
+			} => user_columns(c).next().map(|(field, array)| (field.clone(), array.clone())),
+			_ => None,
 		};
+		let column = first.unwrap_or_else(|| none(call.udf.result_column.text(), row_count));
 		match &call.udf.callable.return_type {
-			Some(declared) => {
-				let data = cast_to_declared_return_type(
-					eval_ctx,
-					&column.data,
-					declared,
-					&call.udf.name,
-					&call.udf.fragment,
-				)?;
-				Ok(ColumnWithName::new(column.name, data))
-			}
+			Some(declared) => cast_to_declared_return_type(
+				eval_ctx,
+				&ColumnView::try_from(&column)?,
+				declared,
+				&call.udf.name,
+				&call.udf.fragment,
+			),
 			None => Ok(column),
 		}
 	}
@@ -168,10 +168,11 @@ impl UdfEvalNode {
 		stored_ctx: &QueryContext,
 		eval_ctx: &EvalContext,
 		call: &CompiledUdfCall,
-		arg_columns: &[ColumnWithName],
+		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> Result<ColumnWithName> {
+	) -> Result<(FieldRef, ArrayRef)> {
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
+		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 		let mut func_symbols = stored_ctx.symbols.clone();
 
 		for row_idx in 0..row_count {
@@ -181,9 +182,9 @@ impl UdfEvalNode {
 				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 			}
 
-			for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
+			for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_views.iter()) {
 				let param_name = strip_dollar_prefix(param.name.text()).to_string();
-				let value = arg_col.data().get_value(row_idx);
+				let value = arg_col.get_value(row_idx);
 				func_symbols.set(param_name, Variable::scalar(value), true)?;
 			}
 
@@ -198,8 +199,8 @@ impl UdfEvalNode {
 			let result_var = collect_call_result(&mut vm, &mut func_result);
 			let result = match result_var {
 				Variable::Columns {
-					columns: c,
-				} if c.is_scalar() => c.scalar_value(),
+					batch: c,
+				} if is_scalar(&c) => scalar_value(&c)?,
 				_ => Value::none(),
 			};
 
@@ -208,16 +209,12 @@ impl UdfEvalNode {
 			results.push(result);
 		}
 
-		let data = match &call.udf.callable.return_type {
+		match &call.udf.callable.return_type {
 			Some(declared) => {
-				declared_return_column(eval_ctx, results, declared, &call.udf.name, &call.udf.fragment)?
+				declared_return_column(eval_ctx, results, declared, &call.udf.name, &call.udf.fragment)
 			}
-			None => untyped_return_column(results, &call.udf.name, &call.udf.fragment)?,
-		};
-		Ok(ColumnWithName {
-			name: call.udf.result_column.clone(),
-			data,
-		})
+			None => untyped_return_column(results, &call.udf.name, &call.udf.fragment),
+		}
 	}
 }
 
@@ -254,13 +251,13 @@ impl QueryNode for UdfEvalNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		let Some(mut columns) = self.input.next(rx, ctx)? else {
 			return Ok(None);
 		};
 
 		let (stored_ctx, compiled_calls) = self.context.as_ref().unwrap();
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 
 		for call in compiled_calls {
 			let session = eval_context_from_query(stored_ctx);
@@ -274,8 +271,9 @@ impl QueryNode for UdfEvalNode {
 				Self::run_scalar(rx, stored_ctx, &eval_ctx, call, &arg_columns, row_count)?
 			};
 
-			columns.columns.push(result_column.data);
-			columns.names.push(call.udf.result_column.clone());
+			let mut user = user_pairs(&columns);
+			user.push(rename(result_column, call.udf.result_column.text()));
+			columns = with_user_columns(user, &columns)?;
 		}
 
 		Ok(Some(columns))
@@ -344,30 +342,26 @@ pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	})
 }
 
-pub(crate) fn strip_udf_columns(columns: &mut Columns, udf_names: &[String]) {
+pub(crate) fn strip_udf_columns(columns: RecordBatch, udf_names: &[String]) -> Result<RecordBatch> {
 	if udf_names.is_empty() {
-		return;
+		return Ok(columns);
 	}
-	let keep: Vec<bool> = columns.names.iter().map(|n| !udf_names.iter().any(|u| u == n.text())).collect();
-	let mut idx = 0;
-	columns.columns.retain(|_| {
-		let k = keep[idx];
-		idx += 1;
-		k
-	});
-	let mut idx = 0;
-	columns.names.retain(|_| {
-		let k = keep[idx];
-		idx += 1;
-		k
-	});
+	let kept = columns
+		.schema_ref()
+		.fields()
+		.iter()
+		.zip(columns.columns())
+		.filter(|(field, _)| is_system_field(field) || !udf_names.iter().any(|u| u == field.name()))
+		.map(|(field, array)| (field.clone(), array.clone()))
+		.collect();
+	batch(kept)
 }
 
 pub(crate) fn evaluate_udfs_no_input(
 	expressions: &[Expression],
 	ctx: &QueryContext,
 	rx: &mut Transaction<'_>,
-) -> Result<Option<(Vec<Expression>, Columns)>> {
+) -> Result<Option<(Vec<Expression>, RecordBatch)>> {
 	let mut counter = 0;
 	let mut all_udfs = Vec::new();
 	let rewritten: Vec<Expression> = expressions
@@ -402,7 +396,8 @@ pub(crate) fn evaluate_udfs_no_input(
 			let compiled_arg = compile_expression(&compile_ctx, arg_expr)?;
 			let eval_ctx = session.with_eval_empty();
 			let arg_col = compiled_arg.execute(&eval_ctx)?;
-			let value = cast_to_parameter_type(&eval_ctx, param, arg_col.data)?.get_value(0);
+			let cast = cast_to_parameter_type(&eval_ctx, param, arg_col)?;
+			let value = ColumnView::try_from(&cast)?.get_value(0);
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			func_symbols.set(param_name, Variable::scalar(value), true)?;
 		}
@@ -413,30 +408,30 @@ pub(crate) fn evaluate_udfs_no_input(
 		let result_var = collect_call_result(&mut vm, &mut func_result);
 		let value = match result_var {
 			Variable::Columns {
-				columns: c,
-			} if c.is_scalar() => c.scalar_value(),
+				batch: c,
+			} if is_scalar(&c) => scalar_value(&c)?,
 			_ => Value::none(),
 		};
 
 		let data = match &udf.callable.return_type {
-			Some(declared) => declared_return_column(
-				&session.with_eval_empty(),
-				vec![value],
-				declared,
-				&udf.name,
-				&udf.fragment,
-			)?,
+			Some(declared) => rename(
+				declared_return_column(
+					&session.with_eval_empty(),
+					vec![value],
+					declared,
+					&udf.name,
+					&udf.fragment,
+				)?,
+				udf.result_column.text(),
+			),
 			None => {
 				let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
 				data.push_value(value);
-				data.finish()
+				data.finish(udf.result_column.text())
 			}
 		};
-		result_columns.push(ColumnWithName {
-			name: udf.result_column.clone(),
-			data,
-		});
+		result_columns.push(data);
 	}
 
-	Ok(Some((rewritten, Columns::new(result_columns))))
+	Ok(Some((rewritten, batch(result_columns)?)))
 }

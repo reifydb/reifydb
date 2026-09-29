@@ -343,11 +343,7 @@ fn main() {
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
 				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
-						let count: usize = result
-							.iter()
-							.flat_map(|f| f.columns.first())
-							.map(|c| c.data.len())
-							.sum();
+						let count: usize = result.iter().map(|f| f.row_count()).sum();
 						respond(&json!({"ok": count.to_string()}));
 					}
 					Err(e) => {

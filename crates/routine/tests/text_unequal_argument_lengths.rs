@@ -3,16 +3,15 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::utf8;
 use reifydb_routine::function::text::{
 	concat::TextConcat, contains::TextContains, ends_with::TextEndsWith, starts_with::TextStartsWith,
 };
 use reifydb_routine_abi::{Routine, context::FunctionContext, error::RoutineError};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{identity::IdentityId, system_columns::SystemColumns},
-};
+use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 
 fn ctx(name: &str, row_count: usize) -> FunctionContext<'static> {
 	static RUNTIME: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::testing(0, 0));
@@ -24,15 +23,11 @@ fn ctx(name: &str, row_count: usize) -> FunctionContext<'static> {
 	}
 }
 
-fn ragged(long: &[&str], short: &[&str]) -> Columns {
-	Columns {
-		system: SystemColumns::empty(),
-		columns: vec![ColumnBuffer::utf8(long.to_vec()), ColumnBuffer::utf8(short.to_vec())],
-		names: vec![Fragment::internal("arg0"), Fragment::internal("arg1")],
-	}
+fn ragged(long: &[&str], short: &[&str]) -> Vec<(FieldRef, ArrayRef)> {
+	vec![utf8("arg0", long.to_vec()), utf8("arg1", short.to_vec())]
 }
 
-fn outcome(routine: &dyn Routine<FunctionContext<'static>>, name: &str) -> Result<Columns, RoutineError> {
+fn outcome(routine: &dyn Routine<FunctionContext<'static>>, name: &str) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	routine.execute(&mut ctx(name, 3), &ragged(&["ab", "cd", "ef"], &["a"]))
 }
 

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::binding::BindingToCreate;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateBindingNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
@@ -13,7 +14,7 @@ pub(crate) fn create_binding(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateBindingNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let binding = services.catalog.create_binding(
 		txn,
 		BindingToCreate {
@@ -25,12 +26,12 @@ pub(crate) fn create_binding(
 		},
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(binding.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("binding", Value::Utf8(plan.name.text().to_string())),
 		("protocol", Value::Utf8(binding.protocol.protocol_str().to_string())),
 		("format", Value::Utf8(binding.format.as_str().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }

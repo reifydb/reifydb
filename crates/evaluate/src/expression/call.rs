@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::{CallExpression, Expression, name::display_label},
 	value::column::{
-		ColumnWithName,
 		builder::ColumnBuilder,
-		columns::Columns,
+		factory::rename,
 		view::group_by::{GroupId, GroupRows},
 	},
 };
 use reifydb_routine_abi::{FunctionKind, context::FunctionContext, error::RoutineError};
-use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{error::Error, value::value_type::ValueType};
 
 use crate::{Result, error::EvaluateError, expression::context::EvalContext};
 
-pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: Columns) -> Result<ColumnWithName> {
+pub(crate) fn call_builtin(
+	ctx: &EvalContext,
+	call: &CallExpression,
+	arguments: &[(FieldRef, ArrayRef)],
+) -> Result<(FieldRef, ArrayRef)> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
 	let result_label = display_label(&Expression::Call(call.clone()));
@@ -51,34 +56,20 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 			})?;
 
 		let column = if call.args.is_empty() {
-			ColumnWithName {
-				name: Fragment::internal("dummy"),
-				data: ColumnBuilder::with_capacity(ValueType::Int4, ctx.row_count).finish(),
-			}
+			ColumnBuilder::with_capacity(ValueType::Int4, ctx.row_count).finish("dummy")
 		} else {
-			ColumnWithName::new(arguments.name_at(0).clone(), arguments[0].clone())
+			arguments[0].clone()
 		};
 
 		let all_rows: GroupRows = vec![(GroupId(0), (0..ctx.row_count).collect())];
 
-		accumulator
-			.update(&Columns::new(vec![column]), &all_rows)
-			.map_err(|e| e.with_context(fn_fragment.clone(), false))?;
+		accumulator.update(&[column], &all_rows).map_err(|e| e.with_context(fn_fragment.clone(), false))?;
 
 		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment, false))?;
 
-		return Ok(ColumnWithName::new(result_label.clone(), result_data));
+		return Ok(rename(result_data, result_label.text()));
 	}
 
-	let result_columns = routine.call(&mut fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment, false))?;
-
-	if result_columns.is_empty() {
-		return Err(RoutineError::FunctionExecutionFailed {
-			function: call.func.0.clone(),
-			reason: "Function returned no columns".to_string(),
-		}
-		.into());
-	}
-	let result_data = result_columns.data_at(0).clone();
-	Ok(ColumnWithName::new(result_label, result_data))
+	let result = routine.call(&mut fn_ctx, arguments).map_err(|e| e.with_context(fn_fragment, false))?;
+	Ok(rename(result, result_label.text()))
 }

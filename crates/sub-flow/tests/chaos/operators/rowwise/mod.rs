@@ -6,11 +6,9 @@ pub mod workload;
 
 use std::sync::Arc;
 
+use arrow_schema::{Schema, SchemaRef};
 use rand::RngExt;
-use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	value::column::columns::Columns,
-};
+use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
@@ -171,7 +169,7 @@ impl HostOperator for Rowwise {
 		}
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		match self {
 			Rowwise::Filter(op) => HostOperator::output_schema(op),
 			Rowwise::Map(op) => HostOperator::output_schema(op),
@@ -181,7 +179,7 @@ impl HostOperator for Rowwise {
 }
 
 pub fn build(shape: Shape, runtime: RuntimeContext) -> Rowwise {
-	let parent_schema = Some(Columns::empty());
+	let parent_schema = Some(Arc::new(Schema::empty()));
 	let expressions: Vec<_> = shape
 		.rql()
 		.iter()

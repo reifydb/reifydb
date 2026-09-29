@@ -681,8 +681,19 @@ fn encode_dispatch_result(
 					))),
 				},
 				WireFormat::Json | WireFormat::Frames => {
-					let (content_type, body) = build_response_body(frames, format, unwrap);
-					Some(WsResponse::Text(build_response(request_id, content_type, body, meta)))
+					match build_response_body(frames, format, unwrap) {
+						Ok((content_type, body)) => Some(WsResponse::Text(build_response(
+							request_id,
+							content_type,
+							body,
+							meta,
+						))),
+						Err(e) => Some(WsResponse::Text(build_error(
+							request_id,
+							"ENCODE_ERROR",
+							&e,
+						))),
+					}
 				}
 			}
 		}
@@ -916,29 +927,31 @@ fn encode_call_response(
 			Err(e) => Err(build_error(request_id, "ENCODE_ERROR", &format!("RBCF encode error: {}", e))),
 		},
 		BindingFormat::Json => {
-			let (content_type, body) = build_response_body(frames, WireFormat::Json, false);
+			let (content_type, body) = build_response_body(frames, WireFormat::Json, false)
+				.map_err(|e| build_error(request_id, "ENCODE_ERROR", &e))?;
 			Ok(WsResponse::Text(Response::call(request_id, content_type, body, meta).to_json()))
 		}
 		BindingFormat::Frames => {
-			let (content_type, body) = build_response_body(frames, WireFormat::Frames, false);
+			let (content_type, body) = build_response_body(frames, WireFormat::Frames, false)
+				.map_err(|e| build_error(request_id, "ENCODE_ERROR", &e))?;
 			Ok(WsResponse::Text(Response::call(request_id, content_type, body, meta).to_json()))
 		}
 	}
 }
 
-fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> (String, JsonValue) {
+fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> Result<(String, JsonValue), String> {
 	match format {
 		WireFormat::Json => match resolve_response_json(frames, unwrap) {
 			Ok(resolved) => {
 				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
-				(CONTENT_TYPE_JSON.to_string(), body)
+				Ok((CONTENT_TYPE_JSON.to_string(), body))
 			}
-			Err(e) => (CONTENT_TYPE_JSON.to_string(), JsonValue::String(e)),
+			Err(e) => Ok((CONTENT_TYPE_JSON.to_string(), JsonValue::String(e))),
 		},
 		WireFormat::Frames => {
-			let ws_frames = convert_frames(&frames);
+			let ws_frames = convert_frames(&frames).map_err(|e| format!("JSON encode error: {}", e))?;
 			let body = json!({ "frames": ws_frames });
-			(CONTENT_TYPE_FRAMES.to_string(), body)
+			Ok((CONTENT_TYPE_FRAMES.to_string(), body))
 		}
 		WireFormat::Rbcf => unreachable!("Rbcf is handled before build_response_body"),
 	}

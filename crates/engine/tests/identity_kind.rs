@@ -18,8 +18,8 @@ use reifydb_value::{
 fn lookup_identity(t: &TestEngine, name: &str) -> IdentityId {
 	let frames = t.query(&format!("from system::identities filter {{ name == '{name}' }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-	match col.data.get_value(0) {
+	let col = frame.column("id").unwrap().expect("id column");
+	match col.get_value(0) {
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected identity value: {other:?}"),
 	}
@@ -28,8 +28,8 @@ fn lookup_identity(t: &TestEngine, name: &str) -> IdentityId {
 fn kind_of(t: &TestEngine, name: &str) -> String {
 	let frames = t.query(&format!("from system::identities filter {{ name == '{name}' }} map {{ kind: kind }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "kind").expect("kind column");
-	match col.data.get_value(0) {
+	let col = frame.column("kind").unwrap().expect("kind column");
+	match col.get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("unexpected kind value: {other:?}"),
 	}
@@ -157,6 +157,6 @@ fn test_identity_kind_is_visible_to_a_non_privileged_identity() {
 		.check()
 		.unwrap_or_else(|e| panic!("query_as failed: {e:?}"));
 	let frame = frames.first().expect("frame");
-	let col = frame.columns.iter().find(|c| c.name == "k").expect("k column");
-	assert_eq!(col.data.get_value(0), Value::Utf8("service".to_string()));
+	let col = frame.column("k").unwrap().expect("k column");
+	assert_eq!(col.get_value(0), Value::Utf8("service".to_string()));
 }

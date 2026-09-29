@@ -23,16 +23,15 @@ fn engine() -> TestEngine {
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	column.data.get_type()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	column.get_type()
 }
 
 fn column_strings(frames: &[Frame], name: &str) -> Vec<String> {
-	let column = frames[0].columns.iter().find(|c| c.name == name).expect("column present");
-	(0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect()
+	let column = frames[0].column(name).unwrap().expect("column present");
+	(0..column.len()).map(|i| column.get_value(i).to_string()).collect()
 }
 
 fn diagnostic(t: &TestEngine, rql: &str) -> Diagnostic {

@@ -3,11 +3,13 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	expression::Expression,
 	interface::catalog::flow::OperatorId,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::views, column::builder::ColumnBuilder},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -17,10 +19,7 @@ use reifydb_flow_async::operator::{
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{duration::Duration, value_type::ValueType},
-};
+use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 const OUTPUTS: [&str; 3] = [
 	"n: math::count(latency)",
@@ -28,25 +27,24 @@ const OUTPUTS: [&str; 3] = [
 	"sum99: stats::approx_percentile(latency, 0.99, 0.01) + stats::approx_percentile(latency, 0.5, 0.01)",
 ];
 
-fn parent() -> Columns {
-	Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("a"), ColumnBuilder::with_capacity(ValueType::Int4, 0).finish()),
-		ColumnWithName::new(Fragment::internal("b"), ColumnBuilder::with_capacity(ValueType::Int4, 0).finish()),
-		ColumnWithName::new(
-			Fragment::internal("latency"),
-			ColumnBuilder::with_capacity(ValueType::Float8, 0).finish(),
-		),
-	])
+fn parent() -> SchemaRef {
+	Arc::new(Schema::new(vec![
+		ColumnBuilder::with_capacity(ValueType::Int4, 0).finish("a").0,
+		ColumnBuilder::with_capacity(ValueType::Int4, 0).finish("b").0,
+		ColumnBuilder::with_capacity(ValueType::Float8, 0).finish("latency").0,
+	]))
 }
 
 fn expressions(sources: &[&str]) -> Vec<Expression> {
 	sources.iter().flat_map(|source| parse_expression(source).expect("expression parses")).collect()
 }
 
-fn described(schema: Option<Columns>) -> Vec<(String, ValueType)> {
-	schema.expect("the operator must report its output schema")
+fn described(schema: Option<SchemaRef>) -> Vec<(String, ValueType)> {
+	let columns = RecordBatch::new_empty(schema.expect("the operator must report its output schema"));
+	views(&columns)
+		.expect("the output schema reads")
 		.iter()
-		.map(|column| (column.name().text().to_string(), column.get_type()))
+		.map(|view| (view.field.name().to_string(), view.get_type()))
 		.collect()
 }
 

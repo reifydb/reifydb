@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -12,7 +13,6 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::any::TaggedKey,
-	value::column::columns::Columns,
 };
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::value::datetime::DateTime;
@@ -20,7 +20,7 @@ use smallvec::smallvec;
 
 use crate::Result;
 
-pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Columns) {
+pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: RecordBatch) {
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -35,7 +35,7 @@ pub fn remove_series_row(
 	key: &TaggedKey,
 	pre_for_cdc: EncodedBytes,
 	was_committed: bool,
-	pre: Option<Columns>,
+	pre: Option<RecordBatch>,
 ) -> Result<()> {
 	if let Some(pre) = pre {
 		emit_series_remove_change(txn, series, pre);

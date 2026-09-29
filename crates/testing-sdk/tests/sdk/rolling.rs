@@ -39,6 +39,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 // Rolling sum where each window is itself an invertible accumulator, so rows can share a
 // window coordinate and a single event can be removed without dropping the whole window.
 
@@ -207,9 +209,9 @@ fn single_insert_emits_insert() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Insert);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(10.0));
-	assert_eq!(r.u32("windows"), Some(1));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(10.0));
+	assert_eq!(read::<u32>(r, "windows"), Some(1));
 }
 
 #[test]
@@ -225,9 +227,9 @@ fn multiple_events_accumulate_within_one_window() {
 			.insert(input_row(2, "BTC", 0, 4.0))
 			.build())
 		.expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(7.0));
-	assert_eq!(r.u32("windows"), Some(1), "both rows landed in the same window");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(7.0));
+	assert_eq!(read::<u32>(r, "windows"), Some(1), "both rows landed in the same window");
 }
 
 #[test]
@@ -244,9 +246,9 @@ fn partial_remove_within_window_keeps_window_alive() {
 			.build())
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 3.0)).build()).expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(4.0));
-	assert_eq!(r.u32("windows"), Some(1), "window survives partial removal");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(4.0));
+	assert_eq!(read::<u32>(r, "windows"), Some(1), "window survives partial removal");
 }
 
 #[test]
@@ -261,8 +263,8 @@ fn update_within_window_applies_post_minus_pre() {
 			.update(input_row(1, "BTC", 0, 10.0), input_row(1, "BTC", 0, 25.0))
 			.build())
 		.expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(25.0), "25, not 10 + 25");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(25.0), "25, not 10 + 25");
 }
 
 #[test]
@@ -279,9 +281,9 @@ fn buffer_fills_then_evicts_oldest_window() {
 			.insert(input_row(4, "BTC", 3, 4.0))
 			.build())
 		.expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(9.0), "window 0 evicted: 2+3+4");
-	assert_eq!(r.u32("windows"), Some(3));
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(9.0), "window 0 evicted: 2+3+4");
+	assert_eq!(read::<u32>(r, "windows"), Some(3));
 }
 
 #[test]
@@ -308,8 +310,8 @@ fn remove_clears_buffer_emits_remove() {
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
-	let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(r.f64("rolling_sum"), Some(10.0));
+	let r = (out.diffs[0].pre().expect("remove pre"), 0);
+	assert_eq!(read::<f64>(r, "rolling_sum"), Some(10.0));
 }
 
 #[test]
@@ -326,11 +328,11 @@ fn multiple_groups_isolate_buffers() {
 		.expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 2);
-	assert_eq!(post.row_ref(0).expect("r0").utf8("group").as_deref(), Some("BTC"));
-	assert_eq!(post.row_ref(0).expect("r0").f64("rolling_sum"), Some(10.0));
-	assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
-	assert_eq!(post.row_ref(1).expect("r1").f64("rolling_sum"), Some(50.0));
+	assert_eq!(post.num_rows(), 2);
+	assert_eq!(read::<String>((post, 0), "group").as_deref(), Some("BTC"));
+	assert_eq!(read::<f64>((post, 0), "rolling_sum"), Some(10.0));
+	assert_eq!(read::<String>((post, 1), "group").as_deref(), Some("ETH"));
+	assert_eq!(read::<f64>((post, 1), "rolling_sum"), Some(50.0));
 }
 
 struct SealedRollingSum;

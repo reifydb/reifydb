@@ -6,17 +6,26 @@ use std::{
 	sync::{Arc, LazyLock},
 };
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	error::CoreError,
 	interface::catalog::{id::NamespaceId, object::ObjectId},
-	value::column::columns::Columns,
+	value::batch::from_rows,
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, datetime::DateTime, frame::frame::Frame, value_type::ValueType},
+	value::{
+		Value,
+		datetime::DateTime,
+		frame::{extract::FrameError, frame::Frame},
+		value_type::ValueType,
+	},
 };
 use tracing::warn;
 
@@ -49,7 +58,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for StorageAdvanceProcedure {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let (objects, at) = match ctx.params {
 			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
 			Params::Positional(args) => return Err(arity(args.len())),
@@ -84,7 +97,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for StorageAdvanceProcedure {
 			asserted.push((name, object));
 		}
 
-		Ok(output(&asserted, at))
+		output(&asserted, at)
 	}
 }
 
@@ -101,6 +114,13 @@ fn failed(reason: &str) -> RoutineError {
 		procedure: Fragment::internal(NAME),
 		reason: reason.to_string(),
 	}
+}
+
+fn frame_error(error: FrameError) -> RoutineError {
+	Error::from(CoreError::FrameError {
+		message: error.to_string(),
+	})
+	.into()
 }
 
 fn identifiers(objects: &Value) -> Result<Vec<String>, RoutineError> {
@@ -250,7 +270,7 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 		.check()
 		.map_err(RoutineError::from)?;
 
-	match rows_updated(&advanced.frames) {
+	match rows_updated(&advanced.frames)? {
 		0 => {}
 		1 => return Ok(()),
 		updated => unreachable!(
@@ -263,7 +283,7 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 			.check()
 			.map_err(RoutineError::from)?;
 
-	if let Some(previous) = single_complete_through(&current.frames, key) {
+	if let Some(previous) = single_complete_through(&current.frames, key)? {
 		warn!(
 			object = key,
 			previous = %previous,
@@ -284,14 +304,15 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 	Ok(())
 }
 
-fn rows_updated(frames: &[Frame]) -> u64 {
-	frames.first()
-		.and_then(|frame| frame.columns.iter().find(|c| c.name.as_str() == "updated"))
-		.filter(|column| column.data.len() == 1)
-		.map_or(0, |column| match column.data.get_value(0) {
-			Value::Uint8(count) => count,
-			_ => 0,
-		})
+fn rows_updated(frames: &[Frame]) -> Result<u64, RoutineError> {
+	let column = match frames.first() {
+		Some(frame) => frame.column("updated").map_err(frame_error)?,
+		None => None,
+	};
+	Ok(column.filter(|column| column.len() == 1).map_or(0, |column| match column.get_value(0) {
+		Value::Uint8(count) => count,
+		_ => 0,
+	}))
 }
 
 fn named(object_id: u64, at: DateTime) -> Params {
@@ -301,23 +322,27 @@ fn named(object_id: u64, at: DateTime) -> Params {
 	Params::Named(Arc::new(map))
 }
 
-fn single_complete_through(frames: &[Frame], key: u64) -> Option<DateTime> {
-	let frame = frames.first()?;
-	let column = frame.columns.iter().find(|c| c.name.as_str() == "complete_through")?;
-	match column.data.len() {
-		0 => return None,
+fn single_complete_through(frames: &[Frame], key: u64) -> Result<Option<DateTime>, RoutineError> {
+	let Some(frame) = frames.first() else {
+		return Ok(None);
+	};
+	let Some(column) = frame.column("complete_through").map_err(frame_error)? else {
+		return Ok(None);
+	};
+	match column.len() {
+		0 => return Ok(None),
 		1 => {}
 		recorded => unreachable!(
 			"{COMPLETENESS} holds {recorded} rows for object {key}; one row per object is an invariant"
 		),
 	}
-	match column.data.get_value(0) {
-		Value::DateTime(at) => Some(at),
-		_ => None,
+	match column.get_value(0) {
+		Value::DateTime(at) => Ok(Some(at)),
+		_ => Ok(None),
 	}
 }
 
-fn output(asserted: &[(String, ObjectId)], at: DateTime) -> Columns {
+fn output(asserted: &[(String, ObjectId)], at: DateTime) -> Result<RecordBatch, RoutineError> {
 	let names = ["object", "object_id", "complete_through"];
 	let rows: Vec<Vec<Value>> = asserted
 		.iter()
@@ -325,5 +350,5 @@ fn output(asserted: &[(String, ObjectId)], at: DateTime) -> Columns {
 			vec![Value::Utf8(name.clone()), Value::Uint8(object.to_u64()), Value::DateTime(at)]
 		})
 		.collect();
-	Columns::from_rows(&names, &rows)
+	Ok(from_rows(&names, &rows)?)
 }

@@ -1,57 +1,63 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder};
-use reifydb_value::reifydb_assertions;
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::builder::ColumnBuilder;
+use reifydb_value::{reifydb_assertions, value::column_view::ColumnView};
 
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
-	pub(crate) fn pop_as_column(&mut self) -> Result<ColumnWithName> {
+	pub(crate) fn pop_as_column(&mut self) -> Result<(FieldRef, ArrayRef)> {
 		self.stack.pop()?.into_column()
 	}
 }
 
-pub(crate) fn broadcast_to_match(left: ColumnWithName, right: ColumnWithName) -> (ColumnWithName, ColumnWithName) {
-	let ll = left.data.len();
-	let rl = right.data.len();
+pub(crate) fn broadcast_to_match(
+	left: (FieldRef, ArrayRef),
+	right: (FieldRef, ArrayRef),
+) -> Result<((FieldRef, ArrayRef), (FieldRef, ArrayRef))> {
+	let ll = left.1.len();
+	let rl = right.1.len();
 
 	if ll == rl {
-		return (left, right);
+		return Ok((left, right));
 	}
 
 	if ll == 1 && rl > 1 {
-		(broadcast_column(&left, rl), right)
+		Ok((broadcast_column(&left, rl)?, right))
 	} else if rl == 1 && ll > 1 {
-		(left, broadcast_column(&right, ll))
+		Ok((left, broadcast_column(&right, ll)?))
 	} else {
-		(left, right)
+		Ok((left, right))
 	}
 }
 
-pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> ColumnWithName {
+pub(crate) fn broadcast_column(col: &(FieldRef, ArrayRef), target_len: usize) -> Result<(FieldRef, ArrayRef)> {
 	reifydb_assertions! {
-		assert_eq!(col.data.len(), 1);
+		assert_eq!(col.1.len(), 1);
 	}
-	let value = col.data.get_value(0);
-	let mut data = ColumnBuilder::with_capacity(col.data.get_type(), target_len);
+	let view = ColumnView::try_from(col)?;
+	let value = view.get_value(0);
+	let mut data = ColumnBuilder::with_capacity(view.get_type(), target_len);
 	for _ in 0..target_len {
 		data.push_value(value.clone());
 	}
-	ColumnWithName::new(col.name.clone(), data.finish())
+	Ok(data.finish(col.0.name()))
 }
 
-pub(crate) fn broadcast_many(cols: Vec<ColumnWithName>) -> Vec<ColumnWithName> {
-	let target = cols.iter().map(|c| c.data.len()).max().unwrap_or(0);
+pub(crate) fn broadcast_many(cols: Vec<(FieldRef, ArrayRef)>) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	let target = cols.iter().map(|c| c.1.len()).max().unwrap_or(0);
 	if target <= 1 {
-		return cols;
+		return Ok(cols);
 	}
 	cols.into_iter()
 		.map(|c| {
-			if c.data.len() == 1 {
+			if c.1.len() == 1 {
 				broadcast_column(&c, target)
 			} else {
-				c
+				Ok(c)
 			}
 		})
 		.collect()

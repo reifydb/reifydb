@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	container::{
-		decimal_array::DecimalArray,
+		decimal_array::DecimalView,
 		temporal_array::{dates, datetimes, times},
 		wide_int_array::wides,
 	},
-	frame::data::FrameColumnData,
 	value_type::ValueType,
 };
 
@@ -52,9 +52,9 @@ macro_rules! try_rle_fixed {
 	}};
 }
 
-fn family(inner: &FrameColumnData) -> Option<(ValueKind, &DecimalArray)> {
-	match inner {
-		FrameColumnData::Decimal(c) => Some((ValueKind::Decimal, c)),
+fn family<'a>(view: &ColumnView<'a>) -> Option<(ValueKind, DecimalView<'a>)> {
+	match &view.data {
+		ViewData::Decimal(c) => Some((ValueKind::Decimal, *c)),
 		_ => None,
 	}
 }
@@ -72,32 +72,32 @@ fn family_column(kind: ValueKind, encoding: Encoding, data: Vec<u8>) -> EncodedC
 	}
 }
 
-pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
-	if let Some((kind, array)) = family(inner) {
+pub(crate) fn try_rle_fixed(view: &ColumnView<'_>) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(view) {
 		let data = match array {
-			DecimalArray::Decimal128(a) => {
+			DecimalView::Decimal128(a) => {
 				try_rle_encode(a.values(), 16, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))?
 			}
-			DecimalArray::Decimal256(a) => {
+			DecimalView::Decimal256(a) => {
 				try_rle_encode(a.values(), 32, |v, buf| buf.extend_from_slice(&v.to_le_bytes()))?
 			}
 		};
 		return Some(family_column(kind, Encoding::Rle, data));
 	}
-	match inner {
-		FrameColumnData::Int1(c) => try_rle_fixed!(c, ValueType::Int1, 1),
-		FrameColumnData::Int2(c) => try_rle_fixed!(c, ValueType::Int2, 2),
-		FrameColumnData::Int4(c) => try_rle_fixed!(c, ValueType::Int4, 4),
-		FrameColumnData::Int8(c) => try_rle_fixed!(c, ValueType::Int8, 8),
-		FrameColumnData::Uint1(c) => try_rle_fixed!(c, ValueType::Uint1, 1),
-		FrameColumnData::Uint2(c) => try_rle_fixed!(c, ValueType::Uint2, 2),
-		FrameColumnData::Uint4(c) => try_rle_fixed!(c, ValueType::Uint4, 4),
-		FrameColumnData::Uint8(c) => try_rle_fixed!(c, ValueType::Uint8, 8),
-		FrameColumnData::Int16(c) => try_rle_fixed!(slice: &wides::<i128>(c), ValueType::Int16, 16),
-		FrameColumnData::Uint16(c) => try_rle_fixed!(slice: &wides::<u128>(c), ValueType::Uint16, 16),
-		FrameColumnData::Float4(c) => try_rle_fixed!(c, ValueType::Float4, 4),
-		FrameColumnData::Float8(c) => try_rle_fixed!(c, ValueType::Float8, 8),
-		FrameColumnData::Date(c) => {
+	match &view.data {
+		ViewData::Int1(c) => try_rle_fixed!(c, ValueType::Int1, 1),
+		ViewData::Int2(c) => try_rle_fixed!(c, ValueType::Int2, 2),
+		ViewData::Int4(c) => try_rle_fixed!(c, ValueType::Int4, 4),
+		ViewData::Int8(c) => try_rle_fixed!(c, ValueType::Int8, 8),
+		ViewData::Uint1(c) => try_rle_fixed!(c, ValueType::Uint1, 1),
+		ViewData::Uint2(c) => try_rle_fixed!(c, ValueType::Uint2, 2),
+		ViewData::Uint4(c) => try_rle_fixed!(c, ValueType::Uint4, 4),
+		ViewData::Uint8(c) => try_rle_fixed!(c, ValueType::Uint8, 8),
+		ViewData::Int16(c) => try_rle_fixed!(slice: &wides::<i128>(c), ValueType::Int16, 16),
+		ViewData::Uint16(c) => try_rle_fixed!(slice: &wides::<u128>(c), ValueType::Uint16, 16),
+		ViewData::Float4(c) => try_rle_fixed!(c, ValueType::Float4, 4),
+		ViewData::Float8(c) => try_rle_fixed!(c, ValueType::Float8, 8),
+		ViewData::Date(c) => {
 			let raw: Vec<i32> = dates(c).iter().map(|d| d.to_days_since_epoch()).collect();
 			let encoded = try_rle_i32(&raw)?;
 			Some(EncodedColumn {
@@ -111,7 +111,7 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 				row_count: 0,
 			})
 		}
-		FrameColumnData::DateTime(c) => {
+		ViewData::DateTime(c) => {
 			let raw: Vec<u64> = datetimes(c).iter().map(|d| d.to_nanos() as u64).collect();
 			let encoded = try_rle_u64(&raw)?;
 			Some(EncodedColumn {
@@ -125,7 +125,7 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Time(c) => {
+		ViewData::Time(c) => {
 			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			let encoded = try_rle_u64(&raw)?;
 			Some(EncodedColumn {
@@ -143,16 +143,16 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	}
 }
 
-pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
-	if let Some((kind, array)) = family(inner) {
+pub(crate) fn try_delta_fixed(view: &ColumnView<'_>) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(view) {
 		let data = match array {
-			DecimalArray::Decimal128(a) => try_delta_i128(a.values())?,
-			DecimalArray::Decimal256(a) => try_delta_i256(a.values())?,
+			DecimalView::Decimal128(a) => try_delta_i128(a.values())?,
+			DecimalView::Decimal256(a) => try_delta_i256(a.values())?,
 		};
 		return Some(family_column(kind, Encoding::Delta, data));
 	}
-	match inner {
-		FrameColumnData::Int1(c) => {
+	match &view.data {
+		ViewData::Int1(c) => {
 			let encoded = try_delta_i8(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int1.byte(),
@@ -165,7 +165,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int2(c) => {
+		ViewData::Int2(c) => {
 			let encoded = try_delta_i16(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int2.byte(),
@@ -178,7 +178,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int4(c) => {
+		ViewData::Int4(c) => {
 			let encoded = try_delta_i32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int4.byte(),
@@ -191,7 +191,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int8(c) => {
+		ViewData::Int8(c) => {
 			let encoded = try_delta_i64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int8.byte(),
@@ -204,7 +204,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint1(c) => {
+		ViewData::Uint1(c) => {
 			let encoded = try_delta_u8(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint1.byte(),
@@ -217,7 +217,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint2(c) => {
+		ViewData::Uint2(c) => {
 			let encoded = try_delta_u16(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint2.byte(),
@@ -230,7 +230,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint4(c) => {
+		ViewData::Uint4(c) => {
 			let encoded = try_delta_u32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint4.byte(),
@@ -243,7 +243,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint8(c) => {
+		ViewData::Uint8(c) => {
 			let encoded = try_delta_u64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint8.byte(),
@@ -256,7 +256,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int16(c) => {
+		ViewData::Int16(c) => {
 			let encoded = try_delta_i128(&wides::<i128>(c))?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int16.byte(),
@@ -269,7 +269,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint16(c) => {
+		ViewData::Uint16(c) => {
 			let encoded = try_delta_u128(&wides::<u128>(c))?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint16.byte(),
@@ -282,7 +282,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Float4(c) => {
+		ViewData::Float4(c) => {
 			let encoded = try_delta_f32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Float4.byte(),
@@ -295,7 +295,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Float8(c) => {
+		ViewData::Float8(c) => {
 			let encoded = try_delta_f64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Float8.byte(),
@@ -308,7 +308,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Date(c) => {
+		ViewData::Date(c) => {
 			let raw: Vec<i32> = dates(c).iter().map(|d| d.to_days_since_epoch()).collect();
 			let encoded = try_delta_i32(&raw)?;
 			Some(EncodedColumn {
@@ -322,7 +322,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::DateTime(c) => {
+		ViewData::DateTime(c) => {
 			let raw: Vec<i64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
 			let encoded = try_delta_i64(&raw)?;
 			Some(EncodedColumn {
@@ -336,7 +336,7 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Time(c) => {
+		ViewData::Time(c) => {
 			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			let encoded = try_delta_u64(&raw)?;
 			Some(EncodedColumn {
@@ -354,16 +354,16 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 	}
 }
 
-pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
-	if let Some((kind, array)) = family(inner) {
+pub(crate) fn try_delta_rle_fixed(view: &ColumnView<'_>) -> Option<EncodedColumn> {
+	if let Some((kind, array)) = family(view) {
 		let data = match array {
-			DecimalArray::Decimal128(a) => try_delta_rle_i128(a.values())?,
-			DecimalArray::Decimal256(a) => try_delta_rle_i256(a.values())?,
+			DecimalView::Decimal128(a) => try_delta_rle_i128(a.values())?,
+			DecimalView::Decimal256(a) => try_delta_rle_i256(a.values())?,
 		};
 		return Some(family_column(kind, Encoding::DeltaRle, data));
 	}
-	match inner {
-		FrameColumnData::Int1(c) => {
+	match &view.data {
+		ViewData::Int1(c) => {
 			let encoded = try_delta_rle_i8(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int1.byte(),
@@ -376,7 +376,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int2(c) => {
+		ViewData::Int2(c) => {
 			let encoded = try_delta_rle_i16(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int2.byte(),
@@ -389,7 +389,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int4(c) => {
+		ViewData::Int4(c) => {
 			let encoded = try_delta_rle_i32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int4.byte(),
@@ -402,7 +402,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int8(c) => {
+		ViewData::Int8(c) => {
 			let encoded = try_delta_rle_i64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int8.byte(),
@@ -415,7 +415,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint1(c) => {
+		ViewData::Uint1(c) => {
 			let encoded = try_delta_rle_u8(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint1.byte(),
@@ -428,7 +428,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint2(c) => {
+		ViewData::Uint2(c) => {
 			let encoded = try_delta_rle_u16(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint2.byte(),
@@ -441,7 +441,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint4(c) => {
+		ViewData::Uint4(c) => {
 			let encoded = try_delta_rle_u32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint4.byte(),
@@ -454,7 +454,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint8(c) => {
+		ViewData::Uint8(c) => {
 			let encoded = try_delta_rle_u64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint8.byte(),
@@ -467,7 +467,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Int16(c) => {
+		ViewData::Int16(c) => {
 			let encoded = try_delta_rle_i128(&wides::<i128>(c))?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Int16.byte(),
@@ -480,7 +480,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Uint16(c) => {
+		ViewData::Uint16(c) => {
 			let encoded = try_delta_rle_u128(&wides::<u128>(c))?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Uint16.byte(),
@@ -493,7 +493,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Float4(c) => {
+		ViewData::Float4(c) => {
 			let encoded = try_delta_rle_f32(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Float4.byte(),
@@ -506,7 +506,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Float8(c) => {
+		ViewData::Float8(c) => {
 			let encoded = try_delta_rle_f64(c.values())?;
 			Some(EncodedColumn {
 				type_code: ValueKind::Float8.byte(),
@@ -519,7 +519,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::DateTime(c) => {
+		ViewData::DateTime(c) => {
 			let raw: Vec<i64> = datetimes(c).iter().map(|d| d.to_nanos()).collect();
 			let encoded = try_delta_rle_i64(&raw)?;
 			Some(EncodedColumn {
@@ -533,7 +533,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Date(c) => {
+		ViewData::Date(c) => {
 			let raw: Vec<i32> = dates(c).iter().map(|d| d.to_days_since_epoch()).collect();
 			let encoded = try_delta_rle_i32(&raw)?;
 			Some(EncodedColumn {
@@ -547,7 +547,7 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Time(c) => {
+		ViewData::Time(c) => {
 			let raw: Vec<u64> = times(c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			let encoded = try_delta_rle_u64(&raw)?;
 			Some(EncodedColumn {

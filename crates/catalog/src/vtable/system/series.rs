@@ -8,13 +8,10 @@ use reifydb_core::{
 		series::{SeriesKey, TimestampPrecision},
 		vtable::VTable,
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -91,19 +88,19 @@ impl BaseVTable for SystemSeries {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("tag_id"), tag_ids.finish()),
-			ColumnWithName::new(Fragment::internal("key_column"), key_columns.finish()),
-			ColumnWithName::new(Fragment::internal("key_kind"), key_kinds.finish()),
-			ColumnWithName::new(Fragment::internal("time"), times.finish()),
-			ColumnWithName::new(Fragment::internal("ts"), timestamps.finish()),
+			ids.finish("id"),
+			namespaces.finish("namespace_id"),
+			names.finish("name"),
+			tag_ids.finish("tag_id"),
+			key_columns.finish("key_column"),
+			key_kinds.finish("key_kind"),
+			times.finish("time"),
+			timestamps.finish("ts"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

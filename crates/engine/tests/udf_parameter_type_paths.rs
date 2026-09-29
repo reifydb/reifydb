@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{error::Diagnostic, params::Params, value::frame::column::FrameColumn};
+use reifydb_value::{error::Diagnostic, params::Params, value::column_view::ColumnView};
 
 const LOOP: &str = "LET $i = 0; WHILE $i < 100 { IF $i >= 1 { BREAK }; $i = $i + 1 };";
 
@@ -59,18 +61,20 @@ fn paths(param_type: &str, arg: &str) -> Vec<Path> {
 	]
 }
 
-fn run(t: &TestEngine, rql: &str) -> Result<FrameColumn, Box<Diagnostic>> {
+fn run(t: &TestEngine, rql: &str) -> Result<(FieldRef, ArrayRef), Box<Diagnostic>> {
 	let result = t.inner().query_as(TestEngine::identity(), rql, Params::None);
 	if let Some(err) = result.error {
 		return Err(err.0);
 	}
 	assert_eq!(result.frames.len(), 1, "expected one frame for {rql}, got {:?}", result.frames);
-	let column = result.frames[0].columns.iter().find(|c| c.name == "v").cloned();
-	Ok(column.unwrap_or_else(|| panic!("no column v for {rql}")))
+	let schema = result.frames[0].batch.schema();
+	let index = schema.index_of("v").unwrap_or_else(|_| panic!("no column v for {rql}"));
+	Ok((schema.fields()[index].clone(), result.frames[0].batch.column(index).clone()))
 }
 
-fn same_text_on_every_row(path: &str, column: &FrameColumn) -> String {
-	let texts: Vec<String> = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
+fn same_text_on_every_row(path: &str, column: &(FieldRef, ArrayRef)) -> String {
+	let column = ColumnView::try_from(column).unwrap();
+	let texts: Vec<String> = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
 	assert!(
 		!texts.is_empty() && texts.iter().all(|v| *v == texts[0]),
 		"{path}: every row binds the same argument, got {texts:?}"
@@ -85,7 +89,7 @@ fn bound(t: &TestEngine, path: &Path) -> (String, String) {
 	let value = same_text_on_every_row(path.name, &succeed(&path.value));
 	let type_column = succeed(&path.bound_type);
 	let ty = if path.type_from_result_column {
-		type_column.data.get_type().to_string()
+		ColumnView::try_from(&type_column).unwrap().get_type().to_string()
 	} else {
 		same_text_on_every_row(path.name, &type_column)
 	};

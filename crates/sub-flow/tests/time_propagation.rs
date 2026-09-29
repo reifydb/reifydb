@@ -13,7 +13,7 @@
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_value::{
 	params::Params,
-	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, system_columns::time},
 };
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
@@ -33,9 +33,9 @@ fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
 
 fn only_time(db: &TestDb, rql: &str) -> reifydb_value::value::datetime::DateTime {
 	let frames = query_internal(db, rql);
-	let time = frames[0].time();
-	assert_eq!(time.len(), 1, "expected exactly one row from `{rql}`");
-	time[0]
+	let stamps = time(&frames[0].batch).expect("#time");
+	assert_eq!(stamps.len(), 1, "expected exactly one row from `{rql}`");
+	stamps[0]
 }
 
 #[test]

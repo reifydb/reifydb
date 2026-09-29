@@ -4,8 +4,10 @@
 pub mod oracle;
 pub mod workload;
 
+use std::sync::Arc;
+
+use arrow_schema::Schema;
 use rand::{RngExt, rngs::StdRng};
-use reifydb_core::value::column::columns::Columns;
 use reifydb_flow_async::operator::aggregation::operator::AggregateOperator;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -98,7 +100,7 @@ impl Agg {
 
 pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator {
 	AggregateOperator::new(
-		Some(Columns::empty()),
+		Some(Arc::new(Schema::empty())),
 		AGGREGATE_OPERATOR,
 		parse_expression(GROUP_COLUMN).expect("group_by parses"),
 		parse_expression(agg.expression()).expect("aggregation parses"),

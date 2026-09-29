@@ -14,8 +14,9 @@ use reifydb_core::{
 		id::TableId,
 	},
 	operator_with::DistinctWith,
-	value::column::columns::Columns,
+	value::{batch::batch, column::factory::uint8},
 };
+use reifydb_value::value::{row_number::RowNumber, system_columns::row_numbers};
 
 use super::{lane::*, *};
 
@@ -27,19 +28,20 @@ fn op(bits: u32, stamps: [Option<u64>; 2]) -> AppendOperator {
 	AppendOperator::new_for_state_tests(OperatorId(1), lanes(bits, stamps))
 }
 
-fn rows(source_rows: &[u64]) -> Columns {
-	Columns::empty().with_row_numbers(source_rows.iter().map(|r| RowNumber(*r)).collect())
+fn rows(source_rows: &[u64]) -> RecordBatch {
+	let values = batch(vec![uint8("v", source_rows.iter().copied())]).unwrap();
+	with_system_column(values, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(source_rows.to_vec()))).unwrap()
 }
 
-fn numbers(columns: &Columns) -> Vec<u64> {
-	columns.row_numbers().iter().map(|r| r.0).collect()
+fn numbers(columns: &RecordBatch) -> Vec<u64> {
+	row_numbers(columns).unwrap().iter().map(|r| r.0).collect()
 }
 
 #[test]
 fn a_source_row_translates_to_its_lane_stamped_output_row() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let diff = operator.translate_append_insert(0, rows(&[42])).expect("an insert must translate");
+	let diff = operator.translate_append_insert(0, rows(&[42])).unwrap().expect("an insert must translate");
 
 	match diff {
 		Diff::Insert {
@@ -54,8 +56,8 @@ fn a_source_row_translates_to_its_lane_stamped_output_row() {
 fn the_same_source_row_always_translates_to_the_same_output_row() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let inserted = operator.translate_append_insert(0, rows(&[42])).expect("an insert must translate");
-	let removed = operator.translate_append_remove(0, rows(&[42])).expect("a remove must translate");
+	let inserted = operator.translate_append_insert(0, rows(&[42])).unwrap().expect("an insert must translate");
+	let removed = operator.translate_append_remove(0, rows(&[42])).unwrap().expect("a remove must translate");
 
 	let (
 		Diff::Insert {
@@ -77,8 +79,8 @@ fn the_same_source_row_always_translates_to_the_same_output_row() {
 fn each_input_numbers_its_own_source_rows_independently() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let left = operator.translate_append_insert(0, rows(&[7])).expect("an insert must translate");
-	let right = operator.translate_append_insert(1, rows(&[7])).expect("an insert must translate");
+	let left = operator.translate_append_insert(0, rows(&[7])).unwrap().expect("an insert must translate");
+	let right = operator.translate_append_insert(1, rows(&[7])).unwrap().expect("an insert must translate");
 
 	let (
 		Diff::Insert {
@@ -102,7 +104,7 @@ fn each_input_numbers_its_own_source_rows_independently() {
 fn a_source_row_repeated_inside_one_batch_lands_on_one_output_row() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let diff = operator.translate_append_insert(0, rows(&[5, 5, 5])).expect("an insert must translate");
+	let diff = operator.translate_append_insert(0, rows(&[5, 5, 5])).unwrap().expect("an insert must translate");
 
 	let Diff::Insert {
 		post,
@@ -118,7 +120,7 @@ fn a_source_row_repeated_inside_one_batch_lands_on_one_output_row() {
 fn a_batch_keeps_every_slot_aligned_with_its_source_row() {
 	let mut operator = op(2, [Some(0), Some(2)]);
 
-	let diff = operator.translate_append_insert(1, rows(&[1, 9, 4])).expect("an insert must translate");
+	let diff = operator.translate_append_insert(1, rows(&[1, 9, 4])).unwrap().expect("an insert must translate");
 
 	let Diff::Insert {
 		post,
@@ -134,7 +136,8 @@ fn a_batch_keeps_every_slot_aligned_with_its_source_row() {
 fn an_update_carries_the_same_output_row_on_both_sides() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let diff = operator.translate_append_update(0, rows(&[3]), rows(&[3])).expect("an update must translate");
+	let diff =
+		operator.translate_append_update(0, rows(&[3]), rows(&[3])).unwrap().expect("an update must translate");
 
 	let Diff::Update {
 		pre,
@@ -152,7 +155,7 @@ fn an_update_carries_the_same_output_row_on_both_sides() {
 fn a_retraction_translates_no_matter_how_long_it_waited() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	let diff = operator.translate_append_remove(0, rows(&[42])).expect("a remove must translate");
+	let diff = operator.translate_append_remove(0, rows(&[42])).unwrap().expect("a remove must translate");
 
 	let Diff::Remove {
 		pre,
@@ -168,8 +171,8 @@ fn a_retraction_translates_no_matter_how_long_it_waited() {
 fn an_empty_batch_translates_to_nothing() {
 	let mut operator = op(1, [Some(0), Some(1)]);
 
-	assert!(operator.translate_append_insert(0, rows(&[])).is_none());
-	assert!(operator.translate_append_remove(0, rows(&[])).is_none());
+	assert!(operator.translate_append_insert(0, rows(&[])).unwrap().is_none());
+	assert!(operator.translate_append_remove(0, rows(&[])).unwrap().is_none());
 }
 
 struct Dag {

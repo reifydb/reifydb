@@ -3,15 +3,12 @@
 
 use std::f64::consts::PI;
 
-use reifydb_value::value::{
-	Value, container::any_array::any_array, frame::data::FrameColumnData, ordered_f64::OrderedF64,
-};
+use reifydb_value::value::{Value, container::any_array::any_array, ordered_f64::OrderedF64, value_type::ValueType};
 
-fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any {
-		container: any_array(v),
-		declared_type: None,
-	}
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<Value>) -> ColumnData {
+	data(ValueType::Any, any_array(v))
 }
 
 crate::plain_tests! {

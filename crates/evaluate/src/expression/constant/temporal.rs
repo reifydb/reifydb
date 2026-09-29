@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory;
 use reifydb_value::{
 	error::{TemporalKind, TypeError},
 	fragment::Fragment,
@@ -15,21 +17,21 @@ use crate::Result;
 pub struct TemporalParser;
 
 impl TemporalParser {
-	pub fn parse_temporal(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+	pub fn parse_temporal(fragment: Fragment, name: &str, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
 		let value = fragment.text();
 
 		if value.starts_with('P') || value.starts_with('p') {
 			let duration = parse_duration(fragment.clone())?;
-			Ok(ColumnBuffer::duration(vec![duration; row_count]))
+			Ok(factory::duration(name, vec![duration; row_count]))
 		} else if value.contains(':') && value.contains('-') {
 			let datetime = parse_datetime(fragment.clone())?;
-			Ok(ColumnBuffer::datetime(vec![datetime; row_count]))
+			Ok(factory::datetime(name, vec![datetime; row_count]))
 		} else if value.contains('-') {
 			let date = parse_date(fragment.clone())?;
-			Ok(ColumnBuffer::date(vec![date; row_count]))
+			Ok(factory::date(name, vec![date; row_count]))
 		} else if value.contains(':') {
 			let time = parse_time(fragment.clone())?;
-			Ok(ColumnBuffer::time(vec![time; row_count]))
+			Ok(factory::time(name, vec![time; row_count]))
 		} else {
 			Err(TypeError::Temporal {
 				kind: TemporalKind::UnrecognizedTemporalPattern,

@@ -3,18 +3,18 @@
 
 use std::{borrow::Cow, mem, mem::size_of, ptr};
 
-use arrow_array::{GenericByteArray, types::ByteArrayType};
+use arrow_array::{Array, GenericByteArray, RecordBatch, types::ByteArrayType};
 use arrow_buffer::{BooleanBuffer, i256};
 use reifydb_codec::extern_c::cells::{encode_any_cell, encode_dictionary_id_cell};
-use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
-	fragment::Fragment,
+	Result,
 	util::bitmap::packed_bytes,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		container::{
 			any_array,
-			decimal_array::DecimalArray,
+			decimal_array::DecimalView,
 			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -26,6 +26,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		system_columns::{SystemColumn, row_numbers, system_column, time, user_columns},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -45,25 +46,30 @@ use crate::{
 };
 
 impl Arena {
-	#[instrument(name = "flow::marshal::columns", level = "trace", skip_all, fields(row_count = columns.row_count(), column_count = columns.len()))]
-	pub fn marshal_columns(&mut self, columns: &Columns) -> ExternCColumns {
-		let row_count = columns.row_count();
-		let column_count = columns.len();
+	#[instrument(name = "flow::marshal::columns", level = "trace", skip_all, fields(row_count = batch.num_rows(), column_count = user_columns(batch).count()))]
+	pub fn marshal_columns(&mut self, batch: &RecordBatch) -> Result<ExternCColumns> {
+		let row_count = batch.num_rows();
+		let views = user_columns(batch)
+			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+			.collect::<Result<Vec<_>>>()?;
+		let column_count = views.len();
 
 		if row_count == 0 && column_count == 0 {
-			return ExternCColumns::empty();
+			return Ok(ExternCColumns::empty());
 		}
 
-		let row_numbers_ptr = if !columns.row_numbers().is_empty() {
-			columns.row_numbers().as_ptr() as *const u64
+		let row_numbers = row_numbers(batch)?;
+		let row_numbers_ptr = if !row_numbers.is_empty() {
+			row_numbers.as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
 
-		let time_ptr = if !columns.time().is_empty() {
-			columns.time().as_ptr() as *const i64
-		} else {
-			ptr::null()
+		let time_ptr = match system_column(batch, SystemColumn::Time) {
+			Some(array) if !array.is_empty() && array.null_count() == 0 => {
+				time(batch)?.as_ptr() as *const i64
+			}
+			_ => ptr::null(),
 		};
 
 		let columns_size = column_count * size_of::<ExternCColumn>();
@@ -74,34 +80,34 @@ impl Arena {
 			// `column_count * size_of::<ExternCColumn>()` bytes at alignment 8, so every `add(i)` with
 			// `i < column_count` is in bounds; ExternCColumn is Copy, so the stores drop nothing.
 			unsafe {
-				for (i, col) in columns.iter().enumerate() {
-					let marshalled = self.marshal_column_ref(col.name(), col.data());
+				for (i, view) in views.iter().enumerate() {
+					let marshalled = self.marshal_column_ref(view.field.name(), view);
 					*columns_ptr.add(i) = marshalled;
 				}
 			}
 		}
 
-		ExternCColumns {
+		Ok(ExternCColumns {
 			row_count,
 			column_count,
 			row_numbers: row_numbers_ptr,
 			columns: columns_ptr as *const ExternCColumn,
 			time: time_ptr,
-		}
+		})
 	}
 }
 
 impl Arena {
-	#[instrument(name = "flow::marshal::column", level = "trace", skip_all, fields(name = name.text()))]
-	pub(super) fn marshal_column_ref(&mut self, name: &Fragment, data: &ColumnBuffer) -> ExternCColumn {
-		let name_bytes = name.text().as_bytes();
+	#[instrument(name = "flow::marshal::column", level = "trace", skip_all, fields(name = name))]
+	pub(super) fn marshal_column_ref(&mut self, name: &str, view: &ColumnView<'_>) -> ExternCColumn {
+		let name_bytes = name.as_bytes();
 		let name_buf = ExternCBuffer {
 			ptr: name_bytes.as_ptr(),
 			len: name_bytes.len(),
 			cap: 0,
 		};
 
-		let data = self.marshal_column_data(data);
+		let data = self.marshal_column_data(view);
 
 		ExternCColumn {
 			name: name_buf,
@@ -109,13 +115,13 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn marshal_column_data(&mut self, data: &ColumnBuffer) -> ExternCColumnData {
-		let row_count = data.len();
-		let (precision, scale) = column_params(data);
+	pub(super) fn marshal_column_data(&mut self, view: &ColumnView<'_>) -> ExternCColumnData {
+		let row_count = view.len();
+		let (precision, scale) = column_params(view);
 
 		if row_count == 0 {
 			return ExternCColumnData {
-				type_code: column_data_to_type_code(data),
+				type_code: column_data_to_type_code(view),
 				precision,
 				scale,
 				row_count: 0,
@@ -125,14 +131,17 @@ impl Arena {
 			};
 		}
 
-		let type_code = column_data_to_type_code(data);
+		let type_code = column_data_to_type_code(view);
 
-		let defined_bitvec = match data.nulls() {
+		let defined_bitvec = match view.logical_nulls() {
 			Some(nulls) => self.marshal_bitvec(nulls.inner(), row_count),
+			None if view.is_nullable() => {
+				self.marshal_bitvec(&BooleanBuffer::new_set(row_count), row_count)
+			}
 			None => ExternCBuffer::empty(),
 		};
 
-		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(data);
+		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(view);
 
 		ExternCColumnData {
 			type_code,
@@ -147,79 +156,78 @@ impl Arena {
 }
 
 impl Arena {
-	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
-		match data {
-			ColumnBuffer::Any {
+	pub(super) fn marshal_column_data_bytes(&mut self, view: &ColumnView<'_>) -> (ExternCBuffer, ExternCBuffer) {
+		match &view.data {
+			ViewData::Any {
 				..
 			}
-			| ColumnBuffer::DictionaryId {
+			| ViewData::DictionaryId {
 				..
-			} => self.marshal_column_data_serialize(data),
-			ColumnBuffer::None {
+			} => self.marshal_column_data_serialize(view),
+			ViewData::None {
 				..
 			} => (ExternCBuffer::empty(), ExternCBuffer::empty()),
-			_ => self.marshal_column_data_zerocopy(data),
+			_ => self.marshal_column_data_zerocopy(view),
 		}
 	}
 
-	#[instrument(name = "flow::marshal::data::zerocopy", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(data), row_count = data.len()))]
+	#[instrument(name = "flow::marshal::data::zerocopy", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(view), row_count = view.len()))]
 	#[inline]
-	pub(super) fn marshal_column_data_zerocopy(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
-		match data {
-			ColumnBuffer::Bool(container) => {
+	pub(super) fn marshal_column_data_zerocopy(&mut self, view: &ColumnView<'_>) -> (ExternCBuffer, ExternCBuffer) {
+		match &view.data {
+			ViewData::Bool(container) => {
 				(self.marshal_packed_bits(container.values()), ExternCBuffer::empty())
 			}
 
-			ColumnBuffer::Float4(container) => self.marshal_numeric_slice::<f32>(container.values()),
-			ColumnBuffer::Float8(container) => self.marshal_numeric_slice::<f64>(container.values()),
-			ColumnBuffer::Int1(container) => self.marshal_numeric_slice::<i8>(container.values()),
-			ColumnBuffer::Int2(container) => self.marshal_numeric_slice::<i16>(container.values()),
-			ColumnBuffer::Int4(container) => self.marshal_numeric_slice::<i32>(container.values()),
-			ColumnBuffer::Int8(container) => self.marshal_numeric_slice::<i64>(container.values()),
-			ColumnBuffer::Int16(container) => self.marshal_copied(&wides::<i128>(container)),
-			ColumnBuffer::Uint1(container) => self.marshal_numeric_slice::<u8>(container.values()),
-			ColumnBuffer::Uint2(container) => self.marshal_numeric_slice::<u16>(container.values()),
-			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
-			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
-			ColumnBuffer::Uint16(container) => self.marshal_copied(&wides::<u128>(container)),
-			ColumnBuffer::Decimal(array) => self.marshal_unscaled(array),
+			ViewData::Float4(container) => self.marshal_numeric_slice::<f32>(container.values()),
+			ViewData::Float8(container) => self.marshal_numeric_slice::<f64>(container.values()),
+			ViewData::Int1(container) => self.marshal_numeric_slice::<i8>(container.values()),
+			ViewData::Int2(container) => self.marshal_numeric_slice::<i16>(container.values()),
+			ViewData::Int4(container) => self.marshal_numeric_slice::<i32>(container.values()),
+			ViewData::Int8(container) => self.marshal_numeric_slice::<i64>(container.values()),
+			ViewData::Int16(container) => self.marshal_copied(&wides::<i128>(container)),
+			ViewData::Uint1(container) => self.marshal_numeric_slice::<u8>(container.values()),
+			ViewData::Uint2(container) => self.marshal_numeric_slice::<u16>(container.values()),
+			ViewData::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
+			ViewData::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
+			ViewData::Uint16(container) => self.marshal_copied(&wides::<u128>(container)),
+			ViewData::Decimal(array) => self.marshal_unscaled(array),
 
-			ColumnBuffer::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
-			ColumnBuffer::DateTime(container) => {
-				self.marshal_numeric_slice::<DateTime>(datetimes(container))
-			}
-			ColumnBuffer::Time(container) => self.marshal_numeric_slice::<Time>(times(container)),
-			ColumnBuffer::Duration(container) => {
-				self.marshal_numeric_slice::<Duration>(durations(container))
-			}
+			ViewData::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
+			ViewData::DateTime(container) => self.marshal_numeric_slice::<DateTime>(datetimes(container)),
+			ViewData::Time(container) => self.marshal_numeric_slice::<Time>(times(container)),
+			ViewData::Duration(container) => self.marshal_numeric_slice::<Duration>(durations(container)),
 
-			ColumnBuffer::IdentityId(container) => {
+			ViewData::IdentityId(container) => {
 				self.marshal_numeric_slice::<IdentityId>(identity_ids(container))
 			}
-			ColumnBuffer::Uuid4(container) => self.marshal_numeric_slice::<Uuid4>(uuid4s(container)),
-			ColumnBuffer::Uuid7(container) => self.marshal_numeric_slice::<Uuid7>(uuid7s(container)),
+			ViewData::Uuid4(container) => self.marshal_numeric_slice::<Uuid4>(uuid4s(container)),
+			ViewData::Uuid7(container) => self.marshal_numeric_slice::<Uuid7>(uuid7s(container)),
 
-			ColumnBuffer::Utf8 {
+			ViewData::Utf8 {
 				container,
 				..
-			} => self.marshal_varlen(container),
-			ColumnBuffer::Blob {
+			} => self.marshal_varlen(*container),
+			ViewData::Blob {
 				container,
 				..
-			} => self.marshal_varlen(container),
+			} => self.marshal_varlen(*container),
 
-			other => unreachable!(
+			_ => unreachable!(
 				"marshal_column_data_zerocopy received a non-zerocopy {} column",
-				other.get_type()
+				view.get_type()
 			),
 		}
 	}
 
-	#[instrument(name = "flow::marshal::data::serialize", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(data), row_count = data.len()))]
+	#[instrument(name = "flow::marshal::data::serialize", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(view), row_count = view.len()))]
 	#[inline]
-	pub(super) fn marshal_column_data_serialize(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
-		match data {
-			ColumnBuffer::Any {
+	pub(super) fn marshal_column_data_serialize(
+		&mut self,
+		view: &ColumnView<'_>,
+	) -> (ExternCBuffer, ExternCBuffer) {
+		match &view.data {
+			ViewData::Any {
 				container,
 				..
 			} => {
@@ -229,7 +237,7 @@ impl Arena {
 				})
 			}
 
-			ColumnBuffer::DictionaryId {
+			ViewData::DictionaryId {
 				container,
 				..
 			} => {
@@ -274,10 +282,10 @@ impl Arena {
 		)
 	}
 
-	fn marshal_unscaled(&mut self, array: &DecimalArray) -> (ExternCBuffer, ExternCBuffer) {
+	fn marshal_unscaled(&mut self, array: &DecimalView<'_>) -> (ExternCBuffer, ExternCBuffer) {
 		match array {
-			DecimalArray::Decimal128(array) => self.marshal_numeric_slice::<i128>(array.values()),
-			DecimalArray::Decimal256(array) => self.marshal_numeric_slice::<i256>(array.values()),
+			DecimalView::Decimal128(array) => self.marshal_numeric_slice::<i128>(array.values()),
+			DecimalView::Decimal256(array) => self.marshal_numeric_slice::<i256>(array.values()),
 		}
 	}
 
@@ -408,17 +416,17 @@ impl Arena {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-	use reifydb_value::{
-		fragment::Fragment,
-		value::{
-			blob::Blob,
-			container::temporal_array::{date_array, datetime_array, duration_array, time_array},
-			date::Date,
-			datetime::DateTime,
-			duration::Duration,
-			time::Time,
+	use arrow_array::ArrayRef;
+	use arrow_schema::FieldRef;
+	use reifydb_core::value::{
+		batch::batch,
+		column::{
+			builder::ColumnBuilder,
+			factory::{blob, bool, date, datetime, duration, time, uint16, uint16_with_bitvec, utf8},
 		},
+	};
+	use reifydb_value::value::{
+		blob::Blob, column_view::ColumnView, date::Date, datetime::DateTime, duration::Duration, time::Time,
 	};
 
 	use crate::flow::operator::{
@@ -426,34 +434,43 @@ mod tests {
 		extern_c::binding::arena::Arena,
 	};
 
-	fn read_back<T>(data: ColumnBuffer, read: impl Fn(&BorrowedColumn, usize) -> Option<T>) -> Vec<T> {
-		let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), data)]);
+	fn read_back<T>(data: (FieldRef, ArrayRef), read: impl Fn(&BorrowedColumn, usize) -> Option<T>) -> Vec<T> {
+		let columns = batch(vec![data]).unwrap();
 		let mut arena = Arena::new();
-		let ffi = arena.marshal_columns(&columns);
+		let ffi = arena.marshal_columns(&columns).unwrap();
 		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
 		let column = borrowed.column_at_index(0).expect("one column was marshalled");
-		(0..columns.row_count())
+		(0..columns.num_rows())
 			.map(|row| read(&column, row).expect("every marshalled row must read back"))
 			.collect()
 	}
 
-	fn marshalled_parts(data: ColumnBuffer) -> (Vec<u8>, Vec<u64>, usize) {
-		let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), data)]);
+	fn marshalled_parts(data: (FieldRef, ArrayRef)) -> (Vec<u8>, Vec<u64>, usize) {
+		let columns = batch(vec![data]).unwrap();
 		let mut arena = Arena::new();
-		let ffi = arena.marshal_columns(&columns);
+		let ffi = arena.marshal_columns(&columns).unwrap();
 		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
 		let column = borrowed.column_at_index(0).expect("one column was marshalled");
 		(column.data_bytes().to_vec(), column.offsets().to_vec(), column.row_count())
 	}
 
+	fn frozen(column: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
+		let view = ColumnView::try_from(&column).unwrap();
+		ColumnBuilder::from_view(&view).finish("c")
+	}
+
+	fn slice(column: (FieldRef, ArrayRef), start: usize, end: usize) -> (FieldRef, ArrayRef) {
+		let (field, array) = column;
+		(field, array.slice(start, end - start))
+	}
+
 	#[test]
 	fn frozen_utf8_slice_hands_guest_compact_parts() {
 		// A guest must never see the parent byte buffer or a non-zero first offset.
-		let parent = ColumnBuffer::utf8(["aa", "bb", "cc", "dd"]);
-		let parent = parent.into_builder().finish();
-		let (data, offsets, rows) = marshalled_parts(parent.slice(1, 3));
+		let parent = frozen(utf8("c", ["aa", "bb", "cc", "dd"]));
+		let (data, offsets, rows) = marshalled_parts(slice(parent, 1, 3));
 		assert_eq!(rows, 2);
 		assert_eq!(data, b"bbcc");
 		assert_eq!(offsets, vec![0u64, 2, 4]);
@@ -462,16 +479,15 @@ mod tests {
 	#[test]
 	fn frozen_utf8_slice_reads_back_the_sliced_rows() {
 		// Absolute offsets leaking to the guest would read rows shifted by the slice start.
-		let parent = ColumnBuffer::utf8(["aa", "bb", "cc", "dd"]);
-		let parent = parent.into_builder().finish();
-		let got = read_back(parent.slice(2, 4), |column, row| column.utf8_at(row).map(str::to_string));
+		let parent = frozen(utf8("c", ["aa", "bb", "cc", "dd"]));
+		let got = read_back(slice(parent, 2, 4), |column, row| column.utf8_at(row).map(str::to_string));
 		assert_eq!(got, vec!["cc".to_string(), "dd".to_string()]);
 	}
 
 	#[test]
 	fn unsliced_utf8_column_bytes_match_container_layout() {
 		// Unsliced input must reach the guest byte for byte as before the shared storage change.
-		let (data, offsets, rows) = marshalled_parts(ColumnBuffer::utf8(["a", "bc", "def"]));
+		let (data, offsets, rows) = marshalled_parts(utf8("c", ["a", "bc", "def"]));
 		assert_eq!(rows, 3);
 		assert_eq!(data, b"abcdef");
 		assert_eq!(offsets, vec![0u64, 1, 3, 6]);
@@ -480,9 +496,8 @@ mod tests {
 	#[test]
 	fn frozen_blob_slice_hands_guest_compact_parts() {
 		// The blob arm must rebase exactly like utf8, or blob_at reads the parent's bytes.
-		let parent = ColumnBuffer::blob([Blob::new(vec![1, 2]), Blob::new(vec![3]), Blob::new(vec![4, 5, 6])]);
-		let parent = parent.into_builder().finish();
-		let (data, offsets, rows) = marshalled_parts(parent.slice(1, 3));
+		let parent = frozen(blob("c", [Blob::new(vec![1, 2]), Blob::new(vec![3]), Blob::new(vec![4, 5, 6])]));
+		let (data, offsets, rows) = marshalled_parts(slice(parent, 1, 3));
 		assert_eq!(rows, 2);
 		assert_eq!(data, vec![3u8, 4, 5, 6]);
 		assert_eq!(offsets, vec![0u64, 1, 4]);
@@ -491,7 +506,7 @@ mod tests {
 	#[test]
 	fn taken_bool_column_hands_guest_clean_tail_bits() {
 		// A prefix view borrows the parent's last byte, whose bits past the row count must read as zero.
-		let (data, offsets, rows) = marshalled_parts(ColumnBuffer::bool([true; 8]).take(3));
+		let (data, offsets, rows) = marshalled_parts(slice(bool("c", [true; 8]), 0, 3));
 		assert_eq!(rows, 3);
 		assert_eq!(data, vec![0b0000_0111u8]);
 		assert!(offsets.is_empty());
@@ -500,8 +515,7 @@ mod tests {
 	#[test]
 	fn sliced_bool_column_starts_at_bit_zero() {
 		// A slice with a bit offset must reach the guest with row 0 at bit 0.
-		let (data, _, rows) =
-			marshalled_parts(ColumnBuffer::bool([false, true, true, false, true]).slice(1, 4));
+		let (data, _, rows) = marshalled_parts(slice(bool("c", [false, true, true, false, true]), 1, 4));
 		assert_eq!(rows, 3);
 		assert_eq!(data, vec![0b0000_0011u8]);
 	}
@@ -511,18 +525,15 @@ mod tests {
 		// An 8-aligned copy makes the guest's &[u128] view of the rows undefined behaviour.
 		let values = [1u128 << 64, u128::MAX, 0, (1u128 << 64) - 1];
 		let inputs = [
-			ColumnBuffer::uint16(values),
-			ColumnBuffer::uint16_with_bitvec(
-				values.iter().copied().chain([0]),
-				vec![true, true, true, true, false],
-			),
+			uint16("c", values),
+			uint16_with_bitvec("c", values.iter().copied().chain([0]), vec![true, true, true, true, false]),
 		];
 		for padding in [0usize, 8, 16, 24] {
 			for input in inputs.clone() {
-				let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), input)]);
+				let columns = batch(vec![input]).unwrap();
 				let mut arena = Arena::new();
 				arena.alloc(padding);
-				let ffi = arena.marshal_columns(&columns);
+				let ffi = arena.marshal_columns(&columns).unwrap();
 				// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 				let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
 				let column = borrowed.column_at_index(0).expect("one column was marshalled");
@@ -558,9 +569,7 @@ mod tests {
 			DateTime::from_nanos(1_700_000_000_000_000_000),
 			DateTime::from_nanos(i64::MAX),
 		];
-		let got = read_back(ColumnBuffer::DateTime(datetime_array(values.clone())), |column, row| {
-			column.datetime_at(row)
-		});
+		let got = read_back(datetime("c", values.clone()), |column, row| column.datetime_at(row));
 		assert_eq!(got, values);
 	}
 
@@ -568,7 +577,7 @@ mod tests {
 	fn date_column_marshal_borrow_roundtrip() {
 		// The marshal is zero-copy raw i32 days since the epoch, so the reader must read the same units.
 		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
-		let got = read_back(ColumnBuffer::Date(date_array(values.clone())), |column, row| column.date_at(row));
+		let got = read_back(date("c", values.clone()), |column, row| column.date_at(row));
 		assert_eq!(got, values);
 	}
 
@@ -580,7 +589,7 @@ mod tests {
 			Time::new(14, 30, 45, 123_456_789).unwrap(),
 			Time::new(23, 59, 59, 999_999_999).unwrap(),
 		];
-		let got = read_back(ColumnBuffer::Time(time_array(values.clone())), |column, row| column.time_at(row));
+		let got = read_back(time("c", values.clone()), |column, row| column.time_at(row));
 		assert_eq!(got, values);
 	}
 
@@ -593,9 +602,7 @@ mod tests {
 			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
 			Duration::from_seconds(-30).expect("duration"),
 		];
-		let got = read_back(ColumnBuffer::Duration(duration_array(values.clone())), |column, row| {
-			column.duration_at(row)
-		});
+		let got = read_back(duration("c", values.clone()), |column, row| column.duration_at(row));
 		assert_eq!(got, values);
 	}
 }

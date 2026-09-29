@@ -2,22 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_arith::boolean::not;
-use reifydb_core::{
-	error::CoreError,
-	expression::PrefixOperator,
-	value::column::{ColumnWithName, buffer::ColumnBuffer},
-};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::{error::CoreError, expression::PrefixOperator, value::column::factory};
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::ValueType,
 	},
 };
 
-use crate::{Result, expression::option::unary_op_unwrap_option};
+use crate::{
+	Result,
+	expression::{logic::bool_column, option::unary_op_unwrap_option},
+};
 
 macro_rules! prefix_signed_int {
 	($column:expr, $values:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{
@@ -43,8 +45,7 @@ macro_rules! prefix_signed_int {
 				}
 			});
 		}
-		let new_data = ColumnBuffer::$variant(result);
-		Ok($column.with_new_data(new_data))
+		Ok(factory::$variant($column.0.name(), result))
 	}};
 }
 
@@ -73,8 +74,7 @@ macro_rules! prefix_unsigned_int {
 					}
 					result.push((*val as $signed_ty).wrapping_neg());
 				}
-				let new_data = ColumnBuffer::$constructor(result);
-				Ok($column.with_new_data(new_data))
+				Ok(factory::$constructor($column.0.name(), result))
 			}
 		}
 	}};
@@ -102,8 +102,7 @@ macro_rules! prefix_float {
 				result.push($zero);
 			}
 		}
-		let new_data = ColumnBuffer::$constructor(result);
-		Ok($column.with_new_data(new_data))
+		Ok(factory::$constructor($column.0.name(), result))
 	}};
 }
 
@@ -124,18 +123,21 @@ macro_rules! prefix_not_error {
 	};
 }
 
-pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment: &Fragment) -> Result<ColumnWithName> {
-	if column.data().is_untyped_none() && !matches!(operator, PrefixOperator::Not(_)) {
+pub fn prefix_apply(
+	column: &(FieldRef, ArrayRef),
+	operator: &PrefixOperator,
+	fragment: &Fragment,
+) -> Result<(FieldRef, ArrayRef)> {
+	if ColumnView::try_from(column)?.is_untyped_none() && !matches!(operator, PrefixOperator::Not(_)) {
 		return Ok(column.clone());
 	}
-	unary_op_unwrap_option(column, |column| match column.data() {
-		ColumnBuffer::Bool(container) => match operator {
+	unary_op_unwrap_option(column, |column| match &ColumnView::try_from(column)?.data {
+		ViewData::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
-				let new_data =
-					ColumnBuffer::Bool(not(container).map_err(|err| CoreError::FrameError {
-						message: err.to_string(),
-					})?);
-				Ok(column.with_new_data(new_data))
+				let negated = not(container).map_err(|err| CoreError::FrameError {
+					message: err.to_string(),
+				})?;
+				Ok(bool_column(column.0.name(), negated, column.0.is_nullable()))
 			}
 			_ => Err(CoreError::FrameError {
 				message: "Cannot apply arithmetic prefix operator to bool".to_string(),
@@ -143,15 +145,15 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			.into()),
 		},
 
-		ColumnBuffer::Float4(container) => {
+		ViewData::Float4(container) => {
 			prefix_float!(column, container, operator, fragment.clone(), 0.0f32, float4)
 		}
 
-		ColumnBuffer::Float8(container) => {
+		ViewData::Float8(container) => {
 			prefix_float!(column, container, operator, fragment.clone(), 0.0f64, float8)
 		}
 
-		ColumnBuffer::Int1(container) => {
+		ViewData::Int1(container) => {
 			prefix_signed_int!(
 				column,
 				container.values(),
@@ -162,7 +164,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Int2(container) => {
+		ViewData::Int2(container) => {
 			prefix_signed_int!(
 				column,
 				container.values(),
@@ -173,7 +175,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Int4(container) => {
+		ViewData::Int4(container) => {
 			prefix_signed_int!(
 				column,
 				container.values(),
@@ -184,7 +186,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Int8(container) => {
+		ViewData::Int8(container) => {
 			prefix_signed_int!(
 				column,
 				container.values(),
@@ -195,7 +197,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Int16(container) => {
+		ViewData::Int16(container) => {
 			prefix_signed_int!(
 				column,
 				&wides::<i128>(container),
@@ -206,7 +208,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Utf8 {
+		ViewData::Utf8 {
 			container: _,
 			..
 		} => match operator {
@@ -222,7 +224,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			.into()),
 		},
 
-		ColumnBuffer::Uint1(container) => {
+		ViewData::Uint1(container) => {
 			prefix_unsigned_int!(
 				column,
 				container.values(),
@@ -234,7 +236,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Uint2(container) => {
+		ViewData::Uint2(container) => {
 			prefix_unsigned_int!(
 				column,
 				container.values(),
@@ -246,7 +248,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Uint4(container) => {
+		ViewData::Uint4(container) => {
 			prefix_unsigned_int!(
 				column,
 				container.values(),
@@ -258,7 +260,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Uint8(container) => {
+		ViewData::Uint8(container) => {
 			prefix_unsigned_int!(
 				column,
 				container.values(),
@@ -270,7 +272,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Uint16(container) => {
+		ViewData::Uint16(container) => {
 			prefix_unsigned_int!(
 				column,
 				&wides::<u128>(container),
@@ -282,33 +284,33 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			)
 		}
 
-		ColumnBuffer::Date(_) => {
+		ViewData::Date(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "date")
 		}
-		ColumnBuffer::DateTime(_) => {
+		ViewData::DateTime(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "datetime")
 		}
-		ColumnBuffer::Time(_) => {
+		ViewData::Time(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "time")
 		}
-		ColumnBuffer::Duration(_) => {
+		ViewData::Duration(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal, "duration")
 		}
-		ColumnBuffer::IdentityId(_) => {
+		ViewData::IdentityId(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "identity id")
 		}
-		ColumnBuffer::Uuid4(_) => {
+		ViewData::Uuid4(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "uuid4")
 		}
-		ColumnBuffer::Uuid7(_) => {
+		ViewData::Uuid7(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid, "uuid7")
 		}
 
-		ColumnBuffer::None {
+		ViewData::None {
 			..
 		} => Ok(column.clone()),
 
-		ColumnBuffer::Blob {
+		ViewData::Blob {
 			container: _,
 			..
 		} => match operator {
@@ -321,14 +323,10 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Decimal(container) => match operator {
+		ViewData::Decimal(container) => match operator {
 			PrefixOperator::Minus(_) => {
 				let result = decimals(container).iter().map(Decimal::negate).collect::<Vec<_>>();
-				Ok(column.with_new_data(ColumnBuffer::decimal(
-					container.precision(),
-					container.scale(),
-					result,
-				)))
+				Ok(factory::decimal(column.0.name(), container.precision(), container.scale(), result))
 			}
 			PrefixOperator::Plus(_) => Ok(column.clone()),
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
@@ -338,7 +336,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::DictionaryId {
+		ViewData::DictionaryId {
 			..
 		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
@@ -350,7 +348,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Any {
+		ViewData::Any {
 			..
 		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
@@ -362,7 +360,7 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
-		ColumnBuffer::Digest {
+		ViewData::Digest {
 			..
 		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {

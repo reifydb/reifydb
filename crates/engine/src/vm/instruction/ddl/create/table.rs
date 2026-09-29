@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::table::{TableColumnToCreate, TableToCreate},
 	store::row_settings::create::create_row_settings,
@@ -8,7 +9,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackTableChangeOperations, storage::StorageId},
 	row::RowSettings,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -23,19 +24,23 @@ use reifydb_value::{
 
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan: CreateTableNode) -> Result<Columns> {
+pub(crate) fn create_table(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: CreateTableNode,
+) -> Result<RecordBatch> {
 	if let Some(existing) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.table.text(),
 	)? && plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("table", Value::Utf8(plan.table.text().to_string())),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let columns = expand_sumtype_columns(services, txn, plan.columns)?;
@@ -64,12 +69,12 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 
 	txn.track_table_created(table.clone())?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(table.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("table", Value::Utf8(plan.table.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }
 
 fn expand_sumtype_columns(
@@ -129,7 +134,10 @@ fn expand_sumtype_columns(
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -160,10 +168,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_table".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		// A duplicate name in the same namespace must fault rather than silently replace.
 		let r = instance.admin(
@@ -214,10 +222,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_table".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		// Uniqueness is per namespace, so the same name elsewhere must be accepted.
 		let r = instance.admin(
@@ -231,10 +239,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16386));
+		assert_eq!(value_at(frame, 1), Value::Utf8("another_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_table".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 	}
 
 	#[test]
@@ -275,8 +283,8 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16386));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 	}
 
 	#[test]
@@ -317,8 +325,8 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16386));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 	}
 
 	#[test]
@@ -370,7 +378,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[2].get_value(0), Value::Uint8(1));
+		assert_eq!(value_at(frame, 2), Value::Uint8(1));
 	}
 
 	#[test]
@@ -422,7 +430,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[2].get_value(0), Value::Uint8(1));
+		assert_eq!(value_at(frame, 2), Value::Uint8(1));
 	}
 
 	#[test]
@@ -509,13 +517,20 @@ pub mod tests {
 
 		assert!(!r.is_empty());
 		let frame = &r[0];
-		let id_col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-		assert_eq!(id_col.data.len(), 2);
+		let id_col = frame.try_column("id").expect("id column");
+		assert_eq!(id_col.len(), 2);
 		let mut ids: Vec<Value> = (0..2).map(|i| id_col.get_value(i)).collect();
 		ids.sort_by_key(|v| match v {
 			Value::Int4(n) => *n,
 			_ => panic!("expected Int4"),
 		});
 		assert_eq!(ids, vec![Value::Int4(1), Value::Int4(3)]);
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{migration::MigrationAction, vtable::VTable},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -73,15 +73,15 @@ impl BaseVTable for SystemMigrations {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("action"), actions.finish()),
-			ColumnWithName::new(Fragment::internal("body"), bodies.finish()),
-			ColumnWithName::new(Fragment::internal("rollback_body"), rollback_bodies.finish()),
+			names.finish("name"),
+			actions.finish("action"),
+			bodies.finish("body"),
+			rollback_bodies.finish("rollback_body"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

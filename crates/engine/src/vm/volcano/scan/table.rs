@@ -3,9 +3,11 @@
 
 use std::{ops::Bound, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape, table::EncodedTableRow};
 use reifydb_core::{
-	common::CommitVersion,
+	common::TimeSource,
 	error::diagnostic,
 	interface::{
 		catalog::{dictionary::Dictionary, storage::StorageId},
@@ -13,18 +15,24 @@ use reifydb_core::{
 		store::MultiVersionRow,
 	},
 	key::row::{StoragePartitionedRowKey, StorageRowKey},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{append_rows, batch},
+		column::{builder::ColumnBuilder, headers::ColumnHeaders},
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	error,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
+	error, reifydb_assertions,
+	value::{
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
-use super::super::decode_dictionary_columns;
+use super::{super::decode_dictionary_columns, empty_scan, partition_array, scan_headers, source_system_columns};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -45,15 +53,10 @@ pub struct TableScanNode {
 
 	partition: Option<Partition>,
 
-	min_commit_version: Option<CommitVersion>,
+	system_columns: Vec<SystemColumn>,
 }
 
 impl TableScanNode {
-	pub fn with_min_commit_version(mut self, min_commit_version: Option<CommitVersion>) -> Self {
-		self.min_commit_version = min_commit_version;
-		self
-	}
-
 	pub fn new(
 		table: ResolvedTable,
 		partition: Option<Partition>,
@@ -78,10 +81,12 @@ impl TableScanNode {
 			}
 		}
 
-		let headers = ColumnHeaders {
-			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: true,
-		};
+		let system_columns = source_system_columns(
+			!table.def().partition_by.is_empty(),
+			table.def().time != TimeSource::None,
+			true,
+		);
+		let headers = scan_headers(table.columns().iter().map(|col| col.name.as_str()), &system_columns);
 
 		let resume = if table.def().partition_by.is_empty() {
 			Resume::Row(None)
@@ -99,7 +104,7 @@ impl TableScanNode {
 			resume,
 			exhausted: false,
 			partition,
-			min_commit_version: None,
+			system_columns,
 		})
 	}
 
@@ -180,27 +185,23 @@ impl TableScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::column_alloc")]
-	fn storage_columns(&self) -> Vec<ColumnWithName> {
+	fn storage_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
 		self.table
 			.columns()
 			.iter()
 			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
+			.map(|(idx, col)| {
+				ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(&col.name)
 			})
 			.collect()
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::empty_columns")]
-	fn empty_columns(&self) -> Vec<ColumnWithName> {
+	fn empty_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
 		self.table
 			.columns()
 			.iter()
-			.map(|col| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
-			})
+			.map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(&col.name))
 			.collect()
 	}
 
@@ -208,13 +209,12 @@ impl TableScanNode {
 	fn append_batch<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
-		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
-		Ok(())
+		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
 }
 
@@ -258,7 +258,7 @@ impl QueryNode for TableScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		}
@@ -270,10 +270,7 @@ impl QueryNode for TableScanNode {
 
 		let batch_size = stored_ctx.batch_size;
 
-		let scope = match self.min_commit_version {
-			Some(v) => RangeScope::After(v),
-			None => RangeScope::All,
-		};
+		let scope = RangeScope::All;
 
 		let storage: StorageId = self.table.def().id.into();
 
@@ -318,26 +315,30 @@ impl QueryNode for TableScanNode {
 		if scanned.rows.is_empty() {
 			self.exhausted = true;
 			if !resumed {
-				let mut columns = Columns::new(self.empty_columns());
-				columns.system.mark_row_numbers();
-				return Ok(Some(columns));
+				return Ok(Some(empty_scan(self.empty_columns(), &self.system_columns)?));
 			}
 			return Ok(None);
 		}
 
 		self.resume = next_resume;
 
-		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
-		self.append_batch(rx, &mut columns, scanned.rows, scanned.row_numbers)?;
+		let columns = batch(self.storage_columns())?;
+		let mut columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
 
 		if !scanned.partitions.is_empty() {
-			columns.system.set_partitions(scanned.partitions);
+			columns = with_system_column(
+				columns,
+				SystemColumn::Partitions,
+				partition_array(&scanned.partitions),
+			)?;
 		}
-		columns.system.set_commit_versions(scanned.commit_versions);
+		columns = with_system_column(
+			columns,
+			SystemColumn::CommitVersion,
+			Arc::new(UInt64Array::from(scanned.commit_versions)),
+		)?;
 
-		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
-
-		Ok(Some(columns))
+		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

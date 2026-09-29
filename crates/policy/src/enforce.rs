@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use bumpalo::Bump;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	expression::Expression,
 	interface::catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
-	value::column::columns::Columns,
+	value::batch::empty_batch,
 };
 use reifydb_rql::{
 	ast::{ast::Ast, parse_str},
@@ -31,7 +32,7 @@ pub fn enforce_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	target: &PolicyTarget<'_>,
-	row_columns: &Columns,
+	row_columns: &RecordBatch,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
 	if tx.identity().is_privileged() {
@@ -49,7 +50,7 @@ pub fn enforce_write_policies(
 fn evaluate_row_policies(
 	policies: &[(Policy, PolicyOperation)],
 	target: &PolicyTarget<'_>,
-	row_columns: &Columns,
+	row_columns: &RecordBatch,
 	identity: IdentityId,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
@@ -65,7 +66,7 @@ fn evaluate_row_policies(
 	let bump = Bump::new();
 	let target_name = format!("{}::{}", target.namespace, target.object);
 	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
-		let row_count = row_columns.row_count();
+		let row_count = row_columns.num_rows();
 		if row_count == 0 {
 			return Ok(());
 		}
@@ -129,7 +130,7 @@ fn evaluate_session_policies(
 		);
 	}
 	let bump = Bump::new();
-	let empty_columns = Columns::empty();
+	let empty_columns = empty_batch();
 	for_each_policy_condition(policies, &bump, |_policy, condition_expr| {
 		let passed = evaluator.evaluate_condition(condition_expr, &empty_columns, 1, identity)?;
 		if passed {
@@ -177,7 +178,7 @@ fn evaluate_identity_policies(
 	}
 	let bump = Bump::new();
 	let target_name = format!("{}::{}", target.namespace, target.object);
-	let empty_columns = Columns::empty();
+	let empty_columns = empty_batch();
 	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
 		let passed = evaluator.evaluate_condition(condition_expr, &empty_columns, 1, identity)?;
 		if passed {

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use arrow_string::concat_elements::concat_elements_utf8_many;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	constraint::bytes::MaxBytes,
+	value_type::ValueType,
+};
+
+use crate::function::support::column::utf8_column;
 
 pub struct TextConcat {
 	info: RoutineInfo,
@@ -35,21 +42,26 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let mut containers = Vec::with_capacity(args.len());
 
 		for (idx, col) in args.iter().enumerate() {
-			match col.data() {
-				ColumnBuffer::Utf8 {
+			let view = ColumnView::try_from(col)?;
+			match &view.data {
+				ViewData::Utf8 {
 					container,
 					..
-				} => containers.push(container),
-				other => {
+				} => containers.push(*container),
+				_ => {
 					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: idx,
 						expected: vec![ValueType::Utf8],
-						actual: other.get_type(),
+						actual: view.get_type(),
 					});
 				}
 			}
@@ -62,12 +74,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 			}
 		})?;
 
-		let result_col_data = ColumnBuffer::Utf8 {
-			container,
-			max_bytes: MaxBytes::MAX,
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+		Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, container))
 	}
 }
 

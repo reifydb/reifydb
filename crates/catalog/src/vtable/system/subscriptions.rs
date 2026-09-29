@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::{subscription::SubscriptionInspectorRef, vtable::VTable},
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	Result,
@@ -55,11 +55,11 @@ impl BaseVTable for SystemSubscriptions {
 			id_col.push(id.0);
 		}
 
-		let columns = vec![ColumnWithName::new(Fragment::internal("id"), id_col.finish())];
+		let columns = vec![id_col.finish("id")];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

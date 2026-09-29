@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	expression::PrefixOperator,
-	value::column::{ColumnWithName, columns::Columns},
-};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::{expression::PrefixOperator, value::batch::batch};
 use reifydb_evaluate::{
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
@@ -21,14 +20,19 @@ use crate::{Result, vm::vm::Vm};
 impl<'a> Vm<'a> {
 	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>
 	where
-		F: FnOnce(&EvalContext, &ColumnWithName, &ColumnWithName, fn() -> Fragment) -> Result<ColumnWithName>,
+		F: FnOnce(
+			&EvalContext,
+			&(FieldRef, ArrayRef),
+			&(FieldRef, ArrayRef),
+			fn() -> Fragment,
+		) -> Result<(FieldRef, ArrayRef)>,
 	{
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
-		let (left, right) = broadcast_to_match(left, right);
+		let (left, right) = broadcast_to_match(left, right)?;
 		let ctx = self.eval_ctx();
 		let result = op(&ctx, &left, &right, frag)?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 
@@ -56,7 +60,7 @@ impl<'a> Vm<'a> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_negate");
 		let result = prefix_apply(&col, &PrefixOperator::Minus(frag.clone()), &frag)?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 
@@ -64,7 +68,7 @@ impl<'a> Vm<'a> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_not");
 		let result = prefix_apply(&col, &PrefixOperator::Not(frag.clone()), &frag)?;
-		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
 }

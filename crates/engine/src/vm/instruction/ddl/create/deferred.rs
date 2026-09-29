@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::view::ViewToCreate,
 	store::{row_settings::create::create_row_settings, view::create::ViewStorage},
@@ -9,7 +10,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
 	row::RowSettings,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
@@ -24,19 +25,19 @@ pub(crate) fn create_deferred_view(
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateDeferredViewNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.view.text(),
 	)? {
 		if plan.if_not_exists {
-			return Ok(Columns::single_row([
+			return single_row([
 				("id", Value::Uint8(view.id().0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("view", Value::Utf8(plan.view.text().to_string())),
 				("created", Value::Boolean(false)),
-			]));
+			]);
 		}
 
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
@@ -100,18 +101,21 @@ pub(crate) fn create_deferred_view(
 		*plan.as_clause,
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction_with_internal_shape;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -154,10 +158,10 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16387));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16387));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_view".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		// A duplicate view name must fault rather than silently redefine the flow behind it.
 		let r = instance.admin(
@@ -230,10 +234,10 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16388));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16388));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_view".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		let r = instance.admin(
 			&mut txn,
@@ -246,9 +250,16 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16389));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16389));
+		assert_eq!(value_at(frame, 1), Value::Utf8("another_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_view".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

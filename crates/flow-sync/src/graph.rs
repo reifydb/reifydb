@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	flow::{
 		dag::FlowDag,
@@ -13,7 +14,6 @@ use reifydb_core::{
 		},
 	},
 	interface::catalog::flow::OperatorId,
-	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -166,7 +166,7 @@ fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&No
 	})
 }
 
-fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<Columns>> {
+fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<SchemaRef>> {
 	Ok(require_parent(nodes, input)?.output_schema())
 }
 
@@ -176,6 +176,9 @@ fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, TimeDomain, TimeSource},
 		expression::Expression,
@@ -194,7 +197,7 @@ mod tests {
 			},
 			change::{Change, ChangeOrigin, Diff},
 		},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{batch::batch, column::factory::int8},
 	};
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_rql::expression::parse_expression;
@@ -204,9 +207,12 @@ mod tests {
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
 		value::{
-			constraint::TypeConstraint, row_number::RowNumber, system_columns::SystemColumns,
+			column_view::ColumnView,
+			constraint::TypeConstraint,
+			container::temporal_array::datetime_array,
+			row_number::RowNumber,
+			system_columns::{SystemColumn, row_numbers, with_system_column},
 			value_type::ValueType,
 		},
 	};
@@ -305,22 +311,20 @@ mod tests {
 		}
 	}
 
-	fn rows(rows: &[(u64, i64)]) -> Columns {
+	fn rows(rows: &[(u64, i64)]) -> RecordBatch {
 		let n = rows.len();
-		Columns::with_system(
-			vec![ColumnWithName::new(
-				Fragment::internal("v"),
-				ColumnBuffer::int8(rows.iter().map(|(_, v)| *v).collect::<Vec<_>>()),
-			)],
-			SystemColumns::new(
-				rows.iter().map(|(row, _)| RowNumber(*row)).collect(),
-				Vec::new(),
-				vec![at_millis(10); n],
-				vec![at_millis(20); n],
-				vec![at_millis(30); n],
-				Vec::new(),
+		let user = batch(vec![int8("v", rows.iter().map(|(_, v)| *v))]).unwrap();
+		let system: [(SystemColumn, ArrayRef); 4] = [
+			(
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from_iter_values(rows.iter().map(|(row, _)| *row))),
 			),
-		)
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(vec![at_millis(10); n]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(vec![at_millis(20); n]))),
+			(SystemColumn::Time, Arc::new(datetime_array(vec![at_millis(30); n]))),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
 	#[test]
@@ -398,10 +402,11 @@ mod tests {
 		else {
 			panic!("an insert must reach the end of the chain as an insert: {:?}", change.diffs[0]);
 		};
-		assert_eq!(post.row_numbers(), &[RowNumber(2), RowNumber(3)]);
-		assert_eq!(post.name_at(1).text(), "doubled");
+		assert_eq!(row_numbers(post).unwrap(), &[RowNumber(2), RowNumber(3)]);
+		assert_eq!(post.schema_ref().field(1).name(), "doubled");
+		let doubled = ColumnView::try_from((post.column(1), post.schema_ref().field(1))).unwrap();
 		assert_eq!(
-			(0..post.row_count()).map(|row| post[1].get_value(row).to_string()).collect::<Vec<_>>(),
+			(0..post.num_rows()).map(|row| doubled.get_value(row).to_string()).collect::<Vec<_>>(),
 			vec!["120", "140"]
 		);
 	}

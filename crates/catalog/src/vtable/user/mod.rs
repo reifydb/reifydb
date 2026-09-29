@@ -4,7 +4,8 @@
 pub mod builder;
 pub mod registry;
 
-use reifydb_core::{metrics::sample::MetricKind, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::metrics::sample::MetricKind;
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::Result;
@@ -43,7 +44,7 @@ impl UserVTableColumn {
 pub trait UserVTable: Clone + Send + Sync + 'static {
 	fn vtable(&self) -> Vec<UserVTableColumn>;
 
-	fn get(&self) -> Columns;
+	fn get(&self) -> RecordBatch;
 }
 
 #[derive(Debug, Clone, Default)]

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	container::{temporal_array::times, varlen_array::get},
 	value_type::ValueType,
 };
@@ -100,14 +103,18 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let time_data = &args[0];
-		let fmt_data = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let time_data = ColumnView::try_from(&args[0])?;
+		let fmt_data = ColumnView::try_from(&args[1])?;
 
-		match (time_data, fmt_data) {
+		match (&time_data.data, &fmt_data.data) {
 			(
-				ColumnBuffer::Time(time_container),
-				ColumnBuffer::Utf8 {
+				ViewData::Time(time_container),
+				ViewData::Utf8 {
 					container: fmt_container,
 					..
 				},
@@ -145,20 +152,19 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 					}
 				}
 
-				let final_data = ColumnBuffer::utf8(result_data);
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(utf8(ctx.fragment.text(), result_data))
 			}
-			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
+			(ViewData::Time(_), _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: fmt_data.get_type(),
 			}),
-			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Time],
-				actual: other.get_type(),
+				actual: time_data.get_type(),
 			}),
 		}
 	}

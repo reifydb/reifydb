@@ -360,7 +360,12 @@ pub async fn claim_job(backend: &ProbeBackend, monitor_id: Uuid7, region: Uuid7)
 		)
 		.await?;
 	match frames.first() {
-		Some(frame) if frame.column("monitor_id").is_some() && frame.row_count() > 0 => {
+		Some(frame)
+			if frame.column("monitor_id")
+				.map_err(|e| ApiError::internal("failed to decode frame", e))?
+				.is_some()
+				&& frame.row_count() > 0 =>
+		{
 			Ok(rows::<JobRow>(&frames)?.into_iter().next())
 		}
 		_ => Ok(None),

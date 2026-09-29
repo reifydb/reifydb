@@ -3,9 +3,10 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::{catalog::property::ColumnSaturationStrategy, evaluate::TargetColumn},
-	value::column::{cast::convert::TargetConvert, columns::Columns},
+	value::{batch::empty_batch, column::cast::convert::TargetConvert},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -15,7 +16,7 @@ use crate::stack::SymbolTable;
 
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
-	pub columns: Columns,
+	pub batch: RecordBatch,
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
@@ -36,7 +37,7 @@ impl<'a> EvalContext<'a> {
 
 		EvalContext {
 			target: None,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			take: None,
 			params: &EMPTY_PARAMS,
@@ -48,10 +49,10 @@ impl<'a> EvalContext<'a> {
 		}
 	}
 
-	pub fn with_eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
+	pub fn with_eval(&self, batch: RecordBatch, row_count: usize) -> EvalContext<'a> {
 		EvalContext {
 			target: None,
-			columns,
+			batch,
 			row_count,
 			take: None,
 			params: self.params,
@@ -64,11 +65,11 @@ impl<'a> EvalContext<'a> {
 	}
 
 	pub fn with_eval_empty(&self) -> EvalContext<'a> {
-		self.with_eval(Columns::empty(), 1)
+		self.with_eval(empty_batch(), 1)
 	}
 
-	pub fn with_eval_join(&self, columns: Columns) -> EvalContext<'a> {
-		let mut ctx = self.with_eval(columns, 1);
+	pub fn with_eval_join(&self, batch: RecordBatch) -> EvalContext<'a> {
+		let mut ctx = self.with_eval(batch, 1);
 		ctx.take = Some(1);
 		ctx
 	}

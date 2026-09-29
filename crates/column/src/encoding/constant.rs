@@ -3,16 +3,17 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_array::ArrayRef;
 use arrow_buffer::NullBuffer;
+use arrow_schema::FieldRef;
 use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
 	builder::ColumnBuilder,
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 
 use crate::{
@@ -42,12 +43,12 @@ impl ConstantData {
 		}
 	}
 
-	fn repeated(&self, count: usize) -> ColumnBuffer {
+	fn repeated(&self, count: usize) -> (FieldRef, ArrayRef) {
 		let mut buffer = ColumnBuilder::with_capacity(self.ty.clone(), count);
 		for _ in 0..count {
 			buffer.push_value(self.value.clone());
 		}
-		buffer.finish()
+		buffer.finish("")
 	}
 }
 
@@ -60,7 +61,7 @@ impl ColumnData for ConstantData {
 		ConstantEncoding::ID
 	}
 
-	fn nones(&self) -> Option<&NullBuffer> {
+	fn nones(&self) -> Option<NullBuffer> {
 		None
 	}
 
@@ -81,7 +82,10 @@ impl ColumnData for ConstantData {
 			let len = self.len;
 			assert!(idx < len, "constant column has no row {idx} (len={len})");
 		}
-		self.repeated(1).as_string(0)
+		let column = self.repeated(1);
+		ColumnView::try_from(&column)
+			.unwrap_or_else(|error| panic!("constant column does not match its own type: {error}"))
+			.as_string(0)
 	}
 
 	fn as_any(&self) -> &dyn Any {
@@ -89,7 +93,7 @@ impl ColumnData for ConstantData {
 	}
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>> {
-		Ok(Arc::new(Canonical::from_buffer(self.repeated(self.len))))
+		Ok(Arc::new(Canonical::from_column(&self.repeated(self.len))?))
 	}
 }
 
@@ -99,16 +103,17 @@ impl Encoding for ConstantEncoding {
 	}
 
 	fn try_compress(&self, input: &Canonical, _cfg: &CompressConfig) -> Result<Option<Column>> {
-		if input.is_empty() || input.nullable {
+		let view = input.view();
+		if input.is_empty() || view.is_nullable() {
 			return Ok(None);
 		}
-		let first = input.buffer.get_value(0);
+		let first = view.get_value(0);
 		for idx in 1..input.len() {
-			if input.buffer.get_value(idx) != first {
+			if view.get_value(idx) != first {
 				return Ok(None);
 			}
 		}
-		Ok(Some(Column::from_data(Arc::new(ConstantData::new(input.ty.clone(), first, input.len())))))
+		Ok(Some(Column::from_data(Arc::new(ConstantData::new(view.base_type(), first, input.len())))))
 	}
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {

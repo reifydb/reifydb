@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use arrow_schema::Schema;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{operator::state::decode, pod::EncodedPodRow},
@@ -17,7 +18,6 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{KeyspaceId, OperatorStateKey},
 	state::timer::TimerKind,
-	value::column::columns::Columns,
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::{
@@ -59,7 +59,7 @@ fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
-			parent_schema: Some(Columns::empty()),
+			parent_schema: Some(Arc::new(Schema::empty())),
 			operator: SUBJECT,
 			kind,
 			group_by: parse_expression("g").expect("group_by parses"),

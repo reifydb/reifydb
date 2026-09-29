@@ -3,8 +3,10 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use bumpalo::Bump;
-use reifydb_core::value::column::{ColumnWithName, columns::Columns};
+use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::{
@@ -48,7 +50,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlAst {
 		false
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let query = extract_query(ctx.params, "rql::ast")?;
 
 		let bump = Bump::new();
@@ -61,7 +67,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlAst {
 			}
 		}
 
-		Ok(walker.into_columns())
+		walker.into_columns()
 	}
 }
 
@@ -82,13 +88,13 @@ impl AstWalker {
 		self.detail.push(detail);
 	}
 
-	fn into_columns(self) -> Columns {
-		Columns::new(vec![
-			ColumnWithName::int4("idx", self.idx),
-			ColumnWithName::int4("depth", self.depth),
-			ColumnWithName::utf8("kind", self.kind),
-			ColumnWithName::utf8("detail", self.detail),
-		])
+	fn into_columns(self) -> Result<RecordBatch, RoutineError> {
+		Ok(batch(vec![
+			factory::int4("idx", self.idx),
+			factory::int4("depth", self.depth),
+			factory::utf8("kind", self.kind),
+			factory::utf8("detail", self.detail),
+		])?)
 	}
 
 	fn walk(&mut self, ast: &Ast<'_>, depth: i32) {

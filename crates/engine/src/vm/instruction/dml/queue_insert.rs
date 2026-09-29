@@ -3,6 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use postcard::to_stdvec;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
@@ -31,7 +33,10 @@ use reifydb_core::{
 	internal_error,
 	key::{queue::QueueDeduplicationKey, row::RowKey},
 	return_internal_error,
-	value::column::{builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, single_row},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{
@@ -43,7 +48,13 @@ use reifydb_value::{
 	params::Params,
 	return_error,
 	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
 		value_type::ValueType,
 	},
 };
@@ -82,7 +93,7 @@ pub(crate) fn insert_queue(
 	txn: &mut Transaction<'_>,
 	plan: InsertQueueNode,
 	symbols: &mut SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let InsertQueueNode {
 		input,
 		target,
@@ -115,7 +126,7 @@ pub(crate) fn insert_queue(
 	)?;
 
 	if pending.is_empty() {
-		return Ok(insert_queue_result(namespace.name(), &queue.name, 0, 0));
+		return insert_queue_result(namespace.name(), &queue.name, 0, 0);
 	}
 
 	let now = services.runtime_context.clock.now();
@@ -190,7 +201,7 @@ pub(crate) fn insert_queue(
 		return project_returning(services, txn, symbols, &queue, &shape, returning_exprs, &returned);
 	}
 
-	Ok(insert_queue_result(namespace.name(), &queue.name, fresh_count as u64, duplicates as u64))
+	insert_queue_result(namespace.name(), &queue.name, fresh_count as u64, duplicates as u64)
 }
 
 struct PendingItem {
@@ -289,20 +300,22 @@ fn project_returning(
 	shape: &RowShape,
 	returning_exprs: &[Expression],
 	returned: &[ReturnedRow],
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let rows: Vec<(RowNumber, EncodedBytes)> =
 		returned.iter().map(|row| (row.row_number, row.encoded.clone())).collect();
-	let mut columns = decode_rows_to_columns(shape, &rows);
-	truncate_to_declared(&mut columns, queue.columns.len());
-	decode_returning_dictionaries(services, txn, &queue.columns, &mut columns)?;
-	let mut columns = with_absent_pre_image(columns);
+	let columns = decode_rows_to_columns(shape, &rows)?;
+	let columns = truncate_to_declared(columns, queue.columns.len())?;
+	let columns = decode_returning_dictionaries(services, txn, &queue.columns, columns)?;
+	let columns = with_absent_pre_image(columns)?;
 
 	let mut created = ColumnBuilder::with_capacity(ValueType::Boolean, returned.len());
 	for row in returned {
 		created.push_value(Value::Boolean(row.created));
 	}
-	columns.columns.push(created.finish());
-	columns.names.push(Fragment::internal(QUEUE_CREATED_COLUMN));
+	let mut user: Vec<(FieldRef, ArrayRef)> =
+		user_columns(&columns).map(|(field, array)| (field.clone(), array.clone())).collect();
+	user.push(created.finish(QUEUE_CREATED_COLUMN));
+	let columns = rebuild_with_user_columns(&columns, user)?;
 
 	evaluate_returning(services, symbols, returning_exprs, columns, txn.identity())
 }
@@ -327,9 +340,20 @@ fn declared_key_bytes(shape: &RowShape, bytes: &EncodedBytes, indices: &[usize])
 }
 
 #[inline]
-fn truncate_to_declared(columns: &mut Columns, declared: usize) {
-	columns.columns.truncate(declared);
-	columns.names.truncate(declared);
+fn truncate_to_declared(columns: RecordBatch, declared: usize) -> Result<RecordBatch> {
+	let kept: Vec<(FieldRef, ArrayRef)> =
+		user_columns(&columns).take(declared).map(|(field, array)| (field.clone(), array.clone())).collect();
+	rebuild_with_user_columns(&columns, kept)
+}
+
+fn rebuild_with_user_columns(source: &RecordBatch, user: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
+	let mut out = batch(user)?;
+	for column in SystemColumn::ALL {
+		if let Some(array) = system_column(source, column) {
+			out = with_system_column(out, column, array.clone())?;
+		}
+	}
+	Ok(out)
 }
 
 #[inline]
@@ -396,23 +420,26 @@ fn validate_and_encode_input_rows(
 			&columns,
 			PolicyTargetType::Queue,
 		)?;
-		if let Some(unknown) = columns.names.iter().find(|name| {
-			!(target.queue.columns.iter().any(|c| c.name == name.text())
-				|| (has_deduplication && name.text() == QUEUE_DEDUPLICATION_KEY_FIELD)
-				|| (has_not_before && name.text() == QUEUE_NOT_BEFORE_FIELD))
+		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
+			!(target.queue.columns.iter().any(|c| &c.name == field.name())
+				|| (has_deduplication && field.name() == QUEUE_DEDUPLICATION_KEY_FIELD)
+				|| (has_not_before && field.name() == QUEUE_NOT_BEFORE_FIELD))
 		}) {
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
 
+		let views: Vec<ColumnView<'_>> = user_columns(&columns)
+			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+			.collect::<Result<_>>()?;
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, col) in columns.iter().enumerate() {
-			column_map.insert(col.name().text(), idx);
+		for (idx, view) in views.iter().enumerate() {
+			column_map.insert(view.field.name().as_str(), idx);
 		}
 
-		for row_idx in 0..columns.row_count() {
+		for row_idx in 0..columns.num_rows() {
 			let declared_key_indices = declared_key_indices.as_deref();
 			let not_before = if has_not_before {
-				read_not_before(target, &columns, &column_map, row_idx)?
+				read_not_before(target, &views, &column_map, row_idx)?
 			} else {
 				None
 			};
@@ -422,7 +449,7 @@ fn validate_and_encode_input_rows(
 				txn,
 				target,
 				shape,
-				&columns,
+				&views,
 				&column_map,
 				context,
 				row_idx,
@@ -432,7 +459,7 @@ fn validate_and_encode_input_rows(
 			let deduplication_key = match declared_key_indices {
 				Some(indices) => Some(declared_key_bytes(shape, &encoded, indices)),
 				None if has_deduplication => {
-					read_deduplication_key(target, &columns, &column_map, row_idx)?
+					read_deduplication_key(target, &views, &column_map, row_idx)?
 				}
 				None => None,
 			};
@@ -451,7 +478,7 @@ fn validate_and_encode_input_rows(
 #[inline]
 fn read_deduplication_key(
 	target: &QueueTarget<'_>,
-	columns: &Columns,
+	columns: &[ColumnView<'_>],
 	column_map: &HashMap<&str, usize>,
 	row_idx: usize,
 ) -> Result<Option<Vec<u8>>> {
@@ -478,7 +505,7 @@ fn statement_key_bytes(value: &Value) -> Vec<u8> {
 #[inline]
 fn read_not_before(
 	target: &QueueTarget<'_>,
-	columns: &Columns,
+	columns: &[ColumnView<'_>],
 	column_map: &HashMap<&str, usize>,
 	row_idx: usize,
 ) -> Result<Option<DateTime>> {
@@ -504,7 +531,7 @@ fn build_insert_queue_row(
 	txn: &mut Transaction<'_>,
 	target: &QueueTarget<'_>,
 	shape: &RowShape,
-	columns: &Columns,
+	columns: &[ColumnView<'_>],
 	column_map: &HashMap<&str, usize>,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
@@ -525,7 +552,7 @@ fn build_insert_queue_row(
 
 		let column_ident = column_map
 			.get(queue_column.name.as_str())
-			.map(|&idx| columns.name_at(idx).clone())
+			.map(|&idx| Fragment::internal(columns[idx].field.name()))
 			.unwrap_or_else(|| Fragment::internal(queue_column.name.clone()));
 
 		let resolved_column = ResolvedColumn::new(
@@ -579,8 +606,8 @@ fn build_insert_queue_row(
 }
 
 #[inline]
-fn insert_queue_result(namespace: &str, queue: &str, inserted: u64, duplicates: u64) -> Columns {
-	Columns::single_row([
+fn insert_queue_result(namespace: &str, queue: &str, inserted: u64, duplicates: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("queue", Value::Utf8(queue.to_string())),
 		("inserted", Value::Uint8(inserted)),

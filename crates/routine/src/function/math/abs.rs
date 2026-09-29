@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{
+	decimal, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec, int4_with_bitvec,
+	int8_with_bitvec, int16_with_bitvec, uint1_with_bitvec, uint2_with_bitvec, uint4_with_bitvec,
+	uint8_with_bitvec, uint16_with_bitvec,
+};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::{
-		decimal_array::{decimal_array, decimals},
-		wide_int_array::wide_at,
-	},
+	column_view::{ColumnView, ViewData},
+	container::{decimal_array::decimals, wide_int_array::wide_at},
 	decimal::Decimal,
 	value_type::ValueType,
 };
@@ -48,13 +52,17 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 		let column_type = data.get_type();
 
-		let result_data = match data {
-			ColumnBuffer::Int1(container) => {
+		let result_data = match &data.data {
+			ViewData::Int1(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -73,9 +81,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::int1_with_bitvec(data, res_bitvec)
+				int1_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Int2(container) => {
+			ViewData::Int2(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -94,9 +102,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::int2_with_bitvec(data, res_bitvec)
+				int2_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Int4(container) => {
+			ViewData::Int4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -115,9 +123,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::int4_with_bitvec(data, res_bitvec)
+				int4_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Int8(container) => {
+			ViewData::Int8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -136,9 +144,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::int8_with_bitvec(data, res_bitvec)
+				int8_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Int16(container) => {
+			ViewData::Int16(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -157,9 +165,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::int16_with_bitvec(data, res_bitvec)
+				int16_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Uint1(container) => {
+			ViewData::Uint1(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -171,9 +179,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::uint1_with_bitvec(data, res_bitvec)
+				uint1_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Uint2(container) => {
+			ViewData::Uint2(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -185,9 +193,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::uint2_with_bitvec(data, res_bitvec)
+				uint2_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Uint4(container) => {
+			ViewData::Uint4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -199,9 +207,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::uint4_with_bitvec(data, res_bitvec)
+				uint4_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Uint8(container) => {
+			ViewData::Uint8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -213,9 +221,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::uint8_with_bitvec(data, res_bitvec)
+				uint8_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Uint16(container) => {
+			ViewData::Uint16(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -227,9 +235,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::uint16_with_bitvec(data, res_bitvec)
+				uint16_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Float4(container) => {
+			ViewData::Float4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -241,9 +249,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float4_with_bitvec(data, res_bitvec)
+				float4_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Float8(container) => {
+			ViewData::Float8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -255,14 +263,15 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
+				float8_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Decimal(container) => ColumnBuffer::Decimal(decimal_array(
+			ViewData::Decimal(container) => decimal(
+				ctx.fragment.text(),
 				container.precision(),
 				container.scale(),
 				decimals(container).iter().map(Decimal::abs),
-			)),
-			other => {
+			),
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
@@ -281,12 +290,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 						ValueType::Float8,
 						ValueType::DECIMAL,
 					],
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

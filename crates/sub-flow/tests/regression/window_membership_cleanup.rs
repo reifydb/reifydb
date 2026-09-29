@@ -14,10 +14,10 @@
 
 use std::sync::Arc;
 
+use arrow_schema::Schema;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
-	value::column::columns::Columns,
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
@@ -51,7 +51,7 @@ fn routines() -> Routines {
 fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
-			parent_schema: Some(Columns::empty()),
+			parent_schema: Some(Arc::new(Schema::empty())),
 			operator: SUBJECT,
 			kind: kind.clone(),
 			group_by: parse_expression("g").expect("group_by parses"),

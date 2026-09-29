@@ -2,10 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::LargeStringArray;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<String>) -> FrameColumnData {
-	FrameColumnData::Utf8(LargeStringArray::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<String>) -> ColumnData {
+	data(ValueType::Utf8, LargeStringArray::from(v))
 }
 
 crate::dict_tests! {

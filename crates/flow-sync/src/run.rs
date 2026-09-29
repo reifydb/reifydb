@@ -162,8 +162,9 @@ fn dispatch_node<T: Rows + Emit + Lookup + Intern>(
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeSet;
+	use std::{collections::BTreeSet, sync::Arc};
 
+	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use reifydb_codec::row::shape::RowFamily;
 	use reifydb_core::{
 		common::{TimeDomain, TimeSource},
@@ -184,7 +185,7 @@ mod tests {
 			change::Diff,
 		},
 		row::row_shape_from_columns,
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{batch::batch, column::factory::int8},
 	};
 	use reifydb_flow::operator::sink::view::row_key;
 	use reifydb_routine_abi::registry::Routines;
@@ -195,9 +196,12 @@ mod tests {
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
 		value::{
-			Value, constraint::TypeConstraint, row_number::RowNumber, system_columns::SystemColumns,
+			Value,
+			constraint::TypeConstraint,
+			container::temporal_array::datetime_array,
+			row_number::RowNumber,
+			system_columns::{SystemColumn, require_row_numbers, with_system_column},
 			value_type::ValueType,
 		},
 	};
@@ -313,22 +317,19 @@ mod tests {
 		RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0)))
 	}
 
-	fn rows(rows: &[(u64, i64)]) -> Columns {
+	fn rows(rows: &[(u64, i64)]) -> RecordBatch {
 		let n = rows.len();
-		Columns::with_system(
-			vec![ColumnWithName::new(
-				Fragment::internal("v"),
-				ColumnBuffer::int8(rows.iter().map(|(_, v)| *v).collect::<Vec<_>>()),
-			)],
-			SystemColumns::new(
-				rows.iter().map(|(row, _)| RowNumber(*row)).collect(),
-				Vec::new(),
-				vec![at_millis(10); n],
-				vec![at_millis(20); n],
-				Vec::new(),
-				Vec::new(),
+		let user = batch(vec![int8("v", rows.iter().map(|(_, v)| *v))]).unwrap();
+		let system: [(SystemColumn, ArrayRef); 3] = [
+			(
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from_iter_values(rows.iter().map(|(row, _)| *row))),
 			),
-		)
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(vec![at_millis(10); n]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(vec![at_millis(20); n]))),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
 	fn table_entry(diff: Diff) -> (ObjectId, Diff) {
@@ -346,7 +347,7 @@ mod tests {
 	}
 
 	fn row_numbers(diff: &Diff) -> Vec<RowNumber> {
-		diff.post().or(diff.pre()).expect("every diff carries columns").row_numbers().to_vec()
+		require_row_numbers(diff.post().or(diff.pre()).expect("every diff carries columns")).unwrap().to_vec()
 	}
 
 	fn emitted_to(txn: &MemoryTxn, view: ViewId) -> Vec<&Diff> {

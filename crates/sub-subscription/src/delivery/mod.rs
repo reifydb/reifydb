@@ -3,10 +3,8 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_core::{
-	interface::{catalog::id::SubscriptionId, change::StagedBatch},
-	value::column::columns::Columns,
-};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::value::diff_type::DiffType;
 
@@ -29,8 +27,8 @@ impl DeliveryBuffer {
 		}
 	}
 
-	pub fn push(&self, subscription_id: SubscriptionId, op: DiffType, columns: Columns) {
-		self.staging.lock().entry(subscription_id).or_default().push((op, columns));
+	pub fn push(&self, subscription_id: SubscriptionId, op: DiffType, batch: RecordBatch) {
+		self.staging.lock().entry(subscription_id).or_default().push((op, batch));
 	}
 
 	pub fn take_staged(&self, subscription_id: SubscriptionId) -> Vec<StagedBatch> {

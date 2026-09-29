@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::catalog::{storage::StorageId, view::ViewSortKey},
@@ -8,12 +9,13 @@ use reifydb_core::{
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		sort_run::SortRun,
 	},
-	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
 	value::{partition::Partition, row_number::RowNumber},
 };
+
+use crate::operator::sink::value_at;
 
 #[inline]
 pub fn row_key(storage: StorageId, row: RowNumber) -> EncodedKey {
@@ -21,10 +23,10 @@ pub fn row_key(storage: StorageId, row: RowNumber) -> EncodedKey {
 }
 
 #[inline]
-pub fn sort_run(sort: &[ViewSortKey], cols: &Columns, row_idx: usize) -> Result<SortRun> {
+pub fn sort_run(sort: &[ViewSortKey], cols: &RecordBatch, row_idx: usize) -> Result<SortRun> {
 	let mut serializer = KeySerializer::new();
 	for key in sort {
-		let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
+		let value = value_at(cols, key.column.0 as usize, row_idx)?;
 		serializer.extend_value_with_direction(&value, key.direction.clone().into())?;
 	}
 	Ok(SortRun::from_encoded(serializer.to_encoded_key()))
@@ -34,7 +36,7 @@ pub fn sort_run(sort: &[ViewSortKey], cols: &Columns, row_idx: usize) -> Result<
 pub fn sorted_view_key(
 	storage: StorageId,
 	sort: &[ViewSortKey],
-	cols: &Columns,
+	cols: &RecordBatch,
 	row_idx: usize,
 	row: RowNumber,
 ) -> Result<EncodedKey> {
@@ -48,7 +50,7 @@ pub fn sorted_view_key(
 pub fn partitioned_key(
 	storage: StorageId,
 	sort: &[ViewSortKey],
-	cols: &Columns,
+	cols: &RecordBatch,
 	row_idx: usize,
 	partition: Partition,
 	row: RowNumber,

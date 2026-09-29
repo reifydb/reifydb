@@ -4,8 +4,10 @@
 pub mod oracle;
 pub mod workload;
 
+use std::sync::Arc;
+
+use arrow_schema::Schema;
 use rand::RngExt;
-use reifydb_core::value::column::columns::Columns;
 use reifydb_flow_async::operator::take::TakeOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -31,7 +33,7 @@ pub const fn exact_oracle_ceiling(limit: usize) -> usize {
 }
 
 pub fn build(limit: usize) -> TakeOperator {
-	TakeOperator::new(Some(Columns::empty()), TAKE_OPERATOR, limit)
+	TakeOperator::new(Some(Arc::new(Schema::empty())), TAKE_OPERATOR, limit)
 }
 
 #[derive(Debug, Clone)]

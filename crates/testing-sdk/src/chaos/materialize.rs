@@ -165,7 +165,7 @@ mod tests {
 			change::{Change, ChangeOrigin, Diff, Diffs},
 		},
 		row::Row,
-		value::column::columns::Columns,
+		value::batch::from_row,
 	};
 	use reifydb_value::value::{
 		Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
@@ -201,10 +201,10 @@ mod tests {
 	#[test]
 	fn insert_then_update_yields_post_state() {
 		let history = vec![
-			change(vec![Diff::insert(Columns::from_row(&build_row(1, 7, 1.0)))]),
+			change(vec![Diff::insert(from_row(&build_row(1, 7, 1.0)).unwrap())]),
 			change(vec![Diff::update(
-				Columns::from_row(&build_row(1, 7, 1.0)),
-				Columns::from_row(&build_row(1, 7, 2.5)),
+				from_row(&build_row(1, 7, 1.0)).unwrap(),
+				from_row(&build_row(1, 7, 2.5)).unwrap(),
 			)]),
 		];
 		let table = materialize_history(&history, &["k".to_string()]);
@@ -216,9 +216,9 @@ mod tests {
 	#[test]
 	fn remove_drops_row_by_output_key() {
 		let history = vec![
-			change(vec![Diff::insert(Columns::from_row(&build_row(1, 7, 1.0)))]),
-			change(vec![Diff::insert(Columns::from_row(&build_row(2, 8, 9.0)))]),
-			change(vec![Diff::remove(Columns::from_row(&build_row(1, 7, 1.0)))]),
+			change(vec![Diff::insert(from_row(&build_row(1, 7, 1.0)).unwrap())]),
+			change(vec![Diff::insert(from_row(&build_row(2, 8, 9.0)).unwrap())]),
+			change(vec![Diff::remove(from_row(&build_row(1, 7, 1.0)).unwrap())]),
 		];
 		let table = materialize_history(&history, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
@@ -231,9 +231,9 @@ mod tests {
 		// Colliding output keys are legal here because the operator may have remapped row
 		// numbers, so the last write has to win.
 		let history = vec![change(vec![
-			Diff::insert(Columns::from_row(&build_row(1, 5, 10.0))),
-			Diff::insert(Columns::from_row(&build_row(2, 5, 20.0))),
-			Diff::insert(Columns::from_row(&build_row(3, 5, 30.0))),
+			Diff::insert(from_row(&build_row(1, 5, 10.0)).unwrap()),
+			Diff::insert(from_row(&build_row(2, 5, 20.0)).unwrap()),
+			Diff::insert(from_row(&build_row(3, 5, 30.0)).unwrap()),
 		])];
 		let table = materialize_history(&history, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
@@ -261,9 +261,9 @@ mod tests {
 				.build()
 		}
 		let history = vec![change(vec![
-			Diff::insert(Columns::from_row(&r(&s, 1, 1, 100, 1.0))),
-			Diff::insert(Columns::from_row(&r(&s, 2, 1, 200, 2.0))),
-			Diff::insert(Columns::from_row(&r(&s, 3, 2, 100, 3.0))),
+			Diff::insert(from_row(&r(&s, 1, 1, 100, 1.0)).unwrap()),
+			Diff::insert(from_row(&r(&s, 2, 1, 200, 2.0)).unwrap()),
+			Diff::insert(from_row(&r(&s, 3, 2, 100, 3.0)).unwrap()),
 		])];
 		let table = materialize_history(&history, &["base".to_string(), "quote".to_string()]);
 		assert_eq!(table.len(), 3);

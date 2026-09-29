@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	json::to::convert_frames,
 	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_core::{
 	envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
 	wire_sink::{BatchSubscribedEntry, WireSink},
@@ -105,7 +106,7 @@ impl WireSink for WsWireSink {
 		&self,
 		sub_id: SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		columns: RecordBatch,
 		format: Self::Format,
 	) -> DeliveryResult {
 		let msg = match encode_change(sub_id, op, columns, format) {
@@ -227,7 +228,7 @@ fn encode_remote_change(
 		WireFormat::Frames => PushMessage::ChangeJson {
 			subscription_id: sub_id,
 			content_type: CONTENT_TYPE_FRAMES.to_string(),
-			body: json!({ "frames": convert_frames(&frames) }),
+			body: json!({ "frames": convert_frames(&frames).map_err(|e| e.to_string())? }),
 		},
 		WireFormat::Json => {
 			let resolved = resolve_change_json(frames)?;
@@ -264,12 +265,16 @@ fn encode_batch(
 			batch_id,
 			entries: entries
 				.into_iter()
-				.map(|(sub_id, frames)| BatchChangeEntryPush {
-					subscription_id: sub_id,
-					content_type: CONTENT_TYPE_FRAMES.to_string(),
-					body: json!({ "frames": convert_frames(&frames) }),
+				.map(|(sub_id, frames)| {
+					let converted = convert_frames(&frames)
+						.map_err(|e| format!("subscription {}: {}", sub_id, e))?;
+					Ok(BatchChangeEntryPush {
+						subscription_id: sub_id,
+						content_type: CONTENT_TYPE_FRAMES.to_string(),
+						body: json!({ "frames": converted }),
+					})
 				})
-				.collect(),
+				.collect::<Result<Vec<_>, String>>()?,
 		},
 		WireFormat::Json => {
 			let json_entries = entries
@@ -295,7 +300,7 @@ fn encode_batch(
 pub fn encode_change_for_handler(
 	subscription_id: SubscriptionId,
 	op: DiffType,
-	columns: Columns,
+	columns: RecordBatch,
 	format: WireFormat,
 ) -> Option<PushMessage> {
 	encode_change(subscription_id, op, columns, format)
@@ -304,7 +309,7 @@ pub fn encode_change_for_handler(
 fn encode_change(
 	subscription_id: SubscriptionId,
 	op: DiffType,
-	columns: Columns,
+	columns: RecordBatch,
 	format: WireFormat,
 ) -> Option<PushMessage> {
 	match format {
@@ -329,7 +334,14 @@ fn encode_change(
 			})
 		}
 		WireFormat::Frames => {
-			let body = json!({ "frames": convert_frames(&[Frame::from(columns).with_op(op)]) });
+			let converted = match convert_frames(&[Frame::from(columns).with_op(op)]) {
+				Ok(c) => c,
+				Err(e) => {
+					warn!("Failed to frames-encode change for {}: {}", subscription_id, e);
+					return None;
+				}
+			};
+			let body = json!({ "frames": converted });
 			Some(PushMessage::ChangeJson {
 				subscription_id,
 				content_type: CONTENT_TYPE_FRAMES.to_string(),
@@ -357,10 +369,11 @@ fn encode_change(
 
 #[cfg(test)]
 pub mod tests {
-	use std::collections::HashSet;
+	use std::{collections::HashSet, sync::Arc};
 
+	use arrow_array::UInt64Array;
 	use reifydb_codec::frame::decode::decode_frames;
-	use reifydb_core::interface::catalog::id::SubscriptionId;
+	use reifydb_core::{interface::catalog::id::SubscriptionId, value::batch::single_row};
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
@@ -368,7 +381,11 @@ pub mod tests {
 	use reifydb_sub_core::registry::PromoteResult;
 	use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 	use reifydb_value::value::{
-		Value, duration::Duration, row_number::RowNumber, system_columns::SystemColumn, uuid::Uuid7,
+		Value,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, row_numbers, with_system_column},
+		uuid::Uuid7,
 	};
 
 	use super::*;
@@ -380,12 +397,17 @@ pub mod tests {
 		(mock, clock, rng)
 	}
 
-	fn single_int_columns(name: &str, value: i64) -> Columns {
-		Columns::single_row([(name, Value::Int8(value))])
+	fn single_int_columns(name: &str, value: i64) -> RecordBatch {
+		single_row([(name, Value::Int8(value))]).unwrap()
 	}
 
-	fn columns_with_row_number(id: i64, row_number: u64) -> Columns {
-		Columns::single_row([("id", Value::Int8(id))]).with_row_numbers(vec![RowNumber::new(row_number)])
+	fn columns_with_row_number(id: i64, row_number: u64) -> RecordBatch {
+		with_system_column(
+			single_row([("id", Value::Int8(id))]).unwrap(),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![row_number])),
+		)
+		.unwrap()
 	}
 
 	fn push_body(message: PushMessage) -> JsonValue {
@@ -432,7 +454,13 @@ pub mod tests {
 		);
 		let frame = &frames["frames"].as_array().expect("frames format carries a frame list")[0];
 		assert_eq!(frame["op"], JsonValue::from(DiffType::as_u8(op)));
-		assert_eq!(frame["row_numbers"], JsonValue::from(vec![42u64]));
+		let row_number_column = frame["columns"]
+			.as_array()
+			.expect("frames format carries a column list")
+			.iter()
+			.find(|column| column["name"] == SystemColumn::RowNumbers.name())
+			.expect("frames format carries #rownum as an ordinary column");
+		assert_eq!(row_number_column["payload"], JsonValue::from(vec!["42"]));
 
 		let payload = encode_frames(
 			&[Frame::from(columns_with_row_number(500, 42)).with_op(op)],
@@ -446,7 +474,7 @@ pub mod tests {
 		let decoded = decode_frames(&payload).expect("rbcf payload must decode");
 		assert_eq!(decoded.len(), 1);
 		assert_eq!(decoded[0].op, Some(op));
-		assert_eq!(decoded[0].row_numbers(), &[RowNumber::new(42)]);
+		assert_eq!(row_numbers(&decoded[0].batch).unwrap(), &[RowNumber::new(42)]);
 	}
 
 	#[test]
@@ -454,7 +482,7 @@ pub mod tests {
 		// `id` is an ordinary user column and may repeat, be absent, or be reused. The row number is
 		// the server's identity and must survive independently of it, or a client keyed on identity
 		// would collapse two distinct rows into one.
-		let columns = Columns::single_row([("id", Value::Int8(1))]).with_row_numbers(vec![RowNumber::new(99)]);
+		let columns = columns_with_row_number(1, 99);
 		let json = push_body(
 			encode_change(SubscriptionId(1), DiffType::Insert, columns, WireFormat::Json).unwrap(),
 		);
@@ -477,8 +505,7 @@ pub mod tests {
 		let seen: Vec<(u8, u64)> = ops
 			.iter()
 			.map(|op| {
-				let columns = Columns::single_row([("id", Value::Int8(7))])
-					.with_row_numbers(vec![row_number]);
+				let columns = columns_with_row_number(7, row_number.value());
 				let json = push_body(encode_change(sub_id, *op, columns, WireFormat::Json).unwrap());
 				let envelope = &json.as_array().unwrap()[0];
 				let rn = envelope["rows"].as_array().unwrap()[0][SystemColumn::RowNumbers.name()]

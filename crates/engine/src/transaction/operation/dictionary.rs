@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_transaction::{
 	dictionary::InternOutcome,
@@ -100,13 +100,13 @@ fn intern_into_admin(
 	Ok((outcome, value))
 }
 
-fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Change {
-	Change {
+fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Change> {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::dictionary(dictionary.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::insert(Columns::single_row([("value", value)]))],
+		diffs: smallvec![Diff::insert(single_row([("value", value)])?)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 impl DictionaryOperations for AdminTransaction {
@@ -145,7 +145,7 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Test(t) => {
 				let (outcome, value) = intern_into_admin(t.inner, dictionary, value)?;
 				if outcome.created {
-					t.inner.track_flow_change(dictionary_insert_change(dictionary, value));
+					t.inner.track_flow_change(dictionary_insert_change(dictionary, value)?);
 				}
 				Ok(outcome.id)
 			}

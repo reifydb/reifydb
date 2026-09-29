@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	Result,
@@ -54,14 +54,11 @@ impl BaseVTable for SystemRowShapes {
 			field_counts.push(shape.field_count() as u16);
 		}
 
-		let columns = vec![
-			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints.finish()),
-			ColumnWithName::new(Fragment::internal("field_count"), field_counts.finish()),
-		];
+		let columns = vec![fingerprints.finish("fingerprint"), field_counts.finish("field_count")];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

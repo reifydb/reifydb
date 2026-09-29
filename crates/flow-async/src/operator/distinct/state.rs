@@ -4,23 +4,39 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::size_of,
+	sync::Arc,
 };
 
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	fragment::Fragment,
+	Result,
 	util::hash::Hash128,
 	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+		Value,
+		column_view::ColumnView,
+		container::temporal_array::datetime_array,
+		datetime::DateTime,
+		row_number::RowNumber,
+		system_columns::{
+			SystemColumn, created_at, require_row_numbers, updated_at, user_columns, with_system_column,
+		},
+		value_type::ValueType,
 	},
 };
 use serde::{Deserialize, Serialize};
+
+use crate::operator::time_at;
+
+pub(super) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
+}
 
 #[operator_state]
 #[derive(Debug, Clone)]
@@ -54,38 +70,26 @@ impl HeapSize for SerializedRow {
 }
 
 impl SerializedRow {
-	pub(super) fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
-		let number = columns.row_numbers()[row_idx];
-		let created_at = if columns.created_at().is_empty() {
-			DateTime::default()
-		} else {
-			columns.created_at()[row_idx]
-		};
-		let updated_at = if columns.updated_at().is_empty() {
-			DateTime::default()
-		} else {
-			columns.updated_at()[row_idx]
-		};
-		let time = if columns.time().is_empty() {
-			DateTime::default()
-		} else {
-			columns.time()[row_idx]
-		};
+	pub(super) fn from_columns_at_index(columns: &RecordBatch, row_idx: usize) -> Result<Self> {
+		let number = require_row_numbers(columns)?[row_idx];
+		let created_at = created_at(columns)?.get(row_idx).copied().unwrap_or_default();
+		let updated_at = updated_at(columns)?.get(row_idx).copied().unwrap_or_default();
+		let time = time_at(columns, row_idx)?.unwrap_or_default();
 
-		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
+		let values: Vec<Value> = user_views(columns)?.iter().map(|view| view.get_value(row_idx)).collect();
 
 		let values_bytes = to_stdvec(&values).expect("Failed to serialize column values");
 
-		Self {
+		Ok(Self {
 			number,
 			created_at,
 			updated_at,
 			time,
 			values_bytes,
-		}
+		})
 	}
 
-	pub(super) fn to_columns(&self, layout: &DistinctLayout) -> Columns {
+	pub(super) fn to_columns(&self, layout: &DistinctLayout) -> Result<RecordBatch> {
 		let values: Vec<Value> = from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
@@ -93,20 +97,18 @@ impl SerializedRow {
 			let value = values.get(i).cloned().unwrap_or(Value::none());
 			let mut col_data = ColumnBuilder::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
-			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data.finish()));
+			columns_vec.push(col_data.finish(name));
 		}
 
-		Columns::with_system(
-			columns_vec,
-			SystemColumns::new(
-				vec![self.number],
-				Vec::new(),
-				vec![self.created_at],
-				vec![self.updated_at],
-				vec![self.time],
-				Vec::new(),
-			),
-		)
+		let stamps: [(SystemColumn, ArrayRef); 4] = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![self.number.0]))),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array([self.created_at]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array([self.updated_at]))),
+			(SystemColumn::Time, Arc::new(datetime_array([self.time]))),
+		];
+		stamps.into_iter().try_fold(batch(columns_vec)?, |columns, (column, array)| {
+			with_system_column(columns, column, array)
+		})
 	}
 }
 
@@ -118,18 +120,19 @@ impl DistinctLayout {
 		}
 	}
 
-	pub(super) fn update_from_columns(&mut self, columns: &Columns) -> bool {
-		if columns.is_empty() {
-			return false;
+	pub(super) fn update_from_columns(&mut self, columns: &RecordBatch) -> Result<bool> {
+		let views = user_views(columns)?;
+		if views.is_empty() {
+			return Ok(false);
 		}
 
-		let names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
-		let types: Vec<ValueType> = columns.iter().map(|c| c.data().get_type()).collect();
+		let names: Vec<String> = views.iter().map(|view| view.field.name().clone()).collect();
+		let types: Vec<ValueType> = views.iter().map(|view| view.get_type()).collect();
 
 		if self.names.is_empty() {
 			self.names = names;
 			self.types = types;
-			return true;
+			return Ok(true);
 		}
 
 		let mut changed = false;
@@ -147,7 +150,7 @@ impl DistinctLayout {
 				changed = true;
 			}
 		}
-		changed
+		Ok(changed)
 	}
 }
 

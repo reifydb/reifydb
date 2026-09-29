@@ -22,8 +22,8 @@ fn a_number_plus_none_joins_a_number_branch_of_a_conditional() {
 	if let Some(err) = result.error {
 		panic!("the conditional must accept the none branch, got {:?}", err.diagnostic());
 	}
-	let column = result.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-	let values: Vec<String> = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
+	let column = result.frames[0].column("v").unwrap().expect("column v");
+	let values: Vec<String> = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
 	assert_eq!(values, ["3", "none"]);
 }
 
@@ -87,7 +87,7 @@ fn column_v(t: &TestEngine, rql: &str) -> (String, Vec<String>) {
 	if let Some(err) = result.error {
 		panic!("{rql} must run, got {:?}", err.diagnostic());
 	}
-	let column = result.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-	let values = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
-	(column.data.get_type().to_string(), values)
+	let column = result.frames[0].column("v").unwrap().expect("column v");
+	let values = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
+	(column.get_type().to_string(), values)
 }

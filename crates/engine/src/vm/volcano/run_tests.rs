@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use arrow_array::RecordBatch;
+use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
@@ -44,7 +45,7 @@ impl QueryNode for RunTestsQueryNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::run_tests::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.executed {
 			return Ok(None);
 		}

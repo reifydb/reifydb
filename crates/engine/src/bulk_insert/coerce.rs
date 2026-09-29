@@ -3,10 +3,9 @@
 
 use reifydb_core::{
 	interface::catalog::column::Column,
-	value::column::{
-		buffer::{ColumnBuffer, write::check_digest_write_type},
-		cast::cast_column_data,
-		columns::Columns,
+	value::{
+		batch::empty_batch,
+		column::{cast::cast_column_data, factory::from_many, write::check_digest_write_type},
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
@@ -15,7 +14,7 @@ use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
 use crate::Result;
@@ -62,11 +61,13 @@ impl RowCoercer {
 			runtime_context: &self.runtime_context,
 			identity: self.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
 		};
-		Ok(cast_column_data(&ctx, &ColumnBuffer::from(value), cast_target, fragment)?.get_value(0))
+		let column = from_many("value", value, 1);
+		let casted = cast_column_data(&ctx, &ColumnView::try_from(&column)?, cast_target, fragment)?;
+		Ok(ColumnView::try_from(&casted)?.get_value(0))
 	}
 }

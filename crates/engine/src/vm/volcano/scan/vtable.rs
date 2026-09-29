@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::vtable::{VTableContext, tables::VTables};
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, reifydb_assertions};
 use tracing::instrument;
@@ -27,7 +28,6 @@ impl VirtualScanNode {
 
 		let headers = ColumnHeaders {
 			columns: def.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: false,
 		};
 
 		Ok(Self {
@@ -50,12 +50,12 @@ impl QueryNode for VirtualScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::virtual::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		}
 		match self.virtual_table.next(rx)? {
-			Some(vtable_batch) => Ok(Some(vtable_batch.columns)),
+			Some(vtable_batch) => Ok(Some(vtable_batch.batch)),
 			None => Ok(None),
 		}
 	}

@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::time_array, time::Time, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	container::temporal_array::time_array,
+	time::Time,
+	value_type::ValueType,
+};
 
-use crate::function::support::coerce::read_i32;
+use crate::function::support::{coerce::read_i32, column::array_column};
 
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	RoutineError::FunctionExecutionFailed {
@@ -34,19 +42,19 @@ impl TimeNew {
 	}
 }
 
-fn is_integer_type(data: &ColumnBuffer) -> bool {
+fn is_integer_type(data: &ColumnView) -> bool {
 	matches!(
-		data,
-		ColumnBuffer::Int1(_)
-			| ColumnBuffer::Int2(_)
-			| ColumnBuffer::Int4(_)
-			| ColumnBuffer::Int8(_)
-			| ColumnBuffer::Int16(_)
-			| ColumnBuffer::Uint1(_)
-			| ColumnBuffer::Uint2(_)
-			| ColumnBuffer::Uint4(_)
-			| ColumnBuffer::Uint8(_)
-			| ColumnBuffer::Uint16(_)
+		data.data,
+		ViewData::Int1(_)
+			| ViewData::Int2(_)
+			| ViewData::Int4(_)
+			| ViewData::Int8(_)
+			| ViewData::Int16(_)
+			| ViewData::Uint1(_)
+			| ViewData::Uint2(_)
+			| ViewData::Uint4(_)
+			| ViewData::Uint8(_)
+			| ViewData::Uint16(_)
 	)
 }
 
@@ -59,17 +67,21 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		ValueType::Time
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let hour_data = &args[0];
-		let min_data = &args[1];
-		let sec_data = &args[2];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let hour_data = ColumnView::try_from(&args[0])?;
+		let min_data = ColumnView::try_from(&args[1])?;
+		let sec_data = ColumnView::try_from(&args[2])?;
 		let nano_data = if args.len() == 4 {
-			Some(&args[3])
+			Some(ColumnView::try_from(&args[3])?)
 		} else {
 			None
 		};
 
-		if !is_integer_type(hour_data) {
+		if !is_integer_type(&hour_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
@@ -88,7 +100,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 				actual: hour_data.get_type(),
 			});
 		}
-		if !is_integer_type(min_data) {
+		if !is_integer_type(&min_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
@@ -107,7 +119,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 				actual: min_data.get_type(),
 			});
 		}
-		if !is_integer_type(sec_data) {
+		if !is_integer_type(&sec_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 2,
@@ -126,7 +138,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 				actual: sec_data.get_type(),
 			});
 		}
-		if let Some(nd) = nano_data
+		if let Some(nd) = &nano_data
 			&& !is_integer_type(nd)
 		{
 			return Err(RoutineError::FunctionInvalidArgumentType {
@@ -152,10 +164,10 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let hour = read_i32(&ctx.fragment, hour_data, i)?;
-			let min = read_i32(&ctx.fragment, min_data, i)?;
-			let sec = read_i32(&ctx.fragment, sec_data, i)?;
-			let nano = if let Some(nd) = nano_data {
+			let hour = read_i32(&ctx.fragment, &hour_data, i)?;
+			let min = read_i32(&ctx.fragment, &min_data, i)?;
+			let sec = read_i32(&ctx.fragment, &sec_data, i)?;
+			let nano = if let Some(nd) = &nano_data {
 				read_i32(&ctx.fragment, nd, i)?
 			} else {
 				Some(0)
@@ -178,8 +190,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 			}
 		}
 
-		let result_data = ColumnBuffer::Time(time_array(container));
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(array_column(ctx.fragment.text(), ValueType::Time, Arc::new(time_array(container))))
 	}
 }
 

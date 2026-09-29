@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::RecordBatch;
 use reifydb_cdc::rebuild::rebuild_changes;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -17,13 +18,17 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
-	value::column::columns::Columns,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{
+	column_view::ColumnView,
+	identity::IdentityId,
+	row_number::RowNumber,
+	system_columns::{created_at, row_numbers, time, updated_at, user_columns},
+};
 
 struct Lcg(u64);
 
@@ -68,19 +73,20 @@ fn rebuilt(t: &TestEngine, cdc: &Cdc) -> Vec<Change> {
 	rebuild_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query)).expect("rebuild")
 }
 
-fn render_row(columns: &Columns, index: usize) -> String {
-	let mut out = format!("row={}", columns.row_numbers()[index].0);
-	if let Some(created_at) = columns.created_at().get(index) {
+fn render_row(batch: &RecordBatch, index: usize) -> String {
+	let mut out = format!("row={}", row_numbers(batch).expect("row numbers")[index].0);
+	if let Some(created_at) = created_at(batch).expect("created at").get(index) {
 		out.push_str(&format!(" created_at={:?}", created_at));
 	}
-	if let Some(updated_at) = columns.updated_at().get(index) {
+	if let Some(updated_at) = updated_at(batch).expect("updated at").get(index) {
 		out.push_str(&format!(" updated_at={:?}", updated_at));
 	}
-	if let Some(time) = columns.time().get(index) {
+	if let Some(time) = time(batch).expect("time").get(index) {
 		out.push_str(&format!(" time={:?}", time));
 	}
-	for (name, value) in columns.names.iter().zip(columns.get_row(index)) {
-		out.push_str(&format!(" {}={:?}", name.text(), value));
+	for (field, array) in user_columns(batch) {
+		let value = ColumnView::try_from((array, field.as_ref())).expect("column view").get_value(index);
+		out.push_str(&format!(" {}={:?}", field.name(), value));
 	}
 	out
 }
@@ -90,18 +96,18 @@ fn render_diff(diff: &Diff) -> Vec<String> {
 		Diff::Insert {
 			post,
 			..
-		} => (0..post.row_count()).map(|i| format!("insert {}", render_row(post, i))).collect(),
+		} => (0..post.num_rows()).map(|i| format!("insert {}", render_row(post, i))).collect(),
 		Diff::Update {
 			pre,
 			post,
 			..
-		} => (0..post.row_count())
+		} => (0..post.num_rows())
 			.map(|i| format!("update pre({}) post({})", render_row(pre, i), render_row(post, i)))
 			.collect(),
 		Diff::Remove {
 			pre,
 			..
-		} => (0..pre.row_count()).map(|i| format!("remove {}", render_row(pre, i))).collect(),
+		} => (0..pre.num_rows()).map(|i| format!("remove {}", render_row(pre, i))).collect(),
 	}
 }
 

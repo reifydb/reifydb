@@ -28,7 +28,11 @@ use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
 use reifydb_sub_server::wire::{WireParams, WireValue, resolve_type};
 use reifydb_value::{
 	params::Params,
-	value::{duration::Duration, uuid::Uuid7},
+	value::{
+		duration::Duration,
+		system_columns::{SystemColumn, row_numbers},
+		uuid::Uuid7,
+	},
 };
 use serde_json::{Value as JsonValue, json, to_string as json_to_string, to_value};
 use tokio::task::spawn_blocking;
@@ -114,21 +118,29 @@ pub struct SubscriptionTick {
 	pub batch_subscription_closed: Vec<ClosedSubscription>,
 }
 
-fn frames_to_napi(frames: &[CoreFrame]) -> Vec<Frame> {
-	convert_frames(frames)
-		.into_iter()
-		.map(|frame| Frame {
-			row_numbers: frame.row_numbers.into_iter().map(|rn| rn.to_string()).collect(),
-			columns: frame
-				.columns
-				.into_iter()
-				.map(|column| Column {
-					name: column.name,
-					r#type: to_value(&column.r#type)
-						.expect("value type is always representable as JSON"),
-					payload: column.payload,
-				})
-				.collect(),
+fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
+	let converted = convert_frames(frames).map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
+	frames.iter()
+		.zip(converted)
+		.map(|(core, frame)| {
+			Ok(Frame {
+				row_numbers: row_numbers(&core.batch)
+					.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
+					.iter()
+					.map(|rn| rn.0.to_string())
+					.collect(),
+				columns: frame
+					.columns
+					.into_iter()
+					.filter(|column| column.name != SystemColumn::RowNumbers.name())
+					.map(|column| Column {
+						name: column.name,
+						r#type: to_value(&column.r#type)
+							.expect("value type is always representable as JSON"),
+						payload: column.payload,
+					})
+					.collect(),
+			})
 		})
 		.collect()
 }
@@ -505,7 +517,8 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 }
 
 fn render(result: ReifyResult<Vec<CoreFrame>>) -> Result<Vec<Frame>> {
-	result.map(|frames| frames_to_napi(&frames)).map_err(|e| NapiError::from_reason(format!("{e:?}")))
+	let frames = result.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
+	frames_to_napi(&frames)
 }
 
 fn parse_batch_id(raw: &str) -> Result<BatchId> {

@@ -10,6 +10,8 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, JoinType},
 	interface::{
@@ -17,7 +19,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	row::JoinPick,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -27,11 +32,11 @@ use reifydb_flow_async::operator::{
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	system_columns::{SystemColumn, column_view, user_columns, with_system_column},
+	value_type::ValueType,
 };
 
 const LEFT_OPERATOR: OperatorId = OperatorId(1);
@@ -43,35 +48,31 @@ const LEFT_COLUMNS: [(&str, ValueType); 3] =
 const RIGHT_COLUMNS: [(&str, ValueType); 3] =
 	[("rid", ValueType::Int8), ("k", ValueType::Int4), ("rv", ValueType::Int8)];
 
-fn schema(spec: &[(&str, ValueType)]) -> Columns {
-	Columns::new(
+fn schema(spec: &[(&str, ValueType)]) -> SchemaRef {
+	Arc::new(Schema::new(
 		spec.iter()
-			.map(|(name, ty)| {
-				ColumnWithName::new(
-					Fragment::internal(*name),
-					ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
-				)
-			})
-			.collect(),
-	)
+			.map(|(name, ty)| ColumnBuilder::with_capacity(ty.clone(), 0).finish(name).0)
+			.collect::<Vec<_>>(),
+	))
 }
 
-fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Columns {
+fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> RecordBatch {
 	let mut buffers: Vec<ColumnBuilder> =
 		spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), 1)).collect();
 	buffers[0].push_value(Value::Int8(number as i64));
 	buffers[1].push_value(Value::Int4(key));
 	buffers[2].push_value(Value::Int8(value));
-	let columns = spec
-		.iter()
-		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
-		.collect();
+	let columns = spec.iter().zip(buffers).map(|((name, _), buffer)| buffer.finish(name)).collect();
 	let at = DateTime::from_millis(1_000_000 + i64::try_from(number).expect("row number fits in i64 millis"));
-	Columns::with_system(
-		columns,
-		SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
-	)
+	let system = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", [number]).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", [at]).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [at]).1),
+		(SystemColumn::Time, factory::datetime("#time", [at]).1),
+	];
+	system.into_iter().fold(batch(columns).expect("the row forms a batch"), |columns, (column, array)| {
+		with_system_column(columns, column, array).expect("a system column attaches")
+	})
 }
 
 fn tagged(mut diff: Diff, origin: OperatorId) -> Diff {
@@ -114,13 +115,13 @@ fn join(engine: &TestEngine) -> JoinOperator {
 
 /// The right-side value carried by a single-row `Columns`, looked up by name so a change in column
 /// order cannot make the assertion read a different column and still pass.
-fn right_value(columns: &Columns) -> i64 {
-	let names: Vec<String> = columns.names.iter().map(|name| name.text().to_string()).collect();
+fn right_value(columns: &RecordBatch) -> i64 {
+	let names: Vec<String> = user_columns(columns).map(|(field, _)| field.name().to_string()).collect();
 	let idx = names
 		.iter()
 		.position(|name| name.ends_with("rv"))
 		.unwrap_or_else(|| panic!("the joined row must carry the right side's rv column; got {names:?}"));
-	match columns.columns[idx].get_value(0) {
+	match column_view(columns, &names[idx]).expect("rv reads").expect("the rv column").get_value(0) {
 		Value::Int8(v) => v,
 		other => panic!("rv must be an int8, got {other:?}"),
 	}

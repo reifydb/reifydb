@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::testing::db::TestDb;
+use reifydb_value::value::column_view::ColumnView;
 
 const ROWS: u64 = 1_000;
 const START: u64 = 500;
@@ -41,8 +42,10 @@ fn range_scan_take_returns_only_rows_past_the_filter_bound() {
 
 	let mut ids = Vec::new();
 	for frame in &frames {
+		let first = ColumnView::try_from((frame.batch.column(0), frame.batch.schema_ref().field(0)))
+			.expect("the first column reads");
 		for row in 0..frame.row_count() {
-			let rendered = format!("{:?}", frame[0].data.get_value(row));
+			let rendered = format!("{:?}", first.get_value(row));
 			ids.push(rendered);
 		}
 	}

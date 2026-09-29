@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::dictionary::DictionaryToCreate;
-use reifydb_core::{
-	interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::column::columns::Columns,
-};
+use reifydb_core::{interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::batch::single_row};
 use reifydb_rql::nodes::CreateDictionaryNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -15,19 +14,19 @@ pub(crate) fn create_dictionary(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if let Some(existing) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.dictionary.text(),
 	)? && plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let result = services.catalog.create_dictionary(
@@ -42,18 +41,21 @@ pub(crate) fn create_dictionary(
 	let id = result.id;
 	txn.track_dictionary_created(result)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -84,10 +86,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		let r = instance.admin(
 			&mut txn,
@@ -100,10 +102,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(false));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(false));
 
 		let r = instance.admin(
 			&mut txn,
@@ -153,10 +155,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		let r = instance.admin(
 			&mut txn,
@@ -169,9 +171,16 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16386));
+		assert_eq!(value_at(frame, 1), Value::Utf8("another_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

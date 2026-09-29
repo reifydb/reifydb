@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	operator_with::ApplyWith,
 	row::Row as CoreRow,
-	value::column::columns::Columns,
+	value::batch::from_row,
 };
 use reifydb_flow_async::{
 	operator::state::seal::{coord::Coord, domain::SealDomain},
@@ -154,7 +154,7 @@ fn extract_one<A>(aggregate: &A, row: &CoreRow) -> Option<(Group<A>, TumblingCoo
 where
 	A: WindowedOperator,
 {
-	let columns = Columns::from_row(row);
+	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
@@ -417,7 +417,7 @@ fn extract_rolling<A>(
 where
 	A: WindowedOperator,
 {
-	let columns = Columns::from_row(row);
+	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
@@ -650,7 +650,7 @@ fn extract_carry<A>(aggregate: &A, row: &CoreRow) -> Option<(CarryGroup<A>, Carr
 where
 	A: WindowedOperator,
 {
-	let columns = Columns::from_row(row);
+	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;

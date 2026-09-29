@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_schema::Schema;
 use reifydb_core::{
 	common::JoinType,
 	expression::{ColumnExpression, Expression},
@@ -12,7 +13,6 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
 	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
-	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -204,7 +204,7 @@ impl FlowEngineInner {
 				})
 			})?
 			.output_schema()
-			.unwrap_or_default();
+			.unwrap_or_else(|| Arc::new(Schema::empty()));
 
 		let right_schema = self
 			.operators
@@ -399,9 +399,9 @@ impl FlowEngineInner {
 	}
 }
 
-fn common_column_names(left: &Columns, right: &Columns) -> Vec<String> {
-	let right_names: Vec<String> = right.names.iter().map(|n| n.text().to_string()).collect();
-	left.names.iter().map(|n| n.text().to_string()).filter(|name| right_names.contains(name)).collect()
+fn common_column_names(left: &Schema, right: &Schema) -> Vec<String> {
+	let right_names: Vec<String> = right.fields().iter().map(|field| field.name().clone()).collect();
+	left.fields().iter().map(|field| field.name().clone()).filter(|name| right_names.contains(name)).collect()
 }
 
 fn natural_key_expr(name: &str) -> Expression {

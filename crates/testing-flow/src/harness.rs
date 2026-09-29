@@ -50,7 +50,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId, system_columns::time},
 };
 
 pub struct Harness<O> {
@@ -146,7 +146,7 @@ impl<O> Harness<O> {
 
 impl<O: DurableSink> Harness<O> {
 	pub fn apply_emitting_sink(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
-		let at = coordinate_of(&change);
+		let at = coordinate_of(&change)?;
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
 		let emitted = txn.take_accumulator_entries();
@@ -216,7 +216,7 @@ impl<O: HostOperator> Harness<O> {
 	}
 
 	pub fn apply(&mut self, change: Change) -> Result<Change> {
-		let at = coordinate_of(&change);
+		let at = coordinate_of(&change)?;
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
 		let out = {
@@ -228,7 +228,7 @@ impl<O: HostOperator> Harness<O> {
 	}
 
 	pub fn apply_emitting(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
-		let at = coordinate_of(&change);
+		let at = coordinate_of(&change)?;
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
 		{
@@ -293,13 +293,12 @@ impl<O: HostOperator> Harness<O> {
 	}
 }
 
-fn coordinate_of(change: &Change) -> DateTime {
-	change.diffs
-		.iter()
-		.filter_map(|diff| diff.post().or_else(|| diff.pre()))
-		.flat_map(|columns| columns.time().iter().copied())
-		.max()
-		.unwrap_or(change.changed_at)
+fn coordinate_of(change: &Change) -> Result<DateTime> {
+	let mut latest = None;
+	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
+		latest = latest.max(time(columns)?.iter().copied().max());
+	}
+	Ok(latest.unwrap_or(change.changed_at))
 }
 
 impl<O: HostOperator> Subject for Harness<O> {
@@ -346,14 +345,14 @@ mod tests {
 		let late = DateTime::from_epoch_millis(9_000).unwrap();
 
 		let change = change_at(&[early, late, early]);
-		assert_eq!(coordinate_of(&change), late);
+		assert_eq!(coordinate_of(&change).expect("the coordinate reads"), late);
 
 		// No row time is not the same as time zero: it means the workload declared no position, and the
 		// change's own stamp is the only honest answer left.
 		let stamped = DateTime::from_epoch_millis(4_242).unwrap();
 		let timeless =
 			Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), Vec::new(), stamped);
-		assert_eq!(coordinate_of(&timeless), stamped);
+		assert_eq!(coordinate_of(&timeless).expect("the coordinate reads"), stamped);
 	}
 
 	fn change_at(times: &[DateTime]) -> Change {

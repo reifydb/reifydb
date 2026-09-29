@@ -2,11 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_value::value::{
+	frame::frame::Frame,
+	system_columns::{SystemColumn, system_column},
+};
 
 fn has_rownum(frames: &[Frame]) -> bool {
 	assert_eq!(frames.len(), 1, "a query answers with exactly one frame");
-	frames[0].has_row_numbers()
+	system_column(&frames[0].batch, SystemColumn::RowNumbers).is_some()
 }
 
 fn assert_rownum_both_ways(t: &TestEngine, rql: &str, insert: &str, expected: bool) {

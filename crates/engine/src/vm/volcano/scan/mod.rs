@@ -3,15 +3,30 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb_core::interface::{
-	catalog::{
-		id::{NamespaceId, ViewId},
-		object::ObjectId,
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
+use reifydb_core::{
+	interface::{
+		catalog::{
+			id::{NamespaceId, ViewId},
+			object::ObjectId,
+		},
+		resolved::ResolvedView,
 	},
-	resolved::ResolvedView,
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory::uint16, headers::ColumnHeaders},
+	},
 };
 use reifydb_flow::analyzer::FlowGraphAnalyzer;
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{
+		partition::Partition,
+		system_columns::{SystemColumn, with_system_column},
+	},
+};
 
 use crate::{Result, vm::services::Services};
 
@@ -30,6 +45,37 @@ pub mod series;
 pub mod table;
 pub mod view;
 pub mod vtable;
+
+pub(crate) fn source_system_columns(partitioned: bool, timed: bool, versioned: bool) -> Vec<SystemColumn> {
+	SystemColumn::ALL
+		.into_iter()
+		.filter(|column| match column {
+			SystemColumn::Partitions => partitioned,
+			SystemColumn::Time => timed,
+			SystemColumn::CommitVersion => versioned,
+			SystemColumn::RowNumbers | SystemColumn::CreatedAt | SystemColumn::UpdatedAt => true,
+		})
+		.collect()
+}
+
+pub(crate) fn scan_headers<'a>(names: impl Iterator<Item = &'a str>, system: &[SystemColumn]) -> ColumnHeaders {
+	ColumnHeaders {
+		columns: names.chain(system.iter().map(|column| column.name())).map(Fragment::internal).collect(),
+	}
+}
+
+pub(crate) fn empty_scan(user: Vec<(FieldRef, ArrayRef)>, system: &[SystemColumn]) -> Result<RecordBatch> {
+	let mut out = batch(user)?;
+	for column in system {
+		let (_, array) = ColumnBuilder::with_capacity(column.ty(), 0).finish(column.name());
+		out = with_system_column(out, *column, array)?;
+	}
+	Ok(out)
+}
+
+pub(crate) fn partition_array(partitions: &[Partition]) -> ArrayRef {
+	uint16(SystemColumn::Partitions.name(), partitions.iter().map(|partition| partition.0)).1
+}
 
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
 	if matches!(rx, Transaction::Test(_)) {

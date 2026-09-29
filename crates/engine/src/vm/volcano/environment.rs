@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use arrow_array::RecordBatch;
+use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;
@@ -36,7 +37,7 @@ impl QueryNode for EnvironmentNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::environment::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 		}
@@ -45,10 +46,10 @@ impl QueryNode for EnvironmentNode {
 			return Ok(None);
 		}
 
-		let columns = create_env_columns();
+		let batch = create_env_columns()?;
 		self.executed = true;
 
-		Ok(Some(columns))
+		Ok(Some(batch))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

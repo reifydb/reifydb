@@ -108,14 +108,14 @@ fn claim_one(t: &TestEngine, worker: &str) -> String {
 fn token_of(frames: &[Frame]) -> String {
 	let frame = frames.first().expect("claim must return a frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one claimed item");
-	match frame.columns.iter().find(|c| c.name == "token").unwrap().data.get_value(0) {
+	match frame.column("token").unwrap().unwrap().get_value(0) {
 		Value::Utf8(t) => t,
 		other => panic!("token must be Utf8, got {other:?}"),
 	}
 }
 
 fn status_of(frames: &[Frame]) -> String {
-	match frames[0].columns.iter().find(|c| c.name == "status").unwrap().data.get_value(0) {
+	match frames[0].column("status").unwrap().unwrap().get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("status must be Utf8, got {other:?}"),
 	}

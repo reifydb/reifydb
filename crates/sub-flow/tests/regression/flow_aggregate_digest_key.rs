@@ -7,17 +7,20 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow_async::operator::{HostOperator, aggregation::operator::AggregateOperator, host::TxnHostContext};
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value, datetime::DateTime, digest::Digest, row_number::RowNumber, system_columns::SystemColumns,
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	digest::Digest,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 
 const SOURCE_OPERATOR: OperatorId = OperatorId(41);
@@ -51,21 +54,19 @@ fn flow_aggregate_by_a_digest_column_is_an_error_like_the_batch_group_by() {
 	let mut digests = ColumnBuilder::with_capacity(ty, 2);
 	digests.push_value(digest(&[1.0, 2.0]));
 	digests.push_value(digest(&[3.0, 4.0]));
-	let digests = digests.finish();
+	let digests = digests.finish("d");
 	let at = DateTime::from_millis(1_000_000);
-	let input = Columns::with_system(
-		vec![
-			ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::int4(vec![1, 2])),
-			ColumnWithName::new(Fragment::internal("d"), digests),
-		],
-		SystemColumns::new(
-			vec![RowNumber(1), RowNumber(2)],
-			Vec::new(),
-			vec![at; 2],
-			vec![at; 2],
-			vec![at; 2],
-			Vec::new(),
-		),
+	let system = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", [1u64, 2]).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", [at; 2]).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [at; 2]).1),
+		(SystemColumn::Time, factory::datetime("#time", [at; 2]).1),
+	];
+	let input = system.into_iter().fold(
+		batch(vec![factory::int4("k", [1, 2]), digests]).expect("user columns form a batch"),
+		|columns, (column, array)| {
+			with_system_column(columns, column, array).expect("a system column attaches")
+		},
 	);
 	let mut diff = Diff::insert(input);
 	diff.set_origin(Some(ChangeOrigin::Flow(SOURCE_OPERATOR)));

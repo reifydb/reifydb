@@ -2,4 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 pub(crate) mod coerce;
+pub(crate) mod column;
 pub(crate) mod numeric;

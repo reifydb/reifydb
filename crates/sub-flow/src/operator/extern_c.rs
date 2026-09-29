@@ -16,7 +16,7 @@ use reifydb_core::{
 		flow::{OperatorCapability, from_bitmask},
 	},
 	metrics::heap::{OperatorSample, StateMemory},
-	value::column::columns::Columns,
+	value::batch::{empty_batch, reattach_dictionary_ids},
 };
 use reifydb_extension::{
 	callbacks::extern_c::builder::{BuilderRegistry, with_registry},
@@ -179,9 +179,9 @@ impl HostOperator for ExternCOperatorHandle {
 
 		let mut output_change =
 			drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
-		for columns in output_change.diffs.iter_mut().flat_map(Diff::columns_mut) {
+		for columns in output_change.diffs.iter_mut().flat_map(Diff::batches_mut) {
 			for source in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
-				columns.reattach_dictionary_ids(source);
+				*columns = reattach_dictionary_ids(columns.clone(), source)?;
 			}
 		}
 
@@ -297,12 +297,11 @@ fn drain_emitted_diffs(
 	let diffs: Diffs = emitted
 		.into_iter()
 		.map(|d| match d.kind {
-			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(Columns::empty)),
-			EmitDiffKind::Update => Diff::update(
-				d.pre.unwrap_or_else(Columns::empty),
-				d.post.unwrap_or_else(Columns::empty),
-			),
-			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(Columns::empty)),
+			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(empty_batch)),
+			EmitDiffKind::Update => {
+				Diff::update(d.pre.unwrap_or_else(empty_batch), d.post.unwrap_or_else(empty_batch))
+			}
+			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(empty_batch)),
 		})
 		.collect();
 	Change::from_flow(operator_id, version, diffs, changed_at)

@@ -8,7 +8,7 @@
 use reifydb::{RuntimeConfig, embedded as db_embedded, testing::db::TestDb};
 use reifydb_value::{
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, frame::frame::Frame, identity::IdentityId, system_columns::time},
 };
 
 fn seeded_db() -> TestDb {
@@ -44,19 +44,20 @@ fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
 fn assert_time_tracks_its_row(db: &TestDb, rql: &str, expected_rows: usize) {
 	let frames = query_internal(db, rql);
 	let frame = frames.first().unwrap_or_else(|| panic!("{rql}: no frame"));
-	let at = frame.columns.iter().find(|c| c.name == "at").unwrap_or_else(|| panic!("{rql}: no `at` column"));
+	let at = frame.column("at").expect("the column reads").unwrap_or_else(|| panic!("{rql}: no `at` column"));
+	let stamps = time(&frame.batch).expect("#time reads");
 
-	assert_eq!(at.data.len(), expected_rows, "{rql}: unexpected row count");
+	assert_eq!(at.len(), expected_rows, "{rql}: unexpected row count");
 	assert_eq!(
-		frame.time().len(),
+		stamps.len(),
 		expected_rows,
 		"{rql}: #time holds {} stamps for {expected_rows} rows - it was not trimmed with the rows",
-		frame.time().len()
+		stamps.len()
 	);
 	for i in 0..expected_rows {
 		assert_eq!(
-			Value::DateTime(frame.time()[i]),
-			at.data.get_value(i),
+			Value::DateTime(stamps[i]),
+			at.get_value(i),
 			"{rql}: #time[{i}] carries another row's stamp - it was not permuted with the rows",
 		);
 	}

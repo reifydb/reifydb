@@ -3,8 +3,10 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -39,7 +41,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RemoveIdentityAttribute {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let args = extract_args("identity::remove_attribute", ctx.params, 2)?;
 		let attribute_name = extract_utf8_arg("identity::remove_attribute", &args[1], 1)?;
 
@@ -64,13 +70,13 @@ fn remove(
 	user: &Value,
 	attribute_name: &str,
 	fragment: &Fragment,
-) -> Result<Columns, RoutineError> {
+) -> Result<RecordBatch, RoutineError> {
 	let identity = resolve_identity("identity::remove_attribute", catalog, txn, user, fragment)?;
 	let attribute = resolve_attribute(catalog, txn, attribute_name, fragment)?;
 	catalog.remove_identity_attribute_value(txn, identity.id, attribute.id)?;
-	Ok(Columns::single_row([
+	Ok(single_row([
 		("identity", Value::Utf8(identity.name)),
 		("attribute", Value::Utf8(attribute.name)),
 		("removed", Value::Boolean(true)),
-	]))
+	])?)
 }

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{slice::from_ref, str::FromStr};
+use std::{slice::from_ref, str::FromStr, sync::Arc};
 
-use arrow_buffer::BooleanBuffer;
+use arrow_array::{ArrayRef, RecordBatch, make_array};
+use arrow_buffer::NullBuffer;
+use arrow_schema::{FieldRef, Schema};
 use reifydb_codec::{
 	constraint::{EncodedTypeConstraint, decode_type_constraint, encode_type_constraint},
 	extern_c::cells::{decode_decimal_cell, encode_decimal_cell},
@@ -16,11 +18,12 @@ use reifydb_codec::{
 };
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
 	container::decimal_array::decimal_array,
 	decimal::Decimal,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	value_type::ValueType,
+	frame::frame::Frame,
+	value_type::{ValueType, field::named},
 };
 
 fn p(value: u8) -> Precision {
@@ -48,6 +51,16 @@ fn family_types() -> Vec<ValueType> {
 
 fn decimal(text: &str) -> Decimal {
 	Decimal::from_str(text).unwrap()
+}
+
+fn frame(columns: Vec<(&str, ValueType, ArrayRef)>) -> Frame {
+	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) =
+		columns.into_iter().map(|(name, value_type, array)| named(name, value_type.into(), array)).unzip();
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap())
+}
+
+fn masked(array: ArrayRef, defined: &[bool]) -> ArrayRef {
+	make_array(array.to_data().into_builder().nulls(Some(NullBuffer::from(defined))).build().unwrap())
 }
 
 #[test]
@@ -165,48 +178,52 @@ fn row_values_round_trip_at_both_slot_widths() {
 
 #[test]
 fn json_frames_keep_precision_scale_and_values() {
-	let frame = Frame::new(vec![
-		FrameColumn {
-			name: "d".to_string(),
-			data: FrameColumnData::Decimal(decimal_array(
-				p(10),
-				s(2),
-				[decimal("1.5"), decimal("-99999999.99")],
-			)),
-		},
-		FrameColumn {
-			name: "od".to_string(),
-			data: FrameColumnData::Option {
-				inner: Box::new(FrameColumnData::Decimal(decimal_array(
-					p(50),
-					s(3),
-					[decimal("0.001"), decimal("0")],
-				))),
-				bitvec: BooleanBuffer::from(vec![true, false]),
-			},
-		},
+	let frame = frame(vec![
+		(
+			"d",
+			ValueType::decimal(p(10), s(2)),
+			decimal_array(p(10), s(2), [decimal("1.5"), decimal("-99999999.99")]).into_array(),
+		),
+		(
+			"od",
+			option(ValueType::decimal(p(50), s(3))),
+			masked(
+				decimal_array(p(50), s(3), [decimal("0.001"), decimal("0")]).into_array(),
+				&[true, false],
+			),
+		),
 	]);
 	// The text form alone loses the column type, so the wire type must carry the params back.
 	let decoded = frames_from_json(&frames_to_json(from_ref(&frame)).unwrap()).unwrap();
 	assert_eq!(decoded.len(), 1);
-	for (want, got) in frame.columns.iter().zip(&decoded[0].columns) {
-		assert_eq!(want.name, got.name);
-		assert_eq!(want.data.get_type(), got.data.get_type(), "{}", want.name);
-		for row in 0..want.data.len() {
-			let (a, b) = (want.data.get_value(row), got.data.get_value(row));
-			assert_eq!(a, b, "{} row {row}", want.name);
+	assert_eq!(frame.batch.num_columns(), decoded[0].batch.num_columns());
+	for index in 0..frame.batch.num_columns() {
+		let want = ColumnView::try_from((frame.batch.column(index), frame.batch.schema_ref().field(index)))
+			.unwrap();
+		let got = ColumnView::try_from((
+			decoded[0].batch.column(index),
+			decoded[0].batch.schema_ref().field(index),
+		))
+		.unwrap();
+		let name = want.field.name();
+		assert_eq!(name, got.field.name());
+		assert_eq!(want.get_type(), got.get_type(), "{}", name);
+		for row in 0..want.len() {
+			let (a, b) = (want.get_value(row), got.get_value(row));
+			assert_eq!(a, b, "{} row {row}", name);
 			if let (Value::Decimal(a), Value::Decimal(b)) = (&a, &b) {
-				assert_eq!(a.scale(), b.scale(), "{} row {row}", want.name);
+				assert_eq!(a.scale(), b.scale(), "{} row {row}", name);
 			}
 		}
 	}
 }
 
 fn decimal5_2_frame_bytes() -> Vec<u8> {
-	let frame = Frame::new(vec![FrameColumn {
-		name: "n".to_string(),
-		data: FrameColumnData::Decimal(decimal_array(p(5), s(2), [decimal("123.45")])),
-	}]);
+	let frame = frame(vec![(
+		"n",
+		ValueType::decimal(p(5), s(2)),
+		decimal_array(p(5), s(2), [decimal("123.45")]).into_array(),
+	)]);
 	encode_frames(&[frame], &EncodeOptions::none()).unwrap()
 }
 

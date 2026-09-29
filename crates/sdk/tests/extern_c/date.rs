@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::date::Date;
 
 use super::common::{assert_column_eq, round_trip_column};
 
 #[test]
 fn date_epoch() {
-	let input = ColumnBuffer::date([Date::from_days_since_epoch(0).expect("epoch is valid")]);
+	let input = factory::date("c", [Date::from_days_since_epoch(0).expect("epoch is valid")]);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_epoch", &input, &output);
 }
@@ -16,21 +16,21 @@ fn date_epoch() {
 #[test]
 fn date_negative_far_past() {
 	// Days-since-epoch is signed, so an unsigned marshal would wrap this to the far future instead.
-	let input = ColumnBuffer::date([Date::from_days_since_epoch(-365 * 100).expect("100 years pre-epoch valid")]);
+	let input = factory::date("c", [Date::from_days_since_epoch(-365 * 100).expect("100 years pre-epoch valid")]);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_far_past", &input, &output);
 }
 
 #[test]
 fn date_far_future() {
-	let input = ColumnBuffer::date([Date::from_days_since_epoch(365 * 1000).expect("1000 years post-epoch valid")]);
+	let input = factory::date("c", [Date::from_days_since_epoch(365 * 1000).expect("1000 years post-epoch valid")]);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_far_future", &input, &output);
 }
 
 #[test]
 fn date_leap_day() {
-	let input = ColumnBuffer::date([Date::from_ymd(2024, 2, 29).expect("leap day valid")]);
+	let input = factory::date("c", [Date::from_ymd(2024, 2, 29).expect("leap day valid")]);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_leap_day", &input, &output);
 }
@@ -38,14 +38,15 @@ fn date_leap_day() {
 #[test]
 fn date_thirty_two_rows() {
 	let values: Vec<Date> = (0..32i32).map(|i| Date::from_days_since_epoch(i * 100).expect("valid")).collect();
-	let input = ColumnBuffer::date(values);
+	let input = factory::date("c", values);
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("date_thirty_two_rows", &input, &output);
 }
 
 #[test]
 fn date_with_undefined() {
-	let input = ColumnBuffer::date_with_bitvec(
+	let input = factory::date_with_bitvec(
+		"c",
 		[
 			Date::from_days_since_epoch(0).unwrap(),
 			Date::default(),

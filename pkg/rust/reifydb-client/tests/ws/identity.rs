@@ -12,8 +12,8 @@ use crate::common::{cleanup_server, create_server_instance, start_server_and_get
 
 fn column_value(frames: &[Frame], column: &str) -> Value {
 	let frame = frames.first().expect("one frame");
-	let col = frame.columns.iter().find(|c| c.name == column).unwrap_or_else(|| panic!("column `{column}`"));
-	col.data.get_value(0)
+	let col = frame.column(column).expect("the column reads").unwrap_or_else(|| panic!("column `{column}`"));
+	col.get_value(0)
 }
 
 #[test]

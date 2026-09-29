@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
 pub struct TextIndexOf {
 	info: RoutineInfo,
@@ -34,19 +39,23 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let str_data = &args[0];
-		let substr_data = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let str_data = ColumnView::try_from(&args[0])?;
+		let substr_data = ColumnView::try_from(&args[1])?;
 
 		let row_count = str_data.len();
 
-		match (str_data, substr_data) {
+		match (&str_data.data, &substr_data.data) {
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: str_container,
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: substr_container,
 					..
 				},
@@ -61,26 +70,24 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 					result_data.push(index);
 				}
 
-				let result_col_data = ColumnBuffer::int4(result_data);
-
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(int4(ctx.fragment.text(), result_data))
 			}
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					..
 				},
-				other,
+				_,
 			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: substr_data.get_type(),
 			}),
-			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: str_data.get_type(),
 			}),
 		}
 	}

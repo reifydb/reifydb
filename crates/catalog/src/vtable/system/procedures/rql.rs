@@ -8,13 +8,10 @@ use reifydb_core::{
 		procedure::{Procedure, RqlTrigger},
 		vtable::VTable,
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 use serde_json::to_string;
 
 use crate::{
@@ -106,19 +103,19 @@ impl BaseVTable for SystemProceduresRql {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("return_type"), return_types.finish()),
-			ColumnWithName::new(Fragment::internal("body"), bodies.finish()),
-			ColumnWithName::new(Fragment::internal("trigger_kind"), trigger_kinds.finish()),
-			ColumnWithName::new(Fragment::internal("event_variant_sumtype_id"), event_sumtypes.finish()),
-			ColumnWithName::new(Fragment::internal("event_variant_index"), event_indexes.finish()),
+			ids.finish("id"),
+			namespace_ids.finish("namespace_id"),
+			names.finish("name"),
+			return_types.finish("return_type"),
+			bodies.finish("body"),
+			trigger_kinds.finish("trigger_kind"),
+			event_sumtypes.finish("event_variant_sumtype_id"),
+			event_indexes.finish("event_variant_index"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

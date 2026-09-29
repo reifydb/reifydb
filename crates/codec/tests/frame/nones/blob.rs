@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	blob::Blob, container::varlen_array::blob_array, frame::data::FrameColumnData, value_type::ValueType,
-};
+use reifydb_value::value::{blob::Blob, container::varlen_array::blob_array, value_type::ValueType};
 
-fn make(v: Vec<Blob>) -> FrameColumnData {
-	FrameColumnData::Blob(blob_array(&v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<Blob>) -> ColumnData {
+	data(ValueType::Blob, blob_array(&v))
 }
 
 crate::nones_tests! {

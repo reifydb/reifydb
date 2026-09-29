@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	expression::Expression,
 	interface::{
@@ -14,7 +15,6 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	metrics::heap::OperatorSample,
-	value::column::columns::Columns,
 };
 use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
 use reifydb_routine_abi::registry::Routines;
@@ -46,7 +46,7 @@ pub struct AggregateOperator {
 
 impl AggregateOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
@@ -67,7 +67,7 @@ impl AggregateOperator {
 		})
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
 		Some(self.core.output_schema.clone())
 	}
 }
@@ -89,7 +89,7 @@ impl HostOperator for AggregateOperator {
 		None
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }

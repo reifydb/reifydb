@@ -11,7 +11,8 @@ pub mod tumbling;
 
 use std::sync::Arc;
 
-use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use arrow_schema::Schema;
+use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
 use reifydb_rql::expression::parse_expression;
@@ -35,7 +36,7 @@ pub fn build_immutable(spec: &WindowSpec, immutable: Option<Duration>, runtime: 
 	let operator = OperatorId(1);
 
 	WindowOperator::new(WindowConfig {
-		parent_schema: Some(Columns::empty()),
+		parent_schema: Some(Arc::new(Schema::empty())),
 		operator,
 		kind: spec.kind.clone(),
 		group_by: parse_expression(spec.group_by).expect("group_by parses"),

@@ -3,21 +3,29 @@
 
 use std::{iter, sync::Arc};
 
+use arrow_array::{RecordBatch, UInt64Array};
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, read_fingerprint},
 	shape::RowShape,
 };
 use reifydb_core::{
+	common::TimeSource,
 	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
 	internal_err, internal_error,
 	key::row::RowKey,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{append_rows, empty_batch, empty_for},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	fragment::Fragment,
 	reifydb_assertions,
-	value::{row_number::RowNumber, value_type::ValueType},
+	value::{
+		row_number::RowNumber,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -25,7 +33,8 @@ use crate::{
 	Result,
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
-		scan::guard_view_read,
+		scan::{empty_scan, guard_view_read, scan_headers, source_system_columns},
+		user_pairs,
 	},
 };
 
@@ -47,19 +56,22 @@ pub(crate) struct RowPointLookupNode {
 	row_number: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
+	system_columns: Vec<SystemColumn>,
 	shape: Option<RowShape>,
 	exhausted: bool,
 }
 
 impl RowPointLookupNode {
 	pub fn new(source: ResolvedObject, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
-		let (headers, _) = build_headers_and_storage_types(&source)?;
+		let system_columns = lookup_system_columns(&source);
+		let (headers, _) = build_headers_and_storage_types(&source, &system_columns)?;
 
 		Ok(Self {
 			source,
 			row_number,
 			context: Some(context),
 			headers,
+			system_columns,
 			shape: None,
 			exhausted: false,
 		})
@@ -87,12 +99,11 @@ impl RowPointLookupNode {
 	fn append_batch<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes: EncodedBytes,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(rx, &bytes)?;
-		columns.append_rows(&shape, iter::once(bytes), vec![RowNumber(self.row_number)])?;
-		Ok(())
+		append_rows(columns, &shape, iter::once(bytes), vec![RowNumber(self.row_number)])
 	}
 }
 
@@ -103,7 +114,7 @@ impl QueryNode for RowPointLookupNode {
 	}
 
 	#[instrument(name = "volcano::lookup::point::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -113,12 +124,12 @@ impl QueryNode for RowPointLookupNode {
 		let encoded_key = RowKey::new(object_id, RowNumber(self.row_number));
 
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let mut columns = columns_from_object(&self.source);
-			self.append_batch(rx, &mut columns, multi_values.bytes)?;
+			let columns = columns_from_object(&self.source)?;
+			let columns = self.append_batch(rx, columns, multi_values.bytes)?;
 
-			Ok(Some(columns))
+			Ok(Some(with_commit_versions(columns, &self.system_columns, vec![multi_values.version.0])?))
 		} else {
-			Ok(Some(columns_from_object(&self.source)))
+			Ok(Some(empty_lookup(&self.source, &self.system_columns)?))
 		}
 	}
 
@@ -132,6 +143,7 @@ pub(crate) struct RowListLookupNode {
 	row_numbers: Vec<u64>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
+	system_columns: Vec<SystemColumn>,
 	shape: Option<RowShape>,
 	current_index: usize,
 	emitted: bool,
@@ -139,25 +151,27 @@ pub(crate) struct RowListLookupNode {
 
 impl RowListLookupNode {
 	pub fn new(source: ResolvedObject, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
-		let (headers, _) = build_headers_and_storage_types(&source)?;
+		let system_columns = lookup_system_columns(&source);
+		let (headers, _) = build_headers_and_storage_types(&source, &system_columns)?;
 
 		Ok(Self {
 			source,
 			row_numbers,
 			context: Some(context),
 			headers,
+			system_columns,
 			shape: None,
 			current_index: 0,
 			emitted: false,
 		})
 	}
 
-	fn finish(&mut self) -> Result<Option<Columns>> {
+	fn finish(&mut self) -> Result<Option<RecordBatch>> {
 		if self.emitted {
 			return Ok(None);
 		}
 		self.emitted = true;
-		Ok(Some(columns_from_object(&self.source)))
+		Ok(Some(empty_lookup(&self.source, &self.system_columns)?))
 	}
 
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
@@ -185,9 +199,10 @@ impl RowListLookupNode {
 		object_id: StorageId,
 		start: usize,
 		end: usize,
-	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
+	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<u64>)> {
 		let mut batch = Vec::new();
 		let mut found_row_numbers = Vec::new();
+		let mut commit_versions = Vec::new();
 
 		for &row_num in &self.row_numbers[start..end] {
 			let encoded_key = RowKey::new(object_id, RowNumber(row_num));
@@ -195,23 +210,23 @@ impl RowListLookupNode {
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
+				commit_versions.push(multi_values.version.0);
 			}
 		}
 
-		Ok((batch, found_row_numbers))
+		Ok((batch, found_row_numbers, commit_versions))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::lookup::list::append_rows")]
 	fn append_batch<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
-		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
-		Ok(())
+		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
 }
 
@@ -223,7 +238,7 @@ impl QueryNode for RowListLookupNode {
 
 	#[instrument(name = "volcano::lookup::list::next", level = "trace", skip_all)]
 	#[allow(clippy::only_used_in_recursion)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -234,7 +249,8 @@ impl QueryNode for RowListLookupNode {
 		let object_id = get_object_id(&self.source)?;
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
-		let (batch, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_index, end_index)?;
+		let (batch, found_row_numbers, commit_versions) =
+			self.fetch_batch(rx, object_id, self.current_index, end_index)?;
 
 		self.current_index = end_index;
 
@@ -245,11 +261,11 @@ impl QueryNode for RowListLookupNode {
 			return self.finish();
 		}
 
-		let mut columns = columns_from_object(&self.source);
-		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
+		let columns = columns_from_object(&self.source)?;
+		let columns = self.append_batch(rx, columns, batch, found_row_numbers)?;
 
 		self.emitted = true;
-		Ok(Some(columns))
+		Ok(Some(with_commit_versions(columns, &self.system_columns, commit_versions)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -264,6 +280,7 @@ pub(crate) struct RowRangeScanNode {
 	end: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
+	system_columns: Vec<SystemColumn>,
 	shape: Option<RowShape>,
 	current_row: u64,
 	exhausted: bool,
@@ -272,7 +289,8 @@ pub(crate) struct RowRangeScanNode {
 
 impl RowRangeScanNode {
 	pub fn new(source: ResolvedObject, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
-		let (headers, _) = build_headers_and_storage_types(&source)?;
+		let system_columns = lookup_system_columns(&source);
+		let (headers, _) = build_headers_and_storage_types(&source, &system_columns)?;
 
 		Ok(Self {
 			source,
@@ -280,6 +298,7 @@ impl RowRangeScanNode {
 			end,
 			context: Some(context),
 			headers,
+			system_columns,
 			shape: None,
 			current_row: start,
 			exhausted: false,
@@ -287,12 +306,12 @@ impl RowRangeScanNode {
 		})
 	}
 
-	fn finish(&mut self) -> Result<Option<Columns>> {
+	fn finish(&mut self) -> Result<Option<RecordBatch>> {
 		if self.emitted {
 			return Ok(None);
 		}
 		self.emitted = true;
-		Ok(Some(columns_from_object(&self.source)))
+		Ok(Some(empty_lookup(&self.source, &self.system_columns)?))
 	}
 
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
@@ -320,9 +339,10 @@ impl RowRangeScanNode {
 		object_id: StorageId,
 		start: u64,
 		end: u64,
-	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
+	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<u64>)> {
 		let mut batch = Vec::new();
 		let mut found_row_numbers = Vec::new();
+		let mut commit_versions = Vec::new();
 
 		for row_num in start..=end {
 			let encoded_key = RowKey::new(object_id, RowNumber(row_num));
@@ -330,23 +350,23 @@ impl RowRangeScanNode {
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
+				commit_versions.push(multi_values.version.0);
 			}
 		}
 
-		Ok((batch, found_row_numbers))
+		Ok((batch, found_row_numbers, commit_versions))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::range::append_rows")]
 	fn append_batch<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
-		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
-		Ok(())
+		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
 }
 
@@ -358,7 +378,7 @@ impl QueryNode for RowRangeScanNode {
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]
 	#[allow(clippy::only_used_in_recursion)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -369,7 +389,8 @@ impl QueryNode for RowRangeScanNode {
 		let object_id = get_object_id(&self.source)?;
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
-		let (batch, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
+		let (batch, found_row_numbers, commit_versions) =
+			self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
 
 		self.current_row = batch_end + 1;
 		if self.current_row > self.end {
@@ -383,11 +404,11 @@ impl QueryNode for RowRangeScanNode {
 			return self.finish();
 		}
 
-		let mut columns = columns_from_object(&self.source);
-		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
+		let columns = columns_from_object(&self.source)?;
+		let columns = self.append_batch(rx, columns, batch, found_row_numbers)?;
 
 		self.emitted = true;
-		Ok(Some(columns))
+		Ok(Some(with_commit_versions(columns, &self.system_columns, commit_versions)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -395,7 +416,10 @@ impl QueryNode for RowRangeScanNode {
 	}
 }
 
-fn build_headers_and_storage_types(source: &ResolvedObject) -> Result<(ColumnHeaders, Vec<ValueType>)> {
+fn build_headers_and_storage_types(
+	source: &ResolvedObject,
+	system_columns: &[SystemColumn],
+) -> Result<(ColumnHeaders, Vec<ValueType>)> {
 	let columns = match source {
 		ResolvedObject::Table(table) => table.columns(),
 		ResolvedObject::View(view) => view.columns(),
@@ -407,10 +431,7 @@ fn build_headers_and_storage_types(source: &ResolvedObject) -> Result<(ColumnHea
 
 	let storage_types = columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
-	let headers = ColumnHeaders {
-		columns: columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
-		row_numbers: true,
-	};
+	let headers = scan_headers(columns.iter().map(|col| col.name.as_str()), system_columns);
 
 	Ok((headers, storage_types))
 }
@@ -424,11 +445,39 @@ fn get_object_id(source: &ResolvedObject) -> Result<StorageId> {
 	}
 }
 
-fn columns_from_object(source: &ResolvedObject) -> Columns {
+fn columns_from_object(source: &ResolvedObject) -> Result<RecordBatch> {
+	Ok(match source {
+		ResolvedObject::Table(table) => empty_for(table.columns())?,
+		ResolvedObject::View(view) => empty_for(view.columns())?,
+		ResolvedObject::RingBuffer(rb) => empty_for(rb.columns())?,
+		_ => empty_batch(),
+	})
+}
+
+fn lookup_system_columns(source: &ResolvedObject) -> Vec<SystemColumn> {
 	match source {
-		ResolvedObject::Table(table) => Columns::from_catalog_columns(table.columns()),
-		ResolvedObject::View(view) => Columns::from_catalog_columns(view.columns()),
-		ResolvedObject::RingBuffer(rb) => Columns::from_catalog_columns(rb.columns()),
-		_ => Columns::empty(),
+		ResolvedObject::Table(table) => {
+			source_system_columns(false, table.def().time != TimeSource::None, true)
+		}
+		ResolvedObject::View(_) => source_system_columns(false, true, false),
+		ResolvedObject::RingBuffer(rb) => {
+			source_system_columns(false, rb.def().time != TimeSource::None, false)
+		}
+		_ => Vec::new(),
 	}
+}
+
+fn empty_lookup(source: &ResolvedObject, system_columns: &[SystemColumn]) -> Result<RecordBatch> {
+	empty_scan(user_pairs(&columns_from_object(source)?), system_columns)
+}
+
+fn with_commit_versions(
+	columns: RecordBatch,
+	system_columns: &[SystemColumn],
+	commit_versions: Vec<u64>,
+) -> Result<RecordBatch> {
+	if !system_columns.contains(&SystemColumn::CommitVersion) {
+		return Ok(columns);
+	}
+	with_system_column(columns, SystemColumn::CommitVersion, Arc::new(UInt64Array::from(commit_versions)))
 }

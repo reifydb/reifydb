@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, column_view::ColumnView, frame::frame::Frame, system_columns::user_columns};
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();
@@ -15,10 +15,13 @@ fn engine() -> TestEngine {
 
 fn status_rows(frames: &[Frame]) -> Vec<Vec<(String, Value)>> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let columns: Vec<_> = frames[0].columns.iter().filter(|c| c.name.starts_with("status")).collect();
-	assert!(!columns.is_empty(), "the status column is missing from {:?}", frames[0].columns);
-	(0..columns[0].data.len())
-		.map(|row| columns.iter().map(|c| (c.name.clone(), c.data.get_value(row))).collect())
+	let columns: Vec<_> = user_columns(&frames[0].batch)
+		.filter(|(field, _)| field.name().starts_with("status"))
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).unwrap())
+		.collect();
+	assert!(!columns.is_empty(), "the status column is missing from {:?}", frames[0].batch.schema());
+	(0..columns[0].len())
+		.map(|row| columns.iter().map(|c| (c.field.name().clone(), c.get_value(row))).collect())
 		.collect()
 }
 

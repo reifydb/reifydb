@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, system_columns::user_columns},
 };
 
 fn engine() -> TestEngine {
@@ -30,11 +30,10 @@ fn command_err(t: &TestEngine, rql: &str) -> Diagnostic {
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 fn assert_column_not_found(err: &Diagnostic, name: &str) {
@@ -50,7 +49,7 @@ fn series_insert_with_an_integer_in_a_column_not_in_the_series_is_column_not_fou
 	let err = command_err(&t, "INSERT s::x [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1.0, extra: 5 }]");
 
 	assert_column_not_found(&err, "extra");
-	assert!(t.query("FROM s::x").iter().all(|f| f.columns.iter().all(|c| c.data.is_empty())));
+	assert!(t.query("FROM s::x").iter().all(|f| user_columns(&f.batch).all(|(_, array)| array.is_empty())));
 }
 
 #[test]
@@ -149,7 +148,7 @@ fn command_ok(t: &TestEngine, rql: &str) -> Vec<Frame> {
 }
 
 fn row_count(t: &TestEngine, rql: &str) -> usize {
-	t.query(rql).iter().map(|f| f.columns.first().map_or(0, |c| c.data.len())).sum()
+	t.query(rql).iter().map(|f| user_columns(&f.batch).next().map_or(0, |(_, array)| array.len())).sum()
 }
 
 fn assert_diagnostic(err: &Diagnostic, code: &str, fragment: &str) {

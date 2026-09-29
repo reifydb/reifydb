@@ -3,13 +3,20 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use postcard::from_bytes;
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::DictionaryEntryIndexKey},
-	value::column::{
-		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	value::{
+		batch::batch,
+		column::{
+			builder::ColumnBuilder,
+			factory::{none_typed, uint1, uint2, uint4, uint8, uint16},
+			headers::ColumnHeaders,
+		},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -37,7 +44,6 @@ impl DictionaryScanNode {
 	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self> {
 		let headers = ColumnHeaders {
 			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
-			row_numbers: false,
 		};
 
 		Ok(Self {
@@ -88,25 +94,16 @@ impl DictionaryScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::empty_columns")]
-	fn empty_columns(dict_def: &Dictionary) -> Vec<ColumnWithName> {
-		vec![
-			ColumnWithName {
-				name: Fragment::internal("id"),
-				data: ColumnBuffer::none_typed(dict_def.id_type.clone(), 0),
-			},
-			ColumnWithName {
-				name: Fragment::internal("value"),
-				data: ColumnBuffer::none_typed(dict_def.value_type.clone(), 0),
-			},
-		]
+	fn empty_columns(dict_def: &Dictionary) -> Vec<(FieldRef, ArrayRef)> {
+		vec![none_typed("id", dict_def.id_type.clone(), 0), none_typed("value", dict_def.value_type.clone(), 0)]
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::assemble")]
-	fn assemble(ids: &[DictionaryEntryId], values: &[Value], dict_def: &Dictionary) -> Result<Option<Columns>> {
+	fn assemble(ids: &[DictionaryEntryId], values: &[Value], dict_def: &Dictionary) -> Result<Option<RecordBatch>> {
 		let id_column = build_id_column(ids, dict_def.id_type.clone())?;
 		let value_column = build_value_column(values, dict_def.value_type.clone());
 
-		Ok(Some(Columns::new(vec![id_column, value_column])))
+		Ok(Some(batch(vec![id_column, value_column])?))
 	}
 }
 
@@ -117,7 +114,7 @@ impl QueryNode for DictionaryScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::dictionary::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		}
@@ -137,7 +134,7 @@ impl QueryNode for DictionaryScanNode {
 		if ids.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				return Ok(Some(Columns::new(Self::empty_columns(dict_def))));
+				return Ok(Some(batch(Self::empty_columns(dict_def))?));
 			}
 			return Ok(None);
 		}
@@ -152,44 +149,38 @@ impl QueryNode for DictionaryScanNode {
 	}
 }
 
-fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<ColumnWithName> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
 	let data = match id_type {
 		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();
-			ColumnBuffer::uint1(vals)
+			uint1("id", vals)
 		}
 		ValueType::Uint2 => {
 			let vals: Vec<u16> = ids.iter().map(|id| id.to_u128() as u16).collect();
-			ColumnBuffer::uint2(vals)
+			uint2("id", vals)
 		}
 		ValueType::Uint4 => {
 			let vals: Vec<u32> = ids.iter().map(|id| id.to_u128() as u32).collect();
-			ColumnBuffer::uint4(vals)
+			uint4("id", vals)
 		}
 		ValueType::Uint8 => {
 			let vals: Vec<u64> = ids.iter().map(|id| id.to_u128() as u64).collect();
-			ColumnBuffer::uint8(vals)
+			uint8("id", vals)
 		}
 		ValueType::Uint16 => {
 			let vals: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
-			ColumnBuffer::uint16(vals)
+			uint16("id", vals)
 		}
 		_ => return Err(internal_error!("Invalid dictionary id_type: {:?}", id_type)),
 	};
 
-	Ok(ColumnWithName {
-		name: Fragment::internal("id"),
-		data,
-	})
+	Ok(data)
 }
 
-fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
+fn build_value_column(values: &[Value], value_type: ValueType) -> (FieldRef, ArrayRef) {
 	let mut data = ColumnBuilder::with_capacity(value_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
-	ColumnWithName {
-		name: Fragment::internal("value"),
-		data: data.finish(),
-	}
+	data.finish("value")
 }

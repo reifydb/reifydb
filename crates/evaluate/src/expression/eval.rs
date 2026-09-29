@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::Expression,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data},
+	value::column::{cast::cast_column_data, write::check_digest_write},
 };
 use reifydb_value::{
 	fragment::LazyFragment,
 	value::{
 		Value,
+		column_view::ColumnView,
 		constraint::{TypeConstraint, precision::Precision},
 		value_type::ValueType,
 	},
@@ -22,7 +25,7 @@ use crate::{
 	},
 };
 
-pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> {
+pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<(FieldRef, ArrayRef)> {
 	let compile_ctx = CompileContext {
 		symbols: ctx.symbols,
 	};
@@ -30,12 +33,9 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 	let column = compiled.execute(ctx)?;
 
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
-		column.data().check_digest_write(&ty, expr.lazy_fragment())?;
-		let data = cast_for_write(ctx, column.data(), ty, &expr.lazy_fragment())?;
-		Ok(ColumnWithName {
-			name: column.name,
-			data,
-		})
+		let view = ColumnView::try_from(&column)?;
+		check_digest_write(&view, &ty, expr.lazy_fragment())?;
+		cast_for_write(ctx, &view, ty, &expr.lazy_fragment())
 	} else {
 		Ok(column)
 	}
@@ -43,12 +43,12 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 
 pub fn cast_for_write(
 	ctx: &EvalContext,
-	data: &ColumnBuffer,
+	view: &ColumnView<'_>,
 	target: ValueType,
 	fragment: impl LazyFragment + Clone,
-) -> Result<ColumnBuffer> {
-	refuse_lost_scale(data, &target, fragment.clone())?;
-	cast_column_data(ctx, data, target, fragment)
+) -> Result<(FieldRef, ArrayRef)> {
+	refuse_lost_scale(view, &target, fragment.clone())?;
+	cast_column_data(ctx, view, target, fragment)
 }
 
 pub fn loses_scale(value: &Value, target: &ValueType) -> bool {
@@ -59,7 +59,7 @@ pub fn loses_scale(value: &Value, target: &ValueType) -> bool {
 	)
 }
 
-fn refuse_lost_scale(data: &ColumnBuffer, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
+fn refuse_lost_scale(data: &ColumnView, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
 	match (data.get_type().inner_type(), target.inner_type()) {
 		(
 			ValueType::Decimal {
@@ -90,11 +90,12 @@ pub mod tests {
 			Expression::{Cast, Constant, Prefix},
 			PrefixExpression, PrefixOperator, TypeExpression,
 		},
-		value::column::buffer::ColumnBuffer,
+		value::column::factory::{bool, float4, float8, int1, int4},
 	};
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
+			column_view::{ColumnView, ViewData},
 			container::decimal_array::{decimal_at, decimals},
 			value_type::ValueType,
 		},
@@ -120,7 +121,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::int4([42]));
+		assert_eq!(result.1.as_ref(), int4("", [42]).1.as_ref());
 	}
 
 	#[test]
@@ -145,7 +146,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::int4([-42]));
+		assert_eq!(result.1.as_ref(), int4("", [-42]).1.as_ref());
 	}
 
 	#[test]
@@ -170,7 +171,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::int1([-128]));
+		assert_eq!(result.1.as_ref(), int1("", [-128]).1.as_ref());
 	}
 
 	#[test]
@@ -191,7 +192,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::float8([4.2]));
+		assert_eq!(result.1.as_ref(), float8("", [4.2]).1.as_ref());
 	}
 
 	#[test]
@@ -212,7 +213,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::float4([4.2]));
+		assert_eq!(result.1.as_ref(), float4("", [4.2]).1.as_ref());
 	}
 
 	#[test]
@@ -233,7 +234,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::float4([-1.1]));
+		assert_eq!(result.1.as_ref(), float4("", [-1.1]).1.as_ref());
 	}
 
 	#[test]
@@ -254,7 +255,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::float8([-1.1]));
+		assert_eq!(result.1.as_ref(), float8("", [-1.1]).1.as_ref());
 	}
 
 	#[test]
@@ -275,7 +276,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnBuffer::bool([false]));
+		assert_eq!(result.1.as_ref(), bool("", [false]).1.as_ref());
 	}
 
 	#[test]
@@ -349,7 +350,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		if let ColumnBuffer::Decimal(container) = result.data() {
+		if let ViewData::Decimal(container) = &ColumnView::try_from(&result).unwrap().data {
 			assert_eq!(container.len(), 1);
 			assert!(decimal_at(container, 0).is_some());
 			let value = &decimals(container)[0];

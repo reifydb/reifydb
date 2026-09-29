@@ -11,17 +11,12 @@ pub mod error;
 pub mod monoid;
 pub mod registry;
 
-use arrow_buffer::NullBuffer;
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use error::RoutineError;
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::Columns,
-	view::group_by::{GroupId, GroupRows},
-};
+use reifydb_core::value::column::view::group_by::{GroupId, GroupRows};
 use reifydb_value::{
 	fragment::Fragment,
-	util::bitmap,
 	value::{Value, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
@@ -32,6 +27,16 @@ mod sealed {
 
 pub trait Context: Send + Sync + sealed::Sealed {
 	const PROPAGATES_OPTIONS: bool;
+
+	type Output;
+
+	fn call<R: Routine<Self> + ?Sized>(
+		routine: &R,
+		ctx: &mut Self,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<Self::Output, RoutineError>
+	where
+		Self: Sized;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,72 +69,17 @@ pub trait Routine<C: Context>: Send + Sync {
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
 
 	fn propagates_options(&self) -> bool {
-		C::PROPAGATES_OPTIONS
+		true
 	}
 
 	fn attaches_row_metadata(&self) -> bool {
 		true
 	}
 
-	fn execute(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError>;
+	fn execute(&self, ctx: &mut C, args: &[(FieldRef, ArrayRef)]) -> Result<C::Output, RoutineError>;
 
-	fn call(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError> {
-		if !self.propagates_options() {
-			return self.execute(ctx, args);
-		}
-
-		let has_option = args.iter().any(|c| c.data().nulls().is_some());
-		if !has_option {
-			return self.execute(ctx, args);
-		}
-
-		let mut combined: Option<NullBuffer> = None;
-		let mut unwrapped = Vec::with_capacity(args.len());
-		for col in args.iter() {
-			let (inner, nulls) = col.data().clone().split_nulls();
-			if let Some(nulls) = nulls {
-				combined = Some(match combined {
-					Some(existing) => bitmap::and_nulls(&existing, &nulls),
-					None => nulls,
-				});
-			}
-			unwrapped.push(ColumnWithName::new(col.name().clone(), inner));
-		}
-
-		if let Some(ref nulls) = combined
-			&& nulls.null_count() == nulls.len()
-		{
-			let row_count = args.row_count();
-			let input_types: Vec<ValueType> = unwrapped.iter().map(|c| c.data.get_type()).collect();
-			let result_type = self.return_type(&input_types);
-			let result_data = ColumnBuffer::none_typed(result_type, row_count);
-			return Ok(Columns::new(vec![ColumnWithName::new(
-				Fragment::internal(self.info().name.clone()),
-				result_data,
-			)]));
-		}
-
-		let unwrapped_args = Columns::new(unwrapped);
-		let result = self.execute(ctx, &unwrapped_args)?;
-
-		match combined {
-			Some(nulls) => {
-				let wrapped_cols: Vec<ColumnWithName> = result
-					.names
-					.iter()
-					.zip(result.columns.iter())
-					.map(|(name, data)| {
-						let validity = bitmap::resize(nulls.inner(), data.len());
-						ColumnWithName::new(
-							name.clone(),
-							data.clone().with_nulls(NullBuffer::new(validity)),
-						)
-					})
-					.collect();
-				Ok(Columns::new(wrapped_cols))
-			}
-			None => Ok(result),
-		}
+	fn call(&self, ctx: &mut C, args: &[(FieldRef, ArrayRef)]) -> Result<C::Output, RoutineError> {
+		C::call(self, ctx, args)
 	}
 }
 
@@ -212,15 +162,15 @@ pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 impl<T> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 
 pub trait Accumulator: Send + Sync {
-	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError>;
-	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError>;
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError>;
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError>;
 	fn heap_size(&self) -> usize;
 
 	fn kind_name(&self) -> &'static str {
 		"accumulator"
 	}
 
-	fn retract(&mut self, _args: &Columns, _groups: &GroupRows) -> Result<(), RoutineError> {
+	fn retract(&mut self, _args: &[(FieldRef, ArrayRef)], _groups: &GroupRows) -> Result<(), RoutineError> {
 		Err(RoutineError::Unsupported {
 			op: "retract",
 			accumulator: self.kind_name(),

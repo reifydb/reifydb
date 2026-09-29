@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, flow::FlowWatermarkSampler},
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	Result,
@@ -62,15 +62,15 @@ impl BaseVTable for SystemFlowWatermarks {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids.finish()),
-			ColumnWithName::new(Fragment::internal("object_id"), object_ids.finish()),
-			ColumnWithName::new(Fragment::internal("lag"), lags.finish()),
-			ColumnWithName::new(Fragment::internal("outstanding"), outstanding.finish()),
+			flow_ids.finish("flow_id"),
+			object_ids.finish("object_id"),
+			lags.finish("lag"),
+			outstanding.finish("outstanding"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

@@ -5,13 +5,12 @@ pub mod grpc;
 pub mod http;
 pub mod ws;
 
-use reifydb_core::{
-	interface::catalog::binding::Binding,
-	value::column::{ColumnWithName, builder::ColumnBuilder},
-};
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::{interface::catalog::binding::Binding, value::column::builder::ColumnBuilder};
+use reifydb_value::value::value_type::ValueType;
 
-pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<ColumnWithName> {
+pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<(FieldRef, ArrayRef)> {
 	let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, bindings.len());
 	let mut namespace_ids = ColumnBuilder::with_capacity(ValueType::Uint8, bindings.len());
 	let mut procedure_ids = ColumnBuilder::with_capacity(ValueType::Uint8, bindings.len());
@@ -25,9 +24,9 @@ pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<ColumnWithName>
 	}
 
 	vec![
-		ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-		ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids.finish()),
-		ColumnWithName::new(Fragment::internal("procedure_id"), procedure_ids.finish()),
-		ColumnWithName::new(Fragment::internal("name"), names.finish()),
+		ids.finish("id"),
+		namespace_ids.finish("namespace_id"),
+		procedure_ids.finish("procedure_id"),
+		names.finish("name"),
 	]
 }

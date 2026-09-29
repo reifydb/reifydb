@@ -5,13 +5,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::{identity::IdentityAttributeId, vtable::VTable},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -73,15 +70,15 @@ impl BaseVTable for SystemIdentityAttributeValues {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("identity"), identities.finish()),
-			ColumnWithName::new(Fragment::internal("attribute_id"), attribute_ids.finish()),
-			ColumnWithName::new(Fragment::internal("attribute"), attributes.finish()),
-			ColumnWithName::new(Fragment::internal("value"), values.finish()),
+			identities.finish("identity"),
+			attribute_ids.finish("attribute_id"),
+			attributes.finish("attribute"),
+			values.finish("value"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

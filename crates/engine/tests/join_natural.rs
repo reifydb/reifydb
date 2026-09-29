@@ -6,7 +6,7 @@ use reifydb_value::{
 	error::Diagnostic,
 	fragment::{Fragment, StatementColumn, StatementLine},
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, system_columns::user_columns},
 };
 
 fn engine() -> TestEngine {
@@ -24,15 +24,10 @@ fn rows(frames: &[Frame], names: &[&str]) -> Vec<Vec<Value>> {
 	let frame = &frames[0];
 	let columns: Vec<_> = names
 		.iter()
-		.map(|name| {
-			frame.columns
-				.iter()
-				.find(|c| c.name == *name)
-				.unwrap_or_else(|| panic!("no column {name} in\n{frame}"))
-		})
+		.map(|name| frame.column(*name).unwrap().unwrap_or_else(|| panic!("no column {name} in\n{frame}")))
 		.collect();
-	let row_count = columns.first().map(|c| c.data.len()).unwrap_or(0);
-	(0..row_count).map(|row| columns.iter().map(|c| c.data.get_value(row)).collect()).collect()
+	let row_count = columns.first().map(|c| c.len()).unwrap_or(0);
+	(0..row_count).map(|row| columns.iter().map(|c| c.get_value(row)).collect()).collect()
 }
 
 fn empty_tables(t: &TestEngine) {
@@ -71,7 +66,7 @@ fn natural_join_on_a_column_written_in_two_places_matches_the_equivalent_using_j
 	assert_eq!(rows(&using, &names), expected, "using join:\n{}", using[0]);
 	assert_eq!(rows(&natural, &names), expected, "natural join:\n{}", natural[0]);
 	assert!(
-		natural[0].columns.iter().all(|c| c.name != "s_k"),
+		user_columns(&natural[0].batch).all(|(field, _)| field.name() != "s_k"),
 		"a natural join must emit its common column once:\n{}",
 		natural[0]
 	);

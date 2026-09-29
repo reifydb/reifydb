@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{builder::ColumnBuilder, push::Push};
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimals, wide_int_array::wides},
 		is::IsNumber,
 		number::{promote::Promote, safe::mul::SafeMul},
@@ -26,15 +29,16 @@ use crate::{
 
 pub fn mul_columns(
 	ctx: &EvalContext,
-	left: &ColumnWithName,
-	right: &ColumnWithName,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName> {
+) -> Result<(FieldRef, ArrayRef)> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Mul, left.get_type(), right.get_type());
 
 		dispatch_arith!(
-			&left.data(), &right.data();
+			&left.data, &right.data;
 			fixed: mul_numeric, arb: mul_numeric_clone (ctx, target, fragment);
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {
@@ -53,7 +57,7 @@ fn mul_numeric<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -73,10 +77,7 @@ where
 			data.push_none()
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment.fragment(),
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.fragment().text()))
 }
 
 fn mul_numeric_clone<L, R>(
@@ -85,7 +86,7 @@ fn mul_numeric_clone<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
@@ -109,8 +110,5 @@ where
 			None => data.push_none(),
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment.fragment(),
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.fragment().text()))
 }

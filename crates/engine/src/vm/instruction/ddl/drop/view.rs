@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_core::{flow::operator::OperatorDef, value::batch::single_row};
 use reifydb_rql::nodes::DropViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -10,13 +11,13 @@ use reifydb_value::value::Value;
 use super::dependent::find_flow_dependents;
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: DropViewNode) -> Result<Columns> {
+pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: DropViewNode) -> Result<RecordBatch> {
 	let Some(view_id) = plan.view_id else {
-		return Ok(Columns::single_row([
+		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 			("view", Value::Utf8(plan.view_name.text().to_string())),
 			("dropped", Value::Boolean(false)),
-		]));
+		]);
 	};
 
 	let def = services.catalog.get_view(&mut Transaction::Admin(txn), view_id)?;
@@ -53,9 +54,9 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 		services.catalog.drop_flow(txn, own_flow.clone())?;
 	}
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 		("view", Value::Utf8(plan.view_name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
 use arrow_buffer::i256;
+use arrow_schema::FieldRef;
 use reifydb_codec::{
 	extern_c::cells::{decode_decimal_cell, encode_decimal_cell},
 	tag::ValueKind,
 };
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	constraint::{precision::Precision, scale::Scale},
 	container::decimal_array::{DECIMAL128_MAX_PRECISION, DecimalArray},
 	decimal::Decimal,
-	value_type::ValueType,
+	value_type::{
+		ValueType,
+		field::{FieldType, named},
+	},
 };
 
 use crate::error::SdkError;
@@ -71,20 +76,21 @@ pub fn cell_width(precision: Precision) -> usize {
 	}
 }
 
-pub fn column_params(data: &ColumnBuffer) -> (u8, u8) {
-	match data {
-		ColumnBuffer::Decimal(array) => (array.precision().value(), array.scale().value()),
+pub fn column_params(view: &ColumnView<'_>) -> (u8, u8) {
+	match &view.data {
+		ViewData::Decimal(array) => (array.precision().value(), array.scale().value()),
 		_ => (0, 0),
 	}
 }
 
 pub fn decode_family_column(
+	name: &str,
 	kind: ValueKind,
 	precision: Precision,
 	scale: Scale,
 	data: &[u8],
 	row_count: usize,
-) -> Result<ColumnBuffer, SdkError> {
+) -> Result<(FieldRef, ArrayRef), SdkError> {
 	let width = cell_width(precision);
 	let needed = row_count
 		.checked_mul(width)
@@ -102,8 +108,15 @@ pub fn decode_family_column(
 			return Err(SdkError::InvalidInput(format!("{other:?} is not an int, uint or decimal column")));
 		}
 	};
-	let array = DecimalArray::from_unscaled(precision, scale, unscaled);
-	Ok(ColumnBuffer::Decimal(array))
+	let array = DecimalArray::from_unscaled(precision, scale, unscaled).into_array();
+	Ok(named(
+		name,
+		FieldType::from(ValueType::Decimal {
+			precision,
+			scale,
+		}),
+		array,
+	))
 }
 
 fn unscaled_cells<'a, T: FamilyValue>(

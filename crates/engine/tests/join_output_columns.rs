@@ -6,18 +6,17 @@ use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{
 	Value,
-	frame::{data::FrameColumnData, frame::Frame},
+	column_view::{ColumnView, ViewData},
+	frame::frame::Frame,
 	value_type::ValueType,
 };
 
-fn column<'a>(frames: &'a [Frame], name: &str) -> &'a FrameColumnData {
+fn column<'a>(frames: &'a [Frame], name: &str) -> ColumnView<'a> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	&frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns))
-		.data
+	frames[0]
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()))
 }
 
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
@@ -30,14 +29,11 @@ fn rows(frames: &[Frame], names: &[&str]) -> Vec<Vec<Value>> {
 		let columns: Vec<_> = names
 			.iter()
 			.map(|name| {
-				frame.columns
-					.iter()
-					.find(|c| c.name == *name)
-					.unwrap_or_else(|| panic!("no column {name} in\n{frame}"))
+				frame.column(*name).unwrap().unwrap_or_else(|| panic!("no column {name} in\n{frame}"))
 			})
 			.collect();
-		let row_count = columns.first().map(|c| c.data.len()).unwrap_or(0);
-		out.extend((0..row_count).map(|row| columns.iter().map(|c| c.data.get_value(row)).collect()));
+		let row_count = columns.first().map(|c| c.len()).unwrap_or(0);
+		out.extend((0..row_count).map(|row| columns.iter().map(|c| c.get_value(row)).collect()));
 	}
 	out
 }
@@ -79,17 +75,12 @@ fn a_left_join_leaves_the_placeholder_under_a_none_row_zeroed() {
 
 	let frames = t.query("FROM test::l LEFT JOIN { FROM test::r } AS r USING (k, r.k)");
 
-	let FrameColumnData::Option {
-		inner,
-		bitvec,
-	} = column(&frames, "r_w")
-	else {
-		panic!("an unmatched left row makes the right column optional, got {:?}", column(&frames, "r_w"));
+	let r_w = column(&frames, "r_w");
+	assert!(r_w.is_nullable(), "an unmatched left row makes the right column optional, got {:?}", r_w.get_type());
+	let ViewData::Int4(values) = &r_w.data else {
+		panic!("the right column is declared int4, got {:?}", r_w.get_type());
 	};
-	let FrameColumnData::Int4(values) = inner.as_ref() else {
-		panic!("the right column is declared int4, got {inner:?}");
-	};
-	let none_rows: Vec<usize> = (0..bitvec.len()).filter(|&row| !bitvec.value(row)).collect();
+	let none_rows: Vec<usize> = (0..r_w.len()).filter(|&row| r_w.none_at(row)).collect();
 	assert_eq!(none_rows.len(), 1, "exactly one left row has no match:\n{}", frames[0]);
 	for row in none_rows {
 		assert_eq!(placeholder(values, row), 0, "the placeholder under a none row must stay zeroed");

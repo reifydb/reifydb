@@ -4,10 +4,12 @@
 use std::iter::repeat_n;
 
 use arrow_array::UInt8Array;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<u8>) -> FrameColumnData {
-	FrameColumnData::Uint1(UInt8Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<u8>) -> ColumnData {
+	data(ValueType::Uint1, UInt8Array::from(v))
 }
 
 crate::rle_tests! {

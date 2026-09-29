@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	error::diagnostic::{operation, query},
 	interface::{
@@ -11,12 +12,17 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 	util::budget::MemoryBudget,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{batch::empty_batch, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{byte_size::ByteSize, error, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	byte_size::ByteSize,
+	error,
+	params::Params,
+	value::{column_view::ColumnView, identity::IdentityId, system_columns::check_user_columns},
+};
 
 use crate::{Result, vm::services::Services};
 
@@ -25,17 +31,13 @@ pub fn query_budget(services: &Services) -> Arc<MemoryBudget> {
 	Arc::new(MemoryBudget::new(ByteSize::from_bytes(limit)))
 }
 
-pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnBuffer) -> Result<()> {
+pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnView<'_>) -> Result<()> {
 	let ty = data.get_type();
 	if ty.is_scalar() {
 		Ok(())
 	} else {
 		Err(error!(operation::sort_key_not_orderable(key.column.clone(), ty)))
 	}
-}
-
-pub(crate) fn charge_query_memory(budget: &MemoryBudget, charged: &mut usize, buffer: &Columns) -> Result<()> {
-	charge_query_memory_bytes(budget, charged, buffer.heap_size())
 }
 
 pub(crate) fn charge_query_memory_bytes(budget: &MemoryBudget, charged: &mut usize, total: usize) -> Result<()> {
@@ -52,7 +54,7 @@ pub(crate) fn charge_query_memory_bytes(budget: &MemoryBudget, charged: &mut usi
 pub trait QueryNode: Send + Sync {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()>;
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>>;
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>>;
 
 	fn headers(&self) -> Option<ColumnHeaders>;
 }
@@ -73,10 +75,10 @@ impl QueryNode for Box<dyn QueryNode> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		let result = (**self).next(rx, ctx)?;
-		if let Some(ref columns) = result {
-			columns.assert_invariants("QueryNode::next output");
+		if let Some(ref batch) = result {
+			check_user_columns(batch)?;
 		}
 		Ok(result)
 	}
@@ -89,7 +91,7 @@ impl QueryNode for Box<dyn QueryNode> {
 pub fn eval_context_from_query<'a>(ctx: &'a QueryContext) -> EvalContext<'a> {
 	EvalContext {
 		target: None,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		take: None,
 		params: &ctx.params,
@@ -104,7 +106,7 @@ pub fn eval_context_from_query<'a>(ctx: &'a QueryContext) -> EvalContext<'a> {
 pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'a QueryContext) -> EvalContext<'a> {
 	EvalContext {
 		target: None,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		take: None,
 		params: ctx.params,
@@ -120,33 +122,39 @@ pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'
 mod tests {
 	use reifydb_core::{
 		util::budget::MemoryBudget,
-		value::column::{ColumnWithName, columns::Columns},
+		value::{
+			batch::{batch, heap_size},
+			column::factory::int4,
+		},
 	};
 	use reifydb_value::byte_size::ByteSize;
 
-	use super::charge_query_memory;
+	use super::charge_query_memory_bytes;
 
 	#[test]
 	fn charge_query_memory_delta_charges_and_rejects_over_budget() {
 		let budget = MemoryBudget::new(ByteSize::from_kib(1));
 		let mut charged = 0usize;
 
-		let small = Columns::new(vec![ColumnWithName::int4("c", [1i32, 2, 3, 4])]);
-		charge_query_memory(&budget, &mut charged, &small).expect("small buffer fits under 1 KiB");
+		let small = batch(vec![int4("c", [1i32, 2, 3, 4])]).expect("one int4 column");
+		let small_size = heap_size(&small).expect("an int4 batch has a heap size");
+		charge_query_memory_bytes(&budget, &mut charged, small_size).expect("small buffer fits under 1 KiB");
 		let after_first = budget.used().as_bytes();
 		assert!(after_first > 0, "charging a non-empty buffer must consume budget");
 		assert_eq!(charged as u64, after_first, "charged must track exactly what the budget recorded");
 
-		charge_query_memory(&budget, &mut charged, &small).expect("re-charge of the same buffer is free");
+		charge_query_memory_bytes(&budget, &mut charged, small_size)
+			.expect("re-charge of the same buffer is free");
 		assert_eq!(
 			budget.used().as_bytes(),
 			after_first,
 			"delta charging must not double count an unchanged buffer"
 		);
 
-		let big = Columns::new(vec![ColumnWithName::int4("c", 0..4000i32)]);
+		let big = batch(vec![int4("c", 0..4000i32)]).expect("one int4 column");
 		let mut big_charged = 0usize;
-		let err = charge_query_memory(&budget, &mut big_charged, &big).unwrap_err();
+		let big_size = heap_size(&big).expect("an int4 batch has a heap size");
+		let err = charge_query_memory_bytes(&budget, &mut big_charged, big_size).unwrap_err();
 		assert_eq!(err.0.code, "QUERY_006", "an over-budget charge must raise the memory-limit diagnostic");
 	}
 }

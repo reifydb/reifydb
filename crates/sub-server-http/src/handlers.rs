@@ -353,7 +353,8 @@ fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Re
 		}
 		WireFormat::Frames => {
 			let body = to_string(&QueryResponse {
-				frames: convert_frames(&frames),
+				frames: convert_frames(&frames)
+					.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?,
 			})
 			.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
 			Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
@@ -567,7 +568,8 @@ fn encode_binding_response(frames: Vec<Frame>, format: BindingFormat) -> Result<
 				.into_response())
 		}
 		BindingFormat::Frames => Ok(Json(QueryResponse {
-			frames: convert_frames(&frames),
+			frames: convert_frames(&frames)
+				.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?,
 		})
 		.into_response()),
 	}

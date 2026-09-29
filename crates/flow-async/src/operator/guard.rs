@@ -78,7 +78,7 @@ mod tests {
 			catalog::flow::OperatorId,
 			change::{Change, Diff, Diffs},
 		},
-		value::column::columns::Columns,
+		value::batch::empty_batch,
 	};
 	use reifydb_value::value::datetime::DateTime;
 
@@ -93,15 +93,15 @@ mod tests {
 	}
 
 	fn insert() -> Diff {
-		Diff::insert(Columns::empty())
+		Diff::insert(empty_batch())
 	}
 
 	fn update() -> Diff {
-		Diff::update(Columns::empty(), Columns::empty())
+		Diff::update(empty_batch(), empty_batch())
 	}
 
 	fn remove() -> Diff {
-		Diff::remove(Columns::empty())
+		Diff::remove(empty_batch())
 	}
 
 	#[test]

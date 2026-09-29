@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
 };
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
 fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
 	match outcome {
@@ -43,9 +43,9 @@ fn drain(db: &TestDb, sub_id: SubscriptionId) -> Vec<i32> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let mut out = Vec::new();
 	for (_, batch) in subsystem.store().drain(&sub_id, usize::MAX) {
-		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
-		for i in 0..batch.row_count() {
-			match id_col.data().get_value(i) {
+		let id_col = column_view(&batch, "id").unwrap().expect("id column");
+		for i in 0..batch.num_rows() {
+			match id_col.get_value(i) {
 				Value::Int4(v) => out.push(v),
 				other => panic!("expected Int4 id, got {:?}", other),
 			}

@@ -17,8 +17,8 @@ fn ids(rql: &str, params: Params) -> Vec<String> {
 		panic!("query failed: {e:?}\nrql: {rql}")
 	}
 	assert_eq!(r.frames.len(), 1, "expected one frame, got {}", r.frames.len());
-	let column = r.frames[0].columns.iter().find(|c| c.name == "id").expect("column id");
-	(0..column.data.len()).map(|row| column.data.get_value(row).to_string()).collect()
+	let column = r.frames[0].column("id").unwrap().expect("column id");
+	(0..column.len()).map(|row| column.get_value(row).to_string()).collect()
 }
 
 fn sorted_ids(values: Vec<Value>, tail: &str) -> Vec<String> {

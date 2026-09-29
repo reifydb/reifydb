@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, LargeStringArray};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{Array, ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	constraint::bytes::MaxBytes,
+	value_type::ValueType,
+};
+
+use crate::function::support::column::utf8_column;
 
 pub struct TextReplace {
 	info: RoutineInfo,
@@ -35,24 +41,28 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let str_data = &args[0];
-		let from_data = &args[1];
-		let to_data = &args[2];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let str_data = ColumnView::try_from(&args[0])?;
+		let from_data = ColumnView::try_from(&args[1])?;
+		let to_data = ColumnView::try_from(&args[2])?;
 
 		let row_count = str_data.len();
 
-		match (str_data, from_data, to_data) {
+		match (&str_data.data, &from_data.data, &to_data.data) {
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: str_container,
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: from_container,
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: to_container,
 					..
 				},
@@ -71,44 +81,39 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 					}
 				}
 
-				let result_col_data = ColumnBuffer::Utf8 {
-					container: LargeStringArray::from(result_data),
-					max_bytes: MaxBytes::MAX,
-				};
-
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, LargeStringArray::from(result_data)))
 			}
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					..
 				},
-				other,
+				_,
 			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 2,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: to_data.get_type(),
 			}),
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					..
 				},
-				other,
+				_,
 				_,
 			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: from_data.get_type(),
 			}),
-			(other, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: str_data.get_type(),
 			}),
 		}
 	}

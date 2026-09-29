@@ -3,7 +3,7 @@
 
 pub const EXTERN_WASM_COLUMNS_HEADER_SIZE: usize = 16;
 
-pub const EXTERN_WASM_COLUMN_SIZE: usize = 39;
+pub const EXTERN_WASM_COLUMN_SIZE: usize = 40;
 
 pub struct ExternWasmColumns {
 	pub row_count: u32,
@@ -44,6 +44,7 @@ pub struct ExternWasmColumn {
 	pub bitvec_len: u32,
 	pub offsets_offset: u32,
 	pub offsets_len: u32,
+	pub flags: u8,
 }
 
 impl ExternWasmColumn {
@@ -62,6 +63,7 @@ impl ExternWasmColumn {
 			bitvec_len: u32::from_le_bytes([bytes[27], bytes[28], bytes[29], bytes[30]]),
 			offsets_offset: u32::from_le_bytes([bytes[31], bytes[32], bytes[33], bytes[34]]),
 			offsets_len: u32::from_le_bytes([bytes[35], bytes[36], bytes[37], bytes[38]]),
+			flags: bytes[39],
 		}
 	}
 
@@ -78,6 +80,7 @@ impl ExternWasmColumn {
 		buf.extend_from_slice(&self.bitvec_len.to_le_bytes());
 		buf.extend_from_slice(&self.offsets_offset.to_le_bytes());
 		buf.extend_from_slice(&self.offsets_len.to_le_bytes());
+		buf.push(self.flags);
 	}
 
 	pub fn write_at(&self, buf: &mut [u8], offset: usize) {
@@ -94,5 +97,6 @@ impl ExternWasmColumn {
 		b[27..31].copy_from_slice(&self.bitvec_len.to_le_bytes());
 		b[31..35].copy_from_slice(&self.offsets_offset.to_le_bytes());
 		b[35..39].copy_from_slice(&self.offsets_len.to_le_bytes());
+		b[39] = self.flags;
 	}
 }

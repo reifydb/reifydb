@@ -15,7 +15,12 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::value::{
+	datetime::DateTime,
+	duration::Duration,
+	row_number::RowNumber,
+	system_columns::{created_at, row_numbers, updated_at},
+};
 
 #[test]
 fn series_snapshot_records_sealed_at_commit_version() {
@@ -123,21 +128,21 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	let mut reader = SnapshotReader::new(Arc::clone(&block), 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
 
-	let n = batch.row_count();
+	let n = batch.num_rows();
 	assert!(n > 0, "expected non-empty snapshot batch");
 
 	for i in 0..n {
-		let rn = batch.row_numbers()[i];
+		let rn = row_numbers(&batch).expect("#rownum")[i];
 		assert!(
 			rn != RowNumber(0) && rn != RowNumber(i as u64),
 			"row {i}: row_number {rn:?} looks synthetic (0 or sequential index); expected a real series sequence",
 		);
-		let created = batch.created_at()[i];
+		let created = created_at(&batch).expect("#created_at")[i];
 		assert!(
 			created != DateTime::default(),
 			"row {i}: created_at is DateTime::default() - expected real wall-clock from the row header",
 		);
-		let updated = batch.updated_at()[i];
+		let updated = updated_at(&batch).expect("#updated_at")[i];
 		assert_eq!(updated, created, "row {i}: insert-only row should have updated_at == created_at");
 	}
 
@@ -178,18 +183,22 @@ fn table_snapshot_system_columns_match_row_metadata() {
 
 	let mut reader = SnapshotReader::new(Arc::clone(&block), 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
-	assert_eq!(batch.row_count(), 3);
+	assert_eq!(batch.num_rows(), 3);
 
 	for i in 0..3 {
-		assert_ne!(batch.row_numbers()[i], RowNumber(0), "row {i}: row_number should be a real key, not 0");
-		let created = batch.created_at()[i];
+		assert_ne!(
+			row_numbers(&batch).expect("#rownum")[i],
+			RowNumber(0),
+			"row {i}: row_number should be a real key, not 0"
+		);
+		let created = created_at(&batch).expect("#created_at")[i];
 		assert_ne!(
 			created,
 			DateTime::default(),
 			"row {i}: created_at is DateTime::default() - expected real wall-clock from the row header",
 		);
 		assert_eq!(
-			batch.updated_at()[i],
+			updated_at(&batch).expect("#updated_at")[i],
 			created,
 			"row {i}: insert-only row should have updated_at == created_at"
 		);

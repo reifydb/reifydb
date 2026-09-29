@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	series::EncodedSeriesRow,
@@ -38,7 +39,10 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::partition_of,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::single_row,
+		column::{builder::ColumnBuilder, factory::rename, write::check_digest_write},
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertSeriesNode;
@@ -48,8 +52,12 @@ use reifydb_value::{
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns,
+		Value,
+		datetime::DateTime,
+		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{column_view, user_columns},
 	},
 };
 use smallvec::smallvec;
@@ -57,7 +65,10 @@ use tracing::instrument;
 
 use super::{
 	context::SeriesTarget,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
+	returning::{
+		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image,
+		with_series_stamps,
+	},
 	shape::get_or_create_series_shape,
 };
 use crate::{
@@ -85,7 +96,7 @@ pub(crate) fn insert_series(
 	plan: InsertSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let InsertSeriesNode {
 		input,
 		target,
@@ -122,20 +133,20 @@ pub(crate) fn insert_series(
 	let mut verified: HashSet<Partition> = HashSet::new();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
-		if let Some(unknown) = columns.names.iter().find(|name| {
-			!(series.columns.iter().any(|c| c.name == name.text())
-				|| (tag.is_some() && name.text() == "tag"))
+		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
+			!(series.columns.iter().any(|c| &c.name == field.name())
+				|| (tag.is_some() && field.name() == "tag"))
 		}) {
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
 		for column in &series.columns {
-			if let Some(input) = columns.column(&column.name) {
-				input.data().check_digest_write(&column.constraint.get_type(), || {
+			if let Some(input) = column_view(&columns, &column.name)? {
+				check_digest_write(&input, &column.constraint.get_type(), || {
 					Fragment::internal(&column.name)
 				})?;
 			}
 		}
-		for row_idx in 0..columns.row_count() {
+		for row_idx in 0..columns.num_rows() {
 			insert_series_row(
 				services,
 				txn,
@@ -185,7 +196,7 @@ fn enforce_series_write_policies(
 	txn: &mut Transaction<'_>,
 	namespace: &Namespace,
 	series: &Series,
-	columns: &Columns,
+	columns: &RecordBatch,
 ) -> Result<()> {
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
 		txn,
@@ -205,7 +216,7 @@ fn insert_series_row(
 	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
 	shape: &RowShape,
 	context: &QueryContext,
-	columns: &Columns,
+	columns: &RecordBatch,
 	row_idx: usize,
 	key_column_name: &str,
 	tag: Option<&SumType>,
@@ -311,7 +322,7 @@ fn insert_series_row(
 		sequence,
 		row: &row,
 	};
-	track_series_insert_flow_change(txn, series, &snapshot);
+	track_series_insert_flow_change(txn, series, &snapshot)?;
 
 	update_series_metadata_for_insert(metadata, key_value);
 	Ok(())
@@ -330,7 +341,7 @@ fn finalize_series_insert(
 	inserted_count: u64,
 	returning: &Option<Vec<Expression>>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let now = services.runtime_context.clock.now();
 	for (partition, mut metadata) in metadata_by_partition {
 		metadata.last_write_at = now;
@@ -338,12 +349,12 @@ fn finalize_series_insert(
 	}
 
 	if let Some(returning_exprs) = returning {
-		let mut columns = decode_rows_to_columns(shape, returned_rows);
-		decode_returning_dictionaries(services, txn, &series.columns, &mut columns)?;
-		let columns = with_absent_pre_image(columns);
+		let columns = decode_rows_to_columns(shape, returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &series.columns, columns)?;
+		let columns = with_absent_pre_image(columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))
+	insert_series_result(namespace.name(), &series.name, inserted_count)
 }
 
 struct SeriesRowSnapshot<'a> {
@@ -422,19 +433,19 @@ fn generate_series_key(services: &Arc<Services>, key: &SeriesKey, metadata: &Ser
 }
 
 #[inline]
-fn extract_variant_tag(columns: &Columns, tag: Option<&SumType>, row_idx: usize) -> Result<Option<u8>> {
+fn extract_variant_tag(columns: &RecordBatch, tag: Option<&SumType>, row_idx: usize) -> Result<Option<u8>> {
 	let Some(sumtype) = tag else {
 		return Ok(None);
 	};
-	let Some(tag_col) = columns.iter().find(|col| col.name().text() == "tag") else {
+	let Some(tag_col) = column_view(columns, "tag")? else {
 		return Ok(Some(0));
 	};
-	let value = tag_col.data().get_value(row_idx);
+	let value = tag_col.get_value(row_idx);
 	match value {
 		Value::None {
 			..
 		} => Ok(Some(0)),
-		value => resolve_variant_tag(sumtype, &value, tag_col.name().with_text(value.to_string())).map(Some),
+		value => resolve_variant_tag(sumtype, &value, Fragment::internal(value.to_string())).map(Some),
 	}
 }
 
@@ -467,38 +478,27 @@ fn build_encoded_series_row(
 	Ok(row.freeze_bytes())
 }
 
-fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, snapshot: &SeriesRowSnapshot<'_>) {
+fn track_series_insert_flow_change(
+	txn: &mut Transaction<'_>,
+	series: &Series,
+	snapshot: &SeriesRowSnapshot<'_>,
+) -> Result<()> {
 	let row_number = RowNumber::from(snapshot.sequence);
 	let mut cols = Vec::with_capacity(1 + snapshot.data_columns.len());
-	cols.push(ColumnWithName::new(
-		Fragment::internal(snapshot.key_column_name),
-		series.key_column_data(vec![snapshot.key_value]),
-	));
+	cols.push(rename(series.key_column_data(vec![snapshot.key_value]), snapshot.key_column_name));
 	for (i, col_def) in snapshot.data_columns.iter().enumerate() {
 		let mut data = ColumnBuilder::with_capacity(col_def.constraint.get_type(), 1);
 		data.push_value(snapshot.data_values[i].clone());
-		cols.push(ColumnWithName {
-			name: Fragment::internal(&col_def.name),
-			data: data.finish(),
-		});
+		cols.push(data.finish(&col_def.name));
 	}
-	let post = Columns::with_system(
-		cols,
-		SystemColumns::new(
-			vec![row_number],
-			Vec::new(),
-			vec![EncodedSeriesRow::view(snapshot.row).created_at()],
-			vec![EncodedSeriesRow::view(snapshot.row).updated_at()],
-			EncodedSeriesRow::view(snapshot.row).time().into_iter().collect(),
-			Vec::new(),
-		),
-	);
+	let post = with_series_stamps(cols, row_number, snapshot.row)?;
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::insert(post)],
 		changed_at: DateTime::default(),
 	});
+	Ok(())
 }
 
 #[inline]
@@ -520,8 +520,8 @@ fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key
 }
 
 #[inline]
-fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Columns {
-	Columns::single_row([
+fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),
 		("inserted", Value::Uint8(inserted)),

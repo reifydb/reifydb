@@ -1,18 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::{catalog::object::ObjectId, change::Diff},
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, empty_batch},
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		system_columns::{column_view, user_columns},
+		value_type::ValueType,
+	},
 };
 
 pub struct TestingChanged {
@@ -38,7 +48,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let t = match ctx.tx {
 			Transaction::Test(t) => t,
 			_ => {
@@ -163,12 +177,12 @@ fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Object
 	}
 }
 
-fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
+fn build_output_columns(entries: &[MutationEntry]) -> Result<RecordBatch, Error> {
 	if entries.is_empty() {
-		return Ok(Columns::new(vec![
-			ColumnWithName::new("op", ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish()),
-			ColumnWithName::new("target", ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish()),
-		]));
+		return batch(vec![
+			ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish("op"),
+			ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish("target"),
+		]);
 	}
 
 	let mut op_data = ColumnBuilder::with_capacity(ValueType::Utf8, entries.len());
@@ -185,8 +199,8 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 				pre: post,
 				..
 			} => {
-				for col in post.iter() {
-					let name = col.name().text().to_string();
+				for (field, _) in user_columns(post) {
+					let name = field.name().to_string();
 					if !field_names.contains(&name) {
 						field_names.push(name);
 					}
@@ -197,14 +211,14 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 				post,
 				..
 			} => {
-				for col in pre.iter() {
-					let name = col.name().text().to_string();
+				for (field, _) in user_columns(pre) {
+					let name = field.name().to_string();
 					if !field_names.contains(&name) {
 						field_names.push(name);
 					}
 				}
-				for col in post.iter() {
-					let name = col.name().text().to_string();
+				for (field, _) in user_columns(post) {
+					let name = field.name().to_string();
 					if !field_names.contains(&name) {
 						field_names.push(name);
 					}
@@ -217,8 +231,8 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 
 	for entry in entries {
-		let empty = Columns::empty();
-		let (op, old_cols, new_cols): (&str, &Columns, &Columns) = match &entry.diff {
+		let empty = empty_batch();
+		let (op, old_cols, new_cols): (&str, &RecordBatch, &RecordBatch) = match &entry.diff {
 			Diff::Insert {
 				post,
 				..
@@ -238,15 +252,15 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			Diff::Insert {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			Diff::Update {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			Diff::Remove {
 				pre,
 				..
-			} => pre.row_count(),
+			} => pre.num_rows(),
 		};
 
 		for row_idx in 0..row_count {
@@ -254,42 +268,39 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			target_data.push(entry.target.as_str());
 
 			for (i, field_name) in field_names.iter().enumerate() {
-				let old_val = old_cols
-					.column(field_name)
-					.map(|col| col.data().get_value(row_idx))
+				let old_val = column_view(old_cols, field_name)?
+					.map(|col| col.get_value(row_idx))
 					.unwrap_or(Value::none());
 				old_columns[i].push(old_val);
 
-				let new_val = new_cols
-					.column(field_name)
-					.map(|col| col.data().get_value(row_idx))
+				let new_val = column_view(new_cols, field_name)?
+					.map(|col| col.get_value(row_idx))
 					.unwrap_or(Value::none());
 				new_columns[i].push(new_val);
 			}
 		}
 	}
 
-	let mut columns =
-		vec![ColumnWithName::new("op", op_data.finish()), ColumnWithName::new("target", target_data.finish())];
+	let mut columns = vec![op_data.finish("op"), target_data.finish("target")];
 
 	for (i, name) in field_names.iter().enumerate() {
-		let mut old_data = column_for_values(&old_columns[i]);
+		let mut old_data = column_for_values(&old_columns[i])?;
 		for val in &old_columns[i] {
 			old_data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(format!("old_{}", name), old_data.finish()));
+		columns.push(old_data.finish(&format!("old_{}", name)));
 
-		let mut new_data = column_for_values(&new_columns[i]);
+		let mut new_data = column_for_values(&new_columns[i])?;
 		for val in &new_columns[i] {
 			new_data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(format!("new_{}", name), new_data.finish()));
+		columns.push(new_data.finish(&format!("new_{}", name)));
 	}
 
-	Ok(Columns::new(columns))
+	batch(columns)
 }
 
-fn column_for_values(values: &[Value]) -> ColumnBuilder {
+fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, Error> {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None
@@ -298,7 +309,10 @@ fn column_for_values(values: &[Value]) -> ColumnBuilder {
 		}
 	});
 	match first_type {
-		Some(ty) => ColumnBuilder::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none(0).into_builder(),
+		Some(ty) => Ok(ColumnBuilder::with_capacity(ty, values.len())),
+		None => {
+			let none = factory::none("", 0);
+			Ok(ColumnBuilder::from_view(&ColumnView::try_from(&none)?))
+		}
 	}
 }

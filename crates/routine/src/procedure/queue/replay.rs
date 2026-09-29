@@ -3,6 +3,8 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
@@ -10,7 +12,7 @@ use reifydb_core::{
 		store::SingleVersionGet,
 	},
 	key::queue::QueueItemStateKey,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_routine_abi::{
 	Routine, RoutineInfo,
@@ -60,7 +62,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 	}
 
 	#[instrument(name = "queue::replay", level = "debug", skip_all)]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 2)?;
@@ -114,11 +120,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 			}
 		};
 
-		Ok(Columns::single_row([
+		Ok(single_row([
 			("queue", Value::Utf8(queue_name)),
 			("item", Value::Uint8(row.0)),
 			("state", Value::Utf8(state.to_string())),
-		]))
+		])?)
 	}
 }
 

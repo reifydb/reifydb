@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::queue::QueueToCreate;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateQueueNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn create_queue(services: &Services, txn: &mut AdminTransaction, plan: CreateQueueNode) -> Result<Columns> {
+pub(crate) fn create_queue(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: CreateQueueNode,
+) -> Result<RecordBatch> {
 	if let Some(existing) = services.catalog.find_queue_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.queue.text(),
 	)? && plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("queue", Value::Utf8(plan.queue.text().to_string())),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let result = services.catalog.create_queue(
@@ -38,10 +43,10 @@ pub(crate) fn create_queue(services: &Services, txn: &mut AdminTransaction, plan
 		},
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("queue", Value::Utf8(plan.queue.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }

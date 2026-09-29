@@ -29,10 +29,10 @@ fn outcome(t: &TestEngine, rql: &str) -> String {
 				format!("error {} at {:?}", diagnostic.code, diagnostic.fragment.text())
 			}
 			None => {
-				let column = result.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
+				let column = result.frames[0].column("v").unwrap().expect("column v");
 				let values: Vec<String> =
-					(0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
-				format!("ok {} {:?}", column.data.get_type(), values)
+					(0..column.len()).map(|i| column.get_value(i).to_string()).collect();
+				format!("ok {} {:?}", column.get_type(), values)
 			}
 		},
 	}

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	container::temporal_array::date_array, date::Date, frame::data::FrameColumnData, value_type::ValueType,
-};
+use reifydb_value::value::{container::temporal_array::date_array, date::Date, value_type::ValueType};
 
-fn make(v: Vec<Date>) -> FrameColumnData {
-	FrameColumnData::Date(date_array(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<Date>) -> ColumnData {
+	data(ValueType::Date, date_array(v))
 }
 
 crate::nones_tests! {

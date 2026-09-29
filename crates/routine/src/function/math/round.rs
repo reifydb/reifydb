@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
 use arrow_buffer::i256;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, rename};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	constraint::{precision::Precision, scale::Scale},
-	container::decimal_array::{decimal_array, decimals},
+	container::decimal_array::decimals,
 	decimal::{Decimal, unscaled},
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -58,14 +61,18 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let val_data = &args[0];
-		let precision_column = args.get(1);
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let val_data = ColumnView::try_from(&args[0])?;
+		let precision_column = args.get(1).map(ColumnView::try_from).transpose()?;
 
 		let row_count = val_data.len();
 
-		if let Some(prec_col) = precision_column
-			&& !prec_col.data().get_type().is_integer()
+		if let Some(prec_col) = &precision_column
+			&& !prec_col.get_type().is_integer()
 		{
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -82,20 +89,20 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 					ValueType::Uint8,
 					ValueType::Uint16,
 				],
-				actual: prec_col.data().get_type(),
+				actual: prec_col.get_type(),
 			});
 		}
 
 		let fragment = ctx.fragment.clone();
 		let get_precision = |row_idx: usize| -> Result<i32, RoutineError> {
-			match precision_column {
-				Some(prec_col) => Ok(read_i32(&fragment, prec_col.data(), row_idx)?.unwrap_or(0)),
+			match &precision_column {
+				Some(prec_col) => Ok(read_i32(&fragment, prec_col, row_idx)?.unwrap_or(0)),
 				None => Ok(0),
 			}
 		};
 
-		let result_data = match val_data {
-			ColumnBuffer::Float4(container) => {
+		let result_data = match &val_data.data {
+			ViewData::Float4(container) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -110,9 +117,9 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 						bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float4_with_bitvec(result, bitvec)
+				float4_with_bitvec(ctx.fragment.text(), result, bitvec)
 			}
-			ColumnBuffer::Float8(container) => {
+			ViewData::Float8(container) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -127,9 +134,9 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 						bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float8_with_bitvec(result, bitvec)
+				float8_with_bitvec(ctx.fragment.text(), result, bitvec)
 			}
-			ColumnBuffer::Decimal(container) => {
+			ViewData::Decimal(container) => {
 				let precision = container.precision();
 				let scale = container.scale();
 				let mut result = Vec::with_capacity(row_count);
@@ -144,20 +151,20 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 						})?;
 					result.push(rounded);
 				}
-				ColumnBuffer::Decimal(decimal_array(precision, scale, result))
+				decimal(ctx.fragment.text(), precision, scale, result)
 			}
-			other if other.get_type().is_number() => val_data.clone(),
-			other => {
+			_ if val_data.get_type().is_number() => rename(args[0].clone(), ctx.fragment.text()),
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
-					actual: other.get_type(),
+					actual: val_data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

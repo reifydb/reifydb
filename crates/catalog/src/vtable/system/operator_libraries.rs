@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, flow::OperatorCapability},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use super::operator_libary::OperatorLibrary;
 use crate::{
@@ -68,17 +68,17 @@ impl BaseVTable for SystemOperatorLibraries {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("operator"), operators.finish()),
-			ColumnWithName::new(Fragment::internal("library_path"), library_paths.finish()),
-			ColumnWithName::new(Fragment::internal("abi"), abis.finish()),
-			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts.finish()),
-			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates.finish()),
-			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes.finish()),
+			operators.finish("operator"),
+			library_paths.finish("library_path"),
+			abis.finish("abi"),
+			cap_inserts.finish("cap_insert"),
+			cap_updates.finish("cap_update"),
+			cap_deletes.finish("cap_delete"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

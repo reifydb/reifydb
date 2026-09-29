@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{uuid7, uuid7_with_bitvec};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::varlen_array, uuid::Uuid7, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	container::varlen_array,
+	uuid::Uuid7,
+	value_type::ValueType,
+};
 use uuid::Uuid;
 
 pub struct UuidV7 {
@@ -39,29 +46,32 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		if args.is_empty() {
 			let mut generated = Vec::with_capacity(ctx.row_count);
 			for _ in 0..ctx.row_count {
 				generated.push(Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng));
 			}
-			let result_data = ColumnBuffer::uuid7(generated);
-			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
+			return Ok(uuid7(ctx.fragment.text(), generated));
 		}
 
-		let data = &args[0];
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
-		let nulls = data.nulls();
+		let nulls = data.logical_nulls();
 
-		match data {
-			ColumnBuffer::Utf8 {
+		match &data.data {
+			ViewData::Utf8 {
 				container,
 				..
 			} => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if nulls.is_some_and(|nulls| nulls.is_null(i)) {
+					if nulls.as_ref().is_some_and(|nulls| nulls.is_null(i)) {
 						result.push(Uuid7::default());
 						res_bitvec.push(false);
 						continue;
@@ -85,17 +95,16 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 					result.push(Uuid7::from(parsed));
 					res_bitvec.push(true);
 				}
-				let result_data = match nulls {
-					Some(_) => ColumnBuffer::uuid7_with_bitvec(result, res_bitvec),
-					None => ColumnBuffer::uuid7(result),
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(match nulls {
+					Some(_) => uuid7_with_bitvec(ctx.fragment.text(), result, res_bitvec),
+					None => uuid7(ctx.fragment.text(), result),
+				})
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

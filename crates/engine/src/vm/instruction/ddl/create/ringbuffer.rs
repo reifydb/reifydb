@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{catalog::ringbuffer::RingBufferToCreate, store::row_settings::create::create_row_settings};
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRingBufferChangeOperations, storage::StorageId},
 	row::RowSettings,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -17,19 +18,19 @@ pub(crate) fn create_ringbuffer(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateRingBufferNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.ringbuffer.text(),
 	)? && plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let result = services.catalog.create_ringbuffer(
@@ -58,18 +59,21 @@ pub(crate) fn create_ringbuffer(
 
 	txn.track_ringbuffer_created(result)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -100,10 +104,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		// A duplicate name in the same namespace must fault rather than silently replace.
 		let r = instance.admin(
@@ -154,10 +158,10 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
 
 		// Uniqueness is per namespace, so the same name elsewhere must be accepted.
 		let r = instance.admin(
@@ -171,9 +175,16 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16386));
+		assert_eq!(value_at(frame, 1), Value::Utf8("another_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Boolean(true));
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

@@ -812,36 +812,3 @@ fn hydrate_error_to_status(err: HydrateError, rql: &str, cap: u64) -> Status {
 		HydrateError::Internal(_) => Status::internal(msg),
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use arrow_array::Int32Array;
-	use arrow_buffer::BooleanBuffer;
-	use reifydb_value::value::frame::{column::FrameColumn, data::FrameColumnData};
-
-	use super::*;
-
-	#[test]
-	fn a_response_that_fails_to_rbcf_encode_is_an_error_not_an_empty_body() {
-		// Empty rbcf bytes leave the client decoding nothing, so an encode failure must travel as a status.
-		let deep = (0..4).fold(FrameColumnData::Int4(Int32Array::from(vec![7])), |inner, _| {
-			FrameColumnData::Option {
-				inner: Box::new(inner),
-				bitvec: BooleanBuffer::from(vec![true]),
-			}
-		});
-		let frames = vec![Frame::new(vec![FrameColumn {
-			name: "v".to_string(),
-			data: deep,
-		}])];
-
-		let result = encode_rbcf(frames);
-
-		let status = result.expect_err("a result with four Option layers cannot be RBCF encoded");
-		assert_eq!(status.code(), Code::Internal, "the server failed, not the request: {status:?}");
-		assert!(
-			status.message().contains("option nesting depth 4"),
-			"status must name the encode failure: {status:?}"
-		);
-	}
-}

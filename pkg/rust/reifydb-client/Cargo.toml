@@ -31,6 +31,8 @@ ws = ["dep:tokio-tungstenite", "dep:futures-util"]
 reifydb-build = { workspace = true }
 
 [dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-client-derive = { workspace = true }
@@ -59,7 +61,6 @@ prost = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
-arrow-array = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 bs58 = { workspace = true }
 ed25519-dalek = { workspace = true }

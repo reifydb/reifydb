@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -51,21 +51,22 @@ fn ident(b: [u8; 16]) -> IdentityId {
 
 #[test]
 fn option_bool_all_defined() {
-	let input = ColumnBuffer::bool_with_bitvec([true, false, true], vec![true, true, true]);
+	let input = factory::bool_with_bitvec("c", [true, false, true], vec![true, true, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_bool_all_defined", &input, &output);
 }
 
 #[test]
 fn option_bool_all_undefined() {
-	let input = ColumnBuffer::bool_with_bitvec(vec![false; 4], vec![false; 4]);
+	let input = factory::bool_with_bitvec("c", vec![false; 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_bool_all_undefined", &input, &output);
 }
 
 #[test]
 fn option_bool_alternating_eight_rows() {
-	let input = ColumnBuffer::bool_with_bitvec(
+	let input = factory::bool_with_bitvec(
+		"c",
 		[true, false, false, false, true, false, false, false],
 		vec![true, false, true, false, true, false, true, false],
 	);
@@ -75,7 +76,8 @@ fn option_bool_alternating_eight_rows() {
 
 #[test]
 fn option_bool_alternating_nine_rows() {
-	let input = ColumnBuffer::bool_with_bitvec(
+	let input = factory::bool_with_bitvec(
+		"c",
 		[true, false, false, false, true, false, false, false, true],
 		vec![true, false, true, false, true, false, true, false, true],
 	);
@@ -85,14 +87,15 @@ fn option_bool_alternating_nine_rows() {
 
 #[test]
 fn option_bool_first_undefined() {
-	let input = ColumnBuffer::bool_with_bitvec([false, true, false], vec![false, true, true]);
+	let input = factory::bool_with_bitvec("c", [false, true, false], vec![false, true, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_bool_first_undef", &input, &output);
 }
 
 #[test]
 fn option_float4_alternating() {
-	let input = ColumnBuffer::float4_with_bitvec(
+	let input = factory::float4_with_bitvec(
+		"c",
 		[1.5f32, 0.0, f32::INFINITY, 0.0, f32::NEG_INFINITY],
 		vec![true, false, true, false, true],
 	);
@@ -102,21 +105,22 @@ fn option_float4_alternating() {
 
 #[test]
 fn option_float4_all_undefined() {
-	let input = ColumnBuffer::float4_with_bitvec(vec![0.0; 5], vec![false; 5]);
+	let input = factory::float4_with_bitvec("c", vec![0.0; 5], vec![false; 5]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_float4_all_undef", &input, &output);
 }
 
 #[test]
 fn option_float4_first_undefined() {
-	let input = ColumnBuffer::float4_with_bitvec([0.0, f32::MIN, f32::MAX], vec![false, true, true]);
+	let input = factory::float4_with_bitvec("c", [0.0, f32::MIN, f32::MAX], vec![false, true, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_float4_first_undef", &input, &output);
 }
 
 #[test]
 fn option_float8_alternating() {
-	let input = ColumnBuffer::float8_with_bitvec(
+	let input = factory::float8_with_bitvec(
+		"c",
 		[1.5f64, 0.0, f64::INFINITY, 0.0, -0.0f64],
 		vec![true, false, true, false, true],
 	);
@@ -126,21 +130,21 @@ fn option_float8_alternating() {
 
 #[test]
 fn option_float8_all_undefined() {
-	let input = ColumnBuffer::float8_with_bitvec(vec![0.0; 5], vec![false; 5]);
+	let input = factory::float8_with_bitvec("c", vec![0.0; 5], vec![false; 5]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_float8_all_undef", &input, &output);
 }
 
 #[test]
 fn option_int1_alternating() {
-	let input = ColumnBuffer::int1_with_bitvec([i8::MIN, 0, 0i8, 0, i8::MAX], vec![true, false, true, false, true]);
+	let input = factory::int1_with_bitvec("c", [i8::MIN, 0, 0i8, 0, i8::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int1_alt", &input, &output);
 }
 
 #[test]
 fn option_int1_all_undefined() {
-	let input = ColumnBuffer::int1_with_bitvec(vec![0; 4], vec![false; 4]);
+	let input = factory::int1_with_bitvec("c", vec![0; 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int1_all_undef", &input, &output);
 }
@@ -148,35 +152,36 @@ fn option_int1_all_undefined() {
 #[test]
 fn option_int2_alternating() {
 	let input =
-		ColumnBuffer::int2_with_bitvec([i16::MIN, 0, 0i16, 0, i16::MAX], vec![true, false, true, false, true]);
+		factory::int2_with_bitvec("c", [i16::MIN, 0, 0i16, 0, i16::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int2_alt", &input, &output);
 }
 
 #[test]
 fn option_int4_alternating() {
-	let input = ColumnBuffer::int4_optional([Some(i32::MIN), None, Some(0i32), None, Some(i32::MAX)]);
+	let input = factory::int4_optional("c", [Some(i32::MIN), None, Some(0i32), None, Some(i32::MAX)]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int4_alt", &input, &output);
 }
 
 #[test]
 fn option_int8_all_defined() {
-	let input = ColumnBuffer::int8_with_bitvec([1i64, 2i64, 3i64], vec![true, true, true]);
+	let input = factory::int8_with_bitvec("c", [1i64, 2i64, 3i64], vec![true, true, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int8_all_defined", &input, &output);
 }
 
 #[test]
 fn option_int8_all_undefined() {
-	let input = ColumnBuffer::int8_with_bitvec(vec![0; 4], vec![false; 4]);
+	let input = factory::int8_with_bitvec("c", vec![0; 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_int8_all_undefined", &input, &output);
 }
 
 #[test]
 fn option_int8_alternating_eight_rows() {
-	let input = ColumnBuffer::int8_with_bitvec(
+	let input = factory::int8_with_bitvec(
+		"c",
 		[1i64, 0, 2i64, 0, 3i64, 0, 4i64, 0],
 		vec![true, false, true, false, true, false, true, false],
 	);
@@ -186,7 +191,8 @@ fn option_int8_alternating_eight_rows() {
 
 #[test]
 fn option_int8_alternating_nine_rows() {
-	let input = ColumnBuffer::int8_with_bitvec(
+	let input = factory::int8_with_bitvec(
+		"c",
 		[1i64, 0, 2i64, 0, 3i64, 0, 4i64, 0, 5i64],
 		vec![true, false, true, false, true, false, true, false, true],
 	);
@@ -196,7 +202,8 @@ fn option_int8_alternating_nine_rows() {
 
 #[test]
 fn option_int16_alternating() {
-	let input = ColumnBuffer::int16_with_bitvec(
+	let input = factory::int16_with_bitvec(
+		"c",
 		[i128::MIN, 0, 0i128, 0, i128::MAX],
 		vec![true, false, true, false, true],
 	);
@@ -206,14 +213,15 @@ fn option_int16_alternating() {
 
 #[test]
 fn option_uint1_alternating() {
-	let input = ColumnBuffer::uint1_with_bitvec([0u8, 0, 127u8, 0, u8::MAX], vec![true, false, true, false, true]);
+	let input = factory::uint1_with_bitvec("c", [0u8, 0, 127u8, 0, u8::MAX], vec![true, false, true, false, true]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_uint1_alt", &input, &output);
 }
 
 #[test]
 fn option_uint2_alternating() {
-	let input = ColumnBuffer::uint2_with_bitvec(
+	let input = factory::uint2_with_bitvec(
+		"c",
 		[0u16, 0, 32_768u16, 0, u16::MAX],
 		vec![true, false, true, false, true],
 	);
@@ -223,7 +231,8 @@ fn option_uint2_alternating() {
 
 #[test]
 fn option_uint4_alternating() {
-	let input = ColumnBuffer::uint4_with_bitvec(
+	let input = factory::uint4_with_bitvec(
+		"c",
 		[0u32, 0, 0x8000_0000u32, 0, u32::MAX],
 		vec![true, false, true, false, true],
 	);
@@ -233,7 +242,8 @@ fn option_uint4_alternating() {
 
 #[test]
 fn option_uint8_alternating() {
-	let input = ColumnBuffer::uint8_with_bitvec(
+	let input = factory::uint8_with_bitvec(
+		"c",
 		[0u64, 0, 0x8000_0000_0000_0000u64, 0, u64::MAX],
 		vec![true, false, true, false, true],
 	);
@@ -243,7 +253,8 @@ fn option_uint8_alternating() {
 
 #[test]
 fn option_uint16_alternating() {
-	let input = ColumnBuffer::uint16_with_bitvec(
+	let input = factory::uint16_with_bitvec(
+		"c",
 		[0u128, 0, 1u128 << 100, 0, u128::MAX],
 		vec![true, false, true, false, true],
 	);
@@ -253,7 +264,8 @@ fn option_uint16_alternating() {
 
 #[test]
 fn option_utf8_all_defined() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		["a".to_string(), "bb".to_string(), "ccc".to_string()],
 		vec![true, true, true],
 	);
@@ -263,14 +275,15 @@ fn option_utf8_all_defined() {
 
 #[test]
 fn option_utf8_all_undefined() {
-	let input = ColumnBuffer::utf8_with_bitvec(vec![String::new(); 3], vec![false; 3]);
+	let input = factory::utf8_with_bitvec("c", vec![String::new(); 3], vec![false; 3]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_utf8_all_undef", &input, &output);
 }
 
 #[test]
 fn option_utf8_first_undefined() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[String::new(), "hello".to_string(), "world".to_string()],
 		vec![false, true, true],
 	);
@@ -280,7 +293,8 @@ fn option_utf8_first_undefined() {
 
 #[test]
 fn option_utf8_last_undefined() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		["hello".to_string(), "world".to_string(), String::new()],
 		vec![true, true, false],
 	);
@@ -290,7 +304,8 @@ fn option_utf8_last_undefined() {
 
 #[test]
 fn option_utf8_with_empty_string() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[String::new(), String::new(), "hello".to_string()],
 		vec![true, false, true],
 	);
@@ -300,7 +315,8 @@ fn option_utf8_with_empty_string() {
 
 #[test]
 fn option_utf8_alternating_eight_rows() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[
 			"a".to_string(),
 			String::new(),
@@ -319,7 +335,8 @@ fn option_utf8_alternating_eight_rows() {
 
 #[test]
 fn option_utf8_alternating_nine_rows() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[
 			"a".to_string(),
 			String::new(),
@@ -339,7 +356,8 @@ fn option_utf8_alternating_nine_rows() {
 
 #[test]
 fn option_blob_alternating() {
-	let input = ColumnBuffer::blob_with_bitvec(
+	let input = factory::blob_with_bitvec(
+		"c",
 		[
 			Blob::new(vec![0x01]),
 			Blob::default(),
@@ -355,14 +373,15 @@ fn option_blob_alternating() {
 
 #[test]
 fn option_blob_all_undefined() {
-	let input = ColumnBuffer::blob_with_bitvec(vec![Blob::default(); 3], vec![false; 3]);
+	let input = factory::blob_with_bitvec("c", vec![Blob::default(); 3], vec![false; 3]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_blob_all_undef", &input, &output);
 }
 
 #[test]
 fn option_blob_first_undefined() {
-	let input = ColumnBuffer::blob_with_bitvec(
+	let input = factory::blob_with_bitvec(
+		"c",
 		[Blob::default(), Blob::new(vec![0x01, 0x02]), Blob::new(vec![0x03])],
 		vec![false, true, true],
 	);
@@ -372,7 +391,8 @@ fn option_blob_first_undefined() {
 
 #[test]
 fn option_date_alternating() {
-	let input = ColumnBuffer::date_with_bitvec(
+	let input = factory::date_with_bitvec(
+		"c",
 		[date_d(0), Date::default(), Date::from_ymd(2024, 2, 29).unwrap(), Date::default(), date_d(-365 * 100)],
 		vec![true, false, true, false, true],
 	);
@@ -382,14 +402,15 @@ fn option_date_alternating() {
 
 #[test]
 fn option_date_all_undefined() {
-	let input = ColumnBuffer::date_with_bitvec(vec![Date::default(); 4], vec![false; 4]);
+	let input = factory::date_with_bitvec("c", vec![Date::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_date_all_undef", &input, &output);
 }
 
 #[test]
 fn option_datetime_alternating() {
-	let input = ColumnBuffer::datetime_with_bitvec(
+	let input = factory::datetime_with_bitvec(
+		"c",
 		[dt(0), DateTime::default(), dt(1), DateTime::default(), dt(i64::MAX)],
 		vec![true, false, true, false, true],
 	);
@@ -399,14 +420,15 @@ fn option_datetime_alternating() {
 
 #[test]
 fn option_datetime_all_undefined() {
-	let input = ColumnBuffer::datetime_with_bitvec(vec![DateTime::default(); 4], vec![false; 4]);
+	let input = factory::datetime_with_bitvec("c", vec![DateTime::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_datetime_all_undef", &input, &output);
 }
 
 #[test]
 fn option_time_alternating() {
-	let input = ColumnBuffer::time_with_bitvec(
+	let input = factory::time_with_bitvec(
+		"c",
 		[t(0), Time::default(), t(1), Time::default(), Time::from_hms_nano(23, 59, 59, 999_999_999).unwrap()],
 		vec![true, false, true, false, true],
 	);
@@ -416,14 +438,15 @@ fn option_time_alternating() {
 
 #[test]
 fn option_time_all_undefined() {
-	let input = ColumnBuffer::time_with_bitvec(vec![Time::default(); 4], vec![false; 4]);
+	let input = factory::time_with_bitvec("c", vec![Time::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_time_all_undef", &input, &output);
 }
 
 #[test]
 fn option_duration_alternating() {
-	let input = ColumnBuffer::duration_with_bitvec(
+	let input = factory::duration_with_bitvec(
+		"c",
 		[
 			dur(0, 0, 0),
 			Duration::default(),
@@ -439,14 +462,15 @@ fn option_duration_alternating() {
 
 #[test]
 fn option_duration_all_undefined() {
-	let input = ColumnBuffer::duration_with_bitvec(vec![Duration::default(); 4], vec![false; 4]);
+	let input = factory::duration_with_bitvec("c", vec![Duration::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_duration_all_undef", &input, &output);
 }
 
 #[test]
 fn option_identity_id_alternating() {
-	let input = ColumnBuffer::identity_id_with_bitvec(
+	let input = factory::identity_id_with_bitvec(
+		"c",
 		[
 			IdentityId::root(),
 			IdentityId::default(),
@@ -462,14 +486,15 @@ fn option_identity_id_alternating() {
 
 #[test]
 fn option_identity_id_all_undefined() {
-	let input = ColumnBuffer::identity_id_with_bitvec(vec![IdentityId::default(); 4], vec![false; 4]);
+	let input = factory::identity_id_with_bitvec("c", vec![IdentityId::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_identity_all_undef", &input, &output);
 }
 
 #[test]
 fn option_identity_id_first_undefined() {
-	let input = ColumnBuffer::identity_id_with_bitvec(
+	let input = factory::identity_id_with_bitvec(
+		"c",
 		[IdentityId::default(), IdentityId::root(), ident([0x01; 16])],
 		vec![false, true, true],
 	);
@@ -479,7 +504,8 @@ fn option_identity_id_first_undefined() {
 
 #[test]
 fn option_uuid4_alternating() {
-	let input = ColumnBuffer::uuid4_with_bitvec(
+	let input = factory::uuid4_with_bitvec(
+		"c",
 		[Uuid4(Uuid::nil()), Uuid4::default(), u4([0xAA; 16]), Uuid4::default(), u4([0x55; 16])],
 		vec![true, false, true, false, true],
 	);
@@ -489,14 +515,15 @@ fn option_uuid4_alternating() {
 
 #[test]
 fn option_uuid4_all_undefined() {
-	let input = ColumnBuffer::uuid4_with_bitvec(vec![Uuid4::default(); 4], vec![false; 4]);
+	let input = factory::uuid4_with_bitvec("c", vec![Uuid4::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_uuid4_all_undef", &input, &output);
 }
 
 #[test]
 fn option_uuid7_alternating() {
-	let input = ColumnBuffer::uuid7_with_bitvec(
+	let input = factory::uuid7_with_bitvec(
+		"c",
 		[Uuid7(Uuid::nil()), Uuid7::default(), u7([0xAA; 16]), Uuid7::default(), u7([0x55; 16])],
 		vec![true, false, true, false, true],
 	);
@@ -506,7 +533,7 @@ fn option_uuid7_alternating() {
 
 #[test]
 fn option_uuid7_all_undefined() {
-	let input = ColumnBuffer::uuid7_with_bitvec(vec![Uuid7::default(); 4], vec![false; 4]);
+	let input = factory::uuid7_with_bitvec("c", vec![Uuid7::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_uuid7_all_undef", &input, &output);
 }
@@ -514,7 +541,8 @@ fn option_uuid7_all_undefined() {
 #[test]
 fn option_decimal_alternating() {
 	use std::str::FromStr;
-	let input = ColumnBuffer::decimal_with_bitvec(
+	let input = factory::decimal_with_bitvec(
+		"c",
 		Precision::MAX,
 		Scale::new(14),
 		[
@@ -532,7 +560,8 @@ fn option_decimal_alternating() {
 
 #[test]
 fn option_decimal_all_undefined() {
-	let input = ColumnBuffer::decimal_with_bitvec(
+	let input = factory::decimal_with_bitvec(
+		"c",
 		Precision::MAX,
 		Scale::new(14),
 		vec![Decimal::default(); 4],
@@ -544,27 +573,25 @@ fn option_decimal_all_undefined() {
 
 #[test]
 fn option_any_alternating() {
-	let input = ColumnBuffer::any_optional([
-		Some(Value::Int8(7)),
-		None,
-		Some(Value::Utf8("x".to_string())),
-		None,
-		Some(Value::Boolean(true)),
-	]);
+	let input = factory::any_optional(
+		"c",
+		[Some(Value::Int8(7)), None, Some(Value::Utf8("x".to_string())), None, Some(Value::Boolean(true))],
+	);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_alt", &input, &output);
 }
 
 #[test]
 fn option_any_all_undefined() {
-	let input = ColumnBuffer::any_optional(vec![None; 4]);
+	let input = factory::any_optional("c", vec![None; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_all_undef", &input, &output);
 }
 
 #[test]
 fn option_dictionary_id_alternating() {
-	let input = ColumnBuffer::dictionary_id_with_bitvec(
+	let input = factory::dictionary_id_with_bitvec(
+		"c",
 		[
 			DictionaryEntryId::U1(7),
 			DictionaryEntryId::default(),
@@ -580,14 +607,15 @@ fn option_dictionary_id_alternating() {
 
 #[test]
 fn option_dictionary_id_all_undefined() {
-	let input = ColumnBuffer::dictionary_id_with_bitvec(vec![DictionaryEntryId::default(); 4], vec![false; 4]);
+	let input = factory::dictionary_id_with_bitvec("c", vec![DictionaryEntryId::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_dict_id_all_undef", &input, &output);
 }
 
 #[test]
 fn option_dictionary_id_each_variant_with_undefined() {
-	let input = ColumnBuffer::dictionary_id_with_bitvec(
+	let input = factory::dictionary_id_with_bitvec(
+		"c",
 		[
 			DictionaryEntryId::U1(7),
 			DictionaryEntryId::default(),
@@ -617,7 +645,8 @@ fn option_bool_alternating_sixteen_rows() {
 			}
 		})
 		.collect();
-	let input = ColumnBuffer::bool_with_bitvec(
+	let input = factory::bool_with_bitvec(
+		"c",
 		values.iter().map(|v| v.unwrap_or(false)),
 		values.iter().map(Option::is_some).collect::<Vec<_>>(),
 	);
@@ -637,7 +666,8 @@ fn option_int8_thirty_two_rows_pattern() {
 			}
 		})
 		.collect();
-	let input = ColumnBuffer::int8_with_bitvec(
+	let input = factory::int8_with_bitvec(
+		"c",
 		values.iter().map(|v| v.unwrap_or(0)),
 		values.iter().map(Option::is_some).collect::<Vec<_>>(),
 	);
@@ -656,7 +686,8 @@ fn option_int8_sixty_four_rows_pattern() {
 			}
 		})
 		.collect();
-	let input = ColumnBuffer::int8_with_bitvec(
+	let input = factory::int8_with_bitvec(
+		"c",
 		values.iter().map(|v| v.unwrap_or(0)),
 		values.iter().map(Option::is_some).collect::<Vec<_>>(),
 	);

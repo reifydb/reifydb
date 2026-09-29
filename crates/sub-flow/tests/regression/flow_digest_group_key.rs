@@ -3,13 +3,18 @@
 
 use std::sync::Arc;
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -22,10 +27,13 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
 	Result,
-	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, digest::Digest, duration::Duration, row_number::RowNumber,
-		system_columns::SystemColumns, value_type::ValueType,
+		Value,
+		datetime::DateTime,
+		digest::Digest,
+		duration::Duration,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
 	},
 };
 
@@ -39,7 +47,7 @@ fn digest_type() -> ValueType {
 	}
 }
 
-fn filled_key() -> ColumnBuffer {
+fn filled_key() -> (FieldRef, ArrayRef) {
 	let mut buffer = ColumnBuilder::with_capacity(digest_type(), 2);
 	for values in [[1.0, 2.0], [3.0, 4.0]] {
 		let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
@@ -48,28 +56,26 @@ fn filled_key() -> ColumnBuffer {
 		}
 		buffer.push_value(Value::Digest(Box::new(digest)));
 	}
-	buffer.finish()
+	buffer.finish("d")
 }
 
-fn all_none_key() -> ColumnBuffer {
-	ColumnBuffer::none_typed(ValueType::Option(Box::new(digest_type())), 2)
+fn all_none_key() -> (FieldRef, ArrayRef) {
+	factory::none_typed("d", ValueType::Option(Box::new(digest_type())), 2)
 }
 
-fn keyed_by(key: ColumnBuffer) -> Change {
+fn keyed_by(key: (FieldRef, ArrayRef)) -> Change {
 	let at = DateTime::from_millis(1_000_000);
-	let input = Columns::with_system(
-		vec![
-			ColumnWithName::new(Fragment::internal("k"), ColumnBuffer::int4(vec![1, 2])),
-			ColumnWithName::new(Fragment::internal("d"), key),
-		],
-		SystemColumns::new(
-			vec![RowNumber(1), RowNumber(2)],
-			Vec::new(),
-			vec![at; 2],
-			vec![at; 2],
-			vec![at; 2],
-			Vec::new(),
-		),
+	let system = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", [1u64, 2]).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", [at; 2]).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [at; 2]).1),
+		(SystemColumn::Time, factory::datetime("#time", [at; 2]).1),
+	];
+	let input = system.into_iter().fold(
+		batch(vec![factory::int4("k", [1, 2]), key]).expect("user columns form a batch"),
+		|columns, (column, array)| {
+			with_system_column(columns, column, array).expect("a system column attaches")
+		},
 	);
 	let mut diff = Diff::insert(input);
 	diff.set_origin(Some(ChangeOrigin::Flow(SOURCE_OPERATOR)));

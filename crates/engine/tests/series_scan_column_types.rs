@@ -10,11 +10,10 @@ const ROW: &str = "d: cast('1.25', decimal), dt: cast('2024-01-02', date), u: ca
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 #[test]

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
 fn to_json(value: &Value) -> String {
 	match value {
@@ -86,15 +88,17 @@ impl<'a> Routine<FunctionContext<'a>> for JsonSerialize {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
 		let results: Vec<String> = (0..row_count).map(|row| to_json(&data.get_value(row))).collect();
 
-		let result_data = ColumnBuffer::utf8(results);
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(utf8(ctx.fragment.text(), results))
 	}
 }
 

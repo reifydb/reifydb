@@ -19,11 +19,10 @@ fn engine() -> TestEngine {
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
 	let column = frames[0]
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
-	column.data.get_type()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].batch.schema()));
+	column.get_type()
 }
 
 #[test]

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
 	key::{any::TaggedKey, partition::PartitionKey, row::PartitionedRowKey},
 	partition::partition_of,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
 use reifydb_transaction::{
@@ -25,7 +26,7 @@ pub(crate) fn execute_alter_table(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterTableNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let namespace_id = plan.namespace.def().id();
 	let namespace_name = plan.namespace.name().to_string();
 	let table_name = plan.table.text().to_string();
@@ -164,19 +165,22 @@ pub(crate) fn execute_alter_table(
 		}
 	};
 
-	Ok(Columns::single_row([
+	single_row([
 		("operation", Value::Utf8(operation.to_string())),
 		("namespace", Value::Utf8(namespace_name)),
 		("table", Value::Utf8(table_name)),
 		("details", details),
-	]))
+	])
 }
 
 #[cfg(test)]
 mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -224,10 +228,10 @@ mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("ADD COLUMN".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Utf8("email".to_string()));
+		assert_eq!(value_at(frame, 0), Value::Utf8("ADD COLUMN".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Utf8("app".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("users".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Utf8("email".to_string()));
 	}
 
 	#[test]
@@ -245,10 +249,10 @@ mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("DROP COLUMN".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Utf8("name".to_string()));
+		assert_eq!(value_at(frame, 0), Value::Utf8("DROP COLUMN".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Utf8("app".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("users".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Utf8("name".to_string()));
 	}
 
 	#[test]
@@ -266,10 +270,10 @@ mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("RENAME COLUMN".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
-		assert_eq!(frame[3].get_value(0), Value::Utf8("name -> full_name".to_string()));
+		assert_eq!(value_at(frame, 0), Value::Utf8("RENAME COLUMN".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Utf8("app".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Utf8("users".to_string()));
+		assert_eq!(value_at(frame, 3), Value::Utf8("name -> full_name".to_string()));
 	}
 
 	#[test]
@@ -300,5 +304,12 @@ mod tests {
 		);
 		assert!(r.is_err());
 		assert_eq!(r.error.unwrap().diagnostic().code, "CA_039");
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

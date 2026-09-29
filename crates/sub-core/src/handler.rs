@@ -904,7 +904,7 @@ async fn run_subscription_hydrate<S: WireSink>(
 	};
 
 	if !batches.is_empty() {
-		let row_count: usize = batches.iter().map(|(_, cols)| cols.row_count()).sum();
+		let row_count: usize = batches.iter().map(|(_, cols)| cols.num_rows()).sum();
 		debug!(
 			subscription_id = subscription_id.0,
 			version = version.0,

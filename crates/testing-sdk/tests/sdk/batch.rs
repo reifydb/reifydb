@@ -24,6 +24,8 @@ use reifydb_value::{
 	value::{Value, blob::Blob, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
+use crate::{read, read_value};
+
 struct Bar {
 	mint: String,
 	timestamp: u64,
@@ -97,25 +99,25 @@ fn insert_batch_emits_typed_columns_in_one_diff() {
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Insert);
 	let post = diff.post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	let r0 = post.row_ref(0).expect("r0");
-	assert_eq!(r0.utf8("mint").as_deref(), Some("SOL"));
-	assert_eq!(r0.u64("timestamp"), Some(100));
-	assert_eq!(r0.f64("price"), Some(1.5));
-	assert_eq!(r0.bool("is_open"), Some(true));
-	assert_eq!(r0.u32("count"), Some(10));
-	let r1 = post.row_ref(1).expect("r1");
-	assert_eq!(r1.utf8("mint").as_deref(), Some("BTC"));
-	assert_eq!(r1.u64("timestamp"), Some(200));
-	assert_eq!(r1.f64("price"), Some(50000.0));
-	assert_eq!(r1.bool("is_open"), Some(false));
-	assert_eq!(r1.u32("count"), Some(20));
-	let r2 = post.row_ref(2).expect("r2");
-	assert_eq!(r2.utf8("mint").as_deref(), Some("ETH"));
-	assert_eq!(r2.u64("timestamp"), Some(300));
-	assert_eq!(r2.f64("price"), Some(3000.0));
-	assert_eq!(r2.bool("is_open"), Some(true));
-	assert_eq!(r2.u32("count"), Some(30));
+	assert_eq!(post.num_rows(), 3);
+	let r0 = (post, 0);
+	assert_eq!(read::<String>(r0, "mint").as_deref(), Some("SOL"));
+	assert_eq!(read::<u64>(r0, "timestamp"), Some(100));
+	assert_eq!(read::<f64>(r0, "price"), Some(1.5));
+	assert_eq!(read::<bool>(r0, "is_open"), Some(true));
+	assert_eq!(read::<u32>(r0, "count"), Some(10));
+	let r1 = (post, 1);
+	assert_eq!(read::<String>(r1, "mint").as_deref(), Some("BTC"));
+	assert_eq!(read::<u64>(r1, "timestamp"), Some(200));
+	assert_eq!(read::<f64>(r1, "price"), Some(50000.0));
+	assert_eq!(read::<bool>(r1, "is_open"), Some(false));
+	assert_eq!(read::<u32>(r1, "count"), Some(20));
+	let r2 = (post, 2);
+	assert_eq!(read::<String>(r2, "mint").as_deref(), Some("ETH"));
+	assert_eq!(read::<u64>(r2, "timestamp"), Some(300));
+	assert_eq!(read::<f64>(r2, "price"), Some(3000.0));
+	assert_eq!(read::<bool>(r2, "is_open"), Some(true));
+	assert_eq!(read::<u32>(r2, "count"), Some(30));
 }
 
 struct EmitOpEmpty;
@@ -188,18 +190,18 @@ fn update_batch_roundtrips_all_fields() {
 	assert_eq!(diff.kind(), DiffType::Update);
 	let pre = diff.pre().expect("pre");
 	let post = diff.post().expect("post");
-	let r_pre = pre.row_ref(0).expect("r_pre");
-	let r_post = post.row_ref(0).expect("r_post");
-	assert_eq!(r_pre.utf8("mint").as_deref(), Some("PRE"));
-	assert_eq!(r_pre.u64("timestamp"), Some(10));
-	assert_eq!(r_pre.f64("price"), Some(1.0));
-	assert_eq!(r_pre.bool("is_open"), Some(false));
-	assert_eq!(r_pre.u32("count"), Some(5));
-	assert_eq!(r_post.utf8("mint").as_deref(), Some("POST"));
-	assert_eq!(r_post.u64("timestamp"), Some(20));
-	assert_eq!(r_post.f64("price"), Some(2.0));
-	assert_eq!(r_post.bool("is_open"), Some(true));
-	assert_eq!(r_post.u32("count"), Some(6));
+	let r_pre = (pre, 0);
+	let r_post = (post, 0);
+	assert_eq!(read::<String>(r_pre, "mint").as_deref(), Some("PRE"));
+	assert_eq!(read::<u64>(r_pre, "timestamp"), Some(10));
+	assert_eq!(read::<f64>(r_pre, "price"), Some(1.0));
+	assert_eq!(read::<bool>(r_pre, "is_open"), Some(false));
+	assert_eq!(read::<u32>(r_pre, "count"), Some(5));
+	assert_eq!(read::<String>(r_post, "mint").as_deref(), Some("POST"));
+	assert_eq!(read::<u64>(r_post, "timestamp"), Some(20));
+	assert_eq!(read::<f64>(r_post, "price"), Some(2.0));
+	assert_eq!(read::<bool>(r_post, "is_open"), Some(true));
+	assert_eq!(read::<u32>(r_post, "count"), Some(6));
 }
 
 struct EmitOpRemove;
@@ -248,7 +250,7 @@ fn remove_batch_emits_one_diff_with_n_rows() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Remove);
-	assert_eq!(diff.pre().expect("pre").row_count(), 2);
+	assert_eq!(diff.pre().expect("pre").num_rows(), 2);
 }
 
 struct EmitOpBig;
@@ -287,14 +289,14 @@ fn round_trip_100_rows_decodes_correctly() {
 	let mut h = ExternCOperatorHarnessBuilder::<EmitOpBig>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 100);
+	assert_eq!(post.num_rows(), 100);
 	for i in 0..100usize {
-		let r = post.row_ref(i).expect("r");
-		assert_eq!(r.utf8("mint").as_deref(), Some(format!("MINT{i}").as_str()));
-		assert_eq!(r.u64("timestamp"), Some((i as u64) * 10));
-		assert_eq!(r.f64("price"), Some(i as f64 * 1.5));
-		assert_eq!(r.bool("is_open"), Some(i % 2 == 0));
-		assert_eq!(r.u32("count"), Some(i as u32));
+		let r = (post, i);
+		assert_eq!(read::<String>(r, "mint").as_deref(), Some(format!("MINT{i}").as_str()));
+		assert_eq!(read::<u64>(r, "timestamp"), Some((i as u64) * 10));
+		assert_eq!(read::<f64>(r, "price"), Some(i as f64 * 1.5));
+		assert_eq!(read::<bool>(r, "is_open"), Some(i % 2 == 0));
+		assert_eq!(read::<u32>(r, "count"), Some(i as u32));
 	}
 }
 
@@ -351,19 +353,19 @@ fn optional_scalar_some_and_none() {
 	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptU64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 4);
-	let r0 = post.row_ref(0).expect("r0");
-	let r1 = post.row_ref(1).expect("r1");
-	let r2 = post.row_ref(2).expect("r2");
-	let r3 = post.row_ref(3).expect("r3");
-	assert!(matches!(r0.value("v"), Some(Value::None { .. })));
-	assert_eq!(r0.u64("v"), None);
-	assert!(!matches!(r1.value("v"), Some(Value::None { .. })));
-	assert_eq!(r1.u64("v"), Some(42));
-	assert!(matches!(r2.value("v"), Some(Value::None { .. })));
-	assert_eq!(r2.u64("v"), None);
-	assert!(!matches!(r3.value("v"), Some(Value::None { .. })));
-	assert_eq!(r3.u64("v"), Some(u64::MAX));
+	assert_eq!(post.num_rows(), 4);
+	let r0 = (post, 0);
+	let r1 = (post, 1);
+	let r2 = (post, 2);
+	let r3 = (post, 3);
+	assert!(matches!(read_value(r0, "v"), Some(Value::None { .. })));
+	assert_eq!(read::<u64>(r0, "v"), None);
+	assert!(!matches!(read_value(r1, "v"), Some(Value::None { .. })));
+	assert_eq!(read::<u64>(r1, "v"), Some(42));
+	assert!(matches!(read_value(r2, "v"), Some(Value::None { .. })));
+	assert_eq!(read::<u64>(r2, "v"), None);
+	assert!(!matches!(read_value(r3, "v"), Some(Value::None { .. })));
+	assert_eq!(read::<u64>(r3, "v"), Some(u64::MAX));
 }
 
 struct OptStrRow {
@@ -419,19 +421,19 @@ fn optional_string_some_and_none() {
 	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptStr>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 4);
-	let r0 = post.row_ref(0).expect("r0");
-	let r1 = post.row_ref(1).expect("r1");
-	let r2 = post.row_ref(2).expect("r2");
-	let r3 = post.row_ref(3).expect("r3");
-	assert!(matches!(r0.value("s"), Some(Value::None { .. })));
-	assert_eq!(r0.utf8("s"), None);
-	assert!(!matches!(r1.value("s"), Some(Value::None { .. })));
-	assert_eq!(r1.utf8("s").as_deref(), Some("hi"));
-	assert!(matches!(r2.value("s"), Some(Value::None { .. })));
-	assert_eq!(r2.utf8("s"), None);
-	assert!(!matches!(r3.value("s"), Some(Value::None { .. })));
-	assert_eq!(r3.utf8("s").as_deref(), Some(""));
+	assert_eq!(post.num_rows(), 4);
+	let r0 = (post, 0);
+	let r1 = (post, 1);
+	let r2 = (post, 2);
+	let r3 = (post, 3);
+	assert!(matches!(read_value(r0, "s"), Some(Value::None { .. })));
+	assert_eq!(read::<String>(r0, "s"), None);
+	assert!(!matches!(read_value(r1, "s"), Some(Value::None { .. })));
+	assert_eq!(read::<String>(r1, "s").as_deref(), Some("hi"));
+	assert!(matches!(read_value(r2, "s"), Some(Value::None { .. })));
+	assert_eq!(read::<String>(r2, "s"), None);
+	assert!(!matches!(read_value(r3, "s"), Some(Value::None { .. })));
+	assert_eq!(read::<String>(r3, "s").as_deref(), Some(""));
 }
 
 struct OptBlobRow {
@@ -481,22 +483,22 @@ fn optional_blob_some_and_none() {
 	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptBlob>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	let r0 = post.row_ref(0).expect("r0");
-	let r1 = post.row_ref(1).expect("r1");
-	let r2 = post.row_ref(2).expect("r2");
-	assert!(matches!(r0.value("b"), Some(Value::None { .. })));
+	assert_eq!(post.num_rows(), 3);
+	let r0 = (post, 0);
+	let r1 = (post, 1);
+	let r2 = (post, 2);
+	assert!(matches!(read_value(r0, "b"), Some(Value::None { .. })));
 	assert_eq!(
-		r0.value("b"),
+		read_value(r0, "b"),
 		Some(Value::None {
 			inner: ValueType::Blob
 		})
 	);
-	assert!(!matches!(r1.value("b"), Some(Value::None { .. })));
-	assert_eq!(r1.value("b"), Some(Value::Blob(Blob::new(vec![1u8, 2, 3]))));
-	assert!(matches!(r2.value("b"), Some(Value::None { .. })));
+	assert!(!matches!(read_value(r1, "b"), Some(Value::None { .. })));
+	assert_eq!(read_value(r1, "b"), Some(Value::Blob(Blob::new(vec![1u8, 2, 3]))));
+	assert!(matches!(read_value(r2, "b"), Some(Value::None { .. })));
 	assert_eq!(
-		r2.value("b"),
+		read_value(r2, "b"),
 		Some(Value::None {
 			inner: ValueType::Blob
 		})

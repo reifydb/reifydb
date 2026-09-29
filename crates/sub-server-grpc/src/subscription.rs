@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_core::wire_sink::{BatchSubscribedEntry, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
@@ -88,7 +89,7 @@ impl WireSink for GrpcWireSink {
 		&self,
 		_sub_id: SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		columns: RecordBatch,
 		_format: Self::Format,
 	) -> DeliveryResult {
 		match self {
@@ -185,7 +186,11 @@ impl WireSink for GrpcWireSink {
 	}
 }
 
-pub fn encode_change_event(op: DiffType, columns: Columns, format: WireFormat) -> Result<SubscriptionEvent, Status> {
+pub fn encode_change_event(
+	op: DiffType,
+	columns: RecordBatch,
+	format: WireFormat,
+) -> Result<SubscriptionEvent, Status> {
 	Ok(SubscriptionEvent {
 		event: Some(subscription_event::Event::Change(ChangeEvent {
 			rbcf: encode_change_payload(vec![Frame::from(columns).with_op(op)], format)?,
@@ -209,6 +214,7 @@ fn deliver<T>(tx: &mpsc::UnboundedSender<Result<T, Status>>, event: Result<T, St
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::batch::single_row;
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
@@ -219,8 +225,8 @@ mod tests {
 
 	use super::*;
 
-	fn single_int_columns(name: &str, value: i64) -> Columns {
-		Columns::single_row([(name, Value::Int8(value))])
+	fn single_int_columns(name: &str, value: i64) -> RecordBatch {
+		single_row([(name, Value::Int8(value))]).unwrap()
 	}
 
 	fn test_clock_and_rng() -> (Clock, Rng) {

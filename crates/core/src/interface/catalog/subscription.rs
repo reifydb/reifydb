@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::interface::catalog::id::SubscriptionId;
 
 pub trait SubscriptionInspector: Send + Sync {
-	fn inspect(&self, id: SubscriptionId) -> Option<RecordBatch>;
+	fn inspect(&self, id: SubscriptionId) -> Result<Option<RecordBatch>>;
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
 }

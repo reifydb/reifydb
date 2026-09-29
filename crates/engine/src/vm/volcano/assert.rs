@@ -3,13 +3,18 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::{Expression, name::display_label},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::headers::ColumnHeaders,
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{
+	reifydb_assertions,
+	value::column_view::{ColumnView, ViewData},
+};
 use tracing::instrument;
 
 use crate::{
@@ -38,23 +43,23 @@ impl AssertNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::eval")]
 	fn eval(
 		session: &EvalContext<'_>,
-		columns: &Columns,
+		columns: &RecordBatch,
 		row_count: usize,
 		assert_expr: &Expression,
-	) -> Result<ColumnWithName> {
+	) -> Result<(FieldRef, ArrayRef)> {
 		let eval_ctx = session.with_eval(columns.clone(), row_count);
 		evaluate(&eval_ctx, assert_expr)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::verify")]
-	fn verify(&self, data: &ColumnBuffer, row_count: usize, assert_expr: &Expression) -> Result<()> {
+	fn verify(&self, data: &ColumnView<'_>, row_count: usize, assert_expr: &Expression) -> Result<()> {
 		let frag = assert_expr.full_fragment_owned();
 		let label = display_label(assert_expr);
-		match data {
-			ColumnBuffer::Bool(container) => {
+		match &data.data {
+			ViewData::Bool(container) => {
 				for i in 0..row_count {
 					let valid = data.is_defined(i);
-					let value = match data.nulls() {
+					let value = match data.logical_nulls() {
 						Some(_) => valid && container.value(i),
 						None => container.value(i),
 					};
@@ -90,19 +95,19 @@ impl QueryNode for AssertNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "AssertNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
-			let row_count = columns.row_count();
+			let row_count = columns.num_rows();
 			let session = eval_context_from_query(stored_ctx);
 
 			for assert_expr in &self.expressions {
 				let result = Self::eval(&session, &columns, row_count, assert_expr)?;
-				self.verify(result.data(), row_count, assert_expr)?;
+				self.verify(&ColumnView::try_from(&result)?, row_count, assert_expr)?;
 			}
 
 			Ok(Some(columns))
@@ -134,19 +139,19 @@ impl AssertWithoutInputNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::eval")]
-	fn eval(session: &EvalContext<'_>, assert_expr: &Expression) -> Result<ColumnWithName> {
+	fn eval(session: &EvalContext<'_>, assert_expr: &Expression) -> Result<(FieldRef, ArrayRef)> {
 		let eval_ctx = session.with_eval_empty();
 		evaluate(&eval_ctx, assert_expr)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::verify")]
-	fn verify(&self, data: &ColumnBuffer, assert_expr: &Expression) -> Result<()> {
+	fn verify(&self, data: &ColumnView<'_>, assert_expr: &Expression) -> Result<()> {
 		let frag = assert_expr.full_fragment_owned();
 		let label = display_label(assert_expr);
-		match data {
-			ColumnBuffer::Bool(container) => {
+		match &data.data {
+			ViewData::Bool(container) => {
 				let valid = data.is_defined(0);
-				let value = match data.nulls() {
+				let value = match data.logical_nulls() {
 					Some(_) => valid && container.value(0),
 					None => container.value(0),
 				};
@@ -180,7 +185,7 @@ impl QueryNode for AssertWithoutInputNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.done {
 			return Ok(None);
 		}
@@ -194,7 +199,7 @@ impl QueryNode for AssertWithoutInputNode {
 
 		for assert_expr in &self.expressions {
 			let result = Self::eval(&session, assert_expr)?;
-			self.verify(result.data(), assert_expr)?;
+			self.verify(&ColumnView::try_from(&result)?, assert_expr)?;
 		}
 
 		Ok(None)

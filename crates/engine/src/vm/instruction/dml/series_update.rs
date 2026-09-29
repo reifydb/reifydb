@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	series::EncodedSeriesRow,
@@ -33,7 +34,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::{PartitionError, partition_of, partition_values},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::single_row, column::builder::ColumnBuilder},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
@@ -43,8 +44,13 @@ use reifydb_value::{
 	params::Params,
 	return_error,
 	value::{
-		Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns,
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{column_view, partitions, row_numbers, user_columns},
 	},
 };
 use smallvec::smallvec;
@@ -52,7 +58,10 @@ use tracing::instrument;
 
 use super::{
 	context::SeriesTarget,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
+	returning::{
+		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image,
+		with_series_stamps,
+	},
 };
 use crate::{
 	Result,
@@ -80,7 +89,7 @@ pub(crate) fn update_series(
 	plan: UpdateSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let UpdateSeriesNode {
 		input,
 		target,
@@ -104,7 +113,7 @@ pub(crate) fn update_series(
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			continue;
 		}
@@ -117,13 +126,13 @@ pub(crate) fn update_series(
 			&columns,
 			PolicyTargetType::Series,
 		)?;
-		if let Some(unknown) = columns.names.iter().find(|name| {
-			!(series.columns.iter().any(|c| c.name == name.text()) || (has_tag && name.text() == "tag"))
+		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
+			!(series.columns.iter().any(|c| &c.name == field.name()) || (has_tag && field.name() == "tag"))
 		}) {
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
 
-		let row_numbers = columns.row_numbers();
+		let row_numbers = row_numbers(&columns)?;
 		let updates_to_apply = build_series_updates_to_apply(
 			services,
 			txn,
@@ -134,6 +143,7 @@ pub(crate) fn update_series(
 			has_tag,
 		)?;
 		enforce_old_row_policies(services, symbols, txn, &target_data, &updates_to_apply, row_numbers)?;
+		let sidecar_partitions = partitions(&columns)?;
 
 		for (key, row, row_idx) in updates_to_apply {
 			let pre_values = match txn.get(&key)? {
@@ -166,7 +176,7 @@ pub(crate) fn update_series(
 			let [row] = rows_buf;
 			let row = row.freeze_bytes();
 			if !series.partition_by.is_empty() {
-				let expected = columns.partitions()[row_idx];
+				let expected = sidecar_partitions[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 				if series_partition_of_bytes(&series, &shape, &row) != expected {
 					return Err(PartitionError::ImmutablePartitionColumn {
@@ -203,18 +213,18 @@ pub(crate) fn update_series(
 
 	if let Some(returning_exprs) = &returning {
 		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
-		let mut pre_cols = decode_rows_to_columns(&shape, &pre_rows);
-		decode_returning_dictionaries(services, txn, &series.columns, &mut pre_cols)?;
-		let cols = with_pre_image(cols, &pre_cols);
+		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
+		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;
+		let pre_cols = decode_rows_to_columns(&shape, &pre_rows)?;
+		let pre_cols = decode_returning_dictionaries(services, txn, &series.columns, pre_cols)?;
+		let cols = with_pre_image(cols, &pre_cols)?;
 		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
 	}
-	Ok(update_series_result(namespace.name(), &series.name, updated_count))
+	update_series_result(namespace.name(), &series.name, updated_count)
 }
 
 struct SeriesUpdateEvent<'a> {
-	columns: &'a Columns,
+	columns: &'a RecordBatch,
 	pre: &'a EncodedBytes,
 	post: &'a EncodedBytes,
 	key_value: u64,
@@ -296,14 +306,15 @@ fn build_series_updates_to_apply(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	columns: &Columns,
+	columns: &RecordBatch,
 	context: &QueryContext,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
 ) -> Result<Vec<(TaggedKey, EncodedBytes, usize)>> {
-	let row_count = columns.row_count();
+	let row_count = columns.num_rows();
 	let partitioned = !series.partition_by.is_empty();
-	if partitioned && columns.partitions().len() != row_count {
+	let sidecar_partitions = partitions(columns)?;
+	if partitioned && sidecar_partitions.len() != row_count {
 		return Err(EngineError::MissingPartitionAddress {
 			object: ObjectId::series(series.id),
 			operation: "UPDATE",
@@ -314,10 +325,10 @@ fn build_series_updates_to_apply(
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
 		let key_value = extract_series_update_key_value(columns, series, row_idx)?;
-		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
+		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx)?;
 
 		let key: TaggedKey = if partitioned {
-			let old_partition = columns.partitions()[row_idx];
+			let old_partition = sidecar_partitions[row_idx];
 			PartitionedSeriesRowKey::new(
 				StorageId::series(series.id),
 				old_partition,
@@ -362,8 +373,8 @@ fn enforce_old_row_policies(
 		}
 	}
 	let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-	let mut old_columns = decode_rows_to_columns(&shape, &old_rows);
-	decode_returning_dictionaries(services, txn, &series.columns, &mut old_columns)?;
+	let old_columns = decode_rows_to_columns(&shape, &old_rows)?;
+	let old_columns = decode_returning_dictionaries(services, txn, &series.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
 		txn,
 		target.namespace.name(),
@@ -395,24 +406,24 @@ fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedB
 }
 
 #[inline]
-fn extract_series_update_key_value(columns: &Columns, series: &Series, row_idx: usize) -> Result<u64> {
+fn extract_series_update_key_value(columns: &RecordBatch, series: &Series, row_idx: usize) -> Result<u64> {
 	let key_column = series.key.column();
-	let column = columns.iter().find(|c| c.name().text() == key_column).ok_or_else(|| {
+	let column = column_view(columns, key_column)?.ok_or_else(|| {
 		internal_error!("update of series {} has no key column {} in its input", series.name, key_column)
 	})?;
-	series_key(series, &column.data().get_value(row_idx))?
+	series_key(series, &column.get_value(row_idx))?
 		.ok_or_else(|| internal_error!("update of series {} reads a row without a key", series.name))
 }
 
 #[inline]
-fn extract_series_update_variant_tag(columns: &Columns, has_tag: bool, row_idx: usize) -> Option<u8> {
+fn extract_series_update_variant_tag(columns: &RecordBatch, has_tag: bool, row_idx: usize) -> Result<Option<u8>> {
 	if !has_tag {
-		return None;
+		return Ok(None);
 	}
-	columns.iter().find(|c| c.name().text() == "tag").and_then(|c| match c.data().get_value(row_idx) {
+	Ok(column_view(columns, "tag")?.and_then(|c| match c.get_value(row_idx) {
 		Value::Uint1(v) => Some(v),
 		_ => None,
-	})
+	}))
 }
 
 #[inline]
@@ -420,7 +431,7 @@ fn build_series_update_bytes(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	columns: &Columns,
+	columns: &RecordBatch,
 	shape: &RowShape,
 	context: &QueryContext,
 	row_idx: usize,
@@ -466,59 +477,28 @@ fn track_series_update_flow_change(
 ) -> Result<()> {
 	let read_shape = get_or_create_series_shape(&services.catalog, series, txn)?;
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(ColumnWithName::new(
-		Fragment::internal(series.key.column()),
-		series.key_column_data(vec![event.key_value]),
-	));
+	pre_col_vec.push(series.key_column_data(vec![event.key_value]));
 	let read_fields = read_shape.fields();
 	for (i, col_def) in series.data_columns().enumerate() {
 		let val = read_shape.get_value(event.pre, i + 1);
 		let mut data = ColumnBuilder::with_capacity(read_fields[i + 1].constraint.get_type(), 1);
 		data.push_value(val);
-		pre_col_vec.push(ColumnWithName {
-			name: Fragment::internal(&col_def.name),
-			data: data.finish(),
-		});
+		pre_col_vec.push(data.finish(&col_def.name));
 	}
 
 	let mut post_col_vec = Vec::with_capacity(1 + series.columns.len());
-	post_col_vec.push(ColumnWithName::new(
-		Fragment::internal(series.key.column()),
-		series.key_column_data(vec![event.key_value]),
-	));
-	for col in event.columns.iter() {
-		if col.name().text() != series.key.column() && col.name().text() != "tag" {
-			let mut data = ColumnBuilder::with_capacity(col.data().get_type(), 1);
-			data.push_value(col.data().get_value(event.row_idx));
-			post_col_vec.push(ColumnWithName {
-				name: col.name().clone(),
-				data: data.finish(),
-			});
+	post_col_vec.push(series.key_column_data(vec![event.key_value]));
+	for (field, array) in user_columns(event.columns) {
+		if field.name() != series.key.column() && field.name() != "tag" {
+			let col = ColumnView::try_from((array, field.as_ref()))?;
+			let mut data = ColumnBuilder::with_capacity(col.get_type(), 1);
+			data.push_value(col.get_value(event.row_idx));
+			post_col_vec.push(data.finish(field.name()));
 		}
 	}
 
-	let pre = Columns::with_system(
-		pre_col_vec,
-		SystemColumns::new(
-			vec![event.row_number],
-			Vec::new(),
-			vec![EncodedSeriesRow::view(event.pre).created_at()],
-			vec![EncodedSeriesRow::view(event.pre).updated_at()],
-			EncodedSeriesRow::view(event.pre).time().into_iter().collect(),
-			Vec::new(),
-		),
-	);
-	let post = Columns::with_system(
-		post_col_vec,
-		SystemColumns::new(
-			vec![event.row_number],
-			Vec::new(),
-			vec![EncodedSeriesRow::view(event.post).created_at()],
-			vec![EncodedSeriesRow::view(event.post).updated_at()],
-			EncodedSeriesRow::view(event.post).time().into_iter().collect(),
-			Vec::new(),
-		),
-	);
+	let pre = with_series_stamps(pre_col_vec, event.row_number, event.pre)?;
+	let post = with_series_stamps(post_col_vec, event.row_number, event.post)?;
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -529,8 +509,8 @@ fn track_series_update_flow_change(
 }
 
 #[inline]
-fn update_series_result(namespace: &str, series: &str, updated: u64) -> Columns {
-	Columns::single_row([
+fn update_series_result(namespace: &str, series: &str, updated: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),
 		("updated", Value::Uint8(updated)),

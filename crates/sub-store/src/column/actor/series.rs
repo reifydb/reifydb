@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::Catalog,
 	store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
@@ -28,7 +29,6 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
-	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -392,7 +392,7 @@ impl SeriesMaterializationActor {
 		partition: Partition,
 		series: &Series,
 		bucket: &Bucket,
-	) -> Result<Vec<Columns>> {
+	) -> Result<Vec<RecordBatch>> {
 		let services = self.engine.services();
 		let memory = query_budget(&services);
 		let context = Arc::new(QueryContext {
@@ -453,7 +453,7 @@ impl SeriesMaterializationActor {
 	fn build_column_block(
 		&self,
 		series: &Series,
-		batches: Vec<Columns>,
+		batches: Vec<RecordBatch>,
 		version: CommitVersion,
 	) -> Result<ColumnBlock> {
 		let schema = scan_output_schema(series);

@@ -2,10 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::Int64Array;
-use reifydb_value::value::{frame::data::FrameColumnData, value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<i64>) -> FrameColumnData {
-	FrameColumnData::Int8(Int64Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<i64>) -> ColumnData {
+	data(ValueType::Int8, Int64Array::from(v))
 }
 
 crate::nones_tests! {

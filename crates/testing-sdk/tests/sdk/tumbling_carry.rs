@@ -42,6 +42,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 // A TWAP-shaped fixture that isolates the carry rotation. `carry_in` echoes the prior
 // window's closing observation, so assertions here are about the rotation and not the
 // integral math, which the operator's own tests cover.
@@ -190,11 +192,11 @@ fn first_window_has_no_carry() {
 			.insert(input_row(2, "BTC", 30, 20.0))
 			.build())
 		.expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(window_order(0)));
-	assert_eq!(r.f64("sum"), Some(30.0));
-	assert_eq!(r.bool("has_carry"), Some(false), "first window has no prior close to carry in");
-	assert_eq!(r.f64("carry_in"), Some(0.0));
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(0)));
+	assert_eq!(read::<f64>(r, "sum"), Some(30.0));
+	assert_eq!(read::<bool>(r, "has_carry"), Some(false), "first window has no prior close to carry in");
+	assert_eq!(read::<f64>(r, "carry_in"), Some(0.0));
 }
 
 #[test]
@@ -209,9 +211,9 @@ fn remove_empties_window_emits_remove() {
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
-	let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(window_order(0)));
-	assert_eq!(r.f64("sum"), Some(10.0));
+	let r = (out.diffs[0].pre().expect("remove pre"), 0);
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(0)));
+	assert_eq!(read::<f64>(r, "sum"), Some(10.0));
 }
 
 #[test]
@@ -228,11 +230,11 @@ fn second_window_carries_in_prior_window_close() {
 			.build())
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 70, 5.0)).build()).expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(window_order(60)));
-	assert_eq!(r.f64("sum"), Some(5.0));
-	assert_eq!(r.bool("has_carry"), Some(true));
-	assert_eq!(r.f64("carry_in"), Some(20.0), "carry rotated from the closed window's last observation");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(60)));
+	assert_eq!(read::<f64>(r, "sum"), Some(5.0));
+	assert_eq!(read::<bool>(r, "has_carry"), Some(true));
+	assert_eq!(read::<f64>(r, "carry_in"), Some(20.0), "carry rotated from the closed window's last observation");
 }
 
 #[test]
@@ -250,16 +252,16 @@ fn carry_rotates_across_three_windows_in_one_batch() {
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	let w0 = post.row_ref(0).expect("r0");
-	assert_eq!(w0.u64("window_start"), Some(window_order(0)));
-	assert_eq!(w0.bool("has_carry"), Some(false));
-	let w60 = post.row_ref(1).expect("r1");
-	assert_eq!(w60.u64("window_start"), Some(window_order(60)));
-	assert_eq!(w60.f64("carry_in"), Some(10.0));
-	let w120 = post.row_ref(2).expect("r2");
-	assert_eq!(w120.u64("window_start"), Some(window_order(120)));
-	assert_eq!(w120.f64("carry_in"), Some(20.0));
+	assert_eq!(post.num_rows(), 3);
+	let w0 = (post, 0);
+	assert_eq!(read::<u64>(w0, "window_start"), Some(window_order(0)));
+	assert_eq!(read::<bool>(w0, "has_carry"), Some(false));
+	let w60 = (post, 1);
+	assert_eq!(read::<u64>(w60, "window_start"), Some(window_order(60)));
+	assert_eq!(read::<f64>(w60, "carry_in"), Some(10.0));
+	let w120 = (post, 2);
+	assert_eq!(read::<u64>(w120, "window_start"), Some(window_order(120)));
+	assert_eq!(read::<f64>(w120, "carry_in"), Some(20.0));
 }
 
 #[test]
@@ -277,9 +279,9 @@ fn update_in_current_window_recomputes_carry() {
 			.build())
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 60, 1.0)).build()).expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(window_order(60)));
-	assert_eq!(r.f64("carry_in"), Some(50.0), "carry reflects the post-update close");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(60)));
+	assert_eq!(read::<f64>(r, "carry_in"), Some(50.0), "carry reflects the post-update close");
 }
 
 #[test]
@@ -496,7 +498,7 @@ fn a_refilled_carry_window_publishes_an_insert() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "a refilled window publishes once");
 	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
-	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("sum"), Some(5.0));
+	assert_eq!(read::<f64>((out.diffs[0].post().expect("post"), 0), "sum"), Some(5.0));
 }
 
 #[test]
@@ -512,7 +514,7 @@ fn an_emptied_carry_window_publishes_nothing_when_folded() {
 	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 1.0)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
-	assert_eq!(out.diffs.iter().map(|d| d.post().expect("post").row_count()).sum::<usize>(), 1);
+	assert_eq!(out.diffs.iter().map(|d| d.post().expect("post").num_rows()).sum::<usize>(), 1);
 }
 
 #[test]
@@ -528,8 +530,8 @@ fn an_emptied_carry_window_carries_nothing_into_the_next_window() {
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 70, 5.0)).build()).expect("apply");
 
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(window_order(60)));
-	assert_eq!(r.bool("has_carry"), Some(false), "the only prior window was withdrawn");
-	assert_eq!(r.f64("carry_in"), Some(0.0));
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(60)));
+	assert_eq!(read::<bool>(r, "has_carry"), Some(false), "the only prior window was withdrawn");
+	assert_eq!(read::<f64>(r, "carry_in"), Some(0.0));
 }

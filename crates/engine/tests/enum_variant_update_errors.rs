@@ -173,9 +173,9 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 }
 
 fn status_tag(frames: &[Frame]) -> (String, Vec<String>) {
-	let column = frames[0].columns.iter().find(|c| c.name == "status_tag").expect("column status_tag");
-	let values = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
-	(column.data.get_type().to_string(), values)
+	let column = frames[0].column("status_tag").unwrap().expect("column status_tag");
+	let values = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
+	(column.get_type().to_string(), values)
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn a_query_patch_of_an_enum_column_gives_its_field_columns_the_types_a_table_rea
 }
 
 fn column_of(frames: &[Frame], name: &str) -> (String, Vec<String>) {
-	let column = frames[0].columns.iter().find(|c| c.name == name).expect("column");
-	let values = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
-	(column.data.get_type().to_string(), values)
+	let column = frames[0].column(name).unwrap().expect("column");
+	let values = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
+	(column.get_type().to_string(), values)
 }

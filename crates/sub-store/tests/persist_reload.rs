@@ -16,7 +16,7 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_value::value::{Value, duration::Duration, system_columns::column_view};
 
 #[test]
 fn materialized_columns_persist_to_disk_and_reload_after_restart() {
@@ -72,17 +72,17 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 
 	let mut reader = SnapshotReader::new(block, 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
-	assert_eq!(batch.row_count(), 3);
+	assert_eq!(batch.num_rows(), 3);
 
-	let id_col = batch.column("id").expect("id column");
-	let name_col = batch.column("name").expect("name column");
+	let id_col = column_view(&batch, "id").expect("id view").expect("id column");
+	let name_col = column_view(&batch, "name").expect("name view").expect("name column");
 	let mut rows: Vec<(i32, String)> = Vec::new();
 	for i in 0..3 {
-		let id = match id_col.data().get_value(i) {
+		let id = match id_col.get_value(i) {
 			Value::Int4(v) => v,
 			other => panic!("row {i}: expected Int4, got {other:?}"),
 		};
-		let name = match name_col.data().get_value(i) {
+		let name = match name_col.get_value(i) {
 			Value::Utf8(s) => s,
 			other => panic!("row {i}: expected Utf8, got {other:?}"),
 		};

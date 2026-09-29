@@ -3,8 +3,9 @@
 
 pub mod loader;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use postcard::to_stdvec;
-use reifydb_core::value::column::columns::Columns;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::{common::extern_wasm::marshal::unmarshal_columns_from_bytes, error::SdkError};
 use reifydb_value::{error::Error, value::value_type::ValueType};
@@ -47,7 +48,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExternWasmProcedure {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
 			ext_err(ExtensionError::Invocation(format!(
 				"WASM procedure '{}' failed to serialize params: {}",

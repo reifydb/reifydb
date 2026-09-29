@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::blob::Blob;
 
 use super::common::{assert_column_eq, round_trip_column};
@@ -12,28 +12,28 @@ fn blob(bytes: &[u8]) -> Blob {
 
 #[test]
 fn blob_empty() {
-	let input = ColumnBuffer::blob([blob(&[])]);
+	let input = factory::blob("c", [blob(&[])]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_empty", &input, &output);
 }
 
 #[test]
 fn blob_single_byte() {
-	let input = ColumnBuffer::blob([blob(&[0x42])]);
+	let input = factory::blob("c", [blob(&[0x42])]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_single_byte", &input, &output);
 }
 
 #[test]
 fn blob_eight_byte_boundary() {
-	let input = ColumnBuffer::blob([blob(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])]);
+	let input = factory::blob("c", [blob(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_eight_byte_boundary", &input, &output);
 }
 
 #[test]
 fn blob_embedded_zeros() {
-	let input = ColumnBuffer::blob([blob(&[0x00, 0xFF, 0x00, 0xAB, 0x00])]);
+	let input = factory::blob("c", [blob(&[0x00, 0xFF, 0x00, 0xAB, 0x00])]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_embedded_zeros", &input, &output);
 }
@@ -41,7 +41,7 @@ fn blob_embedded_zeros() {
 #[test]
 fn blob_full_byte_range() {
 	let bytes: Vec<u8> = (0..=255u8).collect();
-	let input = ColumnBuffer::blob([blob(&bytes)]);
+	let input = factory::blob("c", [blob(&bytes)]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_full_range", &input, &output);
 }
@@ -49,7 +49,7 @@ fn blob_full_byte_range() {
 #[test]
 fn blob_many_short() {
 	let values: Vec<Blob> = (0..100u8).map(|i| blob(&[i, i.wrapping_add(1), i.wrapping_add(2)])).collect();
-	let input = ColumnBuffer::blob(values);
+	let input = factory::blob("c", values);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_many_short", &input, &output);
 }
@@ -57,7 +57,7 @@ fn blob_many_short() {
 #[test]
 fn blob_one_long() {
 	let bytes: Vec<u8> = (0..4096).map(|i| (i % 256) as u8).collect();
-	let input = ColumnBuffer::blob([blob(&bytes)]);
+	let input = factory::blob("c", [blob(&bytes)]);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_long_4kib", &input, &output);
 }
@@ -65,14 +65,15 @@ fn blob_one_long() {
 #[test]
 fn blob_mixed_lengths() {
 	let values: Vec<Blob> = vec![blob(&[]), blob(&[0xAA]), blob(&[0xAA, 0xBB]), blob(&[0xAA, 0xBB, 0xCC])];
-	let input = ColumnBuffer::blob(values);
+	let input = factory::blob("c", values);
 	let output = round_trip_column("b", input.clone());
 	assert_column_eq("blob_mixed_lengths", &input, &output);
 }
 
 #[test]
 fn blob_undefined_first_row() {
-	let input = ColumnBuffer::blob_with_bitvec(
+	let input = factory::blob_with_bitvec(
+		"c",
 		[Blob::default(), blob(&[0x01, 0x02]), blob(&[0x03])],
 		vec![false, true, true],
 	);
@@ -82,7 +83,8 @@ fn blob_undefined_first_row() {
 
 #[test]
 fn blob_alternating_defined_undefined() {
-	let input = ColumnBuffer::blob_with_bitvec(
+	let input = factory::blob_with_bitvec(
+		"c",
 		[blob(&[0x01]), Blob::default(), blob(&[0x02, 0x03]), Blob::default()],
 		vec![true, false, true, false],
 	);

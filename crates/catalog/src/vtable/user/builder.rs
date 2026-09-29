@@ -3,13 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::catalog::{
-		column::{Column, ColumnIndex},
-		id::{ColumnId, NamespaceId},
-		vtable::{VTable, VTableId},
-	},
-	value::column::columns::Columns,
+use arrow_array::RecordBatch;
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::{ColumnId, NamespaceId},
+	vtable::{VTable, VTableId},
 };
 use reifydb_value::{
 	params::Params,
@@ -41,7 +39,7 @@ impl UserVTableBuilder {
 
 	pub fn data<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&Params) -> Columns + Send + Sync + 'static,
+		F: Fn(&Params) -> RecordBatch + Send + Sync + 'static,
 	{
 		self.data_fn = Some(Arc::new(f));
 		self

@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -85,43 +84,22 @@ impl BaseVTable for SystemRelationships {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(ids)),
-			ColumnWithName::new(Fragment::internal("namespace_id"), ColumnBuffer::uint8(namespace_ids)),
-			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(names)),
-			ColumnWithName::new(
-				Fragment::internal("source_table_id"),
-				ColumnBuffer::uint8(source_table_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("source_column_id"),
-				ColumnBuffer::uint8(source_column_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("target_table_id"),
-				ColumnBuffer::uint8(target_table_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("target_column_id"),
-				ColumnBuffer::uint8(target_column_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("junction_table_id"),
-				ColumnBuffer::uint8(junction_table_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("junction_source_column_id"),
-				ColumnBuffer::uint8(junction_source_column_ids),
-			),
-			ColumnWithName::new(
-				Fragment::internal("junction_target_column_id"),
-				ColumnBuffer::uint8(junction_target_column_ids),
-			),
-			ColumnWithName::new(Fragment::internal("cardinality"), ColumnBuffer::utf8(cardinalities)),
+			factory::uint8("id", ids),
+			factory::uint8("namespace_id", namespace_ids),
+			factory::utf8("name", names),
+			factory::uint8("source_table_id", source_table_ids),
+			factory::uint8("source_column_id", source_column_ids),
+			factory::uint8("target_table_id", target_table_ids),
+			factory::uint8("target_column_id", target_column_ids),
+			factory::uint8("junction_table_id", junction_table_ids),
+			factory::uint8("junction_source_column_id", junction_source_column_ids),
+			factory::uint8("junction_target_column_id", junction_target_column_ids),
+			factory::utf8("cardinality", cardinalities),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

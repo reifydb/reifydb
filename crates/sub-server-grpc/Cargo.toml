@@ -38,6 +38,7 @@ futures-util = { workspace = true }
 serde_json = { workspace = true }
 
 # Types
+arrow-array = { workspace = true }
 uuid = { workspace = true }
 
 # Logging
@@ -45,7 +46,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 arrow-array = { workspace = true }
-arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 
 [build-dependencies]

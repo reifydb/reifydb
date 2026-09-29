@@ -16,11 +16,9 @@ pub mod oracle;
 
 use std::sync::Arc;
 
+use arrow_schema::{Schema, SchemaRef};
 use rand::RngExt;
-use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	value::column::columns::Columns,
-};
+use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{filter::FilterOperator, map::MapOperator},
@@ -178,13 +176,13 @@ impl HostOperator for Pipeline {
 		self.terminal.apply(host, staged)
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		HostOperator::output_schema(&self.terminal)
 	}
 }
 
 pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
-	let source_schema = Some(Columns::empty());
+	let source_schema = Some(Arc::new(Schema::empty()));
 	let expressions: Vec<_> = chain
 		.stage_rql()
 		.iter()

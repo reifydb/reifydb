@@ -4,10 +4,12 @@
 use std::f64::consts::E;
 
 use arrow_array::Float64Array;
-use reifydb_value::value::{frame::data::FrameColumnData, value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<f64>) -> FrameColumnData {
-	FrameColumnData::Float8(Float64Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<f64>) -> ColumnData {
+	data(ValueType::Float8, Float64Array::from(v))
 }
 
 crate::nones_tests! {

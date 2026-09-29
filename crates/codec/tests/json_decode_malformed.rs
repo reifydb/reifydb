@@ -6,7 +6,7 @@ use reifydb_codec::json::{
 	from::{frames_from_envelope, frames_from_json},
 	none_marker,
 };
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, column_view::ColumnView, frame::frame::Frame};
 use serde_json::{Value as JsonValue, json, to_string};
 
 fn one_column(ty: JsonValue, payload: Vec<String>) -> JsonValue {
@@ -78,14 +78,14 @@ fn a_decode_error_names_the_column_row_type_and_a_truncated_cell() {
 }
 
 #[test]
-fn a_system_timestamp_error_names_the_system_column_and_row() {
+fn a_system_timestamp_key_is_rejected_by_name() {
 	// A user column may be called created_at, so the error must name the system column unambiguously.
 	let mut json = one_column(json!({"id": "Int4"}), vec!["7".to_string()]);
 	json[0]["updated_at"] = json!(["not a datetime"]);
 
 	let error = decode(json).unwrap_err();
 
-	assert!(error.contains("#updated_at") && error.contains("row 0"), "{error}");
+	assert!(error.contains("frame key updated_at is not supported, system columns travel as # columns"), "{error}");
 }
 
 #[test]
@@ -95,5 +95,6 @@ fn a_bare_digest_column_still_reads_an_empty_slot_marker_as_none() {
 
 	let frames = decode(one_column(ty, vec![NONE_MARKER.to_string()])).expect("an empty digest slot must decode");
 
-	assert!(matches!(frames[0].columns[0].data.get_value(0), Value::None { .. }));
+	let column = ColumnView::try_from((frames[0].batch.column(0), frames[0].batch.schema_ref().field(0))).unwrap();
+	assert!(matches!(column.get_value(0), Value::None { .. }));
 }

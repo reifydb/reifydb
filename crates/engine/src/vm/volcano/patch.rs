@@ -3,13 +3,15 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+	value::column::{headers::ColumnHeaders, write::check_digest_write},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -18,10 +20,14 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions};
+use reifydb_value::{
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{column_view::ColumnView, system_columns::user_columns},
+};
 use tracing::instrument;
 
-use super::NoopNode;
+use super::{NoopNode, user_header_names, with_system_headers, with_user_columns};
 use crate::{
 	Result,
 	vm::volcano::{
@@ -90,7 +96,7 @@ impl QueryNode for PatchNode {
 	}
 
 	#[instrument(name = "volcano::patch::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "PatchNode::next() called before initialize()");
 		}
@@ -105,15 +111,10 @@ impl QueryNode for PatchNode {
 			let result = self.apply(&transform_ctx, columns)?;
 
 			if self.headers.is_none() {
-				let result_headers: Vec<Fragment> = result.iter().map(|c| c.name().clone()).collect();
-				self.headers = Some(ColumnHeaders {
-					columns: result_headers,
-					row_numbers: result.system.has_row_numbers(),
-				});
+				self.headers = Some(ColumnHeaders::from_batch(&result));
 			}
 
-			let mut result = result;
-			strip_udf_columns(&mut result, &self.udf_names);
+			let result = strip_udf_columns(result, &self.udf_names)?;
 			Ok(Some(result))
 		} else {
 			Ok(None)
@@ -129,7 +130,7 @@ impl QueryNode for PatchNode {
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		let mut result = Vec::new();
-		for col in &input_headers.columns {
+		for col in &user_header_names(&input_headers) {
 			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == col.text()) {
 				result.push(patch_names[patch_idx].clone());
 			} else {
@@ -143,19 +144,16 @@ impl QueryNode for PatchNode {
 			}
 		}
 
-		Some(ColumnHeaders {
-			columns: result,
-			row_numbers: input_headers.row_numbers,
-		})
+		Some(with_system_headers(result, &input_headers))
 	}
 }
 
 impl Transform for PatchNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("PatchNode::apply() called before initialize()");
 
-		let row_count = input.row_count();
+		let row_count = input.num_rows();
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
@@ -177,66 +175,56 @@ impl Transform for PatchNode {
 
 			let mut column = Self::eval_patch(compiled_expr, &exec_ctx)?;
 
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
-				&& column.data.get_type() != target_type
-			{
-				column.data.check_digest_write(&target_type, expr.lazy_fragment())?;
-				let data = cast_for_write(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = ColumnWithName {
-					name: column.name,
-					data,
-				};
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				let view = ColumnView::try_from(&column)?;
+				if view.get_type() != target_type {
+					check_digest_write(&view, &target_type, expr.lazy_fragment())?;
+					column = cast_for_write(&exec_ctx, &view, target_type, &expr.lazy_fragment())?;
+				}
 			}
 
 			patch_columns.push(column);
 		}
 
-		Ok(Self::merge(input, &patch_names, patch_columns))
+		Self::merge(input, &patch_names, patch_columns)
 	}
 }
 
 impl PatchNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval_context")]
-	fn eval_context<'e>(session: &EvalContext<'e>, input: &Columns, row_count: usize) -> EvalContext<'e> {
+	fn eval_context<'e>(session: &EvalContext<'e>, input: &RecordBatch, row_count: usize) -> EvalContext<'e> {
 		session.with_eval(input.clone(), row_count)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval")]
-	fn eval_patch(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+	fn eval_patch(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
 		compiled.execute(exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::merge")]
-	fn merge(input: Columns, patch_names: &[Fragment], patch_columns: Vec<ColumnWithName>) -> Columns {
-		let system = input.system.clone();
-		let mut result_columns: Vec<ColumnWithName> = Vec::new();
+	fn merge(
+		input: RecordBatch,
+		patch_names: &[Fragment],
+		patch_columns: Vec<(FieldRef, ArrayRef)>,
+	) -> Result<RecordBatch> {
+		let mut result_columns: Vec<(FieldRef, ArrayRef)> = Vec::new();
 
-		for (original_name, original_data) in input.names.iter().zip(input.columns.iter()) {
-			let original_name_text = original_name.text();
+		for (original_field, original_data) in user_columns(&input) {
+			let original_name_text = original_field.name().as_str();
 
 			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name_text) {
 				result_columns.push(patch_columns[patch_idx].clone());
 			} else {
-				result_columns.push(ColumnWithName::new(original_name.clone(), original_data.clone()));
+				result_columns.push((original_field.clone(), original_data.clone()));
 			}
 		}
 
 		for (patch_idx, patch_name) in patch_names.iter().enumerate() {
-			if !result_columns.iter().any(|c| c.name().text() == patch_name.text()) {
+			if !result_columns.iter().any(|(field, _)| field.name() == patch_name.text()) {
 				result_columns.push(patch_columns[patch_idx].clone());
 			}
 		}
 
-		let mut names_vec = Vec::with_capacity(result_columns.len());
-		let mut buffers_vec = Vec::with_capacity(result_columns.len());
-		for c in result_columns {
-			names_vec.push(c.name);
-			buffers_vec.push(c.data);
-		}
-		Columns {
-			system,
-			columns: buffers_vec,
-			names: names_vec,
-		}
+		with_user_columns(result_columns, &input)
 	}
 }

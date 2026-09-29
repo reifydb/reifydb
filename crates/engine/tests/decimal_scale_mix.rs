@@ -20,8 +20,8 @@ fn command(t: &TestEngine, rql: &str, params: Params) -> Vec<Frame> {
 }
 
 fn texts(frames: &[Frame], name: &str) -> Vec<String> {
-	let column = frames.last().unwrap().columns.iter().find(|c| c.name == name).expect("column");
-	(0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect()
+	let column = frames.last().unwrap().column(name).unwrap().expect("column");
+	(0..column.len()).map(|i| column.get_value(i).to_string()).collect()
 }
 
 fn table_of_two_rows() -> TestEngine {

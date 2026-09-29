@@ -3,8 +3,11 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
 use reifydb_core::{
+	common::TimeSource,
 	interface::{
 		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
@@ -14,16 +17,21 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{append_rows, batch},
+		column::{builder::ColumnBuilder, headers::ColumnHeaders},
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
+use reifydb_value::value::{
+	partition::Partition,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 use tracing::instrument;
 
-use super::super::decode_dictionary_columns;
+use super::{super::decode_dictionary_columns, empty_scan, partition_array, scan_headers, source_system_columns};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -48,6 +56,7 @@ pub struct RingBufferScan {
 	finished: bool,
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
+	system_columns: Vec<SystemColumn>,
 }
 
 impl RingBufferScan {
@@ -81,10 +90,12 @@ impl RingBufferScan {
 			.map(|pb_col| ringbuffer.columns().iter().position(|c| c.name == *pb_col).unwrap())
 			.collect();
 
-		let headers = ColumnHeaders {
-			columns: ringbuffer.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: true,
-		};
+		let system_columns = source_system_columns(
+			!partition_col_indices.is_empty(),
+			ringbuffer.def().time != TimeSource::None,
+			false,
+		);
+		let headers = scan_headers(ringbuffer.columns().iter().map(|col| col.name.as_str()), &system_columns);
 
 		Ok(Self {
 			ringbuffer,
@@ -101,6 +112,7 @@ impl RingBufferScan {
 			finished: false,
 			context: Some(context),
 			initialized: false,
+			system_columns,
 		})
 	}
 
@@ -173,27 +185,23 @@ impl RingBufferScan {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::column_alloc")]
-	fn storage_columns(&self) -> Vec<ColumnWithName> {
+	fn storage_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
 		self.ringbuffer
 			.columns()
 			.iter()
 			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
+			.map(|(idx, col)| {
+				ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(&col.name)
 			})
 			.collect()
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::empty_columns")]
-	fn empty_columns(&self) -> Vec<ColumnWithName> {
+	fn empty_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
 		self.ringbuffer
 			.columns()
 			.iter()
-			.map(|col| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
-			})
+			.map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(&col.name))
 			.collect()
 	}
 
@@ -201,13 +209,12 @@ impl RingBufferScan {
 	fn append_batch(
 		&mut self,
 		txn: &mut Transaction<'_>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(txn, &bytes_vec[0])?;
-		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers.clone())?;
-		Ok(())
+		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::load_partition")]
@@ -273,7 +280,7 @@ impl QueryNode for RingBufferScan {
 	}
 
 	#[instrument(name = "volcano::scan::ringbuffer::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.finished {
 			return Ok(None);
 		}
@@ -284,22 +291,22 @@ impl QueryNode for RingBufferScan {
 		let (batch_rows, row_numbers, partitions_sidecar) = self.drain_batch(txn, batch_size, partitioned)?;
 
 		if !batch_rows.is_empty() {
-			let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
-			self.append_batch(txn, &mut columns, batch_rows, row_numbers)?;
+			let columns = batch(self.storage_columns())?;
+			let mut columns = self.append_batch(txn, columns, batch_rows, row_numbers)?;
 			if partitioned {
-				columns.system.set_partitions(partitions_sidecar);
+				columns = with_system_column(
+					columns,
+					SystemColumn::Partitions,
+					partition_array(&partitions_sidecar),
+				)?;
 			}
 
-			decode_dictionary_columns(&mut columns, &self.dictionaries, txn)?;
-
-			return Ok(Some(columns));
+			return Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, txn)?));
 		}
 
 		self.finished = true;
 		if self.partitions.is_empty() || self.partitions.iter().all(|p| p.metadata.is_empty()) {
-			let mut columns = Columns::new(self.empty_columns());
-			columns.system.mark_row_numbers();
-			return Ok(Some(columns));
+			return Ok(Some(empty_scan(self.empty_columns(), &self.system_columns)?));
 		}
 		Ok(None)
 	}

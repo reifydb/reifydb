@@ -3,14 +3,15 @@
 
 use std::cmp::Reverse;
 
-use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
 use reifydb_profiler::record::AggregateRecord;
 use reifydb_value::{
-	fragment::Fragment,
+	Result,
 	value::{datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 
-pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns {
+pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<RecordBatch> {
 	records.sort_by(|a, b| {
 		(Reverse(a.total_us), a.category.name(), &a.span_name, &a.dimensions).cmp(&(
 			Reverse(b.total_us),
@@ -61,23 +62,23 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		lock_wait.push(Duration::from_micros_infallible(extras[2]));
 	}
 
-	Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("ts"), ts.finish()),
-		ColumnWithName::new(Fragment::internal("category"), category.finish()),
-		ColumnWithName::new(Fragment::internal("span_name"), span_name.finish()),
-		ColumnWithName::new(Fragment::internal("dim_1"), dim_1.finish()),
-		ColumnWithName::new(Fragment::internal("dim_2"), dim_2.finish()),
-		ColumnWithName::new(Fragment::internal("calls"), calls.finish()),
-		ColumnWithName::new(Fragment::internal("total"), total.finish()),
-		ColumnWithName::new(Fragment::internal("p50"), p50.finish()),
-		ColumnWithName::new(Fragment::internal("p75"), p75.finish()),
-		ColumnWithName::new(Fragment::internal("p90"), p90.finish()),
-		ColumnWithName::new(Fragment::internal("p95"), p95.finish()),
-		ColumnWithName::new(Fragment::internal("p98"), p98.finish()),
-		ColumnWithName::new(Fragment::internal("p99"), p99.finish()),
-		ColumnWithName::new(Fragment::internal("p100"), p100.finish()),
-		ColumnWithName::new(Fragment::internal("input_rows"), input_rows.finish()),
-		ColumnWithName::new(Fragment::internal("output_rows"), output_rows.finish()),
-		ColumnWithName::new(Fragment::internal("lock_wait"), lock_wait.finish()),
+	batch(vec![
+		ts.finish("ts"),
+		category.finish("category"),
+		span_name.finish("span_name"),
+		dim_1.finish("dim_1"),
+		dim_2.finish("dim_2"),
+		calls.finish("calls"),
+		total.finish("total"),
+		p50.finish("p50"),
+		p75.finish("p75"),
+		p90.finish("p90"),
+		p95.finish("p95"),
+		p98.finish("p98"),
+		p99.finish("p99"),
+		p100.finish("p100"),
+		input_rows.finish("input_rows"),
+		output_rows.finish("output_rows"),
+		lock_wait.finish("lock_wait"),
 	])
 }

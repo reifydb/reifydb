@@ -13,7 +13,7 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 		flow::OperatorCapability,
 	},
-	value::column::columns::Columns,
+	value::batch::empty_batch,
 };
 use reifydb_flow_async::operator::guard::enforce_apply_capabilities;
 use reifydb_value::value::datetime::DateTime;
@@ -56,7 +56,7 @@ fn run_child() {
 	tracing_subscriber::fmt().with_writer(std::io::stderr).with_ansi(false).without_time().init();
 
 	let mut diffs = Diffs::new();
-	diffs.push(Diff::update(Columns::empty(), Columns::empty()));
+	diffs.push(Diff::update(empty_batch(), empty_batch()));
 	let change =
 		Change::from_flow(OperatorId(42), ChangeVersion::from(CommitVersion(0)), diffs, DateTime::default());
 

@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{binding::BindingProtocol, vtable::VTable},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use super::common_vtable_columns;
 use crate::{
@@ -68,14 +68,11 @@ impl BaseVTable for SystemBindingsGrpc {
 		}
 
 		let mut columns = common_vtable_columns(&bindings);
-		columns.extend(vec![
-			ColumnWithName::new(Fragment::internal("rpc_name"), rpc_names.finish()),
-			ColumnWithName::new(Fragment::internal("format"), formats.finish()),
-		]);
+		columns.extend(vec![rpc_names.finish("rpc_name"), formats.finish("format")]);
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

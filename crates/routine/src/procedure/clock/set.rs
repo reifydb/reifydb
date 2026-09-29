@@ -3,7 +3,9 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
+use reifydb_core::value::batch::single_row;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{
@@ -37,7 +39,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 		ValueType::DateTime
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let arg = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => &args[0],
 			Params::Positional(args) => {
@@ -92,7 +98,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 					}
 				}
 				let dt = mock.now();
-				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
+				Ok(single_row([("clock", Value::DateTime(dt))])?)
 			}
 			Clock::Real => Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("clock::set"),

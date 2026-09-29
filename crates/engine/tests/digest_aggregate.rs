@@ -185,13 +185,13 @@ fn query_with(t: &TestEngine, rql: &str, params: Params) -> Result<Vec<Frame>, B
 
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}")).data.get_type()
+	frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}")).get_type()
 }
 
 fn by_group(frames: &[Frame], name: &str) -> BTreeMap<i32, Value> {

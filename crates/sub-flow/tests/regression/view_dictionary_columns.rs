@@ -29,20 +29,20 @@ fn read_syms(db: &TestDb) -> Vec<(i32, String)> {
 	let Some(frame) = frames.first() else {
 		return vec![];
 	};
-	let Some(id_col) = frame.columns.iter().find(|c| c.name == "id") else {
+	let Some(id_col) = frame.column("id").expect("id reads") else {
 		return vec![];
 	};
-	let Some(sym_col) = frame.columns.iter().find(|c| c.name == "sym") else {
+	let Some(sym_col) = frame.column("sym").expect("sym reads") else {
 		return vec![];
 	};
 
 	let mut out = Vec::new();
-	for i in 0..id_col.data.len() {
-		let id = match id_col.data.get_value(i) {
+	for i in 0..id_col.len() {
+		let id = match id_col.get_value(i) {
 			Value::Int4(v) => v,
 			other => panic!("expected Int4 id, got {:?}", other),
 		};
-		let sym = match sym_col.data.get_value(i) {
+		let sym = match sym_col.get_value(i) {
 			Value::Utf8(s) => s.to_string(),
 			other => panic!(
 				"view dictionary column must decode the stored id back to its Utf8 value; got {:?}",
@@ -105,9 +105,9 @@ fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 
 	let frames = db.query("FROM app::t");
 	let frame = frames.first().expect("table frame");
-	let sym_col = frame.columns.iter().find(|c| c.name == "sym").expect("sym column");
+	let sym_col = frame.column("sym").expect("sym reads").expect("sym column");
 	assert_eq!(
-		sym_col.data.get_value(0),
+		sym_col.get_value(0),
 		Value::Utf8("usdc".into()),
 		"a table dictionary column must decode to the same string the view stored, proving the view and \
 		 table share one interned id space"

@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::{RecordBatch, UInt64Array};
 use reifydb_codec::tag::ValueKind;
-use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value,
-		blob::Blob,
-		constraint::{precision::Precision, scale::Scale},
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		duration::Duration,
-		ordered_f32::OrderedF32,
-		ordered_f64::OrderedF64,
-		row_number::RowNumber,
-		system_columns::SystemColumns,
-		time::Time,
-		value_type::ValueType,
-	},
+use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
+use reifydb_value::value::{
+	Value,
+	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
+	container::temporal_array::datetime_array,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, with_system_column},
+	time::Time,
+	value_type::ValueType,
 };
 
 use crate::{error::SdkError, flow::operator::column::sink::RowSink};
@@ -48,29 +49,18 @@ impl InProcessRowSink {
 		})
 	}
 
-	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<Columns, SdkError> {
-		let out: Vec<ColumnWithName> = self
-			.names
-			.into_iter()
-			.zip(self.cols)
-			.map(|(name, data)| ColumnWithName {
-				name: Fragment::internal(name),
-				data: data.finish(),
-			})
-			.collect();
-		let row_count = out.first().map_or(0, |c| c.data.len());
-		let timestamps = vec![now; row_count];
-		Ok(Columns::with_system(
-			out,
-			SystemColumns::new(
-				row_numbers,
-				Vec::new(),
-				timestamps.clone(),
-				timestamps.clone(),
-				timestamps,
-				Vec::new(),
-			),
-		))
+	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<RecordBatch, SdkError> {
+		let out = self.names.into_iter().zip(self.cols).map(|(name, data)| data.finish(name)).collect();
+		let mut out = batch(out)?;
+		let row_count = out.num_rows();
+		if !row_numbers.is_empty() {
+			let row_numbers = UInt64Array::from(row_numbers.into_iter().map(|rn| rn.0).collect::<Vec<_>>());
+			out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(row_numbers))?;
+		}
+		for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+			out = with_system_column(out, column, Arc::new(datetime_array(vec![now; row_count])))?;
+		}
+		Ok(out)
 	}
 
 	#[inline]

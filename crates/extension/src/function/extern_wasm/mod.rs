@@ -3,12 +3,17 @@
 
 pub mod loader;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{none, rename};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{system_columns::user_columns, value_type::ValueType},
+};
 
 use crate::loader::extern_wasm::invoke_extern_wasm_module;
 
@@ -51,8 +56,12 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let input_bytes = marshal_columns_to_bytes(args)?;
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let input_bytes = marshal_columns_to_bytes(args, ctx.row_count, &[])?;
 		let label = format!("WASM scalar function '{}'", self.info.name);
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)
@@ -61,15 +70,9 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 		let output_columns =
 			unmarshal_columns_from_bytes(&output_bytes).map_err(|e| self.err(e.to_string()))?;
 
-		match output_columns.first() {
-			Some(col) => {
-				let data = col.data().clone();
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
-			}
-			None => {
-				let data = ColumnBuffer::none(args.row_count());
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
-			}
+		match user_columns(&output_columns).next() {
+			Some((field, array)) => Ok(rename((field.clone(), array.clone()), ctx.fragment.text())),
+			None => Ok(none(ctx.fragment.text(), ctx.row_count)),
 		}
 	}
 }

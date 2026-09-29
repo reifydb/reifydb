@@ -7,9 +7,8 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 fn values(frames: &[Frame], column: &str) -> String {
-	let column =
-		frames[0].columns.iter().find(|c| c.name == column).unwrap_or_else(|| panic!("no column {column}"));
-	let values: Vec<String> = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
+	let column = frames[0].column(column).unwrap().unwrap_or_else(|| panic!("no column {column}"));
+	let values: Vec<String> = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
 	format!("ok {values:?}")
 }
 

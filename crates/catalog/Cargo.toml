@@ -25,6 +25,8 @@ reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 
 crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}

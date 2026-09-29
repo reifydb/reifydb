@@ -5,8 +5,9 @@ pub mod loader;
 
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::value::encode_params;
-use reifydb_core::value::column::columns::Columns;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{
@@ -117,7 +118,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExternCProcedure {
 	}
 
 	#[instrument(name = "procedure::extern_c::execute", level = "trace", skip_all)]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let instance_guard = self.instance.lock();
 		let instance = *instance_guard;
 
@@ -184,7 +189,7 @@ impl ExternCProcedure {
 	}
 
 	#[inline]
-	fn collect_or_drain(&self, result_code: i32) -> Result<Columns, RoutineError> {
+	fn collect_or_drain(&self, result_code: i32) -> Result<RecordBatch, RoutineError> {
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(RoutineError::Wrapped(Box::new(
@@ -193,6 +198,6 @@ impl ExternCProcedure {
 			)));
 		}
 
-		Ok(single_columns_from_registry(&self.builder_registry))
+		Ok(single_columns_from_registry(&self.builder_registry)?)
 	}
 }

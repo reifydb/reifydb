@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -88,18 +88,18 @@ impl BaseVTable for SystemEventVariants {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("variant_tag"), variant_tags.finish()),
-			ColumnWithName::new(Fragment::internal("variant_name"), variant_names.finish()),
-			ColumnWithName::new(Fragment::internal("field_count"), field_counts.finish()),
-			ColumnWithName::new(Fragment::internal("field_index"), field_indices.finish()),
-			ColumnWithName::new(Fragment::internal("field_name"), field_names.finish()),
-			ColumnWithName::new(Fragment::internal("field_type"), field_types.finish()),
+			ids.finish("id"),
+			variant_tags.finish("variant_tag"),
+			variant_names.finish("variant_name"),
+			field_counts.finish("field_count"),
+			field_indices.finish("field_index"),
+			field_names.finish("field_name"),
+			field_types.finish("field_type"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

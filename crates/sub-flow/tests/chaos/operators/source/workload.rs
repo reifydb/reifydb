@@ -9,6 +9,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -16,17 +17,21 @@ use reifydb_core::{
 		catalog::dictionary::Dictionary,
 		change::{Change, Diff},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_testing_chaos::operator::workload::{Lanes, Workload};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber,
-		system_columns::SystemColumns, value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	dictionary::DictionaryEntryId,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 
 pub const SYMBOL_COLUMN: &str = "sym";
@@ -73,7 +78,7 @@ impl SourceWorkload {
 		})
 	}
 
-	fn columns(&self, rows: &[SourceRow]) -> Columns {
+	fn columns(&self, rows: &[SourceRow]) -> RecordBatch {
 		let mut symbols = ColumnBuilder::with_capacity(ValueType::DictionaryId, rows.len());
 		let mut values = ColumnBuilder::with_capacity(ValueType::Int8, rows.len());
 		for row in rows {
@@ -81,23 +86,21 @@ impl SourceWorkload {
 			values.push_value(Value::Int8(row.value));
 		}
 		symbols.set_dictionary_id(self.dictionary.id);
-		let symbols = symbols.finish();
-		let values = values.finish();
+		let symbols = symbols.finish(SYMBOL_COLUMN);
+		let values = values.finish(VALUE_COLUMN);
 
 		let stamps: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
-		Columns::with_system(
-			vec![
-				ColumnWithName::new(Fragment::internal(SYMBOL_COLUMN), symbols),
-				ColumnWithName::new(Fragment::internal(VALUE_COLUMN), values),
-			],
-			SystemColumns::new(
-				rows.iter().map(|row| row.number).collect(),
-				Vec::new(),
-				stamps.clone(),
-				stamps.clone(),
-				stamps,
-				Vec::new(),
-			),
+		let system = [
+			(SystemColumn::RowNumbers, factory::uint8("#rownum", rows.iter().map(|row| row.number.0)).1),
+			(SystemColumn::CreatedAt, factory::datetime("#created_at", stamps.clone()).1),
+			(SystemColumn::UpdatedAt, factory::datetime("#updated_at", stamps.clone()).1),
+			(SystemColumn::Time, factory::datetime("#time", stamps).1),
+		];
+		system.into_iter().fold(
+			batch(vec![symbols, values]).expect("the source columns form a batch"),
+			|columns, (column, array)| {
+				with_system_column(columns, column, array).expect("a system column attaches")
+			},
 		)
 	}
 

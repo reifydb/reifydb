@@ -3,9 +3,11 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionInspectorRef},
-	value::column::columns::Columns,
+	value::batch::empty_batch,
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_value::{
@@ -39,7 +41,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let subscription_id_value = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::Uint8(id) => *id,
@@ -74,9 +80,9 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 			ctx.ioc.resolve::<SubscriptionInspectorRef>()
 				.expect("SubscriptionInspector not registered in IoC");
 
-		match inspector.inspect(subscription_id) {
+		match inspector.inspect(subscription_id)? {
 			Some(columns) => Ok(columns),
-			None => Ok(Columns::empty()),
+			None => Ok(empty_batch()),
 		}
 	}
 }

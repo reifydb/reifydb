@@ -3,12 +3,12 @@
 
 use std::result::Result as StdResult;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::object::ObjectId,
 	metrics::execution::StatementMetrics,
-	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -19,7 +19,7 @@ use reifydb_value::params::Params;
 
 use super::pushdown::{append_pushdown, walk_for_source_pushdown};
 
-pub(crate) type SourceFrames = Vec<(ObjectId, Vec<Columns>)>;
+pub(crate) type SourceFrames = Vec<(ObjectId, Vec<RecordBatch>)>;
 
 pub(crate) struct SourceDescriptor {
 	pub object: ObjectId,
@@ -48,10 +48,10 @@ pub(crate) fn run_source_queries(
 			return Err(err.into());
 		}
 		statements.extend(result.metrics.statements);
-		let mut shape_columns: Vec<Columns> = Vec::new();
+		let mut shape_columns: Vec<RecordBatch> = Vec::new();
 		for frame in result.frames {
-			let columns = Columns::from(frame);
-			let row_count = columns.row_count() as u64;
+			let columns = frame.batch;
+			let row_count = columns.num_rows() as u64;
 			total_rows = total_rows.saturating_add(row_count);
 			if total_rows > max_rows {
 				return Err(HydrateError::RowCapExceeded {

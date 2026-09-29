@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, LargeStringArray};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{Array, ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
+
+use crate::function::support::column::utf8_column;
 
 pub struct TextReverse {
 	info: RoutineInfo,
@@ -35,12 +40,16 @@ impl<'a> Routine<FunctionContext<'a>> for TextReverse {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Utf8 {
+		match &data.data {
+			ViewData::Utf8 {
 				container,
 				max_bytes,
 			} => {
@@ -55,17 +64,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextReverse {
 					}
 				}
 
-				let result_col_data = ColumnBuffer::Utf8 {
-					container: LargeStringArray::from(result_data),
-					max_bytes: *max_bytes,
-				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

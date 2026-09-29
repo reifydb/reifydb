@@ -3,14 +3,20 @@
 
 use std::sync::Arc;
 
+use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::Expression,
-	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+	value::{batch::batch, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_routine_abi::{Function, Procedure, context::FunctionContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params, value::Value};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, column_view::ColumnView},
+};
 use tracing::instrument;
 
 use crate::{
@@ -47,7 +53,7 @@ impl GeneratorNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::generator::eval_params")]
-	fn eval_params(&self, session: &EvalContext<'_>) -> Result<Vec<ColumnWithName>> {
+	fn eval_params(&self, session: &EvalContext<'_>) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let evaluation_ctx = session.with_eval_empty();
 
 		let mut evaluated_columns = Vec::new();
@@ -63,22 +69,23 @@ impl GeneratorNode {
 		&self,
 		txn: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
-		evaluated_columns: Vec<ColumnWithName>,
-	) -> Result<Columns> {
+		evaluated_columns: Vec<(FieldRef, ArrayRef)>,
+	) -> Result<RecordBatch> {
 		match self.generator.as_ref().unwrap() {
 			GeneratorImpl::Function(generator) => {
-				let evaluated_params = Columns::new(evaluated_columns);
 				let mut fn_ctx = FunctionContext {
 					fragment: self.function_name.clone(),
 					identity: stored_ctx.identity,
-					row_count: evaluated_params.row_count(),
+					row_count: evaluated_columns.first().map_or(0, |(_, array)| array.len()),
 					runtime_context: &stored_ctx.services.runtime_context,
 				};
-				Ok(generator.call(&mut fn_ctx, &evaluated_params)?)
+				batch(vec![generator.call(&mut fn_ctx, &evaluated_columns)?])
 			}
 			GeneratorImpl::Procedure(procedure) => {
-				let values: Vec<Value> =
-					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
+				let values: Vec<Value> = evaluated_columns
+					.iter()
+					.map(|col| Ok(ColumnView::try_from(col)?.get_value(0)))
+					.collect::<Result<_>>()?;
 				let params = Params::Positional(Arc::new(values));
 				invoke_procedure_routine(
 					&stored_ctx.services,
@@ -121,7 +128,7 @@ impl QueryNode for GeneratorNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::generator::next")]
-	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	expression::Expression,
 	interface::{
@@ -10,7 +12,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	internal_err,
-	value::column::columns::Columns,
+	value::batch::{empty_batch, take_rows},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -20,14 +22,14 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 use tracing::instrument;
 
-use crate::context::FlowContext;
+use crate::{context::FlowContext, operator::forward_system_columns};
 
 pub struct FilterOperator {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -37,7 +39,7 @@ pub struct FilterOperator {
 
 impl FilterOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
@@ -60,9 +62,9 @@ impl FilterOperator {
 		})
 	}
 
-	#[instrument(name = "flow::operator::filter::evaluate", level = "trace", skip_all, fields(rows = columns.row_count()))]
-	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
-		let row_count = columns.row_count();
+	#[instrument(name = "flow::operator::filter::evaluate", level = "trace", skip_all, fields(rows = columns.num_rows()))]
+	fn evaluate(&self, columns: &RecordBatch) -> Result<Vec<bool>> {
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -74,7 +76,7 @@ impl FilterOperator {
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
@@ -84,11 +86,12 @@ impl FilterOperator {
 		let mut mask = vec![true; row_count];
 
 		for compiled_condition in &self.compiled_conditions {
-			let result_col = compiled_condition.execute(&exec_ctx)?;
+			let result = compiled_condition.execute(&exec_ctx)?;
+			let result_col = ColumnView::try_from(&result)?;
 
 			for (row_idx, mask_val) in mask.iter_mut().enumerate() {
 				if *mask_val {
-					match result_col.data().get_value(row_idx) {
+					match result_col.get_value(row_idx) {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => *mask_val = false,
 						Value::None {
@@ -108,15 +111,15 @@ impl FilterOperator {
 		Ok(mask)
 	}
 
-	#[instrument(name = "flow::operator::filter::passing", level = "trace", skip_all, fields(rows = columns.row_count()))]
-	fn filter_passing(&self, columns: &Columns, mask: &[bool]) -> Result<Columns> {
+	#[instrument(name = "flow::operator::filter::passing", level = "trace", skip_all, fields(rows = columns.num_rows()))]
+	fn filter_passing(&self, columns: &RecordBatch, mask: &[bool]) -> Result<RecordBatch> {
 		let passing_indices: Vec<usize> =
 			mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
 
 		if passing_indices.is_empty() {
-			Ok(Columns::empty())
+			Ok(empty_batch())
 		} else {
-			columns.extract_by_indices(&passing_indices)
+			extract(columns, &passing_indices)
 		}
 	}
 }
@@ -153,34 +156,34 @@ impl FilterOperator {
 
 impl FilterOperator {
 	#[inline]
-	pub fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}
 
-	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_filter_insert(&self, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn apply_filter_insert(&self, post: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(post)?;
 		let passing = self.filter_passing(post, &mask)?;
-		if !passing.is_empty() {
+		if passing.num_columns() > 0 {
 			result.push(Diff::insert(passing));
 		}
 		Ok(())
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::filter::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_filter_remove(&self, pre: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+	#[instrument(name = "flow::operator::filter::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
+	fn apply_filter_remove(&self, pre: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(pre)?;
 		let passing = self.filter_passing(pre, &mask)?;
-		if !passing.is_empty() {
+		if passing.num_columns() > 0 {
 			result.push(Diff::remove(passing));
 		}
 		Ok(())
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::filter::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_filter_update(&self, pre: &Columns, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+	#[instrument(name = "flow::operator::filter::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn apply_filter_update(&self, pre: &RecordBatch, post: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
 		let pre_mask = self.evaluate(pre)?;
 		let post_mask = self.evaluate(post)?;
 
@@ -199,17 +202,18 @@ impl FilterOperator {
 		}
 
 		if !updated_idx.is_empty() {
-			result.push(Diff::update(
-				pre.extract_by_indices(&updated_idx)?,
-				post.extract_by_indices(&updated_idx)?,
-			));
+			result.push(Diff::update(extract(pre, &updated_idx)?, extract(post, &updated_idx)?));
 		}
 		if !inserted_idx.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&inserted_idx)?));
+			result.push(Diff::insert(extract(post, &inserted_idx)?));
 		}
 		if !removed_idx.is_empty() {
-			result.push(Diff::remove(pre.extract_by_indices(&removed_idx)?));
+			result.push(Diff::remove(extract(pre, &removed_idx)?));
 		}
 		Ok(())
 	}
+}
+
+fn extract(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+	forward_system_columns(&take_rows(columns, indices)?)
 }

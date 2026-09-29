@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::iter::repeat_n;
+use std::{iter::repeat_n, slice::from_ref, sync::Arc};
 
-use arrow_array::FixedSizeBinaryArray;
-use arrow_buffer::BooleanBuffer;
+use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, make_array};
+use arrow_buffer::NullBuffer;
+use arrow_schema::Schema;
 use reifydb_codec::frame::{
 	decode::decode_frames,
 	encode::encode_frames,
@@ -13,13 +14,15 @@ use reifydb_codec::frame::{
 };
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	container::{
 		dictionary_array::{self, dictionary_array},
 		fixed_array,
 		wide_int_array::{wide_array, wides},
 	},
 	dictionary::DictionaryEntryId,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	frame::frame::Frame,
+	value_type::{ValueType, field::named},
 };
 
 const FIRST_COLUMN_ENCODING_BYTE: usize = MESSAGE_HEADER_SIZE + FRAME_HEADER_SIZE + 1;
@@ -32,17 +35,22 @@ const UINT16_BOUNDARIES: [u128; 4] = [0, 1 << 64, 1 << 127, u128::MAX];
 
 const PAD: usize = 3;
 
-fn round_trip(data: FrameColumnData, encoding: Encoding) -> FrameColumnData {
-	let frame = Frame::new(vec![FrameColumn {
-		name: "c".to_string(),
-		data,
-	}]);
-	let encoded = encode_frames(&[frame], &EncodeOptions::forced(encoding)).expect("encode failed");
+fn frame(value_type: ValueType, array: ArrayRef) -> Frame {
+	let (field, array) = named("c", value_type.into(), array);
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap())
+}
+
+fn view(frame: &Frame) -> ColumnView<'_> {
+	ColumnView::try_from((frame.batch.column(0), frame.batch.schema_ref().field(0))).unwrap()
+}
+
+fn round_trip(frame: &Frame, encoding: Encoding) -> Frame {
+	let encoded = encode_frames(from_ref(frame), &EncodeOptions::forced(encoding)).expect("encode failed");
 	// A silent fallback to plain would leave the forced encoding untested.
 	assert_eq!(encoded[FIRST_COLUMN_ENCODING_BYTE], encoding as u8, "encoder fell back from {encoding:?}");
 	let mut frames = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(frames.len(), 1);
-	frames.remove(0).columns.remove(0).data
+	frames.remove(0)
 }
 
 fn repeat_each<T: Copy>(values: &[T], times: usize) -> Vec<T> {
@@ -80,47 +88,37 @@ fn uint16_shapes(encoding: Encoding) -> Vec<Vec<u128>> {
 	}
 }
 
-fn int16s(data: &FrameColumnData) -> &FixedSizeBinaryArray {
-	match data {
-		FrameColumnData::Int16(array) => array,
-		other => panic!("expected an Int16 column, found {:?}", other.get_type()),
-	}
+fn fixed(frame: &Frame, expected: ValueType) -> &FixedSizeBinaryArray {
+	let found = view(frame).get_type();
+	assert_eq!(found, expected, "expected a {expected:?} column, found {found:?}");
+	frame.batch.column(0).as_any().downcast_ref::<FixedSizeBinaryArray>().expect("a fixed size binary array")
 }
 
-fn uint16s(data: &FrameColumnData) -> &FixedSizeBinaryArray {
-	match data {
-		FrameColumnData::Uint16(array) => array,
-		other => panic!("expected a Uint16 column, found {:?}", other.get_type()),
-	}
+fn int16s(frame: &Frame) -> &FixedSizeBinaryArray {
+	fixed(frame, ValueType::Int16)
 }
 
-fn dictionary_column(container: FixedSizeBinaryArray) -> FrameColumnData {
-	FrameColumnData::DictionaryId {
-		container,
-		dictionary_id: None,
-	}
+fn uint16s(frame: &Frame) -> &FixedSizeBinaryArray {
+	fixed(frame, ValueType::Uint16)
 }
 
-fn dictionary_entries(data: &FrameColumnData) -> Vec<DictionaryEntryId> {
-	match data {
-		FrameColumnData::DictionaryId {
-			container,
-			..
-		} => dictionary_array::iter(container).collect(),
-		other => panic!("expected a DictionaryId column, found {:?}", other.get_type()),
-	}
+fn dictionary_column(container: FixedSizeBinaryArray) -> Frame {
+	frame(ValueType::DictionaryId, Arc::new(container))
 }
 
-fn with_none_at_row_one(inner: FrameColumnData) -> FrameColumnData {
+fn dictionary_entries(frame: &Frame) -> Vec<DictionaryEntryId> {
+	dictionary_array::iter(fixed(frame, ValueType::DictionaryId)).collect()
+}
+
+fn with_none_at_row_one(value_type: ValueType, inner: FixedSizeBinaryArray) -> Frame {
 	let defined: Vec<bool> = (0..inner.len()).map(|row| row != 1).collect();
-	FrameColumnData::Option {
-		inner: Box::new(inner),
-		bitvec: BooleanBuffer::from(defined),
-	}
+	let data = inner.into_data().into_builder().nulls(Some(NullBuffer::from(defined))).build().unwrap();
+	frame(ValueType::Option(Box::new(value_type)), make_array(data))
 }
 
-fn row_values(data: &FrameColumnData) -> Vec<Value> {
-	(0..data.len()).map(|row| data.get_value(row)).collect()
+fn row_values(frame: &Frame) -> Vec<Value> {
+	let view = view(frame);
+	(0..view.len()).map(|row| view.get_value(row)).collect()
 }
 
 #[test]
@@ -128,7 +126,8 @@ fn int16_extremes_round_trip_through_every_encoding() {
 	// A narrowing or wrapping encoder would change a value only a 128 bit column can hold.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Int16(wide_array(values.clone())), encoding);
+			let decoded =
+				round_trip(&frame(ValueType::Int16, Arc::new(wide_array(values.clone()))), encoding);
 			assert_eq!(wides::<i128>(int16s(&decoded)), values, "{encoding:?}");
 		}
 	}
@@ -139,7 +138,8 @@ fn uint16_width_boundaries_round_trip_through_every_encoding() {
 	// Rows at 2^64, 2^127 or u128::MAX would be clipped or pick up a sign through the signed 256 bit native.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in uint16_shapes(encoding) {
-			let decoded = round_trip(FrameColumnData::Uint16(wide_array(values.clone())), encoding);
+			let decoded =
+				round_trip(&frame(ValueType::Uint16, Arc::new(wide_array(values.clone()))), encoding);
 			assert_eq!(wides::<u128>(uint16s(&decoded)), values, "{encoding:?}");
 		}
 	}
@@ -156,7 +156,7 @@ fn dictionary_ids_round_trip_each_width_at_zero_and_its_max() {
 		vec![DictionaryEntryId::U16(0), DictionaryEntryId::U16(u128::MAX)],
 	];
 	for entries in columns {
-		let decoded = round_trip(dictionary_column(dictionary_array(entries.clone())), Encoding::Plain);
+		let decoded = round_trip(&dictionary_column(dictionary_array(entries.clone())), Encoding::Plain);
 		assert_eq!(dictionary_entries(&decoded), entries);
 	}
 }
@@ -165,7 +165,7 @@ fn dictionary_ids_round_trip_each_width_at_zero_and_its_max() {
 fn mixed_width_dictionary_ids_keep_every_value_at_the_widest_width() {
 	// A row written at its own width inside a column read at the widest width would shift every later row.
 	let up_to_u4 = [DictionaryEntryId::U1(u8::MAX), DictionaryEntryId::U4(u32::MAX), DictionaryEntryId::U2(0)];
-	let decoded = round_trip(dictionary_column(dictionary_array(up_to_u4)), Encoding::Plain);
+	let decoded = round_trip(&dictionary_column(dictionary_array(up_to_u4)), Encoding::Plain);
 	assert_eq!(
 		dictionary_entries(&decoded),
 		[DictionaryEntryId::U4(u8::MAX as u32), DictionaryEntryId::U4(u32::MAX), DictionaryEntryId::U4(0)]
@@ -180,7 +180,7 @@ fn mixed_width_dictionary_ids_keep_every_value_at_the_widest_width() {
 	];
 	let widened: Vec<DictionaryEntryId> =
 		up_to_u16.iter().map(|entry| DictionaryEntryId::U16(entry.to_u128())).collect();
-	let decoded = round_trip(dictionary_column(dictionary_array(up_to_u16)), Encoding::Plain);
+	let decoded = round_trip(&dictionary_column(dictionary_array(up_to_u16)), Encoding::Plain);
 	assert_eq!(dictionary_entries(&decoded), widened);
 }
 
@@ -189,19 +189,19 @@ fn option_wrapped_columns_keep_their_none_row_through_every_encoding() {
 	// Dropping the none row, or losing its inner type, would shift a value or return an untyped none.
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
-			let column = with_none_at_row_one(FrameColumnData::Int16(wide_array(values)));
-			let decoded = round_trip(column.clone(), encoding);
+			let column = with_none_at_row_one(ValueType::Int16, wide_array(values));
+			let decoded = round_trip(&column, encoding);
 			assert_eq!(row_values(&decoded), row_values(&column), "{encoding:?}");
 		}
 		for values in uint16_shapes(encoding) {
-			let column = with_none_at_row_one(FrameColumnData::Uint16(wide_array(values)));
-			let decoded = round_trip(column.clone(), encoding);
+			let column = with_none_at_row_one(ValueType::Uint16, wide_array(values));
+			let decoded = round_trip(&column, encoding);
 			assert_eq!(row_values(&decoded), row_values(&column), "{encoding:?}");
 		}
 	}
 	let entries = [DictionaryEntryId::U4(0), DictionaryEntryId::U4(7), DictionaryEntryId::U4(u32::MAX)];
-	let column = with_none_at_row_one(dictionary_column(dictionary_array(entries)));
-	let decoded = round_trip(column.clone(), Encoding::Plain);
+	let column = with_none_at_row_one(ValueType::DictionaryId, dictionary_array(entries));
+	let decoded = round_trip(&column, Encoding::Plain);
 	assert_eq!(row_values(&decoded), row_values(&column));
 }
 
@@ -211,18 +211,18 @@ fn sliced_columns_round_trip_only_their_window() {
 	for encoding in NUMERIC_ENCODINGS {
 		for values in int16_shapes(encoding) {
 			let sliced = fixed_array::slice(&wide_array(padded(42, &values)), PAD, PAD + values.len());
-			let decoded = round_trip(FrameColumnData::Int16(sliced), encoding);
+			let decoded = round_trip(&frame(ValueType::Int16, Arc::new(sliced)), encoding);
 			assert_eq!(wides::<i128>(int16s(&decoded)), values, "{encoding:?}");
 		}
 		for values in uint16_shapes(encoding) {
 			let sliced = fixed_array::slice(&wide_array(padded(42, &values)), PAD, PAD + values.len());
-			let decoded = round_trip(FrameColumnData::Uint16(sliced), encoding);
+			let decoded = round_trip(&frame(ValueType::Uint16, Arc::new(sliced)), encoding);
 			assert_eq!(wides::<u128>(uint16s(&decoded)), values, "{encoding:?}");
 		}
 	}
 	let entries = [DictionaryEntryId::U1(0), DictionaryEntryId::U1(u8::MAX), DictionaryEntryId::U1(7)];
 	let all = dictionary_array(padded(DictionaryEntryId::U16(u128::MAX), &entries));
 	let sliced = fixed_array::slice(&all, PAD, PAD + entries.len());
-	let decoded = round_trip(dictionary_column(sliced), Encoding::Plain);
+	let decoded = round_trip(&dictionary_column(sliced), Encoding::Plain);
 	assert_eq!(dictionary_entries(&decoded), entries);
 }

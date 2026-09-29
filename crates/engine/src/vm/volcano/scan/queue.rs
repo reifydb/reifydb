@@ -3,21 +3,27 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{bytes::EncodedBytes, queue::EncodedQueueRow, shape::RowShape};
 use reifydb_core::{
+	common::TimeSource,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, row::RowKeyRange},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{append_rows, batch},
+		column::{builder::ColumnBuilder, headers::ColumnHeaders},
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
-};
+use reifydb_value::value::{row_number::RowNumber, system_columns::SystemColumn, value_type::ValueType};
 use tracing::instrument;
 
-use super::super::decode_dictionary_columns;
+use super::{
+	super::{decode_dictionary_columns, user_pairs, with_user_columns},
+	empty_scan, scan_headers, source_system_columns,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -34,6 +40,7 @@ pub struct QueueScan {
 	last_key: Option<TaggedKey>,
 	exhausted: bool,
 	context: Option<Arc<QueryContext>>,
+	system_columns: Vec<SystemColumn>,
 }
 
 impl QueueScan {
@@ -53,10 +60,8 @@ impl QueueScan {
 			dictionaries.push(None);
 		}
 
-		let headers = ColumnHeaders {
-			columns: queue.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: true,
-		};
+		let system_columns = source_system_columns(false, queue.def().time != TimeSource::None, false);
+		let headers = scan_headers(queue.columns().iter().map(|col| col.name.as_str()), &system_columns);
 
 		Ok(Self {
 			queue,
@@ -67,6 +72,7 @@ impl QueueScan {
 			last_key: None,
 			exhausted: false,
 			context: Some(context),
+			system_columns,
 		})
 	}
 
@@ -130,15 +136,14 @@ impl QueueScan {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::column_alloc")]
-	fn storage_columns(&self, shape: &RowShape, declared: usize) -> Result<Vec<ColumnWithName>> {
-		let mut storage_columns: Vec<ColumnWithName> = self
+	fn storage_columns(&self, shape: &RowShape, declared: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
+		let mut storage_columns: Vec<(FieldRef, ArrayRef)> = self
 			.queue
 			.columns()
 			.iter()
 			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
+			.map(|(idx, col)| {
+				ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(&col.name)
 			})
 			.collect();
 
@@ -146,10 +151,8 @@ impl QueueScan {
 			let field = shape.get_field(index).ok_or_else(|| {
 				internal_error!("queue {} shape lost field {}", self.queue.def().name, index)
 			})?;
-			storage_columns.push(ColumnWithName {
-				name: Fragment::internal(field.name.clone()),
-				data: ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(),
-			});
+			storage_columns
+				.push(ColumnBuilder::with_capacity(field.constraint.get_type(), 0).finish(&field.name));
 		}
 
 		Ok(storage_columns)
@@ -158,28 +161,25 @@ impl QueueScan {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::append_rows")]
 	fn append_batch(
 		shape: &RowShape,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
-		columns.append_rows(shape, bytes_vec.into_iter(), row_numbers)?;
-		Ok(())
+	) -> Result<RecordBatch> {
+		append_rows(columns, shape, bytes_vec, row_numbers)
 	}
 
 	fn enqueue_order_range(&self) -> TaggedKeyBoundRange {
 		RowKeyRange::scan_range(self.queue.def().id.into(), None).resume_before(self.last_key.as_ref())
 	}
 
-	fn empty_declared_columns(&self) -> Columns {
-		Columns::new(
+	fn empty_declared_columns(&self) -> Result<RecordBatch> {
+		empty_scan(
 			self.queue
 				.columns()
 				.iter()
-				.map(|col| ColumnWithName {
-					name: Fragment::internal(&col.name),
-					data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
-				})
+				.map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(&col.name))
 				.collect(),
+			&self.system_columns,
 		)
 	}
 }
@@ -191,7 +191,7 @@ impl QueryNode for QueueScan {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -211,7 +211,7 @@ impl QueryNode for QueueScan {
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				return Ok(Some(self.empty_declared_columns()));
+				return Ok(Some(self.empty_declared_columns()?));
 			}
 			return Ok(None);
 		}
@@ -223,15 +223,15 @@ impl QueryNode for QueueScan {
 
 		let storage_columns = self.storage_columns(&shape, declared)?;
 
-		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-		Self::append_batch(&shape, &mut columns, batch_rows, row_numbers)?;
+		let columns = batch(storage_columns)?;
+		let columns = Self::append_batch(&shape, columns, batch_rows, row_numbers)?;
 
-		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
+		let columns = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
 
-		columns.columns.truncate(declared);
-		columns.names.truncate(declared);
+		let mut user = user_pairs(&columns);
+		user.truncate(declared);
 
-		Ok(Some(columns))
+		Ok(Some(with_user_columns(user, &columns)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

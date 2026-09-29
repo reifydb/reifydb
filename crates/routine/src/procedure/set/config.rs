@@ -3,10 +3,12 @@
 
 use std::{str::FromStr, sync::LazyLock};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
 	interface::catalog::config::ConfigKey,
-	value::column::{cast::cast_value, columns::Columns},
+	value::{batch::single_row, column::cast::cast_value},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
@@ -42,7 +44,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let (key, value) = match ctx.params {
 			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
 			Params::Positional(args) => {
@@ -116,6 +122,6 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 			}
 		}
 
-		Ok(Columns::single_row([("key", Value::Utf8(key_str)), ("value", value_clone)]))
+		Ok(single_row([("key", Value::Utf8(key_str)), ("value", value_clone)])?)
 	}
 }

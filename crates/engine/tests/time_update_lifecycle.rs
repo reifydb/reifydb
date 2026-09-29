@@ -8,7 +8,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId, system_columns},
 };
 
 const BLOCK_TIME: &str = "@2020-01-01T00:00:00Z";
@@ -38,14 +38,14 @@ fn query_internal(t: &TestEngine, rql: &str) -> Vec<Frame> {
 
 fn only_time(t: &TestEngine, rql: &str) -> DateTime {
 	let frames = query_internal(t, rql);
-	let time = frames[0].time();
+	let time = system_columns::time(&frames[0].batch).unwrap();
 	assert_eq!(time.len(), 1, "expected exactly one row from `{rql}`");
 	time[0]
 }
 
 fn only_updated_at(t: &TestEngine, rql: &str) -> DateTime {
 	let frames = query_internal(t, rql);
-	let updated_at = frames[0].updated_at();
+	let updated_at = system_columns::updated_at(&frames[0].batch).unwrap();
 	assert_eq!(updated_at.len(), 1, "expected exactly one row from `{rql}`");
 	updated_at[0]
 }

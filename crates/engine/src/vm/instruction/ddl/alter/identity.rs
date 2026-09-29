@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::AlterIdentityNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{params::Params, value::Value};
@@ -17,7 +18,7 @@ pub(crate) fn alter_identity(
 	txn: &mut AdminTransaction,
 	plan: AlterIdentityNode,
 	params: &Params,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let name = plan.name.text();
 
 	let found = services.catalog.find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)?;
@@ -47,5 +48,5 @@ pub(crate) fn alter_identity(
 		services.catalog.set_identity_attribute_value(txn, identity.id, &attribute, value)?;
 	}
 
-	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("altered", Value::Boolean(true))]))
+	single_row([("identity", Value::Utf8(name.to_string())), ("altered", Value::Boolean(true))])
 }

@@ -115,14 +115,14 @@ fn assert_curve_rows(db: &TestDb, want: usize) {
 fn cost_rows(db: &TestDb) -> Vec<(String, Option<i64>)> {
 	let mut rows = Vec::new();
 	for frame in db.query("FROM app::cost") {
-		let pools = frame.columns.iter().find(|c| c.name == "pool").expect("cost must expose a pool column");
-		let usds = frame.columns.iter().find(|c| c.name == "usd").expect("cost must expose a usd column");
-		for row in 0..pools.data.len() {
-			let pool = match pools.data.get_value(row) {
+		let pools = frame.column("pool").expect("pool reads").expect("cost must expose a pool column");
+		let usds = frame.column("usd").expect("usd reads").expect("cost must expose a usd column");
+		for row in 0..pools.len() {
+			let pool = match pools.get_value(row) {
 				Value::Utf8(pool) => pool,
 				other => panic!("pool must be utf8, got {other:?}"),
 			};
-			let usd = match usds.data.get_value(row) {
+			let usd = match usds.get_value(row) {
 				Value::Int8(usd) => Some(usd),
 				Value::None {
 					..
@@ -143,9 +143,9 @@ fn paired(pool: &str, usd: i64) -> (String, Option<i64>) {
 fn catalog_id(db: &TestDb, system: &str, name: &str) -> u64 {
 	let frames = db.query(&format!("FROM system::{system} FILTER {{ name == '{name}' }}"));
 	let frame = frames.first().expect("system catalog frame");
-	let ids = frame.columns.iter().find(|c| c.name == "id").expect("system catalog must expose an id column");
-	assert_eq!(ids.data.len(), 1, "'{name}' must name exactly one entry in system::{system}");
-	match ids.data.get_value(0) {
+	let ids = frame.column("id").expect("id reads").expect("system catalog must expose an id column");
+	assert_eq!(ids.len(), 1, "'{name}' must name exactly one entry in system::{system}");
+	match ids.get_value(0) {
 		Value::Uint8(id) => id,
 		other => panic!("'{name}' has no numeric id in system::{system}, got {other:?}"),
 	}

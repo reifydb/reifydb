@@ -6,6 +6,8 @@ pub mod view;
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, SourceRowBuilder},
 	shape::{RowFamily, RowShape},
@@ -18,7 +20,10 @@ use reifydb_core::{
 		},
 		evaluate::TargetColumn,
 	},
-	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns},
+	value::{
+		batch::empty_batch,
+		column::{cast::cast_column_data, factory::none_typed, write::check_digest_write},
+	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
@@ -28,35 +33,50 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value,
+		column_view::ColumnView,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{column_view, created_at, time, updated_at, user_columns},
+	},
 };
 
-use crate::error::FlowSinkError;
+use crate::{error::FlowSinkError, operator::with_system_columns_of};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 
 pub fn coerce_columns(
-	columns: &Columns,
+	columns: &RecordBatch,
 	target_columns: &[CatalogColumn],
 	runtime_context: &RuntimeContext,
-) -> Result<Columns> {
-	let row_count = columns.row_count();
+) -> Result<RecordBatch> {
+	let row_count = columns.num_rows();
 	if row_count == 0 {
-		return Ok(Columns::empty());
+		return Ok(empty_batch());
 	}
 
 	if target_columns.is_empty() {
 		return Ok(columns.clone());
 	}
 
-	if columns.len() == target_columns.len()
-		&& target_columns.iter().enumerate().all(|(i, target_col)| {
-			columns.name_at(i).text() == target_col.name.as_str()
-				&& columns.data_at(i).get_type() == target_col.constraint.get_type()
-		}) {
-		return Ok(columns.clone());
+	let user: Vec<(&FieldRef, &ArrayRef)> = user_columns(columns).collect();
+	if user.len() == target_columns.len() {
+		let mut unchanged = true;
+		for ((field, array), target_col) in user.iter().zip(target_columns) {
+			if field.name() != target_col.name.as_str()
+				|| ColumnView::try_from((*array, field.as_ref()))?.get_type()
+					!= target_col.constraint.get_type()
+			{
+				unchanged = false;
+				break;
+			}
+		}
+		if unchanged {
+			return Ok(columns.clone());
+		}
 	}
 
 	let mut result_columns = Vec::with_capacity(target_columns.len());
@@ -69,7 +89,7 @@ pub fn coerce_columns(
 		runtime_context,
 		identity: IdentityId::system(),
 		is_aggregate_context: false,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
@@ -86,49 +106,37 @@ pub fn coerce_columns(
 			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
 		});
 
-		if let Some(source_col) = columns.column(&target_col.name) {
-			source_col.data().check_digest_write(&target_type, Fragment::internal(&target_col.name))?;
+		if let Some(source_col) = column_view(columns, &target_col.name)? {
+			check_digest_write(&source_col, &target_type, Fragment::internal(&target_col.name))?;
 			let casted = cast_column_data(
 				&ctx,
-				source_col.data(),
+				&source_col,
 				target_type.clone(),
 				Fragment::internal(&target_col.name),
 			)?;
-			result_columns.push(ColumnWithName::new(Fragment::internal(&target_col.name), casted));
+			result_columns.push(casted);
 		} else {
-			result_columns.push(ColumnWithName::undefined_typed(
-				Fragment::internal(&target_col.name),
-				target_type,
-				row_count,
-			))
+			result_columns.push(none_typed(&target_col.name, target_type, row_count))
 		}
 	}
 
-	let mut names_vec = Vec::with_capacity(result_columns.len());
-	let mut buffers_vec = Vec::with_capacity(result_columns.len());
-	for c in result_columns {
-		names_vec.push(c.name);
-		buffers_vec.push(c.data);
-	}
-	Ok(Columns {
-		system: columns.system.clone(),
-		columns: buffers_vec,
-		names: names_vec,
-	})
+	with_system_columns_of(result_columns, columns)
 }
 
-pub fn shape_field_columns(columns: &Columns, shape: &RowShape) -> Vec<usize> {
+pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize> {
 	shape.field_names()
 		.map(|field_name| {
-			columns.iter()
-				.position(|col| col.name().as_ref() == field_name)
-				.unwrap_or_else(|| panic!("Column '{}' not found in Columns", field_name))
+			columns.schema_ref()
+				.fields()
+				.iter()
+				.position(|field| field.name() == field_name)
+				.unwrap_or_else(|| panic!("Column '{}' not found in the batch", field_name))
 		})
 		.collect()
 }
 
 pub fn encode_row_at_index(
-	columns: &Columns,
+	columns: &RecordBatch,
 	row_idx: usize,
 	shape: &RowShape,
 	row_number: RowNumber,
@@ -155,33 +163,37 @@ pub fn encode_row_at_index(
 	}
 }
 
+pub(crate) fn value_at(columns: &RecordBatch, index: usize, row_idx: usize) -> Result<Value> {
+	Ok(ColumnView::try_from((columns.column(index), columns.schema_ref().field(index)))?.get_value(row_idx))
+}
+
 fn stamp_source_row<B: SourceRowBuilder>(
 	mut encoded: B,
-	columns: &Columns,
+	columns: &RecordBatch,
 	row_idx: usize,
 	shape: &RowShape,
 	row_number: RowNumber,
 	field_columns: &[usize],
 ) -> Result<(RowNumber, EncodedBytes)> {
 	let values: Vec<Value> =
-		field_columns.iter().map(|&col_idx| columns.data_at(col_idx).get_value(row_idx)).collect();
+		field_columns.iter().map(|&col_idx| value_at(columns, col_idx, row_idx)).collect::<Result<Vec<_>>>()?;
 
 	shape.set_values(&mut encoded, &values);
 
-	let created_at = columns.created_at().get(row_idx).copied().ok_or_else(|| {
+	let created_at = created_at(columns)?.get(row_idx).copied().ok_or_else(|| {
 		Error::from(FlowSinkError::MissingSystemColumn {
 			column: "created_at",
 			row_idx,
 		})
 	})?;
-	let updated_at = columns.updated_at().get(row_idx).copied().ok_or_else(|| {
+	let updated_at = updated_at(columns)?.get(row_idx).copied().ok_or_else(|| {
 		Error::from(FlowSinkError::MissingSystemColumn {
 			column: "updated_at",
 			row_idx,
 		})
 	})?;
 	encoded.set_timestamps(created_at, updated_at);
-	if let Some(time) = columns.time().get(row_idx).copied() {
+	if let Some(time) = time(columns)?.get(row_idx).copied() {
 		encoded.set_time(time);
 	}
 
@@ -190,9 +202,17 @@ fn stamp_source_row<B: SourceRowBuilder>(
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::UInt64Array;
 	use reifydb_codec::row::{shape::RowShapeField, table::EncodedTableRow};
-	use reifydb_core::value::column::builder::ColumnBuilder;
-	use reifydb_value::value::{datetime::DateTime, system_columns::SystemColumns, value_type::ValueType};
+	use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
+	use reifydb_value::value::{
+		container::temporal_array::datetime_array,
+		datetime::DateTime,
+		system_columns::{SystemColumn, keep_system_columns, with_system_column},
+		value_type::ValueType,
+	};
 
 	use super::*;
 
@@ -200,21 +220,18 @@ mod tests {
 		RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)])
 	}
 
-	fn columns_with_stamps(created_at: i64, updated_at: i64, time: i64) -> Columns {
+	fn columns_with_stamps(created_at: i64, updated_at: i64, time: i64) -> RecordBatch {
 		let mut builder = ColumnBuilder::with_capacity(ValueType::Int4, 1);
 		builder.push_value(Value::Int4(7));
-		let buffer = builder.finish();
-		Columns::with_system(
-			vec![ColumnWithName::new(Fragment::internal("n"), buffer)],
-			SystemColumns::new(
-				vec![RowNumber(1)],
-				Vec::new(),
-				vec![DateTime::from_nanos(created_at)],
-				vec![DateTime::from_nanos(updated_at)],
-				vec![DateTime::from_nanos(time)],
-				Vec::new(),
-			),
-		)
+		let columns = batch(vec![builder.finish("n")]).unwrap();
+		let stamps = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])) as ArrayRef),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array([DateTime::from_nanos(created_at)]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array([DateTime::from_nanos(updated_at)]))),
+			(SystemColumn::Time, Arc::new(datetime_array([DateTime::from_nanos(time)]))),
+		];
+		stamps.into_iter()
+			.fold(columns, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
 	#[test]
@@ -244,8 +261,11 @@ mod tests {
 		// rather than reject them. Substituting a stamp here would give a time-less table's rows a
 		// clock they never had, and rejecting them would make the view permanently empty.
 		let shape = single_field_shape();
-		let mut columns = columns_with_stamps(100, 200, 300);
-		columns.system.set_time(Vec::new());
+		let columns = keep_system_columns(
+			&columns_with_stamps(100, 200, 300),
+			&[SystemColumn::RowNumbers, SystemColumn::CreatedAt, SystemColumn::UpdatedAt],
+		)
+		.unwrap();
 		let field_columns = shape_field_columns(&columns, &shape);
 
 		let (_, encoded) = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap();

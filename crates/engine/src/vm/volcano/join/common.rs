@@ -3,9 +3,17 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::operation,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::common_key_type},
+	value::{
+		batch::{batch, concat, heap_size, take_rows, take_rows_or_none},
+		column::{
+			factory::{datetime, from_many, rename, typed_none},
+			view::group_by::common_key_type,
+		},
+	},
 };
 use reifydb_evaluate::expression::compile::CompiledExpr;
 use reifydb_transaction::transaction::Transaction;
@@ -13,104 +21,108 @@ use reifydb_value::{
 	error,
 	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		system_columns::{
+			SystemColumn, is_system_field, system_column, time, user_columns, with_system_column,
+		},
+		value_type::ValueType,
 	},
 };
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory, eval_context_from_query},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
 };
 
 pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<dyn QueryNode>,
 	rx: &mut Transaction<'a>,
 	ctx: &mut QueryContext,
-) -> Result<Columns> {
-	let mut result: Option<Columns> = None;
+) -> Result<RecordBatch> {
+	let mut batches = Vec::new();
 	let mut charged = 0usize;
+	let mut total = 0usize;
 
 	while let Some(columns) = node.next(rx, ctx)? {
-		if let Some(mut acc) = result.take() {
-			acc.append_columns(columns)?;
-			result = Some(acc);
-		} else {
-			result = Some(columns);
-		}
-		if let Some(acc) = &result {
-			charge_query_memory(&ctx.memory, &mut charged, acc)?;
-		}
+		total += heap_size(&columns)?;
+		charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
+		batches.push(columns);
 	}
-	let result = result.unwrap_or_else(Columns::empty);
-	Ok(result)
+	concat(&batches)
+}
+
+pub(crate) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
+}
+
+pub(crate) fn user_row(views: &[ColumnView<'_>], index: usize) -> Vec<Value> {
+	views.iter().map(|view| view.get_value(index)).collect()
+}
+
+pub(crate) fn user_key_columns<'b>(columns: &'b RecordBatch, indices: &[usize]) -> Vec<(&'b FieldRef, &'b ArrayRef)> {
+	let user: Vec<(&FieldRef, &ArrayRef)> = user_columns(columns).collect();
+	indices.iter().map(|&index| user[index]).collect()
 }
 
 pub(crate) struct JoinSlot<'a> {
-	pub columns: &'a [ColumnBuffer],
-	pub system: &'a SystemColumns,
+	pub columns: &'a RecordBatch,
 	pub picks: &'a [usize],
 }
 
 pub(crate) fn materialize_join(
 	qualified_names: &[String],
 	left_slots: &[JoinSlot<'_>],
-	right_columns: &[ColumnBuffer],
+	right_columns: &RecordBatch,
+	right_excluded: &[usize],
 	right_picks: &[Option<usize>],
-	right_time: &[DateTime],
-	has_row_numbers: bool,
 	emitted: u64,
-) -> Result<Columns> {
-	let left_width = left_slots.first().map_or(0, |slot| slot.columns.len());
-	let mut picked: Vec<ColumnWithName> = Vec::with_capacity(left_width + right_columns.len());
+) -> Result<RecordBatch> {
+	let parts = left_slots.iter().map(|slot| take_rows(slot.columns, slot.picks)).collect::<Result<Vec<_>>>()?;
+	let left = concat(&parts)?;
+	let right = take_rows_or_none(right_columns, right_picks)?;
+	let mut picked: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(left.num_columns() + right.num_columns());
 
-	for index in 0..left_width {
-		let parts: Vec<ColumnBuffer> = left_slots
-			.iter()
-			.map(|slot| slot.columns[index].extract_rows(slot.picks))
-			.collect::<Result<Vec<_>>>()?;
-		let name = Fragment::internal(&qualified_names[picked.len()]);
-		picked.push(ColumnWithName::new(name, ColumnBuffer::concat(&parts)?));
+	for (field, array) in user_columns(&left) {
+		let name = &qualified_names[picked.len()];
+		picked.push(rename((field.clone(), array.clone()), name));
 	}
 
-	for column in right_columns {
-		let name = Fragment::internal(&qualified_names[picked.len()]);
-		picked.push(ColumnWithName::new(name, column.extract_rows_or_none(right_picks)?));
+	for (index, (field, array)) in user_columns(&right).enumerate() {
+		if right_excluded.contains(&index) {
+			continue;
+		}
+		let name = &qualified_names[picked.len()];
+		picked.push(rename((field.clone(), array.clone()), name));
 	}
 
-	let mut left = SystemColumns::empty();
-	for slot in left_slots {
-		left.append_indices(slot.system, slot.picks);
+	for (field, array) in left.schema_ref().fields().iter().zip(left.columns()) {
+		if is_system_field(field) {
+			picked.push((field.clone(), array.clone()));
+		}
 	}
-	let numbered = has_row_numbers || !left.row_numbers().is_empty();
-	let row_numbers = if numbered {
-		(1..=right_picks.len() as u64).map(|i| RowNumber(emitted + i)).collect()
-	} else {
-		Vec::new()
-	};
-	let time = if left.time().is_empty() || right_time.is_empty() {
-		left.time().to_vec()
-	} else {
-		left.time()
+
+	let mut columns = batch(picked)?;
+	if system_column(&left, SystemColumn::RowNumbers).is_some() {
+		let row_numbers = UInt64Array::from_iter_values((1..=right_picks.len() as u64).map(|i| emitted + i));
+		columns = with_system_column(columns, SystemColumn::RowNumbers, Arc::new(row_numbers))?;
+	}
+	let left_time = time(&left)?;
+	let right_time = time(right_columns)?;
+	if !left_time.is_empty() && !right_time.is_empty() {
+		let merged: Vec<DateTime> = left_time
 			.iter()
 			.zip(right_picks)
 			.map(|(&time, &pick)| match pick {
 				None => time,
 				Some(index) => time.max(right_time[index]),
 			})
-			.collect()
-	};
-	let mut system = SystemColumns::new(
-		row_numbers,
-		left.partitions().to_vec(),
-		left.created_at().to_vec(),
-		left.updated_at().to_vec(),
-		time,
-		left.commit_versions().to_vec(),
-	);
-	if numbered {
-		system.mark_row_numbers();
+			.collect();
+		let (_, array) = datetime(SystemColumn::Time.name(), merged);
+		columns = with_system_column(columns, SystemColumn::Time, array)?;
 	}
-	Ok(Columns::with_system(picked, system))
+	Ok(columns)
 }
 
 pub struct ResolvedColumnNames {
@@ -118,25 +130,25 @@ pub struct ResolvedColumnNames {
 }
 
 pub fn resolve_column_names(
-	left_columns: &Columns,
-	right_columns: &Columns,
+	left_columns: &RecordBatch,
+	right_columns: &RecordBatch,
 	alias: &Option<Fragment>,
 	excluded_right_indices: Option<&[usize]>,
 ) -> ResolvedColumnNames {
 	let mut qualified_names = Vec::new();
 
-	for col in left_columns.iter() {
-		qualified_names.push(col.name().text().to_string());
+	for (field, _) in user_columns(left_columns) {
+		qualified_names.push(field.name().to_string());
 	}
 
-	for (idx, col) in right_columns.iter().enumerate() {
+	for (idx, (field, _)) in user_columns(right_columns).enumerate() {
 		if let Some(excluded) = excluded_right_indices
 			&& excluded.contains(&idx)
 		{
 			continue;
 		}
 
-		let col_name = col.name().text();
+		let col_name = field.name();
 
 		let alias_text = alias.as_ref().map(|a| a.text()).unwrap_or("other");
 		let prefixed_name = format!("{}_{}", alias_text, col_name);
@@ -163,40 +175,37 @@ pub fn resolve_column_names(
 }
 
 pub fn build_eval_columns(
-	left_columns: &Columns,
-	right_columns: &Columns,
+	left_columns: &[ColumnView<'_>],
+	right_columns: &[ColumnView<'_>],
 	left_row: &[Value],
 	right_row: &[Value],
 	alias: &Option<Fragment>,
-) -> Vec<ColumnWithName> {
+) -> Vec<(FieldRef, ArrayRef)> {
 	let mut eval_columns = Vec::new();
 
 	for (idx, col) in left_columns.iter().enumerate() {
+		let name = col.field.name();
 		let data = match &left_row[idx] {
 			Value::None {
 				..
-			} => ColumnBuffer::typed_none(&col.get_type()),
-			value => ColumnBuffer::from(value.clone()),
+			} => typed_none(name, &col.get_type()),
+			value => from_many(name, value.clone(), 1),
 		};
-		eval_columns.push(ColumnWithName::new(col.name().clone(), data));
+		eval_columns.push(data);
 	}
 
 	for (idx, col) in right_columns.iter().enumerate() {
+		let name = match alias {
+			Some(alias) => format!("{}.{}", alias.text(), col.field.name()),
+			None => col.field.name().clone(),
+		};
 		let data = match &right_row[idx] {
 			Value::None {
 				..
-			} => ColumnBuffer::typed_none(&col.get_type()),
-			value => ColumnBuffer::from(value.clone()),
+			} => typed_none(&name, &col.get_type()),
+			value => from_many(&name, value.clone(), 1),
 		};
-		if let Some(alias) = alias {
-			let aliased_name = Fragment::internal(format!("{}.{}", alias.text(), col.name().text()));
-			eval_columns.push(ColumnWithName {
-				name: aliased_name,
-				data,
-			});
-		} else {
-			eval_columns.push(ColumnWithName::new(col.name().clone(), data));
-		}
+		eval_columns.push(data);
 	}
 
 	eval_columns
@@ -234,20 +243,24 @@ impl JoinContext {
 	}
 }
 
-pub(crate) fn ensure_join_keyable(columns: &Columns, key_indices: &[usize]) -> Result<()> {
-	for &idx in key_indices {
+pub(crate) fn ensure_join_keyable(
+	columns: &[ColumnView<'_>],
+	key_indices: &[usize],
+	fragment: impl Fn(usize) -> Fragment,
+) -> Result<()> {
+	for (key, &idx) in key_indices.iter().enumerate() {
 		let ty = columns[idx].get_type();
 		if matches!(ty.inner_type(), ValueType::Digest { .. }) {
-			return Err(error!(operation::join_key_unkeyable(columns.name_at(idx).clone(), ty)));
+			return Err(error!(operation::join_key_unkeyable(fragment(key), ty)));
 		}
 	}
 	Ok(())
 }
 
 pub(crate) fn join_key_types(
-	left: &Columns,
+	left: &[ColumnView<'_>],
 	left_indices: &[usize],
-	right: &Columns,
+	right: &[ColumnView<'_>],
 	right_indices: &[usize],
 	fragment: impl Fn(usize) -> Fragment,
 ) -> Result<Vec<ValueType>> {
@@ -271,8 +284,8 @@ pub(crate) fn join_key_types(
 
 pub(crate) fn eval_join_condition(
 	compiled: &[CompiledExpr],
-	left_columns: &Columns,
-	right_columns: &Columns,
+	left_columns: &[ColumnView<'_>],
+	right_columns: &[ColumnView<'_>],
 	left_row: &[Value],
 	right_row: &[Value],
 	alias: &Option<Fragment>,
@@ -283,10 +296,10 @@ pub(crate) fn eval_join_condition(
 	}
 	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
 	let session = eval_context_from_query(ctx);
-	let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
+	let exec_ctx = session.with_eval_join(batch(eval_columns)?);
 	for compiled_expr in compiled {
 		let col = compiled_expr.execute(&exec_ctx)?;
-		if !matches!(col.data().get_value(0), Value::Boolean(true)) {
+		if !matches!(ColumnView::try_from(&col)?.get_value(0), Value::Boolean(true)) {
 			return Ok(false);
 		}
 	}

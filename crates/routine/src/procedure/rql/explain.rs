@@ -3,11 +3,13 @@
 
 use std::{fmt::Display, sync::LazyLock};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use bumpalo::Bump;
 use reifydb_core::{
 	common::JoinType,
 	interface::resolved::ResolvedObject,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
@@ -57,7 +59,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlExplain {
 		false
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let query = extract_query(ctx.params, "rql::explain")?;
 
 		let bump = Bump::new();
@@ -73,7 +79,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlExplain {
 			}
 		}
 
-		Ok(walker.into_columns())
+		walker.into_columns()
 	}
 }
 
@@ -97,14 +103,14 @@ impl PhysicalWalker {
 		next
 	}
 
-	fn into_columns(self) -> Columns {
-		Columns::new(vec![
-			ColumnWithName::int4("idx", self.idx),
-			ColumnWithName::int4("depth", self.depth),
-			ColumnWithName::new("parent", ColumnBuffer::int4_optional(self.parent)),
-			ColumnWithName::utf8("kind", self.kind),
-			ColumnWithName::utf8("detail", self.detail),
-		])
+	fn into_columns(self) -> Result<RecordBatch, RoutineError> {
+		Ok(batch(vec![
+			factory::int4("idx", self.idx),
+			factory::int4("depth", self.depth),
+			factory::int4_optional("parent", self.parent),
+			factory::utf8("kind", self.kind),
+			factory::utf8("detail", self.detail),
+		])?)
 	}
 
 	fn walk(&mut self, plan: &PhysicalPlan<'_>, depth: i32, parent: Option<i32>) {

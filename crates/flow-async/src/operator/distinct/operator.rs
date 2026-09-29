@@ -6,6 +6,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_schema::SchemaRef;
 use indexmap::IndexMap;
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
@@ -16,7 +17,6 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
-	value::column::columns::Columns,
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -50,7 +50,7 @@ enum LoadedEntry {
 }
 
 pub struct DistinctPlan {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	pub(super) operator: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
 	pub(super) routines: Routines,
@@ -65,7 +65,7 @@ pub struct DistinctOperator {
 
 impl DistinctOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -91,7 +91,7 @@ impl DistinctOperator {
 		})
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
 		self.plan.parent_schema.clone()
 	}
 }
@@ -281,7 +281,7 @@ impl HostOperator for DistinctOperator {
 		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }

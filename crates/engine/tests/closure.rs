@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{
+	Value, column_view::ColumnView, frame::frame::Frame, identity::IdentityId, system_columns::user_columns,
+};
 
 fn run_script(rql: &str) -> Vec<Frame> {
 	let t = TestEngine::new();
@@ -17,7 +19,8 @@ fn scalar_i64(frames: &[Frame]) -> i64 {
 	// Widens whatever integer width the expression happened to produce, so tests can assert on
 	// the value without pinning the result type.
 	let frame = &frames[0];
-	let val = frame.columns[0].data.get_value(0);
+	let (field, array) = user_columns(&frame.batch).next().unwrap();
+	let val = ColumnView::try_from((array, field.as_ref())).unwrap().get_value(0);
 	match val {
 		Value::Int1(v) => v as i64,
 		Value::Int2(v) => v as i64,

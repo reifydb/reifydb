@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
-use reifydb_value::{Result, util::hash::Hash128};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::change::Diff;
+use reifydb_value::{Result, util::hash::Hash128, value::system_columns::require_row_numbers};
 
 use super::{
 	JoinContext, UpdateKeys,
@@ -25,7 +26,7 @@ impl InnerHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		_post: &Columns,
+		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -35,7 +36,7 @@ impl InnerHashJoin {
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		_pre: &Columns,
+		_pre: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -45,8 +46,8 @@ impl InnerHashJoin {
 	pub(crate) fn handle_update_both_undefined(
 		&self,
 		_host: &mut dyn HostContext,
-		_pre: &Columns,
-		_post: &Columns,
+		_pre: &RecordBatch,
+		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -56,7 +57,7 @@ impl InnerHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -108,7 +109,7 @@ impl InnerHashJoin {
 	pub(crate) fn handle_remove(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
+		pre: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -140,7 +141,12 @@ impl InnerHashJoin {
 				}
 				JoinSide::Right => {
 					for &idx in indices {
-						retire_right(host, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+						retire_right(
+							host,
+							&snapshot_ctx,
+							key_hash,
+							require_row_numbers(pre)?[idx],
+						)?;
 					}
 				}
 			}
@@ -166,7 +172,7 @@ impl InnerHashJoin {
 			JoinSide::Right => ctx.state.right.group_of(key_hash),
 		};
 		for &idx in indices {
-			let row_number = pre.row_numbers()[idx];
+			let row_number = require_row_numbers(pre)?[idx];
 
 			if matches!(ctx.side, JoinSide::Left) {
 				ctx.operator.cleanup_left_row_joins(host, *row_number)?;
@@ -188,8 +194,8 @@ impl InnerHashJoin {
 	pub(crate) fn handle_update(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
@@ -215,13 +221,13 @@ impl InnerHashJoin {
 	fn update_in_place_one_row(
 		&self,
 		host: &mut dyn HostContext,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		row_idx: usize,
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let pre_row_number = pre.row_numbers()[row_idx];
+		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();

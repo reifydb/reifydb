@@ -3,40 +3,40 @@
 
 use std::{fmt::Display, result::Result as StdResult};
 
-use reifydb_core::value::column::{
-	buffer::ColumnBuffer,
-	cast::{
-		cast_column_data,
-		convert::{Convert, TargetConvert},
-	},
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::cast::{
+	cast_column_data,
+	convert::{Convert, TargetConvert},
 };
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::wide_int_array,
 		number::safe::convert::SafeConvert,
 		value_type::{ValueType, get::GetType},
 	},
 };
 
-pub(crate) fn read_i64(function: &Fragment, data: &ColumnBuffer, row: usize) -> StdResult<Option<i64>, RoutineError> {
+pub(crate) fn read_i64(function: &Fragment, data: &ColumnView, row: usize) -> StdResult<Option<i64>, RoutineError> {
 	narrow(function, data, row, ValueType::Int8, |value| i64::try_from(value).ok())
 }
 
-pub(crate) fn read_i32(function: &Fragment, data: &ColumnBuffer, row: usize) -> StdResult<Option<i32>, RoutineError> {
+pub(crate) fn read_i32(function: &Fragment, data: &ColumnView, row: usize) -> StdResult<Option<i32>, RoutineError> {
 	narrow(function, data, row, ValueType::Int4, |value| i32::try_from(value).ok())
 }
 
 fn narrow<T>(
 	function: &Fragment,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	row: usize,
 	target: ValueType,
 	fit: impl Fn(i128) -> Option<T>,
 ) -> StdResult<Option<T>, RoutineError> {
-	if let ColumnBuffer::Uint16(container) = data {
+	if let ViewData::Uint16(container) = &data.data {
 		return match wide_int_array::wide_at::<u128>(container, row) {
 			None => Ok(None),
 			Some(value) => i128::try_from(value)
@@ -52,17 +52,17 @@ fn narrow<T>(
 	}
 }
 
-fn wide_at(data: &ColumnBuffer, row: usize) -> Option<i128> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Int2(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Int4(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Int8(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Int16(c) => wide_int_array::wide_at::<i128>(c, row),
-		ColumnBuffer::Uint1(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Uint2(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Uint4(c) => c.values().get(row).map(|&v| v as i128),
-		ColumnBuffer::Uint8(c) => c.values().get(row).map(|&v| v as i128),
+fn wide_at(data: &ColumnView, row: usize) -> Option<i128> {
+	match &data.data {
+		ViewData::Int1(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Int2(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Int4(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Int8(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Int16(c) => wide_int_array::wide_at::<i128>(c, row),
+		ViewData::Uint1(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Uint2(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Uint4(c) => c.values().get(row).map(|&v| v as i128),
+		ViewData::Uint8(c) => c.values().get(row).map(|&v| v as i128),
 		_ => None,
 	}
 }
@@ -95,10 +95,10 @@ impl Convert for NoneConvert {
 
 pub(crate) fn coerce_column(
 	ctx: &FunctionContext,
-	data: &ColumnBuffer,
+	data: &ColumnView,
 	target: ValueType,
 	mode: CoerceMode,
-) -> StdResult<ColumnBuffer, RoutineError> {
+) -> StdResult<(FieldRef, ArrayRef), RoutineError> {
 	let fragment = &ctx.fragment;
 	let cast = match mode {
 		CoerceMode::Error => cast_column_data(
@@ -114,8 +114,15 @@ pub(crate) fn coerce_column(
 	Ok(cast)
 }
 
-pub(crate) fn all_rows_none(col: &ColumnBuffer) -> bool {
+pub(crate) fn all_rows_none(col: &ColumnView) -> bool {
 	(0..col.len()).all(|i| !col.is_defined(i))
+}
+
+pub(crate) fn bare_type(data: &ColumnView) -> ValueType {
+	match data.is_none() {
+		true => ValueType::Any,
+		false => data.get_type(),
+	}
 }
 
 pub(crate) fn promote_pair(left: ValueType, right: ValueType) -> ValueType {
@@ -136,15 +143,16 @@ mod tests {
 
 	use arrow_buffer::{BooleanBuffer, NullBuffer};
 	use reifydb_core::value::column::{
-		buffer::ColumnBuffer,
 		cast::convert::{Convert, TargetConvert},
+		factory::int2,
+		nulls::with_nulls,
 	};
 	use reifydb_routine_abi::context::FunctionContext;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_value::{
 		error::IntoDiagnostic,
 		fragment::Fragment,
-		value::{identity::IdentityId, value_type::ValueType},
+		value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 	};
 
 	use super::{CoerceMode, NoneConvert, coerce_column, promote_all};
@@ -178,8 +186,9 @@ mod tests {
 	fn error_policy_raises_number_out_of_range() {
 		// Out-of-range must surface as the house cast diagnostic, not a generic failure.
 		let ctx = ctx();
-		let data = ColumnBuffer::int2([300]);
-		let err = coerce_column(&ctx, &data, ValueType::Int1, CoerceMode::Error).unwrap_err();
+		let data = int2("value", [300]);
+		let input = ColumnView::try_from(&data).unwrap();
+		let err = coerce_column(&ctx, &input, ValueType::Int1, CoerceMode::Error).unwrap_err();
 		assert_eq!(err.into_diagnostic().code, "NUMBER_002");
 	}
 
@@ -187,23 +196,27 @@ mod tests {
 	fn none_policy_turns_overflow_into_none() {
 		// The same input the Error mode rejects must become an undefined row here.
 		let ctx = ctx();
-		let data = ColumnBuffer::int2([300, 100]);
-		let cast = coerce_column(&ctx, &data, ValueType::Int1, CoerceMode::None).unwrap();
-		assert!(!cast.is_defined(0));
-		assert!(cast.is_defined(1));
+		let data = int2("value", [300, 100]);
+		let input = ColumnView::try_from(&data).unwrap();
+		let cast = coerce_column(&ctx, &input, ValueType::Int1, CoerceMode::None).unwrap();
+		let view = ColumnView::try_from(&cast).unwrap();
+		assert!(!view.is_defined(0));
+		assert!(view.is_defined(1));
 	}
 
 	#[test]
 	fn option_shape_and_nones_are_preserved() {
 		// Coercion must not flatten Option-shaped input or drop its per-row nones.
 		let ctx = ctx();
-		let inner = ColumnBuffer::int2([1, 2, 3]);
-		let data = inner.with_nulls(NullBuffer::new(BooleanBuffer::from(vec![true, false, true])));
-		let cast = coerce_column(&ctx, &data, ValueType::Int4, CoerceMode::Error).unwrap();
-		assert_eq!(cast.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
-		assert!(cast.is_defined(0));
-		assert!(!cast.is_defined(1));
-		assert!(cast.is_defined(2));
+		let inner = int2("value", [1, 2, 3]);
+		let data = with_nulls(inner, NullBuffer::new(BooleanBuffer::from(vec![true, false, true]))).unwrap();
+		let input = ColumnView::try_from(&data).unwrap();
+		let cast = coerce_column(&ctx, &input, ValueType::Int4, CoerceMode::Error).unwrap();
+		let view = ColumnView::try_from(&cast).unwrap();
+		assert_eq!(view.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+		assert!(view.is_defined(0));
+		assert!(!view.is_defined(1));
+		assert!(view.is_defined(2));
 	}
 
 	#[test]

@@ -3,13 +3,18 @@
 
 use std::sync::Arc;
 
+use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, JoinType},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -20,12 +25,12 @@ use reifydb_flow_async::operator::{
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value, datetime::DateTime, digest::Digest, row_number::RowNumber, system_columns::SystemColumns,
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	digest::Digest,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 
 const DISTINCT_OPERATOR: OperatorId = OperatorId(10);
@@ -33,23 +38,21 @@ const LEFT_OPERATOR: OperatorId = OperatorId(21);
 const RIGHT_OPERATOR: OperatorId = OperatorId(22);
 const JOIN_OPERATOR: OperatorId = OperatorId(23);
 
-fn columns(named: Vec<(&str, ColumnBuffer)>) -> Columns {
-	let row_count = named.first().map(|(_, buffer)| buffer.len()).unwrap_or(0);
+fn columns(named: Vec<(FieldRef, ArrayRef)>) -> RecordBatch {
+	let row_count = named.first().map(|(_, array)| array.len()).unwrap_or(0);
 	let at = DateTime::from_millis(1_000_000);
-	Columns::with_system(
-		named.into_iter().map(|(name, buffer)| ColumnWithName::new(Fragment::internal(name), buffer)).collect(),
-		SystemColumns::new(
-			(1..=row_count as u64).map(RowNumber).collect(),
-			Vec::new(),
-			vec![at; row_count],
-			vec![at; row_count],
-			vec![at; row_count],
-			Vec::new(),
-		),
-	)
+	let system = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", 1..=row_count as u64).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", vec![at; row_count]).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", vec![at; row_count]).1),
+		(SystemColumn::Time, factory::datetime("#time", vec![at; row_count]).1),
+	];
+	system.into_iter().fold(batch(named).expect("user columns form a batch"), |columns, (column, array)| {
+		with_system_column(columns, column, array).expect("a system column attaches")
+	})
 }
 
-fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
+fn digest_buffer(name: &str, rows: &[&[f64]]) -> (FieldRef, ArrayRef) {
 	let ty = ValueType::Digest {
 		inner: Box::new(ValueType::Float8),
 		accuracy: 10_000,
@@ -62,7 +65,7 @@ fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
 		}
 		buffer.push_value(Value::Digest(Box::new(digest)));
 	}
-	buffer.finish()
+	buffer.finish(name)
 }
 
 fn change(origin: OperatorId, diffs: Vec<Diff>) -> Change {
@@ -95,13 +98,13 @@ fn inserted_rows(output: &Change) -> usize {
 			Diff::Insert {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			_ => 0,
 		})
 		.sum()
 }
 
-fn join(engine: &TestEngine, left_schema: Columns, right_schema: Columns) -> JoinOperator {
+fn join(engine: &TestEngine, left_schema: SchemaRef, right_schema: SchemaRef) -> JoinOperator {
 	JoinOperator::new(
 		JoinSideConfig {
 			operator: LEFT_OPERATOR,
@@ -135,8 +138,8 @@ fn flow_distinct_keeps_rows_whose_text_only_matches_when_concatenated() {
 	let mut operator = distinct(&engine);
 	let mut txn = engine.flow_txn().deferred();
 	let input = columns(vec![
-		("x", ColumnBuffer::utf8(vec!["ab".to_string(), "a".to_string()])),
-		("y", ColumnBuffer::utf8(vec!["c".to_string(), "bc".to_string()])),
+		factory::utf8("x", vec!["ab".to_string(), "a".to_string()]),
+		factory::utf8("y", vec!["c".to_string(), "bc".to_string()]),
 	]);
 
 	let output = operator
@@ -155,14 +158,15 @@ fn flow_distinct_keeps_a_none_apart_from_the_text_none() {
 	let engine = TestEngine::new();
 	let mut operator = distinct(&engine);
 	let mut txn = engine.flow_txn().deferred();
-	let mut x = ColumnBuffer::none_typed(ValueType::Utf8, 1).into_builder();
+	let mut x = ColumnBuilder::with_capacity(ValueType::Utf8, 2);
+	x.push_none();
 	x.push_value(Value::Utf8("none".to_string()));
-	let x = x.finish();
+	let x = x.finish("x");
 
 	let output = operator
 		.apply(
 			&mut TxnHostContext::new(&mut txn, DISTINCT_OPERATOR),
-			change(LEFT_OPERATOR, vec![Diff::insert(columns(vec![("x", x)]))]),
+			change(LEFT_OPERATOR, vec![Diff::insert(columns(vec![x]))]),
 		)
 		.expect("distinct applies");
 
@@ -175,7 +179,7 @@ fn flow_distinct_on_a_digest_column_is_an_error() {
 	let engine = TestEngine::new();
 	let mut operator = distinct(&engine);
 	let mut txn = engine.flow_txn().deferred();
-	let input = columns(vec![("d", digest_buffer(&[&[1.0, 2.0], &[3.0, 4.0]]))]);
+	let input = columns(vec![digest_buffer("d", &[&[1.0, 2.0], &[3.0, 4.0]])]);
 
 	let result = operator.apply(
 		&mut TxnHostContext::new(&mut txn, DISTINCT_OPERATOR),
@@ -189,10 +193,10 @@ fn flow_distinct_on_a_digest_column_is_an_error() {
 fn flow_join_on_a_digest_key_is_an_error() {
 	// A digest has no key identity, so a flow join must refuse it like the batch join does.
 	let engine = TestEngine::new();
-	let schema = columns(vec![("k", digest_buffer(&[&[1.0]]))]);
+	let schema = batch(vec![digest_buffer("k", &[&[1.0]])]).expect("the key column forms a batch").schema();
 	let mut operator = join(&engine, schema.clone(), schema);
 	let mut txn = engine.flow_txn().deferred();
-	let left = columns(vec![("k", digest_buffer(&[&[1.0]]))]);
+	let left = columns(vec![digest_buffer("k", &[&[1.0]])]);
 
 	let result = operator.apply(
 		&mut TxnHostContext::new(&mut txn, JOIN_OPERATOR),

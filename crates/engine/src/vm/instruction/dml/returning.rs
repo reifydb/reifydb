@@ -3,11 +3,16 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
+use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	expression::Expression,
 	interface::catalog::{column::Column, dictionary::Dictionary},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, empty_batch},
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_evaluate::{
 	expression::{
@@ -18,9 +23,13 @@ use reifydb_evaluate::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	fragment::Fragment,
 	params::Params,
-	value::{identity::IdentityId, row_number::RowNumber, system_columns::SystemColumns},
+	value::{
+		column_view::ColumnView,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
+	},
 };
 
 use crate::{
@@ -28,7 +37,7 @@ use crate::{
 	vm::{services::Services, volcano::decode_dictionary_columns},
 };
 
-pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Columns {
+pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
 	let fields = shape.fields();
 
 	let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
@@ -52,55 +61,80 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		}
 	}
 
-	let columns_vec: Vec<ColumnWithName> = fields
-		.iter()
-		.zip(builders)
-		.map(|(field, data)| ColumnWithName {
-			name: Fragment::internal(&field.name),
-			data: data.finish(),
-		})
-		.collect();
+	let columns_vec: Vec<(FieldRef, ArrayRef)> =
+		fields.iter().zip(builders).map(|(field, data)| data.finish(&field.name)).collect();
 
-	Columns::with_system(
-		columns_vec,
-		SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
-	)
-}
-
-pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
-	let mut merged: Vec<ColumnWithName> =
-		post.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect();
-	for column in pre.iter() {
-		merged.push(ColumnWithName::new(
-			Fragment::internal(format!("pre_{}", column.name().text())),
-			column.data().clone(),
-		));
+	let mut out = batch(columns_vec)?;
+	if !row_numbers.is_empty() {
+		let array: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|rn| rn.0)));
+		out = with_system_column(out, SystemColumn::RowNumbers, array)?;
 	}
-	Columns::with_system(
-		merged,
-		SystemColumns::new(
-			post.row_numbers().to_vec(),
-			post.partitions().to_vec(),
-			post.created_at().to_vec(),
-			post.updated_at().to_vec(),
-			post.time().to_vec(),
-			Vec::new(),
-		),
-	)
+	for (column, values) in [
+		(SystemColumn::CreatedAt, created_at),
+		(SystemColumn::UpdatedAt, updated_at),
+		(SystemColumn::Time, time),
+	] {
+		if !values.is_empty() {
+			out = with_system_column(out, column, factory::datetime(column.name(), values).1)?;
+		}
+	}
+	Ok(out)
 }
 
-pub(crate) fn with_absent_pre_image(post: Columns) -> Columns {
-	let row_count = post.row_count();
-	let absent = Columns::new(
-		post.iter()
-			.map(|c| {
-				ColumnWithName::new(
-					c.name().clone(),
-					ColumnBuffer::none_typed(c.data().get_type(), row_count),
-				)
-			})
-			.collect(),
-	);
+pub(crate) fn with_series_stamps(
+	columns: Vec<(FieldRef, ArrayRef)>,
+	row_number: RowNumber,
+	encoded: &EncodedBytes,
+) -> Result<RecordBatch> {
+	let row = EncodedSeriesRow::view(encoded);
+	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values([row_number.0]));
+	let out = with_system_column(batch(columns)?, SystemColumn::RowNumbers, rn)?;
+	let out = with_system_column(
+		out,
+		SystemColumn::CreatedAt,
+		factory::datetime(SystemColumn::CreatedAt.name(), [row.created_at()]).1,
+	)?;
+	let out = with_system_column(
+		out,
+		SystemColumn::UpdatedAt,
+		factory::datetime(SystemColumn::UpdatedAt.name(), [row.updated_at()]).1,
+	)?;
+	match row.time() {
+		Some(time) => with_system_column(
+			out,
+			SystemColumn::Time,
+			factory::datetime(SystemColumn::Time.name(), [time]).1,
+		),
+		None => Ok(out),
+	}
+}
+
+pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<RecordBatch> {
+	let mut merged: Vec<(FieldRef, ArrayRef)> =
+		user_columns(&post).map(|(field, array)| (field.clone(), array.clone())).collect();
+	for (field, array) in user_columns(pre) {
+		merged.push(factory::rename((field.clone(), array.clone()), &format!("pre_{}", field.name())));
+	}
+	let mut out = batch(merged)?;
+	for column in SystemColumn::ALL {
+		if column == SystemColumn::CommitVersion {
+			continue;
+		}
+		if let Some(array) = system_column(&post, column) {
+			out = with_system_column(out, column, array.clone())?;
+		}
+	}
+	Ok(out)
+}
+
+pub(crate) fn with_absent_pre_image(post: RecordBatch) -> Result<RecordBatch> {
+	let row_count = post.num_rows();
+	let absent = batch(user_columns(&post)
+		.map(|(field, array)| {
+			let ty = ColumnView::try_from((array, field.as_ref()))?.get_type();
+			Ok(factory::none_typed(field.name(), ty, row_count))
+		})
+		.collect::<Result<Vec<_>>>()?)?;
 	with_pre_image(post, &absent)
 }
 
@@ -108,12 +142,11 @@ pub(crate) fn decode_returning_dictionaries(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	object_columns: &[Column],
-	columns: &mut Columns,
-) -> Result<()> {
-	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(columns.len());
-	for column in columns.iter() {
-		let dict_id =
-			object_columns.iter().find(|c| c.name == column.name().text()).and_then(|c| c.dictionary_id);
+	columns: RecordBatch,
+) -> Result<RecordBatch> {
+	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(columns.num_columns());
+	for (field, _) in user_columns(&columns) {
+		let dict_id = object_columns.iter().find(|c| c.name == *field.name()).and_then(|c| c.dictionary_id);
 		match dict_id {
 			Some(id) => dictionaries.push(services.catalog.find_dictionary(txn, id)?),
 			None => dictionaries.push(None),
@@ -122,34 +155,36 @@ pub(crate) fn decode_returning_dictionaries(
 	decode_dictionary_columns(columns, &dictionaries, txn)
 }
 
-fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Columns> {
-	let mut cols: Vec<ColumnWithName> = Vec::with_capacity(exprs.len());
+fn try_column_passthrough(exprs: &[Expression], input: &RecordBatch) -> Result<Option<RecordBatch>> {
+	let mut cols: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(exprs.len());
 	for expr in exprs {
 		let Expression::Column(col_expr) = expr else {
-			return None;
+			return Ok(None);
 		};
 		let name = col_expr.0.name.text();
-		let col = input.column(name)?;
-		cols.push(ColumnWithName::new(col.name().clone(), col.data().clone()));
+		let Some((field, array)) = user_columns(input).find(|(field, _)| field.name() == name) else {
+			return Ok(None);
+		};
+		cols.push((field.clone(), array.clone()));
 	}
-	Some(carry_row_numbers(Columns::new(cols), input))
+	Ok(Some(carry_row_numbers(batch(cols)?, input)?))
 }
 
-fn carry_row_numbers(columns: Columns, input: &Columns) -> Columns {
-	if input.row_numbers().is_empty() {
-		return columns;
+fn carry_row_numbers(columns: RecordBatch, input: &RecordBatch) -> Result<RecordBatch> {
+	match system_column(input, SystemColumn::RowNumbers) {
+		Some(array) => with_system_column(columns, SystemColumn::RowNumbers, array.clone()),
+		None => Ok(columns),
 	}
-	columns.with_row_numbers(input.row_numbers().to_vec())
 }
 
 pub(crate) fn evaluate_returning(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,
 	returning_exprs: &[Expression],
-	input: Columns,
+	input: RecordBatch,
 	identity: IdentityId,
-) -> Result<Columns> {
-	if let Some(columns) = try_column_passthrough(returning_exprs, &input) {
+) -> Result<RecordBatch> {
+	if let Some(columns) = try_column_passthrough(returning_exprs, &input)? {
 		return Ok(columns);
 	}
 
@@ -160,7 +195,7 @@ pub(crate) fn evaluate_returning(
 	let compiled: Vec<CompiledExpr> =
 		returning_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-	let row_count = input.row_count();
+	let row_count = input.num_rows();
 	let base = EvalContext {
 		params: &Params::None,
 		symbols,
@@ -168,7 +203,7 @@ pub(crate) fn evaluate_returning(
 		runtime_context: &services.runtime_context,
 		identity,
 		is_aggregate_context: false,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
@@ -181,5 +216,5 @@ pub(crate) fn evaluate_returning(
 		new_columns.push(column);
 	}
 
-	Ok(carry_row_numbers(Columns::new(new_columns), &input))
+	carry_row_numbers(batch(new_columns)?, &input)
 }

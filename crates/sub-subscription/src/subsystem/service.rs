@@ -315,6 +315,7 @@ mod tests {
 			identity: IdentityId::root(),
 			symbols: Default::default(),
 			params: Params::None,
+			named_system_columns: vec![],
 		}
 	}
 
@@ -378,6 +379,7 @@ mod tests {
 			identity: IdentityId::root(),
 			symbols: Default::default(),
 			params: Params::None,
+			named_system_columns: vec![],
 		};
 
 		let message = panic_message(|| {

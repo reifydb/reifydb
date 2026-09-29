@@ -7,13 +7,15 @@ use reifydb_codec::row::operator::state::decode;
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::StateStore,
-	value::column::columns::Columns,
+	value::batch::from_rows,
 };
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::engine::{PublishKey, publish::PublishState},
 };
-use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{
+	Value, column_view::ColumnView, datetime::DateTime, row_number::RowNumber, system_columns::user_columns,
+};
 
 use crate::{
 	error::{Result, SdkError},
@@ -37,7 +39,9 @@ pub fn row_to_values<R: Row>(row: &R) -> Result<Vec<Value>> {
 	let mut sink = InProcessRowSink::new(R::COLUMNS)?;
 	row.encode_into(&mut sink)?;
 	let columns = sink.finish(vec![RowNumber(0)], DateTime::default())?;
-	Ok(columns.row(0))
+	user_columns(&columns)
+		.map(|(field, array)| Ok(ColumnView::try_from((array, field.as_ref()))?.get_value(0)))
+		.collect()
 }
 
 pub fn values_to_row<R: Row>(values: &[Value]) -> Result<R> {
@@ -49,7 +53,7 @@ pub fn values_to_row<R: Row>(values: &[Value]) -> Result<R> {
 			names.len()
 		)));
 	}
-	let columns = Columns::from_rows(&names, &[values.to_vec()]);
+	let columns = from_rows(&names, &[values.to_vec()])?;
 	R::decode_from(&InProcessRowView::new(&columns, 0))?
 		.ok_or_else(|| SdkError::Other("a published row does not decode as the output row".to_string()))
 }

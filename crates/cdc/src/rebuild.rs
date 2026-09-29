@@ -23,7 +23,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 		tag::KeyTag,
 	},
-	value::column::columns::Columns,
+	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
@@ -207,19 +207,19 @@ pub fn rebuild_selected_changes(
 			let diff = match key.kind {
 				RebuiltKind::Insert => {
 					let shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
-					Diff::insert(Columns::from_encoded_bytes(&shape, &bucket.ids, &bucket.post))
+					Diff::insert(from_encoded_bytes(&shape, &bucket.ids, &bucket.post)?)
 				}
 				RebuiltKind::Update => {
 					let pre_shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
 					let post_shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
 					Diff::update(
-						Columns::from_encoded_bytes(&pre_shape, &bucket.ids, &bucket.pre),
-						Columns::from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post),
+						from_encoded_bytes(&pre_shape, &bucket.ids, &bucket.pre)?,
+						from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post)?,
 					)
 				}
 				RebuiltKind::Remove => {
 					let shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
-					Diff::remove(Columns::from_encoded_bytes(&shape, &bucket.ids, &bucket.pre))
+					Diff::remove(from_encoded_bytes(&shape, &bucket.ids, &bucket.pre)?)
 				}
 			};
 			diffs.push(diff);

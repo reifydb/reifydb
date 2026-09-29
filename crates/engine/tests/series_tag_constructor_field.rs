@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{error::Diagnostic, params::Params};
+use reifydb_value::{error::Diagnostic, params::Params, value::system_columns::user_columns};
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();
@@ -21,7 +21,7 @@ fn command_err(t: &TestEngine, rql: &str) -> Diagnostic {
 }
 
 fn row_count(t: &TestEngine, rql: &str) -> usize {
-	t.query(rql).iter().map(|f| f.columns.first().map_or(0, |c| c.data.len())).sum()
+	t.query(rql).iter().map(|f| user_columns(&f.batch).next().map_or(0, |(_, array)| array.len())).sum()
 }
 
 #[test]

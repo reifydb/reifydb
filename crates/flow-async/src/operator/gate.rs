@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use reifydb_codec::key::encode_u64_asc;
 use reifydb_core::{
 	expression::Expression,
@@ -13,7 +15,7 @@ use reifydb_core::{
 	},
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::{HeapSize, OperatorSample},
-	value::column::columns::Columns,
+	value::batch::{empty_batch, take_rows},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -25,7 +27,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	value::{Value, row_number::RowNumber},
+	value::{Value, column_view::ColumnView, row_number::RowNumber, system_columns::row_numbers},
 };
 use tracing::instrument;
 
@@ -63,7 +65,7 @@ impl IntoGroupStateKey for &VisibilityKey {
 }
 
 pub struct GateOperator {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -73,7 +75,7 @@ pub struct GateOperator {
 
 impl GateOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
@@ -96,12 +98,12 @@ impl GateOperator {
 		})
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}
 
-	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
-		let row_count = columns.row_count();
+	fn evaluate(&self, columns: &RecordBatch) -> Result<Vec<bool>> {
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -113,7 +115,7 @@ impl GateOperator {
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
@@ -123,11 +125,12 @@ impl GateOperator {
 		let mut mask = vec![true; row_count];
 
 		for compiled_condition in &self.compiled_conditions {
-			let result_col = compiled_condition.execute(&exec_ctx)?;
+			let result = compiled_condition.execute(&exec_ctx)?;
+			let result_col = ColumnView::try_from(&result)?;
 
 			for (row_idx, mask_val) in mask.iter_mut().enumerate() {
 				if *mask_val {
-					match result_col.data().get_value(row_idx) {
+					match result_col.get_value(row_idx) {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => *mask_val = false,
 						_ => *mask_val = false,
@@ -195,26 +198,27 @@ impl HostOperator for GateOperator {
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }
 
 impl GateOperator {
 	#[inline]
-	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_gate_insert(
 		&mut self,
 		host: &mut dyn HostContext,
-		post: &Columns,
+		post: &RecordBatch,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		if post.row_numbers().is_empty() {
+		let post_row_numbers = row_numbers(post)?;
+		if post_row_numbers.is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
 				mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
 			if !passing_indices.is_empty() {
-				result.push(Diff::insert(post.extract_by_indices(&passing_indices)?));
+				result.push(Diff::insert(take_rows(post, &passing_indices)?));
 			}
 			return Ok(());
 		}
@@ -222,28 +226,28 @@ impl GateOperator {
 		let mask = self.evaluate(post)?;
 		let mut passing_indices = Vec::new();
 		for (i, &pass) in mask.iter().enumerate() {
-			let rn = post.row_numbers()[i];
+			let rn = post_row_numbers[i];
 			if pass {
 				self.mark_visible(host, rn)?;
 				passing_indices.push(i);
 			}
 		}
 		if !passing_indices.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&passing_indices)?));
+			result.push(Diff::insert(take_rows(post, &passing_indices)?));
 		}
 		Ok(())
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_gate_update(
 		&mut self,
 		host: &mut dyn HostContext,
-		pre: Columns,
-		post: Columns,
+		pre: RecordBatch,
+		post: RecordBatch,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		if post.row_numbers().is_empty() {
+		if row_numbers(&post)?.is_empty() {
 			result.push(Diff::Update {
 				pre,
 				post,
@@ -256,7 +260,7 @@ impl GateOperator {
 		let mut update_indices = Vec::new();
 		let mut insert_indices = Vec::new();
 
-		for (i, (&rn, &mask_val)) in post.row_numbers().iter().zip(mask.iter()).enumerate() {
+		for (i, (&rn, &mask_val)) in row_numbers(&post)?.iter().zip(mask.iter()).enumerate() {
 			if self.is_visible(host, rn)? {
 				update_indices.push(i);
 			} else if mask_val {
@@ -267,25 +271,26 @@ impl GateOperator {
 
 		if !update_indices.is_empty() {
 			result.push(Diff::update(
-				pre.extract_by_indices(&update_indices)?,
-				post.extract_by_indices(&update_indices)?,
+				take_rows(&pre, &update_indices)?,
+				take_rows(&post, &update_indices)?,
 			));
 		}
 		if !insert_indices.is_empty() {
-			result.push(Diff::insert(post.extract_by_indices(&insert_indices)?));
+			result.push(Diff::insert(take_rows(&post, &insert_indices)?));
 		}
 		Ok(())
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
+	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
 	fn apply_gate_remove(
 		&mut self,
 		host: &mut dyn HostContext,
-		pre: Columns,
+		pre: RecordBatch,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		if pre.row_numbers().is_empty() {
+		let pre_row_numbers = row_numbers(&pre)?;
+		if pre_row_numbers.is_empty() {
 			result.push(Diff::Remove {
 				pre,
 				origin: None,
@@ -294,8 +299,7 @@ impl GateOperator {
 		}
 
 		let mut remove_indices = Vec::new();
-		for i in 0..pre.row_numbers().len() {
-			let rn = pre.row_numbers()[i];
+		for (i, &rn) in pre_row_numbers.iter().enumerate() {
 			if self.is_visible(host, rn)? {
 				self.mark_invisible(host, rn)?;
 				remove_indices.push(i);
@@ -303,7 +307,7 @@ impl GateOperator {
 		}
 
 		if !remove_indices.is_empty() {
-			result.push(Diff::remove(pre.extract_by_indices(&remove_indices)?));
+			result.push(Diff::remove(take_rows(&pre, &remove_indices)?));
 		}
 		Ok(())
 	}

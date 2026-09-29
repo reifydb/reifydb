@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{fragment::Fragment, params::Params, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{column_view::ColumnView, system_columns::user_columns, value_type::ValueType},
+};
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();
@@ -91,9 +95,9 @@ fn an_insert_returning_a_pre_image_column_gives_none_typed_like_the_stored_colum
 	let frames = t.command("INSERT test::t [{ g: 9, a: 1, b: 2 }] RETURNING { g, pre_a }");
 
 	assert_eq!(TestEngine::row_count(&frames), 1);
-	let pre_a = frames[0].columns.iter().find(|c| c.name == "pre_a").expect("pre_a column");
-	assert_eq!(pre_a.data.as_string(0), "none");
-	assert_eq!(pre_a.data.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
+	let pre_a = frames[0].column("pre_a").unwrap().expect("pre_a column");
+	assert_eq!(pre_a.as_string(0), "none");
+	assert_eq!(pre_a.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
 }
 
 #[test]
@@ -105,7 +109,10 @@ fn a_dictionary_insert_that_stores_nothing_still_returns_typed_columns() {
 	let frames = t.command("INSERT test::codes [{ value: none }] RETURNING { id, value }");
 
 	assert_eq!(TestEngine::row_count(&frames), 0);
-	let types: Vec<(String, ValueType)> =
-		frames[0].columns.iter().map(|c| (c.name.clone(), c.data.get_type())).collect();
+	let types: Vec<(String, ValueType)> = user_columns(&frames[0].batch)
+		.map(|(field, array)| {
+			(field.name().clone(), ColumnView::try_from((array, field.as_ref())).unwrap().get_type())
+		})
+		.collect();
 	assert_eq!(types, vec![("id".to_string(), ValueType::Uint4), ("value".to_string(), ValueType::Utf8)]);
 }

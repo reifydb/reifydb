@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropBindingNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_binding(services: &Services, txn: &mut AdminTransaction, plan: DropBindingNode) -> Result<Columns> {
+pub(crate) fn drop_binding(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: DropBindingNode,
+) -> Result<RecordBatch> {
 	let binding = services.catalog.find_binding_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
@@ -18,11 +23,11 @@ pub(crate) fn drop_binding(services: &Services, txn: &mut AdminTransaction, plan
 
 	let Some(binding) = binding else {
 		if plan.if_exists {
-			return Ok(Columns::single_row([
+			return single_row([
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("binding", Value::Utf8(plan.name.text().to_string())),
 				("dropped", Value::Boolean(false)),
-			]));
+			]);
 		}
 		return Err(CatalogError::NotFound {
 			kind: CatalogObjectKind::Binding,
@@ -35,9 +40,9 @@ pub(crate) fn drop_binding(services: &Services, txn: &mut AdminTransaction, plan
 
 	services.catalog.drop_binding(txn, binding.id)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("binding", Value::Utf8(plan.name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

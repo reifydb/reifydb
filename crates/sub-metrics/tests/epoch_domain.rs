@@ -50,10 +50,10 @@ fn epoch_current_reports_coverage_the_epoch_can_actually_resolve() {
 
 	let frames = db.query("from system::metrics::epoch::current");
 	let frame = frames.first().expect("one frame");
-	let guaranteed = frame.columns.iter().find(|c| c.name == "guaranteed_coverage").expect("column");
+	let guaranteed = frame.column("guaranteed_coverage").expect("column view").expect("column");
 
 	assert_ne!(
-		guaranteed.data.as_string(0),
+		guaranteed.as_string(0),
 		"PT0S",
 		"guaranteed coverage must be a real span, or every declared ttl reads as unenforceable"
 	);

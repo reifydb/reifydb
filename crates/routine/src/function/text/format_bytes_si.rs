@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::LargeStringArray;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, container::decimal_array::decimals, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	constraint::bytes::MaxBytes,
+	container::decimal_array::decimals,
+	value_type::ValueType,
+};
 
-use crate::function::text::format_bytes::{
-	format_bytes_internal, process_decimal_column, process_float_column, process_int_column,
+use crate::function::{
+	support::column::utf8_column,
+	text::format_bytes::{format_bytes_internal, process_decimal_column, process_float_column, process_int_column},
 };
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -41,29 +47,33 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		let result_data = match data {
-			ColumnBuffer::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnBuffer::Float4(container) => {
+		let result_data = match &data.data {
+			ViewData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ViewData::Float4(container) => {
 				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
 			}
-			ColumnBuffer::Float8(container) => {
+			ViewData::Float8(container) => {
 				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
 			}
-			ColumnBuffer::Decimal(container) => {
+			ViewData::Decimal(container) => {
 				process_decimal_column!(ctx, container, row_count, 1000.0, &SI_UNITS)
 			}
-			other => {
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
@@ -80,12 +90,12 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 						ValueType::Float8,
 						ValueType::DECIMAL,
 					],
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, result_data))
 	}
 }
 

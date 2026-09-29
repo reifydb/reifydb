@@ -3,6 +3,7 @@
 
 use std::{any::Any, sync::Arc};
 
+use arrow_array::Array;
 use arrow_buffer::NullBuffer;
 use reifydb_core::value::column::{
 	builder::ColumnBuilder,
@@ -51,8 +52,8 @@ impl ColumnData for AllNoneData {
 		AllNoneEncoding::ID
 	}
 
-	fn nones(&self) -> Option<&NullBuffer> {
-		Some(&self.nones)
+	fn nones(&self) -> Option<NullBuffer> {
+		Some(self.nones.clone())
 	}
 
 	fn get_value(&self, idx: usize) -> Value {
@@ -84,7 +85,7 @@ impl ColumnData for AllNoneData {
 		for _ in 0..self.len {
 			buffer.push_none();
 		}
-		Ok(Arc::new(Canonical::from_buffer(buffer.finish())))
+		Ok(Arc::new(Canonical::from_column(&buffer.finish(""))?))
 	}
 }
 
@@ -97,10 +98,10 @@ impl Encoding for AllNoneEncoding {
 		if input.is_empty() {
 			return Ok(None);
 		}
-		match input.buffer.nulls() {
-			Some(nones) if nones.null_count() == input.len() => {
-				Ok(Some(Column::from_data(Arc::new(AllNoneData::new(input.ty.clone(), input.len())))))
-			}
+		match input.buffer().logical_nulls() {
+			Some(nones) if nones.null_count() == input.len() => Ok(Some(Column::from_data(Arc::new(
+				AllNoneData::new(input.view().base_type(), input.len()),
+			)))),
 			_ => Ok(None),
 		}
 	}

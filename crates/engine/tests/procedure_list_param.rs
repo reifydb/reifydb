@@ -139,6 +139,6 @@ fn a_for_loop_over_a_list_of_plain_values_runs_once_per_item() {
 	.expect("a loop over a list param must run");
 
 	assert_eq!(frames.len(), 1, "{frames:?}");
-	let n = frames[0].columns.iter().find(|c| c.name == "n").expect("column n");
-	assert_eq!(n.data.get_value(0).to_string(), "3", "{frames:?}");
+	let n = frames[0].column("n").unwrap().expect("column n");
+	assert_eq!(n.get_value(0).to_string(), "3", "{frames:?}");
 }

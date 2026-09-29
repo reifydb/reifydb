@@ -21,7 +21,7 @@ fn a_vectorized_udf_calling_a_builtin_function_on_its_parameter_gives_one_result
 	if let Some(err) = result.error {
 		panic!("the call must succeed, got {:?}", err.diagnostic());
 	}
-	let column = result.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-	let values: Vec<String> = (0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
+	let column = result.frames[0].column("v").unwrap().expect("column v");
+	let values: Vec<String> = (0..column.len()).map(|i| column.get_value(i).to_string()).collect();
 	assert_eq!(values, vec!["3", "4"]);
 }

@@ -3,6 +3,8 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::{
 		CoreError,
@@ -10,13 +12,14 @@ use reifydb_core::{
 	},
 	expression::{CallExpression, ConstantExpression, Expression, name::display_label},
 	metrics::heap::HeapSize,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		builder::ColumnBuilder,
-		columns::Columns,
-		headers::ColumnHeaders,
-		view::group_by::{GroupId, GroupKeyDict, GroupRows},
+	value::{
+		batch::{batch, group_by, take_rows},
+		column::{
+			builder::ColumnBuilder,
+			factory::{none, rename},
+			headers::ColumnHeaders,
+			view::group_by::{GroupId, GroupKeyDict, GroupRows},
+		},
 	},
 };
 use reifydb_evaluate::expression::{
@@ -35,7 +38,9 @@ use reifydb_value::{
 	error::{Error, FunctionErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, digest::DigestError, value_type::ValueType},
+	value::{
+		Value, column_view::ColumnView, digest::DigestError, system_columns::column_view, value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -62,27 +67,29 @@ struct AggregateSlot {
 }
 
 impl AggregateSlot {
-	fn update(&mut self, columns: &Columns, inputs: &[ColumnWithName], groups: &GroupRows) -> Result<()> {
+	fn update(&mut self, columns: &RecordBatch, inputs: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<()> {
 		let argument = match &self.input {
 			SlotInput::Column {
 				name,
 				fragment,
 			} => {
-				let column_ref = columns
-					.column(name)
+				let index = columns
+					.schema_ref()
+					.fields()
+					.iter()
+					.position(|field| field.name() == name)
 					.ok_or_else(|| error!(query::column_not_found(fragment.clone())))?;
-				ColumnWithName::new(column_ref.name().clone(), column_ref.data().clone())
+				(columns.schema_ref().fields()[index].clone(), columns.column(index).clone())
 			}
 			SlotInput::Expression(index) => inputs[*index].clone(),
 		};
-		self.accumulator.update(&Columns::new(vec![argument]), groups)?;
+		self.accumulator.update(&[argument], groups)?;
 		Ok(())
 	}
 
-	fn finalize(mut self, dict: &GroupKeyDict) -> Result<ColumnBuffer> {
-		let (keys_out, mut data) = self.accumulator.finalize()?;
-		align_column_data(dict, &keys_out, &mut data)?;
-		Ok(data)
+	fn finalize(mut self, dict: &GroupKeyDict) -> Result<(FieldRef, ArrayRef)> {
+		let (keys_out, data) = self.accumulator.finalize()?;
+		align_column_data(dict, &keys_out, data)
 	}
 }
 
@@ -148,9 +155,9 @@ impl AggregateNode {
 		let mut charged = 0usize;
 		while let Some(columns) = input.next(rx, ctx)? {
 			if key_types.is_empty() {
-				key_types.extend(keys
-					.iter()
-					.map(|key| columns.column(key).map(|c| c.data().get_type())));
+				for key in &keys {
+					key_types.push(column_view(&columns, key)?.map(|view| view.get_type()));
+				}
 				let aliases =
 					aggregation.projections.iter().filter_map(|projection| match projection {
 						Projection::Group {
@@ -172,16 +179,16 @@ impl AggregateNode {
 					}
 				}
 			}
-			let groups = columns.group_by_ids(&keys, dict)?;
+			let groups = group_by(&columns, &keys, dict)?;
 
-			let row_count = columns.row_count();
+			let row_count = columns.num_rows();
 			let evaluation = eval_context_from_query(ctx).with_eval(columns, row_count);
 			let inputs = aggregation
 				.inputs
 				.iter()
 				.map(|compiled| compiled.execute(&evaluation))
 				.collect::<Result<Vec<_>>>()?;
-			let columns = evaluation.columns;
+			let columns = evaluation.batch;
 
 			for slot in aggregation.slots.iter_mut() {
 				slot.update(&columns, &inputs, &groups)?;
@@ -203,18 +210,13 @@ impl AggregateNode {
 		dict: &GroupKeyDict,
 		key_types: &[Option<ValueType>],
 		ctx: &QueryContext,
-	) -> Result<Vec<ColumnWithName>> {
+	) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let slot_columns = slots
 			.into_iter()
 			.enumerate()
-			.map(|(idx, slot)| {
-				Ok(ColumnWithName::new(
-					Fragment::internal(synthetic_aggregate_column_name(idx)),
-					slot.finalize(dict)?,
-				))
-			})
+			.map(|(idx, slot)| Ok(rename(slot.finalize(dict)?, &synthetic_aggregate_column_name(idx))))
 			.collect::<Result<Vec<_>>>()?;
-		let evaluation = eval_context_from_query(ctx).with_eval(Columns::new(slot_columns), dict.len());
+		let evaluation = eval_context_from_query(ctx).with_eval(batch(slot_columns)?, dict.len());
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
@@ -238,25 +240,22 @@ impl AggregateNode {
 						.or_else(|| key_types.get(col_idx).cloned().flatten())
 					{
 						Some(key_type) => ColumnBuilder::with_capacity(key_type, dict.len()),
-						None => ColumnBuffer::none(0).into_builder(),
+						None => ColumnBuilder::from_view(&ColumnView::try_from(&none(
+							alias.fragment(),
+							0,
+						))?),
 					};
 					for (_, key) in dict.iter() {
 						data.push_value(key[col_idx].clone());
 					}
-					result_columns.push(ColumnWithName {
-						name: Fragment::internal(alias.fragment()),
-						data: data.finish(),
-					});
+					result_columns.push(data.finish(alias.fragment()));
 				}
 				Projection::Computed {
 					alias,
 					expression,
 				} => {
 					let compiled = compile_expression(&compile_ctx, &expression)?;
-					result_columns.push(ColumnWithName {
-						name: Fragment::internal(alias.fragment()),
-						data: compiled.execute(&evaluation)?.data,
-					});
+					result_columns.push(rename(compiled.execute(&evaluation)?, alias.fragment()));
 				}
 			}
 		}
@@ -297,7 +296,7 @@ impl QueryNode for AggregateNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		}
@@ -325,8 +324,8 @@ impl QueryNode for AggregateNode {
 			stored_ctx,
 		)?;
 
-		let columns = Columns::new(result_columns);
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		let columns = batch(result_columns)?;
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 
 		Ok(Some(columns))
 	}
@@ -588,7 +587,11 @@ fn literal_argument(constant: &ConstantExpression) -> LiteralArgument {
 	}
 }
 
-fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut ColumnBuffer) -> Result<()> {
+fn align_column_data(
+	dict: &GroupKeyDict,
+	produced: &[GroupId],
+	data: (FieldRef, ArrayRef),
+) -> Result<(FieldRef, ArrayRef)> {
 	let mut position_of: Vec<Option<usize>> = vec![None; dict.len()];
 	for (position, group) in produced.iter().enumerate() {
 		if let Some(slot) = position_of.get_mut(group.index()) {
@@ -610,7 +613,8 @@ fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut Colum
 		})
 		.collect::<Result<Vec<_>>>()?;
 
-	data.reorder(&reorder_indices)
+	let aligned = take_rows(&batch(vec![data])?, &reorder_indices)?;
+	Ok((aligned.schema_ref().fields()[0].clone(), aligned.column(0).clone()))
 }
 
 #[cfg(test)]

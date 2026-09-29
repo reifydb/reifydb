@@ -116,6 +116,7 @@ mod tests {
 
 	use arrow_array::Int32Array;
 	use reifydb_value::value::{
+		Value,
 		constraint::bytes::MaxBytes,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		value_type::{
@@ -147,7 +148,7 @@ mod tests {
 		let tagged = Canonical::new(field_type, array).unwrap();
 		let sliced = Column::from_canonical(tagged).slice(1, 2).unwrap().to_canonical().unwrap();
 		assert_eq!(sliced.field_type().dictionary_id, Some(DictionaryId(9)));
-		assert_eq!(sliced.get_value(0), reifydb_value::value::Value::DictionaryId(DictionaryEntryId::U2(2)));
+		assert_eq!(sliced.get_value(0), Value::DictionaryId(DictionaryEntryId::U2(2)));
 	}
 
 	#[test]

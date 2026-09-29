@@ -18,8 +18,8 @@ fn casting_a_list_to_utf8_returns_instead_of_overflowing_the_stack() {
 		let t = TestEngine::new();
 		let result = t.inner().query_as(TestEngine::identity(), "map { x: cast([1, 2], utf8) }", Params::None);
 		if result.error.is_none() {
-			let column = result.frames[0].columns.iter().find(|c| c.name == "x").expect("x column");
-			assert_eq!(column.data.get_type(), ValueType::Utf8);
+			let column = result.frames[0].column("x").unwrap().expect("x column");
+			assert_eq!(column.get_type(), ValueType::Utf8);
 		}
 		return;
 	}

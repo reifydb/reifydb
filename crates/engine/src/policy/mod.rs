@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	expression::Expression,
 	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
-	value::column::{buffer::ColumnBuffer, columns::Columns},
+	value::batch::empty_batch,
 };
 use reifydb_evaluate::{
 	expression::{
@@ -20,7 +21,14 @@ use reifydb_policy::{
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	params::Params,
+	value::{
+		column_view::{ColumnView, ViewData},
+		identity::IdentityId,
+	},
+};
 
 use crate::vm::services::Services;
 
@@ -43,7 +51,7 @@ impl<'a> PolicyEvaluator<'a> {
 		target_namespace: &str,
 		target_object: &str,
 		operation: DataOp,
-		row_columns: &Columns,
+		row_columns: &RecordBatch,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
 		let target = PolicyTarget {
@@ -86,7 +94,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 	fn evaluate_condition(
 		&self,
 		expr: &Expression,
-		columns: &Columns,
+		batch: &RecordBatch,
 		row_count: usize,
 		identity: IdentityId,
 	) -> Result<bool> {
@@ -102,18 +110,19 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 			runtime_context: &self.services.runtime_context,
 			identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
 		};
-		let eval_ctx = base.with_eval(columns.clone(), row_count);
+		let eval_ctx = base.with_eval(batch.clone(), row_count);
 
 		let result = compiled.execute(&eval_ctx)?;
+		let view = ColumnView::try_from(&result)?;
 
-		let denied = match result.data() {
-			ColumnBuffer::Bool(container) => {
-				(0..row_count).any(|i| !(result.data().is_defined(i) && container.value(i)))
+		let denied = match &view.data {
+			ViewData::Bool(container) => {
+				(0..row_count).any(|i| !(view.is_defined(i) && container.value(i)))
 			}
 			_ => true,
 		};

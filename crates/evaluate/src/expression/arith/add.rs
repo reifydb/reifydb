@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, LargeStringArray};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, push::Push};
+use arrow_array::{Array, ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{builder::ColumnBuilder, factory, push::Push};
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::{
-			decimal_array::decimals,
-			temporal_array::{duration_array, durations},
-			varlen_array::get,
-			wide_int_array::wides,
+			decimal_array::decimals, temporal_array::durations, varlen_array::get, wide_int_array::wides,
 		},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
@@ -33,19 +32,20 @@ use crate::{
 
 pub fn add_columns(
 	ctx: &EvalContext,
-	left: &ColumnWithName,
-	right: &ColumnWithName,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName> {
+) -> Result<(FieldRef, ArrayRef)> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Add, left.get_type(), right.get_type());
 
 		dispatch_arith!(
-			&left.data(), &right.data();
+			&left.data, &right.data;
 			fixed: add_numeric, arb: add_numeric_clone (ctx, target, fragment);
 
 
-			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
+			(ViewData::Duration(l), ViewData::Duration(r)) => {
 				let (l, r) = (durations(l), durations(r));
 				let values = (0..l.len())
 					.map(|i| match (l.get(i), r.get(i)) {
@@ -53,16 +53,16 @@ pub fn add_columns(
 						_ => Err(length_mismatch(l.len(), r.len(), &fragment.fragment())),
 					})
 					.collect::<Result<Vec<_>>>()?;
-				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(duration_array(values))))
+				Ok(factory::duration(fragment.fragment().text(), values))
 			}
 
 
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: l,
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: r,
 					..
 				},
@@ -70,21 +70,21 @@ pub fn add_columns(
 
 
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: l,
 					..
 				},
 				r,
-			) if can_promote_to_string(r) => concat_string_with_other(l, r, true, target, fragment.fragment()),
+			) if can_promote_to_string(r) => concat_string_with_other(l, &right, true, target, fragment.fragment()),
 
 
 			(
 				l,
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: r,
 					..
 				},
-			) if can_promote_to_string(l) => concat_string_with_other(r, l, false, target, fragment.fragment()),
+			) if can_promote_to_string(l) => concat_string_with_other(r, &left, false, target, fragment.fragment()),
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Add,
@@ -102,7 +102,7 @@ fn add_numeric<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -122,10 +122,7 @@ where
 			data.push_none()
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment.fragment(),
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.fragment().text()))
 }
 
 fn add_numeric_clone<L, R>(
@@ -134,7 +131,7 @@ fn add_numeric_clone<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<ColumnWithName>
+) -> Result<(FieldRef, ArrayRef)>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
@@ -163,36 +160,33 @@ where
 			_ => data.push_none(),
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment.fragment(),
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.fragment().text()))
 }
 
-fn can_promote_to_string(data: &ColumnBuffer) -> bool {
+fn can_promote_to_string(data: &ViewData) -> bool {
 	matches!(
 		data,
-		ColumnBuffer::Bool(_)
-			| ColumnBuffer::Float4(_)
-			| ColumnBuffer::Float8(_)
-			| ColumnBuffer::Int1(_)
-			| ColumnBuffer::Int2(_)
-			| ColumnBuffer::Int4(_)
-			| ColumnBuffer::Int8(_)
-			| ColumnBuffer::Int16(_)
-			| ColumnBuffer::Uint1(_)
-			| ColumnBuffer::Uint2(_)
-			| ColumnBuffer::Uint4(_)
-			| ColumnBuffer::Uint8(_)
-			| ColumnBuffer::Uint16(_)
-			| ColumnBuffer::Date(_)
-			| ColumnBuffer::DateTime(_)
-			| ColumnBuffer::Time(_)
-			| ColumnBuffer::Duration(_)
-			| ColumnBuffer::Uuid4(_)
-			| ColumnBuffer::Uuid7(_)
-			| ColumnBuffer::Blob { .. }
-			| ColumnBuffer::Decimal { .. }
+		ViewData::Bool(_)
+			| ViewData::Float4(_)
+			| ViewData::Float8(_)
+			| ViewData::Int1(_)
+			| ViewData::Int2(_)
+			| ViewData::Int4(_)
+			| ViewData::Int8(_)
+			| ViewData::Int16(_)
+			| ViewData::Uint1(_)
+			| ViewData::Uint2(_)
+			| ViewData::Uint4(_)
+			| ViewData::Uint8(_)
+			| ViewData::Uint16(_)
+			| ViewData::Date(_)
+			| ViewData::DateTime(_)
+			| ViewData::Time(_)
+			| ViewData::Duration(_)
+			| ViewData::Uuid4(_)
+			| ViewData::Uuid7(_)
+			| ViewData::Blob { .. }
+			| ViewData::Decimal { .. }
 	)
 }
 
@@ -201,7 +195,7 @@ fn concat_strings(
 	r: &LargeStringArray,
 	target: ValueType,
 	fragment: Fragment,
-) -> Result<ColumnWithName> {
+) -> Result<(FieldRef, ArrayRef)> {
 	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
@@ -216,19 +210,16 @@ fn concat_strings(
 			_ => data.push_none(),
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment,
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.text()))
 }
 
 fn concat_string_with_other(
 	string_data: &LargeStringArray,
-	other_data: &ColumnBuffer,
+	other_data: &ColumnView,
 	string_is_left: bool,
 	target: ValueType,
 	fragment: Fragment,
-) -> Result<ColumnWithName> {
+) -> Result<(FieldRef, ArrayRef)> {
 	reifydb_assertions! {
 		assert_eq!(string_data.len(), other_data.len());
 	}
@@ -248,8 +239,5 @@ fn concat_string_with_other(
 			_ => data.push_none(),
 		}
 	}
-	Ok(ColumnWithName {
-		name: fragment,
-		data: data.finish(),
-	})
+	Ok(data.finish(fragment.text()))
 }

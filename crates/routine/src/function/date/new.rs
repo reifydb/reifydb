@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{factory::date_with_bitvec, nulls::split_nulls};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{date::Date, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	date::Date,
+	value_type::ValueType,
+};
 
-use crate::function::support::coerce::{CoerceMode, coerce_column};
+use crate::function::support::coerce::{CoerceMode, bare_type, coerce_column};
 
 pub struct DateNew {
 	info: RoutineInfo,
@@ -40,13 +46,14 @@ const INTEGER_TYPES: [ValueType; 10] = [
 	ValueType::Uint16,
 ];
 
-fn ensure_integer(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: usize) -> Result<(), RoutineError> {
-	if !INTEGER_TYPES.contains(&data.get_type()) && data.get_type() != ValueType::Any {
+fn ensure_integer(ctx: &FunctionContext, data: &ColumnView, argument_index: usize) -> Result<(), RoutineError> {
+	let actual = bare_type(data);
+	if !INTEGER_TYPES.contains(&actual) && actual != ValueType::Any {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
 			argument_index,
 			expected: INTEGER_TYPES.to_vec(),
-			actual: data.get_type(),
+			actual,
 		});
 	}
 	Ok(())
@@ -65,18 +72,28 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		ValueType::Date
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		for i in 0..3 {
-			let (data, _) = args[i].clone().split_nulls();
-			ensure_integer(ctx, &data, i)?;
+			let (data, _) = split_nulls(args[i].clone())?;
+			ensure_integer(ctx, &ColumnView::try_from(&data)?, i)?;
 		}
 
-		let year_cast = coerce_column(ctx, &args[0], ValueType::Int4, CoerceMode::Error)?;
-		let month_cast = coerce_column(ctx, &args[1], ValueType::Int4, CoerceMode::Error)?;
-		let day_cast = coerce_column(ctx, &args[2], ValueType::Int4, CoerceMode::Error)?;
+		let year_cast =
+			coerce_column(ctx, &ColumnView::try_from(&args[0])?, ValueType::Int4, CoerceMode::Error)?;
+		let year_cast = ColumnView::try_from(&year_cast)?;
+		let month_cast =
+			coerce_column(ctx, &ColumnView::try_from(&args[1])?, ValueType::Int4, CoerceMode::Error)?;
+		let month_cast = ColumnView::try_from(&month_cast)?;
+		let day_cast =
+			coerce_column(ctx, &ColumnView::try_from(&args[2])?, ValueType::Int4, CoerceMode::Error)?;
+		let day_cast = ColumnView::try_from(&day_cast)?;
 
-		let (ColumnBuffer::Int4(years), ColumnBuffer::Int4(months), ColumnBuffer::Int4(days)) =
-			(&year_cast, &month_cast, &day_cast)
+		let (ViewData::Int4(years), ViewData::Int4(months), ViewData::Int4(days)) =
+			(&year_cast.data, &month_cast.data, &day_cast.data)
 		else {
 			unreachable!()
 		};
@@ -114,8 +131,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 			}
 		}
 
-		let result = ColumnBuffer::date_with_bitvec(values, bits);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
+		Ok(date_with_bitvec(ctx.fragment.text(), values, bits))
 	}
 }
 

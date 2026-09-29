@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::policy::{PolicyOpToCreate, PolicyTargetType, PolicyToCreate},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreatePolicyNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -15,7 +16,7 @@ pub(crate) fn create_policy(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreatePolicyNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let target_type = match plan.target_type.as_str() {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -53,5 +54,5 @@ pub(crate) fn create_policy(
 
 	let display_name = def.name.unwrap_or_else(|| format!("policy_{}", def.id));
 
-	Ok(Columns::single_row([("policy", Value::Utf8(display_name)), ("created", Value::Boolean(true))]))
+	single_row([("policy", Value::Utf8(display_name)), ("created", Value::Boolean(true))])
 }

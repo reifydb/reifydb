@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::CatalogError;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::{nodes::CreateIdentityAttributeNode, token::keyword::is_keyword};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{Value, value_type::ValueType};
@@ -13,7 +14,7 @@ pub(crate) fn create_identity_attribute(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateIdentityAttributeNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let name = plan.name.text();
 
 	if matches!(name, "id" | "name" | "roles" | "kind") {
@@ -48,5 +49,5 @@ pub(crate) fn create_identity_attribute(
 
 	services.catalog.create_identity_attribute(txn, name, plan.value_type)?;
 
-	Ok(Columns::single_row([("attribute", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
+	single_row([("attribute", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))])
 }

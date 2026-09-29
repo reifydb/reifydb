@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	shape::RowShape,
@@ -24,7 +25,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	partition::partition_of,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
@@ -33,7 +34,12 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{column_view, user_columns},
+	},
 };
 use tracing::instrument;
 
@@ -68,7 +74,7 @@ pub(crate) fn insert_ringbuffer(
 	plan: InsertRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let InsertRingBufferNode {
 		input,
 		target,
@@ -148,13 +154,13 @@ fn drive_ringbuffer_insert(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if let Some(unknown) =
-			columns.names.iter().find(|name| !ringbuffer.columns.iter().any(|c| c.name == name.text()))
+		if let Some((unknown, _)) = user_columns(&columns)
+			.find(|(field, _)| !ringbuffer.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
 
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 		for row_idx in 0..row_count {
 			let (row, row_values) = build_insert_ringbuffer_row(
 				services,
@@ -210,7 +216,7 @@ fn finalize_ringbuffer_insert(
 	partition_metadata_cache: &HashMap<Vec<Value>, RingBufferMetadata>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
 	inserted_count: u64,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let ringbuffer = target_data.ringbuffer;
 	save_all_partition_metadata(services, txn, ringbuffer, partition_metadata_cache)?;
 
@@ -226,12 +232,12 @@ fn finalize_ringbuffer_insert(
 	}
 
 	if let Some(returning_exprs) = returning {
-		let mut columns = decode_rows_to_columns(shape, returned_rows);
-		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
-		let columns = with_absent_pre_image(columns);
+		let columns = decode_rows_to_columns(shape, returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, columns)?;
+		let columns = with_absent_pre_image(columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count))
+	insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count)
 }
 
 #[inline]
@@ -281,7 +287,7 @@ fn build_insert_ringbuffer_row(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
-	columns: &Columns,
+	columns: &RecordBatch,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<(EncodedBytes, Vec<Value>)> {
@@ -289,16 +295,15 @@ fn build_insert_ringbuffer_row(
 	let mut row_values: Vec<Value> = Vec::with_capacity(target.ringbuffer.columns.len());
 
 	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
-		let mut value = if let Some(input_column) = columns.iter().find(|col| col.name() == rb_column.name) {
-			input_column.data().get_value(row_idx)
+		let mut value = if let Some(input_column) = column_view(columns, &rb_column.name)? {
+			input_column.get_value(row_idx)
 		} else {
 			Value::none()
 		};
 
-		let column_ident = columns
-			.iter()
-			.find(|col| col.name() == rb_column.name)
-			.map(|col| col.name().clone())
+		let column_ident = user_columns(columns)
+			.find(|(field, _)| field.name() == &rb_column.name)
+			.map(|(field, _)| Fragment::internal(field.name()))
 			.unwrap_or_else(|| Fragment::internal(&rb_column.name));
 		let resolved_column =
 			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
@@ -343,8 +348,8 @@ fn build_insert_ringbuffer_row(
 }
 
 #[inline]
-fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) -> Columns {
-	Columns::single_row([
+fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("inserted", Value::Uint8(inserted)),

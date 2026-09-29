@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::{engine::TestEngine, fixture::identity::identity};
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{column_view::ColumnView, identity::IdentityId, system_columns::user_columns},
+};
 
 fn owned_engine() -> (TestEngine, IdentityId) {
 	let t = TestEngine::new();
@@ -25,8 +28,9 @@ fn data_seen(t: &TestEngine, who: IdentityId, rql: &str) -> Vec<String> {
 	assert!(r.error.is_none(), "{rql} errored: {:?}", r.error);
 	let mut seen: Vec<String> =
 		r.frames.iter()
-			.flat_map(|f| f.columns.iter().filter(|c| c.name.ends_with("data")))
-			.flat_map(|c| (0..c.data.len()).map(move |i| c.data.as_string(i)))
+			.flat_map(|f| user_columns(&f.batch).filter(|(field, _)| field.name().ends_with("data")))
+			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).unwrap())
+			.flat_map(|c| (0..c.len()).map(move |i| c.as_string(i)))
 			.collect();
 	seen.sort();
 	seen
@@ -86,7 +90,8 @@ fn rows_counted(rql: &str) -> String {
 	let (t, alice) = owned_engine();
 	let r = t.inner().command_as(alice, rql, Params::None);
 	assert!(r.error.is_none(), "{rql} errored: {:?}", r.error);
-	r.frames[0].columns[0].data.as_string(0)
+	let (field, array) = user_columns(&r.frames[0].batch).next().unwrap();
+	ColumnView::try_from((array, field.as_ref())).unwrap().as_string(0)
 }
 
 #[test]

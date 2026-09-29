@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::RowBuilder,
 	shape::{RowFamily, RowShape, RowShapeField},
@@ -12,7 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
-	value::column::columns::Columns,
+	value::batch::from_row,
 };
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
@@ -185,7 +186,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn insert(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::insert(Columns::from_row(&row)));
+		self.diffs.push(Diff::insert(row_batch(&row)));
 		self
 	}
 
@@ -195,7 +196,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
+		self.diffs.push(Diff::update(row_batch(&pre), row_batch(&post)));
 		self
 	}
 
@@ -212,7 +213,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn remove(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::remove(Columns::from_row(&row)));
+		self.diffs.push(Diff::remove(row_batch(&row)));
 		self
 	}
 
@@ -228,6 +229,13 @@ impl TestChangeBuilder {
 			version: ChangeVersion::from(self.version),
 			changed_at: self.changed_at,
 		}
+	}
+}
+
+fn row_batch(row: &Row) -> RecordBatch {
+	match from_row(row) {
+		Ok(batch) => batch,
+		Err(e) => panic!("test change row {} does not build a batch: {e}", row.number.0),
 	}
 }
 

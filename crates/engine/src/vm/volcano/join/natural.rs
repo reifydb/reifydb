@@ -3,21 +3,23 @@
 
 use std::collections::{HashMap, HashSet};
 
-use arrow_array::Array;
+use arrow_array::{Array, RecordBatch};
 use arrow_row::RowConverter;
 use reifydb_core::{
-	common::JoinType,
-	error::diagnostic::operation,
-	internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	common::JoinType, error::diagnostic::operation, internal_error, value::column::headers::ColumnHeaders,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{system_columns::user_columns, value_type::ValueType},
+};
 use tracing::instrument;
 
 use super::common::{
 	JoinContext, JoinSlot, ensure_join_keyable, join_key_types, load_and_merge_all, materialize_join,
-	resolve_column_names,
+	resolve_column_names, user_key_columns, user_views,
 };
 use crate::{
 	Result,
@@ -59,13 +61,13 @@ impl NaturalJoinNode {
 		}
 	}
 
-	fn find_common_columns(left_columns: &Columns, right_columns: &Columns) -> Vec<(String, usize, usize)> {
+	fn find_common_columns(left_columns: &RecordBatch, right_columns: &RecordBatch) -> Vec<(String, usize, usize)> {
 		let mut common_columns = Vec::new();
 
-		for (left_idx, left_col) in left_columns.iter().enumerate() {
-			for (right_idx, right_col) in right_columns.iter().enumerate() {
-				if left_col.name().text() == right_col.name().text() {
-					common_columns.push((left_col.name().text().to_string(), left_idx, right_idx));
+		for (left_idx, (left_field, _)) in user_columns(left_columns).enumerate() {
+			for (right_idx, (right_field, _)) in user_columns(right_columns).enumerate() {
+				if left_field.name() == right_field.name() {
+					common_columns.push((left_field.name().to_string(), left_idx, right_idx));
 				}
 			}
 		}
@@ -84,7 +86,7 @@ impl QueryNode for NaturalJoinNode {
 	}
 
 	#[instrument(name = "volcano::join::natural::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 		}
@@ -96,7 +98,7 @@ impl QueryNode for NaturalJoinNode {
 		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
 		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
-		let left_rows = left_columns.row_count();
+		let left_rows = left_columns.num_rows();
 
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
@@ -120,12 +122,13 @@ impl QueryNode for NaturalJoinNode {
 
 		let right_col_indices: Vec<usize> = common_columns.iter().map(|(_, _, ri)| *ri).collect();
 		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
-		ensure_join_keyable(&left_columns, &left_col_indices)?;
-		ensure_join_keyable(&right_columns, &right_col_indices)?;
-		let targets =
-			join_key_types(&left_columns, &left_col_indices, &right_columns, &right_col_indices, |_| {
-				self.fragment.clone()
-			})?;
+		let left_views = user_views(&left_columns)?;
+		let right_views = user_views(&right_columns)?;
+		ensure_join_keyable(&left_views, &left_col_indices, |_| self.fragment.clone())?;
+		ensure_join_keyable(&right_views, &right_col_indices, |_| self.fragment.clone())?;
+		let targets = join_key_types(&left_views, &left_col_indices, &right_views, &right_col_indices, |_| {
+			self.fragment.clone()
+		})?;
 
 		let (converter, hash_table) = Self::build(&right_columns, &right_col_indices, &targets)?;
 
@@ -140,30 +143,19 @@ impl QueryNode for NaturalJoinNode {
 			},
 		)?;
 
-		let kept_right: Vec<ColumnBuffer> = right_columns
-			.columns
-			.iter()
-			.enumerate()
-			.filter(|(idx, _)| !excluded_right_cols.contains(idx))
-			.map(|(_, column)| column.clone())
-			.collect();
-
-		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 		let columns = materialize_join(
 			&resolved.qualified_names,
 			&[JoinSlot {
-				columns: &left_columns.columns,
-				system: &left_columns.system,
+				columns: &left_columns,
 				picks: &left_picks,
 			}],
-			&kept_right,
+			&right_columns,
+			&excluded_indices,
 			&right_picks,
-			right_columns.time(),
-			left_rownum,
 			0,
 		)?;
 
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 		Ok(Some(columns))
 	}
 
@@ -185,18 +177,16 @@ struct ProbeContext<'a> {
 impl NaturalJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::build")]
 	fn build(
-		right_columns: &Columns,
+		right_columns: &RecordBatch,
 		right_col_indices: &[usize],
 		targets: &[ValueType],
 	) -> Result<(RowConverter, KeyIndex)> {
-		let key_columns: Vec<&ColumnBuffer> =
-			right_col_indices.iter().map(|&idx| &right_columns[idx]).collect();
-		let (converter, arrays) = key_rows(&key_columns, targets)?;
+		let (converter, arrays) = key_rows(&user_key_columns(right_columns, right_col_indices), targets)?;
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
 		let mut hash_table: KeyIndex = HashMap::new();
-		for j in 0..right_columns.row_count() {
+		for j in 0..right_columns.num_rows() {
 			if arrays.iter().any(|array| array.is_null(j)) {
 				continue;
 			}
@@ -212,7 +202,11 @@ impl NaturalJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::probe")]
-	fn probe(&self, left_columns: &Columns, probe_ctx: &ProbeContext) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
+	fn probe(
+		&self,
+		left_columns: &RecordBatch,
+		probe_ctx: &ProbeContext,
+	) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
 		let ProbeContext {
 			converter,
 			hash_table,
@@ -220,8 +214,7 @@ impl NaturalJoinNode {
 			targets,
 			left_rows,
 		} = probe_ctx;
-		let key_columns: Vec<&ColumnBuffer> = left_col_indices.iter().map(|&idx| &left_columns[idx]).collect();
-		let arrays = key_arrays(&key_columns, targets);
+		let arrays = key_arrays(&user_key_columns(left_columns, left_col_indices), targets);
 		let rows = converter
 			.convert_columns(&arrays)
 			.map_err(|e| internal_error!("Failed to build join keys: {}", e))?;

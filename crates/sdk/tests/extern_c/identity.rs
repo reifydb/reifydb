@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::{identity::IdentityId, uuid::Uuid7};
 use uuid::Uuid;
 
@@ -9,21 +9,21 @@ use super::common::{assert_column_eq, round_trip_column};
 
 #[test]
 fn identity_id_anonymous() {
-	let input = ColumnBuffer::identity_id([IdentityId::anonymous()]);
+	let input = factory::identity_id("c", [IdentityId::anonymous()]);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_anonymous", &input, &output);
 }
 
 #[test]
 fn identity_id_root() {
-	let input = ColumnBuffer::identity_id([IdentityId::root()]);
+	let input = factory::identity_id("c", [IdentityId::root()]);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_root", &input, &output);
 }
 
 #[test]
 fn identity_id_system() {
-	let input = ColumnBuffer::identity_id([IdentityId::system()]);
+	let input = factory::identity_id("c", [IdentityId::system()]);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_system", &input, &output);
 }
@@ -31,7 +31,7 @@ fn identity_id_system() {
 #[test]
 fn identity_id_specific_known_bytes() {
 	let bytes = [0x01, 0x8D, 0x5E, 0x30, 0x4B, 0x78, 0x7A, 0xBC, 0x91, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
-	let input = ColumnBuffer::identity_id([IdentityId::new(Uuid7(Uuid::from_bytes(bytes)))]);
+	let input = factory::identity_id("c", [IdentityId::new(Uuid7(Uuid::from_bytes(bytes)))]);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_specific", &input, &output);
 }
@@ -47,14 +47,15 @@ fn identity_id_thirty_two_rows() {
 			IdentityId::new(Uuid7(Uuid::from_bytes(bytes)))
 		})
 		.collect();
-	let input = ColumnBuffer::identity_id(values);
+	let input = factory::identity_id("c", values);
 	let output = round_trip_column("id", input.clone());
 	assert_column_eq("identity_id_thirty_two", &input, &output);
 }
 
 #[test]
 fn identity_id_with_undefined() {
-	let input = ColumnBuffer::identity_id_with_bitvec(
+	let input = factory::identity_id_with_bitvec(
+		"c",
 		[
 			IdentityId::root(),
 			IdentityId::default(),

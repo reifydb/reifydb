@@ -3,8 +3,9 @@
 
 use std::fmt::Debug;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::wire::{RawChangePayload, WireFormat as ClientWireFormat};
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 
@@ -26,7 +27,7 @@ pub trait WireSink: Clone + Send + Sync + 'static {
 		&self,
 		sub_id: SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		batch: RecordBatch,
 		format: Self::Format,
 	) -> DeliveryResult;
 

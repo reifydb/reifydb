@@ -3,9 +3,10 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_evaluate::stack::Variable;
 use reifydb_policy::inject_from_policies;
@@ -82,7 +83,7 @@ impl<'a> Vm<'a> {
 		if node.expect_error {
 			match compile_result {
 				Err(e) => {
-					self.stack.push(Variable::columns(diagnostic_to_columns(&e.0)));
+					self.stack.push(Variable::columns(diagnostic_to_columns(&e.0)?));
 				}
 				Ok(CompilationResult::Ready(units)) => {
 					let mut caught_diagnostic = None;
@@ -99,7 +100,7 @@ impl<'a> Vm<'a> {
 						}
 					}
 					if let Some(diag) = caught_diagnostic {
-						self.stack.push(Variable::columns(diagnostic_to_columns(&diag)));
+						self.stack.push(Variable::columns(diagnostic_to_columns(&diag)?));
 					} else {
 						let msg = node
 							.message
@@ -160,29 +161,20 @@ impl<'a> Vm<'a> {
 	}
 }
 
-fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
-	let code_col = ColumnWithName::new("code", ColumnBuffer::utf8([diag.code.as_str()]));
-	let message_col = ColumnWithName::new("message", ColumnBuffer::utf8([diag.message.as_str()]));
-	let rql_col = ColumnWithName::new(
-		"rql",
-		match &diag.rql {
-			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
-		},
-	);
-	let label_col = ColumnWithName::new(
-		"label",
-		match &diag.label {
-			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
-		},
-	);
-	let help_col = ColumnWithName::new(
-		"help",
-		match &diag.help {
-			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
-		},
-	);
-	Columns::new(vec![code_col, message_col, rql_col, label_col, help_col])
+fn diagnostic_to_columns(diag: &Diagnostic) -> Result<RecordBatch> {
+	let code_col = factory::utf8("code", [diag.code.as_str()]);
+	let message_col = factory::utf8("message", [diag.message.as_str()]);
+	let rql_col = match &diag.rql {
+		Some(s) => factory::utf8("rql", [s.as_str()]),
+		None => factory::none_typed("rql", ValueType::Utf8, 1),
+	};
+	let label_col = match &diag.label {
+		Some(s) => factory::utf8("label", [s.as_str()]),
+		None => factory::none_typed("label", ValueType::Utf8, 1),
+	};
+	let help_col = match &diag.help {
+		Some(s) => factory::utf8("help", [s.as_str()]),
+		None => factory::none_typed("help", ValueType::Utf8, 1),
+	};
+	batch(vec![code_col, message_col, rql_col, label_col, help_col])
 }

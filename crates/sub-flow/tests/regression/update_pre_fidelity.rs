@@ -15,13 +15,14 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -41,7 +42,10 @@ use reifydb_routine::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::value::{
+	Value, column_view::ColumnView, datetime::DateTime, duration::Duration, row_number::RowNumber,
+	system_columns::user_columns,
+};
 
 const SUBJECT: OperatorId = OperatorId(1);
 
@@ -55,8 +59,8 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn source() -> Option<Columns> {
-	Some(Columns::empty())
+fn source() -> Option<SchemaRef> {
+	Some(Arc::new(Schema::empty()))
 }
 
 fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
@@ -65,8 +69,12 @@ fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
 	generator::row(RowNumber(number), group, value, at)
 }
 
-fn values(columns: &Columns) -> Vec<Value> {
-	columns.columns.iter().map(|column| column.get_value(0)).collect()
+fn values(columns: &RecordBatch) -> Vec<Value> {
+	user_columns(columns)
+		.map(|(field, array)| {
+			ColumnView::try_from((array, field.as_ref())).expect("a user column reads").get_value(0)
+		})
+		.collect()
 }
 
 // Exactly one: several updates in answer to a single-row update is a shape this makes no claim
@@ -298,6 +306,8 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 mod join {
 	use std::sync::Arc;
 
+	use arrow_array::RecordBatch;
+	use arrow_schema::{Schema, SchemaRef};
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, JoinType},
 		interface::{
@@ -305,19 +315,21 @@ mod join {
 			change::{Change, ChangeOrigin, Diff},
 		},
 		row::JoinPick,
-		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+		value::{
+			batch::batch,
+			column::{builder::ColumnBuilder, factory},
+		},
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_flow_async::operator::join::operator::{JoinOperator, JoinSideConfig};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
-	use reifydb_value::{
-		fragment::Fragment,
-		value::{
-			Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns,
-			value_type::ValueType,
-		},
+	use reifydb_value::value::{
+		Value,
+		datetime::DateTime,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
 	};
 
 	use super::values;
@@ -347,44 +359,33 @@ mod join {
 		(true, true, true),
 	];
 
-	fn schema(spec: &[(&str, ValueType)]) -> Columns {
-		Columns::new(
+	fn schema(spec: &[(&str, ValueType)]) -> SchemaRef {
+		Arc::new(Schema::new(
 			spec.iter()
-				.map(|(name, ty)| {
-					ColumnWithName::new(
-						Fragment::internal(*name),
-						ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
-					)
-				})
-				.collect(),
-		)
+				.map(|(name, ty)| ColumnBuilder::with_capacity(ty.clone(), 0).finish(name).0)
+				.collect::<Vec<_>>(),
+		))
 	}
 
-	fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Columns {
+	fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> RecordBatch {
 		let mut buffers: Vec<ColumnBuilder> =
 			spec.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), 1)).collect();
 		buffers[0].push_value(Value::Int8(number as i64));
 		buffers[1].push_value(Value::Int4(key));
 		buffers[2].push_value(Value::Int8(value));
-		let columns = spec
-			.iter()
-			.zip(buffers)
-			.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
-			.collect();
+		let columns = spec.iter().zip(buffers).map(|((name, _), buffer)| buffer.finish(name)).collect();
 		let at = DateTime::from_millis(
 			1_000_000 + i64::try_from(number).expect("row number fits in i64 millis"),
 		);
-		Columns::with_system(
-			columns,
-			SystemColumns::new(
-				vec![RowNumber(number)],
-				Vec::new(),
-				vec![at],
-				vec![at],
-				vec![at],
-				Vec::new(),
-			),
-		)
+		let system = [
+			(SystemColumn::RowNumbers, factory::uint8("#rownum", [number]).1),
+			(SystemColumn::CreatedAt, factory::datetime("#created_at", [at]).1),
+			(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [at]).1),
+			(SystemColumn::Time, factory::datetime("#time", [at]).1),
+		];
+		system.into_iter().fold(batch(columns).expect("the row forms a batch"), |columns, (column, array)| {
+			with_system_column(columns, column, array).expect("a system column attaches")
+		})
 	}
 
 	fn tagged(mut diff: Diff, origin: OperatorId) -> Diff {
@@ -534,8 +535,8 @@ mod join {
 
 			for (stage, out) in [("insert", &inserted), ("update", &updated)] {
 				for diff in out.diffs.iter() {
-					let rows = diff.pre().map(|c| c.row_count()).unwrap_or(0)
-						+ diff.post().map(|c| c.row_count()).unwrap_or(0);
+					let rows = diff.pre().map(|c| c.num_rows()).unwrap_or(0)
+						+ diff.post().map(|c| c.num_rows()).unwrap_or(0);
 					assert!(rows > 0, "{who}: the {stage} published a row-less diff: {diff:?}");
 				}
 			}
@@ -547,6 +548,8 @@ mod join {
 // view keys an update's `pre` by row number and never reads its values. Measured, not assumed -
 // decoding `post` but not `pre` passes all 160 iterations of the source sweeps.
 mod source {
+	use arrow_array::RecordBatch;
+	use arrow_schema::SchemaRef;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, TimeSource},
 		interface::{
@@ -560,7 +563,10 @@ mod source {
 			},
 			change::{Change, Diff},
 		},
-		value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+		value::{
+			batch::batch,
+			column::{builder::ColumnBuilder, factory},
+		},
 	};
 	use reifydb_flow_async::operator::{
 		HostOperator,
@@ -572,16 +578,12 @@ mod source {
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
-	use reifydb_value::{
-		fragment::Fragment,
-		value::{
-			Value,
-			datetime::DateTime,
-			dictionary::{DictionaryEntryId, DictionaryId},
-			row_number::RowNumber,
-			system_columns::SystemColumns,
-			value_type::ValueType,
-		},
+	use reifydb_value::value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
 	};
 
 	use super::values;
@@ -640,15 +642,23 @@ mod source {
 		engine.admin("CREATE DICTIONARY chaos::syms FOR utf8 AS uint2");
 	}
 
-	fn encoded(dictionary_id: DictionaryId, entry: &DictionaryEntryId) -> Columns {
+	fn encoded(dictionary_id: DictionaryId, entry: &DictionaryEntryId) -> RecordBatch {
 		let mut symbols = ColumnBuilder::with_capacity(ValueType::DictionaryId, 1);
 		symbols.push_value(entry.to_value());
 		symbols.set_dictionary_id(dictionary_id);
-		let symbols = symbols.finish();
+		let symbols = symbols.finish("sym");
 		let at = DateTime::from_millis(1_000_000);
-		Columns::with_system(
-			vec![ColumnWithName::new(Fragment::internal("sym"), symbols)],
-			SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
+		let system = [
+			(SystemColumn::RowNumbers, factory::uint8("#rownum", [1u64]).1),
+			(SystemColumn::CreatedAt, factory::datetime("#created_at", [at]).1),
+			(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [at]).1),
+			(SystemColumn::Time, factory::datetime("#time", [at]).1),
+		];
+		system.into_iter().fold(
+			batch(vec![symbols]).expect("the row forms a batch"),
+			|columns, (column, array)| {
+				with_system_column(columns, column, array).expect("a system column attaches")
+			},
 		)
 	}
 
@@ -773,7 +783,7 @@ mod source {
 			}
 		}
 
-		fn output_schema(&self) -> Option<Columns> {
+		fn output_schema(&self) -> Option<SchemaRef> {
 			None
 		}
 	}

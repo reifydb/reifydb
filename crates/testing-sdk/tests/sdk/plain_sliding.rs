@@ -14,7 +14,10 @@ use reifydb_value::{
 	value::{datetime::DateTime, diff_type::DiffType},
 };
 
-use crate::plain_rolling::{SumTumblingOnly, harness, input_row, render};
+use crate::{
+	plain_rolling::{SumTumblingOnly, harness, input_row, render},
+	read,
+};
 
 fn sliding(size: u64, slide: u64, lateness: u64) -> ApplyWith {
 	ApplyWith {
@@ -73,13 +76,13 @@ fn an_update_carries_each_window_s_published_row_as_its_pre() {
 	for diff in &out.diffs {
 		assert_eq!(diff.kind(), DiffType::Update);
 		let (pres, posts) = (diff.pre().expect("pre"), diff.post().expect("post"));
-		for i in 0..posts.row_count() {
-			let pre = pres.row_ref(i).expect("pre row");
-			let post = posts.row_ref(i).expect("post row");
+		for i in 0..posts.num_rows() {
+			let pre = (pres, i);
+			let post = (posts, i);
 			pre_post.push((
-				pre.f64("sum").expect("sum"),
-				post.f64("sum").expect("sum"),
-				post.u64("start").expect("start"),
+				read::<f64>(pre, "sum").expect("sum"),
+				read::<f64>(post, "sum").expect("sum"),
+				read::<u64>(post, "start").expect("start"),
 			));
 		}
 	}

@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
 pub struct TextCount {
 	info: RoutineInfo,
@@ -34,12 +39,16 @@ impl<'a> Routine<FunctionContext<'a>> for TextCount {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Utf8 {
+		match &data.data {
+			ViewData::Utf8 {
 				container,
 				..
 			} => {
@@ -50,14 +59,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextCount {
 					result.push(text.chars().count() as i32);
 				}
 
-				let result_data = ColumnBuffer::int4(result);
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(int4(ctx.fragment.text(), result))
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

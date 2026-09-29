@@ -21,6 +21,7 @@ reifydb-build = { workspace = true }
 reifydb-value = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 crc32fast = { workspace = true }
 uuid = { workspace = true }
 postcard = { workspace = true }

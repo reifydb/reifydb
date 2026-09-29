@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_codec::row::bytes::{EncodedBytes, read_fingerprint};
 use reifydb_core::{
@@ -24,7 +25,7 @@ use reifydb_core::{
 		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKeyRange},
 	},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteTableNode, query::QueryPlan};
@@ -32,7 +33,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, partition::Partition, row_number::RowNumber},
+	value::{
+		Value,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{partitions, row_numbers},
+	},
 };
 
 use super::{
@@ -62,7 +68,7 @@ pub(crate) fn delete(
 	plan: DeleteTableNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let DeleteTableNode {
 		input,
 		target,
@@ -97,12 +103,12 @@ pub(crate) fn delete(
 
 	if let Some(returning_exprs) = &returning {
 		let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
-		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
-		let columns = with_pre_image(columns.clone(), &columns);
+		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
+		let columns = with_pre_image(columns.clone(), &columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(delete_table_result(namespace.name(), &table.name, deleted_count))
+	delete_table_result(namespace.name(), &table.name, deleted_count)
 }
 
 #[inline]
@@ -215,7 +221,7 @@ fn collect_rows_to_delete(
 	let mut partitions_to_delete = Vec::new();
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		if columns.row_count() == 0 {
+		if columns.num_rows() == 0 {
 			continue;
 		}
 		PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
@@ -226,14 +232,15 @@ fn collect_rows_to_delete(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
-		if columns.row_numbers().is_empty() {
+		if row_numbers(&columns)?.is_empty() {
 			return Err(EngineError::MissingRowNumberColumn.into());
 		}
-		let row_numbers = &columns.row_numbers();
-		for row_idx in 0..columns.row_count() {
+		let row_numbers = row_numbers(&columns)?;
+		let sidecar_partitions = partitions(&columns)?;
+		for row_idx in 0..columns.num_rows() {
 			row_numbers_to_delete.push(row_numbers[row_idx]);
-			if !columns.partitions().is_empty() {
-				partitions_to_delete.push(columns.partitions()[row_idx]);
+			if !sidecar_partitions.is_empty() {
+				partitions_to_delete.push(sidecar_partitions[row_idx]);
 			}
 		}
 	}
@@ -303,8 +310,8 @@ fn remove_table_pk_index_for(
 }
 
 #[inline]
-fn delete_table_result(namespace: &str, table: &str, deleted: u64) -> Columns {
-	Columns::single_row([
+fn delete_table_result(namespace: &str, table: &str, deleted: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),
 		("deleted", Value::Uint8(deleted)),

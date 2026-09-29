@@ -21,7 +21,7 @@ fn multiplying_two_wide_scale_decimal_columns_keeps_six_fraction_digits() {
 	if let Some(e) = r.error {
 		panic!("query failed: {e:?}")
 	}
-	let column = r.frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-	assert_eq!(column.data.get_type(), ValueType::decimal(Precision::new(76), Scale::new(6)));
-	assert_eq!(column.data.get_value(0).to_string(), "2.250000");
+	let column = r.frames[0].column("v").unwrap().expect("column v");
+	assert_eq!(column.get_type(), ValueType::decimal(Precision::new(76), Scale::new(6)));
+	assert_eq!(column.get_value(0).to_string(), "2.250000");
 }

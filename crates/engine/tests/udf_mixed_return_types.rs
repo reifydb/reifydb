@@ -22,10 +22,7 @@ fn outcome(t: &TestEngine, rql: &str) -> String {
 		Err(_) => "panic".to_string(),
 		Ok(result) => match result.error {
 			Some(err) => format!("error {}", err.diagnostic().code),
-			None => format!(
-				"ok {:?}",
-				result.frames[0].columns.iter().find(|c| c.name == "v").map(|c| c.data.get_type())
-			),
+			None => format!("ok {:?}", result.frames[0].column("v").unwrap().map(|c| c.get_type())),
 		},
 	}
 }

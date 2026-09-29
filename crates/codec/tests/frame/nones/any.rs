@@ -8,17 +8,15 @@ use reifydb_value::value::{
 	blob::Blob,
 	container::any_array::{any_array, any_array_optional},
 	date::Date,
-	frame::data::FrameColumnData,
 	ordered_f64::OrderedF64,
 	uuid::Uuid4,
 	value_type::ValueType,
 };
 
-fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any {
-		container: any_array(v),
-		declared_type: None,
-	}
+use crate::common::{ColumnData, data, optional};
+
+fn make(v: Vec<Value>) -> ColumnData {
+	data(ValueType::Any, any_array(v))
 }
 
 crate::nones_tests! {
@@ -37,10 +35,7 @@ fn any_cell_holding_none_of_duration_round_trips() {
 	// A none row next to a value must come back as a null row, never as an encoded none cell.
 	crate::common::round_trip_column(
 		"c",
-		FrameColumnData::Any {
-			container: any_array_optional([None, Some(Value::Int4(5))]),
-			declared_type: None,
-		},
+		optional(data(ValueType::Any, any_array_optional([None, Some(Value::Int4(5))])), &[false, true]),
 	);
 }
 
@@ -48,8 +43,9 @@ fn any_cell_holding_none_of_duration_round_trips() {
 fn any_cell_mixed_concrete_and_none_of_different_types_round_trips() {
 	crate::common::round_trip_column(
 		"c",
-		FrameColumnData::Any {
-			container: any_array(vec![
+		data(
+			ValueType::Any,
+			any_array(vec![
 				Value::Int4(1),
 				Value::List(vec![Value::none_of(ValueType::Duration)]),
 				Value::Utf8("hello".to_string()),
@@ -59,7 +55,6 @@ fn any_cell_mixed_concrete_and_none_of_different_types_round_trips() {
 				Value::Date(Date::from_days_since_epoch(0).unwrap()),
 				Value::Uuid4(Uuid4(uuid::Uuid::nil())),
 			]),
-			declared_type: None,
-		},
+		),
 	);
 }

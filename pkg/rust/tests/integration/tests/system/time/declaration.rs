@@ -41,9 +41,9 @@ fn a_datetime_populator_is_accepted() {
 	db.command(r#"INSERT st::t [{ id: 1, at: "2026-01-01T00:00:01Z" }]"#);
 	let frames = db.query("FROM st::t | MAP { #time, at }");
 	let frame = frames.first().expect("no frame");
-	let time = frame.columns.iter().find(|c| c.name == "time").expect("no #time");
-	let at = frame.columns.iter().find(|c| c.name == "at").expect("no at");
-	assert_eq!(time.data.get_value(0), at.data.get_value(0));
+	let time = frame.column("time").expect("the column reads").expect("no #time");
+	let at = frame.column("at").expect("the column reads").expect("no at");
+	assert_eq!(time.get_value(0), at.get_value(0));
 }
 
 #[test]

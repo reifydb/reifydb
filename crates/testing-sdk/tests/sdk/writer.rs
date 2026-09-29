@@ -25,6 +25,8 @@ use reifydb_value::{
 	},
 };
 
+use crate::{read, read_value};
+
 struct U8Row {
 	v: u8,
 }
@@ -64,10 +66,10 @@ fn scalar_u8_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpU8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").u8("v"), Some(0));
-	assert_eq!(post.row_ref(1).expect("r1").u8("v"), Some(1));
-	assert_eq!(post.row_ref(2).expect("r2").u8("v"), Some(u8::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<u8>((post, 0), "v"), Some(0));
+	assert_eq!(read::<u8>((post, 1), "v"), Some(1));
+	assert_eq!(read::<u8>((post, 2), "v"), Some(u8::MAX));
 }
 
 struct U16Row {
@@ -109,10 +111,10 @@ fn scalar_u16_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpU16>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").u16("v"), Some(0));
-	assert_eq!(post.row_ref(1).expect("r1").u16("v"), Some(1));
-	assert_eq!(post.row_ref(2).expect("r2").u16("v"), Some(u16::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<u16>((post, 0), "v"), Some(0));
+	assert_eq!(read::<u16>((post, 1), "v"), Some(1));
+	assert_eq!(read::<u16>((post, 2), "v"), Some(u16::MAX));
 }
 
 struct U32Row {
@@ -154,10 +156,10 @@ fn scalar_u32_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpU32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").u32("v"), Some(0));
-	assert_eq!(post.row_ref(1).expect("r1").u32("v"), Some(1));
-	assert_eq!(post.row_ref(2).expect("r2").u32("v"), Some(u32::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<u32>((post, 0), "v"), Some(0));
+	assert_eq!(read::<u32>((post, 1), "v"), Some(1));
+	assert_eq!(read::<u32>((post, 2), "v"), Some(u32::MAX));
 }
 
 struct U64Row {
@@ -199,10 +201,10 @@ fn scalar_u64_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpU64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").u64("v"), Some(0));
-	assert_eq!(post.row_ref(1).expect("r1").u64("v"), Some(1));
-	assert_eq!(post.row_ref(2).expect("r2").u64("v"), Some(u64::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<u64>((post, 0), "v"), Some(0));
+	assert_eq!(read::<u64>((post, 1), "v"), Some(1));
+	assert_eq!(read::<u64>((post, 2), "v"), Some(u64::MAX));
 }
 
 struct I8Row {
@@ -244,10 +246,10 @@ fn scalar_i8_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpI8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int1(i8::MIN)));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int1(0)));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int1(i8::MAX)));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Int1(i8::MIN)));
+	assert_eq!(read_value((post, 1), "v"), Some(Value::Int1(0)));
+	assert_eq!(read_value((post, 2), "v"), Some(Value::Int1(i8::MAX)));
 }
 
 struct I16Row {
@@ -289,10 +291,10 @@ fn scalar_i16_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpI16>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int2(i16::MIN)));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int2(0)));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int2(i16::MAX)));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Int2(i16::MIN)));
+	assert_eq!(read_value((post, 1), "v"), Some(Value::Int2(0)));
+	assert_eq!(read_value((post, 2), "v"), Some(Value::Int2(i16::MAX)));
 }
 
 struct I32Row {
@@ -334,10 +336,10 @@ fn scalar_i32_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpI32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int4(i32::MIN)));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int4(0)));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int4(i32::MAX)));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Int4(i32::MIN)));
+	assert_eq!(read_value((post, 1), "v"), Some(Value::Int4(0)));
+	assert_eq!(read_value((post, 2), "v"), Some(Value::Int4(i32::MAX)));
 }
 
 struct I64Row {
@@ -379,10 +381,10 @@ fn scalar_i64_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpI64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Int8(i64::MIN)));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Some(Value::Int8(0)));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Some(Value::Int8(i64::MAX)));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Int8(i64::MIN)));
+	assert_eq!(read_value((post, 1), "v"), Some(Value::Int8(0)));
+	assert_eq!(read_value((post, 2), "v"), Some(Value::Int8(i64::MAX)));
 }
 
 struct F32Row {
@@ -424,10 +426,10 @@ fn scalar_f32_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpF32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").f32("v"), Some(0.0_f32));
-	assert_eq!(post.row_ref(1).expect("r1").f32("v"), Some(-1.5_f32));
-	assert_eq!(post.row_ref(2).expect("r2").f32("v"), Some(f32::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<f32>((post, 0), "v"), Some(0.0_f32));
+	assert_eq!(read::<f32>((post, 1), "v"), Some(-1.5_f32));
+	assert_eq!(read::<f32>((post, 2), "v"), Some(f32::MAX));
 }
 
 struct F64Row {
@@ -469,10 +471,10 @@ fn scalar_f64_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpF64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").f64("v"), Some(0.0_f64));
-	assert_eq!(post.row_ref(1).expect("r1").f64("v"), Some(-1.5_f64));
-	assert_eq!(post.row_ref(2).expect("r2").f64("v"), Some(f64::MAX));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<f64>((post, 0), "v"), Some(0.0_f64));
+	assert_eq!(read::<f64>((post, 1), "v"), Some(-1.5_f64));
+	assert_eq!(read::<f64>((post, 2), "v"), Some(f64::MAX));
 }
 
 struct BoolRow {
@@ -514,10 +516,10 @@ fn bool_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpBool>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").bool("v"), Some(true));
-	assert_eq!(post.row_ref(1).expect("r1").bool("v"), Some(false));
-	assert_eq!(post.row_ref(2).expect("r2").bool("v"), Some(true));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<bool>((post, 0), "v"), Some(true));
+	assert_eq!(read::<bool>((post, 1), "v"), Some(false));
+	assert_eq!(read::<bool>((post, 2), "v"), Some(true));
 }
 
 struct Utf8Row {
@@ -560,10 +562,10 @@ fn utf8_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpUtf8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").utf8("s").as_deref(), Some(""));
-	assert_eq!(post.row_ref(1).expect("r1").utf8("s").as_deref(), Some("hello"));
-	assert_eq!(post.row_ref(2).expect("r2").utf8("s").as_deref(), Some("こんにちは"));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<String>((post, 0), "s").as_deref(), Some(""));
+	assert_eq!(read::<String>((post, 1), "s").as_deref(), Some("hello"));
+	assert_eq!(read::<String>((post, 2), "s").as_deref(), Some("こんにちは"));
 }
 
 struct OpUtf8Growth;
@@ -600,10 +602,10 @@ fn utf8_capacity_growth() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpUtf8Growth>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 20);
+	assert_eq!(post.num_rows(), 20);
 	let expected = "x".repeat(100);
 	for i in 0..20usize {
-		assert_eq!(post.row_ref(i).expect("row").utf8("s").as_deref(), Some(expected.as_str()), "row {i}");
+		assert_eq!(read::<String>((post, i), "s").as_deref(), Some(expected.as_str()), "row {i}");
 	}
 }
 
@@ -650,10 +652,10 @@ fn blob_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpBlob>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("b"), Some(Value::Blob(Blob::new(vec![]))));
-	assert_eq!(post.row_ref(1).expect("r1").value("b"), Some(Value::Blob(Blob::new(vec![0u8, 1, 127, 255]))));
-	assert_eq!(post.row_ref(2).expect("r2").value("b"), Some(Value::Blob(Blob::new(vec![42u8; 1000]))));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "b"), Some(Value::Blob(Blob::new(vec![]))));
+	assert_eq!(read_value((post, 1), "b"), Some(Value::Blob(Blob::new(vec![0u8, 1, 127, 255]))));
+	assert_eq!(read_value((post, 2), "b"), Some(Value::Blob(Blob::new(vec![42u8; 1000]))));
 }
 
 struct DecimalRow {
@@ -705,10 +707,10 @@ fn decimal_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpDecimal>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("d"), Some(Value::Decimal(Decimal::zero())));
-	assert_eq!(post.row_ref(1).expect("r1").value("d"), Some(Value::Decimal(Decimal::from_i64(1234))));
-	assert_eq!(post.row_ref(2).expect("r2").value("d"), Some(Value::Decimal(Decimal::from_i64(-5678))));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "d"), Some(Value::Decimal(Decimal::zero())));
+	assert_eq!(read_value((post, 1), "d"), Some(Value::Decimal(Decimal::from_i64(1234))));
+	assert_eq!(read_value((post, 2), "d"), Some(Value::Decimal(Decimal::from_i64(-5678))));
 }
 
 struct WideRow {
@@ -751,9 +753,9 @@ fn wide_integers_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpWide>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 1);
-	assert_eq!(post.row_ref(0).expect("r0").value("a"), Some(Value::Uint16(u128::MAX)));
-	assert_eq!(post.row_ref(0).expect("r0").value("b"), Some(Value::Int16(i128::MIN)));
+	assert_eq!(post.num_rows(), 1);
+	assert_eq!(read_value((post, 0), "a"), Some(Value::Uint16(u128::MAX)));
+	assert_eq!(read_value((post, 0), "b"), Some(Value::Int16(i128::MIN)));
 }
 
 struct DateRow {
@@ -797,10 +799,10 @@ fn scalar_date_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpDate>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Date(Date::default())));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Date::new(2024, 3, 15).map(Value::Date));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Date::new(2554, 1, 1).map(Value::Date));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Date(Date::default())));
+	assert_eq!(read_value((post, 1), "v"), Date::new(2024, 3, 15).map(Value::Date));
+	assert_eq!(read_value((post, 2), "v"), Date::new(2554, 1, 1).map(Value::Date));
 }
 
 struct DateTimeRow {
@@ -847,10 +849,10 @@ fn scalar_datetime_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpDateTime>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").datetime("v"), Some(DateTime::from_nanos(0)));
-	assert_eq!(post.row_ref(1).expect("r1").datetime("v"), Some(DateTime::from_nanos(1_700_000_000_000_000_000)));
-	assert_eq!(post.row_ref(2).expect("r2").datetime("v"), Some(DateTime::from_nanos(i64::MAX)));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<DateTime>((post, 0), "v"), Some(DateTime::from_nanos(0)));
+	assert_eq!(read::<DateTime>((post, 1), "v"), Some(DateTime::from_nanos(1_700_000_000_000_000_000)));
+	assert_eq!(read::<DateTime>((post, 2), "v"), Some(DateTime::from_nanos(i64::MAX)));
 }
 
 struct TimeRow {
@@ -897,10 +899,10 @@ fn scalar_time_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpTime>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").value("v"), Some(Value::Time(Time::default())));
-	assert_eq!(post.row_ref(1).expect("r1").value("v"), Time::new(14, 30, 45, 123_456_789).map(Value::Time));
-	assert_eq!(post.row_ref(2).expect("r2").value("v"), Time::new(23, 59, 59, 999_999_999).map(Value::Time));
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read_value((post, 0), "v"), Some(Value::Time(Time::default())));
+	assert_eq!(read_value((post, 1), "v"), Time::new(14, 30, 45, 123_456_789).map(Value::Time));
+	assert_eq!(read_value((post, 2), "v"), Time::new(23, 59, 59, 999_999_999).map(Value::Time));
 }
 
 struct DurationRow {
@@ -947,10 +949,10 @@ fn scalar_duration_roundtrip() {
 	let mut h = ExternCOperatorHarnessBuilder::<OpDuration>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 3);
-	assert_eq!(post.row_ref(0).expect("r0").duration("v"), Some(Duration::default()));
-	assert_eq!(post.row_ref(1).expect("r1").duration("v"), Duration::new(13, 5, 3_600_000_000_000).ok());
-	assert_eq!(post.row_ref(2).expect("r2").duration("v"), Duration::from_seconds(-30).ok());
+	assert_eq!(post.num_rows(), 3);
+	assert_eq!(read::<Duration>((post, 0), "v"), Some(Duration::default()));
+	assert_eq!(read::<Duration>((post, 1), "v"), Duration::new(13, 5, 3_600_000_000_000).ok());
+	assert_eq!(read::<Duration>((post, 2), "v"), Duration::from_seconds(-30).ok());
 }
 
 struct OpUtf8IntoU64;

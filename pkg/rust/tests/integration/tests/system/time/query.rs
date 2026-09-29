@@ -28,16 +28,12 @@ fn a_projected_time_column_carries_the_declared_populator() {
 	let frames = db.query("FROM st::t | MAP { id, #time, at }");
 	let frame = frames.first().expect("no frame");
 
-	let time = frame.columns.iter().find(|c| c.name == "time").expect("#time did not project as a column");
-	let at = frame.columns.iter().find(|c| c.name == "at").expect("no `at` column");
+	let time = frame.column("time").expect("the column reads").expect("#time did not project as a column");
+	let at = frame.column("at").expect("the column reads").expect("no `at` column");
 
-	assert_eq!(time.data.len(), 5);
+	assert_eq!(time.len(), 5);
 	for i in 0..5 {
-		assert_eq!(
-			time.data.get_value(i),
-			at.data.get_value(i),
-			"#time[{i}] must equal the declared ts column"
-		);
+		assert_eq!(time.get_value(i), at.get_value(i), "#time[{i}] must equal the declared ts column");
 	}
 }
 
@@ -46,9 +42,9 @@ fn time_is_sortable() {
 	let db = seeded_db();
 	let frames = db.query("FROM st::t | SORT { #time: DESC } | MAP { id }");
 	let frame = frames.first().expect("no frame");
-	let id = frame.columns.iter().find(|c| c.name == "id").expect("no `id` column");
+	let id = frame.column("id").expect("the column reads").expect("no `id` column");
 
-	let ids: Vec<Value> = (0..id.data.len()).map(|i| id.data.get_value(i)).collect();
+	let ids: Vec<Value> = (0..id.len()).map(|i| id.get_value(i)).collect();
 	assert_eq!(
 		ids,
 		vec![Value::Int4(5), Value::Int4(4), Value::Int4(3), Value::Int4(2), Value::Int4(1)],
@@ -63,7 +59,7 @@ fn the_other_system_columns_remain_reachable() {
 	let frame = frames.first().expect("no frame");
 
 	for name in ["rownum", "created_at", "updated_at", "time"] {
-		let col = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("{name} missing"));
-		assert_eq!(col.data.len(), 5, "{name} must carry one entry per row");
+		let col = frame.column(name).expect("the column reads").unwrap_or_else(|| panic!("{name} missing"));
+		assert_eq!(col.len(), 5, "{name} must carry one entry per row");
 	}
 }

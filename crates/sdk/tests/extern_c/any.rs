@@ -3,7 +3,9 @@
 
 use std::f64::consts::PI;
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -53,13 +55,13 @@ fn uuid7_bytes(bytes: [u8; 16]) -> Value {
 fn identity_bytes(bytes: [u8; 16]) -> Value {
 	Value::IdentityId(IdentityId::new(Uuid7(Uuid::from_bytes(bytes))))
 }
-fn one_row(value: Value) -> ColumnBuffer {
-	ColumnBuffer::any([value])
+fn one_row(value: Value) -> (FieldRef, ArrayRef) {
+	factory::any("c", [value])
 }
 
 #[test]
 fn any_none() {
-	let input = ColumnBuffer::any_optional([None]);
+	let input = factory::any_optional("c", [None]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_none", &input, &output);
 }
@@ -94,14 +96,14 @@ fn any_float4_zero() {
 
 #[test]
 fn any_float4_min_max() {
-	let input = ColumnBuffer::any([float4(f32::MIN), float4(f32::MAX)]);
+	let input = factory::any("c", [float4(f32::MIN), float4(f32::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_float4_min_max", &input, &output);
 }
 
 #[test]
 fn any_float4_infinities() {
-	let input = ColumnBuffer::any([float4(f32::INFINITY), float4(f32::NEG_INFINITY)]);
+	let input = factory::any("c", [float4(f32::INFINITY), float4(f32::NEG_INFINITY)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_float4_infinities", &input, &output);
 }
@@ -115,14 +117,14 @@ fn any_float8_zero() {
 
 #[test]
 fn any_float8_min_max() {
-	let input = ColumnBuffer::any([float8(f64::MIN), float8(f64::MAX)]);
+	let input = factory::any("c", [float8(f64::MIN), float8(f64::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_float8_min_max", &input, &output);
 }
 
 #[test]
 fn any_float8_infinities() {
-	let input = ColumnBuffer::any([float8(f64::INFINITY), float8(f64::NEG_INFINITY)]);
+	let input = factory::any("c", [float8(f64::INFINITY), float8(f64::NEG_INFINITY)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_float8_infinities", &input, &output);
 }
@@ -136,38 +138,34 @@ fn any_float8_subnormal() {
 
 #[test]
 fn any_int1_extremes() {
-	let input = ColumnBuffer::any([
-		Value::Int1(i8::MIN),
-		Value::Int1(-1),
-		Value::Int1(0),
-		Value::Int1(1),
-		Value::Int1(i8::MAX),
-	]);
+	let input = factory::any(
+		"c",
+		[Value::Int1(i8::MIN), Value::Int1(-1), Value::Int1(0), Value::Int1(1), Value::Int1(i8::MAX)],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int1", &input, &output);
 }
 
 #[test]
 fn any_int2_extremes() {
-	let input = ColumnBuffer::any([Value::Int2(i16::MIN), Value::Int2(0x0102), Value::Int2(i16::MAX)]);
+	let input = factory::any("c", [Value::Int2(i16::MIN), Value::Int2(0x0102), Value::Int2(i16::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int2", &input, &output);
 }
 
 #[test]
 fn any_int4_extremes() {
-	let input = ColumnBuffer::any([Value::Int4(i32::MIN), Value::Int4(0x01020304), Value::Int4(i32::MAX)]);
+	let input = factory::any("c", [Value::Int4(i32::MIN), Value::Int4(0x01020304), Value::Int4(i32::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int4", &input, &output);
 }
 
 #[test]
 fn any_int8_extremes() {
-	let input = ColumnBuffer::any([
-		Value::Int8(i64::MIN),
-		Value::Int8(0x0102_0304_0506_0708i64),
-		Value::Int8(i64::MAX),
-	]);
+	let input = factory::any(
+		"c",
+		[Value::Int8(i64::MIN), Value::Int8(0x0102_0304_0506_0708i64), Value::Int8(i64::MAX)],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int8", &input, &output);
 }
@@ -175,42 +173,42 @@ fn any_int8_extremes() {
 #[test]
 fn any_int16_extremes() {
 	let v: i128 = (0x0102_0304_0506_0708i128) | ((0x090A_0B0C_0D0E_0F10i128) << 64);
-	let input = ColumnBuffer::any([Value::Int16(i128::MIN), Value::Int16(v), Value::Int16(i128::MAX)]);
+	let input = factory::any("c", [Value::Int16(i128::MIN), Value::Int16(v), Value::Int16(i128::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_int16", &input, &output);
 }
 
 #[test]
 fn any_uint1_extremes() {
-	let input = ColumnBuffer::any([Value::Uint1(0), Value::Uint1(u8::MAX)]);
+	let input = factory::any("c", [Value::Uint1(0), Value::Uint1(u8::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint1", &input, &output);
 }
 
 #[test]
 fn any_uint2_extremes() {
-	let input = ColumnBuffer::any([Value::Uint2(0), Value::Uint2(u16::MAX)]);
+	let input = factory::any("c", [Value::Uint2(0), Value::Uint2(u16::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint2", &input, &output);
 }
 
 #[test]
 fn any_uint4_extremes() {
-	let input = ColumnBuffer::any([Value::Uint4(0), Value::Uint4(u32::MAX)]);
+	let input = factory::any("c", [Value::Uint4(0), Value::Uint4(u32::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint4", &input, &output);
 }
 
 #[test]
 fn any_uint8_extremes() {
-	let input = ColumnBuffer::any([Value::Uint8(0), Value::Uint8(u64::MAX)]);
+	let input = factory::any("c", [Value::Uint8(0), Value::Uint8(u64::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint8", &input, &output);
 }
 
 #[test]
 fn any_uint16_extremes() {
-	let input = ColumnBuffer::any([Value::Uint16(0), Value::Uint16(u128::MAX)]);
+	let input = factory::any("c", [Value::Uint16(0), Value::Uint16(u128::MAX)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_uint16", &input, &output);
 }
@@ -345,7 +343,7 @@ fn any_duration_zero() {
 
 #[test]
 fn any_duration_pure_components() {
-	let input = ColumnBuffer::any([duration(12, 0, 0), duration(0, 31, 0), duration(0, 0, 1_000_000_000)]);
+	let input = factory::any("c", [duration(12, 0, 0), duration(0, 31, 0), duration(0, 0, 1_000_000_000)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_duration_components", &input, &output);
 }
@@ -420,7 +418,7 @@ fn any_decimal_zero() {
 
 #[test]
 fn any_decimal_simple() {
-	let input = ColumnBuffer::any([Value::Decimal(Decimal::from_i64(1)), Value::Decimal(Decimal::from_i64(-1))]);
+	let input = factory::any("c", [Value::Decimal(Decimal::from_i64(1)), Value::Decimal(Decimal::from_i64(-1))]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_decimal_simple", &input, &output);
 }
@@ -428,11 +426,14 @@ fn any_decimal_simple() {
 #[test]
 fn any_decimal_high_precision() {
 	use std::str::FromStr;
-	let input = ColumnBuffer::any([
-		Value::Decimal(Decimal::from_str("3.14159265358979323846").expect("valid")),
-		Value::Decimal(Decimal::from_str("99999999999999999999999999999999").expect("valid")),
-		Value::Decimal(Decimal::from_str("-0.0000000000000000000000000000001").expect("valid")),
-	]);
+	let input = factory::any(
+		"c",
+		[
+			Value::Decimal(Decimal::from_str("3.14159265358979323846").expect("valid")),
+			Value::Decimal(Decimal::from_str("99999999999999999999999999999999").expect("valid")),
+			Value::Decimal(Decimal::from_str("-0.0000000000000000000000000000001").expect("valid")),
+		],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_decimal_high_precision", &input, &output);
 }
@@ -453,20 +454,23 @@ fn any_recursive_two_levels() {
 
 #[test]
 fn any_dictionary_id_each_variant() {
-	let input = ColumnBuffer::any([
-		Value::DictionaryId(DictionaryEntryId::U1(7)),
-		Value::DictionaryId(DictionaryEntryId::U2(1234)),
-		Value::DictionaryId(DictionaryEntryId::U4(123_456_789)),
-		Value::DictionaryId(DictionaryEntryId::U8(0xDEAD_BEEF_CAFE_BABEu64)),
-		Value::DictionaryId(DictionaryEntryId::U16(0x0102_0304_0506_0708_090A_0B0C_0D0E_0F10u128)),
-	]);
+	let input = factory::any(
+		"c",
+		[
+			Value::DictionaryId(DictionaryEntryId::U1(7)),
+			Value::DictionaryId(DictionaryEntryId::U2(1234)),
+			Value::DictionaryId(DictionaryEntryId::U4(123_456_789)),
+			Value::DictionaryId(DictionaryEntryId::U8(0xDEAD_BEEF_CAFE_BABEu64)),
+			Value::DictionaryId(DictionaryEntryId::U16(0x0102_0304_0506_0708_090A_0B0C_0D0E_0F10u128)),
+		],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_dict_id_each_variant", &input, &output);
 }
 
 #[test]
 fn any_type_simple() {
-	let input = ColumnBuffer::any([Value::Type(ValueType::Int8), Value::Type(ValueType::Utf8)]);
+	let input = factory::any("c", [Value::Type(ValueType::Int8), Value::Type(ValueType::Utf8)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_type_simple", &input, &output);
 }
@@ -571,26 +575,29 @@ fn any_tuple_triple_mixed() {
 
 #[test]
 fn any_single_int() {
-	let input = ColumnBuffer::any([Value::Int8(42i64)]);
+	let input = factory::any("c", [Value::Int8(42i64)]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_single_int", &input, &output);
 }
 
 #[test]
 fn any_single_utf8() {
-	let input = ColumnBuffer::any([Value::Utf8("hello".to_string())]);
+	let input = factory::any("c", [Value::Utf8("hello".to_string())]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_single_utf8", &input, &output);
 }
 
 #[test]
 fn any_heterogeneous_column() {
-	let input = ColumnBuffer::any([
-		Value::Int8(1i64),
-		Value::Utf8("two".to_string()),
-		Value::Boolean(true),
-		Value::Float8(OrderedF64::try_from(PI).expect("valid")),
-	]);
+	let input = factory::any(
+		"c",
+		[
+			Value::Int8(1i64),
+			Value::Utf8("two".to_string()),
+			Value::Boolean(true),
+			Value::Float8(OrderedF64::try_from(PI).expect("valid")),
+		],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_heterogeneous", &input, &output);
 }
@@ -598,7 +605,7 @@ fn any_heterogeneous_column() {
 #[test]
 fn any_thirty_two_rows() {
 	let values: Vec<Value> = (0..32i64).map(Value::Int8).collect();
-	let input = ColumnBuffer::any(values);
+	let input = factory::any("c", values);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_thirty_two", &input, &output);
 }
@@ -606,7 +613,7 @@ fn any_thirty_two_rows() {
 #[test]
 fn any_with_undefined() {
 	let input =
-		ColumnBuffer::any_optional([Some(Value::Int8(7i64)), None, Some(Value::Utf8("x".to_string())), None]);
+		factory::any_optional("c", [Some(Value::Int8(7i64)), None, Some(Value::Utf8("x".to_string())), None]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_with_undefined", &input, &output);
 }
@@ -614,37 +621,40 @@ fn any_with_undefined() {
 #[test]
 fn any_one_per_variant_in_one_column() {
 	// One row per variant in a single column, so a tag mix-up anywhere in the Any encoding shows up here.
-	let input = ColumnBuffer::any([
-		Value::Boolean(true),
-		float4(1.5),
-		float8(2.5),
-		Value::Int1(-1),
-		Value::Int2(-2),
-		Value::Int4(-4),
-		Value::Int8(-8),
-		Value::Int16(-16),
-		Value::Uint1(1),
-		Value::Uint2(2),
-		Value::Uint4(4),
-		Value::Uint8(8),
-		Value::Uint16(16),
-		Value::Utf8("hello".to_string()),
-		blob(&[0x01, 0x02, 0x03]),
-		date_days(100),
-		datetime_nanos(123_456_789),
-		time_nanos(456_789),
-		duration(1, 2, 3),
-		Value::IdentityId(IdentityId::root()),
-		uuid4_bytes([0xAA; 16]),
-		uuid7_bytes([0x55; 16]),
-		Value::Decimal(Decimal::from_i64(7)),
-		Value::Any(Box::new(Value::Int8(42))),
-		Value::DictionaryId(DictionaryEntryId::U4(7)),
-		Value::Type(ValueType::Int8),
-		Value::List(vec![Value::Int8(1), Value::Int8(2)]),
-		Value::Record(vec![("k".to_string(), Value::Int8(1))]),
-		Value::Tuple(vec![Value::Int8(1), Value::Boolean(false)]),
-	]);
+	let input = factory::any(
+		"c",
+		[
+			Value::Boolean(true),
+			float4(1.5),
+			float8(2.5),
+			Value::Int1(-1),
+			Value::Int2(-2),
+			Value::Int4(-4),
+			Value::Int8(-8),
+			Value::Int16(-16),
+			Value::Uint1(1),
+			Value::Uint2(2),
+			Value::Uint4(4),
+			Value::Uint8(8),
+			Value::Uint16(16),
+			Value::Utf8("hello".to_string()),
+			blob(&[0x01, 0x02, 0x03]),
+			date_days(100),
+			datetime_nanos(123_456_789),
+			time_nanos(456_789),
+			duration(1, 2, 3),
+			Value::IdentityId(IdentityId::root()),
+			uuid4_bytes([0xAA; 16]),
+			uuid7_bytes([0x55; 16]),
+			Value::Decimal(Decimal::from_i64(7)),
+			Value::Any(Box::new(Value::Int8(42))),
+			Value::DictionaryId(DictionaryEntryId::U4(7)),
+			Value::Type(ValueType::Int8),
+			Value::List(vec![Value::Int8(1), Value::Int8(2)]),
+			Value::Record(vec![("k".to_string(), Value::Int8(1))]),
+			Value::Tuple(vec![Value::Int8(1), Value::Boolean(false)]),
+		],
+	);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_one_per_variant", &input, &output);
 }

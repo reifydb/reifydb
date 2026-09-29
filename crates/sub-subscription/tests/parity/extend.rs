@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::change::StagedBatch;
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, system_columns::column_view};
 
 use crate::common::{Row, normalize_aggregated, random_rows, run_path_incremental, run_path_snapshot};
 
@@ -37,16 +37,10 @@ fn qty_and_doubled(batches: Vec<StagedBatch>) -> Vec<(i64, i64)> {
 	// Pulls (qty, qty_x2) per row so the assertion is independent of batch and row ordering.
 	let mut out = Vec::new();
 	for (_, cols) in batches {
-		let qty_col = cols
-			.iter()
-			.find(|c| c.name().text() == "qty")
-			.expect("output must carry the source qty column");
-		let x2_col = cols
-			.iter()
-			.find(|c| c.name().text() == "qty_x2")
-			.expect("EXTEND must add the computed qty_x2 column");
-		for i in 0..cols.row_count() {
-			out.push((as_i64(qty_col.data().get_value(i)), as_i64(x2_col.data().get_value(i))));
+		let qty_col = column_view(&cols, "qty").unwrap().expect("output must carry the source qty column");
+		let x2_col = column_view(&cols, "qty_x2").unwrap().expect("EXTEND must add the computed qty_x2 column");
+		for i in 0..cols.num_rows() {
+			out.push((as_i64(qty_col.get_value(i)), as_i64(x2_col.get_value(i))));
 		}
 	}
 	out

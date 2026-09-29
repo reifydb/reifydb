@@ -3,13 +3,14 @@
 
 use std::mem;
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
 		builder::ColumnBuilder,
-		columns::Columns,
+		factory::{decimal_with_bitvec, float4_with_bitvec, float8_with_bitvec},
+		nulls::split_nulls,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
 };
@@ -21,6 +22,7 @@ use reifydb_value::{
 	error::TypeError,
 	fragment::Fragment,
 	value::{
+		column_view::{ColumnView, ViewData},
 		constraint::{precision::Precision, scale::Scale},
 		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
@@ -28,7 +30,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::function::support::numeric::MIN_DIVISION_SCALE;
+use crate::function::support::{coerce::bare_type, numeric::MIN_DIVISION_SCALE};
 
 pub struct Avg {
 	info: RoutineInfo,
@@ -77,7 +79,7 @@ fn average(function: &Fragment, sum: &Decimal, count: u64, input_scale: u8) -> R
 	sum.checked_div(&Decimal::from(count)).ok_or_else(|| avg_overflow(function, input_scale))
 }
 
-fn average_column(input_scale: u8, values: Vec<Decimal>, valids: Vec<bool>) -> ColumnBuffer {
+fn average_column(name: &str, input_scale: u8, values: Vec<Decimal>, valids: Vec<bool>) -> (FieldRef, ArrayRef) {
 	let ValueType::Decimal {
 		precision,
 		scale,
@@ -85,7 +87,7 @@ fn average_column(input_scale: u8, values: Vec<Decimal>, valids: Vec<bool>) -> C
 	else {
 		unreachable!("an average of integers or decimals is a decimal")
 	};
-	ColumnBuffer::decimal_with_bitvec(precision, scale, values, valids)
+	decimal_with_bitvec(name, precision, scale, values, valids)
 }
 
 macro_rules! exec_int_arm {
@@ -136,9 +138,13 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		input_types.first().map(avg_return_type).unwrap_or_else(|| avg_decimal_type(0))
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let row_count = args.row_count();
-		let input_type = args[0].get_type();
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let row_count = ctx.row_count;
+		let input_type = ColumnView::try_from(&args[0])?.get_type();
 		let result_type = avg_return_type(&input_type);
 
 		match result_type {
@@ -151,15 +157,15 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 
 fn execute_float4<'a>(
 	ctx: &mut FunctionContext<'a>,
-	args: &Columns,
+	args: &[(FieldRef, ArrayRef)],
 	row_count: usize,
-) -> Result<Columns, RoutineError> {
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let mut sums = vec![0.0f32; row_count];
 	let mut counts = vec![0u32; row_count];
 
 	for col in args.iter() {
-		let data = col.data();
-		if let ColumnBuffer::Float4(container) = data {
+		let data = ColumnView::try_from(col)?;
+		if let ViewData::Float4(container) = &data.data {
 			for i in 0..row_count {
 				if let Some(value) = container.values().get(i) {
 					sums[i] += *value;
@@ -188,23 +194,20 @@ fn execute_float4<'a>(
 		}
 	}
 
-	Ok(Columns::new(vec![ColumnWithName::new(
-		ctx.fragment.clone(),
-		ColumnBuffer::float4_with_bitvec(data, valids),
-	)]))
+	Ok(float4_with_bitvec(ctx.fragment.text(), data, valids))
 }
 
 fn execute_float8<'a>(
 	ctx: &mut FunctionContext<'a>,
-	args: &Columns,
+	args: &[(FieldRef, ArrayRef)],
 	row_count: usize,
-) -> Result<Columns, RoutineError> {
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let mut sums = vec![0.0f64; row_count];
 	let mut counts = vec![0u32; row_count];
 
 	for col in args.iter() {
-		let data = col.data();
-		if let ColumnBuffer::Float8(container) = data {
+		let data = ColumnView::try_from(col)?;
+		if let ViewData::Float8(container) = &data.data {
 			for i in 0..row_count {
 				if let Some(value) = container.values().get(i) {
 					sums[i] += *value;
@@ -233,22 +236,20 @@ fn execute_float8<'a>(
 		}
 	}
 
-	Ok(Columns::new(vec![ColumnWithName::new(
-		ctx.fragment.clone(),
-		ColumnBuffer::float8_with_bitvec(data, valids),
-	)]))
+	Ok(float8_with_bitvec(ctx.fragment.text(), data, valids))
 }
 
 fn execute_decimal<'a>(
 	ctx: &mut FunctionContext<'a>,
-	args: &Columns,
+	args: &[(FieldRef, ArrayRef)],
 	row_count: usize,
-) -> Result<Columns, RoutineError> {
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let mut sums: Vec<Decimal> = vec![Decimal::zero(); row_count];
 	let mut counts = vec![0u64; row_count];
-	let input_scale = args
+	let columns = args.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, _>>()?;
+	let input_scale = columns
 		.iter()
-		.filter_map(|col| match col.data().get_type() {
+		.filter_map(|col| match col.get_type() {
 			ValueType::Decimal {
 				scale,
 				..
@@ -259,42 +260,41 @@ fn execute_decimal<'a>(
 	let function = ctx.fragment.clone();
 	let overflow = || avg_overflow(&function, input_scale);
 
-	for (col_idx, col) in args.iter().enumerate() {
-		let data = col.data();
-		match data {
-			ColumnBuffer::Int1(container) => {
+	for (col_idx, data) in columns.iter().enumerate() {
+		match &data.data {
+			ViewData::Int1(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int2(container) => {
+			ViewData::Int2(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int4(container) => {
+			ViewData::Int4(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int8(container) => {
+			ViewData::Int8(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Int16(container) => {
+			ViewData::Int16(container) => {
 				let values = wides::<i128>(container);
 				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint1(container) => {
+			ViewData::Uint1(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint2(container) => {
+			ViewData::Uint2(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint4(container) => {
+			ViewData::Uint4(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint8(container) => {
+			ViewData::Uint8(container) => {
 				exec_int_arm!(container.values(), row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Uint16(container) => {
+			ViewData::Uint16(container) => {
 				let values = wides::<u128>(container);
 				exec_int_arm!(values, row_count, sums, counts, overflow)
 			}
-			ColumnBuffer::Decimal(container) => {
+			ViewData::Decimal(container) => {
 				let values = decimals(container);
 				for i in 0..row_count {
 					if let Some(value) = values.get(i) {
@@ -303,12 +303,12 @@ fn execute_decimal<'a>(
 					}
 				}
 			}
-			other => {
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: col_idx,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		}
@@ -326,7 +326,7 @@ fn execute_decimal<'a>(
 		}
 	}
 
-	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), average_column(input_scale, out, valids))]))
+	Ok(average_column(ctx.fragment.text(), input_scale, out, valids))
 }
 
 impl Function for Avg {
@@ -384,10 +384,11 @@ impl Accumulator for AvgAccumulator {
 		state + self.counts.heap_size()
 	}
 
-	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
-		let column = &args[0];
-		let (data, _) = column.clone().split_nulls();
-		let input_type = data.get_type();
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let column = ColumnView::try_from(&args[0])?;
+		let (bare, _) = split_nulls(args[0].clone())?;
+		let data = ColumnView::try_from(&bare)?;
+		let input_type = bare_type(&data);
 
 		if self.input_type.is_none() {
 			self.input_type = Some(input_type.clone());
@@ -405,44 +406,44 @@ impl Accumulator for AvgAccumulator {
 		let function = self.function.clone();
 		let overflow = || avg_overflow(&function, input_scale);
 
-		match (&mut self.state, &data) {
-			(AvgState::Int(sums), ColumnBuffer::Int1(container)) => {
+		match (&mut self.state, &data.data) {
+			(AvgState::Int(sums), ViewData::Int1(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Int2(container)) => {
+			(AvgState::Int(sums), ViewData::Int2(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Int4(container)) => {
+			(AvgState::Int(sums), ViewData::Int4(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Int8(container)) => {
+			(AvgState::Int(sums), ViewData::Int8(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Int16(container)) => {
+			(AvgState::Int(sums), ViewData::Int16(container)) => {
 				let values = wides::<i128>(container);
 				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Uint1(container)) => {
+			(AvgState::Int(sums), ViewData::Uint1(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Uint2(container)) => {
+			(AvgState::Int(sums), ViewData::Uint2(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Uint4(container)) => {
+			(AvgState::Int(sums), ViewData::Uint4(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Uint8(container)) => {
+			(AvgState::Int(sums), ViewData::Uint8(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values(), overflow);
 			}
-			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
+			(AvgState::Int(sums), ViewData::Uint16(container)) => {
 				let values = wides::<u128>(container);
 				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(AvgState::Decimal(sums), ColumnBuffer::Decimal(container)) => {
+			(AvgState::Decimal(sums), ViewData::Decimal(container)) => {
 				let values = decimals(container);
 				acc_int_arm!(sums, self.counts, column, groups, values, overflow);
 			}
-			(AvgState::Float4(sums), ColumnBuffer::Float4(container)) => {
+			(AvgState::Float4(sums), ViewData::Float4(container)) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut delta = 0.0f32;
 					let mut count = 0u64;
@@ -464,7 +465,7 @@ impl Accumulator for AvgAccumulator {
 					}
 				}
 			}
-			(AvgState::Float8(sums), ColumnBuffer::Float8(container)) => {
+			(AvgState::Float8(sums), ViewData::Float8(container)) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut delta = 0.0f64;
 					let mut count = 0u64;
@@ -486,27 +487,28 @@ impl Accumulator for AvgAccumulator {
 					}
 				}
 			}
-			(_, other) => {
+			(_, _) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: self.function.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		}
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
 		let state = mem::replace(&mut self.state, AvgState::Unset);
 		let counts = mem::take(&mut self.counts);
 		let input_scale = self.input_type.as_ref().and_then(ValueType::scale).map_or(0, |scale| scale.value());
 
 		match state {
-			AvgState::Unset => {
-				Ok((Vec::new(), ColumnBuilder::with_capacity(avg_decimal_type(0), 0).finish()))
-			}
+			AvgState::Unset => Ok((
+				Vec::new(),
+				ColumnBuilder::with_capacity(avg_decimal_type(0), 0).finish(self.kind_name()),
+			)),
 			AvgState::Int(sums) | AvgState::Decimal(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
 				let mut out = Vec::with_capacity(sums.len());
@@ -522,7 +524,7 @@ impl Accumulator for AvgAccumulator {
 						valids.push(false);
 					}
 				}
-				Ok((keys, average_column(input_scale, out, valids)))
+				Ok((keys, average_column(self.kind_name(), input_scale, out, valids)))
 			}
 			AvgState::Float4(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
@@ -539,7 +541,7 @@ impl Accumulator for AvgAccumulator {
 						valids.push(false);
 					}
 				}
-				Ok((keys, ColumnBuffer::float4_with_bitvec(out, valids)))
+				Ok((keys, float4_with_bitvec(self.kind_name(), out, valids)))
 			}
 			AvgState::Float8(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
@@ -556,7 +558,7 @@ impl Accumulator for AvgAccumulator {
 						valids.push(false);
 					}
 				}
-				Ok((keys, ColumnBuffer::float8_with_bitvec(out, valids)))
+				Ok((keys, float8_with_bitvec(self.kind_name(), out, valids)))
 			}
 		}
 	}

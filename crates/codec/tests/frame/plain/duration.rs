@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	container::temporal_array::duration_array, duration::Duration, frame::data::FrameColumnData,
-};
+use reifydb_value::value::{container::temporal_array::duration_array, duration::Duration, value_type::ValueType};
 
-fn make(v: Vec<Duration>) -> FrameColumnData {
-	FrameColumnData::Duration(duration_array(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<Duration>) -> ColumnData {
+	data(ValueType::Duration, duration_array(v))
 }
 
 crate::plain_tests! {

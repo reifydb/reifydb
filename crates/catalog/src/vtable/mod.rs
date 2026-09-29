@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::vtable::{VTable, VTableId},
 	sort::SortKey,
-	value::column::columns::Columns,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
@@ -18,7 +18,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Batch {
-	pub columns: Columns,
+	pub batch: RecordBatch,
 }
 
 pub mod system;

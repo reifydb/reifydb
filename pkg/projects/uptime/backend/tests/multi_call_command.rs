@@ -55,7 +55,7 @@ fn rows(frames: &[Frame]) -> usize {
 fn column(frames: &[Frame], name: &str) -> Value {
 	let frame = frames.first().expect("frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one row when reading column {name}");
-	frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name}")).data.get_value(0)
+	frame.column(name).expect("the column reads").unwrap_or_else(|| panic!("column {name}")).get_value(0)
 }
 
 fn new_user(db: &Database, name: &str) -> IdentityId {

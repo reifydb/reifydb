@@ -3,10 +3,12 @@
 
 use arrow_array::UInt64Array;
 use reifydb_codec::frame::format::Encoding;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<u64>) -> FrameColumnData {
-	FrameColumnData::Uint8(UInt64Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<u64>) -> ColumnData {
+	data(ValueType::Uint8, UInt64Array::from(v))
 }
 
 crate::delta_tests! {

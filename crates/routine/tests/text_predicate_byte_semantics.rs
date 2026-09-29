@@ -3,14 +3,16 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{Array, ArrayRef};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{factory::utf8, nulls::with_nulls};
 use reifydb_routine::function::text::{contains::TextContains, ends_with::TextEndsWith, starts_with::TextStartsWith};
 use reifydb_routine_abi::{Routine, context::FunctionContext, error::RoutineError};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{identity::IdentityId, value_type::ValueType},
+	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
 fn ctx(name: &str, row_count: usize) -> FunctionContext<'static> {
@@ -26,16 +28,10 @@ fn ctx(name: &str, row_count: usize) -> FunctionContext<'static> {
 fn call(
 	routine: &dyn Routine<FunctionContext<'static>>,
 	name: &str,
-	args: Vec<ColumnBuffer>,
-) -> Result<Columns, RoutineError> {
-	let row_count = args.first().map_or(0, |a| a.len());
-	let columns = Columns::new(
-		args.into_iter()
-			.enumerate()
-			.map(|(i, data)| ColumnWithName::new(Fragment::internal(format!("arg{i}")), data))
-			.collect(),
-	);
-	routine.call(&mut ctx(name, row_count), &columns)
+	args: Vec<(FieldRef, ArrayRef)>,
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let row_count = args.first().map_or(0, |(_, array)| array.len());
+	routine.call(&mut ctx(name, row_count), &args)
 }
 
 fn answers(name: &str, haystacks: &[&str], needles: &[&str]) -> Vec<String> {
@@ -45,13 +41,11 @@ fn answers(name: &str, haystacks: &[&str], needles: &[&str]) -> Vec<String> {
 		"text::ends_with" => Box::new(TextEndsWith::new()),
 		other => panic!("unknown text predicate {other}"),
 	};
-	let result = call(
-		routine.as_ref(),
-		name,
-		vec![ColumnBuffer::utf8(haystacks.to_vec()), ColumnBuffer::utf8(needles.to_vec())],
-	)
-	.unwrap();
-	(0..result[0].len()).map(|i| result[0].get_value(i).to_string()).collect()
+	let result =
+		call(routine.as_ref(), name, vec![utf8("arg0", haystacks.to_vec()), utf8("arg1", needles.to_vec())])
+			.unwrap();
+	let view = ColumnView::try_from(&result).unwrap();
+	(0..view.len()).map(|i| view.get_value(i).to_string()).collect()
 }
 
 #[test]
@@ -92,15 +86,15 @@ fn an_empty_pattern_is_true_for_every_row_in_all_three_predicates() {
 #[test]
 fn a_predicate_over_a_nullable_column_with_no_none_rows_keeps_the_column_nullable() {
 	// An all valid null buffer must survive the strip and reattach, otherwise the declared type loses its option.
-	let nullable = ColumnBuffer::utf8(["abc", "abd"]).with_nulls(NullBuffer::new(BooleanBuffer::new_set(2)));
-	assert_eq!(nullable.get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
+	let nullable = with_nulls(utf8("arg0", ["abc", "abd"]), NullBuffer::new(BooleanBuffer::new_set(2))).unwrap();
+	assert_eq!(ColumnView::try_from(&nullable).unwrap().get_type(), ValueType::Option(Box::new(ValueType::Utf8)));
 
-	let result =
-		call(&TextContains::new(), "text::contains", vec![nullable, ColumnBuffer::utf8(["ab", "ab"])]).unwrap();
+	let result = call(&TextContains::new(), "text::contains", vec![nullable, utf8("arg1", ["ab", "ab"])]).unwrap();
+	let view = ColumnView::try_from(&result).unwrap();
 
-	assert_eq!(result[0].get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
-	assert_eq!(result[0].get_value(0).to_string(), "true");
-	assert_eq!(result[0].get_value(1).to_string(), "true");
+	assert_eq!(view.get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
+	assert_eq!(view.get_value(0).to_string(), "true");
+	assert_eq!(view.get_value(1).to_string(), "true");
 }
 
 #[test]
@@ -109,11 +103,12 @@ fn a_predicate_over_two_non_nullable_columns_answers_a_non_nullable_boolean() {
 	let result = call(
 		&TextContains::new(),
 		"text::contains",
-		vec![ColumnBuffer::utf8(["abc", "abd"]), ColumnBuffer::utf8(["ab", "zz"])],
+		vec![utf8("arg0", ["abc", "abd"]), utf8("arg1", ["ab", "zz"])],
 	)
 	.unwrap();
+	let view = ColumnView::try_from(&result).unwrap();
 
-	assert_eq!(result[0].get_type(), ValueType::Boolean);
-	assert_eq!(result[0].get_value(0).to_string(), "true");
-	assert_eq!(result[0].get_value(1).to_string(), "false");
+	assert_eq!(view.get_type(), ValueType::Boolean);
+	assert_eq!(view.get_value(0).to_string(), "true");
+	assert_eq!(view.get_value(1).to_string(), "false");
 }

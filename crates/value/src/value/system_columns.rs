@@ -272,9 +272,13 @@ fn arrow_error(error: ArrowError) -> Error {
 #[cfg(test)]
 mod tests {
 	use arrow_array::{Int32Array, UInt64Array};
+	use arrow_schema::DataType;
 
 	use super::*;
-	use crate::value::container::{temporal_array::datetime_array, wide_int_array::wide_array};
+	use crate::value::{
+		Value,
+		container::{temporal_array::datetime_array, wide_int_array::wide_array},
+	};
 
 	fn user(name: &str, values: Vec<i32>) -> (FieldRef, ArrayRef) {
 		let field = to_field(
@@ -409,7 +413,7 @@ mod tests {
 	#[test]
 	fn keep_drops_only_unnamed_system_columns() {
 		// Dropping #rownum or a user column named with a hash, like #op, would lose data the caller needs.
-		let op = Arc::new(Field::new("#op", arrow_schema::DataType::Int32, false));
+		let op = Arc::new(Field::new("#op", DataType::Int32, false));
 		let base = batch(vec![user("a", vec![1]), (op, Arc::new(Int32Array::from(vec![1])))]);
 		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))
 			.unwrap();
@@ -456,9 +460,9 @@ mod tests {
 	#[test]
 	fn a_hash_prefix_marks_a_system_field() {
 		// Counting #op as a user column would give subscriptions a phantom column.
-		assert!(is_system_field(&Field::new("#rownum", arrow_schema::DataType::UInt64, false)));
-		assert!(is_system_field(&Field::new("#op", arrow_schema::DataType::Int32, false)));
-		assert!(!is_system_field(&Field::new("rownum", arrow_schema::DataType::UInt64, false)));
+		assert!(is_system_field(&Field::new("#rownum", DataType::UInt64, false)));
+		assert!(is_system_field(&Field::new("#op", DataType::Int32, false)));
+		assert!(!is_system_field(&Field::new("rownum", DataType::UInt64, false)));
 	}
 
 	#[test]
@@ -468,9 +472,9 @@ mod tests {
 		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![9u64])))
 			.unwrap();
 		let user_view = column_view(&base, "rownum").unwrap().unwrap();
-		assert_eq!(user_view.get_value(0), crate::value::Value::Int4(5));
+		assert_eq!(user_view.get_value(0), Value::Int4(5));
 		let system_view = column_view(&base, "#rownum").unwrap().unwrap();
-		assert_eq!(system_view.get_value(0), crate::value::Value::Uint8(9));
+		assert_eq!(system_view.get_value(0), Value::Uint8(9));
 		assert!(column_view(&base, "missing").unwrap().is_none());
 	}
 
@@ -516,7 +520,7 @@ mod tests {
 	#[test]
 	fn user_columns_skip_every_hash_column_in_order() {
 		// Counting #rownum or #op as a user column would give callers a phantom column.
-		let op = Arc::new(Field::new("#op", arrow_schema::DataType::Int32, false));
+		let op = Arc::new(Field::new("#op", DataType::Int32, false));
 		let base =
 			batch(vec![user("a", vec![1]), (op, Arc::new(Int32Array::from(vec![2]))), user("b", vec![3])]);
 		let base = with_system_column(base, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])))

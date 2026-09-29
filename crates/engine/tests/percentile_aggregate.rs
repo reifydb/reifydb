@@ -5,7 +5,10 @@ use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::config::ConfigKey, metrics::heap::HeapSize};
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{Value, digest::Digest, duration::Duration, frame::frame::Frame, value_type::ValueType};
+use reifydb_value::value::{
+	Value, digest::Digest, duration::Duration, frame::frame::Frame, system_columns::user_columns,
+	value_type::ValueType,
+};
 
 struct Row {
 	g: i32,
@@ -170,13 +173,13 @@ fn expected_read(inner: ValueType, accuracy: u32, values: &[Value], p: f64) -> O
 
 fn column_names(frames: &[Frame]) -> Vec<String> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	frames[0].columns.iter().map(|c| c.name.clone()).collect()
+	user_columns(&frames[0].batch).map(|(field, _)| field.name().clone()).collect()
 }
 
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 fn by_group(frames: &[Frame], name: &str) -> BTreeMap<i32, Value> {

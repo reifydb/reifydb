@@ -20,6 +20,7 @@ wasm = ["dep:reifydb-wasm", "reifydb-wasm/runtime"]
 [dependencies]
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-flow-async = { workspace = true, features = ["runtime"] }
@@ -39,4 +40,3 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
-serde_json = { workspace = true }

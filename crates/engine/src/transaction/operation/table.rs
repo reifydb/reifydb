@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	partition::PartitionError,
 	row::row_shape_from_columns,
-	value::column::columns::Columns,
+	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
@@ -34,13 +34,13 @@ fn build_table_insert_change(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-) -> Change {
-	Change {
+) -> Result<Change> {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
+		diffs: smallvec![Diff::insert(from_encoded_bytes(shape, ids, bytes_slice)?)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 fn build_table_update_change(
@@ -49,16 +49,16 @@ fn build_table_update_change(
 	ids: &[RowNumber],
 	pres: &[EncodedBytes],
 	posts: &[EncodedBytes],
-) -> Change {
-	Change {
+) -> Result<Change> {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(
-			Columns::from_encoded_bytes(shape, ids, pres),
-			Columns::from_encoded_bytes(shape, ids, posts),
+			from_encoded_bytes(shape, ids, pres)?,
+			from_encoded_bytes(shape, ids, posts)?,
 		)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 fn build_table_remove_change(
@@ -66,13 +66,13 @@ fn build_table_remove_change(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-) -> Change {
-	Change {
+) -> Result<Change> {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
+		diffs: smallvec![Diff::remove(from_encoded_bytes(shape, ids, bytes_slice)?)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 pub trait TableOperations {
@@ -136,7 +136,7 @@ impl TableOperations for CommandTransaction {
 			.collect();
 		self.track_row_change(&row_changes);
 
-		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen));
+		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
 
 		Ok(())
 	}
@@ -196,7 +196,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
+		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts)?);
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
 	}
@@ -247,7 +247,7 @@ impl TableOperations for CommandTransaction {
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec)?);
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}
@@ -289,7 +289,7 @@ impl TableOperations for AdminTransaction {
 			.collect();
 		self.track_row_change(&row_changes);
 
-		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen));
+		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
 
 		Ok(())
 	}
@@ -349,7 +349,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
+		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts)?);
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
 	}
@@ -400,7 +400,7 @@ impl TableOperations for AdminTransaction {
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec)?);
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}

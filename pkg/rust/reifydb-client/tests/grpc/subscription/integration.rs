@@ -61,13 +61,13 @@ fn test_basic_receive_insert_notifications() {
 		let frame = &change.changes[0].frame;
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
-		assert_eq!(id_col.data.get_value(0), Value::Int4(1));
+		assert_eq!(id_col.get_value(0), Value::Int4(1));
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
-		assert_eq!(name_col.data.get_value(0), Value::Utf8("test".to_string()));
+		assert_eq!(name_col.get_value(0), Value::Utf8("test".to_string()));
 
 		let value_col = find_column(frame, "value").expect("value column should exist");
-		assert_eq!(value_col.data.get_value(0), Value::Int4(100));
+		assert_eq!(value_col.get_value(0), Value::Int4(100));
 
 		drop(sub);
 		Ok(())
@@ -88,7 +88,7 @@ fn test_op_insert_callback() {
 		assert_eq!(change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 2, "Should have 2 rows");
+		assert_eq!(id_col.len(), 2, "Should have 2 rows");
 
 		drop(sub);
 		Ok(())
@@ -112,7 +112,7 @@ fn test_op_update_callback() {
 		assert_eq!(update_change.changes[0].kind, ChangeKind::Update, "kind should be Update");
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
-		assert_eq!(name_col.data.get_value(0), Value::Utf8("alice_updated".to_string()));
+		assert_eq!(name_col.get_value(0), Value::Utf8("alice_updated".to_string()));
 
 		drop(sub);
 		Ok(())
@@ -177,7 +177,7 @@ fn test_op_batch_consecutive_rows() {
 
 		// One command must arrive as one notification carrying all ten rows, not ten pushes.
 		let id_col = find_column(frame, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 10, "Should have 10 rows");
+		assert_eq!(id_col.len(), 10, "Should have 10 rows");
 
 		drop(sub);
 		Ok(())
@@ -317,7 +317,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		let frame = &change.changes[0].frame;
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
-		assert_eq!(name_col.data.get_value(0), Value::Utf8("after_reconnect".to_string()));
+		assert_eq!(name_col.get_value(0), Value::Utf8("after_reconnect".to_string()));
 
 		drop(sub2);
 	});
@@ -506,10 +506,10 @@ fn test_edge_empty_result_sets() {
 		let frame = &change.changes[0].frame;
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
-		assert_eq!(id_col.data.get_value(0), Value::Int4(1001));
+		assert_eq!(id_col.get_value(0), Value::Int4(1001));
 
 		let value_col = find_column(frame, "value").expect("value column should exist");
-		assert_eq!(value_col.data.get_value(0), Value::Int4(200));
+		assert_eq!(value_col.get_value(0), Value::Int4(200));
 
 		drop(sub);
 		Ok(())
@@ -529,7 +529,7 @@ fn test_edge_large_batch_of_changes() {
 		let frame = &change.changes[0].frame;
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 100, "Should have 100 rows");
+		assert_eq!(id_col.len(), 100, "Should have 100 rows");
 
 		drop(sub);
 		Ok(())
@@ -576,9 +576,7 @@ fn test_edge_rapid_successive_changes() {
 					total_rows += change
 						.changes
 						.iter()
-						.map(|fc| {
-							find_column(&fc.frame, "id").map(|c| c.data.len()).unwrap_or(0)
-						})
+						.map(|fc| find_column(&fc.frame, "id").map(|c| c.len()).unwrap_or(0))
 						.sum::<usize>();
 				}
 				_ => break,

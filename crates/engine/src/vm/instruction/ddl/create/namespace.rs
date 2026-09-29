@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::namespace::NamespaceToCreate;
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -16,7 +17,7 @@ pub(crate) fn create_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateNamespaceNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
 	let mut parent_id = NamespaceId::ROOT;
@@ -46,11 +47,11 @@ pub(crate) fn create_namespace(
 	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?
 		&& plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id().0)),
 			("namespace", Value::Utf8(full_name)),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let result = services.catalog.create_namespace(
@@ -66,17 +67,20 @@ pub(crate) fn create_namespace(
 	)?;
 	txn.track_namespace_created(result.clone())?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(result.name().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::{params::Params, value::Value};
+	use reifydb_value::{
+		params::Params,
+		value::{Value, column_view::ColumnView, frame::frame::Frame},
+	};
 
 	use crate::vm::{Admin, executor::Executor};
 
@@ -97,9 +101,9 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("my_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Boolean(true));
 
 		// IF NOT EXISTS must return the existing id with created=false, not mint a new one.
 		let r = instance.admin(
@@ -113,9 +117,9 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
+		assert_eq!(value_at(frame, 0), Value::Uint8(16385));
+		assert_eq!(value_at(frame, 1), Value::Utf8("my_shape".to_string()));
+		assert_eq!(value_at(frame, 2), Value::Boolean(false));
 
 		// Without the guard the same statement must fault, or IF NOT EXISTS would mean nothing.
 		let r = instance.admin(
@@ -127,5 +131,12 @@ pub mod tests {
 		);
 		assert!(r.is_err());
 		assert_eq!(r.error.unwrap().diagnostic().code, "CA_001");
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

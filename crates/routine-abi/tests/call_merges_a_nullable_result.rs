@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4_with_bitvec;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, frame::data::FrameColumnData, identity::IdentityId, value_type::ValueType},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		identity::IdentityId,
+		value_type::ValueType,
+	},
 };
 
 struct NullableResult {
@@ -22,11 +29,12 @@ impl<'a> Routine<FunctionContext<'a>> for NullableResult {
 		ValueType::Option(Box::new(ValueType::Int4))
 	}
 
-	fn execute(&self, _ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
-		Ok(Columns::new(vec![ColumnWithName::new(
-			Fragment::internal("nullable_result"),
-			ColumnBuffer::int4_with_bitvec([10, 20, 30], vec![true, true, false]),
-		)]))
+	fn execute(
+		&self,
+		_ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		Ok(int4_with_bitvec("nullable_result", [10, 20, 30], vec![true, true, false]))
 	}
 }
 
@@ -40,29 +48,19 @@ fn a_nullable_result_gets_the_argument_nones_anded_into_one_layer() {
 		row_count: 3,
 		runtime_context: &runtime,
 	};
-	let args = Columns::new(vec![ColumnWithName::new(
-		Fragment::internal("arg"),
-		ColumnBuffer::int4_optional([Some(1), None, Some(3)]),
-	)]);
+	let args = [int4_with_bitvec("arg", [1, 0, 3], vec![true, false, true])];
 	let routine = NullableResult {
 		info: RoutineInfo::new("nullable_result"),
 	};
 	let result = routine.call(&mut ctx, &args).expect("the call succeeds");
-	assert_eq!(result.len(), 1, "a scalar routine returns exactly one column");
-	let column = result.data_at(0).clone();
+	let column = ColumnView::try_from(&result).expect("the result is a readable column");
 	assert_eq!(column.get_type(), ValueType::Option(Box::new(ValueType::Int4)), "exactly one option layer");
 	let rows: Vec<Value> = (0..column.len()).map(|row| column.get_value(row)).collect();
 	assert_eq!(rows, vec![Value::Int4(10), Value::none_of(ValueType::Int4), Value::none_of(ValueType::Int4)]);
-	let FrameColumnData::Option {
-		inner,
-		bitvec,
-	} = FrameColumnData::from(column)
-	else {
-		panic!("the result must be nullable");
-	};
-	let FrameColumnData::Int4(values) = *inner else {
+	let ViewData::Int4(values) = &column.data else {
 		panic!("the single layer must hold the Int4 values directly");
 	};
 	assert_eq!(values.values().to_vec(), vec![10, 20, 30], "the values under none rows must stay exactly");
-	assert_eq!(bitvec.iter().collect::<Vec<bool>>(), vec![true, false, false]);
+	let nones = column.logical_nulls().expect("the result must be nullable");
+	assert_eq!(nones.iter().collect::<Vec<bool>>(), vec![true, false, false]);
 }

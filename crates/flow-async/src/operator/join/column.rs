@@ -1,35 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
+use std::{iter::repeat_n, sync::Arc};
+
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::{Field, FieldRef, Schema, SchemaRef};
+use reifydb_core::value::{
+	batch::{batch, take_rows},
+	column::{
+		builder::ColumnBuilder,
+		factory::{none, rename},
+	},
+};
 use reifydb_value::{
-	Result,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+	Result, reifydb_assertions,
+	value::{
+		Value,
+		datetime::DateTime,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, is_system_field, system_column, user_columns, with_system_column},
+		value_type::field::from_field,
+	},
 };
 
-pub(crate) struct JoinedColumnsBuilder {
-	left_column_count: usize,
+use crate::operator::{row_times, time_column};
 
+pub(crate) struct JoinedColumnsBuilder {
 	right_column_names: Vec<String>,
 
 	included_right_cols: Vec<usize>,
 }
 
 impl JoinedColumnsBuilder {
-	pub(crate) fn new(left: &Columns, right: &Columns, alias: &Option<String>, natural: bool) -> Self {
-		let left_column_count = left.columns.len();
-
-		let left_names: Vec<String> = left.names.iter().map(|n| n.as_ref().to_string()).collect();
+	pub(crate) fn new(left: &Schema, right: &Schema, alias: &Option<String>, natural: bool) -> Self {
+		let left_names: Vec<String> = left
+			.fields()
+			.iter()
+			.filter(|field| !is_system_field(field))
+			.map(|field| field.name().clone())
+			.collect();
 
 		let alias_str = alias.as_deref().unwrap_or("other");
-		let mut right_column_names = Vec::with_capacity(right.columns.len());
-		let mut included_right_cols = Vec::with_capacity(right.columns.len());
+		let mut right_column_names = Vec::with_capacity(right.fields().len());
+		let mut included_right_cols = Vec::with_capacity(right.fields().len());
 		let mut all_names = left_names.clone();
 
-		for (idx, name) in right.names.iter().enumerate() {
-			let col_name = name.as_ref();
+		for (idx, field) in right.fields().iter().enumerate() {
+			if is_system_field(field) {
+				continue;
+			}
+			let col_name = field.name().as_str();
 
 			if natural && left_names.iter().any(|ln| ln.as_str() == col_name) {
 				continue;
@@ -56,138 +76,72 @@ impl JoinedColumnsBuilder {
 		}
 
 		Self {
-			left_column_count,
 			right_column_names,
 			included_right_cols,
 		}
 	}
 
+	pub(crate) fn schema(&self, left: &Schema, right: &Schema) -> SchemaRef {
+		let mut fields: Vec<FieldRef> =
+			left.fields().iter().filter(|field| !is_system_field(field)).cloned().collect();
+		fields.extend(self
+			.included_right_cols
+			.iter()
+			.zip(self.right_column_names.iter())
+			.map(|(&idx, name)| Arc::new(right.field(idx).clone().with_name(name))));
+		Arc::new(Schema::new(fields))
+	}
+
 	pub(crate) fn join_one_to_many(
 		&self,
 		row_numbers: &[RowNumber],
-		left: &Columns,
+		left: &RecordBatch,
 		left_idx: usize,
-		right: &Columns,
-	) -> Columns {
-		let right_count = right.row_count();
+		right: &RecordBatch,
+	) -> Result<RecordBatch> {
+		let right_count = right.num_rows();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), right_count, "row_numbers must match right row count");
 		}
 
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let left_value = left_col.get_value(left_idx);
-			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), right_count);
-			for _ in 0..right_count {
-				col_data.push_value(left_value.clone());
-			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
-		}
-
-		for (&right_col_idx, aliased_name) in
-			self.included_right_cols.iter().zip(self.right_column_names.iter())
-		{
-			let right_col = &right.columns[right_col_idx];
-			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), right_count);
-			for row_idx in 0..right_count {
-				col_data.push_value(right_col.get_value(row_idx));
-			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
-		}
-
-		Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers.to_vec(),
-				Self::duplicate_timestamp(left.partitions(), left_idx, right_count),
-				Self::duplicate_timestamp(left.created_at(), left_idx, right_count),
-				Self::duplicate_timestamp(left.updated_at(), left_idx, right_count),
-				Self::max_time_broadcast_left(left.time(), left_idx, right.time(), right_count),
-				Self::duplicate_timestamp(left.system.commit_versions(), left_idx, right_count),
-			),
-		)
+		let left_rows = vec![left_idx; right_count];
+		Self::assemble(row_numbers, left, &left_rows, self.right_columns(right), row_times(right)?)
 	}
 
 	pub(crate) fn join_many_to_one(
 		&self,
 		row_numbers: &[RowNumber],
-		left: &Columns,
-		right: &Columns,
+		left: &RecordBatch,
+		right: &RecordBatch,
 		right_idx: usize,
-	) -> Columns {
-		let left_count = left.row_count();
+	) -> Result<RecordBatch> {
+		let left_count = left.num_rows();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), left_count, "row_numbers must match left row count");
 		}
 
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), left_count);
-			for row_idx in 0..left_count {
-				col_data.push_value(left_col.get_value(row_idx));
-			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
-		}
-
-		for (&right_col_idx, aliased_name) in
-			self.included_right_cols.iter().zip(self.right_column_names.iter())
-		{
-			let right_col = &right.columns[right_col_idx];
-			let right_value = right_col.get_value(right_idx);
-			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), left_count);
-			for _ in 0..left_count {
-				col_data.push_value(right_value.clone());
-			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
-		}
-
-		Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers.to_vec(),
-				left.partitions().to_vec(),
-				left.created_at().as_ref().to_vec(),
-				left.updated_at().as_ref().to_vec(),
-				Self::max_time_broadcast_right(left.time(), right.time(), right_idx, left_count),
-				left.system.commit_versions().to_vec(),
-			),
-		)
+		let left_rows: Vec<usize> = (0..left_count).collect();
+		let right_rows = vec![right_idx; left_count];
+		let right_time = row_times(right)?.get(right_idx).copied().flatten();
+		let right_columns = self.right_columns(&take_rows(right, &right_rows)?);
+		Self::assemble(row_numbers, left, &left_rows, right_columns, vec![right_time; left_count])
 	}
 
-	pub(crate) fn retain_rows(columns: &Columns, keep: &[usize]) -> Result<Columns> {
-		if keep.len() == columns.row_count() {
+	pub(crate) fn retain_rows(columns: &RecordBatch, keep: &[usize]) -> Result<RecordBatch> {
+		if keep.len() == columns.num_rows() {
 			return Ok(columns.clone());
 		}
-		let gathered = columns
-			.iter()
-			.map(|column| Ok(ColumnWithName::new(column.name().clone(), column.data().gather(keep)?)))
-			.collect::<Result<Vec<_>>>()?;
-		let pick = |stamps: &[DateTime]| keep.iter().map(|&i| stamps[i]).collect::<Vec<_>>();
-		Ok(Columns::with_system(
-			gathered,
-			SystemColumns::new(
-				keep.iter().map(|&i| columns.row_numbers()[i]).collect(),
-				Self::extract_timestamps_at_indices(columns.partitions(), keep),
-				pick(columns.created_at()),
-				pick(columns.updated_at()),
-				pick(columns.time()),
-				Self::extract_timestamps_at_indices(columns.system.commit_versions(), keep),
-			),
-		))
+		take_rows(columns, keep)
 	}
 
 	pub(crate) fn join_cartesian(
 		&self,
 		row_numbers: &[RowNumber],
-		left: &Columns,
+		left: &RecordBatch,
 		left_indices: &[usize],
-		right: &Columns,
+		right: &RecordBatch,
 		right_indices: &[usize],
-	) -> Columns {
+	) -> Result<RecordBatch> {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();
 		let result_count = left_count * right_count;
@@ -195,214 +149,107 @@ impl JoinedColumnsBuilder {
 			assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
 		}
 
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), result_count);
-			for &left_idx in left_indices {
-				let left_value = left_col.get_value(left_idx);
-				for _ in 0..right_count {
-					col_data.push_value(left_value.clone());
-				}
-			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
-		}
-
-		for (&right_col_idx, aliased_name) in
-			self.included_right_cols.iter().zip(self.right_column_names.iter())
-		{
-			let right_col = &right.columns[right_col_idx];
-			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), result_count);
-			for _ in 0..left_count {
-				for &right_idx in right_indices {
-					col_data.push_value(right_col.get_value(right_idx));
-				}
-			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
-		}
-
-		Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers.to_vec(),
-				Self::expand_timestamps_cartesian(left.partitions(), left_indices, right_count),
-				Self::expand_timestamps_cartesian(left.created_at(), left_indices, right_count),
-				Self::expand_timestamps_cartesian(left.updated_at(), left_indices, right_count),
-				Self::max_time_cartesian(left.time(), left_indices, right.time(), right_indices),
-				Self::expand_timestamps_cartesian(
-					left.system.commit_versions(),
-					left_indices,
-					right_count,
-				),
-			),
-		)
+		let left_rows: Vec<usize> =
+			left_indices.iter().flat_map(|&left_idx| repeat_n(left_idx, right_count)).collect();
+		let right_rows: Vec<usize> = left_indices.iter().flat_map(|_| right_indices.iter().copied()).collect();
+		let right_times = row_times(right)?;
+		let times = right_rows.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
+		let right_columns = self.right_columns(&take_rows(right, &right_rows)?);
+		Self::assemble(row_numbers, left, &left_rows, right_columns, times)
 	}
 
 	pub(crate) fn unmatched_left(
 		&self,
 		row_number: RowNumber,
-		left: &Columns,
+		left: &RecordBatch,
 		left_idx: usize,
-		right_shape: &Columns,
-	) -> Columns {
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), 1);
-			col_data.push_value(left_col.get_value(left_idx));
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
-		}
-
-		for (&right_col_idx, aliased_name) in
-			self.included_right_cols.iter().zip(self.right_column_names.iter())
-		{
-			let right_col = &right_shape.columns[right_col_idx];
-			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), 1);
-			col_data.push_value(Value::none());
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
-		}
-
-		Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				vec![row_number],
-				Self::extract_single_timestamp(left.partitions(), left_idx),
-				Self::extract_single_timestamp(left.created_at(), left_idx),
-				Self::extract_single_timestamp(left.updated_at(), left_idx),
-				Self::extract_single_timestamp(left.time(), left_idx),
-				Self::extract_single_timestamp(left.system.commit_versions(), left_idx),
-			),
-		)
+		right_shape: &Schema,
+	) -> Result<RecordBatch> {
+		Self::assemble(&[row_number], left, &[left_idx], self.unmatched_right(right_shape, 1)?, Vec::new())
 	}
 
 	pub(crate) fn unmatched_left_batch(
 		&self,
 		row_numbers: &[RowNumber],
-		left: &Columns,
+		left: &RecordBatch,
 		left_indices: &[usize],
-		right_shape: &Columns,
-	) -> Columns {
+		right_shape: &Schema,
+	) -> Result<RecordBatch> {
 		let count = left_indices.len();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
 		}
 
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuilder::with_capacity(left_col.get_type(), count);
-			for &idx in left_indices {
-				col_data.push_value(left_col.get_value(idx));
-			}
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data.finish()));
-		}
-
-		for (&right_col_idx, aliased_name) in
-			self.included_right_cols.iter().zip(self.right_column_names.iter())
-		{
-			let right_col = &right_shape.columns[right_col_idx];
-			let mut col_data = ColumnBuilder::with_capacity(right_col.get_type(), count);
-			for _ in 0..count {
-				col_data.push_value(Value::none());
-			}
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data.finish()));
-		}
-
-		Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers.to_vec(),
-				Self::extract_timestamps_at_indices(left.partitions(), left_indices),
-				Self::extract_timestamps_at_indices(left.created_at(), left_indices),
-				Self::extract_timestamps_at_indices(left.updated_at(), left_indices),
-				Self::extract_timestamps_at_indices(left.time(), left_indices),
-				Self::extract_timestamps_at_indices(left.system.commit_versions(), left_indices),
-			),
-		)
+		let right_columns = self.unmatched_right(right_shape, count)?;
+		Self::assemble(row_numbers, left, left_indices, right_columns, Vec::new())
 	}
 
-	fn extract_single_timestamp<T: Copy>(ts: &[T], idx: usize) -> Vec<T> {
-		if ts.is_empty() {
-			Vec::new()
-		} else {
-			vec![ts[idx]]
-		}
+	fn right_columns(&self, right: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
+		self.included_right_cols
+			.iter()
+			.zip(self.right_column_names.iter())
+			.map(|(&idx, name)| {
+				rename((right.schema_ref().fields()[idx].clone(), right.column(idx).clone()), name)
+			})
+			.collect()
 	}
 
-	fn max_time_broadcast_left(
-		left: &[DateTime],
-		left_idx: usize,
-		right: &[DateTime],
-		right_count: usize,
-	) -> Vec<DateTime> {
-		if left.is_empty() {
-			return Vec::new();
-		}
-		let left_ts = left[left_idx];
-		(0..right_count).map(|i| right.get(i).map_or(left_ts, |&right_ts| left_ts.max(right_ts))).collect()
+	fn unmatched_right(&self, right_shape: &Schema, count: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
+		self.included_right_cols
+			.iter()
+			.zip(self.right_column_names.iter())
+			.map(|(&idx, name)| none_column(right_shape.field(idx), name, count))
+			.collect()
 	}
 
-	fn max_time_broadcast_right(
-		left: &[DateTime],
-		right: &[DateTime],
-		right_idx: usize,
-		left_count: usize,
-	) -> Vec<DateTime> {
-		if left.is_empty() {
-			return Vec::new();
-		}
-		let right_ts = right.get(right_idx).copied();
-		(0..left_count).map(|i| right_ts.map_or(left[i], |right_ts| left[i].max(right_ts))).collect()
-	}
-
-	fn max_time_cartesian(
-		left: &[DateTime],
-		left_indices: &[usize],
-		right: &[DateTime],
-		right_indices: &[usize],
-	) -> Vec<DateTime> {
-		if left.is_empty() {
-			return Vec::new();
-		}
-		let mut out = Vec::with_capacity(left_indices.len() * right_indices.len());
-		for &left_idx in left_indices {
-			let left_ts = left[left_idx];
-			for &right_idx in right_indices {
-				out.push(right.get(right_idx).map_or(left_ts, |&right_ts| left_ts.max(right_ts)));
+	fn assemble(
+		row_numbers: &[RowNumber],
+		left: &RecordBatch,
+		left_rows: &[usize],
+		right_columns: Vec<(FieldRef, ArrayRef)>,
+		right_times: Vec<Option<DateTime>>,
+	) -> Result<RecordBatch> {
+		let gathered = take_rows(left, left_rows)?;
+		let mut columns: Vec<(FieldRef, ArrayRef)> =
+			user_columns(&gathered).map(|(field, array)| (field.clone(), array.clone())).collect();
+		columns.extend(right_columns);
+		let mut joined = batch(columns)?;
+		for column in SystemColumn::ALL {
+			let array = match column {
+				SystemColumn::RowNumbers => Some(Arc::new(UInt64Array::from_iter_values(
+					row_numbers.iter().map(|number| number.value()),
+				)) as ArrayRef),
+				SystemColumn::Time => Self::joined_time(&gathered, &right_times)?,
+				other => system_column(&gathered, other).cloned(),
+			};
+			if let Some(array) = array {
+				joined = with_system_column(joined, column, array)?;
 			}
 		}
-		out
+		Ok(joined)
 	}
 
-	fn duplicate_timestamp<T: Copy>(ts: &[T], idx: usize, count: usize) -> Vec<T> {
-		if ts.is_empty() {
-			Vec::new()
-		} else {
-			vec![ts[idx]; count]
+	fn joined_time(left: &RecordBatch, right_times: &[Option<DateTime>]) -> Result<Option<ArrayRef>> {
+		let left_times = row_times(left)?;
+		if left_times.is_empty() {
+			return Ok(None);
 		}
-	}
-
-	fn expand_timestamps_cartesian<T: Copy>(ts: &[T], left_indices: &[usize], right_count: usize) -> Vec<T> {
-		if ts.is_empty() {
-			return Vec::new();
-		}
-		let mut result = Vec::with_capacity(left_indices.len() * right_count);
-		for &left_idx in left_indices {
-			for _ in 0..right_count {
-				result.push(ts[left_idx]);
+		Ok(Some(time_column(left_times.into_iter().enumerate().map(|(row, own)| {
+			match (own, right_times.get(row).copied().flatten()) {
+				(Some(own), Some(right)) => Some(own.max(right)),
+				(own, right) => own.or(right),
 			}
-		}
-		result
+		}))))
 	}
+}
 
-	fn extract_timestamps_at_indices<T: Copy>(ts: &[T], indices: &[usize]) -> Vec<T> {
-		if ts.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| ts[i]).collect()
-		}
+fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, ArrayRef)> {
+	let Some(value_type) = from_field(field)?.value_type else {
+		return Ok(none(name, count));
+	};
+	let mut builder = ColumnBuilder::with_capacity(value_type, count);
+	for _ in 0..count {
+		builder.push_value(Value::none());
 	}
+	Ok(builder.finish(name))
 }

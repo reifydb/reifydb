@@ -3,6 +3,7 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
+use arrow_array::{Array, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::rebuild::{changed_objects, rebuild_selected_changes};
 use reifydb_core::{
@@ -20,10 +21,7 @@ use reifydb_flow_async::{
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_transaction::{accumulator::ChangeAccumulator, transaction::Transaction};
-use reifydb_value::{
-	Result,
-	value::{Value, identity::IdentityId},
-};
+use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::instrument;
 
 use crate::commit::committer::FlowSlice;
@@ -332,13 +330,13 @@ fn completeness_wakes(change: &Change, completeness_objects: Option<&BTreeSet<u6
 		return true;
 	};
 	change.diffs.iter().filter_map(|diff| diff.post()).any(|columns| {
-		let Some(objects) = columns.column("object_id") else {
+		let Some(objects) = columns
+			.column_by_name("object_id")
+			.and_then(|array| array.as_any().downcast_ref::<UInt64Array>())
+		else {
 			return false;
 		};
-		(0..columns.row_count()).any(|row| match objects.data().get_value(row) {
-			Value::Uint8(object) => admitted.contains(&object),
-			_ => false,
-		})
+		(0..columns.num_rows()).any(|row| objects.is_valid(row) && admitted.contains(&objects.value(row)))
 	})
 }
 
@@ -353,9 +351,9 @@ mod tests {
 			},
 			change::Diff,
 		},
-		value::column::columns::Columns,
+		value::batch::{empty_batch, from_rows},
 	};
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{Value, datetime::DateTime};
 	use smallvec::smallvec;
 
 	use super::*;
@@ -365,7 +363,7 @@ mod tests {
 			origin,
 			version: ChangeVersion::from(CommitVersion(version)),
 			diffs: smallvec![Diff::Insert {
-				post: Columns::empty(),
+				post: empty_batch(),
 				origin: None,
 			}],
 			changed_at: DateTime::default(),
@@ -453,12 +451,15 @@ mod tests {
 		Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
 			version: ChangeVersion::from(CommitVersion(5)),
-			diffs: smallvec![Diff::insert(Columns::from_rows(
-				&["object_id", "complete_through"],
-				&objects.iter()
-					.map(|o| vec![Value::Uint8(*o), Value::DateTime(DateTime::default())])
-					.collect::<Vec<_>>(),
-			))],
+			diffs: smallvec![Diff::insert(
+				from_rows(
+					&["object_id", "complete_through"],
+					&objects.iter()
+						.map(|o| vec![Value::Uint8(*o), Value::DateTime(DateTime::default())])
+						.collect::<Vec<_>>(),
+				)
+				.unwrap()
+			)],
 			changed_at: DateTime::default(),
 		}
 	}
@@ -513,10 +514,11 @@ mod tests {
 		// fan-out.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let admitted: BTreeSet<u64> = [1].into_iter().collect();
-		let pre = Columns::from_rows(
+		let pre = from_rows(
 			&["object_id", "complete_through"],
 			&[vec![Value::Uint8(1), Value::DateTime(DateTime::default())]],
-		);
+		)
+		.unwrap();
 		let retraction = Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
 			version: ChangeVersion::from(CommitVersion(5)),

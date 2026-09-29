@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::LargeStringArray;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{column_view::ColumnView, constraint::bytes::MaxBytes, value_type::ValueType};
+
+use crate::function::support::column::utf8_column;
 
 pub struct Type {
 	info: RoutineInfo,
@@ -39,20 +41,19 @@ impl<'a> Routine<FunctionContext<'a>> for Type {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let column = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let column = ColumnView::try_from(&args[0])?;
 		let col_type = column.get_type();
 		let type_name = col_type.to_string();
 		let row_count = column.len();
 
 		let result_data: Vec<String> = vec![type_name; row_count];
 
-		let final_data = ColumnBuffer::Utf8 {
-			container: LargeStringArray::from(result_data),
-			max_bytes: MaxBytes::MAX,
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, LargeStringArray::from(result_data)))
 	}
 }
 

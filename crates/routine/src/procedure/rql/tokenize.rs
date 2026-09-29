@@ -3,8 +3,10 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use bumpalo::Bump;
-use reifydb_core::value::column::{ColumnWithName, columns::Columns};
+use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::token::{token::TokenKind, tokenize};
 use reifydb_value::value::value_type::ValueType;
@@ -40,7 +42,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlTokenize {
 		false
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let query = extract_query(ctx.params, "rql::tokenize")?;
 
 		let bump = Bump::new();
@@ -61,13 +67,13 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlTokenize {
 			value_col.push(value);
 		}
 
-		Ok(Columns::new(vec![
-			ColumnWithName::int4("idx", idx_col),
-			ColumnWithName::int4("line", line_col),
-			ColumnWithName::int4("column", column_col),
-			ColumnWithName::utf8("kind", kind_col),
-			ColumnWithName::utf8("value", value_col),
-		]))
+		Ok(batch(vec![
+			factory::int4("idx", idx_col),
+			factory::int4("line", line_col),
+			factory::int4("column", column_col),
+			factory::utf8("kind", kind_col),
+			factory::utf8("value", value_col),
+		])?)
 	}
 }
 

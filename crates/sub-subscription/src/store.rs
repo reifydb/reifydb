@@ -206,13 +206,14 @@ impl SubscriptionStore {
 mod tests {
 	use std::panic::{AssertUnwindSafe, catch_unwind};
 
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-	use reifydb_value::{fragment::Fragment, value::diff_type::DiffType};
+	use arrow_array::RecordBatch;
+	use reifydb_core::value::{batch::batch, column::factory::uint1};
+	use reifydb_value::value::diff_type::DiffType;
 
 	use super::*;
 
-	fn test_columns(value: u8) -> Columns {
-		Columns::new(vec![ColumnWithName::new(Fragment::internal("test"), ColumnBuffer::uint1(vec![value]))])
+	fn test_columns(value: u8) -> RecordBatch {
+		batch(vec![uint1("test", vec![value])]).unwrap()
 	}
 
 	fn stage(id: SubscriptionId, values: &[u8]) -> HashMap<SubscriptionId, Vec<StagedBatch>> {

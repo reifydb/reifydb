@@ -1,18 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::change::Change;
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray};
+#[cfg(feature = "runtime")]
+use arrow_schema::SchemaRef;
+use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
-	value::column::columns::Columns,
 };
 #[cfg(feature = "runtime")]
-use reifydb_value::Result;
-use reifydb_value::value::datetime::DateTime;
-#[cfg(feature = "runtime")]
 use reifydb_value::value::duration::Duration;
+use reifydb_value::{
+	Result,
+	value::{
+		column_view::ViewData,
+		container::temporal_array::{DATETIME_TIMEZONE, datetime_to_native, datetimes},
+		datetime::DateTime,
+		system_columns::{SystemColumn, column_view, with_system_column},
+	},
+};
 
 #[cfg(feature = "runtime")]
 use crate::{operator::host::HostContext, timer::Timer};
@@ -103,7 +113,7 @@ pub trait HostOperator: Send {
 		None
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		None
 	}
 }
@@ -111,78 +121,94 @@ pub trait HostOperator: Send {
 #[cfg(feature = "runtime")]
 pub type BoxedHostOperator = Box<dyn HostOperator>;
 
-pub fn max_input_time(change: &Change) -> Option<DateTime> {
-	change.diffs
-		.iter()
-		.filter_map(|diff| diff.post().or_else(|| diff.pre()))
-		.flat_map(|columns| columns.time().iter().copied())
-		.max()
+pub fn max_input_time(change: &Change) -> Result<Option<DateTime>> {
+	let mut latest = None;
+	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
+		latest = latest.max(row_times(columns)?.into_iter().flatten().max());
+	}
+	Ok(latest)
 }
 
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
-pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
+pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) -> Result<()> {
 	let Some(inherited) = inherited else {
-		return;
+		return Ok(());
 	};
 	for diff in change.diffs.iter_mut() {
-		for columns in diff.columns_mut() {
-			let stamped: Vec<DateTime> = columns.time().iter().map(|own| (*own).min(inherited)).collect();
-			columns.system.set_time(stamped);
+		for columns in diff.batches_mut() {
+			let times = row_times(columns)?;
+			if times.is_empty() {
+				continue;
+			}
+			let stamped = time_column(times.into_iter().map(|own| own.map(|own| own.min(inherited))));
+			*columns = with_system_column(columns.clone(), SystemColumn::Time, stamped)?;
 		}
 	}
+	Ok(())
+}
+
+pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> {
+	let Some(view) = column_view(columns, SystemColumn::Time.name())? else {
+		return Ok(Vec::new());
+	};
+	match &view.data {
+		ViewData::DateTime(array) => Ok(datetimes(array)
+			.iter()
+			.enumerate()
+			.map(|(row, time)| array.is_valid(row).then_some(*time))
+			.collect()),
+		_ => internal_err!("system column #time holds {}", view.base_type()),
+	}
+}
+
+#[cfg(feature = "runtime")]
+pub(crate) fn time_at(columns: &RecordBatch, row_idx: usize) -> Result<Option<DateTime>> {
+	Ok(row_times(&columns.slice(row_idx, 1))?.first().copied().flatten())
+}
+
+#[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+pub(crate) fn time_column(times: impl IntoIterator<Item = Option<DateTime>>) -> ArrayRef {
+	Arc::new(
+		TimestampNanosecondArray::from_iter(times.into_iter().map(|time| time.map(datetime_to_native)))
+			.with_timezone(DATETIME_TIMEZONE),
+	)
 }
 
 #[cfg(test)]
 mod substrate_stamping_tests {
+	use arrow_array::UInt64Array;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Diff, Diffs},
 		},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
-		value::{row_number::RowNumber, system_columns::SystemColumns},
+		value::{
+			container::temporal_array::datetime_array,
+			system_columns::{system_column, time},
+		},
 	};
 
 	use super::*;
 
-	fn columns(times: &[DateTime]) -> Columns {
-		let n = times.len();
-		Columns::with_system(
-			vec![ColumnWithName::new(
-				Fragment::internal("v"),
-				ColumnBuffer::int4((0..n as i32).collect::<Vec<_>>()),
-			)],
-			SystemColumns::new(
-				(1..=n as u64).map(RowNumber).collect(),
-				Vec::new(),
-				vec![at_millis(0); n],
-				vec![at_millis(0); n],
-				times.to_vec(),
-				Vec::new(),
-			),
-		)
+	fn columns(times: &[DateTime]) -> RecordBatch {
+		let timed = untimed_columns(times.len());
+		with_system_column(timed, SystemColumn::Time, Arc::new(datetime_array(times.iter().copied()))).unwrap()
 	}
 
-	fn untimed_columns(n: usize) -> Columns {
-		Columns::with_system(
-			vec![ColumnWithName::new(
-				Fragment::internal("v"),
-				ColumnBuffer::int4((0..n as i32).collect::<Vec<_>>()),
-			)],
-			SystemColumns::new(
-				(1..=n as u64).map(RowNumber).collect(),
-				Vec::new(),
-				vec![at_millis(0); n],
-				vec![at_millis(0); n],
-				Vec::new(),
-				Vec::new(),
-			),
-		)
+	fn untimed_columns(n: usize) -> RecordBatch {
+		let user = batch(vec![int4("v", 0..n as i32)]).unwrap();
+		let system: [(SystemColumn, ArrayRef); 3] = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from_iter_values(1..=n as u64))),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(vec![at_millis(0); n]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(vec![at_millis(0); n]))),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
 	fn change(diffs: Diffs) -> Change {
@@ -196,7 +222,7 @@ mod substrate_stamping_tests {
 		let mut diffs = Diffs::new();
 		diffs.push(Diff::insert(columns(&[at_millis(1_000), at_millis(9_000), at_millis(5_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)), Some(at_millis(9_000)));
+		assert_eq!(max_input_time(&change(diffs)).unwrap(), Some(at_millis(9_000)));
 	}
 
 	#[test]
@@ -209,10 +235,10 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(columns(&[at_millis(999_999), at_millis(1_000)])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at_millis(4_000)));
+		stamp_output_time(&mut out, Some(at_millis(4_000))).unwrap();
 
 		assert_eq!(
-			out.diffs[0].post().unwrap().time().to_vec(),
+			time(out.diffs[0].post().unwrap()).unwrap().to_vec(),
 			vec![at_millis(4_000), at_millis(1_000)],
 			"a row above the inherited instant is pulled down; one below keeps its own"
 		);
@@ -226,10 +252,10 @@ mod substrate_stamping_tests {
 		produced.push(Diff::update(columns(&[at_millis(9_000)]), columns(&[at_millis(10_000)])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at_millis(7_000)));
+		stamp_output_time(&mut out, Some(at_millis(7_000))).unwrap();
 
-		assert_eq!(out.diffs[0].pre().unwrap().time().to_vec(), vec![at_millis(7_000)]);
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(7_000)]);
+		assert_eq!(time(out.diffs[0].pre().unwrap()).unwrap().to_vec(), vec![at_millis(7_000)]);
+		assert_eq!(time(out.diffs[0].post().unwrap()).unwrap().to_vec(), vec![at_millis(7_000)]);
 	}
 
 	#[test]
@@ -246,9 +272,9 @@ mod substrate_stamping_tests {
 		])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at_millis(8_000)));
+		stamp_output_time(&mut out, Some(at_millis(8_000))).unwrap();
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(8_000); 5]);
+		assert_eq!(time(out.diffs[0].post().unwrap()).unwrap().to_vec(), vec![at_millis(8_000); 5]);
 	}
 
 	#[test]
@@ -256,15 +282,15 @@ mod substrate_stamping_tests {
 		// With nothing to inherit, stamping anyway would write an epoch time that reads as 1970
 		// and is evicted on sight.
 		let empty = change(Diffs::new());
-		assert_eq!(max_input_time(&empty), None);
+		assert_eq!(max_input_time(&empty).unwrap(), None);
 
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[at_millis(3_000)])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, None);
+		stamp_output_time(&mut out, None).unwrap();
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(3_000)]);
+		assert_eq!(time(out.diffs[0].post().unwrap()).unwrap().to_vec(), vec![at_millis(3_000)]);
 	}
 
 	#[test]
@@ -278,9 +304,9 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(columns(&[one_nano_above])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(inherited));
+		stamp_output_time(&mut out, Some(inherited)).unwrap();
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![inherited]);
+		assert_eq!(time(out.diffs[0].post().unwrap()).unwrap().to_vec(), vec![inherited]);
 	}
 
 	#[test]
@@ -294,10 +320,10 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(columns(&[at_millis(1_000), inherited])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(inherited));
+		stamp_output_time(&mut out, Some(inherited)).unwrap();
 
 		assert_eq!(
-			out.diffs[0].post().unwrap().time().to_vec(),
+			time(out.diffs[0].post().unwrap()).unwrap().to_vec(),
 			vec![at_millis(1_000), inherited],
 			"below survives, and equal counts as below"
 		);
@@ -312,9 +338,9 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(columns(&[DateTime::default()])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at_millis(6_000)));
+		stamp_output_time(&mut out, Some(at_millis(6_000))).unwrap();
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![DateTime::default()]);
+		assert_eq!(time(out.diffs[0].post().unwrap()).unwrap().to_vec(), vec![DateTime::default()]);
 	}
 
 	#[test]
@@ -326,9 +352,12 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(untimed_columns(3)));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at_millis(6_000)));
+		stamp_output_time(&mut out, Some(at_millis(6_000))).unwrap();
 
-		assert!(out.diffs[0].post().unwrap().time().is_empty(), "#time must stay absent");
+		assert!(
+			system_column(out.diffs[0].post().unwrap(), SystemColumn::Time).is_none(),
+			"#time must stay absent"
+		);
 	}
 
 	#[test]
@@ -345,16 +374,16 @@ mod substrate_stamping_tests {
 			d.push(Diff::insert(columns(&[window_start])));
 			d
 		});
-		stamp_output_time(&mut on_apply, Some(newest_event_in_bucket));
-		assert_eq!(on_apply.diffs[0].post().unwrap().time().to_vec(), vec![window_start]);
+		stamp_output_time(&mut on_apply, Some(newest_event_in_bucket)).unwrap();
+		assert_eq!(time(on_apply.diffs[0].post().unwrap()).unwrap().to_vec(), vec![window_start]);
 
 		let mut on_timer = change({
 			let mut d = Diffs::new();
 			d.push(Diff::insert(columns(&[window_start])));
 			d
 		});
-		stamp_output_time(&mut on_timer, Some(seal_fires_at));
-		assert_eq!(on_timer.diffs[0].post().unwrap().time().to_vec(), vec![window_start]);
+		stamp_output_time(&mut on_timer, Some(seal_fires_at)).unwrap();
+		assert_eq!(time(on_timer.diffs[0].post().unwrap()).unwrap().to_vec(), vec![window_start]);
 	}
 
 	#[test]
@@ -366,6 +395,6 @@ mod substrate_stamping_tests {
 		diffs.push(Diff::insert(columns(&[at_millis(12_000)])));
 		diffs.push(Diff::insert(columns(&[at_millis(3_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)), Some(at_millis(12_000)));
+		assert_eq!(max_input_time(&change(diffs)).unwrap(), Some(at_millis(12_000)));
 	}
 }

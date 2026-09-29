@@ -42,6 +42,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 // Rolling top-2 traders by summed volume. Each window cell is keyed and invertible so an
 // Update or Remove subtracts a trade's volume rather than dropping the whole window.
 
@@ -215,10 +217,13 @@ fn same_window_volume_accumulates_per_trader() {
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.num_rows())
 		.map(|i| {
-			let r = post.row_ref(i).expect("row");
-			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			let r = (post, i);
+			(
+				read::<u32>(r, "rank").unwrap(),
+				(read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+			)
 		})
 		.collect();
 	assert_eq!(by_rank.get(&1).copied(), Some((200u64, 9.0)), "trader 200 leads at 9.0");
@@ -246,10 +251,13 @@ fn update_subtracts_old_volume_no_double_count() {
 	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 	assert!(kinds.contains(&DiffType::Update), "ranks changed, expect Update");
 	let post = out.diffs.iter().find(|d| d.kind() == DiffType::Update).unwrap().post().expect("post");
-	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.num_rows())
 		.map(|i| {
-			let r = post.row_ref(i).expect("row");
-			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			let r = (post, i);
+			(
+				read::<u32>(r, "rank").unwrap(),
+				(read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+			)
 		})
 		.collect();
 	assert_eq!(by_rank.get(&1).copied(), Some((100u64, 20.0)), "trader 100 now leads at 20, not 25");
@@ -269,11 +277,14 @@ fn top_2_across_three_windows() {
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 2);
-	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+	assert_eq!(post.num_rows(), 2);
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.num_rows())
 		.map(|i| {
-			let r = post.row_ref(i).expect("row");
-			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			let r = (post, i);
+			(
+				read::<u32>(r, "rank").unwrap(),
+				(read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+			)
 		})
 		.collect();
 	assert_eq!(by_rank.get(&1).copied(), Some((200u64, 9.0)));
@@ -320,10 +331,13 @@ fn time_eviction_drops_oldest_window() {
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
-	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.num_rows())
 		.map(|i| {
-			let r = post.row_ref(i).expect("row");
-			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			let r = (post, i);
+			(
+				read::<u32>(r, "rank").unwrap(),
+				(read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+			)
 		})
 		.collect();
 	assert_eq!(by_rank.get(&1).copied(), Some((200u64, 8.0)));
@@ -504,10 +518,13 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 	assert_eq!(kinds, vec![DiffType::Remove]);
 	let pre = out.diffs[0].pre().expect("pre");
-	let by_rank: BTreeMap<u32, (u64, f64)> = (0..pre.row_count())
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..pre.num_rows())
 		.map(|i| {
-			let r = pre.row_ref(i).expect("row");
-			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			let r = (pre, i);
+			(
+				read::<u32>(r, "rank").unwrap(),
+				(read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+			)
 		})
 		.collect();
 	assert_eq!(by_rank, BTreeMap::from([(1, (7, 10.0)), (2, (8, 5.0))]));
@@ -528,6 +545,9 @@ fn a_top_k_group_revived_inside_its_window_keeps_its_old_panes() {
 	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 	assert_eq!(kinds, vec![DiffType::Update]);
 	let post = out.diffs[0].post().expect("post");
-	let r = post.row_ref(0).expect("row");
-	assert_eq!((post.row_count(), r.u64("trader").unwrap(), r.f64("volume").unwrap()), (1, 7, 3.0));
+	let r = (post, 0);
+	assert_eq!(
+		(post.num_rows(), read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
+		(1, 7, 3.0)
+	);
 }

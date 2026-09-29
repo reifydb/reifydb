@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{identity_id, none_typed};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
@@ -34,20 +36,18 @@ impl<'a> Routine<FunctionContext<'a>> for Id {
 		ValueType::IdentityId
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let identity = ctx.identity;
 		let row_count = ctx.row_count.max(1);
 		if identity.is_anonymous() {
-			return Ok(Columns::new(vec![ColumnWithName::new(
-				ctx.fragment.clone(),
-				ColumnBuffer::none_typed(ValueType::IdentityId, row_count),
-			)]));
+			return Ok(none_typed(ctx.fragment.text(), ValueType::IdentityId, row_count));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(
-			ctx.fragment.clone(),
-			ColumnBuffer::identity_id(vec![identity; row_count]),
-		)]))
+		Ok(identity_id(ctx.fragment.text(), vec![identity; row_count]))
 	}
 }
 

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
 use reifydb_core::{
-	interface::catalog::relationship::RelationshipJunction as CoreRelationshipJunction,
-	value::column::columns::Columns,
+	interface::catalog::relationship::RelationshipJunction as CoreRelationshipJunction, value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateRelationshipNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -16,7 +16,7 @@ pub(crate) fn create_relationship(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateRelationshipNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let rel = services.catalog.create_relationship(
 		txn,
 		RelationshipToCreate {
@@ -35,11 +35,11 @@ pub(crate) fn create_relationship(
 		},
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(rel.id.0)),
 		("namespace_id", Value::Uint8(rel.namespace.0)),
 		("name", Value::Utf8(rel.name)),
 		("cardinality", Value::Utf8(rel.cardinality.as_str().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }

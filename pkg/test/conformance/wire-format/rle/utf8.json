@@ -13,10 +13,7 @@
             ],
             "type": "Utf8"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -29,10 +26,7 @@
             "payload": [],
             "type": "Utf8"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -47,10 +41,7 @@
             ],
             "type": "Utf8"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -71,10 +62,7 @@
               "Option": "Utf8"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -91,10 +79,7 @@
               "Option": "Utf8"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -148,10 +133,7 @@
             ],
             "type": "Utf8"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   }

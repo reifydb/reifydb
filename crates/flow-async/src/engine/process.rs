@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{Value, datetime::DateTime},
+	value::{Value, datetime::DateTime, system_columns::column_view},
 };
 use tracing::{Span, field, info, instrument};
 
@@ -37,6 +37,14 @@ pub(crate) struct SourceArrival {
 }
 
 pub(crate) type SourceArrivals = Vec<SourceArrival>;
+
+fn latest_input_time(changes: &[Change]) -> Result<Option<DateTime>> {
+	let mut latest = None;
+	for change in changes {
+		latest = latest.max(max_input_time(change)?);
+	}
+	Ok(latest)
+}
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -133,7 +141,7 @@ impl FlowEngineInner {
 		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
 		for change in source_changes {
 			if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
-				collect_completeness(&change, &mut asserted);
+				collect_completeness(&change, &mut asserted)?;
 				continue;
 			}
 			let pending = match change.origin {
@@ -151,13 +159,14 @@ impl FlowEngineInner {
 		let mut arrivals: SourceArrivals = views
 			.iter()
 			.chain(others.iter())
-			.filter_map(|(operator_id, changes)| {
-				changes.iter().filter_map(max_input_time).max().map(|at| SourceArrival {
+			.map(|(operator_id, changes)| {
+				Ok(latest_input_time(changes)?.map(|at| SourceArrival {
 					source: *operator_id,
 					at,
-				})
+				}))
 			})
-			.collect();
+			.filter_map(Result::transpose)
+			.collect::<Result<_>>()?;
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
 		let (published, silent) = published_arrivals(
 			&self.sources,
@@ -194,7 +203,7 @@ impl FlowEngineInner {
 				None => continue,
 			};
 
-			let at = inbox.iter().filter_map(max_input_time).max();
+			let at = latest_input_time(&inbox)?;
 			txn.set_change_coordinate(ChangeCoordinate {
 				at,
 			});
@@ -291,18 +300,19 @@ fn warn_unpublished(flow_id: FlowId, silent: &[ObjectId]) {
 	}
 }
 
-fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) {
+fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) -> Result<()> {
 	for diff in change.diffs.iter() {
 		let Some(columns) = diff.post() else {
 			continue;
 		};
-		let (Some(objects), Some(instants)) = (columns.column("object_id"), columns.column("complete_through"))
+		let (Some(objects), Some(instants)) =
+			(column_view(columns, "object_id")?, column_view(columns, "complete_through")?)
 		else {
 			continue;
 		};
-		for row in 0..columns.row_count() {
+		for row in 0..columns.num_rows() {
 			let (Value::Uint8(object), Value::DateTime(at)) =
-				(objects.data().get_value(row), instants.data().get_value(row))
+				(objects.get_value(row), instants.get_value(row))
 			else {
 				continue;
 			};
@@ -319,6 +329,7 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 			*slot = (*slot).max(at);
 		}
 	}
+	Ok(())
 }
 
 fn freeze_arrival_frontier<T: FlowTransaction>(
@@ -348,7 +359,7 @@ mod tests {
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Diff,
 		},
-		value::column::columns::Columns,
+		value::batch::from_rows,
 	};
 	use reifydb_runtime::context::{
 		RuntimeContext,
@@ -368,10 +379,11 @@ mod tests {
 	const SOURCE: OperatorId = OperatorId(1);
 
 	fn completeness_change(rows: &[(u64, DateTime)]) -> Change {
-		let post = Columns::from_rows(
+		let post = from_rows(
 			&["object_id", "complete_through"],
 			&rows.iter().map(|(o, at)| vec![Value::Uint8(*o), Value::DateTime(*at)]).collect::<Vec<_>>(),
-		);
+		)
+		.unwrap();
 		Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
 			version: ChangeVersion::from(CommitVersion(1)),
@@ -397,7 +409,7 @@ mod tests {
 	fn an_assertion_is_read_from_the_post_image() {
 		let mut asserted = BTreeMap::new();
 
-		collect_completeness(&completeness_change(&[(7, at_millis(9_000))]), &mut asserted);
+		collect_completeness(&completeness_change(&[(7, at_millis(9_000))]), &mut asserted).unwrap();
 
 		assert_eq!(asserted, BTreeMap::from([(7u64, at_millis(9_000))]));
 	}
@@ -405,10 +417,11 @@ mod tests {
 	#[test]
 	fn a_deleted_completeness_row_asserts_nothing() {
 		// A watermark never retracts, so a delete must not be read as an assertion of its old value.
-		let pre = Columns::from_rows(
+		let pre = from_rows(
 			&["object_id", "complete_through"],
 			&[vec![Value::Uint8(7), Value::DateTime(at_millis(9_000))]],
-		);
+		)
+		.unwrap();
 		let change = Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
 			version: ChangeVersion::from(CommitVersion(1)),
@@ -417,7 +430,7 @@ mod tests {
 		};
 		let mut asserted = BTreeMap::new();
 
-		collect_completeness(&change, &mut asserted);
+		collect_completeness(&change, &mut asserted).unwrap();
 
 		assert!(asserted.is_empty());
 	}

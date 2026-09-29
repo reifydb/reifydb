@@ -5,13 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -126,24 +123,24 @@ impl BaseVTable for SystemQueues {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces.finish()),
-			ColumnWithName::new(Fragment::internal("name"), names.finish()),
-			ColumnWithName::new(Fragment::internal("partitions"), partitions.finish()),
-			ColumnWithName::new(Fragment::internal("ordered_by"), ordered_by.finish()),
-			ColumnWithName::new(Fragment::internal("deduplicate_by"), deduplicate_by.finish()),
-			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl.finish()),
-			ColumnWithName::new(Fragment::internal("time"), times.finish()),
-			ColumnWithName::new(Fragment::internal("ts"), timestamps.finish()),
-			ColumnWithName::new(Fragment::internal("depth"), depths.finish()),
-			ColumnWithName::new(Fragment::internal("in_flight"), in_flights.finish()),
-			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys.finish()),
-			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at.finish()),
+			ids.finish("id"),
+			namespaces.finish("namespace_id"),
+			names.finish("name"),
+			partitions.finish("partitions"),
+			ordered_by.finish("ordered_by"),
+			deduplicate_by.finish("deduplicate_by"),
+			deduplicate_ttl.finish("deduplicate_ttl"),
+			times.finish("time"),
+			timestamps.finish("ts"),
+			depths.finish("depth"),
+			in_flights.finish("in_flight"),
+			blocked_keys.finish("blocked_keys"),
+			oldest_due_at.finish("oldest_due_at"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

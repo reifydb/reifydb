@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::{engine::TestEngine, fixture::identity::identity};
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{identity::IdentityId, system_columns::user_columns},
+};
 
 fn guarded_engine() -> (TestEngine, IdentityId) {
 	let t = TestEngine::new();
@@ -19,7 +22,7 @@ fn columns_seen(t: &TestEngine, who: IdentityId, rql: &str) -> Vec<String> {
 	assert!(r.error.is_none(), "{rql} errored: {:?}", r.error);
 	r.frames.iter()
 		.filter(|f| f.rows().count() > 0)
-		.flat_map(|f| f.columns.iter().map(|c| c.name.clone()))
+		.flat_map(|f| user_columns(&f.batch).map(|(field, _)| field.name().clone()))
 		.collect()
 }
 

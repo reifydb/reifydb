@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -57,14 +57,11 @@ impl BaseVTable for SystemGrantedRoles {
 			role_ids.push(ir.role_id);
 		}
 
-		let columns = vec![
-			ColumnWithName::new(Fragment::internal("identity"), identities.finish()),
-			ColumnWithName::new(Fragment::internal("role_id"), role_ids.finish()),
-		];
+		let columns = vec![identities.finish("identity"), role_ids.finish("role_id")];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

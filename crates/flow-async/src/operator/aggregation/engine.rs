@@ -3,16 +3,17 @@
 
 use std::collections::HashMap;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator::state::GroupId,
-	value::column::columns::Columns,
+	value::batch::from_row,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration},
+	value::{Value, datetime::DateTime, duration::Duration, system_columns::require_row_numbers},
 };
 use tracing::instrument;
 
@@ -74,10 +75,10 @@ pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) ->
 }
 
 #[allow(clippy::too_many_arguments)]
-#[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
+#[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.num_rows()))]
 pub(crate) fn route_into_buckets<F>(
 	core: &Aggregation,
-	columns: &Columns,
+	columns: &RecordBatch,
 	is_add: bool,
 	assign: F,
 	buckets: &mut EngineBuckets,
@@ -88,16 +89,17 @@ pub(crate) fn route_into_buckets<F>(
 where
 	F: Fn(usize) -> (WindowSpan<DateTime>, DateTime),
 {
-	let row_count = columns.row_count();
+	let row_count = columns.num_rows();
 	if row_count == 0 {
 		return Ok(());
 	}
 	let groups = core.compute_groups(columns)?;
 	let slot_cols = core.evaluate_slot_inputs(columns)?;
+	let row_numbers = require_row_numbers(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let (span, event_ts) = assign(row_idx);
-		let coord = slot_coord(false, event_ts, columns.row_numbers()[row_idx].0);
-		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx, event_ts));
+		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
+		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx, event_ts)?);
 		let key = (*hash, span);
 		let event = if is_add {
 			let entry = window_max_ts.entry(key).or_default();
@@ -269,19 +271,19 @@ pub(crate) fn finish_tumbling_engine(
 		match r.kind {
 			EmitKind::Insert => {
 				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
-				diffs.push(Diff::insert(Columns::from_row(&row)));
+				diffs.push(Diff::insert(from_row(&row)?));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
 				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
 				let post =
 					core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
-				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
+				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
 				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
-				diffs.push(Diff::remove(Columns::from_row(&pre)));
+				diffs.push(Diff::remove(from_row(&pre)?));
 			}
 		}
 	}

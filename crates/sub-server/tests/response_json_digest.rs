@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
 use reifydb_sub_server::response::{resolve_change_json, resolve_response_json};
 use reifydb_value::{
 	util::hex::encode,
-	value::{
-		Value,
-		container::digest_array::digest_array,
-		digest::Digest,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		value_type::ValueType,
-	},
+	value::{Value, digest::Digest, frame::frame::Frame, value_type::ValueType},
 };
 use serde_json::{Value as JsonValue, from_str};
 
@@ -30,19 +24,18 @@ fn hex_of(digest: &Digest) -> JsonValue {
 }
 
 fn digest_frame(rows: Vec<Option<Digest>>) -> Frame {
-	let defined: Vec<bool> = rows.iter().map(Option::is_some).collect();
-	let data = FrameColumnData::Digest {
-		container: digest_array(rows),
-		inner: ValueType::Float8,
+	let digest_type = ValueType::Digest {
+		inner: Box::new(ValueType::Float8),
 		accuracy: ACCURACY,
 	};
-	Frame::new(vec![FrameColumn {
-		name: "d".to_string(),
-		data: FrameColumnData::Option {
-			inner: Box::new(data),
-			bitvec: BooleanBuffer::from(defined),
-		},
-	}])
+	let mut builder = ColumnBuilder::with_capacity(digest_type, rows.len());
+	for row in rows {
+		match row {
+			Some(digest) => builder.push_value(Value::Digest(Box::new(digest))),
+			None => builder.push_none(),
+		}
+	}
+	Frame::from(batch(vec![builder.finish("d")]).unwrap())
 }
 
 #[test]

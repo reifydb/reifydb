@@ -10,10 +10,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{
-		frame::{column::FrameColumn, frame::Frame},
-		identity::IdentityId,
-	},
+	value::{column_view::ColumnView, frame::frame::Frame, identity::IdentityId},
 };
 
 struct Fixture {
@@ -127,40 +124,43 @@ fn vtable_returns_one_row_per_relationship_with_correct_columns() {
 		"cardinality",
 	];
 	for col_name in expected {
-		assert!(frame.columns.iter().any(|c| c.name == col_name), "missing column {col_name}");
+		assert!(
+			frame.batch.schema_ref().fields().iter().any(|f| f.name() == col_name),
+			"missing column {col_name}"
+		);
 	}
 
 	let cardinality = column(frame, "cardinality");
-	assert_eq!(cardinality.data.len(), 4, "expected 4 relationship rows");
+	assert_eq!(cardinality.len(), 4, "expected 4 relationship rows");
 
-	let card_values: Vec<String> = (0..cardinality.data.len()).map(|i| cardinality.data.as_string(i)).collect();
+	let card_values: Vec<String> = (0..cardinality.len()).map(|i| cardinality.as_string(i)).collect();
 	assert_eq!(card_values, vec!["1:1", "N:1", "1:N", "N:M"]);
 
-	let names: Vec<String> = (0..4).map(|i| column(frame, "name").data.as_string(i)).collect();
+	let names: Vec<String> = (0..4).map(|i| column(frame, "name").as_string(i)).collect();
 	assert_eq!(names, vec!["r_one_one", "r_many_one", "r_one_many", "r_many_many"]);
 
 	let junction_table_id = column(frame, "junction_table_id");
-	assert_eq!(junction_table_id.data.as_string(0), "0");
-	assert_eq!(junction_table_id.data.as_string(1), "0");
-	assert_eq!(junction_table_id.data.as_string(2), "0");
-	assert_eq!(junction_table_id.data.as_string(3), f.junction_table.0.to_string());
+	assert_eq!(junction_table_id.as_string(0), "0");
+	assert_eq!(junction_table_id.as_string(1), "0");
+	assert_eq!(junction_table_id.as_string(2), "0");
+	assert_eq!(junction_table_id.as_string(3), f.junction_table.0.to_string());
 
 	let junction_source_column_id = column(frame, "junction_source_column_id");
-	assert_eq!(junction_source_column_id.data.as_string(0), "0");
-	assert_eq!(junction_source_column_id.data.as_string(3), f.junction_source.0.to_string());
+	assert_eq!(junction_source_column_id.as_string(0), "0");
+	assert_eq!(junction_source_column_id.as_string(3), f.junction_source.0.to_string());
 
 	let junction_target_column_id = column(frame, "junction_target_column_id");
-	assert_eq!(junction_target_column_id.data.as_string(0), "0");
-	assert_eq!(junction_target_column_id.data.as_string(3), f.junction_target.0.to_string());
+	assert_eq!(junction_target_column_id.as_string(0), "0");
+	assert_eq!(junction_target_column_id.as_string(3), f.junction_target.0.to_string());
 
 	let source_table_id = column(frame, "source_table_id");
 	for i in 0..4 {
-		assert_eq!(source_table_id.data.as_string(i), f.source_table.0.to_string());
+		assert_eq!(source_table_id.as_string(i), f.source_table.0.to_string());
 	}
 
 	let namespace_id = column(frame, "namespace_id");
 	for i in 0..4 {
-		assert_eq!(namespace_id.data.as_string(i), f.namespace.0.to_string());
+		assert_eq!(namespace_id.as_string(i), f.namespace.0.to_string());
 	}
 }
 
@@ -198,8 +198,7 @@ fn vtable_filter_by_source_table_id_returns_only_matching_rows() {
 	let frames = t.query(&rql);
 	let frame = frames.first().expect("expected at least one frame");
 
-	let names: Vec<String> =
-		(0..column(frame, "name").data.len()).map(|i| column(frame, "name").data.as_string(i)).collect();
+	let names: Vec<String> = (0..column(frame, "name").len()).map(|i| column(frame, "name").as_string(i)).collect();
 	assert_eq!(names, vec!["from_parent"]);
 }
 
@@ -215,9 +214,9 @@ fn ddl_create_one_to_one_relationship_persists_and_appears_in_vtable() {
 
 	let frames = t.query("from system::relationships filter {name == 'r_one_one'}");
 	let frame = frames.first().unwrap();
-	assert_eq!(column(frame, "name").data.len(), 1);
-	assert_eq!(column(frame, "cardinality").data.as_string(0), "1:1");
-	assert_eq!(column(frame, "junction_table_id").data.as_string(0), "0");
+	assert_eq!(column(frame, "name").len(), 1);
+	assert_eq!(column(frame, "cardinality").as_string(0), "1:1");
+	assert_eq!(column(frame, "junction_table_id").as_string(0), "0");
 }
 
 #[test]
@@ -233,10 +232,10 @@ fn ddl_create_many_to_many_with_through_records_junction() {
 
 	let frames = t.query("from system::relationships filter {name == 'r_n_m'}");
 	let frame = frames.first().unwrap();
-	assert_eq!(column(frame, "cardinality").data.as_string(0), "N:M");
-	assert_eq!(column(frame, "junction_table_id").data.as_string(0), f.junction_table.0.to_string());
-	assert_eq!(column(frame, "junction_source_column_id").data.as_string(0), f.junction_source.0.to_string());
-	assert_eq!(column(frame, "junction_target_column_id").data.as_string(0), f.junction_target.0.to_string());
+	assert_eq!(column(frame, "cardinality").as_string(0), "N:M");
+	assert_eq!(column(frame, "junction_table_id").as_string(0), f.junction_table.0.to_string());
+	assert_eq!(column(frame, "junction_source_column_id").as_string(0), f.junction_source.0.to_string());
+	assert_eq!(column(frame, "junction_target_column_id").as_string(0), f.junction_target.0.to_string());
 }
 
 #[test]
@@ -278,12 +277,12 @@ fn ddl_drop_relationship_removes_it_from_vtable() {
 		    REFERENCES ddl_rel_e::child(parent_id)
 		    WITH { cardinality: '1:N' }");
 	let before = t.query("from system::relationships filter {name == 'gone_soon'}");
-	assert_eq!(column(before.first().unwrap(), "name").data.len(), 1);
+	assert_eq!(column(before.first().unwrap(), "name").len(), 1);
 
 	t.admin("DROP RELATIONSHIP gone_soon ON ddl_rel_e::parent");
 
 	let after = t.query("from system::relationships filter {name == 'gone_soon'}");
-	assert_eq!(column(after.first().unwrap(), "name").data.len(), 0);
+	assert_eq!(column(after.first().unwrap(), "name").len(), 0);
 }
 
 #[test]
@@ -325,8 +324,8 @@ fn ddl_duplicate_relationship_is_rejected() {
 	);
 }
 
-fn column<'a>(frame: &'a Frame, name: &str) -> &'a FrameColumn {
-	frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("missing column {name}"))
+fn column<'a>(frame: &'a Frame, name: &str) -> ColumnView<'a> {
+	frame.try_column(name).unwrap_or_else(|e| panic!("missing column {name}: {e:?}"))
 }
 
 fn mk_simple(f: &Fixture, name: &str, cardinality: RelationshipCardinality) -> RelationshipToCreate {

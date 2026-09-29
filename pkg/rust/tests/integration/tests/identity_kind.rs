@@ -18,8 +18,8 @@ use reifydb_value::value::{Value, identity::IdentityId};
 fn id_of(db: &TestDb, name: &str) -> IdentityId {
 	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }} map {{ id: id }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-	match col.data.get_value(0) {
+	let col = frame.column("id").expect("the column reads").expect("id column");
+	match col.get_value(0) {
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected id value: {other:?}"),
 	}
@@ -28,9 +28,9 @@ fn id_of(db: &TestDb, name: &str) -> IdentityId {
 fn kind_of(db: &TestDb, name: &str) -> String {
 	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }} map {{ kind: kind }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "kind").expect("kind column");
+	let col = frame.column("kind").expect("the column reads").expect("kind column");
 	assert_eq!(frame.row_count(), 1, "expected exactly one identity named `{name}`");
-	match col.data.get_value(0) {
+	match col.get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("unexpected kind value: {other:?}"),
 	}
@@ -126,6 +126,6 @@ fn root_can_still_be_given_credentials() {
 	let frames = db.admin("create authentication for root { method: token; token: 'roottok' }");
 
 	let frame = frames.first().expect("authentication frame");
-	let created = frame.columns.iter().find(|c| c.name == "created").expect("created column");
-	assert_eq!(created.data.get_value(0), Value::Boolean(true));
+	let created = frame.column("created").expect("the column reads").expect("created column");
+	assert_eq!(created.get_value(0), Value::Boolean(true));
 }

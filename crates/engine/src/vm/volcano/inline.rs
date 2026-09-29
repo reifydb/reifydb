@@ -7,6 +7,8 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::{
@@ -18,9 +20,15 @@ use reifydb_core::{
 		SumTypeConstructorExpression, TypeExpression, name::display_label,
 	},
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
-	value::column::{
-		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, cast::cast_column_data, columns::Columns,
-		headers::ColumnHeaders, view::group_by::common_key_type,
+	value::{
+		batch::{batch, empty_batch},
+		column::{
+			builder::ColumnBuilder,
+			cast::cast_column_data,
+			factory::{from_many, none, none_typed},
+			headers::ColumnHeaders,
+			view::group_by::common_key_type,
+		},
 	},
 };
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
@@ -29,7 +37,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions, return_error,
-	value::{Value, constraint::Constraint, sumtype::SumTypeId, value_type::ValueType},
+	value::{Value, column_view::ColumnView, constraint::Constraint, sumtype::SumTypeId, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -75,7 +83,6 @@ impl InlineDataNode {
 	fn create_columns_layout_from_source(source: &ResolvedObject) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: false,
 		}
 	}
 
@@ -591,7 +598,7 @@ impl QueryNode for InlineDataNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		}
@@ -604,9 +611,9 @@ impl QueryNode for InlineDataNode {
 		self.executed = true;
 
 		if self.rows.is_empty() {
-			let columns = Columns::empty();
+			let columns = empty_batch();
 			if self.headers.is_none() {
-				self.headers = Some(ColumnHeaders::from_columns(&columns));
+				self.headers = Some(ColumnHeaders::from_batch(&columns));
 			}
 			return Ok(Some(columns));
 		}
@@ -623,10 +630,10 @@ impl QueryNode for InlineDataNode {
 	}
 }
 
-type EvaluatedColumnValues = (Vec<(Value, ValueType, Fragment)>, Option<ValueType>, Option<Fragment>);
+type EvaluatedColumnValues = (Vec<(Value, ValueType, Fragment)>, Option<ValueType>);
 
 impl InlineDataNode {
-	fn find_optimal_integer_type(column: &ColumnBuffer) -> ValueType {
+	fn find_optimal_integer_type(column: &ColumnView<'_>) -> ValueType {
 		let mut min_val = i128::MAX;
 		let mut max_val = i128::MIN;
 		let mut has_values = false;
@@ -712,19 +719,16 @@ impl InlineDataNode {
 	) -> Result<EvaluatedColumnValues> {
 		let mut all_values = Vec::new();
 		let mut first_value_type: Option<ValueType> = None;
-		let mut column_fragment: Option<Fragment> = None;
 
 		for row_data in rows_data {
 			if let Some(alias_expr) = row_data.get(column_name) {
-				if column_fragment.is_none() {
-					column_fragment = Some(alias_expr.fragment.clone());
-				}
 				let eval_ctx = session.with_eval_empty();
 
 				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
+				let evaluated = ColumnView::try_from(&evaluated)?;
 
-				let evaluated_type = evaluated.data().get_type().inner_type().clone();
-				let mut iter = evaluated.data().iter();
+				let evaluated_type = evaluated.get_type().inner_type().clone();
+				let mut iter = evaluated.iter();
 				if let Some(value) = iter.next() {
 					if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
 						first_value_type = Some(evaluated_type.clone());
@@ -742,7 +746,7 @@ impl InlineDataNode {
 			}
 		}
 
-		Ok((all_values, first_value_type, column_fragment))
+		Ok((all_values, first_value_type))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::materialize")]
@@ -750,7 +754,8 @@ impl InlineDataNode {
 		session: &EvalContext<'_>,
 		all_values: &[(Value, ValueType, Fragment)],
 		first_value_type: Option<ValueType>,
-	) -> Result<ColumnBuffer> {
+		name: &str,
+	) -> Result<(FieldRef, ArrayRef)> {
 		let wide_type = first_value_type.map(|fvt| {
 			let first = match fvt {
 				_ if fvt.is_integer() => ValueType::Int16,
@@ -783,8 +788,8 @@ impl InlineDataNode {
 				_ => None,
 			});
 			match none_type {
-				Some(none_type) => ColumnBuffer::none_typed(none_type, all_values.len()),
-				None => ColumnBuffer::none(all_values.len()),
+				Some(none_type) => none_typed(name, none_type, all_values.len()),
+				None => none(name, all_values.len()),
 			}
 		} else {
 			let mut data = ColumnBuilder::with_capacity(wide_type.clone().unwrap(), 0);
@@ -795,16 +800,16 @@ impl InlineDataNode {
 				} else if wide_type.as_ref().is_some_and(|wt| value_type == wt) {
 					data.push_value(value.clone());
 				} else {
-					let temp_data = ColumnBuffer::from(value.clone());
+					let temp_data = from_many(name, value.clone(), 1);
 					let eval_ctx = session.with_eval_empty();
 
 					let casted = cast_column_data(
 						&eval_ctx,
-						&temp_data,
+						&ColumnView::try_from(&temp_data)?,
 						wide_type.clone().unwrap(),
 						fragment,
 					)?;
-					if let Some(casted_value) = casted.iter().next() {
+					if let Some(casted_value) = ColumnView::try_from(&casted)?.iter().next() {
 						data.push_value(casted_value);
 					} else {
 						data.push_none();
@@ -812,21 +817,27 @@ impl InlineDataNode {
 				}
 			}
 
-			data.finish()
+			data.finish(name)
 		};
 
 		if wide_type == Some(ValueType::Int16) {
-			let optimal_type = Self::find_optimal_integer_type(&column_data);
+			let optimal_type = Self::find_optimal_integer_type(&ColumnView::try_from(&column_data)?);
 			if optimal_type != ValueType::Int16 {
-				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
-				column_data = cast_column_data(&eval_ctx, &column_data, optimal_type, Fragment::none)?;
+				let eval_ctx = session.with_eval(empty_batch(), column_data.1.len());
+				let casted = cast_column_data(
+					&eval_ctx,
+					&ColumnView::try_from(&column_data)?,
+					optimal_type,
+					Fragment::none,
+				)?;
+				column_data = casted;
 			}
 		}
 
 		Ok(column_data)
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
+	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>> {
 		let all_columns = Self::collect_column_names(&self.rows);
 		let rows_data = Self::build_row_maps(&self.rows);
 
@@ -835,26 +846,24 @@ impl InlineDataNode {
 		let mut columns = Vec::new();
 
 		for column_name in all_columns {
-			let (all_values, first_value_type, column_fragment) =
+			let (all_values, first_value_type) =
 				Self::eval_column_values(&session, &rows_data, &column_name)?;
 
-			let column_data = Self::materialize_inferred_column(&session, &all_values, first_value_type)?;
-
-			columns.push(ColumnWithName::new(
-				column_fragment
-					.map(|f| f.with_text(&column_name))
-					.unwrap_or_else(|| Fragment::internal(column_name)),
-				column_data,
-			));
+			columns.push(Self::materialize_inferred_column(
+				&session,
+				&all_values,
+				first_value_type,
+				&column_name,
+			)?);
 		}
 
-		let columns = Columns::new(columns);
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		let columns = batch(columns)?;
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 
 		Ok(Some(columns))
 	}
 
-	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
+	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>> {
 		let source = ctx.source.as_ref().unwrap();
 		let headers = self.headers.as_ref().unwrap();
 		let session = eval_context_from_query(ctx);
@@ -882,7 +891,7 @@ impl InlineDataNode {
 			)?);
 		}
 
-		let columns = Columns::new(columns);
+		let columns = batch(columns)?;
 
 		Ok(Some(columns))
 	}
@@ -894,7 +903,7 @@ impl InlineDataNode {
 		series_tag: Option<&SumType>,
 		rows_data: &[HashMap<String, &AliasExpression>],
 		column_name: &Fragment,
-	) -> Result<ColumnWithName> {
+	) -> Result<(FieldRef, ArrayRef)> {
 		let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
 		let mut column_data = if let Some(tc) = table_column {
@@ -902,13 +911,9 @@ impl InlineDataNode {
 		} else {
 			ColumnBuilder::with_capacity(ValueType::Uint1, 0)
 		};
-		let mut column_fragment: Option<Fragment> = None;
 
 		for row_data in rows_data {
 			if let Some(alias_expr) = row_data.get(column_name.text()) {
-				if column_fragment.is_none() {
-					column_fragment = Some(alias_expr.fragment.clone());
-				}
 				let mut eval_ctx = session.with_eval_empty();
 				eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
 					source_name: Some(source.identifier().text().to_string()),
@@ -918,21 +923,21 @@ impl InlineDataNode {
 				});
 
 				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
+				let evaluated = ColumnView::try_from(&evaluated)?;
 
-				let eval_len = evaluated.data().len();
+				let eval_len = evaluated.len();
 				if table_column.is_some() {
 					if eval_len == 1 {
-						column_data.extend(evaluated.data().clone())?;
+						column_data.extend(&evaluated)?;
 					} else if eval_len == 0 {
 						column_data.push_value(Value::none());
 					} else {
-						let first_value =
-							evaluated.data().iter().next().unwrap_or(Value::none());
+						let first_value = evaluated.iter().next().unwrap_or(Value::none());
 						column_data.push_value(first_value);
 					}
 				} else {
 					let value = if eval_len > 0 {
-						evaluated.data().iter().next().unwrap_or(Value::none())
+						evaluated.iter().next().unwrap_or(Value::none())
 					} else {
 						Value::none()
 					};
@@ -954,9 +959,6 @@ impl InlineDataNode {
 			}
 		}
 
-		Ok(ColumnWithName::new(
-			column_fragment.map(|f| f.with_text(column_name.text())).unwrap_or_else(|| column_name.clone()),
-			column_data.finish(),
-		))
+		Ok(column_data.finish(column_name.text()))
 	}
 }

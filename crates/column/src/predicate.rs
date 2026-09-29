@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
-use reifydb_core::value::column::{buffer::ColumnBuffer, data::Column};
-use reifydb_value::{Result, value::Value};
+use reifydb_core::value::column::data::Column;
+use reifydb_value::{
+	Result,
+	value::{Value, column_view::ViewData},
+};
 
 use crate::{
 	compute::{self, CompareOp},
@@ -127,16 +131,17 @@ fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> 
 
 fn bool_array_to_mask(array: &Column) -> Result<BooleanBuffer> {
 	let canon = array.to_canonical()?;
-	if !matches!(canon.buffer, ColumnBuffer::Bool(_)) {
+	let view = canon.view();
+	if !matches!(view.data, ViewData::Bool(_)) {
 		return Err(ColumnError::PredicateCompareNotBool.into());
 	}
 	let len = canon.len();
 	let mut mask = BooleanBufferBuilder::new(len);
 	mask.append_n(len, false);
-	let nones = canon.buffer.nulls();
+	let nones = canon.buffer().logical_nulls();
 	for i in 0..len {
-		let is_true = matches!(canon.buffer.get_value(i), Value::Boolean(true));
-		if is_true && !nones.map(|n| n.is_null(i)).unwrap_or(false) {
+		let is_true = matches!(view.get_value(i), Value::Boolean(true));
+		if is_true && !nones.as_ref().map(|n| n.is_null(i)).unwrap_or(false) {
 			mask.set_bit(i, true);
 		}
 	}
@@ -159,26 +164,26 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::value::column::{
-		buffer::ColumnBuffer,
 		builder::ColumnBuilder,
 		data::{Column, canonical::Canonical},
+		factory,
 	};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
 	fn mkblock(rows: [(i32, bool); 5]) -> ColumnBlock {
-		let ids = ColumnBuffer::int4(rows.map(|(v, _)| v).to_vec());
-		let flags = ColumnBuffer::bool(rows.map(|(_, v)| v).to_vec());
+		let ids = factory::int4("id", rows.map(|(v, _)| v).to_vec());
+		let flags = factory::bool("flag", rows.map(|(_, v)| v).to_vec());
 		let id_col = ColumnChunks::single(
 			ValueType::Int4,
 			false,
-			Column::from_canonical(Canonical::from_column_buffer(&ids).unwrap()),
+			Column::from_canonical(Canonical::from_column(&ids).unwrap()),
 		);
 		let flag_col = ColumnChunks::single(
 			ValueType::Boolean,
 			false,
-			Column::from_canonical(Canonical::from_column_buffer(&flags).unwrap()),
+			Column::from_canonical(Canonical::from_column(&flags).unwrap()),
 		);
 		let schema = Arc::new(vec![
 			("id".to_string(), ValueType::Int4, false),
@@ -247,11 +252,11 @@ mod tests {
 		nullable_ids.push_none();
 		nullable_ids.push::<i32>(30);
 		nullable_ids.push_none();
-		let nullable_ids = nullable_ids.finish();
+		let nullable_ids = nullable_ids.finish("id");
 		let id_col = ColumnChunks::single(
 			ValueType::Int4,
 			true,
-			Column::from_canonical(Canonical::from_column_buffer(&nullable_ids).unwrap()),
+			Column::from_canonical(Canonical::from_column(&nullable_ids).unwrap()),
 		);
 		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);
 		let t = ColumnBlock::new(schema, vec![id_col]);
@@ -269,7 +274,7 @@ mod tests {
 			.iter()
 			.map(|p| {
 				Column::from_canonical(
-					Canonical::from_column_buffer(&ColumnBuffer::int4(p.to_vec())).unwrap(),
+					Canonical::from_column(&factory::int4("id", p.to_vec())).unwrap(),
 				)
 			})
 			.collect();
@@ -329,15 +334,15 @@ mod tests {
 		a.push::<i32>(10);
 		a.push_none();
 		a.push::<i32>(30);
-		let a = a.finish();
+		let a = a.finish("id");
 		let mut b = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		b.push::<i32>(40);
 		b.push_none();
 		b.push::<i32>(60);
-		let b = b.finish();
+		let b = b.finish("id");
 		let chunks = vec![
-			Column::from_canonical(Canonical::from_column_buffer(&a).unwrap()),
-			Column::from_canonical(Canonical::from_column_buffer(&b).unwrap()),
+			Column::from_canonical(Canonical::from_column(&a).unwrap()),
+			Column::from_canonical(Canonical::from_column(&b).unwrap()),
 		];
 		let id_col = ColumnChunks::new(ValueType::Int4, true, chunks);
 		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);

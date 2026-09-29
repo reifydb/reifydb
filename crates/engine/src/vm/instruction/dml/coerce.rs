@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::{catalog::series::Series, evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+	value::column::{cast::cast_column_data, factory::from_many, write::check_digest_write},
 };
 use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, system_columns::column_view, value_type::ValueType},
 };
 
 use crate::{
@@ -49,34 +50,37 @@ pub(crate) fn coerce_value_to_column_type(
 		};
 	}
 
-	let temp_column_data = ColumnBuffer::from(value.clone());
+	let temp_column = from_many("value", value.clone(), 1);
+	let temp_column_data = ColumnView::try_from(&temp_column)?;
 	let value_str = value.to_string();
 
 	let base = eval_context_from_query(ctx);
 	let mut eval_ctx = base.with_eval_empty();
 	eval_ctx.target = Some(TargetColumn::Resolved(column));
-	temp_column_data.check_digest_write(&target, || Fragment::internal(&value_str))?;
+	check_digest_write(&temp_column_data, &target, || Fragment::internal(&value_str))?;
 	let coerced_column = cast_column_data(&eval_ctx, &temp_column_data, target, || Fragment::internal(&value_str))?;
 
-	Ok(coerced_column.get_value(0))
+	Ok(ColumnView::try_from(&coerced_column)?.get_value(0))
 }
 
 pub(crate) fn coerce_series_row(
 	series: &Series,
-	columns: &Columns,
+	columns: &RecordBatch,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<Vec<Value>> {
 	let key_column = series.key.column();
 	let mut values = Vec::with_capacity(series.columns.len());
 	for column in &series.columns {
-		let input = columns.iter().find(|c| c.name().text() == column.name);
-		let value = input.map(|c| c.data().get_value(row_idx)).unwrap_or_else(Value::none);
+		let input = column_view(columns, &column.name)?;
+		let value = input.as_ref().map(|c| c.get_value(row_idx)).unwrap_or_else(Value::none);
 		if column.name == key_column && matches!(value, Value::None { .. }) {
 			values.push(value);
 			continue;
 		}
-		let ident = input.map(|c| c.name().clone()).unwrap_or_else(|| Fragment::internal(&column.name));
+		let ident = input
+			.map(|c| Fragment::internal(c.field.name()))
+			.unwrap_or_else(|| Fragment::internal(&column.name));
 		let source = context.source.clone().expect("series write context must carry its series as source");
 		let resolved = ResolvedColumn::new(ident.clone(), source, column.clone());
 		let mut value = coerce_value_to_column_type(value, column.constraint.get_type(), resolved, context)?;

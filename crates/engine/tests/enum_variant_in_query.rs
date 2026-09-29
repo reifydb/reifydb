@@ -7,7 +7,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, column_view::ColumnView, frame::frame::Frame, system_columns::user_columns},
 };
 
 fn engine() -> TestEngine {
@@ -48,12 +48,11 @@ fn error_text(result: Result<Vec<Frame>, Box<Diagnostic>>) -> String {
 
 fn columns(frames: &[Frame]) -> Vec<(String, String, Vec<String>)> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let mut columns: Vec<(String, String, Vec<String>)> = frames[0]
-		.columns
-		.iter()
-		.map(|c| {
-			let values = (0..c.data.len()).map(|row| c.data.get_value(row).to_string()).collect();
-			(c.name.clone(), c.data.get_type().to_string(), values)
+	let mut columns: Vec<(String, String, Vec<String>)> = user_columns(&frames[0].batch)
+		.map(|(field, array)| {
+			let c = ColumnView::try_from((array, field.as_ref())).unwrap();
+			let values = (0..c.len()).map(|row| c.get_value(row).to_string()).collect();
+			(field.name().clone(), c.get_type().to_string(), values)
 		})
 		.collect();
 	columns.sort();
@@ -61,8 +60,8 @@ fn columns(frames: &[Frame]) -> Vec<(String, String, Vec<String>)> {
 }
 
 fn ids(frames: &[Frame]) -> Vec<String> {
-	let column = frames[0].columns.iter().find(|c| c.name == "id").expect("column id");
-	let mut ids: Vec<String> = (0..column.data.len()).map(|row| column.data.get_value(row).to_string()).collect();
+	let column = frames[0].column("id").unwrap().expect("column id");
+	let mut ids: Vec<String> = (0..column.len()).map(|row| column.get_value(row).to_string()).collect();
 	ids.sort();
 	ids
 }
@@ -221,9 +220,8 @@ fn a_variant_in_a_script_variable_or_udf_result_is_never_a_silent_none() {
 	] {
 		match query(&t, rql) {
 			Ok(frames) => {
-				let column = frames[0].columns.iter().find(|c| c.name == "v").expect("column v");
-				let values: Vec<Value> =
-					(0..column.data.len()).map(|row| column.data.get_value(row)).collect();
+				let column = frames[0].column("v").unwrap().expect("column v");
+				let values: Vec<Value> = (0..column.len()).map(|row| column.get_value(row)).collect();
 				assert!(
 					values.iter().all(|v| !matches!(v, Value::None { .. })),
 					"{rql}: the variant became none: {values:?}"
@@ -367,8 +365,8 @@ fn is_in_a_script_is_an_error_or_a_boolean_never_a_silent_none() {
 
 	match query(&t, rql) {
 		Ok(frames) => {
-			let column = frames[0].columns.iter().find(|c| c.name == "b").expect("column b");
-			assert_eq!(column.data.get_type().to_string(), "Boolean", "{rql}: IS became none");
+			let column = frames[0].column("b").unwrap().expect("column b");
+			assert_eq!(column.get_type().to_string(), "Boolean", "{rql}: IS became none");
 		}
 		Err(err) => assert!(
 			["$v", "Active"].iter().any(|f| err.fragment.text().contains(f)),
@@ -427,11 +425,11 @@ fn is_in_a_filter_keeps_the_rows_of_that_variant_or_gives_the_insert_error() {
 }
 
 fn true_ids(frames: &[Frame]) -> Vec<String> {
-	let x = frames[0].columns.iter().find(|c| c.name == "x").expect("column x");
-	let id = frames[0].columns.iter().find(|c| c.name == "id").expect("column id");
-	let mut ids: Vec<String> = (0..x.data.len())
-		.filter(|row| x.data.get_value(*row).to_string() == "true")
-		.map(|row| id.data.get_value(row).to_string())
+	let x = frames[0].column("x").unwrap().expect("column x");
+	let id = frames[0].column("id").unwrap().expect("column id");
+	let mut ids: Vec<String> = (0..x.len())
+		.filter(|row| x.get_value(*row).to_string() == "true")
+		.map(|row| id.get_value(row).to_string())
 		.collect();
 	ids.sort();
 	ids

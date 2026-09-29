@@ -22,10 +22,10 @@ fn create_transactional_view_stores_the_view_and_its_flow() {
 
 	let frames = t.admin("CREATE TRANSACTIONAL VIEW ns::v { id: int4 } AS { FROM ns::src }");
 
-	let created = frames[0].columns.iter().find(|c| c.name == "created").unwrap().data.get_value(0);
+	let created = frames[0].column("created").unwrap().unwrap().get_value(0);
 	assert_eq!(created.to_string(), "true");
 	let views = t.query("from system::views filter {name == 'v'}");
-	let kind = views[0].columns.iter().find(|c| c.name == "kind").unwrap().data.get_value(0);
+	let kind = views[0].column("kind").unwrap().unwrap().get_value(0);
 	assert_eq!(kind.to_string(), "transactional");
 	assert_eq!(TestEngine::row_count(&t.query("from system::flows filter {name == 'v'}")), 1);
 }

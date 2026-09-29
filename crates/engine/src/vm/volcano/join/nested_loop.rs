@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	expression::Expression,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::{batch::batch, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::compile_expression,
 	context::{CompileContext, EvalContext},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::Value};
+use reifydb_value::{
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{Value, column_view::ColumnView},
+};
 use tracing::instrument;
 
 use super::common::{
 	JoinContext, JoinSlot, build_eval_columns, load_and_merge_all, materialize_join, resolve_column_names,
+	user_row, user_views,
 };
 use crate::{
 	Result,
@@ -88,7 +94,7 @@ impl QueryNode for NestedLoopJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
 		}
@@ -101,8 +107,8 @@ impl QueryNode for NestedLoopJoinNode {
 		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
 		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
-		let left_rows = left_columns.row_count();
-		let right_rows = right_columns.row_count();
+		let left_rows = left_columns.num_rows();
+		let right_rows = right_columns.num_rows();
 
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
@@ -110,22 +116,19 @@ impl QueryNode for NestedLoopJoinNode {
 		let (left_picks, right_picks) =
 			self.probe(&session, &left_columns, &right_columns, left_rows, right_rows)?;
 
-		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 		let columns = materialize_join(
 			&resolved.qualified_names,
 			&[JoinSlot {
-				columns: &left_columns.columns,
-				system: &left_columns.system,
+				columns: &left_columns,
 				picks: &left_picks,
 			}],
-			&right_columns.columns,
+			&right_columns,
+			&[],
 			&right_picks,
-			right_columns.time(),
-			left_rownum,
 			0,
 		)?;
 
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 		Ok(Some(columns))
 	}
 
@@ -139,35 +142,40 @@ impl NestedLoopJoinNode {
 	fn probe(
 		&self,
 		session: &EvalContext,
-		left_columns: &Columns,
-		right_columns: &Columns,
+		left_columns: &RecordBatch,
+		right_columns: &RecordBatch,
 		left_rows: usize,
 		right_rows: usize,
 	) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
 		let mut left_picks: Vec<usize> = Vec::new();
 		let mut right_picks: Vec<Option<usize>> = Vec::new();
+		let left_views = user_views(left_columns)?;
+		let right_views = user_views(right_columns)?;
 
 		for i in 0..left_rows {
-			let left_row = left_columns.get_row(i);
+			let left_row = user_row(&left_views, i);
 
 			let mut matched = false;
 			for j in 0..right_rows {
-				let right_row = right_columns.get_row(j);
+				let right_row = user_row(&right_views, j);
 
 				let eval_columns = build_eval_columns(
-					left_columns,
-					right_columns,
+					&left_views,
+					&right_views,
 					&left_row,
 					&right_row,
 					&self.alias,
 				);
 
-				let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
+				let exec_ctx = session.with_eval_join(batch(eval_columns)?);
 
 				let mut all_true = true;
 				for compiled_expr in &self.context.compiled {
 					let col = compiled_expr.execute(&exec_ctx)?;
-					all_true &= matches!(col.data().get_value(0), Value::Boolean(true));
+					all_true &= matches!(
+						ColumnView::try_from(&col)?.get_value(0),
+						Value::Boolean(true)
+					);
 				}
 
 				if all_true {

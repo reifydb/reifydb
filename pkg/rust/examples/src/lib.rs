@@ -38,13 +38,13 @@ pub fn column(frames: &[Frame], name: &str) -> Vec<Value> {
 	let Some(frame) = frames.first() else {
 		return Vec::new();
 	};
-	let column = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| {
+	let column = frame.column(name).expect("the column reads").unwrap_or_else(|| {
 		panic!(
 			"result has no column {name}, got {:?}",
-			frame.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+			frame.batch.schema().fields().iter().map(|f| f.name().clone()).collect::<Vec<_>>()
 		)
 	});
-	(0..frame.row_count()).map(|i| column.data.get_value(i)).collect()
+	(0..frame.row_count()).map(|i| column.get_value(i)).collect()
 }
 
 pub fn utf8_column(frames: &[Frame], name: &str) -> Vec<String> {

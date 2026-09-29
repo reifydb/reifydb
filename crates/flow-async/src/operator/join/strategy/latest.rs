@@ -3,45 +3,61 @@
 
 use std::cmp::Ordering;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 use reifydb_core::{
 	error::diagnostic::operation::join_pick_column_not_found, key::operator::state::GroupId, row::JoinPick,
-	sort::SortDirection, value::column::columns::Columns,
+	sort::SortDirection,
 };
 use reifydb_value::{
 	Result, error,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
-	value::{Value, datetime::TIME_COLUMN_NAME, row_number::RowNumber},
+	value::{
+		Value,
+		column_view::ColumnView,
+		datetime::TIME_COLUMN_NAME,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, column_view, created_at, require_row_numbers, user_columns},
+	},
 };
 use tracing::instrument;
 
 use super::hash::{build_shape, columns_from_block, encode_row};
-use crate::operator::{host::HostContext, join::store::Store};
+use crate::operator::{host::HostContext, join::store::Store, row_times};
 
-fn instant_values(columns: &Columns) -> Option<Vec<Value>> {
-	let time = columns.time();
-	let created = columns.created_at();
-	(0..columns.row_count())
-		.map(|idx| time.get(idx).or_else(|| created.get(idx)).map(|stamp| Value::DateTime(*stamp)))
-		.collect()
+fn instant_values(columns: &RecordBatch) -> Result<Option<Vec<Value>>> {
+	let time = row_times(columns)?;
+	let created = created_at(columns)?;
+	Ok((0..columns.num_rows())
+		.map(|idx| time.get(idx).copied().flatten().or_else(|| created.get(idx).copied()).map(Value::DateTime))
+		.collect())
 }
 
-fn ordering_values(columns: &Columns, pick_column: &Fragment) -> Result<Vec<Value>> {
+fn full_system_column<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+	let bare = name.strip_prefix('#').unwrap_or(name);
+	let Some(column) = SystemColumn::ALL.into_iter().find(|column| &column.name()[1..] == bare) else {
+		return Ok(None);
+	};
+	Ok(column_view(columns, column.name())?.filter(|view| view.none_count() == 0))
+}
+
+fn ordering_values(columns: &RecordBatch, pick_column: &Fragment) -> Result<Vec<Value>> {
 	let name = pick_column.text();
-	let rows = columns.row_count();
-	if let Some(column) = columns.column(name) {
-		return Ok((0..rows).map(|idx| column.data().get_value(idx)).collect());
+	let rows = columns.num_rows();
+	if let Some((field, array)) = user_columns(columns).find(|(field, _)| field.name() == name) {
+		let view = ColumnView::try_from((array, field.as_ref()))?;
+		return Ok((0..rows).map(|idx| view.get_value(idx)).collect());
 	}
-	if let Some(buffer) = columns.system_column(name) {
-		return Ok((0..rows).map(|idx| buffer.get_value(idx)).collect());
+	if let Some(view) = full_system_column(columns, name)? {
+		return Ok((0..rows).map(|idx| view.get_value(idx)).collect());
 	}
 	if name == TIME_COLUMN_NAME {
-		if let Some(values) = instant_values(columns) {
+		if let Some(values) = instant_values(columns)? {
 			return Ok(values);
 		}
-		return Ok(columns.row_numbers().iter().map(|number| Value::Uint8(number.value())).collect());
+		return Ok(require_row_numbers(columns)?.iter().map(|number| Value::Uint8(number.value())).collect());
 	}
 	Err(error!(join_pick_column_not_found(pick_column.clone(), "the right side")))
 }
@@ -53,8 +69,8 @@ fn prefers(ord: Ordering, direction: &SortDirection) -> bool {
 	}
 }
 
-pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Result<Option<usize>> {
-	let rows = columns.row_count();
+pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Option<usize>> {
+	let rows = columns.num_rows();
 	if rows == 0 {
 		return Ok(None);
 	}
@@ -64,7 +80,7 @@ pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Result<Option<
 		.map(|key| Ok((ordering_values(columns, &key.column)?, key.direction.clone())))
 		.collect::<Result<_>>()?;
 	let tail = ordering.last().map(|(_, direction)| direction.clone()).unwrap_or(SortDirection::Desc);
-	let numbers = columns.row_numbers();
+	let numbers = require_row_numbers(columns)?;
 	let mut winner: Option<usize> = None;
 	for idx in 0..rows {
 		if ordering.iter().any(|(values, _)| matches!(values[idx], Value::None { .. })) {
@@ -110,7 +126,7 @@ pub(crate) fn winning_right_row(
 	host: &mut dyn HostContext,
 	right: &Store,
 	group: GroupId,
-) -> Result<Option<(RowNumber, EncodedBytes, Columns)>> {
+) -> Result<Option<(RowNumber, EncodedBytes, RecordBatch)>> {
 	let Some((number, content)) = read_slot(host, right, group)? else {
 		return Ok(None);
 	};
@@ -123,7 +139,7 @@ pub(crate) fn read_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-) -> Result<Option<Columns>> {
+) -> Result<Option<RecordBatch>> {
 	Ok(winning_right_row(host, right, right.group_of(key_hash))?.map(|(_, _, columns)| columns))
 }
 
@@ -132,21 +148,22 @@ pub(crate) fn write_right_rows(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-	columns: &Columns,
+	columns: &RecordBatch,
 	indices: &[usize],
 	pick: &JoinPick,
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
 	}
-	let shape = build_shape(columns);
+	let shape = build_shape(columns)?;
 	right.set_row_shape(host, &shape)?;
 	let group = right.group_of(key_hash);
 
+	let row_numbers = require_row_numbers(columns)?;
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at(), right.side());
-		candidates.push((columns.row_numbers()[idx], row.into_bytes()));
+		let row = encode_row(&shape, columns, idx, host.written_at(), right.side())?;
+		candidates.push((row_numbers[idx], row.into_bytes()));
 	}
 	let held = read_slot(host, right, group)?;
 	if let Some(held) = &held
@@ -172,10 +189,10 @@ pub(crate) fn overwrite_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-	columns: &Columns,
+	columns: &RecordBatch,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<Option<Columns>> {
+) -> Result<Option<RecordBatch>> {
 	if indices.is_empty() {
 		return Ok(None);
 	}

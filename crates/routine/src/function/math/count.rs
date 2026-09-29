@@ -3,13 +3,13 @@
 
 use std::mem;
 
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
 		builder::ColumnBuilder,
-		columns::Columns,
+		factory::int8,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
 };
@@ -17,7 +17,11 @@ use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::value::{
+	Value,
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
 pub struct Count {
 	info: RoutineInfo,
@@ -50,13 +54,16 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let row_count = args.row_count();
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let row_count = ctx.row_count;
 		let mut counts = vec![0i64; row_count];
 
-		for col in args.iter() {
-			let data = col.data();
-			match data.nulls() {
+		for (_, data) in args.iter() {
+			match data.logical_nulls() {
 				None => {
 					for count in counts.iter_mut().take(data.len().min(row_count)) {
 						*count += 1;
@@ -73,7 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int8(counts))]))
+		Ok(int8(ctx.fragment.text(), counts))
 	}
 }
 
@@ -116,11 +123,11 @@ impl Accumulator for CountAccumulator {
 		self.counts.heap_size()
 	}
 
-	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
-		let column = &args[0];
-		let column_name = args.name_at(0);
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let (field, _) = &args[0];
+		let column = ColumnView::try_from(&args[0])?;
 
-		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
+		let is_count_star = field.name() == "dummy" && matches!(column.data, ViewData::Int4(_));
 
 		if is_count_star {
 			for &(group, ref indices) in groups.iter() {
@@ -136,7 +143,7 @@ impl Accumulator for CountAccumulator {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnBuilder::with_capacity(ValueType::Int8, self.counts.len());
 
@@ -145,18 +152,18 @@ impl Accumulator for CountAccumulator {
 			data.push_value(Value::Int8(count));
 		}
 
-		Ok((keys, data.finish()))
+		Ok((keys, data.finish(self.kind_name())))
 	}
 
 	fn kind_name(&self) -> &'static str {
 		"math::count"
 	}
 
-	fn retract(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
-		let column = &args[0];
-		let column_name = args.name_at(0);
+	fn retract(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let (field, _) = &args[0];
+		let column = ColumnView::try_from(&args[0])?;
 
-		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
+		let is_count_star = field.name() == "dummy" && matches!(column.data, ViewData::Int4(_));
 
 		if is_count_star {
 			for &(group, ref indices) in groups.iter() {

@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	Result,
@@ -65,15 +65,15 @@ impl BaseVTable for SystemVersions {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("name"), names_to_insert.finish()),
-			ColumnWithName::new(Fragment::internal("version"), versions_to_insert.finish()),
-			ColumnWithName::new(Fragment::internal("description"), descriptions_to_insert.finish()),
-			ColumnWithName::new(Fragment::internal("type"), types_to_insert.finish()),
+			names_to_insert.finish("name"),
+			versions_to_insert.finish("version"),
+			descriptions_to_insert.finish("description"),
+			types_to_insert.finish("type"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

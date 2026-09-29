@@ -9,15 +9,15 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{Params, testing::db::TestDb};
 use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
-use reifydb_value::value::{Value, identity::IdentityId};
+use reifydb_value::value::{Value, identity::IdentityId, system_columns::column_view};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
 
 fn lookup_identity(db: &TestDb, name: &str) -> IdentityId {
 	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-	match col.data.get_value(0) {
+	let col = frame.column("id").unwrap().expect("id column");
+	match col.get_value(0) {
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected identity value: {other:?}"),
 	}
@@ -45,11 +45,11 @@ fn insert_docs(db: &TestDb, alice: IdentityId, bob: IdentityId) {
 fn contents(batches: &[StagedBatch]) -> Vec<String> {
 	let mut out = Vec::new();
 	for (_, cols) in batches {
-		let Some(content) = cols.iter().find(|c| c.name().text() == "content") else {
+		let Some(content) = column_view(&cols, "content").unwrap() else {
 			continue;
 		};
-		for i in 0..cols.row_count() {
-			match content.data().get_value(i) {
+		for i in 0..cols.num_rows() {
+			match content.get_value(i) {
 				Value::Utf8(s) => out.push(s),
 				other => panic!("unexpected content value: {other:?}"),
 			}

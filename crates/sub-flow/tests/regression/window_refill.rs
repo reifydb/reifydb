@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use arrow_schema::Schema;
+use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
 use reifydb_routine::{
@@ -31,7 +32,7 @@ fn routines() -> Routines {
 fn session_harness(lateness: Option<Duration>) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
-			parent_schema: Some(Columns::empty()),
+			parent_schema: Some(Arc::new(Schema::empty())),
 			operator: SUBJECT,
 			kind: WindowKind::Session {
 				gap: Duration::from_milliseconds(GAP_MS).expect("representable"),

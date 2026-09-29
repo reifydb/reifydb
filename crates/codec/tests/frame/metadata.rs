@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice::from_ref;
+use std::{slice::from_ref, sync::Arc};
 
-use arrow_array::{BooleanArray, Int32Array, Int64Array, LargeStringArray};
-use arrow_buffer::BooleanBuffer;
+use arrow_array::{ArrayRef, BooleanArray, Int32Array, Int64Array, LargeStringArray, UInt64Array};
 use reifydb_codec::{
 	error::DecodeError,
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
 };
 use reifydb_value::value::{
-	container::temporal_array::date_array,
+	column_view::ColumnView,
+	container::temporal_array::{date_array, datetime_array},
 	date::Date,
 	datetime::DateTime,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	row_number::RowNumber,
-	system_columns::SystemColumns,
+	frame::frame::Frame,
+	system_columns::{SystemColumn, created_at, keep_system_columns, row_numbers, system_column, time, updated_at},
+	value_type::ValueType,
 };
 
-fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
+use crate::common::{data, frame_of, frame_without_columns, optional, view_at, with_system};
+
+fn assert_col_data_eq(a: &ColumnView<'_>, b: &ColumnView<'_>) {
 	assert_eq!(a.len(), b.len(), "column length mismatch");
 	for i in 0..a.len() {
 		let va = a.get_value(i);
@@ -29,17 +31,18 @@ fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 
 fn assert_frame_eq(a: &Frame, b: &Frame) {
 	assert_eq!(a.op, b.op, "the op rides the frame header and must survive a round trip");
-	assert_eq!(a.row_numbers().len(), b.row_numbers().len());
-	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
+	let (rows_a, rows_b) = (row_numbers(&a.batch).unwrap(), row_numbers(&b.batch).unwrap());
+	assert_eq!(rows_a.len(), rows_b.len());
+	for (i, (ra, rb)) in rows_a.iter().zip(rows_b).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
 	}
-	assert_eq!(a.created_at().len(), b.created_at().len());
-	assert_eq!(a.updated_at().len(), b.updated_at().len());
-	assert_eq!(a.time().len(), b.time().len());
-	assert_eq!(a.columns.len(), b.columns.len());
-	for (ca, cb) in a.columns.iter().zip(&b.columns) {
-		assert_eq!(ca.name, cb.name);
-		assert_col_data_eq(&ca.data, &cb.data);
+	assert_eq!(created_at(&a.batch).unwrap().len(), created_at(&b.batch).unwrap().len());
+	assert_eq!(updated_at(&a.batch).unwrap().len(), updated_at(&b.batch).unwrap().len());
+	assert_eq!(time(&a.batch).unwrap().len(), time(&b.batch).unwrap().len());
+	assert_eq!(a.batch.num_columns(), b.batch.num_columns());
+	for (index, (fa, fb)) in a.batch.schema_ref().fields().iter().zip(b.batch.schema_ref().fields()).enumerate() {
+		assert_eq!(fa.name(), fb.name());
+		assert_col_data_eq(&view_at(a, index), &view_at(b, index));
 	}
 }
 
@@ -50,54 +53,35 @@ fn round_trip(frame: Frame) {
 	assert_frame_eq(&frame, &decoded[0]);
 }
 
+fn datetimes(nanos: &[i64]) -> ArrayRef {
+	Arc::new(datetime_array(nanos.iter().map(|&n| DateTime::from_nanos(n))))
+}
+
 #[test]
 fn empty_frame() {
-	let frame = Frame::new(vec![]);
+	let frame = frame_without_columns();
 	round_trip(frame);
 }
 
 #[test]
 fn frame_with_metadata() {
-	let frame = Frame {
-		system: SystemColumns::new(
-			vec![RowNumber::new(1), RowNumber::new(2), RowNumber::new(3)],
-			Vec::new(),
-			vec![
-				DateTime::from_nanos(1_000_000_000),
-				DateTime::from_nanos(2_000_000_000),
-				DateTime::from_nanos(3_000_000_000),
-			],
-			vec![
-				DateTime::from_nanos(4_000_000_000),
-				DateTime::from_nanos(5_000_000_000),
-				DateTime::from_nanos(6_000_000_000),
-			],
-			vec![
-				DateTime::from_nanos(7_000_000_000),
-				DateTime::from_nanos(8_000_000_000),
-				DateTime::from_nanos(9_000_000_000),
-			],
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "x".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![10, 20, 30])),
-		}],
-	};
+	let frame = frame_of(vec![("x", data(ValueType::Int4, Int32Array::from(vec![10, 20, 30])))]);
+	let frame = with_system(frame, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1, 2, 3])));
+	let frame =
+		with_system(frame, SystemColumn::CreatedAt, datetimes(&[1_000_000_000, 2_000_000_000, 3_000_000_000]));
+	let frame =
+		with_system(frame, SystemColumn::UpdatedAt, datetimes(&[4_000_000_000, 5_000_000_000, 6_000_000_000]));
+	let frame = with_system(frame, SystemColumn::Time, datetimes(&[7_000_000_000, 8_000_000_000, 9_000_000_000]));
 	round_trip(frame);
 }
 
 #[test]
 fn multi_frame() {
-	let frame1 = Frame::new(vec![FrameColumn {
-		name: "a".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(vec![1, 2])),
-	}]);
-	let frame2 = Frame::new(vec![FrameColumn {
-		name: "b".to_string(),
-		data: FrameColumnData::Utf8(LargeStringArray::from(vec!["x".to_string(), "y".to_string()])),
-	}]);
+	let frame1 = frame_of(vec![("a", data(ValueType::Int4, Int32Array::from(vec![1, 2])))]);
+	let frame2 = frame_of(vec![(
+		"b",
+		data(ValueType::Utf8, LargeStringArray::from(vec!["x".to_string(), "y".to_string()])),
+	)]);
 	let encoded =
 		encode_frames(&[frame1.clone(), frame2.clone()], &EncodeOptions::default()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
@@ -108,15 +92,9 @@ fn multi_frame() {
 
 #[test]
 fn empty_columns() {
-	let frame = Frame::new(vec![
-		FrameColumn {
-			name: "empty_ints".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(Vec::<i32>::new())),
-		},
-		FrameColumn {
-			name: "empty_strings".to_string(),
-			data: FrameColumnData::Utf8(LargeStringArray::from(Vec::<String>::new())),
-		},
+	let frame = frame_of(vec![
+		("empty_ints", data(ValueType::Int4, Int32Array::from(Vec::<i32>::new()))),
+		("empty_strings", data(ValueType::Utf8, LargeStringArray::from(Vec::<String>::new()))),
 	]);
 	round_trip(frame);
 }
@@ -124,34 +102,30 @@ fn empty_columns() {
 #[test]
 fn empty_frame_keeps_the_row_numbers_flag() {
 	// A client must see #rownum on an empty answer too, so the flag cannot be derived from a non-empty list.
-	let mut system =
-		SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-	system.take(0);
-	let frame = Frame {
-		system,
-		op: None,
-		columns: vec![FrameColumn {
-			name: "x".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(Vec::<i32>::new())),
-		}],
-	};
+	let frame = frame_of(vec![("x", data(ValueType::Int4, Int32Array::from(Vec::<i32>::new())))]);
+	let frame = with_system(frame, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(Vec::<u64>::new())));
 
 	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::default()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 
 	assert_eq!(decoded.len(), 1);
-	assert!(decoded[0].has_row_numbers(), "a 0-row frame with row numbers must decode with the flag set");
-	assert!(decoded[0].row_numbers().is_empty());
-	let without = decode_frames(
-		&encode_frames(&[Frame::new(frame.columns.clone())], &EncodeOptions::default()).expect("encode failed"),
-	)
-	.expect("decode failed");
-	assert!(!without[0].has_row_numbers(), "a frame without row numbers must not gain the flag");
+	assert!(
+		system_column(&decoded[0].batch, SystemColumn::RowNumbers).is_some(),
+		"a 0-row frame with row numbers must decode with the flag set"
+	);
+	assert!(row_numbers(&decoded[0].batch).unwrap().is_empty());
+	let user_only = Frame::from(keep_system_columns(&frame.batch, &[]).unwrap());
+	let without = decode_frames(&encode_frames(&[user_only], &EncodeOptions::default()).expect("encode failed"))
+		.expect("decode failed");
+	assert!(
+		system_column(&without[0].batch, SystemColumn::RowNumbers).is_none(),
+		"a frame without row numbers must not gain the flag"
+	);
 }
 
 #[test]
 fn invalid_magic() {
-	let mut data = encode_frames(&[Frame::new(vec![])], &EncodeOptions::default()).expect("encode failed");
+	let mut data = encode_frames(&[frame_without_columns()], &EncodeOptions::default()).expect("encode failed");
 	data[0] = 0xFF; // corrupt magic
 	let result = decode_frames(&data);
 	assert!(matches!(result, Err(DecodeError::InvalidMagic(_))));
@@ -159,14 +133,17 @@ fn invalid_magic() {
 
 #[test]
 fn column_decode_error_includes_name() {
-	let frame = Frame::new(vec![FrameColumn {
-		name: "test_col".to_string(),
-		data: FrameColumnData::Date(date_array(vec![
-			Date::from_days_since_epoch(0).unwrap(),
-			Date::from_days_since_epoch(1).unwrap(),
-			Date::from_days_since_epoch(2).unwrap(),
-		])),
-	}]);
+	let frame = frame_of(vec![(
+		"test_col",
+		data(
+			ValueType::Date,
+			date_array(vec![
+				Date::from_days_since_epoch(0).unwrap(),
+				Date::from_days_since_epoch(1).unwrap(),
+				Date::from_days_since_epoch(2).unwrap(),
+			]),
+		),
+	)]);
 	let encoded = encode_frames(&[frame], &EncodeOptions::default()).expect("encode failed");
 
 	// Byte 40 is the column descriptor's nones_len: msg header 16 + frame header 12 + descriptor
@@ -188,7 +165,7 @@ fn column_decode_error_includes_name() {
 
 #[test]
 fn unsupported_version() {
-	let mut data = encode_frames(&[Frame::new(vec![])], &EncodeOptions::default()).expect("encode failed");
+	let mut data = encode_frames(&[frame_without_columns()], &EncodeOptions::default()).expect("encode failed");
 	// The version is the u16 at bytes 4..6, right after the magic.
 	data[4] = 0xFE;
 	data[5] = 0xCA;
@@ -198,7 +175,7 @@ fn unsupported_version() {
 
 #[test]
 fn unexpected_eof_msg_header() {
-	let data = encode_frames(&[Frame::new(vec![])], &EncodeOptions::default()).expect("encode failed");
+	let data = encode_frames(&[frame_without_columns()], &EncodeOptions::default()).expect("encode failed");
 	for i in 1..16 {
 		let result = decode_frames(&data[..i]);
 		assert!(matches!(result, Err(DecodeError::UnexpectedEof { .. })));
@@ -209,80 +186,53 @@ fn unexpected_eof_msg_header() {
 fn metadata_combinations() {
 	// Each metadata array is independently present, so the flag byte has to be read per array
 	// rather than as all-or-nothing.
-	let frame1 = Frame {
-		system: SystemColumns::new(
-			vec![RowNumber::new(1)],
-			Vec::new(),
-			Vec::new(),
-			Vec::new(),
-			Vec::new(),
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "v".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![10])),
-		}],
-	};
+	let frame1 = frame_of(vec![("v", data(ValueType::Int4, Int32Array::from(vec![10])))]);
+	let frame1 = with_system(frame1, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1])));
 	round_trip(frame1);
 
-	let frame2 = Frame {
-		system: SystemColumns::new(
-			Vec::new(),
-			Vec::new(),
-			vec![DateTime::from_nanos(100)],
-			vec![DateTime::from_nanos(200)],
-			vec![DateTime::from_nanos(300)],
-			Vec::new(),
-		),
-		op: None,
-		columns: vec![FrameColumn {
-			name: "v".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![10])),
-		}],
-	};
+	let frame2 = frame_of(vec![("v", data(ValueType::Int4, Int32Array::from(vec![10])))]);
+	let frame2 = with_system(frame2, SystemColumn::CreatedAt, datetimes(&[100]));
+	let frame2 = with_system(frame2, SystemColumn::UpdatedAt, datetimes(&[200]));
+	let frame2 = with_system(frame2, SystemColumn::Time, datetimes(&[300]));
 	round_trip(frame2);
 }
 
 #[test]
 fn empty_column_name() {
-	let frame = Frame::new(vec![FrameColumn {
-		name: "".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3])),
-	}]);
+	let frame = frame_of(vec![("", data(ValueType::Int4, Int32Array::from(vec![1, 2, 3])))]);
 	round_trip(frame);
 }
 
 #[test]
 fn mixed_types_frame() {
-	let frame = Frame::new(vec![
-		FrameColumn {
-			name: "id".to_string(),
-			data: FrameColumnData::Int8(Int64Array::from(vec![1, 2, 3])),
-		},
-		FrameColumn {
-			name: "name".to_string(),
-			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-				"alice".to_string(),
-				"bob".to_string(),
-				"charlie".to_string(),
-			])),
-		},
-		FrameColumn {
-			name: "active".to_string(),
-			data: FrameColumnData::Bool(BooleanArray::from(vec![true, false, true])),
-		},
-		FrameColumn {
-			name: "email".to_string(),
-			data: FrameColumnData::Option {
-				inner: Box::new(FrameColumnData::Utf8(LargeStringArray::from(vec![
-					"a@b.com".to_string(),
-					"".to_string(),
-					"c@d.com".to_string(),
-				]))),
-				bitvec: BooleanBuffer::from(vec![true, false, true]),
-			},
-		},
+	let frame = frame_of(vec![
+		("id", data(ValueType::Int8, Int64Array::from(vec![1, 2, 3]))),
+		(
+			"name",
+			data(
+				ValueType::Utf8,
+				LargeStringArray::from(vec![
+					"alice".to_string(),
+					"bob".to_string(),
+					"charlie".to_string(),
+				]),
+			),
+		),
+		("active", data(ValueType::Boolean, BooleanArray::from(vec![true, false, true]))),
+		(
+			"email",
+			optional(
+				data(
+					ValueType::Utf8,
+					LargeStringArray::from(vec![
+						"a@b.com".to_string(),
+						"".to_string(),
+						"c@d.com".to_string(),
+					]),
+				),
+				&[true, false, true],
+			),
+		),
 	]);
 	round_trip(frame);
 }
@@ -292,10 +242,7 @@ fn heuristics_threshold_small_columns() {
 	// Below MIN_ROWS the heuristic refuses every compressed encoding, since the per-encoding
 	// overhead would exceed the saving.
 	let values: Vec<i32> = (1..=3).collect();
-	let frame = Frame::new(vec![FrameColumn {
-		name: "small".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(values)),
-	}]);
+	let frame = frame_of(vec![("small", data(ValueType::Int4, Int32Array::from(values)))]);
 	let encoded = encode_frames(&[frame], &EncodeOptions::default()).expect("encode failed");
 	// Byte 29 is the first column's encoding byte: msg header 16 + frame header 12 + type code 1.
 	assert_eq!(encoded[29], Encoding::Plain as u8);
@@ -304,10 +251,7 @@ fn heuristics_threshold_small_columns() {
 #[test]
 fn compression_none_forces_plain() {
 	let values: Vec<i32> = (1..=500).collect();
-	let frame = Frame::new(vec![FrameColumn {
-		name: "seq".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(values)),
-	}]);
+	let frame = frame_of(vec![("seq", data(ValueType::Int4, Int32Array::from(values)))]);
 	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::none()).expect("encode failed");
 	// A sequence this regular would delta-encode to a fraction of its size, so exceeding the raw
 	// 500 * 4 bytes proves compression really was disabled.
@@ -320,10 +264,7 @@ fn compression_none_forces_plain() {
 #[test]
 fn compression_max_round_trip() {
 	let values: Vec<i32> = (1..=500).collect();
-	let frame = Frame::new(vec![FrameColumn {
-		name: "seq".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(values)),
-	}]);
+	let frame = frame_of(vec![("seq", data(ValueType::Int4, Int32Array::from(values)))]);
 	let encoded = encode_frames(from_ref(&frame), &EncodeOptions::max()).expect("encode failed");
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);

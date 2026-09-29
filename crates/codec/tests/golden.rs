@@ -5,9 +5,10 @@
 //! wire format changed, which breaks the TypeScript port and every persisted byte sequence, so it
 //! is never a test to regenerate casually. REIFYDB_GOLDEN_WRITE=1 rewrites them deliberately.
 
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 
-use arrow_array::{BooleanArray, Int32Array, LargeStringArray};
+use arrow_array::{ArrayRef, BooleanArray, Int32Array, LargeStringArray, RecordBatch};
+use arrow_schema::{FieldRef, Schema};
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	key::{deserializer::KeyDeserializer, serializer::KeySerializer},
@@ -23,13 +24,13 @@ use reifydb_value::value::{
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	frame::frame::Frame,
 	identity::IdentityId,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
 	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+	value_type::{ValueType, field::named},
 };
 
 fn golden_dir() -> PathBuf {
@@ -148,36 +149,26 @@ fn golden_key_codec() {
 
 #[test]
 fn golden_rbcf_frames() {
-	let concrete_columns = vec![
-		FrameColumn {
-			name: "bools".to_string(),
-			data: FrameColumnData::Bool(BooleanArray::from(vec![true, false, true])),
-		},
-		FrameColumn {
-			name: "ints".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![1, 2, 3])),
-		},
-		FrameColumn {
-			name: "texts".to_string(),
-			data: FrameColumnData::Utf8(LargeStringArray::from(vec![
-				"a".to_string(),
-				"bb".to_string(),
-				"ccc".to_string(),
-			])),
-		},
-		FrameColumn {
-			name: "anys".to_string(),
-			data: FrameColumnData::Any {
-				container: any_array_optional([
-					Some(Value::Int4(9)),
-					None,
-					Some(Value::Utf8("x".to_string())),
-				]),
-				declared_type: None,
-			},
-		},
+	// A bare Any column can not hold a none, so the anys column must carry its option layer.
+	let concrete_columns: Vec<(&str, ValueType, ArrayRef)> = vec![
+		("bools", ValueType::Boolean, Arc::new(BooleanArray::from(vec![true, false, true]))),
+		("ints", ValueType::Int4, Arc::new(Int32Array::from(vec![1, 2, 3]))),
+		(
+			"texts",
+			ValueType::Utf8,
+			Arc::new(LargeStringArray::from(vec!["a".to_string(), "bb".to_string(), "ccc".to_string()])),
+		),
+		(
+			"anys",
+			ValueType::Option(Box::new(ValueType::Any)),
+			Arc::new(any_array_optional([Some(Value::Int4(9)), None, Some(Value::Utf8("x".to_string()))])),
+		),
 	];
-	let frame = Frame::new(concrete_columns);
+	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = concrete_columns
+		.into_iter()
+		.map(|(name, value_type, array)| named(name, value_type.into(), array))
+		.unzip();
+	let frame = Frame::from(RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap());
 	let bytes = encode_frames(&[frame], &EncodeOptions::none()).unwrap();
 	check_case("frames/plain_mixed.bin", &bytes);
 }

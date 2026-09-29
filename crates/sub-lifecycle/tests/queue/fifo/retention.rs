@@ -100,7 +100,7 @@ fn items(t: &TestEngine) -> usize {
 fn token_of(frames: &[Frame]) -> String {
 	let frame = frames.first().expect("claim must return a frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one claimed item");
-	match frame.columns.iter().find(|c| c.name == "token").unwrap().data.get_value(0) {
+	match frame.column("token").expect("the token column reads").unwrap().get_value(0) {
 		Value::Utf8(t) => t,
 		other => panic!("token must be Utf8, got {other:?}"),
 	}

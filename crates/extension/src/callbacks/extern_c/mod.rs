@@ -4,19 +4,21 @@
 pub mod builder;
 pub mod panic;
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::empty_batch;
 use reifydb_sdk::common::extern_c::wire::callbacks::builder::EmitDiffKind;
+use reifydb_value::Result;
 
 use crate::callbacks::extern_c::builder::BuilderRegistry;
 
-pub fn single_columns_from_registry(registry: &BuilderRegistry) -> Columns {
+pub fn single_columns_from_registry(registry: &BuilderRegistry) -> Result<RecordBatch> {
 	let mut diffs = registry.drain();
 	if let Some(first) = diffs.drain(..).next() {
-		match first.kind {
-			EmitDiffKind::Insert | EmitDiffKind::Update => first.post.unwrap_or_else(Columns::empty),
-			EmitDiffKind::Remove => first.pre.unwrap_or_else(Columns::empty),
-		}
+		Ok(match first.kind {
+			EmitDiffKind::Insert | EmitDiffKind::Update => first.post.unwrap_or_else(empty_batch),
+			EmitDiffKind::Remove => first.pre.unwrap_or_else(empty_batch),
+		})
 	} else {
-		Columns::empty()
+		Ok(empty_batch())
 	}
 }

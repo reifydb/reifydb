@@ -1,29 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, ArrayRef};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::PrefixOperator,
-	value::column::{ColumnWithName, buffer::ColumnBuffer},
+	value::column::{factory, nulls::with_nulls},
 };
 use reifydb_evaluate::expression::{logic::execute_logical_op, prefix::prefix_apply};
-use reifydb_value::{error::LogicalOp, fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	error::LogicalOp,
+	fragment::Fragment,
+	value::{column_view::ColumnView, value_type::ValueType},
+};
 
-fn column(name: &str, data: ColumnBuffer) -> ColumnWithName {
-	ColumnWithName::new(Fragment::internal(name), data)
+fn column(name: &str, data: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
+	factory::rename(data, name)
 }
 
-fn none_bools(values: impl IntoIterator<Item = Option<bool>>) -> ColumnBuffer {
+fn none_bools(values: impl IntoIterator<Item = Option<bool>>) -> (FieldRef, ArrayRef) {
 	let values: Vec<Option<bool>> = values.into_iter().collect();
 	let bits: Vec<bool> = values.iter().map(|v| v.unwrap_or(false)).collect();
 	let validity: Vec<bool> = values.iter().map(|v| v.is_some()).collect();
-	ColumnBuffer::bool_with_bitvec(bits, BooleanBuffer::from(validity))
+	factory::bool_with_bitvec("", bits, BooleanBuffer::from(validity))
 }
 
-fn answers(op: LogicalOp, left: ColumnBuffer, right: ColumnBuffer) -> Vec<String> {
+fn answers(op: LogicalOp, left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef)) -> Vec<String> {
 	let frag = Fragment::internal("logic");
 	let result = execute_logical_op(&column("l", left), &column("r", right), &frag, op).unwrap();
-	(0..result.data().len()).map(|i| result.data().as_string(i)).collect()
+	let view = ColumnView::try_from(&result).unwrap();
+	(0..result.1.len()).map(|i| view.as_string(i)).collect()
 }
 
 #[test]
@@ -53,8 +60,8 @@ fn every_other_none_row_of_and_or_and_xor_stays_none() {
 #[test]
 fn the_defined_rows_of_and_or_and_xor_keep_their_two_valued_answers() {
 	// A kernel swap must not disturb the eight rows that hold no none at all.
-	let l = ColumnBuffer::bool([true, true, false, false]);
-	let r = ColumnBuffer::bool([true, false, true, false]);
+	let l = factory::bool("", [true, true, false, false]);
+	let r = factory::bool("", [true, false, true, false]);
 
 	assert_eq!(answers(LogicalOp::And, l.clone(), r.clone()), vec!["true", "false", "false", "false"]);
 	assert_eq!(answers(LogicalOp::Or, l.clone(), r.clone()), vec!["true", "true", "true", "false"]);
@@ -68,14 +75,14 @@ fn a_logical_op_over_two_non_nullable_columns_answers_a_non_nullable_column() {
 
 	for op in [LogicalOp::And, LogicalOp::Or, LogicalOp::Xor] {
 		let result = execute_logical_op(
-			&column("l", ColumnBuffer::bool([true, false])),
-			&column("r", ColumnBuffer::bool([false, false])),
+			&column("l", factory::bool("", [true, false])),
+			&column("r", factory::bool("", [false, false])),
 			&frag,
 			op,
 		)
 		.unwrap();
 
-		assert_eq!(result.data().get_type(), ValueType::Boolean);
+		assert_eq!(ColumnView::try_from(&result).unwrap().get_type(), ValueType::Boolean);
 	}
 }
 
@@ -83,19 +90,26 @@ fn a_logical_op_over_two_non_nullable_columns_answers_a_non_nullable_column() {
 fn a_logical_op_where_one_side_is_nullable_with_no_none_rows_answers_a_nullable_column() {
 	// An all valid null buffer must survive, otherwise a column silently drops its option type.
 	let frag = Fragment::internal("logic");
-	let nullable = ColumnBuffer::bool([true, false]).with_nulls(NullBuffer::new(BooleanBuffer::new_set(2)));
-	assert_eq!(nullable.get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
+	let nullable =
+		with_nulls(factory::bool("", [true, false]), NullBuffer::new(BooleanBuffer::new_set(2))).unwrap();
+	assert_eq!(
+		ColumnView::try_from(&nullable).unwrap().get_type(),
+		ValueType::Option(Box::new(ValueType::Boolean))
+	);
 
 	for op in [LogicalOp::And, LogicalOp::Or, LogicalOp::Xor] {
 		let result = execute_logical_op(
 			&column("l", nullable.clone()),
-			&column("r", ColumnBuffer::bool([true, true])),
+			&column("r", factory::bool("", [true, true])),
 			&frag,
 			op,
 		)
 		.unwrap();
 
-		assert_eq!(result.data().get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
+		assert_eq!(
+			ColumnView::try_from(&result).unwrap().get_type(),
+			ValueType::Option(Box::new(ValueType::Boolean))
+		);
 	}
 }
 
@@ -107,8 +121,9 @@ fn not_of_a_none_row_is_none_and_keeps_the_column_nullable() {
 
 	let result = prefix_apply(&input, &PrefixOperator::Not(frag.clone()), &frag).unwrap();
 
-	assert_eq!(result.data().get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
-	let answers: Vec<String> = (0..3).map(|i| result.data().as_string(i)).collect();
+	assert_eq!(ColumnView::try_from(&result).unwrap().get_type(), ValueType::Option(Box::new(ValueType::Boolean)));
+	let view = ColumnView::try_from(&result).unwrap();
+	let answers: Vec<String> = (0..3).map(|i| view.as_string(i)).collect();
 	assert_eq!(answers, vec!["false", "true", "none"]);
 }
 
@@ -116,11 +131,12 @@ fn not_of_a_none_row_is_none_and_keeps_the_column_nullable() {
 fn not_of_a_non_nullable_column_answers_a_non_nullable_column() {
 	// A mask attached where there was none changes the declared type to an option.
 	let frag = Fragment::internal("not");
-	let input = column("v", ColumnBuffer::bool([true, false]));
+	let input = column("v", factory::bool("", [true, false]));
 
 	let result = prefix_apply(&input, &PrefixOperator::Not(frag.clone()), &frag).unwrap();
 
-	assert_eq!(result.data().get_type(), ValueType::Boolean);
-	assert_eq!(result.data().as_string(0), "false");
-	assert_eq!(result.data().as_string(1), "true");
+	assert_eq!(ColumnView::try_from(&result).unwrap().get_type(), ValueType::Boolean);
+	let view = ColumnView::try_from(&result).unwrap();
+	assert_eq!(view.as_string(0), "false");
+	assert_eq!(view.as_string(1), "true");
 }

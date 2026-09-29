@@ -1,20 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	error::diagnostic::query,
 	sort::SortKey,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{concat, heap_size, take_rows},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, error::Error, reifydb_assertions};
+use reifydb_value::{
+	error,
+	error::Error,
+	reifydb_assertions,
+	value::{
+		column_view::ColumnView,
+		system_columns::{is_system_field, resolve_column},
+	},
+};
 use tracing::instrument;
 
 use crate::{
 	Result,
 	vm::volcano::{
-		query::{QueryContext, QueryNode, charge_query_memory, ensure_sort_key_orderable},
+		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
 		rank::rank_rows,
 	},
 };
@@ -35,25 +47,25 @@ impl SortNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::collect")]
-	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		let mut columns_opt: Option<Columns> = None;
+	fn collect_input<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>> {
+		let mut batches = Vec::new();
 		let mut charged = 0usize;
+		let mut total = 0usize;
 
-		while let Some(columns) = self.input.next(rx, ctx)? {
-			if let Some(existing_columns) = &mut columns_opt {
-				existing_columns.system.extend(&columns.system)?;
-				for (i, col) in columns.columns.iter().enumerate() {
-					existing_columns[i].extend(col.clone())?;
-				}
-			} else {
-				columns_opt = Some(columns);
-			}
-			if let Some(acc) = &columns_opt {
-				charge_query_memory(&ctx.memory, &mut charged, acc)?;
-			}
+		while let Some(batch) = self.input.next(rx, ctx)? {
+			total += heap_size(&batch)?;
+			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
+			batches.push(batch);
 		}
 
-		Ok(columns_opt)
+		if batches.is_empty() {
+			return Ok(None);
+		}
+		Ok(Some(concat(&batches)?))
 	}
 }
 
@@ -66,7 +78,7 @@ impl QueryNode for SortNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 		}
@@ -92,41 +104,30 @@ impl QueryNode for SortNode {
 }
 
 impl Transform for SortNode {
-	fn apply(&self, _ctx: &TransformContext, mut columns: Columns) -> Result<Columns> {
-		let key_refs =
-			self.by.iter()
-				.map(|key| {
-					let name = key.column.fragment();
+	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+		let key_refs = self
+			.by
+			.iter()
+			.map(|key| {
+				let index = resolve_column(&input, key.column.fragment())
+					.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
+				let view =
+					ColumnView::try_from((input.column(index), input.schema_ref().field(index)))?;
+				if !is_system_field(view.field) {
+					ensure_sort_key_orderable(key, &view)?;
+				}
+				Ok::<_, Error>((view, key.direction.clone()))
+			})
+			.collect::<Result<Vec<_>>>()?;
 
-					if let Some(data) = columns.system_column(name) {
-						return Ok::<_, Error>((data, key.direction.clone()));
-					}
-
-					let col = columns
-						.iter()
-						.find(|c| c.name() == name)
-						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					ensure_sort_key_orderable(key, col.data())?;
-					Ok((col.data().clone(), key.direction.clone()))
-				})
-				.collect::<Result<Vec<_>>>()?;
-
-		let indices = rank_rows(&key_refs, columns.row_count(), None)?;
-		Self::permute(&mut columns, &indices)?;
-
-		Ok(columns)
+		let indices = rank_rows(&key_refs, input.num_rows(), None)?;
+		Self::permute(&input, &indices)
 	}
 }
 
 impl SortNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
-	fn permute(columns: &mut Columns, indices: &[usize]) -> Result<()> {
-		columns.system.permute_in_place(indices);
-
-		let cols = &mut columns.columns;
-		for col in cols.iter_mut() {
-			col.reorder(indices)?;
-		}
-		Ok(())
+	fn permute(input: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+		take_rows(input, indices)
 	}
 }

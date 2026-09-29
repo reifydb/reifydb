@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, is_scalar, scalar_value},
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
+	value::{
+		column_view::ColumnView,
+		system_columns::{is_system_field, user_columns},
+	},
 };
 
 use crate::{Result, vm::vm::Vm};
@@ -18,16 +26,15 @@ impl<'a> Vm<'a> {
 		let name = strip_dollar_prefix(fragment.text());
 		match self.symbols.get(name) {
 			Some(Variable::Columns {
-				columns: c,
-			}) if c.is_scalar() => {
+				batch: c,
+			}) if is_scalar(c) => {
 				if self.batch_size != 1 {
-					let value = c.scalar_value();
+					let value = scalar_value(c)?;
 					let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
 					for _ in 0..self.batch_size {
 						data.push_value(value.clone());
 					}
-					let col = ColumnWithName::new(Fragment::internal(name), data.finish());
-					self.stack.push(Variable::columns(Columns::new(vec![col])));
+					self.stack.push(Variable::columns(batch(vec![data.finish(name)])?));
 				} else {
 					self.stack.push(Variable::columns(c.clone()));
 				}
@@ -36,7 +43,7 @@ impl<'a> Vm<'a> {
 				self.stack.push(Variable::Closure(c.clone()));
 			}
 			Some(Variable::Columns {
-				columns: c,
+				batch: c,
 			}) => {
 				if self.batch_size != 1 {
 					self.stack.push(Variable::columns(c.clone()));
@@ -76,13 +83,13 @@ impl<'a> Vm<'a> {
 		let sv = self.stack.pop()?;
 		let variable = match sv {
 			Variable::Columns {
-				columns: c,
-			} if c.is_scalar() => Variable::scalar_named(name, c.scalar_value()),
+				batch: c,
+			} if is_scalar(&c) => Variable::scalar_named(name, scalar_value(&c)?),
 			Variable::Columns {
-				columns: c,
+				batch: c,
 			}
 			| Variable::ForIterator {
-				columns: c,
+				batch: c,
 				..
 			} => Variable::columns(c),
 			Variable::Closure(c) => Variable::Closure(c),
@@ -106,16 +113,17 @@ impl<'a> Vm<'a> {
 		let variable = match sv {
 			Variable::Closure(c) => Variable::Closure(c),
 			Variable::Columns {
-				columns: mut c,
+				batch: c,
 			}
 			| Variable::ForIterator {
-				columns: mut c,
+				batch: c,
 				..
 			} => {
-				if c.is_scalar() {
-					c.names[0] = Fragment::internal(name);
+				if is_scalar(&c) {
+					Variable::columns(rename_user_columns(&c, name)?)
+				} else {
+					Variable::columns(c)
 				}
-				Variable::columns(c)
 			}
 		};
 		self.symbols.set(name.to_string(), variable, true)?;
@@ -127,17 +135,18 @@ impl<'a> Vm<'a> {
 		let field_name = field.text();
 		match self.symbols.get(var_name) {
 			Some(Variable::Columns {
-				columns,
-			}) if !columns.is_scalar() => {
-				let col_pos = columns.names.iter().position(|n| n.text() == field_name);
-				match col_pos {
-					Some(pos) => {
-						let value = columns.columns[pos].get_value(0);
+				batch: columns,
+			}) if !is_scalar(columns) => {
+				let found = user_columns(columns).find(|(field, _)| field.name() == field_name);
+				match found {
+					Some((field, array)) => {
+						let value = ColumnView::try_from((array, field.as_ref()))?.get_value(0);
 						self.stack.push(Variable::scalar(value));
 					}
 					None => {
-						let available: Vec<String> =
-							columns.names.iter().map(|n| n.text().to_string()).collect();
+						let available: Vec<String> = user_columns(columns)
+							.map(|(field, _)| field.name().clone())
+							.collect();
 						return Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::FieldNotFound {
 								variable: var_name.to_string(),
@@ -193,4 +202,22 @@ impl<'a> Vm<'a> {
 		}
 		Ok(())
 	}
+}
+
+fn rename_user_columns(scalar: &RecordBatch, name: &str) -> Result<RecordBatch> {
+	let columns = scalar
+		.schema_ref()
+		.fields()
+		.iter()
+		.zip(scalar.columns())
+		.map(|(field, array)| {
+			let column = (field.clone(), array.clone());
+			if is_system_field(field) {
+				column
+			} else {
+				factory::rename(column, name)
+			}
+		})
+		.collect();
+	batch(columns)
 }

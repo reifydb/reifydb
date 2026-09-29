@@ -7,6 +7,8 @@ use std::sync::{
 	mpsc::{Receiver, Sender, channel},
 };
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb::{
 	Params, embedded,
 	routine::abi::{
@@ -19,11 +21,13 @@ use reifydb_core::{
 		id::SubscriptionId,
 		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
 	},
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::factory::rename,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, value_type::ValueType};
+use reifydb_value::value::{
+	Value, duration::Duration, identity::IdentityId, system_columns::column_view, value_type::ValueType,
+};
 
 struct Latch {
 	closed: AtomicBool,
@@ -45,12 +49,16 @@ impl<'a> Routine<FunctionContext<'a>> for LatchedPass {
 		input_types[0].clone()
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		if self.latch.closed.load(Ordering::Acquire) {
 			self.latch.entered.send(()).unwrap();
 			self.latch.release.lock().recv().unwrap();
 		}
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), args[0].clone())]))
+		Ok(rename(args[0].clone(), ctx.fragment.text()))
 	}
 }
 
@@ -86,9 +94,9 @@ fn subscribe(db: &TestDb, rql: &str) -> SubscriptionId {
 fn drained_ids(subsystem: &SubscriptionSubsystem, sub_id: SubscriptionId) -> Vec<i32> {
 	let mut out = Vec::new();
 	for (_, batch) in subsystem.store().drain(&sub_id, usize::MAX) {
-		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
-		for i in 0..batch.row_count() {
-			match id_col.data().get_value(i) {
+		let id_col = column_view(&batch, "id").unwrap().expect("id column");
+		for i in 0..batch.num_rows() {
+			match id_col.get_value(i) {
 				Value::Int4(v) => out.push(v),
 				other => panic!("expected Int4 id, got {:?}", other),
 			}

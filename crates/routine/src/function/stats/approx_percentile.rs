@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{builder::ColumnBuilder, factory::none_typed, nulls::split_nulls};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
 	Value,
+	column_view::{ColumnView, ViewData},
 	container::digest_array,
 	digest::DigestError,
 	value_type::{ValueType, input_types::InputTypes},
 };
+
+use crate::function::support::coerce::bare_type;
 
 pub struct ApproxPercentile {
 	info: RoutineInfo,
@@ -48,7 +53,7 @@ fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	}
 }
 
-fn percentile_at(ctx: &FunctionContext, p: &ColumnBuffer, row: usize) -> Result<f64, RoutineError> {
+fn percentile_at(ctx: &FunctionContext, p: &ColumnView, row: usize) -> Result<f64, RoutineError> {
 	let value = p.get_value(row);
 	let number = match &value {
 		Value::Float4(v) => Some(f64::from(v.value())),
@@ -86,30 +91,33 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 		false
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let digest_column = &args[0];
-		let percentile_column = &args[1];
-		let (digest_data, _) = digest_column.clone().split_nulls();
-		let (percentile_data, _) = percentile_column.clone().split_nulls();
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let digest_column = ColumnView::try_from(&args[0])?;
+		let percentile_column = ColumnView::try_from(&args[1])?;
+		let (digest_bare, _) = split_nulls(args[0].clone())?;
+		let (percentile_bare, _) = split_nulls(args[1].clone())?;
+		let digest_data = ColumnView::try_from(&digest_bare)?;
+		let percentile_data = ColumnView::try_from(&percentile_bare)?;
 
 		let row_count = digest_column.len();
-		let container = match &digest_data {
-			ColumnBuffer::Digest {
+		let container = match &digest_data.data {
+			ViewData::Digest {
 				container,
 				..
 			} => container,
 			_ if args.len() == 2 && digest_column.is_untyped_none() => {
-				return Ok(Columns::new(vec![ColumnWithName::new(
-					ctx.fragment.clone(),
-					ColumnBuffer::none_typed(ValueType::Float8, row_count),
-				)]));
+				return Ok(none_typed(ctx.fragment.text(), ValueType::Float8, row_count));
 			}
-			other => {
+			_ => {
 				return Err(failed(
 					ctx,
 					format!(
 						"a {} input needs an accuracy and is only supported inside window or aggregate",
-						other.get_type()
+						bare_type(&digest_data)
 					),
 				));
 			}
@@ -124,10 +132,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 
 		let result_type = output_type(&digest_data.get_type());
 		if percentile_column.is_untyped_none() {
-			return Ok(Columns::new(vec![ColumnWithName::new(
-				ctx.fragment.clone(),
-				ColumnBuffer::none_typed(result_type, row_count),
-			)]));
+			return Ok(none_typed(ctx.fragment.text(), result_type, row_count));
 		}
 
 		if !percentile_data.get_type().is_number() {
@@ -152,7 +157,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 			result.push_value(value);
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result.finish())]))
+		Ok(result.finish(ctx.fragment.text()))
 	}
 }
 

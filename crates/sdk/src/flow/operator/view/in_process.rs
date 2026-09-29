@@ -3,18 +3,21 @@
 
 use std::any::type_name;
 
-use reifydb_core::{
-	interface::change::{Change, Diff},
-	value::column::{
-		buffer::{ColumnBuffer, get::FromColumnBuffer},
-		columns::Columns,
-	},
-};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
-		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		row_number::RowNumber, time::Time,
+		Value,
+		column_view::{ColumnView, FromColumnView, ViewData},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		diff_type::DiffType,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{column_view, is_system_field, row_numbers, time},
+		time::Time,
 	},
 };
 
@@ -22,57 +25,61 @@ use super::{ChangeView, ColumnsView, DiffView, RowView};
 use crate::error::SdkError;
 
 pub struct InProcessRowView<'a> {
-	columns: &'a Columns,
+	batch: &'a RecordBatch,
 	index: usize,
 }
 
 impl<'a> InProcessRowView<'a> {
-	pub fn new(columns: &'a Columns, index: usize) -> Self {
+	pub fn new(batch: &'a RecordBatch, index: usize) -> Self {
 		Self {
-			columns,
+			batch,
 			index,
 		}
 	}
 
-	fn buffer(&self, name: &str) -> Option<&'a ColumnBuffer> {
-		self.columns.column(name).map(|c| c.data())
+	fn buffer(&self, name: &str) -> Result<Option<ColumnView<'a>>, SdkError> {
+		Ok(column_view(self.batch, name)?.filter(|view| !is_system_field(view.field)))
 	}
 
-	fn defined(&self, name: &str) -> Option<&'a ColumnBuffer> {
-		self.buffer(name).filter(|buffer| buffer.is_defined(self.index))
+	fn readable(&self, name: &str) -> Option<ColumnView<'a>> {
+		self.buffer(name).unwrap_or_else(|e| panic!("in-process column '{name}' does not read: {e}"))
 	}
 
-	fn typed<T: FromColumnBuffer>(&self, name: &str) -> Result<Option<T>, SdkError> {
-		let Some(buffer) = self.defined(name) else {
+	fn defined(&self, name: &str) -> Result<Option<ColumnView<'a>>, SdkError> {
+		Ok(self.buffer(name)?.filter(|view| view.is_defined(self.index)))
+	}
+
+	fn typed<T: FromColumnView>(&self, name: &str) -> Result<Option<T>, SdkError> {
+		let Some(view) = self.defined(name)? else {
 			return Ok(None);
 		};
-		T::from_column_buffer(buffer, self.index).map_err(|reason| column_read::<T>(name, buffer, reason))
+		T::from_column_view(&view, self.index).map_err(|reason| column_read::<T>(name, &view, reason))
 	}
 }
 
 impl<'a> RowView for InProcessRowView<'a> {
 	fn is_defined(&self, name: &str) -> bool {
-		self.buffer(name).map(|b| b.is_defined(self.index)).unwrap_or(false)
+		self.readable(name).map(|view| view.is_defined(self.index)).unwrap_or(false)
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
-		let Some(buffer) = self.defined(name) else {
+		let Some(view) = self.defined(name)? else {
 			return Ok(None);
 		};
-		if !matches!(buffer, ColumnBuffer::Utf8 { .. }) {
-			return Err(column_read::<&str>(name, buffer, ColumnReadReason::WrongType));
+		if !matches!(view.data, ViewData::Utf8 { .. }) {
+			return Err(column_read::<&str>(name, &view, ColumnReadReason::WrongType));
 		}
-		Ok(buffer.get_str(self.index))
+		Ok(view.get_str(self.index))
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
-		let Some(buffer) = self.defined(name) else {
+		let Some(view) = self.defined(name)? else {
 			return Ok(None);
 		};
-		if !matches!(buffer, ColumnBuffer::Blob { .. }) {
-			return Err(column_read::<&[u8]>(name, buffer, ColumnReadReason::WrongType));
+		if !matches!(view.data, ViewData::Blob { .. }) {
+			return Err(column_read::<&[u8]>(name, &view, ColumnReadReason::WrongType));
 		}
-		Ok(buffer.get_bytes(self.index))
+		Ok(view.get_bytes(self.index))
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
@@ -148,49 +155,55 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn value(&self, name: &str) -> Option<Value> {
-		self.buffer(name).map(|b| b.get_value(self.index))
+		self.readable(name).map(|view| view.get_value(self.index))
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers().get(self.index).copied()
+		row_numbers(self.batch)
+			.unwrap_or_else(|e| panic!("in-process #rownum column does not read: {e}"))
+			.get(self.index)
+			.copied()
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
-		self.columns.time().get(self.index).copied()
+		time(self.batch)
+			.unwrap_or_else(|e| panic!("in-process #time column does not read: {e}"))
+			.get(self.index)
+			.copied()
 	}
 }
 
-fn column_read<T: ?Sized>(name: &str, buffer: &ColumnBuffer, reason: ColumnReadReason) -> SdkError {
+fn column_read<T: ?Sized>(name: &str, view: &ColumnView<'_>, reason: ColumnReadReason) -> SdkError {
 	SdkError::ColumnRead {
 		column: name.to_string(),
-		column_type: buffer.base_type(),
+		column_type: view.base_type(),
 		target: type_name::<T>(),
 		reason,
 	}
 }
 
 pub struct InProcessColumnsView<'a> {
-	columns: &'a Columns,
+	batch: &'a RecordBatch,
 }
 
 impl<'a> InProcessColumnsView<'a> {
-	pub fn new(columns: &'a Columns) -> Self {
+	pub fn new(batch: &'a RecordBatch) -> Self {
 		Self {
-			columns,
+			batch,
 		}
 	}
 }
 
 impl<'a> ColumnsView for InProcessColumnsView<'a> {
 	fn row_count(&self) -> usize {
-		self.columns.row_count()
+		self.batch.num_rows()
 	}
 
 	fn row(&self, index: usize) -> Option<impl RowView + '_> {
-		if index >= self.columns.row_count() {
+		if index >= self.batch.num_rows() {
 			return None;
 		}
-		Some(InProcessRowView::new(self.columns, index))
+		Some(InProcessRowView::new(self.batch, index))
 	}
 }
 

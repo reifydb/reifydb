@@ -16,8 +16,8 @@ fn query(t: &TestEngine, rql: &str) -> Vec<Frame> {
 }
 
 fn column(frames: &[Frame], name: &str) -> (ValueType, Vec<Value>) {
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	(column.data.get_type(), (0..column.data.len()).map(|i| column.data.get_value(i)).collect())
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	(column.get_type(), (0..column.len()).map(|i| column.get_value(i)).collect())
 }
 
 #[test]

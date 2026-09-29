@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::{
-		catalog::{flow::OperatorId, table::Table},
-		change::{Change, Diff},
-		flow::OperatorCapability,
-	},
-	value::column::columns::Columns,
+use arrow_schema::SchemaRef;
+use reifydb_core::interface::{
+	catalog::{flow::OperatorId, table::Table},
+	change::{Change, Diff},
+	flow::OperatorCapability,
 };
 use reifydb_value::Result;
 
-use crate::operator::{HostOperator, host::HostContext, sink::decode_dictionary_columns};
+use crate::operator::{HostOperator, host::HostContext, scan::catalog_schema, sink::decode_dictionary_columns};
 
 pub struct SourceTableOperator {
 	operator: OperatorId,
@@ -72,13 +70,13 @@ impl HostOperator for SourceTableOperator {
 		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		Some(self.output_schema())
 	}
 }
 
 impl SourceTableOperator {
-	pub fn output_schema(&self) -> Columns {
-		Columns::from_catalog_columns(&self.table.columns)
+	pub fn output_schema(&self) -> SchemaRef {
+		catalog_schema(&self.table.columns)
 	}
 }

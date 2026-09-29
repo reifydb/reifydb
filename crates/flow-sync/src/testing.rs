@@ -254,12 +254,14 @@ mod tests {
 			},
 			change::Diff,
 		},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{
+			batch::{batch, empty_batch},
+			column::factory::int8,
+		},
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		error::{Diagnostic, Error},
-		fragment::Fragment,
 		util::cowvec::CowVec,
 		value::{Value, dictionary::DictionaryId, value_type::ValueType},
 	};
@@ -421,7 +423,7 @@ mod tests {
 	fn a_refused_emit_returns_the_injected_error_and_records_no_entry_or_emission() {
 		let mut txn = TestingTxn::over(MemoryTxn::default(), Arc::new(RefuseEmits));
 
-		assert_eq!(txn.emit(VIEW, Diff::insert(Columns::empty())), Err(refused()));
+		assert_eq!(txn.emit(VIEW, Diff::insert(empty_batch())), Err(refused()));
 
 		assert!(txn.txn().entries.is_empty());
 		assert!(txn.txn().emitted.is_empty());
@@ -477,7 +479,7 @@ mod tests {
 		txn.get(&key(1)).unwrap();
 		txn.set(&key(1), row(1)).unwrap();
 		txn.remove(&key(1)).unwrap();
-		txn.emit(VIEW, Diff::insert(Columns::empty())).unwrap();
+		txn.emit(VIEW, Diff::insert(empty_batch())).unwrap();
 		let sol = txn.intern(&symbols(), &utf8("sol")).unwrap();
 		txn.resolve(&symbols(), sol).unwrap();
 		txn.transactional_flows().unwrap();
@@ -515,10 +517,7 @@ mod tests {
 	fn no_faults_over_a_memory_transaction_behaves_exactly_like_the_bare_memory_transaction() {
 		let mut bare = catalog();
 		let mut txn = TestingTxn::over(catalog(), Arc::new(NoFaults));
-		let diff = Diff::insert(Columns::new(vec![ColumnWithName::new(
-			Fragment::internal("qty"),
-			ColumnBuffer::int8(vec![10]),
-		)]));
+		let diff = Diff::insert(batch(vec![int8("qty", vec![10])]).unwrap());
 
 		assert_eq!(txn.get(&key(1)), bare.get(&key(1)));
 		assert_eq!(txn.set(&key(1), row(1)), bare.set(&key(1), row(1)));

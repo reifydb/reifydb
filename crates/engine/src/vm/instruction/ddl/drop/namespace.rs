@@ -3,8 +3,9 @@
 
 use std::collections::HashSet;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{flow::operator::OperatorDef, value::column::columns::Columns};
+use reifydb_core::{flow::operator::OperatorDef, value::batch::single_row};
 use reifydb_rql::nodes::DropNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{Value, constraint::Constraint};
@@ -16,12 +17,12 @@ pub(crate) fn drop_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropNamespaceNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let Some(namespace_id) = plan.namespace_id else {
-		return Ok(Columns::single_row([
+		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 			("dropped", Value::Boolean(false)),
-		]));
+		]);
 	};
 
 	let def = services.catalog.get_namespace(&mut Transaction::Admin(txn), namespace_id)?;
@@ -155,8 +156,8 @@ pub(crate) fn drop_namespace(
 
 	services.catalog.drop_namespace(txn, def)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

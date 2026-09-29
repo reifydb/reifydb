@@ -42,6 +42,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, PartialEq, HeapSize)]
 pub(crate) struct PaneSum {
@@ -211,13 +213,13 @@ pub(crate) fn render(out: &Change) -> Emitted {
 			DiffType::Remove => diff.pre().expect("pre"),
 			_ => diff.post().expect("post"),
 		};
-		for i in 0..rows.row_count() {
-			let r = rows.row_ref(i).expect("row");
+		for i in 0..rows.num_rows() {
+			let r = (rows, i);
 			rendered.push((
 				diff.kind(),
-				r.f64("sum").expect("sum"),
-				r.u64("start").expect("start"),
-				r.u64("end").expect("end"),
+				read::<f64>(r, "sum").expect("sum"),
+				read::<u64>(r, "start").expect("start"),
+				read::<u64>(r, "end").expect("end"),
 			));
 		}
 	}

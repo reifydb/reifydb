@@ -3,7 +3,12 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupId};
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{
+	factory::{int16, uint16},
+	view::group_by::GroupId,
+};
 use reifydb_routine::function::math::{
 	abs::Abs,
 	add::{basic::Add, saturate::AddSaturate},
@@ -19,7 +24,13 @@ use reifydb_routine_abi::{Function, context::FunctionContext, error::RoutineErro
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, container::wide_int_array::wides, decimal::Decimal, identity::IdentityId},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		container::wide_int_array::wides,
+		decimal::Decimal,
+		identity::IdentityId,
+	},
 };
 
 const TWO_POW_64: u128 = 1 << 64;
@@ -34,42 +45,33 @@ fn ctx(row_count: usize) -> FunctionContext<'static> {
 	}
 }
 
-fn columns(args: Vec<ColumnBuffer>) -> Columns {
-	Columns::new(
-		args.into_iter()
-			.enumerate()
-			.map(|(i, data)| ColumnWithName::new(Fragment::internal(format!("arg{i}")), data))
-			.collect(),
-	)
+fn call(function: impl Function, args: Vec<(FieldRef, ArrayRef)>) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let row_count = args.first().map_or(0, |(_, array)| array.len());
+	function.call(&mut ctx(row_count), &args)
 }
 
-fn call(function: impl Function, args: Vec<ColumnBuffer>) -> Result<ColumnBuffer, RoutineError> {
-	let row_count = args.first().map_or(0, ColumnBuffer::len);
-	let result = function.call(&mut ctx(row_count), &columns(args))?;
-	assert_eq!(result.len(), 1, "a scalar function must return exactly one column");
-	Ok(result.data_at(0).clone())
-}
-
-fn aggregate(function: impl Function, data: ColumnBuffer) -> ColumnBuffer {
-	let rows = (0..data.len()).collect();
+fn aggregate(function: impl Function, data: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
+	let rows = (0..data.1.len()).collect();
 	let mut accumulator =
 		function.accumulator(&mut ctx(0), &[]).unwrap().expect("the function must be an aggregate");
-	accumulator.update(&columns(vec![data]), &vec![(GroupId(0), rows)]).unwrap();
+	accumulator.update(&[data], &vec![(GroupId(0), rows)]).unwrap();
 	let (groups, result) = accumulator.finalize().unwrap();
 	assert_eq!(groups, vec![GroupId(0)]);
 	result
 }
 
-fn uint16_rows(column: &ColumnBuffer) -> Vec<u128> {
-	let ColumnBuffer::Uint16(array) = column else {
-		panic!("expected a Uint16 column, got {:?}", column.get_type());
+fn uint16_rows(column: &(FieldRef, ArrayRef)) -> Vec<u128> {
+	let view = ColumnView::try_from(column).unwrap();
+	let ViewData::Uint16(array) = &view.data else {
+		panic!("expected a Uint16 column, got {:?}", view.get_type());
 	};
 	wides::<u128>(array)
 }
 
-fn int16_rows(column: &ColumnBuffer) -> Vec<i128> {
-	let ColumnBuffer::Int16(array) = column else {
-		panic!("expected an Int16 column, got {:?}", column.get_type());
+fn int16_rows(column: &(FieldRef, ArrayRef)) -> Vec<i128> {
+	let view = ColumnView::try_from(column).unwrap();
+	let ViewData::Int16(array) = &view.data else {
+		panic!("expected an Int16 column, got {:?}", view.get_type());
 	};
 	wides::<i128>(array)
 }
@@ -84,26 +86,28 @@ fn out_of_range_code(err: RoutineError) -> String {
 #[test]
 fn abs_keeps_uint16_rows_above_64_bits() {
 	// A read through a 64 bit cast turns every row above u64::MAX into none or zero.
-	let out = call(Abs::new(), vec![ColumnBuffer::uint16(vec![u128::MAX, TWO_POW_64, 0, 1 << 127])]).unwrap();
+	let out = call(Abs::new(), vec![uint16("arg0", vec![u128::MAX, TWO_POW_64, 0, 1 << 127])]).unwrap();
 	assert_eq!(uint16_rows(&out), vec![u128::MAX, TWO_POW_64, 0, 1 << 127]);
 }
 
 #[test]
 fn abs_of_int16_extremes_keeps_every_bit() {
 	// Narrowing the i128 read clips values near i128::MAX before abs sees them.
-	let out = call(Abs::new(), vec![ColumnBuffer::int16(vec![i128::MIN + 1, i128::MAX, -(1 << 64), 0])]).unwrap();
+	let out = call(Abs::new(), vec![int16("arg0", vec![i128::MIN + 1, i128::MAX, -(1 << 64), 0])]).unwrap();
 	assert_eq!(int16_rows(&out), vec![i128::MAX, i128::MAX, 1 << 64, 0]);
 }
 
 #[test]
 fn sqrt_reads_uint16_and_int16_rows_above_64_bits_as_numbers() {
 	// A lossy cast gives none above 64 bits, which would turn these rows into none instead of a root.
-	let out = call(Sqrt::new(), vec![ColumnBuffer::uint16(vec![u128::MAX, TWO_POW_64])]).unwrap();
-	assert_eq!(out.get_value(0), Value::float8((u128::MAX as f64).sqrt()));
-	assert_eq!(out.get_value(1), Value::float8(4_294_967_296.0));
+	let out = call(Sqrt::new(), vec![uint16("arg0", vec![u128::MAX, TWO_POW_64])]).unwrap();
+	let view = ColumnView::try_from(&out).unwrap();
+	assert_eq!(view.get_value(0), Value::float8((u128::MAX as f64).sqrt()));
+	assert_eq!(view.get_value(1), Value::float8(4_294_967_296.0));
 
-	let out = call(Sqrt::new(), vec![ColumnBuffer::int16(vec![i128::MAX])]).unwrap();
-	assert_eq!(out.get_value(0), Value::float8((i128::MAX as f64).sqrt()));
+	let out = call(Sqrt::new(), vec![int16("arg0", vec![i128::MAX])]).unwrap();
+	let view = ColumnView::try_from(&out).unwrap();
+	assert_eq!(view.get_value(0), Value::float8((i128::MAX as f64).sqrt()));
 }
 
 #[test]
@@ -112,9 +116,9 @@ fn clamp_compares_full_u128_values() {
 	let out = call(
 		Clamp::new(),
 		vec![
-			ColumnBuffer::uint16(vec![u128::MAX, 0, TWO_POW_64 + 5]),
-			ColumnBuffer::uint16(vec![TWO_POW_64, TWO_POW_64, TWO_POW_64]),
-			ColumnBuffer::uint16(vec![u128::MAX - 1, u128::MAX, u128::MAX]),
+			uint16("arg0", vec![u128::MAX, 0, TWO_POW_64 + 5]),
+			uint16("arg1", vec![TWO_POW_64, TWO_POW_64, TWO_POW_64]),
+			uint16("arg2", vec![u128::MAX - 1, u128::MAX, u128::MAX]),
 		],
 	)
 	.unwrap();
@@ -127,9 +131,9 @@ fn clamp_keeps_the_int16_extremes() {
 	let out = call(
 		Clamp::new(),
 		vec![
-			ColumnBuffer::int16(vec![i128::MIN, i128::MAX]),
-			ColumnBuffer::int16(vec![i128::MIN + 1, i128::MIN]),
-			ColumnBuffer::int16(vec![i128::MAX, i128::MAX - 1]),
+			int16("arg0", vec![i128::MIN, i128::MAX]),
+			int16("arg1", vec![i128::MIN + 1, i128::MIN]),
+			int16("arg2", vec![i128::MAX, i128::MAX - 1]),
 		],
 	)
 	.unwrap();
@@ -141,13 +145,12 @@ fn power_reaches_2_pow_127_and_overflows_past_u128_max() {
 	// The result must be computed in u128: an i256 native would not overflow at 2^128 and a 64 bit read gives none.
 	let out = call(
 		Power::new(),
-		vec![ColumnBuffer::uint16(vec![2, u128::MAX, TWO_POW_64]), ColumnBuffer::uint16(vec![127, 1, 1])],
+		vec![uint16("arg0", vec![2, u128::MAX, TWO_POW_64]), uint16("arg1", vec![127, 1, 1])],
 	)
 	.unwrap();
 	assert_eq!(uint16_rows(&out), vec![1 << 127, u128::MAX, TWO_POW_64]);
 
-	let err = call(Power::new(), vec![ColumnBuffer::uint16(vec![TWO_POW_64]), ColumnBuffer::uint16(vec![2])])
-		.unwrap_err();
+	let err = call(Power::new(), vec![uint16("arg0", vec![TWO_POW_64]), uint16("arg1", vec![2])]).unwrap_err();
 	assert_eq!(out_of_range_code(err), "NUMBER_002");
 }
 
@@ -156,13 +159,12 @@ fn add_saturates_and_overflows_exactly_at_u128_max() {
 	// Adding in a wider native would push past u128::MAX instead of saturating or raising the overflow error.
 	let out = call(
 		AddSaturate::new(),
-		vec![ColumnBuffer::uint16(vec![u128::MAX - 1, TWO_POW_64]), ColumnBuffer::uint16(vec![5, TWO_POW_64])],
+		vec![uint16("arg0", vec![u128::MAX - 1, TWO_POW_64]), uint16("arg1", vec![5, TWO_POW_64])],
 	)
 	.unwrap();
 	assert_eq!(uint16_rows(&out), vec![u128::MAX, 1 << 65]);
 
-	let err = call(Add::new(), vec![ColumnBuffer::uint16(vec![u128::MAX]), ColumnBuffer::uint16(vec![1])])
-		.unwrap_err();
+	let err = call(Add::new(), vec![uint16("arg0", vec![u128::MAX]), uint16("arg1", vec![1])]).unwrap_err();
 	assert_eq!(out_of_range_code(err), "NUMBER_002");
 }
 
@@ -171,13 +173,13 @@ fn sum_min_max_aggregate_uint16_rows_above_64_bits() {
 	// Dropping the high half of each row would sum and compare only the low 64 bits.
 	let rows = vec![u128::MAX, TWO_POW_64, TWO_POW_64 + 1];
 
-	let min = aggregate(Min::new(), ColumnBuffer::uint16(rows.clone()));
+	let min = aggregate(Min::new(), uint16("arg0", rows.clone()));
 	assert_eq!(uint16_rows(&min), vec![TWO_POW_64]);
 
-	let max = aggregate(Max::new(), ColumnBuffer::uint16(rows));
+	let max = aggregate(Max::new(), uint16("arg0", rows));
 	assert_eq!(uint16_rows(&max), vec![u128::MAX]);
 
-	let sum = aggregate(Sum::new(), ColumnBuffer::uint16(vec![TWO_POW_64, TWO_POW_64, 1 << 126]));
+	let sum = aggregate(Sum::new(), uint16("arg0", vec![TWO_POW_64, TWO_POW_64, 1 << 126]));
 	assert_eq!(uint16_rows(&sum), vec![(1 << 65) + (1 << 126)]);
 }
 
@@ -186,8 +188,8 @@ fn sum_retract_on_uint16_subtracts_rows_above_64_bits() {
 	// Retracting a truncated row would leave the high half of the removed value in the sum.
 	let mut accumulator = Sum::new().accumulator(&mut ctx(0), &[]).unwrap().expect("sum is an aggregate");
 	let group = vec![(GroupId(0), vec![0])];
-	accumulator.update(&columns(vec![ColumnBuffer::uint16(vec![u128::MAX])]), &group).unwrap();
-	accumulator.retract(&columns(vec![ColumnBuffer::uint16(vec![TWO_POW_64])]), &group).unwrap();
+	accumulator.update(&[uint16("arg0", vec![u128::MAX])], &group).unwrap();
+	accumulator.retract(&[uint16("arg0", vec![TWO_POW_64])], &group).unwrap();
 	let (_, out) = accumulator.finalize().unwrap();
 	assert_eq!(uint16_rows(&out), vec![u128::MAX - TWO_POW_64]);
 }
@@ -197,30 +199,28 @@ fn sum_min_max_aggregate_the_int16_extremes() {
 	// A narrowed or wrapped i128 read would lose i128::MIN / MAX in the aggregate.
 	let rows = vec![i128::MIN, 0, i128::MAX];
 
-	let min = aggregate(Min::new(), ColumnBuffer::int16(rows.clone()));
+	let min = aggregate(Min::new(), int16("arg0", rows.clone()));
 	assert_eq!(int16_rows(&min), vec![i128::MIN]);
 
-	let max = aggregate(Max::new(), ColumnBuffer::int16(rows.clone()));
+	let max = aggregate(Max::new(), int16("arg0", rows.clone()));
 	assert_eq!(int16_rows(&max), vec![i128::MAX]);
 
-	let sum = aggregate(Sum::new(), ColumnBuffer::int16(rows));
+	let sum = aggregate(Sum::new(), int16("arg0", rows));
 	assert_eq!(int16_rows(&sum), vec![-1]);
 }
 
 #[test]
 fn avg_of_uint16_rows_above_64_bits_is_exact() {
 	// A 64 bit read would average the low halves, or skip the rows as none and give no average at all.
-	let out = aggregate(Avg::new(), ColumnBuffer::uint16(vec![u128::MAX, u128::MAX]));
-	assert_eq!(out.get_value(0), Value::Decimal(Decimal::from(u128::MAX)));
+	let out = aggregate(Avg::new(), uint16("arg0", vec![u128::MAX, u128::MAX]));
+	assert_eq!(ColumnView::try_from(&out).unwrap().get_value(0), Value::Decimal(Decimal::from(u128::MAX)));
 
 	let out = call(
 		Avg::new(),
-		vec![
-			ColumnBuffer::uint16(vec![TWO_POW_64, u128::MAX]),
-			ColumnBuffer::uint16(vec![TWO_POW_64 + 2, u128::MAX]),
-		],
+		vec![uint16("arg0", vec![TWO_POW_64, u128::MAX]), uint16("arg1", vec![TWO_POW_64 + 2, u128::MAX])],
 	)
 	.unwrap();
-	assert_eq!(out.get_value(0), Value::Decimal(Decimal::from(TWO_POW_64 + 1)));
-	assert_eq!(out.get_value(1), Value::Decimal(Decimal::from(u128::MAX)));
+	let view = ColumnView::try_from(&out).unwrap();
+	assert_eq!(view.get_value(0), Value::Decimal(Decimal::from(TWO_POW_64 + 1)));
+	assert_eq!(view.get_value(1), Value::Decimal(Decimal::from(u128::MAX)));
 }

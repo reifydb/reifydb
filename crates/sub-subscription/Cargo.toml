@@ -33,6 +33,8 @@ reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 dashmap = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }

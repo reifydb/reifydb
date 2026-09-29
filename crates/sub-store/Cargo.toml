@@ -14,6 +14,8 @@ doctest = false
 reifydb-build = { workspace = true }
 
 [dependencies]
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 dashmap = { workspace = true, optional = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-column = { workspace = true, optional = true }
@@ -33,6 +35,8 @@ tracing = { workspace = true }
 [features]
 default = []
 column = [
+	"dep:arrow-array",
+	"dep:arrow-schema",
 	"dep:dashmap",
 	"dep:reifydb-catalog",
 	"dep:reifydb-column",

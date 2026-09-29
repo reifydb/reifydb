@@ -3,13 +3,18 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupId};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{
+	factory::{int1, int8, uint1, uint4},
+	view::group_by::GroupId,
+};
 use reifydb_routine::function::math::sum::Sum;
 use reifydb_routine_abi::{Accumulator, Function, context::FunctionContext, error::RoutineError};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, identity::IdentityId},
+	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
 fn ctx() -> FunctionContext<'static> {
@@ -22,8 +27,8 @@ fn ctx() -> FunctionContext<'static> {
 	}
 }
 
-fn columns(data: ColumnBuffer) -> Columns {
-	Columns::new(vec![ColumnWithName::new(Fragment::internal("v"), data)])
+fn columns(column: (FieldRef, ArrayRef)) -> Vec<(FieldRef, ArrayRef)> {
+	vec![column]
 }
 
 fn accumulator() -> Box<dyn Accumulator> {
@@ -45,32 +50,32 @@ fn assert_out_of_range(result: Result<(), RoutineError>) {
 fn retracting_more_than_a_uint_sum_holds_is_an_error() {
 	// Unchecked, 1 - 2 panics in debug and wraps to u32::MAX in release.
 	let mut acc = accumulator();
-	acc.update(&columns(ColumnBuffer::uint4(vec![1])), &rows(1)).unwrap();
-	assert_out_of_range(acc.retract(&columns(ColumnBuffer::uint4(vec![2])), &rows(1)));
+	acc.update(&columns(uint4("v", [1])), &rows(1)).unwrap();
+	assert_out_of_range(acc.retract(&columns(uint4("v", [2])), &rows(1)));
 }
 
 #[test]
 fn retracting_below_the_signed_minimum_is_an_error() {
 	// Unchecked, i8::MIN - 1 wraps to i8::MAX in release.
 	let mut acc = accumulator();
-	acc.update(&columns(ColumnBuffer::int1(vec![i8::MIN])), &rows(1)).unwrap();
-	assert_out_of_range(acc.retract(&columns(ColumnBuffer::int1(vec![1])), &rows(1)));
+	acc.update(&columns(int1("v", [i8::MIN])), &rows(1)).unwrap();
+	assert_out_of_range(acc.retract(&columns(int1("v", [1])), &rows(1)));
 }
 
 #[test]
 fn a_retract_batch_whose_delta_overflows_is_an_error() {
 	// The rows of one retract batch are summed before the subtraction, so that sum must be checked too.
 	let mut acc = accumulator();
-	acc.update(&columns(ColumnBuffer::uint1(vec![200])), &rows(1)).unwrap();
-	assert_out_of_range(acc.retract(&columns(ColumnBuffer::uint1(vec![200, 200])), &rows(2)));
+	acc.update(&columns(uint1("v", [200])), &rows(1)).unwrap();
+	assert_out_of_range(acc.retract(&columns(uint1("v", [200, 200])), &rows(2)));
 }
 
 #[test]
 fn a_retract_within_range_still_subtracts() {
 	// The checks must not reject a retract that leaves a valid sum, including one at the type's edge.
 	let mut acc = accumulator();
-	acc.update(&columns(ColumnBuffer::int8(vec![i64::MAX, -5])), &rows(2)).unwrap();
-	acc.retract(&columns(ColumnBuffer::int8(vec![-5])), &rows(1)).unwrap();
+	acc.update(&columns(int8("v", [i64::MAX, -5])), &rows(2)).unwrap();
+	acc.retract(&columns(int8("v", [-5])), &rows(1)).unwrap();
 	let (_, out) = acc.finalize().unwrap();
-	assert_eq!(out.get_value(0), Value::Int8(i64::MAX));
+	assert_eq!(ColumnView::try_from(&out).unwrap().get_value(0), Value::Int8(i64::MAX));
 }

@@ -9,7 +9,7 @@ use reifydb_transaction::{
 	change::RowChange,
 	interceptor::{interceptors::Interceptors, transaction::post_commit},
 };
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, system_columns::user_columns};
 
 /// Every `RowChange` the committed transactions produced, in commit order.
 #[derive(Clone, Default)]
@@ -53,7 +53,7 @@ fn test_insert_then_scan_roundtrip() {
 	t.command(r#"INSERT test::jobs [{ id: 1, payload: "a" }, { id: 2, payload: "b" }, { id: 3, payload: "c" }]"#);
 
 	let frames = t.query("FROM test::jobs");
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 	assert_eq!(names, vec!["id", "payload"], "the trailing not_before field must not surface");
 
 	let rows: Vec<_> = frames[0].rows().collect();
@@ -214,7 +214,7 @@ fn test_returning_projects_the_declared_columns_only() {
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) } WITH { fifo: {} }");
 
 	let frames = t.command(r#"INSERT test::jobs [{ id: 7, payload: "x" }] RETURNING { id, payload }"#);
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 	assert_eq!(names, vec!["id", "payload"]);
 
 	let row = frames[0].rows().next().unwrap();
@@ -383,7 +383,7 @@ fn test_the_insert_result_column_set_is_pinned() {
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let frames = t.command("INSERT test::jobs [{ id: 1 }]");
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 	assert_eq!(names, vec!["namespace", "queue", "inserted", "duplicates"]);
 
 	let row = frames[0].rows().next().unwrap();
@@ -538,7 +538,7 @@ fn test_a_delayed_item_is_still_visible_to_a_scan() {
 
 	let frames = t.query("FROM test::jobs");
 	assert_eq!(frames[0].rows().count(), 1);
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 	assert_eq!(names, vec!["id"], "the hidden not_before field must still not surface");
 }
 

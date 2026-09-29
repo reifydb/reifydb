@@ -3,6 +3,8 @@
 
 use std::{mem, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::query::extend_duplicate_column,
 	expression::{Expression, name::display_label},
@@ -10,7 +12,7 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+	value::{batch::batch, column::headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -19,10 +21,14 @@ use reifydb_evaluate::expression::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, return_error};
+use reifydb_value::{
+	fragment::Fragment,
+	reifydb_assertions, return_error,
+	value::{column_view::ColumnView, system_columns::user_columns},
+};
 use tracing::instrument;
 
-use super::NoopNode;
+use super::{NoopNode, user_header_names, user_pairs, with_system_headers, with_user_columns};
 use crate::{
 	Result,
 	vm::volcano::{
@@ -58,14 +64,14 @@ impl ExtendNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval_context")]
 	fn eval_context<'e>(
 		session: &EvalContext<'e>,
-		new_columns: &[ColumnWithName],
+		new_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> EvalContext<'e> {
-		session.with_eval(Columns::new(new_columns.to_vec()), row_count)
+	) -> Result<EvalContext<'e>> {
+		Ok(session.with_eval(batch(new_columns.to_vec())?, row_count))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval")]
-	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
 		compiled.execute(exec_ctx)
 	}
 }
@@ -105,7 +111,7 @@ impl QueryNode for ExtendNode {
 	}
 
 	#[instrument(name = "volcano::extend::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 		}
@@ -120,38 +126,36 @@ impl QueryNode for ExtendNode {
 			let result = self.apply(&transform_ctx, columns)?;
 
 			if self.headers.is_none() {
-				let mut all_headers = if let Some(input_headers) = self.input.headers() {
-					input_headers.columns.clone()
+				let (mut all_headers, source_headers) = if let Some(input_headers) =
+					self.input.headers()
+				{
+					(user_header_names(&input_headers), input_headers)
 				} else {
-					let input_column_count = result.len() - self.expressions.len();
-					result.iter().take(input_column_count).map(|c| c.name().clone()).collect()
+					let result_headers = ColumnHeaders::from_batch(&result);
+					let input_column_count = user_columns(&result).count() - self.expressions.len();
+					let mut names = user_header_names(&result_headers);
+					names.truncate(input_column_count);
+					(names, result_headers)
 				};
 
 				let new_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 				all_headers.extend(new_names);
 
-				self.headers = Some(ColumnHeaders {
-					columns: all_headers,
-					row_numbers: result.system.has_row_numbers(),
-				});
+				self.headers = Some(with_system_headers(all_headers, &source_headers));
 			}
 
-			let mut result = result;
-			strip_udf_columns(&mut result, &self.udf_names);
+			let result = strip_udf_columns(result, &self.udf_names)?;
 			return Ok(Some(result));
 		}
 		if self.headers.is_none()
 			&& let Some(input_headers) = self.input.headers()
 		{
-			let mut all_headers = input_headers.columns.clone();
+			let mut all_headers = user_header_names(&input_headers);
 			let new_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 			reject_duplicate_columns(&all_headers, &new_names, &self.written)?;
 
 			all_headers.extend(new_names);
-			self.headers = Some(ColumnHeaders {
-				columns: all_headers,
-				row_numbers: input_headers.row_numbers,
-			});
+			self.headers = Some(with_system_headers(all_headers, &input_headers));
 		}
 		Ok(None)
 	}
@@ -162,26 +166,21 @@ impl QueryNode for ExtendNode {
 }
 
 impl Transform for ExtendNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("ExtendNode::apply() called before initialize()");
 
-		let row_count = input.row_count();
-		let system = input.system.clone();
+		let row_count = input.num_rows();
 
-		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
+		let existing_names: Vec<Fragment> =
+			user_columns(&input).map(|(field, _)| Fragment::internal(field.name())).collect();
 
 		let session = eval_context_from_transform(ctx, stored_ctx);
-		let mut new_columns: Vec<ColumnWithName> = input
-			.names
-			.iter()
-			.zip(input.columns.iter())
-			.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
-			.collect();
+		let mut new_columns = user_pairs(&input);
 
 		let mut new_names = Vec::with_capacity(compiled.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = Self::eval_context(&session, &new_columns, row_count);
+			let mut exec_ctx = Self::eval_context(&session, &new_columns, row_count)?;
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -195,14 +194,11 @@ impl Transform for ExtendNode {
 
 			let mut column = Self::eval_projection(compiled_expr, &exec_ctx)?;
 
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
-				&& column.data.get_type() != target_type
-			{
-				let data = cast_for_write(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = ColumnWithName {
-					name: column.name,
-					data,
-				};
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				let view = ColumnView::try_from(&column)?;
+				if view.get_type() != target_type {
+					column = cast_for_write(&exec_ctx, &view, target_type, &expr.lazy_fragment())?;
+				}
 			}
 
 			new_columns.push(column);
@@ -211,17 +207,7 @@ impl Transform for ExtendNode {
 
 		reject_duplicate_columns(&existing_names, &new_names, &self.written)?;
 
-		let mut names_vec = Vec::with_capacity(new_columns.len());
-		let mut buffers_vec = Vec::with_capacity(new_columns.len());
-		for c in new_columns {
-			names_vec.push(c.name);
-			buffers_vec.push(c.data);
-		}
-		Ok(Columns {
-			system,
-			columns: buffers_vec,
-			names: names_vec,
-		})
+		with_user_columns(new_columns, &input)
 	}
 }
 
@@ -230,7 +216,7 @@ pub(crate) struct ExtendWithoutInputNode {
 	written: Vec<Fragment>,
 	headers: Option<ColumnHeaders>,
 
-	udf_columns: Option<Columns>,
+	udf_columns: Option<RecordBatch>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -271,7 +257,7 @@ impl QueryNode for ExtendWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::extend::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		}
@@ -299,10 +285,9 @@ impl QueryNode for ExtendWithoutInputNode {
 
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
-			row_numbers: false,
 		});
 
-		Ok(Some(Columns::new(new_columns)))
+		Ok(Some(batch(new_columns)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

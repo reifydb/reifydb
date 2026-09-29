@@ -6,7 +6,7 @@ mod ws;
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_client::{Frame, Params, Value, ValueType};
+use reifydb_client::{ColumnView, Frame, Params, Value, ValueType};
 
 pub fn option(inner: ValueType) -> ValueType {
 	ValueType::Option(Box::new(inner))
@@ -40,9 +40,11 @@ pub fn list_of_records(rows: Vec<Vec<(&str, Value)>>) -> Value {
 /// prints the same, so the type is asserted separately from the single row.
 pub fn assert_echoed(frames: &[Frame], expected_type: ValueType, expected: Value) {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	let column = &frames[0].columns[0];
-	assert_eq!(column.name, "v");
-	assert_eq!(column.data.len(), 1);
-	assert_eq!(column.data.get_type(), expected_type);
-	assert_eq!(column.data.get_value(0), expected);
+	let batch = &frames[0].batch;
+	let column =
+		ColumnView::try_from((batch.column(0), batch.schema_ref().field(0))).expect("the first column reads");
+	assert_eq!(column.field.name(), "v");
+	assert_eq!(column.len(), 1);
+	assert_eq!(column.get_type(), expected_type);
+	assert_eq!(column.get_value(0), expected);
 }

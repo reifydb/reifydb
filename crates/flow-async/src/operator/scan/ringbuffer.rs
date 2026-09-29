@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::{
-		catalog::{flow::OperatorId, ringbuffer::RingBuffer},
-		change::{Change, Diff},
-		flow::OperatorCapability,
-	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+use arrow_schema::SchemaRef;
+use reifydb_core::interface::{
+	catalog::{flow::OperatorId, ringbuffer::RingBuffer},
+	change::{Change, Diff},
+	flow::OperatorCapability,
 };
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::Result;
 
-use crate::operator::{HostOperator, host::HostContext, sink::decode_dictionary_columns};
+use crate::operator::{HostOperator, host::HostContext, scan::catalog_schema, sink::decode_dictionary_columns};
 
 pub struct SourceRingBufferOperator {
 	operator: OperatorId,
@@ -72,22 +70,13 @@ impl HostOperator for SourceRingBufferOperator {
 		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		Some(self.output_schema())
 	}
 }
 
 impl SourceRingBufferOperator {
-	pub fn output_schema(&self) -> Columns {
-		let columns: Vec<ColumnWithName> = self
-			.ringbuffer
-			.columns
-			.iter()
-			.map(|col| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(),
-			})
-			.collect();
-		Columns::new(columns)
+	pub fn output_schema(&self) -> SchemaRef {
+		catalog_schema(&self.ringbuffer.columns)
 	}
 }

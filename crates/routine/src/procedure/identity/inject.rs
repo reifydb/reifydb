@@ -3,7 +3,9 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
+use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -37,7 +39,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 		ValueType::IdentityId
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		if !matches!(ctx.tx, Transaction::Test(..)) {
 			return Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("identity::inject"),
@@ -73,7 +79,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 			}
 		};
 
-		let col = ColumnWithName::new("identity_id", ColumnBuffer::identity_id(vec![identity_id]));
-		Ok(Columns::new(vec![col]))
+		let col = factory::identity_id("identity_id", vec![identity_id]);
+		Ok(batch(vec![col])?)
 	}
 }

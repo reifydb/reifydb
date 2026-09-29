@@ -6,7 +6,7 @@ use reifydb_value::value::frame::frame::Frame;
 
 fn row_count(frames: &[Frame]) -> usize {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	frames[0].columns.first().map(|c| c.data.len()).unwrap_or(0)
+	frames[0].row_count()
 }
 
 #[test]

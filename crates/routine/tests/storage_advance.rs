@@ -3,8 +3,9 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::{event::EventBus, value::column::columns::Columns};
+use reifydb_core::event::EventBus;
 use reifydb_routine::procedure::storage::advance::StorageAdvanceProcedure;
 use reifydb_routine_abi::{Routine, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
@@ -12,7 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, datetime::DateTime, frame::frame::Frame, identity::IdentityId},
+	value::{Value, datetime::DateTime, frame::frame::Frame, identity::IdentityId, system_columns::column_view},
 };
 
 fn bootstrapped() -> TestEngine {
@@ -29,12 +30,11 @@ fn asserted(t: &TestEngine) -> Vec<(u64, String)> {
 	let Some(frame) = frames.first() else {
 		return vec![];
 	};
-	let objects = frame.columns.iter().find(|c| c.name.as_str() == "object_id").expect("object_id column");
-	let instants =
-		frame.columns.iter().find(|c| c.name.as_str() == "complete_through").expect("complete_through column");
+	let objects = frame.column("object_id").unwrap().expect("object_id column");
+	let instants = frame.column("complete_through").unwrap().expect("complete_through column");
 
-	let mut rows: Vec<(u64, String)> = (0..objects.data.len())
-		.filter_map(|row| match (objects.data.get_value(row), instants.data.get_value(row)) {
+	let mut rows: Vec<(u64, String)> = (0..objects.len())
+		.filter_map(|row| match (objects.get_value(row), instants.get_value(row)) {
 			(Value::Uint8(object), Value::DateTime(at)) => Some((object, at.to_string())),
 			_ => None,
 		})
@@ -46,8 +46,8 @@ fn asserted(t: &TestEngine) -> Vec<(u64, String)> {
 fn object_id(t: &TestEngine, name: &str) -> u64 {
 	let frames = t.query(&format!("from system::tables filter {{ name == '{name}' }}"));
 	let frame = frames.first().expect("system::tables frame");
-	let ids = frame.columns.iter().find(|c| c.name.as_str() == "id").expect("id column");
-	match ids.data.get_value(0) {
+	let ids = frame.column("id").unwrap().expect("id column");
+	match ids.get_value(0) {
 		Value::Uint8(id) => id,
 		other => panic!("table '{name}' has no numeric id: {other:?}"),
 	}
@@ -65,7 +65,7 @@ fn assert_through_err(t: &TestEngine, objects: &str, instant: &str) -> String {
 	t.command_err(&format!("call storage::advance({objects}, cast('{instant}Z', datetime))"))
 }
 
-fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Result<Columns, RoutineError> {
+fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Result<RecordBatch, RoutineError> {
 	let services = t.inner().services();
 	let catalog = services.catalog.clone();
 	let params = Params::from(args);
@@ -81,7 +81,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 		catalog: &catalog,
 		ioc: &services.ioc,
 	};
-	StorageAdvanceProcedure::new().execute(&mut ctx, &Columns::empty())
+	StorageAdvanceProcedure::new().execute(&mut ctx, &[])
 }
 
 #[test]
@@ -286,6 +286,6 @@ fn a_privileged_identity_asserts_through_the_same_path() {
 	)
 	.expect("a privileged identity must be able to assert completeness");
 
-	let ids = columns.iter().find(|c| c.name().text() == "object_id").expect("object_id column");
-	assert_eq!(ids.data().get_value(0), Value::Uint8(trades), "the returned frame must name the asserted object");
+	let ids = column_view(&columns, "object_id").unwrap().expect("object_id column");
+	assert_eq!(ids.get_value(0), Value::Uint8(trades), "the returned frame must name the asserted object");
 }

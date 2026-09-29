@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	pod::EncodedPodRow,
@@ -30,7 +31,7 @@ use reifydb_core::{
 	internal_error,
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	partition::PartitionError,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::UpdateTableNode;
@@ -39,7 +40,13 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{
+		Value,
+		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{column_view, partitions, row_numbers, user_columns},
+	},
 };
 
 use super::{
@@ -70,7 +77,7 @@ pub(crate) fn update_table(
 	plan: UpdateTableNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let UpdateTableNode {
 		input,
 		target,
@@ -97,14 +104,14 @@ pub(crate) fn update_table(
 		run_table_update(&exec, txn, &mut input_node, &target_data, &shape, &context, returning.is_some())?;
 
 	if let Some(returning_exprs) = &returning {
-		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
-		let mut pre_columns = decode_rows_to_columns(&shape, &pre_rows);
-		decode_returning_dictionaries(services, txn, &table.columns, &mut pre_columns)?;
-		let columns = with_pre_image(columns, &pre_columns);
+		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
+		let pre_columns = decode_rows_to_columns(&shape, &pre_rows)?;
+		let pre_columns = decode_returning_dictionaries(services, txn, &table.columns, pre_columns)?;
+		let columns = with_pre_image(columns, &pre_columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(update_table_result(namespace.name(), &table.name, updated_count))
+	update_table_result(namespace.name(), &table.name, updated_count)
 }
 
 #[inline]
@@ -164,7 +171,7 @@ fn run_table_update(
 	let mut mutable_context = context.clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		if columns.row_count() == 0 {
+		if columns.num_rows() == 0 {
 			continue;
 		}
 		PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
@@ -175,18 +182,18 @@ fn run_table_update(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
-		if let Some(unknown) =
-			columns.names.iter().find(|name| !target.table.columns.iter().any(|c| c.name == name.text()))
+		if let Some((unknown, _)) = user_columns(&columns)
+			.find(|(field, _)| !target.table.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
 
-		if columns.row_numbers().is_empty() {
+		if row_numbers(&columns)?.is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
 
 		let partitioned = !target.table.partition_by.is_empty();
-		if partitioned && columns.partitions().len() != columns.row_count() {
+		if partitioned && partitions(&columns)?.len() != columns.num_rows() {
 			return Err(EngineError::MissingPartitionAddress {
 				object: ObjectId::Table(target.table.id),
 				operation: "UPDATE",
@@ -194,9 +201,9 @@ fn run_table_update(
 			.into());
 		}
 
-		let row_numbers: Vec<RowNumber> = columns.row_numbers().to_vec();
-		let sidecar_partitions: Vec<Partition> = columns.partitions().to_vec();
-		let row_count = columns.row_count();
+		let row_numbers: Vec<RowNumber> = row_numbers(&columns)?.to_vec();
+		let sidecar_partitions: Vec<Partition> = partitions(&columns)?;
+		let row_count = columns.num_rows();
 		enforce_old_row_policies(exec, txn, target, shape, &row_numbers, &sidecar_partitions)?;
 
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
@@ -288,8 +295,8 @@ fn enforce_old_row_policies(
 		let bytes = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
 		old_rows.push((row_number, bytes));
 	}
-	let mut old_columns = decode_rows_to_columns(shape, &old_rows);
-	decode_returning_dictionaries(exec.services, txn, &target.table.columns, &mut old_columns)?;
+	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
+	let old_columns = decode_returning_dictionaries(exec.services, txn, &target.table.columns, old_columns)?;
 	PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
 		txn,
 		target.namespace.name(),
@@ -306,22 +313,21 @@ fn build_updated_table_row(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	shape: &RowShape,
-	columns: &Columns,
+	columns: &RecordBatch,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedTableRowBuilder> {
 	let mut row = shape.allocate_table();
 	for (table_idx, table_column) in table.columns.iter().enumerate() {
-		let mut value = if let Some(input_column) = columns.iter().find(|col| col.name() == table_column.name) {
-			input_column.data().get_value(row_idx)
+		let mut value = if let Some(input_column) = column_view(columns, &table_column.name)? {
+			input_column.get_value(row_idx)
 		} else {
 			Value::none()
 		};
 
-		let column_ident = columns
-			.iter()
-			.find(|col| col.name() == table_column.name)
-			.map(|col| col.name().clone())
+		let column_ident = user_columns(columns)
+			.find(|(field, _)| field.name() == &table_column.name)
+			.map(|(field, _)| Fragment::internal(field.name()))
 			.unwrap_or_else(|| Fragment::internal(&table_column.name));
 		let resolved_column = ResolvedColumn::new(
 			column_ident.clone(),
@@ -384,8 +390,8 @@ fn rotate_table_pk_index(
 }
 
 #[inline]
-fn update_table_result(namespace: &str, table: &str, updated: u64) -> Columns {
-	Columns::single_row([
+fn update_table_result(namespace: &str, table: &str, updated: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),
 		("updated", Value::Uint8(updated)),

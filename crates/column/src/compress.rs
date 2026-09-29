@@ -88,14 +88,13 @@ impl Compressor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_core::value::column::factory;
 
 	use super::*;
 
 	#[test]
 	fn compress_falls_back_to_canonical_when_no_stub_applies() {
-		let cd = ColumnBuffer::int4([1i32, 2, 3, 4]);
-		let canon = Canonical::from_column_buffer(&cd).unwrap();
+		let canon = Canonical::from_column(&factory::int4("c", [1i32, 2, 3, 4])).unwrap();
 		let out = Compressor::new(CompressConfig::default()).compress(&canon).unwrap();
 		assert_eq!(out.encoding(), EncodingId::CANONICAL_FIXED);
 		assert_eq!(out.len(), 4);
@@ -103,8 +102,7 @@ mod tests {
 
 	#[test]
 	fn compress_utf8_falls_back_to_canonical_varlen() {
-		let cd = ColumnBuffer::utf8(["alpha", "bravo"]);
-		let canon = Canonical::from_column_buffer(&cd).unwrap();
+		let canon = Canonical::from_column(&factory::utf8("c", ["alpha", "bravo"])).unwrap();
 		let out = Compressor::new(CompressConfig::default()).compress(&canon).unwrap();
 		assert_eq!(out.encoding(), EncodingId::CANONICAL_VARLEN);
 		assert_eq!(out.len(), 2);

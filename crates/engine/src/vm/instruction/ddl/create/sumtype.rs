@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::sumtype::SumTypeToCreate;
 use reifydb_core::{
 	interface::catalog::sumtype::{Field, SumTypeKind, Variant},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateSumTypeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -16,19 +17,19 @@ pub(crate) fn create_sumtype(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSumTypeNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	if let Some(existing) = services.catalog.find_sumtype_by_name(
 		&mut Transaction::Admin(&mut *txn),
 		plan.namespace.id(),
 		plan.name.text(),
 	)? && plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
+		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("sumtype", Value::Utf8(plan.name.text().to_string())),
 			("created", Value::Boolean(false)),
-		]));
+		]);
 	}
 
 	let mut variants = Vec::with_capacity(plan.variants.len());
@@ -57,10 +58,10 @@ pub(crate) fn create_sumtype(
 		},
 	)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("sumtype", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	])
 }

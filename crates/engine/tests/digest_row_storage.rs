@@ -47,13 +47,13 @@ fn command(t: &TestEngine, rql: &str) -> Result<Vec<Frame>, Box<Diagnostic>> {
 
 fn column_values(frames: &[Frame], name: &str) -> Vec<Value> {
 	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	(0..column.data.len()).map(|row| column.data.get_value(row)).collect()
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	(0..column.len()).map(|row| column.get_value(row)).collect()
 }
 
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
-	let column = frames[0].columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no column {name}"));
-	column.data.get_type()
+	let column = frames[0].column(name).unwrap().unwrap_or_else(|| panic!("no column {name}"));
+	column.get_type()
 }
 
 fn digest_type() -> ValueType {

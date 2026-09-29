@@ -4,10 +4,12 @@
 use std::f32::consts::PI;
 
 use arrow_array::Float32Array;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<f32>) -> FrameColumnData {
-	FrameColumnData::Float4(Float32Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<f32>) -> ColumnData {
+	data(ValueType::Float4, Float32Array::from(v))
 }
 
 crate::plain_tests! {

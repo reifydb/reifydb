@@ -3,7 +3,7 @@
 
 use std::{mem, sync::LazyLock};
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupId};
+use reifydb_core::value::column::{factory::float8, view::group_by::GroupId};
 use reifydb_routine::function::stats::digest::StatsDigest;
 use reifydb_routine_abi::{Accumulator, Function, LiteralArgument, LiteralKind, context::FunctionContext};
 use reifydb_runtime::context::RuntimeContext;
@@ -28,8 +28,8 @@ fn accumulator() -> Box<dyn Accumulator> {
 }
 
 fn add(accumulator: &mut Box<dyn Accumulator>, value: f64) -> usize {
-	let column = ColumnWithName::new(Fragment::internal("x"), ColumnBuffer::float8(vec![value]));
-	accumulator.update(&Columns::new(vec![column]), &vec![(GroupId(0), vec![0])]).unwrap();
+	let column = float8("x", vec![value]);
+	accumulator.update(&[column], &vec![(GroupId(0), vec![0])]).unwrap();
 	accumulator.heap_size()
 }
 

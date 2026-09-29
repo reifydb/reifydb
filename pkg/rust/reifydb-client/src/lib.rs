@@ -34,6 +34,8 @@ use std::collections::HashMap;
 #[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
 use std::sync::Arc;
 
+pub use arrow_array;
+pub use arrow_schema;
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub use dst::DstClient;
 #[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
@@ -55,9 +57,8 @@ pub use reifydb_value::{
 	params::Params,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		frame::{
-			column::FrameColumn,
-			data::FrameColumnData,
 			extract::FrameError,
 			frame::Frame,
 			from_frame::FromFrameError,

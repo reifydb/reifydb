@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::LargeStringArray;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{ArrayRef, LargeStringArray};
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{constraint::bytes::MaxBytes, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	constraint::bytes::MaxBytes,
+	value_type::ValueType,
+};
+
+use crate::function::support::column::utf8_column;
 
 fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	RoutineError::FunctionExecutionFailed {
@@ -42,33 +48,37 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 		ValueType::Utf8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		let result_data = match data {
-			ColumnBuffer::Int1(c) => {
+		let result_data = match &data.data {
+			ViewData::Int1(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Int2(c) => {
+			ViewData::Int2(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Int4(c) => {
+			ViewData::Int4(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Int8(c) => {
+			ViewData::Int8(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Uint1(c) => {
+			ViewData::Uint1(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Uint2(c) => {
+			ViewData::Uint2(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			ColumnBuffer::Uint4(c) => {
+			ViewData::Uint4(c) => {
 				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
 			}
-			other => {
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
@@ -81,12 +91,12 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 						ValueType::Uint2,
 						ValueType::Uint4,
 					],
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, result_data))
 	}
 }
 
@@ -100,7 +110,7 @@ impl Function for TextChar {
 	}
 }
 
-fn convert_to_char<F>(ctx: &FunctionContext, row_count: usize, get_value: F) -> Result<ColumnBuffer, RoutineError>
+fn convert_to_char<F>(ctx: &FunctionContext, row_count: usize, get_value: F) -> Result<LargeStringArray, RoutineError>
 where
 	F: Fn(usize) -> Option<i128>,
 {
@@ -120,8 +130,5 @@ where
 		}
 	}
 
-	Ok(ColumnBuffer::Utf8 {
-		container: LargeStringArray::from(result_data),
-		max_bytes: MaxBytes::MAX,
-	})
+	Ok(LargeStringArray::from(result_data))
 }

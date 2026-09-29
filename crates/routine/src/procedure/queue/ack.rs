@@ -3,6 +3,8 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
 	interface::{
@@ -13,7 +15,7 @@ use reifydb_core::{
 		store::SingleVersionGet,
 	},
 	key::queue::{QueueAttemptKey, QueueItemStateKey},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::change::{QueueAckTransition, QueueRowAck, RowChange};
@@ -57,7 +59,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 	}
 
 	#[instrument(name = "queue::ack", level = "debug", skip_all, fields(status = Empty))]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 1)?;
@@ -94,7 +100,7 @@ pub(crate) fn record_outcome(
 	ctx: &mut ProcedureContext<'_, '_>,
 	raw_token: &str,
 	response: Option<String>,
-) -> Result<Columns, RoutineError> {
+) -> Result<RecordBatch, RoutineError> {
 	let token = ClaimToken::parse(procedure, &ctx.fragment, raw_token)?;
 	let now = ctx.runtime_context.clock.now();
 	let queue = resolve_queue_by_id(ctx.catalog, &mut *ctx.tx, token.queue, &ctx.fragment)?;
@@ -155,11 +161,11 @@ pub(crate) fn record_outcome(
 
 	Span::current().record("status", status);
 
-	Ok(Columns::single_row([
+	Ok(single_row([
 		("status", Value::Utf8(status.to_string())),
 		("item", Value::Uint8(token.row.0)),
 		("attempt", Value::Uint4(token.attempt)),
-	]))
+	])?)
 }
 
 fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Option<QueueItemState>, RoutineError> {

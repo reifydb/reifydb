@@ -62,26 +62,8 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	body.push(punct('='));
 	body.push(ident("frame"));
 	body.push(punct('.'));
-	body.push(ident("columns"));
-	body.push(punct('.'));
-	body.push(ident("first"));
+	body.push(ident("row_count"));
 	body.push(parens([]));
-	body.push(punct('.'));
-	body.push(ident("map"));
-	body.push(parens([
-		punct('|'),
-		ident("c"),
-		punct('|'),
-		ident("c"),
-		punct('.'),
-		ident("data"),
-		punct('.'),
-		ident("len"),
-		parens([]),
-	]));
-	body.push(punct('.'));
-	body.push(ident("unwrap_or"));
-	body.push(parens([literal_usize(0)]));
 	body.push(punct(';'));
 
 	for field in fields {
@@ -153,57 +135,16 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 
 	tokens.push(ident("let"));
 	tokens.push(ident(&col_var));
-	tokens.push(punct(':'));
+	tokens.push(punct('='));
+	tokens.push(ident("frame"));
+	tokens.push(punct('.'));
+	tokens.push(ident("column"));
+	tokens.push(parens([literal_str(&column_name)]));
+	tokens.push(punct('.'));
+	tokens.push(ident("expect"));
+	tokens.push(parens([literal_str("a frame column does not match its field")]));
 
-	if field.attrs.optional {
-		tokens.push(ident("Option"));
-		tokens.push(punct('<'));
-		tokens.push(punct('&'));
-		tokens.extend(path(&["", crate_path, "value", "frame", "column", "FrameColumn"]));
-		tokens.push(punct('>'));
-		tokens.push(punct('='));
-		tokens.push(ident("frame"));
-		tokens.push(punct('.'));
-		tokens.push(ident("columns"));
-		tokens.push(punct('.'));
-		tokens.push(ident("iter"));
-		tokens.push(parens([]));
-		tokens.push(punct('.'));
-		tokens.push(ident("find"));
-		tokens.push(parens([
-			punct('|'),
-			ident("c"),
-			punct('|'),
-			ident("c"),
-			punct('.'),
-			ident("name"),
-			punct_joint('='),
-			punct('='),
-			literal_str(&column_name),
-		]));
-	} else {
-		tokens.push(punct('&'));
-		tokens.extend(path(&["", crate_path, "value", "frame", "column", "FrameColumn"]));
-		tokens.push(punct('='));
-		tokens.push(ident("frame"));
-		tokens.push(punct('.'));
-		tokens.push(ident("columns"));
-		tokens.push(punct('.'));
-		tokens.push(ident("iter"));
-		tokens.push(parens([]));
-		tokens.push(punct('.'));
-		tokens.push(ident("find"));
-		tokens.push(parens([
-			punct('|'),
-			ident("c"),
-			punct('|'),
-			ident("c"),
-			punct('.'),
-			ident("name"),
-			punct_joint('='),
-			punct('='),
-			literal_str(&column_name),
-		]));
+	if !field.attrs.optional {
 		tokens.push(punct('.'));
 		tokens.push(ident("ok_or_else"));
 
@@ -281,8 +222,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		let mut some_body = vec![
 			ident("col"),
 			punct('.'),
-			ident("data"),
-			punct('.'),
 			ident("iter"),
 			parens([]),
 			punct('.'),
@@ -327,8 +266,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		tokens.push(punct('='));
 
 		tokens.push(ident(&col_var));
-		tokens.push(punct('.'));
-		tokens.push(ident("data"));
 		tokens.push(punct('.'));
 		tokens.push(ident("iter"));
 		tokens.push(parens([]));

@@ -4,7 +4,7 @@
 use std::{error::Error, future::Future, sync::Arc};
 
 use reifydb::runtime::context::clock::Clock;
-use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
+use reifydb_client::{ColumnView, Frame, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
 
@@ -66,8 +66,8 @@ pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize
 	results
 }
 
-pub fn find_column<'a>(frame: &'a Frame, name: &str) -> Option<&'a FrameColumn> {
-	frame.columns.iter().find(|c| c.name == name)
+pub fn find_column<'a>(frame: &'a Frame, name: &str) -> Option<ColumnView<'a>> {
+	frame.column(name).expect("the column reads")
 }
 
 pub struct SubscriptionTestHarness;

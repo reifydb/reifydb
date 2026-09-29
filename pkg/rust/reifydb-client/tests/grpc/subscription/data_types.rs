@@ -45,10 +45,10 @@ fn test_subscription_int_types() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		assert_eq!(find_column(frame, "i1").unwrap().data.get_value(0), Value::Int1(127));
-		assert_eq!(find_column(frame, "i2").unwrap().data.get_value(0), Value::Int2(32767));
-		assert_eq!(find_column(frame, "i4").unwrap().data.get_value(0), Value::Int4(2147483647));
-		assert_eq!(find_column(frame, "i8").unwrap().data.get_value(0), Value::Int8(9223372036854775807));
+		assert_eq!(find_column(frame, "i1").unwrap().get_value(0), Value::Int1(127));
+		assert_eq!(find_column(frame, "i2").unwrap().get_value(0), Value::Int2(32767));
+		assert_eq!(find_column(frame, "i4").unwrap().get_value(0), Value::Int4(2147483647));
+		assert_eq!(find_column(frame, "i8").unwrap().get_value(0), Value::Int8(9223372036854775807));
 
 		drop(sub);
 	});
@@ -96,10 +96,10 @@ fn test_subscription_uint_types() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		assert_eq!(find_column(frame, "u1").unwrap().data.get_value(0), Value::Uint1(255));
-		assert_eq!(find_column(frame, "u2").unwrap().data.get_value(0), Value::Uint2(65535));
-		assert_eq!(find_column(frame, "u4").unwrap().data.get_value(0), Value::Uint4(4294967295));
-		assert_eq!(find_column(frame, "u8").unwrap().data.get_value(0), Value::Uint8(18446744073709551615));
+		assert_eq!(find_column(frame, "u1").unwrap().get_value(0), Value::Uint1(255));
+		assert_eq!(find_column(frame, "u2").unwrap().get_value(0), Value::Uint2(65535));
+		assert_eq!(find_column(frame, "u4").unwrap().get_value(0), Value::Uint4(4294967295));
+		assert_eq!(find_column(frame, "u8").unwrap().get_value(0), Value::Uint8(18446744073709551615));
 
 		drop(sub);
 	});
@@ -133,11 +133,11 @@ fn test_subscription_float_types() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		let f4_val = match find_column(frame, "f4").unwrap().data.get_value(0) {
+		let f4_val = match find_column(frame, "f4").unwrap().get_value(0) {
 			Value::Float4(v) => *v,
 			other => panic!("Expected Float4, got {:?}", other),
 		};
-		let f8_val = match find_column(frame, "f8").unwrap().data.get_value(0) {
+		let f8_val = match find_column(frame, "f8").unwrap().get_value(0) {
 			Value::Float8(v) => *v,
 			other => panic!("Expected Float8, got {:?}", other),
 		};
@@ -179,8 +179,8 @@ fn test_subscription_string_types() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		assert_eq!(find_column(frame, "s").unwrap().data.get_value(0), Value::Utf8("hello world".to_string()));
-		assert_eq!(find_column(frame, "s2").unwrap().data.get_value(0), Value::Utf8("test data".to_string()));
+		assert_eq!(find_column(frame, "s").unwrap().get_value(0), Value::Utf8("hello world".to_string()));
+		assert_eq!(find_column(frame, "s2").unwrap().get_value(0), Value::Utf8("test data".to_string()));
 
 		drop(sub);
 	});
@@ -223,10 +223,10 @@ fn test_subscription_temporal() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		let d_val = find_column(frame, "d").unwrap().data.get_value(0);
+		let d_val = find_column(frame, "d").unwrap().get_value(0);
 		assert!(matches!(d_val, Value::Date(_)), "Expected Date value, got {:?}", d_val);
 
-		let t_val = find_column(frame, "t").unwrap().data.get_value(0);
+		let t_val = find_column(frame, "t").unwrap().get_value(0);
 		assert!(matches!(t_val, Value::Time(_)), "Expected Time value, got {:?}", t_val);
 
 		drop(sub);
@@ -269,8 +269,8 @@ fn test_subscription_uuid() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		let u4_val = find_column(frame, "u4").unwrap().data.get_value(0);
-		let u7_val = find_column(frame, "u7").unwrap().data.get_value(0);
+		let u4_val = find_column(frame, "u4").unwrap().get_value(0);
+		let u7_val = find_column(frame, "u7").unwrap().get_value(0);
 
 		assert!(matches!(u4_val, Value::Uuid4(_)), "Expected Uuid4 value, got {:?}", u4_val);
 		assert!(matches!(u7_val, Value::Uuid7(_)), "Expected Uuid7 value, got {:?}", u7_val);

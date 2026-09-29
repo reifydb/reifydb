@@ -4,8 +4,11 @@
 pub mod oracle;
 pub mod workload;
 
+use std::sync::Arc;
+
+use arrow_schema::Schema;
 use rand::{RngExt, rngs::StdRng};
-use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_flow::operator::append::{AppendOperator, lane::AppendLanes};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -29,7 +32,7 @@ pub const APPEND_INPUTS: usize = 2;
 pub fn build() -> AppendOperator {
 	let operators: Vec<OperatorId> = (0..APPEND_INPUTS).map(input).collect();
 	let lanes = AppendLanes::new(APPEND_OPERATOR, 1, [Some(0), Some(1)]);
-	AppendOperator::new(APPEND_OPERATOR, Some(Columns::empty()), operators, lanes)
+	AppendOperator::new(APPEND_OPERATOR, Some(Arc::new(Schema::empty())), operators, lanes)
 }
 
 #[derive(Debug, Clone)]

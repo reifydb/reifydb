@@ -5,7 +5,8 @@ pub mod loader;
 
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::reattach_dictionary_ids;
 use reifydb_sdk::{
 	common::{
 		extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
@@ -90,12 +91,12 @@ impl Drop for ExternCTransform {
 
 impl Transform for ExternCTransform {
 	#[instrument(name = "transform::extern_c::apply", level = "trace", skip_all)]
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
 		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
 		ensure_marshallable(&input)?;
 		EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let extern_c_input =
-			EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
+			EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) })?;
 
 		let extern_c_ctx_ptr = self.cached_ctx.get();
 		// SAFETY: cached_ctx owns the ExternCContextRaw for the life of self and apply is not re-entrant.
@@ -119,9 +120,8 @@ impl Transform for ExternCTransform {
 			.into());
 		}
 
-		let mut output = single_columns_from_registry(&self.builder_registry);
-		output.reattach_dictionary_ids(&input);
-		Ok(output)
+		let output = single_columns_from_registry(&self.builder_registry)?;
+		reattach_dictionary_ids(output, &input)
 	}
 }
 

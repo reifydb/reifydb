@@ -3,30 +3,41 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
-	common::CommitVersion,
+	common::TimeSource,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
 		any::TaggedKey,
 		bound::TaggedKeyBoundRange,
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
-	value::column::{
-		ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders,
+	value::{
+		batch::batch,
+		column::{
+			builder::ColumnBuilder,
+			factory::{datetime, none_typed, uint1},
+			headers::ColumnHeaders,
+		},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	fragment::Fragment,
 	reifydb_assertions,
 	value::{
-		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns, value_type::ValueType,
+		Value,
+		datetime::DateTime,
+		dictionary::DictionaryEntryId,
+		partition::Partition,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
 	},
 };
 use tracing::instrument;
 
+use super::{empty_scan, partition_array, scan_headers, source_system_columns};
 use crate::{
 	Result,
 	transaction::operation::dictionary::DictionaryOperations,
@@ -46,16 +57,10 @@ pub struct SeriesScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<TaggedKey>,
 	exhausted: bool,
-
-	min_commit_version: Option<CommitVersion>,
+	system_columns: Vec<SystemColumn>,
 }
 
 impl SeriesScanNode {
-	pub fn with_min_commit_version(mut self, min_commit_version: Option<CommitVersion>) -> Self {
-		self.min_commit_version = min_commit_version;
-		self
-	}
-
 	pub fn new(
 		series: ResolvedSeries,
 		key_range_start: Option<u64>,
@@ -64,17 +69,19 @@ impl SeriesScanNode {
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
-		let mut columns = vec![Fragment::internal(series.def().key.column())];
+		let mut columns = vec![series.def().key.column()];
 		if series.def().tag.is_some() {
-			columns.push(Fragment::internal("tag"));
+			columns.push("tag");
 		}
 		for col in series.columns() {
-			columns.push(Fragment::internal(&col.name));
+			columns.push(col.name.as_str());
 		}
-		let headers = ColumnHeaders {
-			columns,
-			row_numbers: true,
-		};
+		let system_columns = source_system_columns(
+			!series.def().partition_by.is_empty(),
+			series.def().time != TimeSource::None,
+			false,
+		);
+		let headers = scan_headers(columns.into_iter(), &system_columns);
 
 		Ok(Self {
 			series,
@@ -86,7 +93,7 @@ impl SeriesScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
-			min_commit_version: None,
+			system_columns,
 		})
 	}
 
@@ -163,7 +170,7 @@ impl SeriesScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::empty_columns")]
-	fn empty_columns(&self, has_tag: bool) -> Vec<ColumnWithName> {
+	fn empty_columns(&self, has_tag: bool) -> Vec<(FieldRef, ArrayRef)> {
 		let series = self.series.def();
 		let key_type = series
 			.columns
@@ -173,21 +180,12 @@ impl SeriesScanNode {
 			.unwrap_or(ValueType::Int8);
 
 		let mut result_columns = Vec::new();
-		result_columns.push(ColumnWithName {
-			name: Fragment::internal(series.key.column()),
-			data: ColumnBuffer::none_typed(key_type, 0),
-		});
+		result_columns.push(none_typed(series.key.column(), key_type, 0));
 		if has_tag {
-			result_columns.push(ColumnWithName {
-				name: Fragment::internal("tag"),
-				data: ColumnBuffer::none_typed(ValueType::Uint1, 0),
-			});
+			result_columns.push(none_typed("tag", ValueType::Uint1, 0));
 		}
 		for col_def in series.data_columns() {
-			result_columns.push(ColumnWithName {
-				name: Fragment::internal(&col_def.name),
-				data: ColumnBuffer::none_typed(col_def.constraint.get_type(), 0),
-			});
+			result_columns.push(none_typed(&col_def.name, col_def.constraint.get_type(), 0));
 		}
 		result_columns
 	}
@@ -197,26 +195,22 @@ impl SeriesScanNode {
 		&self,
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
-		batch: SeriesBatch,
+		scanned: SeriesBatch,
 		has_tag: bool,
 		partitioned: bool,
-	) -> Result<Option<Columns>> {
+	) -> Result<Option<RecordBatch>> {
 		let series = self.series.def();
 		let mut result_columns = Vec::new();
 
-		result_columns.push(ColumnWithName::new(
-			Fragment::internal(series.key.column()),
-			series.key_column_data(batch.key_values),
-		));
+		result_columns.push(series.key_column_data(scanned.key_values));
 
 		if has_tag {
-			result_columns
-				.push(ColumnWithName::new(Fragment::internal("tag"), ColumnBuffer::uint1(batch.tags)));
+			result_columns.push(uint1("tag", scanned.tags));
 		}
 
 		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
-			let mut col_values: Vec<Value> = batch
+			let mut col_values: Vec<Value> = scanned
 				.data_rows
 				.iter()
 				.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
@@ -237,20 +231,35 @@ impl SeriesScanNode {
 			result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
 		}
 
-		let row_numbers: Vec<RowNumber> = batch.sequences.into_iter().map(RowNumber::from).collect();
-		let mut result = Columns::with_system(
-			result_columns,
-			SystemColumns::new(
-				row_numbers,
-				Vec::new(),
-				batch.created_at_values,
-				batch.updated_at_values,
-				batch.time_values,
-				Vec::new(),
-			),
-		);
+		let mut result = batch(result_columns)?;
+		result = with_system_column(
+			result,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(scanned.sequences)),
+		)?;
 		if partitioned {
-			result.system.set_partitions(batch.partitions);
+			result = with_system_column(
+				result,
+				SystemColumn::Partitions,
+				partition_array(&scanned.partitions),
+			)?;
+		}
+		result = with_system_column(
+			result,
+			SystemColumn::CreatedAt,
+			datetime(SystemColumn::CreatedAt.name(), scanned.created_at_values).1,
+		)?;
+		result = with_system_column(
+			result,
+			SystemColumn::UpdatedAt,
+			datetime(SystemColumn::UpdatedAt.name(), scanned.updated_at_values).1,
+		)?;
+		if !scanned.time_values.is_empty() {
+			result = with_system_column(
+				result,
+				SystemColumn::Time,
+				datetime(SystemColumn::Time.name(), scanned.time_values).1,
+			)?;
 		}
 		Ok(Some(result))
 	}
@@ -276,7 +285,7 @@ impl QueryNode for SeriesScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::series::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "SeriesScanNode::next() called before initialize()");
 		}
@@ -319,10 +328,7 @@ impl QueryNode for SeriesScanNode {
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 		let stored_ctx = stored_ctx.clone();
 
-		let scope = match self.min_commit_version {
-			Some(v) => RangeScope::After(v),
-			None => RangeScope::All,
-		};
+		let scope = RangeScope::All;
 
 		let data_column_count = series.data_columns().count();
 		let batch = {
@@ -340,9 +346,7 @@ impl QueryNode for SeriesScanNode {
 		if batch.key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				let mut columns = Columns::new(self.empty_columns(has_tag));
-				columns.system.mark_row_numbers();
-				return Ok(Some(columns));
+				return Ok(Some(empty_scan(self.empty_columns(has_tag), &self.system_columns)?));
 			}
 			return Ok(None);
 		}
@@ -357,13 +361,10 @@ impl QueryNode for SeriesScanNode {
 	}
 }
 
-pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: ValueType) -> Result<ColumnWithName> {
+pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
 	let mut data = ColumnBuilder::with_capacity(col_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
-	Ok(ColumnWithName {
-		name: Fragment::internal(name),
-		data: data.finish(),
-	})
+	Ok(data.finish(name))
 }

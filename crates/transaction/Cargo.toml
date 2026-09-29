@@ -27,6 +27,7 @@ reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-runtime = { workspace = true }
+arrow-array = { workspace = true }
 dashmap = { workspace = true }
 
 thiserror = { workspace = true }

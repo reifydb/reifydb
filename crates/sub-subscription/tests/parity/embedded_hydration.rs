@@ -4,7 +4,7 @@
 use std::thread;
 
 use reifydb::{HydrationConfig, Params, Subscription, testing::db::TestDb};
-use reifydb_core::{interface::change::StagedBatch, value::column::columns::Columns};
+use reifydb_core::interface::change::StagedBatch;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::{diff_type::DiffType, duration::Duration, frame::frame::Frame};
 
@@ -53,7 +53,7 @@ fn drain_collect(sub: &Subscription) -> Vec<StagedBatch> {
 	}
 	// The op rides the frame now, so it must be carried alongside the columns or normalize cannot tell a
 	// remove from an insert.
-	acc.into_iter().map(|f| (f.op.unwrap_or(DiffType::Insert), Columns::from(f))).collect()
+	acc.into_iter().map(|f| (f.op.unwrap_or(DiffType::Insert), f.batch)).collect()
 }
 
 fn wait_caught_up(db: &TestDb) {

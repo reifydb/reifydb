@@ -3,18 +3,17 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		policy::{DataOp, PolicyTargetType},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::{ColumnBuffer, write::check_digest_write_type},
-		builder::ColumnBuilder,
-		cast::cast_value,
-		columns::Columns,
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, cast::cast_value, factory, write::check_digest_write_type},
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -24,7 +23,13 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, dictionary::DictionaryEntryId, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		dictionary::DictionaryEntryId,
+		system_columns::{column_view, user_columns},
+		value_type::ValueType,
+	},
 };
 
 use super::returning::evaluate_returning;
@@ -46,7 +51,7 @@ pub(crate) fn insert_dictionary(
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
 	symbols: &mut SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let namespace_name = plan.target.namespace().name();
 
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -87,15 +92,19 @@ pub(crate) fn insert_dictionary(
 			PolicyTargetType::Dictionary,
 		)?;
 
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
+		let source_column = match column_view(&columns, "value")? {
+			Some(view) => Some(view),
+			None => user_columns(&columns)
+				.next()
+				.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+				.transpose()?,
+		};
 
 		for row_idx in 0..row_count {
-			let value = if let Some(value_column) = columns.iter().find(|col| col.name() == "value") {
-				value_column.data().get_value(row_idx)
-			} else if let Some(first_column) = columns.iter().next() {
-				first_column.data().get_value(row_idx)
-			} else {
-				Value::none()
+			let value = match &source_column {
+				Some(column) => column.get_value(row_idx),
+				None => Value::none(),
 			};
 
 			if matches!(value, Value::None { .. }) {
@@ -122,40 +131,28 @@ pub(crate) fn insert_dictionary(
 	if let Some(returning_exprs) = &plan.returning {
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
 		let value_column = build_value_column(&values, dictionary.value_type);
-		let columns = Columns::new(vec![id_column, value_column]);
+		let columns = batch(vec![id_column, value_column])?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 
 	if ids.is_empty() {
-		return Ok(Columns::new(vec![
-			ColumnWithName::new(
-				Fragment::internal("namespace"),
-				ColumnBuffer::utf8(vec![namespace.name()]),
-			),
-			ColumnWithName::new(
-				Fragment::internal("dictionary"),
-				ColumnBuffer::utf8(vec![dictionary.name.clone()]),
-			),
-			ColumnWithName::new(Fragment::internal("inserted"), ColumnBuffer::uint8(vec![0])),
-		]));
+		return batch(vec![
+			factory::utf8("namespace", vec![namespace.name()]),
+			factory::utf8("dictionary", vec![dictionary.name.clone()]),
+			factory::uint8("inserted", vec![0]),
+		]);
 	}
 
 	let id_column = build_id_column(&ids, dictionary.id_type)?;
 
 	let value_column = build_value_column(&values, dictionary.value_type);
 
-	Ok(Columns::new(vec![
-		ColumnWithName::new(
-			Fragment::internal("namespace"),
-			ColumnBuffer::utf8(vec![namespace.name(); ids.len()]),
-		),
-		ColumnWithName::new(
-			Fragment::internal("dictionary"),
-			ColumnBuffer::utf8(vec![dictionary.name.clone(); ids.len()]),
-		),
+	batch(vec![
+		factory::utf8("namespace", vec![namespace.name(); ids.len()]),
+		factory::utf8("dictionary", vec![dictionary.name.clone(); ids.len()]),
 		id_column,
 		value_column,
-	]))
+	])
 }
 
 fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value> {
@@ -164,7 +161,7 @@ fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Res
 	cast_value(value, target_type)
 }
 
-fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> {
+fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
 	let data = match id_type {
 		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids
@@ -174,7 +171,7 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint1(vals)
+			factory::uint1("id", vals)
 		}
 		ValueType::Uint2 => {
 			let vals: Vec<u16> = ids
@@ -184,7 +181,7 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint2(vals)
+			factory::uint2("id", vals)
 		}
 		ValueType::Uint4 => {
 			let vals: Vec<u32> = ids
@@ -194,7 +191,7 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint4(vals)
+			factory::uint4("id", vals)
 		}
 		ValueType::Uint8 => {
 			let vals: Vec<u64> = ids
@@ -204,7 +201,7 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint8(vals)
+			factory::uint8("id", vals)
 		}
 		ValueType::Uint16 => {
 			let vals: Vec<u128> = ids
@@ -214,7 +211,7 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint16(vals)
+			factory::uint16("id", vals)
 		}
 		_ => {
 			let vals: Vec<u64> = ids
@@ -224,23 +221,17 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 					_ => 0,
 				})
 				.collect();
-			ColumnBuffer::uint8(vals)
+			factory::uint8("id", vals)
 		}
 	};
 
-	Ok(ColumnWithName {
-		name: Fragment::internal("id"),
-		data,
-	})
+	Ok(data)
 }
 
-fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
+fn build_value_column(values: &[Value], value_type: ValueType) -> (FieldRef, ArrayRef) {
 	let mut data = ColumnBuilder::with_capacity(value_type, values.len());
 	for value in values {
 		data.push_value(value.clone());
 	}
-	ColumnWithName {
-		name: Fragment::internal("value"),
-		data: data.finish(),
-	}
+	data.finish("value")
 }

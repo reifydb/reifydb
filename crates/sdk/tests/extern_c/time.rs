@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::time::Time;
 
 use super::common::{assert_column_eq, round_trip_column};
 
 #[test]
 fn time_midnight() {
-	let input = ColumnBuffer::time([Time::from_nanos_since_midnight(0).expect("midnight valid")]);
+	let input = factory::time("c", [Time::from_nanos_since_midnight(0).expect("midnight valid")]);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_midnight", &input, &output);
 }
 
 #[test]
 fn time_one_nanosecond_past_midnight() {
-	let input = ColumnBuffer::time([Time::from_nanos_since_midnight(1).expect("valid")]);
+	let input = factory::time("c", [Time::from_nanos_since_midnight(1).expect("valid")]);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_one_nano", &input, &output);
 }
@@ -23,7 +23,7 @@ fn time_one_nanosecond_past_midnight() {
 #[test]
 fn time_one_second_before_midnight() {
 	// The last representable instant of the day, 86_399_999_999_999 ns, one nanosecond short of the u64 wrap.
-	let input = ColumnBuffer::time([Time::from_hms_nano(23, 59, 59, 999_999_999).expect("valid")]);
+	let input = factory::time("c", [Time::from_hms_nano(23, 59, 59, 999_999_999).expect("valid")]);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_one_second_before_midnight", &input, &output);
 }
@@ -33,14 +33,15 @@ fn time_thirty_two_rows() {
 	let values: Vec<Time> = (0..32u32)
 		.map(|i| Time::from_hms_nano(i % 24, (i * 7) % 60, (i * 13) % 60, i * 100).expect("valid"))
 		.collect();
-	let input = ColumnBuffer::time(values);
+	let input = factory::time("c", values);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_thirty_two_rows", &input, &output);
 }
 
 #[test]
 fn time_with_undefined() {
-	let input = ColumnBuffer::time_with_bitvec(
+	let input = factory::time_with_bitvec(
+		"c",
 		[
 			Time::from_nanos_since_midnight(0).unwrap(),
 			Time::default(),

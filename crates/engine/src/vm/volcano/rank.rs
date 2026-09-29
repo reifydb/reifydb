@@ -11,13 +11,13 @@ use reifydb_core::{
 		SortDirection,
 		SortDirection::{Asc, Desc},
 	},
-	value::column::buffer::ColumnBuffer,
 };
+use reifydb_value::value::column_view::{ColumnView, ViewData};
 
 use crate::Result;
 
 pub(crate) fn rank_rows(
-	keys: &[(ColumnBuffer, SortDirection)],
+	keys: &[(ColumnView<'_>, SortDirection)],
 	row_count: usize,
 	limit: Option<usize>,
 ) -> Result<Vec<usize>> {
@@ -31,7 +31,7 @@ pub(crate) fn rank_rows(
 	}
 }
 
-fn sort_columns(keys: &[(ColumnBuffer, SortDirection)], row_count: usize) -> Option<Vec<SortColumn>> {
+fn sort_columns(keys: &[(ColumnView<'_>, SortDirection)], row_count: usize) -> Option<Vec<SortColumn>> {
 	let row_count = u32::try_from(row_count).ok()?;
 	if keys.iter().any(|(data, _)| ranks_by_value(data)) {
 		return None;
@@ -39,7 +39,7 @@ fn sort_columns(keys: &[(ColumnBuffer, SortDirection)], row_count: usize) -> Opt
 	let mut columns: Vec<SortColumn> = keys
 		.iter()
 		.map(|(data, direction)| SortColumn {
-			values: data.to_array_ref(),
+			values: data.array().slice(0, data.len()),
 			options: Some(options(direction)),
 		})
 		.collect();
@@ -58,11 +58,11 @@ fn options(direction: &SortDirection) -> SortOptions {
 	}
 }
 
-fn ranks_by_value(data: &ColumnBuffer) -> bool {
-	matches!(data, ColumnBuffer::DictionaryId { .. })
+fn ranks_by_value(data: &ColumnView<'_>) -> bool {
+	matches!(data.data, ViewData::DictionaryId { .. })
 }
 
-fn compare_rank(keys: &[(ColumnBuffer, SortDirection)], row_count: usize, limit: Option<usize>) -> Vec<usize> {
+fn compare_rank(keys: &[(ColumnView<'_>, SortDirection)], row_count: usize, limit: Option<usize>) -> Vec<usize> {
 	let mut indices: Vec<usize> = (0..row_count).collect();
 	indices.sort_by(|&left, &right| compare_rows(keys, left, right));
 	if let Some(limit) = limit {
@@ -71,7 +71,7 @@ fn compare_rank(keys: &[(ColumnBuffer, SortDirection)], row_count: usize, limit:
 	indices
 }
 
-fn compare_rows(keys: &[(ColumnBuffer, SortDirection)], left: usize, right: usize) -> Ordering {
+fn compare_rows(keys: &[(ColumnView<'_>, SortDirection)], left: usize, right: usize) -> Ordering {
 	for (data, direction) in keys {
 		let ordering = data.get_value(left).cmp(&data.get_value(right));
 		let ordering = match direction {
@@ -89,8 +89,11 @@ fn compare_rows(keys: &[(ColumnBuffer, SortDirection)], left: usize, right: usiz
 mod tests {
 	use std::str::FromStr;
 
-	use reifydb_core::{sort::SortDirection, value::column::buffer::ColumnBuffer};
+	use arrow_array::{Array, ArrayRef};
+	use arrow_schema::FieldRef;
+	use reifydb_core::{sort::SortDirection, value::column::factory};
 	use reifydb_value::value::{
+		column_view::ColumnView,
 		constraint::{precision::Precision, scale::Scale},
 		decimal::Decimal,
 		dictionary::DictionaryEntryId,
@@ -98,19 +101,22 @@ mod tests {
 
 	use super::rank_rows;
 
-	fn ranked(data: ColumnBuffer, direction: SortDirection) -> Vec<usize> {
-		let row_count = data.len();
-		rank_rows(&[(data, direction)], row_count, None).expect("ranking must succeed")
+	fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
+		ColumnView::try_from(column).expect("a factory column must form a view")
+	}
+
+	fn ranked(data: (FieldRef, ArrayRef), direction: SortDirection) -> Vec<usize> {
+		let row_count = data.1.len();
+		rank_rows(&[(view(&data), direction)], row_count, None).expect("ranking must succeed")
 	}
 
 	#[test]
 	fn a_dictionary_id_key_ranks_by_its_number_not_by_its_stored_bytes() {
 		// Entry ids store a width tag then little-endian bytes, so a byte order would sort 5 above 256.
-		let data = ColumnBuffer::dictionary_id([
-			DictionaryEntryId::U2(256),
-			DictionaryEntryId::U1(5),
-			DictionaryEntryId::U8(1),
-		]);
+		let data = factory::dictionary_id(
+			"k",
+			[DictionaryEntryId::U2(256), DictionaryEntryId::U1(5), DictionaryEntryId::U8(1)],
+		);
 
 		assert_eq!(ranked(data, SortDirection::Asc), vec![2, 1, 0]);
 	}
@@ -119,7 +125,8 @@ mod tests {
 	fn a_decimal_key_ranks_numerically_so_equal_values_of_different_scale_tie() {
 		// The column stores every value at its own scale, so 1.0 and 1.00 must tie and keep input order.
 		let decimal = |text: &str| Decimal::from_str(text).expect("a decimal literal");
-		let data = ColumnBuffer::decimal(
+		let data = factory::decimal(
+			"k",
 			Precision::new(10),
 			Scale::new(2),
 			[decimal("1.00"), decimal("0.5"), decimal("1.0")],
@@ -131,7 +138,7 @@ mod tests {
 	#[test]
 	fn rows_tied_on_every_key_keep_their_input_position() {
 		// Tie order is observable through take, so ranking must be a total order ending in the row index.
-		let data = ColumnBuffer::int4([7, 7, 7, 7]);
+		let data = factory::int4("k", [7, 7, 7, 7]);
 
 		assert_eq!(ranked(data.clone(), SortDirection::Asc), vec![0, 1, 2, 3]);
 		assert_eq!(ranked(data, SortDirection::Desc), vec![0, 1, 2, 3]);
@@ -140,10 +147,10 @@ mod tests {
 	#[test]
 	fn a_limit_keeps_the_earliest_rows_among_ties() {
 		// A later tied row must never displace an earlier one that is already held.
-		let data = ColumnBuffer::int4([5, 5, 5, 5, 5]);
-		let row_count = data.len();
+		let data = factory::int4("k", [5, 5, 5, 5, 5]);
+		let row_count = data.1.len();
 
-		let indices = rank_rows(&[(data, SortDirection::Asc)], row_count, Some(3)).expect("ranking");
+		let indices = rank_rows(&[(view(&data), SortDirection::Asc)], row_count, Some(3)).expect("ranking");
 
 		assert_eq!(indices, vec![0, 1, 2]);
 	}

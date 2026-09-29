@@ -24,20 +24,13 @@ pub(crate) fn read_op_kind(frame: &Frame) -> ChangeKind {
 
 #[cfg(test)]
 mod tests {
-	use arrow_array::Int32Array;
-	use reifydb_value::value::{
-		Value,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	};
+	use reifydb_core::value::{batch::batch, column::factory};
+	use reifydb_value::value::{Value, frame::frame::Frame};
 
 	use super::*;
 
 	fn frame_with_op(op: DiffType, id: i32) -> Frame {
-		Frame::new(vec![FrameColumn {
-			name: "id".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![id])),
-		}])
-		.with_op(op)
+		Frame::from(batch(vec![factory::int4("id", [id])]).expect("an int4 column forms a batch")).with_op(op)
 	}
 
 	#[test]
@@ -58,12 +51,12 @@ mod tests {
 
 		for (change, expected_id) in changes.iter().zip([10, 11, 12]) {
 			assert_eq!(
-				change.frame.columns.len(),
+				change.frame.batch.num_columns(),
 				1,
 				"the op must ride the frame, so it must not add a column"
 			);
-			let id = change.frame.columns.iter().find(|c| c.name == "id").expect("id column preserved");
-			assert_eq!(id.data.get_value(0), Value::Int4(expected_id));
+			let id = change.frame.column("id").expect("the id column reads").expect("id column preserved");
+			assert_eq!(id.get_value(0), Value::Int4(expected_id));
 		}
 	}
 
@@ -71,10 +64,9 @@ mod tests {
 	fn frame_without_op_defaults_to_insert() {
 		// Hydration and any non-subscription frame arrive with no op set; treating them as
 		// inserts is what a subscriber needs to seed its initial state.
-		let changes = frames_to_changes(vec![Frame::new(vec![FrameColumn {
-			name: "id".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![1])),
-		}])]);
+		let changes = frames_to_changes(vec![Frame::from(
+			batch(vec![factory::int4("id", [1])]).expect("an int4 column forms a batch"),
+		)]);
 		assert_eq!(changes[0].kind, ChangeKind::Insert);
 	}
 }

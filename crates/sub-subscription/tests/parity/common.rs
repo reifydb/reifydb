@@ -21,7 +21,13 @@ use reifydb_core::interface::{
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::value::{
-	Value, diff_type::DiffType, duration::Duration, identity::IdentityId, row_number::RowNumber,
+	Value,
+	column_view::ColumnView,
+	diff_type::DiffType,
+	duration::Duration,
+	identity::IdentityId,
+	row_number::RowNumber,
+	system_columns::{column_view, row_numbers, user_columns},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,30 +111,30 @@ pub fn normalize(batches: Vec<StagedBatch>) -> Vec<(i32, i32, i64)> {
 	// against a RowNumber-keyed map to reduce the diff sequence to the final sink state.
 	let mut state: BTreeMap<RowNumber, (i32, i32, i64)> = BTreeMap::new();
 	for (op, cols) in batches {
-		let id_col = cols.iter().find(|c| c.name().text() == "id");
-		let qty_col = cols.iter().find(|c| c.name().text() == "qty");
-		let ts_col = cols.iter().find(|c| c.name().text() == "ts_ms");
+		let id_col = column_view(&cols, "id").unwrap();
+		let qty_col = column_view(&cols, "qty").unwrap();
+		let ts_col = column_view(&cols, "ts_ms").unwrap();
 		let (Some(id_col), Some(qty_col), Some(ts_col)) = (id_col, qty_col, ts_col) else {
-			let names: Vec<&str> = cols.iter().map(|c| c.name().text()).collect();
+			let names: Vec<&str> = user_columns(&cols).map(|(field, _)| field.name().as_str()).collect();
 			panic!("expected columns id, qty, ts_ms but found {:?}", names);
 		};
-		for i in 0..cols.row_count() {
-			let id = match id_col.data().get_value(i) {
+		for i in 0..cols.num_rows() {
+			let id = match id_col.get_value(i) {
 				Value::Int4(v) => v,
 				other => panic!("expected Int4 id, got {:?}", other),
 			};
-			let qty = match qty_col.data().get_value(i) {
+			let qty = match qty_col.get_value(i) {
 				Value::Int4(v) => v,
 				other => panic!("expected Int4 qty, got {:?}", other),
 			};
-			let ts = match ts_col.data().get_value(i) {
+			let ts = match ts_col.get_value(i) {
 				Value::Int8(v) => v,
 				other => panic!("expected Int8 ts_ms, got {:?}", other),
 			};
-			let rn = if cols.row_numbers().is_empty() {
+			let rn = if row_numbers(&cols).unwrap().is_empty() {
 				RowNumber(0)
 			} else {
-				cols.row_numbers()[i]
+				row_numbers(&cols).unwrap()[i]
 			};
 			match op {
 				DiffType::Insert | DiffType::Update => {
@@ -150,11 +156,12 @@ pub fn normalize_aggregated(batches: Vec<StagedBatch>) -> Vec<Vec<(String, Strin
 	// comparison works whatever shape the operator emits.
 	let mut out: Vec<Vec<(String, String)>> = Vec::new();
 	for (_, cols) in batches {
-		let mut row_records: Vec<Vec<(String, String)>> = vec![Vec::new(); cols.row_count()];
-		for col in cols.iter() {
-			let name = col.name().text().to_string();
+		let mut row_records: Vec<Vec<(String, String)>> = vec![Vec::new(); cols.num_rows()];
+		for (field, array) in user_columns(&cols) {
+			let col = ColumnView::try_from((array, field.as_ref())).unwrap();
+			let name = field.name().to_string();
 			for (i, record) in row_records.iter_mut().enumerate() {
-				let v = format!("{:?}", col.data().get_value(i));
+				let v = format!("{:?}", col.get_value(i));
 				record.push((name.clone(), v.clone()));
 			}
 		}
@@ -239,9 +246,9 @@ fn announced_ids(batches: &[StagedBatch], want_op: DiffType) -> Vec<i32> {
 		if *op != want_op {
 			continue;
 		}
-		let id_col = cols.iter().find(|c| c.name().text() == "id").expect("id column");
-		for i in 0..cols.row_count() {
-			match id_col.data().get_value(i) {
+		let id_col = column_view(&cols, "id").unwrap().expect("id column");
+		for i in 0..cols.num_rows() {
+			match id_col.get_value(i) {
 				Value::Int4(v) => out.push(v),
 				other => panic!("expected Int4 id, got {:?}", other),
 			}

@@ -3,6 +3,7 @@
 
 use std::{ops::Bound, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
@@ -20,7 +21,6 @@ use reifydb_core::{
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	testing::{CapturedEvent, CapturedInvocation},
-	value::column::columns::Columns,
 };
 use reifydb_value::{Result, error::Diagnostic, params::Params, value::identity::IdentityId};
 
@@ -674,7 +674,7 @@ impl<'a> Transaction<'a> {
 		event: String,
 		variant: String,
 		depth: u8,
-		columns: Columns,
+		batch: RecordBatch,
 	) {
 		if let Transaction::Test(t) = self {
 			*t.event_seq += 1;
@@ -684,7 +684,7 @@ impl<'a> Transaction<'a> {
 				event,
 				variant,
 				depth,
-				columns,
+				columns: batch,
 			});
 		}
 	}

@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_core::{expression::Expression, value::column::columns::Columns};
+use reifydb_core::{expression::Expression, value::batch::empty_batch};
 use reifydb_evaluate::{
 	expression::{
 		compile::compile_expression,
@@ -16,7 +16,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -33,8 +33,6 @@ pub fn evaluate_operator_params(
 		symbols: &EMPTY_SYMBOL_TABLE,
 	};
 
-	let empty_columns = Columns::empty();
-
 	let session = EvalContext {
 		params: &EMPTY_PARAMS,
 		symbols: &EMPTY_SYMBOL_TABLE,
@@ -42,12 +40,12 @@ pub fn evaluate_operator_params(
 		runtime_context,
 		identity: IdentityId::system(),
 		is_aggregate_context: false,
-		columns: Columns::empty(),
+		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
 	};
-	let exec_ctx = session.with_eval(empty_columns, 1);
+	let exec_ctx = session.with_eval(empty_batch(), 1);
 
 	for expr in expressions {
 		if let Expression::Alias(alias_expr) = expr {
@@ -55,9 +53,10 @@ pub fn evaluate_operator_params(
 
 			let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
 			let column = expr.execute(&exec_ctx)?;
+			let view = ColumnView::try_from(&column)?;
 
-			let value = if !column.data().is_empty() {
-				column.data().get_value(0)
+			let value = if !view.is_empty() {
+				view.get_value(0)
 			} else {
 				Value::none()
 			};

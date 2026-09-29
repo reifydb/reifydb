@@ -3,13 +3,29 @@
 
 use std::collections::HashMap;
 
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_buffer::BooleanBuffer;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::{
+	batch::{batch, single_row},
+	column::{
+		cast::cast_column_data,
+		factory::rename,
+		scatter::{merge_rows, scatter_merge},
+	},
+};
 use reifydb_evaluate::{expression::branch::BranchLayout, stack::Variable};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
+	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, constraint::TypeConstraint, value_type::ValueType},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		constraint::TypeConstraint,
+		system_columns::user_columns,
+		value_type::ValueType,
+	},
 };
 
 use crate::{
@@ -72,24 +88,55 @@ pub(crate) struct LoopMaskState {
 	pub loop_end_addr: usize,
 }
 
-pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BooleanBuffer) -> Result<Columns> {
-	let len = existing.row_count();
+pub(crate) fn merge_by_mask(
+	existing: &RecordBatch,
+	new_value: &RecordBatch,
+	mask: &BooleanBuffer,
+) -> Result<RecordBatch> {
+	let len = existing.num_rows();
 	reifydb_assertions! {
-		assert_eq!(new_value.row_count(), len);
+		assert_eq!(new_value.num_rows(), len);
 		assert_eq!(mask.len(), len);
 	}
 
-	let merged_columns: Vec<ColumnWithName> = existing
-		.columns
-		.iter()
-		.zip(new_value.columns.iter())
-		.enumerate()
-		.map(|(idx, (old_col, new_col))| {
-			Ok(ColumnWithName::new(existing.name_at(idx).clone(), old_col.merge_rows(new_col, mask, len)?))
+	let merged_columns: Vec<(FieldRef, ArrayRef)> = user_columns(existing)
+		.zip(user_columns(new_value))
+		.map(|((old_field, old_array), (new_field, new_array))| {
+			merge_rows(
+				&ColumnView::try_from((old_array, old_field.as_ref()))?,
+				&ColumnView::try_from((new_array, new_field.as_ref()))?,
+				mask,
+				len,
+				old_field.name(),
+			)
 		})
 		.collect::<Result<_>>()?;
 
-	Ok(Columns::new(merged_columns))
+	batch(merged_columns)
+}
+
+fn scatter_merge_batches(
+	then_cols: &RecordBatch,
+	else_cols: &RecordBatch,
+	then_mask: &BooleanBuffer,
+	else_mask: &BooleanBuffer,
+	total_len: usize,
+) -> Result<RecordBatch> {
+	let merged: Vec<(FieldRef, ArrayRef)> = user_columns(then_cols)
+		.zip(user_columns(else_cols))
+		.map(|((then_field, then_array), (else_field, else_array))| {
+			scatter_merge(
+				&ColumnView::try_from((then_array, then_field.as_ref()))?,
+				&ColumnView::try_from((else_array, else_field.as_ref()))?,
+				then_mask,
+				else_mask,
+				total_len,
+				then_field.name(),
+			)
+		})
+		.collect::<Result<_>>()?;
+
+	batch(merged)
 }
 
 pub(crate) fn scatter_merge_variables(
@@ -99,63 +146,54 @@ pub(crate) fn scatter_merge_variables(
 	else_mask: &BooleanBuffer,
 	total_len: usize,
 ) -> Result<Variable> {
-	let then_cols = variable_to_columns(then_var);
-	let else_cols = variable_to_columns(else_var);
+	let then_cols = variable_to_columns(then_var)?;
+	let else_cols = variable_to_columns(else_var)?;
 
-	let merged: Vec<ColumnWithName> = then_cols
-		.columns
-		.iter()
-		.zip(else_cols.columns.iter())
-		.enumerate()
-		.map(|(idx, (tc, ec))| {
-			let merged_data = tc.scatter_merge(ec, then_mask, else_mask, total_len)?;
-			Ok(ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data))
+	Ok(Variable::columns(scatter_merge_batches(&then_cols, &else_cols, then_mask, else_mask, total_len)?))
+}
+
+fn named_types<'c>(columns: &'c RecordBatch, name: &'c str) -> Result<Vec<(&'c str, ValueType, bool)>> {
+	user_columns(columns)
+		.map(|(field, array)| {
+			let ty = ColumnView::try_from((array, field.as_ref()))?.get_type().inner_type().clone();
+			let fits_any = ty == ValueType::Any;
+			Ok((name, ty, fits_any))
 		})
-		.collect::<Result<_>>()?;
-
-	Ok(Variable::columns(Columns::new(merged)))
+		.collect()
 }
 
-fn named_types<'c>(columns: &'c Columns, name: &'c str) -> impl Iterator<Item = (&'c str, ValueType, bool)> {
-	columns.columns.iter().map(move |data| {
-		let ty = data.get_type().inner_type().clone();
-		let fits_any = ty == ValueType::Any;
-		(name, ty, fits_any)
-	})
-}
-
-fn variable_columns(var: &Variable) -> Option<&Columns> {
+fn variable_columns(var: &Variable) -> Option<&RecordBatch> {
 	match var {
 		Variable::Columns {
-			columns: c,
+			batch: c,
 			..
 		}
 		| Variable::ForIterator {
-			columns: c,
+			batch: c,
 			..
 		} => Some(c),
 		Variable::Closure(_) => None,
 	}
 }
 
-fn variable_to_columns(var: &Variable) -> Columns {
+fn variable_to_columns(var: &Variable) -> Result<RecordBatch> {
 	match var {
 		Variable::Columns {
-			columns: c,
+			batch: c,
 			..
 		}
 		| Variable::ForIterator {
-			columns: c,
+			batch: c,
 			..
-		} => c.clone(),
-		Variable::Closure(_) => Columns::single_row([("value", Value::none())]),
+		} => Ok(c.clone()),
+		Variable::Closure(_) => single_row([("value", Value::none())]),
 	}
 }
 
 pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer> {
 	let cols = match var {
 		Variable::Columns {
-			columns: c,
+			batch: c,
 			..
 		} => c,
 		_ => {
@@ -168,14 +206,14 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer> {
 			.into());
 		}
 	};
-	if cols.is_empty() {
+	let Some((field, array)) = user_columns(cols).next() else {
 		return Ok(BooleanBuffer::new_unset(0));
-	}
-	let col = &cols.columns[0];
-	match col {
-		ColumnBuffer::Bool(container) => {
+	};
+	let col = ColumnView::try_from((array, field.as_ref()))?;
+	match col.data {
+		ViewData::Bool(container) => {
 			let bv = container.values().clone();
-			match col.nulls() {
+			match col.logical_nulls() {
 				Some(nulls) => Ok(&bv & nulls.inner()),
 				None => Ok(bv),
 			}
@@ -200,90 +238,111 @@ impl<'a> Vm<'a> {
 		self.is_masked() || self.pending_return.is_some()
 	}
 
-	fn align_types(&self, left: &Columns, right: &Columns) -> Result<(Columns, Columns)> {
+	fn align_types(&self, left: &RecordBatch, right: &RecordBatch) -> Result<(RecordBatch, RecordBatch)> {
 		let ctx = self.eval_ctx();
-		let mut aligned_left = Vec::with_capacity(left.columns.len());
-		let mut aligned_right = Vec::with_capacity(right.columns.len());
+		let mut aligned_left = Vec::with_capacity(left.num_columns());
+		let mut aligned_right = Vec::with_capacity(right.num_columns());
 
-		for (idx, (left_data, right_data)) in left.columns.iter().zip(right.columns.iter()).enumerate() {
+		for ((left_field, left_array), (right_field, right_array)) in
+			user_columns(left).zip(user_columns(right))
+		{
+			let left_data = ColumnView::try_from((left_array, left_field.as_ref()))?;
+			let right_data = ColumnView::try_from((right_array, right_field.as_ref()))?;
 			let target = ValueType::super_type_of([left_data.get_type(), right_data.get_type()]);
-			let name = left.name_at(idx).clone();
+			let name = Fragment::internal(left_field.name());
 
 			let left_cast = if left_data.get_type() == target {
-				left_data.clone()
+				(left_field.clone(), left_array.clone())
 			} else {
-				cast_column_data(&ctx, left_data, target.clone(), name.clone())?
+				cast_column_data(&ctx, &left_data, target.clone(), name.clone())?
 			};
 			let right_cast = if right_data.get_type() == target {
-				right_data.clone()
+				(right_field.clone(), right_array.clone())
 			} else {
-				cast_column_data(&ctx, right_data, target.clone(), name.clone())?
+				cast_column_data(&ctx, &right_data, target.clone(), name.clone())?
 			};
 
-			aligned_left.push(ColumnWithName::new(name.clone(), left_cast));
-			aligned_right.push(ColumnWithName::new(right.name_at(idx).clone(), right_cast));
+			aligned_left.push(left_cast);
+			aligned_right.push(right_cast);
 		}
 
-		Ok((Columns::new(aligned_left), Columns::new(aligned_right)))
+		Ok((batch(aligned_left)?, batch(aligned_right)?))
 	}
 
 	fn cast_to_declared(
 		&self,
-		left: &Columns,
-		right: &Columns,
+		left: &RecordBatch,
+		right: &RecordBatch,
 		declared: &TypeConstraint,
-	) -> Result<(Columns, Columns)> {
+	) -> Result<(RecordBatch, RecordBatch)> {
 		let ctx = self.eval_ctx();
 		let fragment = self.udf_call.fragment.clone();
 		let target = declared.get_type();
-		let cast = |columns: &Columns| -> Result<Columns> {
-			let mut out = Vec::with_capacity(columns.columns.len());
-			for (idx, data) in columns.columns.iter().enumerate() {
-				let name = columns.name_at(idx).clone();
+		let cast = |columns: &RecordBatch| -> Result<RecordBatch> {
+			let mut out = Vec::with_capacity(columns.num_columns());
+			for (field, array) in user_columns(columns) {
+				let data = ColumnView::try_from((array, field.as_ref()))?;
 				let casted = if data.get_type().inner_type() == &target {
-					data.clone()
+					(field.clone(), array.clone())
 				} else {
-					cast_to_declared_return_type(&ctx, data, declared, fragment.text(), &fragment)?
+					rename(
+						cast_to_declared_return_type(
+							&ctx,
+							&data,
+							declared,
+							fragment.text(),
+							&fragment,
+						)?,
+						field.name(),
+					)
 				};
-				out.push(ColumnWithName::new(name, casted));
+				out.push(casted);
 			}
-			Ok(Columns::new(out))
+			batch(out)
 		};
 		Ok((cast(left)?, cast(right)?))
 	}
 
-	fn fill_none_columns(&self, returning: &Columns, pending: &Columns) -> Result<(Columns, Columns)> {
+	fn fill_none_columns(
+		&self,
+		returning: &RecordBatch,
+		pending: &RecordBatch,
+	) -> Result<(RecordBatch, RecordBatch)> {
 		let ctx = self.eval_ctx();
-		let mut filled_returning = Vec::with_capacity(returning.columns.len());
-		let mut filled_pending = Vec::with_capacity(pending.columns.len());
+		let mut filled_returning = Vec::with_capacity(returning.num_columns());
+		let mut filled_pending = Vec::with_capacity(pending.num_columns());
 
-		for (idx, (returning_data, pending_data)) in
-			returning.columns.iter().zip(pending.columns.iter()).enumerate()
+		for ((returning_field, returning_array), (pending_field, pending_array)) in
+			user_columns(returning).zip(user_columns(pending))
 		{
+			let returning_data = ColumnView::try_from((returning_array, returning_field.as_ref()))?;
+			let pending_data = ColumnView::try_from((pending_array, pending_field.as_ref()))?;
 			let returning_type = returning_data.get_type().inner_type().clone();
 			let pending_type = pending_data.get_type().inner_type().clone();
-			let name = returning.name_at(idx).clone();
+			let name = Fragment::internal(returning_field.name());
+			let returning_pair = (returning_field.clone(), returning_array.clone());
+			let pending_pair = (pending_field.clone(), pending_array.clone());
 
 			let (returning_filled, pending_filled) = match (returning_type, pending_type) {
 				(ValueType::Any, pending_type) if pending_type != ValueType::Any => (
-					cast_column_data(&ctx, returning_data, pending_type, name.clone())?,
-					pending_data.clone(),
+					cast_column_data(&ctx, &returning_data, pending_type, name.clone())?,
+					pending_pair,
 				),
 				(returning_type, ValueType::Any) if returning_type != ValueType::Any => (
-					returning_data.clone(),
-					cast_column_data(&ctx, pending_data, returning_type, name.clone())?,
+					returning_pair,
+					cast_column_data(&ctx, &pending_data, returning_type, name.clone())?,
 				),
-				_ => (returning_data.clone(), pending_data.clone()),
+				_ => (returning_pair, pending_pair),
 			};
 
-			filled_returning.push(ColumnWithName::new(name, returning_filled));
-			filled_pending.push(ColumnWithName::new(pending.name_at(idx).clone(), pending_filled));
+			filled_returning.push(returning_filled);
+			filled_pending.push(pending_filled);
 		}
 
-		Ok((Columns::new(filled_returning), Columns::new(filled_pending)))
+		Ok((batch(filled_returning)?, batch(filled_pending)?))
 	}
 
-	pub(crate) fn exec_return_value_masked(&mut self, columns: Columns) -> Result<()> {
+	pub(crate) fn exec_return_value_masked(&mut self, columns: RecordBatch) -> Result<()> {
 		let write_mask = self.effective_mask();
 
 		let already_returned =
@@ -291,13 +350,13 @@ impl<'a> Vm<'a> {
 
 		let merged = match self.pending_return.take() {
 			Some(pending) => {
-				let pending = variable_to_columns(&pending);
+				let pending = variable_to_columns(&pending)?;
 				let (returning, pending) = if let Some(declared) = self.udf_call.return_type.clone() {
 					self.cast_to_declared(&columns, &pending, &declared)?
 				} else {
 					let name = self.udf_call.fragment.text();
-					BranchLayout::new(named_types(&pending, name))
-						.admit(named_types(&columns, name), &self.udf_call.fragment)?;
+					BranchLayout::new(named_types(&pending, name)?)
+						.admit(named_types(&columns, name)?, &self.udf_call.fragment)?;
 					self.fill_none_columns(&columns, &pending)?
 				};
 				scatter_merge_variables(
@@ -331,19 +390,20 @@ impl<'a> Vm<'a> {
 		self.pending_return = Some(merged);
 
 		if all_returned {
-			self.finalize_masked_return();
+			self.finalize_masked_return()?;
 		}
 
 		Ok(())
 	}
 
-	pub(crate) fn finalize_masked_return(&mut self) {
+	pub(crate) fn finalize_masked_return(&mut self) -> Result<()> {
 		let Some(pending) = self.pending_return.take() else {
-			return;
+			return Ok(());
 		};
 
 		self.returned_mask = None;
-		self.control_flow = ControlFlow::Return(Some(variable_to_columns(&pending)));
+		self.control_flow = ControlFlow::Return(Some(variable_to_columns(&pending)?));
+		Ok(())
 	}
 
 	pub(crate) fn is_masked(&self) -> bool {
@@ -580,8 +640,8 @@ impl<'a> Vm<'a> {
 				(variable_columns(then_var), variable_columns(else_var))
 			{
 				let name = self.udf_call.fragment.text();
-				BranchLayout::new(named_types(then_columns, name))
-					.admit(named_types(else_columns, name), &self.udf_call.fragment)?;
+				BranchLayout::new(named_types(then_columns, name)?)
+					.admit(named_types(else_columns, name)?, &self.udf_call.fragment)?;
 			}
 			let merged = scatter_merge_variables(
 				then_var,
@@ -595,24 +655,16 @@ impl<'a> Vm<'a> {
 
 		for (name, then_snapshot) in &frame.then_var_snapshots {
 			if let Some(current) = self.symbols.get(name) {
-				let then_cols = variable_to_columns(then_snapshot);
-				let else_cols = variable_to_columns(current);
-				let merged_cols: Vec<ColumnWithName> = then_cols
-					.columns
-					.iter()
-					.zip(else_cols.columns.iter())
-					.enumerate()
-					.map(|(idx, (tc, ec))| {
-						let merged_data = tc.scatter_merge(
-							ec,
-							&frame.then_mask,
-							&frame.else_mask,
-							total_len,
-						)?;
-						Ok(ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data))
-					})
-					.collect::<Result<_>>()?;
-				self.symbols.reassign(name.clone(), Variable::columns(Columns::new(merged_cols)))?;
+				let then_cols = variable_to_columns(then_snapshot)?;
+				let else_cols = variable_to_columns(current)?;
+				let merged_cols = scatter_merge_batches(
+					&then_cols,
+					&else_cols,
+					&frame.then_mask,
+					&frame.else_mask,
+					total_len,
+				)?;
+				self.symbols.reassign(name.clone(), Variable::columns(merged_cols))?;
 			}
 		}
 
@@ -630,16 +682,16 @@ impl<'a> Vm<'a> {
 
 		match self.symbols.get(name) {
 			Some(existing) => {
-				let existing_cols = variable_to_columns(existing);
-				let new_cols = variable_to_columns(&new_value);
+				let existing_cols = variable_to_columns(existing)?;
+				let new_cols = variable_to_columns(&new_value)?;
 				let (existing_cols, new_cols) = if self.udf_call.return_type.is_some() {
 					let (existing_cols, new_cols) =
 						self.fill_none_columns(&existing_cols, &new_cols)?;
 					self.align_types(&existing_cols, &new_cols)?
 				} else {
 					let name = self.udf_call.fragment.text();
-					BranchLayout::new(named_types(&existing_cols, name))
-						.admit(named_types(&new_cols, name), &self.udf_call.fragment)?;
+					BranchLayout::new(named_types(&existing_cols, name)?)
+						.admit(named_types(&new_cols, name)?, &self.udf_call.fragment)?;
 					let (new_cols, existing_cols) =
 						self.fill_none_columns(&new_cols, &existing_cols)?;
 					(existing_cols, new_cols)
@@ -665,20 +717,17 @@ impl<'a> Vm<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns};
-	use reifydb_value::{
-		fragment::Fragment,
-		value::{Value, value_type::ValueType},
-	};
+	use reifydb_core::value::column::builder::ColumnBuilder;
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 
-	fn int4_column(name: &str, values: &[i32]) -> ColumnWithName {
+	fn int4_column(name: &str, values: &[i32]) -> (FieldRef, ArrayRef) {
 		let mut builder = ColumnBuilder::with_capacity(ValueType::Int4, values.len());
 		for &v in values {
 			builder.push(v);
 		}
-		ColumnWithName::new(Fragment::internal(name), builder.finish())
+		builder.finish(name)
 	}
 
 	#[test]
@@ -688,7 +737,16 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, true, true]);
 		let else_mask = BooleanBuffer::from(vec![false, false, false]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3).unwrap();
+		let merged = scatter_merge(
+			&ColumnView::try_from(&then_col).unwrap(),
+			&ColumnView::try_from(&else_col).unwrap(),
+			&then_mask,
+			&else_mask,
+			3,
+			"x",
+		)
+		.unwrap();
+		let merged = ColumnView::try_from(&merged).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(20));
 		assert_eq!(merged.get_value(2), Value::Int4(30));
@@ -701,7 +759,16 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![false, false, false]);
 		let else_mask = BooleanBuffer::from(vec![true, true, true]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3).unwrap();
+		let merged = scatter_merge(
+			&ColumnView::try_from(&then_col).unwrap(),
+			&ColumnView::try_from(&else_col).unwrap(),
+			&then_mask,
+			&else_mask,
+			3,
+			"x",
+		)
+		.unwrap();
+		let merged = ColumnView::try_from(&merged).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(40));
 		assert_eq!(merged.get_value(1), Value::Int4(50));
 		assert_eq!(merged.get_value(2), Value::Int4(60));
@@ -714,7 +781,16 @@ mod tests {
 		let then_mask = BooleanBuffer::from(vec![true, false, true, false]);
 		let else_mask = BooleanBuffer::from(vec![false, true, false, true]);
 
-		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 4).unwrap();
+		let merged = scatter_merge(
+			&ColumnView::try_from(&then_col).unwrap(),
+			&ColumnView::try_from(&else_col).unwrap(),
+			&then_mask,
+			&else_mask,
+			4,
+			"x",
+		)
+		.unwrap();
+		let merged = ColumnView::try_from(&merged).unwrap();
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(80));
 		assert_eq!(merged.get_value(2), Value::Int4(30));
@@ -723,12 +799,12 @@ mod tests {
 
 	#[test]
 	fn merge_by_mask_selective_update() {
-		let existing = Columns::new(vec![int4_column("x", &[1, 2, 3])]);
-		let new_value = Columns::new(vec![int4_column("x", &[10, 20, 30])]);
+		let existing = batch(vec![int4_column("x", &[1, 2, 3])]).unwrap();
+		let new_value = batch(vec![int4_column("x", &[10, 20, 30])]).unwrap();
 		let mask = BooleanBuffer::from(vec![true, false, true]);
 
 		let merged = merge_by_mask(&existing, &new_value, &mask).unwrap();
-		let col = &merged.columns[0];
+		let col = ColumnView::try_from((merged.column(0), merged.schema_ref().field(0))).unwrap();
 		assert_eq!(col.get_value(0), Value::Int4(10));
 		assert_eq!(col.get_value(1), Value::Int4(2));
 		assert_eq!(col.get_value(2), Value::Int4(30));

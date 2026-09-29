@@ -10,6 +10,7 @@ mod transform;
 
 use std::{mem, sync::Arc};
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	flow::{
 		dag::FlowDag,
@@ -24,7 +25,6 @@ use reifydb_core::{
 		},
 	},
 	interface::catalog::flow::{FlowId, OperatorId},
-	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -280,7 +280,7 @@ impl FlowEngineInner {
 		})
 	}
 
-	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<Columns>> {
+	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<SchemaRef>> {
 		Ok(self.require_parent(flow_id, input)?.output_schema())
 	}
 }

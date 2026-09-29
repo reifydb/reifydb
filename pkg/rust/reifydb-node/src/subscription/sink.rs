@@ -3,12 +3,13 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb::{
 	codec::{
 		frame::{encode::encode_frames, options::EncodeOptions},
 		wire::{RawChangePayload, WireFormat as ClientWireFormat},
 	},
-	core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns},
+	core::interface::catalog::id::SubscriptionId,
 	runtime::sync::mutex::Mutex,
 	sub_core::{
 		envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
@@ -109,10 +110,10 @@ impl WireSink for NodeWireSink {
 		&self,
 		sub_id: SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		batch: RecordBatch,
 		_format: Self::Format,
 	) -> DeliveryResult {
-		let frames = vec![Frame::from(columns).with_op(op)];
+		let frames = vec![Frame::from(batch).with_op(op)];
 		match encode(&frames, sub_id) {
 			Some(rbcf) => self.push(NodePush::Change {
 				envelope: encode_rbcf_envelope(BinaryKind::Change, &sub_id.to_string(), &rbcf, None),

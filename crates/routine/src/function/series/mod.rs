@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
 
 use crate::function::support::coerce::read_i32;
 
@@ -36,9 +41,14 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let start_value = match &args[0] {
-			ColumnBuffer::Int4(container) => container.values().first().copied().unwrap_or(1),
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let start = ColumnView::try_from(&args[0])?;
+		let start_value = match &start.data {
+			ViewData::Int4(container) => container.values().first().copied().unwrap_or(1),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -47,8 +57,9 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 			}
 		};
 
-		let end_value = match &args[1] {
-			ColumnBuffer::Int4(container) => container.values().first().copied().unwrap_or(10),
+		let end = ColumnView::try_from(&args[1])?;
+		let end_value = match &end.data {
+			ViewData::Int4(container) => container.values().first().copied().unwrap_or(10),
 			_ => {
 				return Err(RoutineError::FunctionExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -58,9 +69,7 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 		};
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		let series_column = ColumnWithName::int4("value", series);
-
-		Ok(Columns::new(vec![series_column]))
+		Ok(int4("value", series))
 	}
 }
 
@@ -92,7 +101,7 @@ impl Series {
 	}
 }
 
-fn bound(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: usize) -> Result<i32, RoutineError> {
+fn bound(ctx: &FunctionContext, data: &ColumnView, argument_index: usize) -> Result<i32, RoutineError> {
 	read_i32(&ctx.fragment, data, 0)?.ok_or_else(|| RoutineError::FunctionInvalidArgumentType {
 		function: ctx.fragment.clone(),
 		argument_index,
@@ -121,12 +130,16 @@ impl<'a> Routine<FunctionContext<'a>> for Series {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let start_value = bound(ctx, &args[0], 0)?;
-		let end_value = bound(ctx, &args[1], 1)?;
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let start_value = bound(ctx, &ColumnView::try_from(&args[0])?, 0)?;
+		let end_value = bound(ctx, &ColumnView::try_from(&args[1])?, 1)?;
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int4(series))]))
+		Ok(int4(ctx.fragment.text(), series))
 	}
 }
 

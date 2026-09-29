@@ -17,6 +17,8 @@ reifydb-build = { workspace = true }
 testing = []
 
 [dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }

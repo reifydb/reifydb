@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::BooleanBuffer;
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, RecordBatch, make_array};
+use arrow_buffer::NullBuffer;
+use arrow_schema::Schema;
 use reifydb_codec::json::{
 	from::{frames_from_json, parse_json_value},
 	to::convert_frames,
 };
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	container::any_array::any_array,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	value_type::ValueType,
+	frame::frame::Frame,
+	value_type::{
+		ValueType,
+		field::{FieldType, named},
+	},
 };
 use serde_json::json;
 
@@ -20,6 +28,23 @@ fn list_int4() -> ValueType {
 
 fn record_region() -> ValueType {
 	ValueType::Record(vec![("name".to_string(), ValueType::Utf8), ("interval".to_string(), ValueType::Int4)])
+}
+
+fn declared(value_type: ValueType, declared_type: ValueType) -> FieldType {
+	FieldType {
+		value_type: Some(value_type),
+		declared_type: Some(declared_type),
+		..FieldType::default()
+	}
+}
+
+fn frame(name: &str, field_type: FieldType, array: ArrayRef) -> Frame {
+	let (field, array) = named(name, field_type, array);
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap())
+}
+
+fn first_value(frame: &Frame) -> Value {
+	ColumnView::try_from((frame.batch.column(0), frame.batch.schema_ref().field(0))).unwrap().get_value(0)
 }
 
 #[test]
@@ -64,44 +89,41 @@ fn a_list_of_records_round_trips_as_real_json_structure_not_an_escaped_string() 
 			("interval".to_string(), Value::Int4(60)),
 		]),
 	];
-	let declared = ValueType::list_of(record_region());
-	let column = FrameColumnData::Any {
-		container: any_array(vec![Value::List(regions.clone())]),
-		declared_type: Some(declared),
-	};
-	let frame = Frame::new(vec![FrameColumn {
-		name: "regions".to_string(),
-		data: column,
-	}]);
+	let declared_type = ValueType::list_of(record_region());
+	let frame = frame(
+		"regions",
+		declared(declared_type.clone(), declared_type),
+		Arc::new(any_array(vec![Value::List(regions.clone())])),
+	);
 
-	let response = convert_frames(&[frame]);
+	let response = convert_frames(&[frame]).unwrap();
 	let payload = &response[0].columns[0].payload[0];
 	// a list-of-records cell must be a real JSON array of objects, never an escaped JSON string
 	assert_eq!(payload, &json!([{"name": "eu", "interval": "30"}, {"name": "us", "interval": "60"}]));
 
 	let json = serde_json::to_string(&response).unwrap();
 	let decoded = frames_from_json(&json).unwrap();
-	assert_eq!(decoded[0].columns[0].data.get_value(0), Value::List(regions));
+	assert_eq!(first_value(&decoded[0]), Value::List(regions));
 }
 
 #[test]
 fn a_none_list_column_still_renders_as_the_none_marker() {
-	let column = FrameColumnData::Option {
-		inner: Box::new(FrameColumnData::Any {
-			container: any_array(vec![Value::List(vec![Value::Int4(1)])]),
-			declared_type: Some(list_int4()),
-		}),
-		bitvec: BooleanBuffer::from(vec![false]),
-	};
-	let frame = Frame::new(vec![FrameColumn {
-		name: "maybe_regions".to_string(),
-		data: column,
-	}]);
+	let masked = any_array(vec![Value::List(vec![Value::Int4(1)])])
+		.into_data()
+		.into_builder()
+		.nulls(Some(NullBuffer::from(vec![false])))
+		.build()
+		.unwrap();
+	let frame = frame(
+		"maybe_regions",
+		declared(ValueType::Option(Box::new(list_int4())), list_int4()),
+		make_array(masked),
+	);
 
-	let response = convert_frames(&[frame]);
+	let response = convert_frames(&[frame]).unwrap();
 	assert_eq!(response[0].columns[0].payload[0], json!("⟪none⟫"));
 
 	let json = serde_json::to_string(&response).unwrap();
 	let decoded = frames_from_json(&json).unwrap();
-	assert_eq!(decoded[0].columns[0].data.get_value(0), Value::none_of(list_int4()));
+	assert_eq!(first_value(&decoded[0]), Value::none_of(list_int4()));
 }

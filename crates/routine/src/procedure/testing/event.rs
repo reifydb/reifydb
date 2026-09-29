@@ -3,17 +3,27 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal_error,
 	testing::CapturedEvent,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, empty_batch},
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		system_columns::{column_view, user_columns},
+		value_type::ValueType,
+	},
 };
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("testing::events::dispatched"));
@@ -41,7 +51,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingEventsDispatched {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let events = match ctx.tx {
 			Transaction::Test(t) => &**t.events,
 			_ => {
@@ -66,7 +80,7 @@ fn extract_optional_string_param(params: &Params) -> Option<String> {
 	}
 }
 
-fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) -> Result<Columns, Error> {
+fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) -> Result<RecordBatch, Error> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
@@ -88,7 +102,7 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 		.collect();
 
 	if events.is_empty() {
-		return Ok(Columns::empty());
+		return Ok(empty_batch());
 	}
 
 	let mut seq_data = ColumnBuilder::with_capacity(ValueType::Uint8, events.len());
@@ -99,8 +113,8 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 
 	let mut field_names: Vec<String> = Vec::new();
 	for event in &events {
-		for col in event.columns.iter() {
-			let name = col.name().text().to_string();
+		for (field, _) in user_columns(&event.columns) {
+			let name = field.name().to_string();
 			if !field_names.contains(&name) {
 				field_names.push(name);
 			}
@@ -117,35 +131,33 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 		depth_data.push(event.depth);
 
 		for (i, field_name) in field_names.iter().enumerate() {
-			let val = event
-				.columns
-				.column(field_name)
-				.map(|col| col.data().get_value(0))
+			let val = column_view(&event.columns, field_name)?
+				.map(|col| col.get_value(0))
 				.unwrap_or(Value::none());
 			field_columns[i].push(val);
 		}
 	}
 
 	let mut columns = vec![
-		ColumnWithName::new("sequence", seq_data.finish()),
-		ColumnWithName::new("namespace", ns_data.finish()),
-		ColumnWithName::new("event", event_data.finish()),
-		ColumnWithName::new("variant", variant_data.finish()),
-		ColumnWithName::new("depth", depth_data.finish()),
+		seq_data.finish("sequence"),
+		ns_data.finish("namespace"),
+		event_data.finish("event"),
+		variant_data.finish("variant"),
+		depth_data.finish("depth"),
 	];
 
 	for (i, name) in field_names.iter().enumerate() {
-		let mut data = column_for_values(&field_columns[i]);
+		let mut data = column_for_values(&field_columns[i])?;
 		for val in &field_columns[i] {
 			data.push_value(val.clone());
 		}
-		columns.push(ColumnWithName::new(name.as_str(), data.finish()));
+		columns.push(data.finish(name.as_str()));
 	}
 
-	Ok(Columns::new(columns))
+	batch(columns)
 }
 
-fn column_for_values(values: &[Value]) -> ColumnBuilder {
+fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, Error> {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None
@@ -154,7 +166,10 @@ fn column_for_values(values: &[Value]) -> ColumnBuilder {
 		}
 	});
 	match first_type {
-		Some(ty) => ColumnBuilder::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none(0).into_builder(),
+		Some(ty) => Ok(ColumnBuilder::with_capacity(ty, values.len())),
+		None => {
+			let none = factory::none("", 0);
+			Ok(ColumnBuilder::from_view(&ColumnView::try_from(&none)?))
+		}
 	}
 }

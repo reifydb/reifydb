@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::vtable::{
 	VTableContext,
 	system::{
@@ -63,9 +64,8 @@ use reifydb_catalog::vtable::{
 	tables::VTables,
 };
 use reifydb_core::{
-	error::diagnostic::catalog::virtual_table_not_found,
-	interface::catalog::id::NamespaceId,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	error::diagnostic::catalog::virtual_table_not_found, interface::catalog::id::NamespaceId,
+	value::column::headers::ColumnHeaders,
 };
 use reifydb_rql::nodes::TableVirtualScanNode;
 use reifydb_transaction::transaction::Transaction;
@@ -239,7 +239,7 @@ impl QueryNode for UnknownVirtualScanNode {
 		return_error!(virtual_table_not_found(&self.namespace, &self.name));
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		Ok(None)
 	}
 

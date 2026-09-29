@@ -9,8 +9,8 @@ fn first_value(t: &TestEngine, rql: &str) -> String {
 	if let Some(err) = result.error {
 		return format!("error {}", err.diagnostic().code);
 	}
-	let column = result.frames[0].columns.iter().find(|c| c.name == "v").unwrap_or_else(|| panic!("no v in {rql}"));
-	column.data.get_value(0).to_string()
+	let column = result.frames[0].column("v").unwrap().unwrap_or_else(|| panic!("no v in {rql}"));
+	column.get_value(0).to_string()
 }
 
 #[test]

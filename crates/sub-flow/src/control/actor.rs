@@ -994,7 +994,7 @@ mod pull_protocol {
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
-		value::{Value, row_number::RowNumber},
+		value::{Value, row_number::RowNumber, system_columns::row_numbers},
 	};
 
 	use super::*;
@@ -2014,7 +2014,7 @@ mod pull_protocol {
 				Diff::Remove {
 					pre,
 					..
-				} => Some(pre.row_numbers().to_vec()),
+				} => Some(row_numbers(&pre).expect("#rownum").to_vec()),
 				_ => None,
 			})
 			.flatten()

@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, value_type::ValueType},
+	value::{Value, column_view::ColumnView, system_columns::user_columns, value_type::ValueType},
 };
 
 #[test]
@@ -19,9 +19,10 @@ fn a_decimal_cast_to_utf8_gives_its_text() {
 	if let Some(err) = result.error {
 		panic!("{source}: the cast to utf8 must succeed, got {:?}", err.diagnostic());
 	}
-	let column = &result.frames[0].columns[0];
+	let (field, array) = user_columns(&result.frames[0].batch).next().unwrap();
+	let column = ColumnView::try_from((array, field.as_ref())).unwrap();
 	assert_eq!(
-		(column.data.get_type(), column.data.get_value(0)),
+		(column.get_type(), column.get_value(0)),
 		(ValueType::Utf8, Value::Utf8(expected.to_string())),
 		"{source}"
 	);

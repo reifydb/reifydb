@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	internal,
-	value::column::{columns::Columns, headers::ColumnHeaders},
-};
+use arrow_array::RecordBatch;
+use reifydb_core::{internal, value::column::headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, reifydb_assertions};
+use reifydb_value::{error::Error, reifydb_assertions, value::system_columns::user_columns};
 use tracing::instrument;
 
 use crate::{
@@ -40,7 +38,7 @@ impl QueryNode for ScalarizeNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scalarize::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
 		}
@@ -57,11 +55,11 @@ impl QueryNode for ScalarizeNode {
 			}
 		};
 
-		let column_count = input_batch.len();
+		let column_count = user_columns(&input_batch).count();
 		let row_count = if column_count == 0 {
 			0
 		} else {
-			input_batch[0].len()
+			input_batch.num_rows()
 		};
 
 		match (row_count, column_count) {

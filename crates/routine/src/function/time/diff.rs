@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
 	container::temporal_array::{duration_array, times},
 	duration::Duration,
 	value_type::ValueType,
 };
+
+use crate::function::support::column::array_column;
 
 pub struct TimeDiff {
 	info: RoutineInfo,
@@ -38,12 +44,16 @@ impl<'a> Routine<FunctionContext<'a>> for TimeDiff {
 		ValueType::Duration
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data1 = &args[0];
-		let data2 = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data1 = ColumnView::try_from(&args[0])?;
+		let data2 = ColumnView::try_from(&args[1])?;
 
-		match (data1, data2) {
-			(ColumnBuffer::Time(container1), ColumnBuffer::Time(container2)) => {
+		match (&data1.data, &data2.data) {
+			(ViewData::Time(container1), ViewData::Time(container2)) => {
 				let row_count = data1.len();
 				let mut container = Vec::with_capacity(row_count);
 
@@ -58,20 +68,23 @@ impl<'a> Routine<FunctionContext<'a>> for TimeDiff {
 					}
 				}
 
-				let result_data = ColumnBuffer::Duration(duration_array(container));
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(array_column(
+					ctx.fragment.text(),
+					ValueType::Duration,
+					Arc::new(duration_array(container)),
+				))
 			}
-			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
+			(ViewData::Time(_), _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![ValueType::Time],
-				actual: other.get_type(),
+				actual: data2.get_type(),
 			}),
-			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Time],
-				actual: other.get_type(),
+				actual: data1.get_type(),
 			}),
 		}
 	}

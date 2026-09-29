@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -62,15 +62,15 @@ impl BaseVTable for SystemFlowEdges {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ids.finish()),
-			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids.finish()),
-			ColumnWithName::new(Fragment::internal("source"), sources.finish()),
-			ColumnWithName::new(Fragment::internal("target"), targets.finish()),
+			ids.finish("id"),
+			flow_ids.finish("flow_id"),
+			sources.finish("source"),
+			targets.finish("target"),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

@@ -3,7 +3,7 @@
 
 use reifydb::{Params, testing::db::TestDb};
 use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
-use reifydb_value::value::{Value, diff_type::DiffType, identity::IdentityId};
+use reifydb_value::value::{Value, diff_type::DiffType, identity::IdentityId, system_columns::column_view};
 
 use crate::common::{
 	Row, drain_after_consumer_caught_up, extract_sub_id, make_db, normalize, random_rows, run_path_incremental,
@@ -50,9 +50,9 @@ fn ops_and_qty(batches: Vec<StagedBatch>) -> Vec<(DiffType, i32)> {
 	// normalize collapses the op sequence into a final state, so an insert and an update read alike there.
 	let mut out = Vec::new();
 	for (op, cols) in batches {
-		let qty_col = cols.iter().find(|c| c.name().text() == "qty").expect("subscription output carries qty");
-		for i in 0..cols.row_count() {
-			let qty = match qty_col.data().get_value(i) {
+		let qty_col = column_view(&cols, "qty").unwrap().expect("subscription output carries qty");
+		for i in 0..cols.num_rows() {
+			let qty = match qty_col.get_value(i) {
 				Value::Int4(v) => v,
 				other => panic!("expected Int4 qty, got {:?}", other),
 			};

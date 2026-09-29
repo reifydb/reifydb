@@ -48,6 +48,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, PartialEq, HeapSize)]
 struct TraderVolumes {
@@ -245,13 +247,13 @@ fn render(out: &Change) -> Emitted {
 			DiffType::Remove => diff.pre().expect("pre"),
 			_ => diff.post().expect("post"),
 		};
-		for i in 0..rows.row_count() {
-			let r = rows.row_ref(i).expect("row");
+		for i in 0..rows.num_rows() {
+			let r = (rows, i);
 			rendered.push((
 				diff.kind(),
-				r.u32("rank").expect("rank"),
-				r.u64("trader").expect("trader"),
-				r.f64("volume").expect("volume"),
+				read::<u32>(r, "rank").expect("rank"),
+				read::<u64>(r, "trader").expect("trader"),
+				read::<f64>(r, "volume").expect("volume"),
 			));
 		}
 	}
@@ -513,9 +515,9 @@ fn the_span_ends_at_the_newest_pane_and_reaches_back_one_size() {
 	let out =
 		h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1_003, 100, 5.0)).build()).expect("apply");
 
-	let row = out.diffs[0].post().expect("post").row_ref(0).expect("row");
+	let row = (out.diffs[0].post().expect("post"), 0);
 	assert_eq!(
-		(row.u64("start").expect("start"), row.u64("end").expect("end")),
+		(read::<u64>(row, "start").expect("start"), read::<u64>(row, "end").expect("end")),
 		(DateTime::from_millis(980).to_order(), DateTime::from_millis(1_010).to_order())
 	);
 }

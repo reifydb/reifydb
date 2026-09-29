@@ -3,8 +3,12 @@
 
 use std::sync::{Arc, LazyLock};
 
+use arrow_array::RecordBatch;
 use arrow_buffer::BooleanBuffer;
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_core::{
+	internal_error,
+	value::batch::{empty_batch, is_scalar, scalar_value, single_row},
+};
 use reifydb_evaluate::{
 	expression::context::EvalContext,
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
@@ -184,7 +188,7 @@ impl<'a> Vm<'a> {
 			runtime_context: self.runtime_context,
 			identity: self.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: self.batch_size,
 			target: None,
 			take: None,
@@ -208,23 +212,23 @@ impl<'a> Vm<'a> {
 	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
 			Variable::Columns {
-				columns: c,
-			} if c.is_scalar() => Ok(c.scalar_value()),
+				batch: c,
+			} if is_scalar(&c) => scalar_value(&c),
 			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
 
-	pub(crate) fn pop_as_columns(&mut self) -> Result<Columns> {
+	pub(crate) fn pop_as_columns(&mut self) -> Result<RecordBatch> {
 		match self.stack.pop()? {
 			Variable::Columns {
-				columns: c,
+				batch: c,
 				..
 			}
 			| Variable::ForIterator {
-				columns: c,
+				batch: c,
 				..
 			} => Ok(c),
-			Variable::Closure(_) => Ok(Columns::single_row([("value", Value::none())])),
+			Variable::Closure(_) => single_row([("value", Value::none())]),
 		}
 	}
 
@@ -241,13 +245,13 @@ impl<'a> Vm<'a> {
 
 			match &instructions[self.ip] {
 				Instruction::Halt => {
-					self.finalize_masked_return();
+					self.finalize_masked_return()?;
 					return Ok(());
 				}
 				Instruction::Nop => {}
 
-				Instruction::PushConst(v) => self.exec_push_const(v),
-				Instruction::PushNone => self.exec_push_none(),
+				Instruction::PushConst(v) => self.exec_push_const(v)?,
+				Instruction::PushNone => self.exec_push_none()?,
 				Instruction::Pop => self.exec_pop()?,
 				Instruction::Dup => self.exec_dup()?,
 
@@ -408,7 +412,7 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DefineClosure(def) => self.exec_define_closure(def),
 
-				Instruction::Emit => self.exec_emit(result),
+				Instruction::Emit => self.exec_emit(result)?,
 				Instruction::Append {
 					target,
 				} => self.exec_append(target)?,
@@ -650,7 +654,7 @@ impl<'a> Vm<'a> {
 			}
 		}
 
-		self.finalize_masked_return();
+		self.finalize_masked_return()?;
 		Ok(())
 	}
 }

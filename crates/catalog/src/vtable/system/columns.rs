@@ -6,10 +6,9 @@ use std::sync::Arc;
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -70,19 +69,19 @@ impl BaseVTable for SystemColumnsTable {
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(column_ids)),
-			ColumnWithName::new(Fragment::internal("object_id"), ColumnBuffer::uint8(object_ids)),
-			ColumnWithName::new(Fragment::internal("object_type"), ColumnBuffer::uint1(object_types)),
-			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(column_names)),
-			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(column_types)),
-			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint1(positions)),
-			ColumnWithName::new(Fragment::internal("auto_increment"), ColumnBuffer::bool(auto_increments)),
-			ColumnWithName::new(Fragment::internal("dictionary_id"), ColumnBuffer::uint8(dictionary_ids)),
+			factory::uint8("id", column_ids),
+			factory::uint8("object_id", object_ids),
+			factory::uint1("object_type", object_types),
+			factory::utf8("name", column_names),
+			factory::uint1("type", column_types),
+			factory::uint1("position", positions),
+			factory::bool("auto_increment", auto_increments),
+			factory::uint8("dictionary_id", dictionary_ids),
 		];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

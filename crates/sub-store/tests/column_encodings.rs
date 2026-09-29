@@ -17,7 +17,7 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_value::value::{Value, duration::Duration, system_columns::column_view};
 
 const ROWS: usize = 3;
 
@@ -109,24 +109,24 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 
 	let mut reader = SnapshotReader::new(block, 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
-	assert_eq!(batch.row_count(), ROWS);
+	assert_eq!(batch.num_rows(), ROWS);
 
-	let ids = batch.column("id").expect("id column");
-	let tags = batch.column("tag").expect("tag column");
-	let notes = batch.column("note").expect("note column");
+	let ids = column_view(&batch, "id").expect("id view").expect("id column");
+	let tags = column_view(&batch, "tag").expect("tag view").expect("tag column");
+	let notes = column_view(&batch, "note").expect("note view").expect("note column");
 
 	let mut seen: Vec<i32> = Vec::new();
 	for i in 0..ROWS {
-		match ids.data().get_value(i) {
+		match ids.get_value(i) {
 			Value::Int4(v) => seen.push(v),
 			other => panic!("row {i}: id expected Int4, got {other:?}"),
 		}
-		match tags.data().get_value(i) {
+		match tags.get_value(i) {
 			Value::Utf8(s) => assert_eq!(s, "same", "row {i}: constant column decoded to the wrong value"),
 			other => panic!("row {i}: tag expected Utf8, got {other:?}"),
 		}
 		assert!(
-			matches!(notes.data().get_value(i), Value::None { .. }),
+			matches!(notes.get_value(i), Value::None { .. }),
 			"row {i}: an all-none column must decode back to none, never to a default value"
 		);
 	}

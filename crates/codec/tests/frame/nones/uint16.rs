@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	container::wide_int_array::wide_array, frame::data::FrameColumnData, value_type::ValueType,
-};
+use reifydb_value::value::{container::wide_int_array::wide_array, value_type::ValueType};
 
-fn make(v: Vec<u128>) -> FrameColumnData {
-	FrameColumnData::Uint16(wide_array(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<u128>) -> ColumnData {
+	data(ValueType::Uint16, wide_array(v))
 }
 
 crate::nones_tests! {

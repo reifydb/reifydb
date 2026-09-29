@@ -8,9 +8,9 @@ pub mod extern_c;
 pub mod extern_wasm;
 pub mod registry;
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
 use reifydb_value::Result;
 
 pub trait Transform: Send + Sync {
-	fn apply(&self, ctx: &context::TransformContext, input: Columns) -> Result<Columns>;
+	fn apply(&self, ctx: &context::TransformContext, input: RecordBatch) -> Result<RecordBatch>;
 }

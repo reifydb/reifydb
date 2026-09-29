@@ -48,11 +48,9 @@ fn seeded_ordered_db() -> TestDb {
 fn column(frames: &[Frame], name: &str) -> Value {
 	frames.first()
 		.expect("no frame")
-		.columns
-		.iter()
-		.find(|c| c.name == name)
+		.column(name)
+		.expect("the column reads")
 		.unwrap_or_else(|| panic!("no `{name}` column"))
-		.data
 		.get_value(0)
 }
 

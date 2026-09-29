@@ -888,23 +888,16 @@ impl ReifyClient for GrpcClient {
 
 #[cfg(test)]
 mod tests {
-	use arrow_array::Int32Array;
 	use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
-	use reifydb_value::value::{
-		Value,
-		diff_type::DiffType,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	};
+	use reifydb_core::value::{batch::batch, column::factory};
+	use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame};
 
 	use super::{GrpcChange, batch_change_entry, change_from_rbcf};
 	use crate::ChangeKind;
 
 	fn update_frame(id: i32) -> Frame {
-		Frame::new(vec![FrameColumn {
-			name: "id".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![id])),
-		}])
-		.with_op(DiffType::Update)
+		Frame::from(batch(vec![factory::int4("id", [id])]).expect("an int4 column forms a batch"))
+			.with_op(DiffType::Update)
 	}
 
 	fn rbcf(frames: &[Frame]) -> Vec<u8> {
@@ -931,7 +924,12 @@ mod tests {
 		assert_eq!(change.decode_error, None);
 		assert_eq!(change.changes.len(), 1);
 		assert_eq!(change.changes[0].kind, ChangeKind::Update);
-		assert_eq!(change.changes[0].frame.columns[0].data.get_value(0), Value::Int4(7));
+		let id = change.changes[0]
+			.frame
+			.column("id")
+			.expect("the id column reads")
+			.expect("the id column decodes");
+		assert_eq!(id.get_value(0), Value::Int4(7));
 	}
 
 	#[test]

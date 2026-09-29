@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
 use reifydb_routine::procedure::identity::{
 	remove_attribute::RemoveIdentityAttribute, set_attribute::SetIdentityAttribute,
 };
@@ -11,7 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, value_type::ValueType},
+	value::{Value, column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
 fn run_set(
@@ -19,7 +19,7 @@ fn run_set(
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
 	args: Vec<Value>,
-) -> Result<Columns, RoutineError> {
+) -> Result<RecordBatch, RoutineError> {
 	let services = t.services();
 	let catalog = t.catalog();
 	let params = Params::from(args);
@@ -33,7 +33,7 @@ fn run_set(
 		catalog: &catalog,
 		ioc: t.ioc(),
 	};
-	SetIdentityAttribute::new().execute(&mut ctx, &Columns::empty())
+	SetIdentityAttribute::new().execute(&mut ctx, &[])
 }
 
 fn run_remove(
@@ -41,7 +41,7 @@ fn run_remove(
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
 	args: Vec<Value>,
-) -> Result<Columns, RoutineError> {
+) -> Result<RecordBatch, RoutineError> {
 	let services = t.services();
 	let catalog = t.catalog();
 	let params = Params::from(args);
@@ -55,11 +55,11 @@ fn run_remove(
 		catalog: &catalog,
 		ioc: t.ioc(),
 	};
-	RemoveIdentityAttribute::new().execute(&mut ctx, &Columns::empty())
+	RemoveIdentityAttribute::new().execute(&mut ctx, &[])
 }
 
-fn column_value(columns: &Columns, index: usize) -> Value {
-	columns.columns[index].get_value(0)
+fn column_value(columns: &RecordBatch, index: usize) -> Value {
+	ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))).unwrap().get_value(0)
 }
 
 fn stored_value(t: &TestEngine, tx: &mut Transaction<'_>, user: &str, attribute: &str) -> Option<String> {

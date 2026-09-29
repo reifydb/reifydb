@@ -2,10 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::UInt32Array;
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::value_type::ValueType;
 
-fn make(v: Vec<u32>) -> FrameColumnData {
-	FrameColumnData::Uint4(UInt32Array::from(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<u32>) -> ColumnData {
+	data(ValueType::Uint4, UInt32Array::from(v))
 }
 
 crate::plain_tests! {

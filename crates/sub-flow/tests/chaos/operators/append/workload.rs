@@ -3,6 +3,7 @@
 
 //! The append family's corpus: N inputs numbering their own rows, and a change carrying all of them.
 
+use arrow_array::RecordBatch;
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -10,15 +11,21 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_testing_chaos::operator::{
 	view::OutputKey,
 	workload::{Lanes, Op, Workload},
 };
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, with_system_column},
+	value_type::ValueType,
 };
 
 pub const APPEND_OPERATOR: OperatorId = OperatorId(20);
@@ -40,7 +47,7 @@ pub struct AppendRow {
 	pub value: i64,
 }
 
-fn columns_of(rows: &[&AppendRow]) -> Columns {
+fn columns_of(rows: &[&AppendRow]) -> RecordBatch {
 	let mut buffers: Vec<ColumnBuilder> =
 		COLUMNS.iter().map(|(_, ty)| ColumnBuilder::with_capacity(ty.clone(), rows.len())).collect();
 	for row in rows {
@@ -48,12 +55,10 @@ fn columns_of(rows: &[&AppendRow]) -> Columns {
 		buffers[1].push_value(Value::Int8(row.source.0 as i64));
 		buffers[2].push_value(Value::Int8(row.value));
 	}
-	let columns = COLUMNS
-		.iter()
-		.zip(buffers)
-		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer.finish()))
-		.collect();
-	Columns::new(columns).with_row_numbers(rows.iter().map(|row| row.source).collect())
+	let columns = COLUMNS.iter().zip(buffers).map(|((name, _), buffer)| buffer.finish(name)).collect();
+	let columns = batch(columns).expect("the append columns form a batch");
+	let numbers = factory::uint8(SystemColumn::RowNumbers.name(), rows.iter().map(|row| row.source.0)).1;
+	with_system_column(columns, SystemColumn::RowNumbers, numbers).expect("#rownum attaches")
 }
 
 fn tagged(mut diff: Diff, idx: usize) -> Diff {

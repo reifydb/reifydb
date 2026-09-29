@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	decimal::Decimal,
@@ -15,7 +15,7 @@ const WIDTHS: [Precision; 2] = [Precision::new(38), Precision::MAX];
 
 fn round_trip_at_every_width(label: &str, scale: Scale, values: &[Decimal]) {
 	for precision in WIDTHS {
-		let input = ColumnBuffer::decimal(precision, scale, values.iter().cloned());
+		let input = factory::decimal("c", precision, scale, values.iter().cloned());
 		let output = round_trip_column("d", input.clone());
 		assert_column_eq(&format!("{label} at precision {}", precision.value()), &input, &output);
 	}
@@ -56,7 +56,8 @@ fn decimal_narrow_width_edge() {
 #[test]
 fn decimal_high_precision() {
 	// 32 integer digits at scale 31 need 63 digits, so only the 32 byte cell holds the column.
-	let input = ColumnBuffer::decimal(
+	let input = factory::decimal(
+		"c",
 		Precision::MAX,
 		Scale::new(31),
 		[
@@ -77,7 +78,8 @@ fn decimal_thirty_two_rows() {
 #[test]
 fn decimal_with_undefined() {
 	for precision in WIDTHS {
-		let input = ColumnBuffer::decimal_with_bitvec(
+		let input = factory::decimal_with_bitvec(
+			"c",
 			precision,
 			Scale::new(4),
 			[

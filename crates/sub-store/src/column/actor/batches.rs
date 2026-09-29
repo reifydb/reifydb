@@ -3,17 +3,25 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_column::{
 	compress::Compressor,
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
-	value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical},
+	value::{
+		batch::concat_columns,
+		column::{data::canonical::Canonical, factory},
+	},
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{system_columns::SystemColumn, value_type::ValueType},
+	value::{
+		system_columns::{SystemColumn, created_at, partitions, row_numbers, system_column, time, updated_at},
+		value_type::ValueType,
+	},
 };
 
 use crate::column::error::SubStoreError;
@@ -39,40 +47,27 @@ fn carries_time(time: &TimeSource) -> bool {
 
 pub fn column_block_from_batches(
 	schema: Vec<(String, ValueType)>,
-	batches: Vec<Columns>,
+	batches: Vec<RecordBatch>,
 	version: CommitVersion,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
 	let timed = schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Time));
 	let partitioned =
 		schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Partitions));
-	for batch in &batches {
-		let time = batch.time().len();
-		let rows = batch.row_count();
-		let partitions = batch.system.partitions().len();
-		let expected_partitions = if partitioned {
-			rows
-		} else {
-			0
-		};
-		if partitions != expected_partitions {
+	for batch in batches.iter().filter(|batch| batch.num_rows() > 0) {
+		let partitions_present = system_column(batch, SystemColumn::Partitions).is_some();
+		if partitions_present != partitioned {
 			return Err(SubStoreError::PartitionMismatch {
 				partitioned,
-				partitions,
-				rows,
+				present: partitions_present,
 			}
 			.into());
 		}
-		let expected = if timed {
-			rows
-		} else {
-			0
-		};
-		if time != expected {
+		let time_present = system_column(batch, SystemColumn::Time).is_some();
+		if time_present != timed {
 			return Err(SubStoreError::TimeMismatch {
 				timed,
-				time,
-				rows,
+				present: time_present,
 			}
 			.into());
 		}
@@ -88,7 +83,7 @@ pub fn column_block_from_batches(
 			Some(sc) => system_column_buffer(sc, &batches, version)?,
 			None => user_column_buffer(name, &batches)?,
 		};
-		let canonical = Canonical::from_column_buffer(&combined)?;
+		let canonical = Canonical::from_column(&combined)?;
 		reifydb_assertions! {
 			let rows = canonical.len();
 			match block_rows {
@@ -102,7 +97,7 @@ pub fn column_block_from_batches(
 				),
 			}
 		}
-		let nullable = canonical.nullable;
+		let nullable = canonical.view().is_nullable();
 		let array = compressor.compress(&canonical)?;
 		chunked.push(ColumnChunks::single(ty.clone(), nullable, array));
 	}
@@ -119,29 +114,30 @@ pub fn column_block_from_batches(
 	Ok(ColumnBlock::new(schema_arc, chunked))
 }
 
-fn user_column_buffer(name: &str, batches: &[Columns]) -> Result<ColumnBuffer> {
-	let mut combined: Option<ColumnBuffer> = None;
+fn user_column_buffer(name: &str, batches: &[RecordBatch]) -> Result<(FieldRef, ArrayRef)> {
+	let mut parts: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(batches.len());
 	for batch in batches {
-		let column = batch.iter().find(|c| c.name().text() == name).ok_or_else(|| {
+		let (index, _) = batch.schema_ref().column_with_name(name).ok_or_else(|| {
 			SubStoreError::MissingColumnInBatch {
 				column: name.to_string(),
 			}
 		})?;
-		let data = column.data().clone();
-		match combined.as_mut() {
-			None => combined = Some(data),
-			Some(acc) => acc.extend(data)?,
-		}
+		parts.push((batch.schema_ref().fields()[index].clone(), batch.column(index).clone()));
 	}
-	combined.ok_or_else(|| {
-		SubStoreError::NoBatchesForMaterialization {
+	if parts.is_empty() {
+		return Err(SubStoreError::NoBatchesForMaterialization {
 			column: name.to_string(),
 		}
-		.into()
-	})
+		.into());
+	}
+	concat_columns(&parts)
 }
 
-fn system_column_buffer(sc: SystemColumn, batches: &[Columns], version: CommitVersion) -> Result<ColumnBuffer> {
+fn system_column_buffer(
+	sc: SystemColumn,
+	batches: &[RecordBatch],
+	version: CommitVersion,
+) -> Result<(FieldRef, ArrayRef)> {
 	if batches.is_empty() {
 		return Err(SubStoreError::NoBatchesForMaterialization {
 			column: sc.name().to_string(),
@@ -150,58 +146,53 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns], version: CommitVe
 	}
 	match sc {
 		SystemColumn::RowNumbers => {
-			let total: usize = batches.iter().map(|b| b.row_numbers().len()).sum();
-			let mut values = Vec::with_capacity(total);
+			let mut values = Vec::new();
 			for batch in batches {
-				for rn in batch.row_numbers().iter() {
+				for rn in row_numbers(batch)?.iter() {
 					values.push(rn.0);
 				}
 			}
-			Ok(ColumnBuffer::uint8(values))
+			Ok(factory::uint8(sc.name(), values))
 		}
 		SystemColumn::Partitions => {
-			let total: usize = batches.iter().map(|b| b.system.partitions().len()).sum();
-			let mut values = Vec::with_capacity(total);
+			let mut values = Vec::new();
 			for batch in batches {
-				for partition in batch.system.partitions().iter() {
+				for partition in partitions(batch)?.iter() {
 					values.push(partition.0);
 				}
 			}
-			Ok(ColumnBuffer::uint16(values))
+			Ok(factory::uint16(sc.name(), values))
 		}
 		SystemColumn::CreatedAt => {
-			let total: usize = batches.iter().map(|b| b.created_at().len()).sum();
-			let mut values = Vec::with_capacity(total);
+			let mut values = Vec::new();
 			for batch in batches {
-				for ts in batch.created_at().iter() {
+				for ts in created_at(batch)?.iter() {
 					values.push(*ts);
 				}
 			}
-			Ok(ColumnBuffer::datetime(values))
+			Ok(factory::datetime(sc.name(), values))
 		}
 		SystemColumn::UpdatedAt => {
-			let total: usize = batches.iter().map(|b| b.updated_at().len()).sum();
-			let mut values = Vec::with_capacity(total);
+			let mut values = Vec::new();
 			for batch in batches {
-				for ts in batch.updated_at().iter() {
+				for ts in updated_at(batch)?.iter() {
 					values.push(*ts);
 				}
 			}
-			Ok(ColumnBuffer::datetime(values))
+			Ok(factory::datetime(sc.name(), values))
 		}
 		SystemColumn::Time => {
-			let total: usize = batches.iter().map(|b| b.time().len()).sum();
-			let mut values = Vec::with_capacity(total);
+			let mut values = Vec::new();
 			for batch in batches {
-				for ts in batch.time().iter() {
+				for ts in time(batch)?.iter() {
 					values.push(*ts);
 				}
 			}
-			Ok(ColumnBuffer::datetime(values))
+			Ok(factory::datetime(sc.name(), values))
 		}
 		SystemColumn::CommitVersion => {
-			let total: usize = batches.iter().map(|b| b.row_count()).sum();
-			Ok(ColumnBuffer::uint8(vec![version.0; total]))
+			let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+			Ok(factory::uint8(sc.name(), vec![version.0; total]))
 		}
 	}
 }

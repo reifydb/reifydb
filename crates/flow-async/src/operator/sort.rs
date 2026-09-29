@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	value::column::columns::Columns,
 };
 use reifydb_value::Result;
 
 use crate::operator::{HostOperator, host::HostContext};
 
 pub struct SortOperator {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent_schema: Option<Columns>, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
+	pub fn new(parent_schema: Option<SchemaRef>, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent_schema,
 			operator,
@@ -25,7 +25,7 @@ impl SortOperator {
 		}
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}
 }
@@ -45,7 +45,7 @@ impl HostOperator for SortOperator {
 		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }

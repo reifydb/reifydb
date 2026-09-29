@@ -6,8 +6,8 @@ pub mod workload;
 
 use std::sync::Arc;
 
+use arrow_schema::Schema;
 use rand::RngExt;
-use reifydb_core::value::column::columns::Columns;
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::gate::GateOperator;
 use reifydb_rql::expression::parse_expression;
@@ -38,7 +38,7 @@ pub fn condition(threshold: i64) -> String {
 
 pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator {
 	GateOperator::new(
-		Some(Columns::empty()),
+		Some(Arc::new(Schema::empty())),
 		GATE_OPERATOR,
 		parse_expression(&condition(threshold)).expect("the gate condition parses"),
 		routines(),

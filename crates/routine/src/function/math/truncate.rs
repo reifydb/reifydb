@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, rename};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::decimal_array::{decimal_array, decimals},
+	column_view::{ColumnView, ViewData},
+	container::decimal_array::decimals,
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -38,12 +41,16 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		let result_data = match data {
-			ColumnBuffer::Float4(container) => {
+		let result_data = match &data.data {
+			ViewData::Float4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -55,9 +62,9 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float4_with_bitvec(data, res_bitvec)
+				float4_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Float8(container) => {
+			ViewData::Float8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -69,9 +76,9 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
+				float8_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ColumnBuffer::Decimal(container) => {
+			ViewData::Decimal(container) => {
 				let precision = container.precision();
 				let scale = container.scale();
 				let mut data = Vec::with_capacity(row_count);
@@ -87,20 +94,20 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 						})?;
 					data.push(rounded);
 				}
-				ColumnBuffer::Decimal(decimal_array(precision, scale, data))
+				decimal(ctx.fragment.text(), precision, scale, data)
 			}
-			other if other.get_type().is_number() => data.clone(),
-			other => {
+			_ if data.get_type().is_number() => rename(args[0].clone(), ctx.fragment.text()),
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

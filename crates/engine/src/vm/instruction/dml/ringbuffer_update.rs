@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	ringbuffer::EncodedRingBufferRow,
@@ -30,7 +31,7 @@ use reifydb_core::{
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::UpdateRingBufferNode;
@@ -39,7 +40,13 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value,
+		column_view::ColumnView,
+		identity::IdentityId,
+		row_number::RowNumber,
+		system_columns::{self, row_numbers, user_columns},
+	},
 };
 
 use super::{
@@ -68,7 +75,7 @@ pub(crate) fn update_ringbuffer(
 	plan: UpdateRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let UpdateRingBufferNode {
 		input,
 		target,
@@ -93,7 +100,7 @@ pub(crate) fn update_ringbuffer(
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		if columns.row_count() == 0 {
+		if columns.num_rows() == 0 {
 			continue;
 		}
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -104,22 +111,26 @@ pub(crate) fn update_ringbuffer(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if let Some(unknown) =
-			columns.names.iter().find(|name| !ringbuffer.columns.iter().any(|c| c.name == name.text()))
+		if let Some((unknown, _)) = user_columns(&columns)
+			.find(|(field, _)| !ringbuffer.columns.iter().any(|c| &c.name == field.name()))
 		{
-			return_error!(column_not_found(unknown.clone()));
+			return_error!(column_not_found(Fragment::internal(unknown.name())));
 		}
-		if columns.row_numbers().is_empty() {
+		if row_numbers(&columns)?.is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
 		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, &columns)?;
-		let row_numbers = columns.row_numbers();
+		let row_numbers = row_numbers(&columns)?;
+		let sidecar_partitions = system_columns::partitions(&columns)?;
+		let views: Vec<ColumnView<'_>> = user_columns(&columns)
+			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+			.collect::<Result<_>>()?;
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, col) in columns.iter().enumerate() {
-			column_map.insert(col.name().text(), idx);
+		for (idx, view) in views.iter().enumerate() {
+			column_map.insert(view.field.name().as_str(), idx);
 		}
-		let view = ColumnView {
-			columns: &columns,
+		let view = InputColumns {
+			columns: &views,
 			column_map: &column_map,
 		};
 
@@ -133,10 +144,10 @@ pub(crate) fn update_ringbuffer(
 				&context,
 				row_idx,
 			)?;
-			let partition = if columns.partitions().is_empty() {
+			let partition = if sidecar_partitions.is_empty() {
 				None
 			} else {
-				Some(columns.partitions()[row_idx])
+				Some(sidecar_partitions[row_idx])
 			};
 			let old_row_key = match partition {
 				None => TaggedKey::from(RowKey::new(ringbuffer.id, row_number)),
@@ -191,18 +202,18 @@ pub(crate) fn update_ringbuffer(
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
-		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
-		let mut pre_columns = decode_rows_to_columns(&shape, &pre_rows);
-		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut pre_columns)?;
-		let columns = with_pre_image(columns, &pre_columns);
+		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
+		let columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, columns)?;
+		let pre_columns = decode_rows_to_columns(&shape, &pre_rows)?;
+		let pre_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, pre_columns)?;
+		let columns = with_pre_image(columns, &pre_columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
-	Ok(update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count))
+	update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count)
 }
 
-struct ColumnView<'a> {
-	columns: &'a Columns,
+struct InputColumns<'a> {
+	columns: &'a [ColumnView<'a>],
 	column_map: &'a HashMap<&'a str, usize>,
 }
 
@@ -253,28 +264,25 @@ fn enforce_old_row_policies(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
-	columns: &Columns,
+	columns: &RecordBatch,
 ) -> Result<()> {
 	if txn.identity().is_privileged() {
 		return Ok(());
 	}
 	let ringbuffer = target.ringbuffer;
-	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(columns.row_count());
-	for (row_idx, &row_number) in columns.row_numbers().iter().enumerate() {
-		let old_row_key = if columns.partitions().is_empty() {
+	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(columns.num_rows());
+	let sidecar_partitions = system_columns::partitions(columns)?;
+	for (row_idx, &row_number) in row_numbers(columns)?.iter().enumerate() {
+		let old_row_key = if sidecar_partitions.is_empty() {
 			TaggedKey::from(RowKey::new(ringbuffer.id, row_number))
 		} else {
-			TaggedKey::from(PartitionedRowKey::new(
-				ringbuffer.id,
-				columns.partitions()[row_idx],
-				row_number,
-			))
+			TaggedKey::from(PartitionedRowKey::new(ringbuffer.id, sidecar_partitions[row_idx], row_number))
 		};
 		let bytes = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
 		old_rows.push((row_number, bytes));
 	}
-	let mut old_columns = decode_rows_to_columns(shape, &old_rows);
-	decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut old_columns)?;
+	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
+	let old_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
 		txn,
 		target.namespace.name(),
@@ -291,7 +299,7 @@ fn build_updated_ringbuffer_row(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
-	view: &ColumnView<'_>,
+	view: &InputColumns<'_>,
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
@@ -306,8 +314,8 @@ fn build_updated_ringbuffer_row(
 		let column_ident = view
 			.columns
 			.iter()
-			.find(|col| col.name() == rb_column.name)
-			.map(|col| col.name().clone())
+			.find(|col| col.field.name() == &rb_column.name)
+			.map(|col| Fragment::internal(col.field.name()))
 			.unwrap_or_else(|| Fragment::internal(&rb_column.name));
 		let resolved_column =
 			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
@@ -345,8 +353,8 @@ fn row_belongs_to_any_partition(partitions: &[PartitionedMetadata], row_number: 
 }
 
 #[inline]
-fn update_ringbuffer_result(namespace: &str, ringbuffer: &str, updated: u64) -> Columns {
-	Columns::single_row([
+fn update_ringbuffer_result(namespace: &str, ringbuffer: &str, updated: u64) -> Result<RecordBatch> {
+	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("updated", Value::Uint8(updated)),

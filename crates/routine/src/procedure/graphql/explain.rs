@@ -3,8 +3,10 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use bumpalo::Bump;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::ast::ast::{
 	Ast, AstAppend, AstAppendSource, AstFor, AstFrom, AstInline, AstJoin, AstLet, AstList, AstLiteral, AstSkip,
@@ -46,7 +48,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for GraphqlExplain {
 		false
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let query = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::Utf8(s) => s.as_str().to_string(),
@@ -107,11 +113,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for GraphqlExplain {
 			detail_col.push(detail);
 		}
 
-		Ok(Columns::new(vec![
-			ColumnWithName::new("idx", ColumnBuffer::int4(idx_col)),
-			ColumnWithName::new("kind", ColumnBuffer::utf8(kind_col)),
-			ColumnWithName::new("detail", ColumnBuffer::utf8(detail_col)),
-		]))
+		Ok(batch(vec![
+			factory::int4("idx", idx_col),
+			factory::utf8("kind", kind_col),
+			factory::utf8("detail", detail_col),
+		])?)
 	}
 }
 

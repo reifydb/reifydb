@@ -51,10 +51,10 @@ fn test_batch_subscription_entry_reports_per_frame_changes() {
 			.find(|c| c.kind == ChangeKind::Insert)
 			.expect("the insert should be reported with an Insert kind");
 
-		let id = insert.frame.columns.iter().find(|c| c.name == "id").expect("id column should exist");
-		assert_eq!(id.data.get_value(0), Value::Int4(1));
+		let id = insert.frame.column("id").expect("the id column reads").expect("id column should exist");
+		assert_eq!(id.get_value(0), Value::Int4(1));
 		assert!(
-			!insert.frame.columns.iter().any(|c| c.name == "_op"),
+			insert.frame.column("_op").expect("the _op lookup reads").is_none(),
 			"the op must ride the frame, so it must never appear as a column"
 		);
 

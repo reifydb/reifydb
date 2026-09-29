@@ -19,12 +19,11 @@ fn outcome(t: &TestEngine, rql: &str) -> String {
 			Some(err) => format!("error {}", err.diagnostic().code),
 			None => {
 				let column = result.frames[0]
-					.columns
-					.iter()
-					.find(|c| c.name == "v")
+					.column("v")
+					.unwrap()
 					.unwrap_or_else(|| panic!("no column v in {rql}"));
 				let values: Vec<String> =
-					(0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect();
+					(0..column.len()).map(|i| column.get_value(i).to_string()).collect();
 				format!("ok {values:?}")
 			}
 		},

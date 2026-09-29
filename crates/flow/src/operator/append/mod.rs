@@ -1,17 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::{
-		catalog::flow::OperatorId,
-		change::{Change, ChangeOrigin, Diff},
-	},
-	value::column::columns::Columns,
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::SchemaRef;
+use reifydb_core::interface::{
+	catalog::flow::OperatorId,
+	change::{Change, ChangeOrigin, Diff},
 };
-use reifydb_value::{Result, error::Error, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	error::Error,
+	reifydb_assertions,
+	value::system_columns::{SystemColumn, require_row_numbers, with_system_column},
+};
 use tracing::instrument;
 
-use crate::{error::FlowGraphError, operator::append::lane::AppendLanes};
+use crate::{
+	error::FlowGraphError,
+	operator::{append::lane::AppendLanes, forward_system_columns},
+};
 
 pub mod lane;
 
@@ -21,7 +30,7 @@ mod tests;
 pub struct AppendOperator {
 	operator: OperatorId,
 
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 
 	input_nodes: Vec<OperatorId>,
 
@@ -31,7 +40,7 @@ pub struct AppendOperator {
 impl AppendOperator {
 	pub fn new(
 		operator: OperatorId,
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		input_nodes: Vec<OperatorId>,
 		lanes: AppendLanes,
 	) -> Self {
@@ -61,7 +70,7 @@ impl AppendOperator {
 		}
 	}
 
-	pub fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}
 
@@ -72,8 +81,12 @@ impl AppendOperator {
 		}
 	}
 
-	fn output_row_numbers(&self, parent_index: usize, source: &Columns) -> Vec<RowNumber> {
-		source.row_numbers().iter().map(|source_row| self.lanes.stamp(parent_index, *source_row)).collect()
+	fn output_row_numbers(&self, parent_index: usize, source: &RecordBatch) -> Result<ArrayRef> {
+		Ok(Arc::new(UInt64Array::from_iter_values(
+			require_row_numbers(source)?
+				.iter()
+				.map(|source_row| self.lanes.stamp(parent_index, *source_row).0),
+		)))
 	}
 }
 
@@ -99,7 +112,7 @@ impl AppendOperator {
 					post,
 					..
 				} => {
-					if let Some(d) = self.translate_append_insert(parent_index, post) {
+					if let Some(d) = self.translate_append_insert(parent_index, post)? {
 						result_diffs.push(d);
 					}
 				}
@@ -108,7 +121,7 @@ impl AppendOperator {
 					post,
 					..
 				} => {
-					if let Some(d) = self.translate_append_update(parent_index, pre, post) {
+					if let Some(d) = self.translate_append_update(parent_index, pre, post)? {
 						result_diffs.push(d);
 					}
 				}
@@ -116,7 +129,7 @@ impl AppendOperator {
 					pre,
 					..
 				} => {
-					if let Some(d) = self.translate_append_remove(parent_index, pre) {
+					if let Some(d) = self.translate_append_remove(parent_index, pre)? {
 						result_diffs.push(d);
 					}
 				}
@@ -129,34 +142,43 @@ impl AppendOperator {
 
 impl AppendOperator {
 	#[inline]
-	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn translate_append_insert(&mut self, parent_index: usize, post: Columns) -> Option<Diff> {
-		if post.row_count() == 0 {
-			return None;
+	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn translate_append_insert(&mut self, parent_index: usize, post: RecordBatch) -> Result<Option<Diff>> {
+		if post.num_rows() == 0 {
+			return Ok(None);
 		}
-		let output_row_numbers = self.output_row_numbers(parent_index, &post);
-		Some(Diff::insert(post.with_row_numbers(output_row_numbers)))
+		let output_row_numbers = self.output_row_numbers(parent_index, &post)?;
+		Ok(Some(Diff::insert(restamped(post, output_row_numbers)?)))
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn translate_append_update(&mut self, parent_index: usize, pre: Columns, post: Columns) -> Option<Diff> {
-		if post.row_count() == 0 {
-			return None;
+	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn translate_append_update(
+		&mut self,
+		parent_index: usize,
+		pre: RecordBatch,
+		post: RecordBatch,
+	) -> Result<Option<Diff>> {
+		if post.num_rows() == 0 {
+			return Ok(None);
 		}
-		let output_row_numbers = self.output_row_numbers(parent_index, &pre);
-		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
-		let post_output = post.with_row_numbers(output_row_numbers);
-		Some(Diff::update(pre_output, post_output))
+		let output_row_numbers = self.output_row_numbers(parent_index, &pre)?;
+		let pre_output = restamped(pre, output_row_numbers.clone())?;
+		let post_output = restamped(post, output_row_numbers)?;
+		Ok(Some(Diff::update(pre_output, post_output)))
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn translate_append_remove(&mut self, parent_index: usize, pre: Columns) -> Option<Diff> {
-		if pre.row_count() == 0 {
-			return None;
+	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
+	fn translate_append_remove(&mut self, parent_index: usize, pre: RecordBatch) -> Result<Option<Diff>> {
+		if pre.num_rows() == 0 {
+			return Ok(None);
 		}
-		let output_row_numbers = self.output_row_numbers(parent_index, &pre);
-		Some(Diff::remove(pre.with_row_numbers(output_row_numbers)))
+		let output_row_numbers = self.output_row_numbers(parent_index, &pre)?;
+		Ok(Some(Diff::remove(restamped(pre, output_row_numbers)?)))
 	}
+}
+
+fn restamped(batch: RecordBatch, row_numbers: ArrayRef) -> Result<RecordBatch> {
+	forward_system_columns(&with_system_column(batch, SystemColumn::RowNumbers, row_numbers)?)
 }

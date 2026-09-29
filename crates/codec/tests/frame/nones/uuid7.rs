@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{
-	container::uuid_array::uuid7_array, frame::data::FrameColumnData, uuid::Uuid7, value_type::ValueType,
-};
+use reifydb_value::value::{container::uuid_array::uuid7_array, uuid::Uuid7, value_type::ValueType};
 
-fn make(v: Vec<Uuid7>) -> FrameColumnData {
-	FrameColumnData::Uuid7(uuid7_array(v))
+use crate::common::{ColumnData, data};
+
+fn make(v: Vec<Uuid7>) -> ColumnData {
+	data(ValueType::Uuid7, uuid7_array(v))
 }
 
 crate::nones_tests! {

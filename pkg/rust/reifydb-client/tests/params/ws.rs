@@ -117,13 +117,12 @@ fn a_list_of_records_param_inserts_one_row_per_element() {
 
 		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
 		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-		let id_col = frames[0].columns.iter().find(|c| c.name == "id").unwrap();
-		let label_col = frames[0].columns.iter().find(|c| c.name == "label").unwrap();
-		assert_eq!(id_col.data.len(), 2, "expected one row per list element");
+		let id_col = frames[0].column("id").expect("the id column reads").unwrap();
+		let label_col = frames[0].column("label").expect("the label column reads").unwrap();
+		assert_eq!(id_col.len(), 2, "expected one row per list element");
 
-		let mut rows: Vec<(Value, Value)> = (0..id_col.data.len())
-			.map(|i| (id_col.data.get_value(i), label_col.data.get_value(i)))
-			.collect();
+		let mut rows: Vec<(Value, Value)> =
+			(0..id_col.len()).map(|i| (id_col.get_value(i), label_col.get_value(i))).collect();
 		rows.sort_by_key(|(id, _)| id.to_string());
 		assert_eq!(
 			rows,
@@ -150,13 +149,12 @@ fn a_positional_list_of_records_param_inserts_one_row_per_element() {
 
 		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
 		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-		let id_col = frames[0].columns.iter().find(|c| c.name == "id").unwrap();
-		let label_col = frames[0].columns.iter().find(|c| c.name == "label").unwrap();
-		assert_eq!(id_col.data.len(), 2, "expected one row per list element");
+		let id_col = frames[0].column("id").expect("the id column reads").unwrap();
+		let label_col = frames[0].column("label").expect("the label column reads").unwrap();
+		assert_eq!(id_col.len(), 2, "expected one row per list element");
 
-		let mut rows: Vec<(Value, Value)> = (0..id_col.data.len())
-			.map(|i| (id_col.data.get_value(i), label_col.data.get_value(i)))
-			.collect();
+		let mut rows: Vec<(Value, Value)> =
+			(0..id_col.len()).map(|i| (id_col.get_value(i), label_col.get_value(i))).collect();
 		rows.sort_by_key(|(id, _)| id.to_string());
 		assert_eq!(
 			rows,

@@ -10,13 +10,13 @@ use crate::json::wire_type::WireValueType;
 pub struct ResponseFrame {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub op: Option<u8>,
-	#[serde(default)]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub row_numbers: Vec<u64>,
-	#[serde(default)]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub created_at: Vec<String>,
-	#[serde(default)]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub updated_at: Vec<String>,
-	#[serde(default)]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub time: Vec<String>,
 	pub columns: Vec<ResponseColumn>,
 }

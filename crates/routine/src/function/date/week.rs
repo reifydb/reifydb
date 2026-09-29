@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_arith::temporal::{DatePart, date_part};
-use arrow_array::{Array, Int32Array};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{Array, ArrayRef, Int32Array};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4_with_bitvec;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{container::temporal_array::dates, date::Date, value_type::ValueType},
+	value::{
+		column_view::{ColumnView, ViewData},
+		container::temporal_array::dates,
+		date::Date,
+		value_type::ValueType,
+	},
 };
+
+use crate::function::support::column::array_column;
 
 pub struct DateWeek {
 	info: RoutineInfo,
@@ -62,13 +72,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		let result_data = match data {
-			ColumnBuffer::Date(container) => {
-				let parts = date_part(container, DatePart::Week).map_err(|err| {
+		let result_data = match &data.data {
+			ViewData::Date(container) => {
+				let parts = date_part(*container, DatePart::Week).map_err(|err| {
 					RoutineError::FunctionExecutionFailed {
 						function: ctx.fragment.clone(),
 						reason: err.to_string(),
@@ -83,7 +97,11 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 				})?;
 
 				if parts.null_count() == 0 {
-					ColumnBuffer::Int4(Int32Array::new(parts.values().clone(), None))
+					array_column(
+						ctx.fragment.text(),
+						ValueType::Int4,
+						Arc::new(Int32Array::new(parts.values().clone(), None)),
+					)
 				} else {
 					let values = dates(container);
 					let mut result = Vec::with_capacity(row_count);
@@ -102,20 +120,20 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 						}
 					}
 
-					ColumnBuffer::int4_with_bitvec(result, res_bitvec)
+					int4_with_bitvec(ctx.fragment.text(), result, res_bitvec)
 				}
 			}
-			other => {
+			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![ValueType::Date],
-					actual: other.get_type(),
+					actual: data.get_type(),
 				});
 			}
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(result_data)
 	}
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::frame::data::FrameColumnData;
+use reifydb_value::value::column_view::{ColumnView, ViewData};
 
 use super::EncodedColumn;
 use crate::frame::{
@@ -9,9 +9,12 @@ use crate::frame::{
 	format::Encoding,
 };
 
-pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
-	match inner {
-		FrameColumnData::Utf8(c) => {
+pub(crate) fn try_dict_varlen(view: &ColumnView<'_>) -> Option<EncodedColumn> {
+	match &view.data {
+		ViewData::Utf8 {
+			container: c,
+			..
+		} => {
 			let dict = try_dict_encode_utf8(c, 0.5)?;
 			Some(EncodedColumn {
 				type_code: dict.type_code,
@@ -24,7 +27,10 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 				row_count: 0,
 			})
 		}
-		FrameColumnData::Blob(c) => {
+		ViewData::Blob {
+			container: c,
+			..
+		} => {
 			let dict = try_dict_encode_blob(c, 0.5)?;
 			Some(EncodedColumn {
 				type_code: dict.type_code,

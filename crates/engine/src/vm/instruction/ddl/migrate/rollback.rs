@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationAction},
 	internal_error,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::RollbackMigrationNode};
 use reifydb_transaction::transaction::Transaction;
@@ -23,7 +24,7 @@ pub(crate) fn execute_rollback_migration(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RollbackMigrationNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		Transaction::Test(t) => &mut *t.inner,
@@ -111,5 +112,5 @@ pub(crate) fn execute_rollback_migration(
 		services.catalog.create_migration_event(txn, migration, MigrationAction::Rollback)?;
 	}
 
-	Ok(Columns::single_row([("migrations_rolled_back", Value::Uint4(rollback_count as u32))]))
+	single_row([("migrations_rolled_back", Value::Uint4(rollback_count as u32))])
 }

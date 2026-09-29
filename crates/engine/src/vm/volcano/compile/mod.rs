@@ -19,7 +19,10 @@ use reifydb_rql::{
 	query::QueryPlan as RqlQueryPlan,
 };
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{
+	fragment::Fragment,
+	value::{column_view::ColumnView, system_columns::user_columns},
+};
 use tracing::instrument;
 
 use super::{
@@ -135,9 +138,18 @@ pub(crate) fn compile<'a>(
 					.get(name)
 					.and_then(|var| match var {
 						Variable::Columns {
-							columns: cols,
-							..
-						} => cols.scalar_value().to_usize(),
+							batch,
+						} => user_columns(batch).next().and_then(|(field, array)| {
+							ColumnView::try_from((array, field.as_ref()))
+								.unwrap_or_else(|err| {
+									panic!(
+										"TAKE variable ${} must be readable: {}",
+										name, err
+									)
+								})
+								.get_value(0)
+								.to_usize()
+						}),
 						_ => None,
 					})
 					.unwrap_or_else(|| panic!("TAKE variable ${} must be a numeric value", name)),

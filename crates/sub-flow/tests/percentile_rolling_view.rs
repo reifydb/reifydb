@@ -7,6 +7,7 @@ use std::{
 	sync::Arc,
 };
 
+use arrow_schema::Schema;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{
 	Frame, WithSubsystem, embedded,
@@ -16,7 +17,6 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
 	row::Row,
-	value::column::columns::Columns,
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
@@ -30,7 +30,8 @@ use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_test_harness::assert::rows;
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::value::{
-	Value, datetime::DateTime, digest::Digest, duration::Duration, row_number::RowNumber, value_type::ValueType,
+	Value, datetime::DateTime, digest::Digest, duration::Duration, row_number::RowNumber,
+	system_columns::column_view, value_type::ValueType,
 };
 
 const PPM: u32 = 10_000;
@@ -57,7 +58,7 @@ fn routines() -> Routines {
 fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static str]) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
-			parent_schema: Some(Columns::empty()),
+			parent_schema: Some(Arc::new(Schema::empty())),
 			operator: OperatorId(1),
 			kind: WindowKind::Rolling {
 				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS).unwrap()),
@@ -108,14 +109,15 @@ fn median_of_slot_medians(frame: &BTreeMap<u64, (i64, i64)>) -> Value {
 }
 
 fn published(changes: &[Change], name: &str) -> Value {
-	changes.iter()
+	let post = changes
+		.iter()
 		.flat_map(|change| change.diffs.iter())
 		.filter_map(|diff| diff.post())
 		.next_back()
-		.unwrap_or_else(|| panic!("the window published no row carrying {name}"))
-		.column(name)
+		.unwrap_or_else(|| panic!("the window published no row carrying {name}"));
+	column_view(post, name)
+		.expect("the published row reads")
 		.unwrap_or_else(|| panic!("the published row has no column {name}"))
-		.data()
 		.get_value(0)
 }
 

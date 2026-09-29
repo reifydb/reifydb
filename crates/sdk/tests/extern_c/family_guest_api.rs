@@ -3,11 +3,13 @@
 
 use std::fmt::Debug;
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
-	value::column::buffer::ColumnBuffer,
+	value::column::factory,
 };
 use reifydb_sdk::{
 	error::Result,
@@ -104,7 +106,7 @@ impl ExternCOperator for FamilyEchoOperator {
 	}
 }
 
-fn echo(label: &str, input: ColumnBuffer) {
+fn echo(label: &str, input: (FieldRef, ArrayRef)) {
 	let output = round_trip_column_through::<FamilyEchoOperator>("f", input.clone());
 	assert_column_eq(label, &input, &output);
 }
@@ -119,7 +121,8 @@ fn decimal_reads_and_writes_through_the_guest_api_at_both_widths() {
 	let (narrow, narrow_scale) = (Precision::new(38), Scale::new(10));
 	echo(
 		"decimal at precision 38",
-		ColumnBuffer::decimal_with_bitvec(
+		factory::decimal_with_bitvec(
+			"c",
 			narrow,
 			narrow_scale,
 			decimals(&["9999999999999999999999999999.9999999999", "0", "-0.0000000001"]),
@@ -129,7 +132,8 @@ fn decimal_reads_and_writes_through_the_guest_api_at_both_widths() {
 	let (wide, wide_scale) = (Precision::MAX, Scale::new(40));
 	echo(
 		"decimal at precision 76",
-		ColumnBuffer::decimal(
+		factory::decimal(
+			"c",
 			wide,
 			wide_scale,
 			decimals(&[

@@ -7,11 +7,10 @@ use reifydb_value::value::{frame::frame::Frame, value_type::ValueType};
 fn column_type(frames: &[Frame], name: &str) -> ValueType {
 	let frame = frames.last().expect("at least one frame");
 	let column = frame
-		.columns
-		.iter()
-		.find(|c| c.name == name)
-		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frame.columns));
-	column.data.get_type()
+		.column(name)
+		.unwrap()
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frame.batch.schema()));
+	column.get_type()
 }
 
 fn engine() -> TestEngine {

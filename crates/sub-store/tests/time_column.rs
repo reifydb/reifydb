@@ -5,6 +5,7 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
@@ -17,7 +18,7 @@ use reifydb_column::{
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
 	interface::catalog::id::ColumnSnapshotId,
-	value::column::{ColumnWithName, columns::Columns},
+	value::{batch, column::factory},
 };
 use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_store::{
@@ -27,8 +28,12 @@ use reifydb_sub_store::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
-	Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
-	system_columns::SystemColumns, value_type::ValueType,
+	Value,
+	datetime::DateTime,
+	duration::Duration,
+	identity::IdentityId,
+	system_columns::{SystemColumn, column_view, time, with_system_column},
+	value_type::ValueType,
 };
 
 enum Object {
@@ -92,8 +97,8 @@ fn schema_names(block: &ColumnBlock) -> Vec<&str> {
 	block.schema.iter().map(|(n, _, _)| n.as_str()).collect()
 }
 
-fn datetime_at(columns: &Columns, name: &str, row: usize) -> DateTime {
-	match columns.column(name).expect("column").data().get_value(row) {
+fn datetime_at(columns: &RecordBatch, name: &str, row: usize) -> DateTime {
+	match column_view(columns, name).expect("column view").expect("column").get_value(row) {
 		Value::DateTime(v) => v,
 		other => panic!("row {row}: expected DateTime in {name}, got {other:?}"),
 	}
@@ -139,22 +144,25 @@ fn a_timed_table_block_carries_time_and_a_timeless_one_does_not() {
 		let mut reader = SnapshotReader::new(block, 100);
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch for 3 rows");
-		assert_eq!(batch.row_count(), 3);
+		assert_eq!(batch.num_rows(), 3);
 
 		if !timed {
-			assert!(batch.time().is_empty(), "test::{name} must read back with no #time, not a filled one");
+			assert!(
+				time(&batch).expect("#time").is_empty(),
+				"test::{name} must read back with no #time, not a filled one"
+			);
 			continue;
 		}
-		assert_eq!(batch.time().len(), 3, "test::{name} must read back one #time per row");
+		assert_eq!(time(&batch).expect("#time").len(), 3, "test::{name} must read back one #time per row");
 		let mut ids = BTreeSet::new();
 		for row in 0..3 {
-			let id = match batch.column("id").expect("id column").data().get_value(row) {
+			let id = match column_view(&batch, "id").expect("id view").expect("id column").get_value(row) {
 				Value::Int4(v) => v,
 				other => panic!("row {row}: expected Int4, got {other:?}"),
 			};
 			assert_eq!(datetime_at(&batch, "at", row), at(id as u64), "row {row}: populator value");
 			assert_eq!(
-				batch.time()[row],
+				time(&batch).expect("#time")[row],
 				at(id as u64),
 				"row {row}: #time must be the event time of its own row"
 			);
@@ -208,25 +216,33 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 			let mut reader = SnapshotReader::new(block, 100);
 			let batch = reader.next().expect("batch present").expect("read batch");
 			assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
-			assert_eq!(batch.row_count(), len);
+			assert_eq!(batch.num_rows(), len);
 
 			if timed {
-				assert_eq!(batch.time().len(), len, "test::{name} must read back one #time per row");
+				assert_eq!(
+					time(&batch).expect("#time").len(),
+					len,
+					"test::{name} must read back one #time per row"
+				);
 			} else {
 				assert!(
-					batch.time().is_empty(),
+					time(&batch).expect("#time").is_empty(),
 					"test::{name} must read back with no #time, not a filled one"
 				);
 			}
 			for row in 0..len {
-				let k = match batch.column("k").expect("k column").data().get_value(row) {
+				let k = match column_view(&batch, "k")
+					.expect("k view")
+					.expect("k column")
+					.get_value(row)
+				{
 					Value::Uint8(v) => v,
 					other => panic!("row {row}: expected Uint8, got {other:?}"),
 				};
 				assert_eq!(datetime_at(&batch, "at", row), at(k), "row {row}: populator value");
 				if timed {
 					assert_eq!(
-						batch.time()[row],
+						time(&batch).expect("#time")[row],
 						at(k),
 						"row {row}: #time must be the event time of its row"
 					);
@@ -245,21 +261,27 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 	db.stop();
 }
 
+fn stamped(created: DateTime, timed: bool) -> RecordBatch {
+	let columns = batch::batch(vec![factory::int4("id", [1, 2])]).expect("id batch");
+	let columns = with_system_column(columns, SystemColumn::RowNumbers, factory::uint8("#rownum", [1u64, 2]).1)
+		.expect("#rownum");
+	let columns =
+		with_system_column(columns, SystemColumn::CreatedAt, factory::datetime("#created_at", [created; 2]).1)
+			.expect("#created_at");
+	let columns =
+		with_system_column(columns, SystemColumn::UpdatedAt, factory::datetime("#updated_at", [created; 2]).1)
+			.expect("#updated_at");
+	if !timed {
+		return columns;
+	}
+	with_system_column(columns, SystemColumn::Time, factory::datetime("#time", [created; 2]).1).expect("#time")
+}
+
 #[test]
 fn a_timed_block_refuses_a_batch_without_time() {
 	// Writing it would pair a zero-row #time with full columns, silently in builds without assertions.
 	let created = DateTime::from_ymd_hms(2020, 1, 1, 0, 0, 0).unwrap();
-	let batch = Columns::with_system(
-		vec![ColumnWithName::int4("id", [1, 2])],
-		SystemColumns::new(
-			vec![RowNumber(1), RowNumber(2)],
-			Vec::new(),
-			vec![created; 2],
-			vec![created; 2],
-			Vec::new(),
-			Vec::new(),
-		),
-	);
+	let batch = stamped(created, false);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::Processing, false));
 
@@ -279,17 +301,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 fn a_timeless_block_refuses_a_batch_that_carries_time() {
 	// Dropping the stamps would hide that the rows and the object's time declaration disagree.
 	let created = DateTime::from_ymd_hms(2020, 1, 1, 0, 0, 0).unwrap();
-	let batch = Columns::with_system(
-		vec![ColumnWithName::int4("id", [1, 2])],
-		SystemColumns::new(
-			vec![RowNumber(1), RowNumber(2)],
-			Vec::new(),
-			vec![created; 2],
-			vec![created; 2],
-			vec![created; 2],
-			Vec::new(),
-		),
-	);
+	let batch = stamped(created, true);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::None, false));
 

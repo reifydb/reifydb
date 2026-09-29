@@ -52,7 +52,7 @@ impl Arena {
 			// until every `diff_type` discriminant is written.
 			unsafe {
 				for (i, diff) in change.diffs.iter().enumerate() {
-					let marshalled = self.marshal_diff(diff);
+					let marshalled = self.marshal_diff(diff)?;
 					*diffs_array.add(i) = marshalled;
 				}
 			}
@@ -111,15 +111,15 @@ impl Arena {
 	}
 
 	#[instrument(name = "flow::marshal::diff", level = "trace", skip_all, fields(diff_type = ?diff.kind()))]
-	fn marshal_diff(&mut self, diff: &Diff) -> ExternCDiff {
-		match diff {
+	fn marshal_diff(&mut self, diff: &Diff) -> Result<ExternCDiff> {
+		Ok(match diff {
 			Diff::Insert {
 				post,
 				..
 			} => ExternCDiff {
 				diff_type: DiffType::Insert,
 				pre: ExternCColumns::empty(),
-				post: self.marshal_columns(post),
+				post: self.marshal_columns(post)?,
 			},
 			Diff::Update {
 				pre,
@@ -127,17 +127,17 @@ impl Arena {
 				..
 			} => ExternCDiff {
 				diff_type: DiffType::Update,
-				pre: self.marshal_columns(pre),
-				post: self.marshal_columns(post),
+				pre: self.marshal_columns(pre)?,
+				post: self.marshal_columns(post)?,
 			},
 			Diff::Remove {
 				pre,
 				..
 			} => ExternCDiff {
 				diff_type: DiffType::Remove,
-				pre: self.marshal_columns(pre),
+				pre: self.marshal_columns(pre)?,
 				post: ExternCColumns::empty(),
 			},
-		}
+		})
 	}
 }

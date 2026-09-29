@@ -3119,7 +3119,9 @@ dependencies = [
 name = "reifydb-benches"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "hdrhistogram",
  "rand 0.10.1",
  "reifydb",
@@ -3151,6 +3153,8 @@ version = "0.9.3"
 name = "reifydb-catalog"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "crossbeam-skiplist",
  "once_cell",
  "postcard",
@@ -3178,6 +3182,7 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
@@ -3205,6 +3210,7 @@ name = "reifydb-client"
 version = "0.9.3"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "async-trait",
  "bs58",
  "ed25519-dalek",
@@ -3245,6 +3251,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "crc32fast",
  "postcard",
  "reifydb-build",
@@ -3264,13 +3271,17 @@ name = "reifydb-column"
 version = "0.9.3"
 dependencies = [
  "arrow-arith",
+ "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
+ "arrow-select",
  "postcard",
  "reifydb-build",
  "reifydb-core",
  "reifydb-value",
  "serde",
  "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -3327,6 +3338,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-ord",
  "arrow-row",
+ "arrow-schema",
  "bumpalo",
  "indexmap",
  "postcard",
@@ -3369,6 +3381,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-ord",
+ "arrow-schema",
  "reifydb-build",
  "reifydb-core",
  "reifydb-routine-abi",
@@ -3393,6 +3406,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "libloading 0.9.0",
  "object",
  "postcard",
@@ -3407,7 +3421,6 @@ dependencies = [
  "reifydb-value",
  "reifydb-wasm",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -3427,6 +3440,8 @@ dependencies = [
 name = "reifydb-flow"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -3448,6 +3463,7 @@ name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "dashmap",
  "indexmap",
  "postcard",
@@ -3479,6 +3495,8 @@ dependencies = [
 name = "reifydb-flow-sync"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "postcard",
  "reifydb-build",
  "reifydb-codec",
@@ -3496,6 +3514,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "reifydb-codec",
  "reifydb-macro-impl",
  "reifydb-runtime",
@@ -3515,6 +3534,7 @@ dependencies = [
 name = "reifydb-node"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "napi",
  "napi-build",
  "napi-derive",
@@ -3533,6 +3553,7 @@ dependencies = [
 name = "reifydb-policy"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "bumpalo",
  "reifydb-build",
  "reifydb-catalog",
@@ -3578,6 +3599,7 @@ dependencies = [
  "arrow-arith",
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "arrow-string",
  "bumpalo",
  "indexmap",
@@ -3606,7 +3628,9 @@ dependencies = [
 name = "reifydb-routine-abi"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "indexmap",
  "reifydb-build",
  "reifydb-catalog",
@@ -3694,6 +3718,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-schema",
  "bumpalo",
  "postcard",
  "rand 0.10.1",
@@ -3888,6 +3913,7 @@ dependencies = [
 name = "reifydb-sub-core"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "dashmap",
  "reifydb-build",
  "reifydb-client",
@@ -3908,6 +3934,8 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "indexmap",
  "libloading 0.9.0",
@@ -3977,6 +4005,8 @@ dependencies = [
 name = "reifydb-sub-metrics"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "libc",
  "reifydb",
@@ -4010,7 +4040,6 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.9.3"
 dependencies = [
- "arrow-buffer",
  "futures-util",
  "indexmap",
  "libc",
@@ -4052,7 +4081,7 @@ name = "reifydb-sub-server-grpc"
 version = "0.9.3"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
+ "arrow-schema",
  "futures-util",
  "prost",
  "reifydb-auth",
@@ -4119,7 +4148,7 @@ name = "reifydb-sub-server-ws"
 version = "0.9.3"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
+ "arrow-schema",
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
@@ -4146,6 +4175,8 @@ dependencies = [
 name = "reifydb-sub-store"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "reifydb",
  "reifydb-build",
@@ -4169,6 +4200,8 @@ dependencies = [
 name = "reifydb-sub-subscription"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "postcard",
  "rand 0.10.1",
@@ -4228,6 +4261,7 @@ dependencies = [
 name = "reifydb-subscription"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
@@ -4284,6 +4318,7 @@ dependencies = [
 name = "reifydb-testing-chaos"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "rand 0.10.1",
  "reifydb-core",
  "reifydb-runtime",
@@ -4295,6 +4330,7 @@ dependencies = [
 name = "reifydb-testing-flow"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -4332,7 +4368,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
- "postcard",
+ "arrow-schema",
  "rand 0.10.1",
  "reifydb-build",
  "reifydb-codec",
@@ -4344,7 +4380,6 @@ dependencies = [
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
- "serde_json",
  "trybuild",
 ]
 
@@ -4352,6 +4387,7 @@ dependencies = [
 name = "reifydb-transaction"
 version = "0.9.3"
 dependencies = [
+ "arrow-array",
  "crossbeam-skiplist",
  "dashmap",
  "indexmap",

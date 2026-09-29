@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
+use reifydb_value::value::{Value, column_view::FromColumnView, system_columns::column_view};
+
 #[path = "sdk/row_time.rs"]
 mod row_time;
 
@@ -48,3 +51,11 @@ mod plain_session;
 
 #[path = "sdk/windowed_read_error.rs"]
 mod windowed_read_error;
+
+fn read<T: FromColumnView>((batch, row): (&RecordBatch, usize), name: &str) -> Option<T> {
+	column_view(batch, name).unwrap().and_then(|column| column.get_as::<T>(row).unwrap())
+}
+
+fn read_value((batch, row): (&RecordBatch, usize), name: &str) -> Option<Value> {
+	column_view(batch, name).unwrap().map(|column| column.get_value(row))
+}

@@ -3,6 +3,7 @@
 
 use std::{iter, ops::Deref, result::Result as StdResult, sync::Arc};
 
+use arrow_array::Array;
 use bumpalo::Bump;
 use reifydb_catalog::{
 	catalog::Catalog, metrics::storage::metrics::MetricsReader, vtable::system::operator_libary::OperatorLibrary,
@@ -16,7 +17,7 @@ use reifydb_core::{
 		subscription::{SubscribeOptions, SubscribeOutcome},
 	},
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_flow::compiler::compile_subscription_flow_ephemeral;
@@ -39,8 +40,8 @@ use reifydb_value::{
 	error::Error,
 	params::Params,
 	value::{
-		Value, duration::Duration, frame::frame::Frame, identity::IdentityKind, system_columns::SystemColumn,
-		value_type::ValueType,
+		Value, column_view::ColumnView, duration::Duration, frame::frame::Frame, identity::IdentityKind,
+		system_columns::SystemColumn, value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -150,8 +151,8 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 		for attribute in &attributes {
 			fields.push((attribute.name.clone(), Value::none_of(attribute.value_type.clone())));
 		}
-		let columns = Columns::single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())));
-		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
+		let batch = single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())))?;
+		symbols.set("identity".to_string(), Variable::columns(batch), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_identity(tx, identity)? {
@@ -173,8 +174,8 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 				.unwrap_or_else(|| Value::none_of(attribute.value_type.clone()));
 			fields.push((attribute.name.clone(), value));
 		}
-		let columns = Columns::single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())));
-		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
+		let batch = single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())))?;
+		symbols.set("identity".to_string(), Variable::columns(batch), false)?;
 	}
 	Ok(())
 }
@@ -283,16 +284,24 @@ fn execute_compiled_units(
 		let outcome = run_compiled_unit(services, tx, compiled, params, symbols, &mut result);
 		symbols = outcome.symbols;
 
+		let rows_affected = match &outcome.run_result {
+			Ok(()) => match extract_rows_affected(&result) {
+				Ok(n) => n,
+				Err(error) => {
+					return Err(ExecutionFailure {
+						error,
+						partial_metrics: metrics,
+					});
+				}
+			},
+			Err(_) => 0,
+		};
 		metrics.push(StatementMetrics {
 			fingerprint: compiled.fingerprint,
 			normalized_rql: compiled.normalized_rql.clone(),
 			compile_duration: compile_duration_per_unit,
 			execute_duration: outcome.execute_duration,
-			rows_affected: if outcome.run_result.is_ok() {
-				extract_rows_affected(&result)
-			} else {
-				0
-			},
+			rows_affected,
 		});
 
 		if let Err(error) = outcome.run_result {
@@ -333,23 +342,24 @@ fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
 	}
 }
 
-fn extract_rows_affected(result: &[Frame]) -> u64 {
+fn extract_rows_affected(result: &[Frame]) -> Result<u64> {
 	if result.len() == 1 {
-		let frame = &result[0];
-		for col in &frame.columns {
-			match col.name.as_str() {
+		let batch = &result[0].batch;
+		for (field, array) in batch.schema_ref().fields().iter().zip(batch.columns()) {
+			match field.name().as_str() {
 				"inserted" | "updated" | "deleted" => {
-					if col.data.len() == 1
-						&& let Value::Uint8(n) = col.data.get_value(0)
+					if array.len() == 1
+						&& let Value::Uint8(n) =
+							ColumnView::try_from((array, field.as_ref()))?.get_value(0)
 					{
-						return n;
+						return Ok(n);
 					}
 				}
 				_ => {}
 			}
 		}
 	}
-	result.len() as u64
+	Ok(result.len() as u64)
 }
 
 impl Executor {
@@ -509,16 +519,19 @@ impl Executor {
 			let execute_duration = Duration::from_std(start_execute.elapsed());
 			symbols = vm.symbols;
 
+			let rows_affected = match &run_result {
+				Ok(()) => match extract_rows_affected(&result) {
+					Ok(n) => n,
+					Err(e) => return error_result(e, build_metrics(metrics)),
+				},
+				Err(_) => 0,
+			};
 			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
 				compile_duration,
 				execute_duration,
-				rows_affected: if run_result.is_ok() {
-					extract_rows_affected(&result)
-				} else {
-					0
-				},
+				rows_affected,
 			});
 
 			if let Err(e) = run_result {
@@ -650,16 +663,19 @@ impl Executor {
 			let execute_duration = Duration::from_std(start_execute.elapsed());
 			symbols = vm.symbols;
 
+			let rows_affected = match &run_result {
+				Ok(()) => match extract_rows_affected(&result) {
+					Ok(n) => n,
+					Err(e) => return error_result(e, build_metrics(metrics)),
+				},
+				Err(_) => 0,
+			};
 			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
 				compile_duration,
 				execute_duration,
-				rows_affected: if run_result.is_ok() {
-					extract_rows_affected(&result)
-				} else {
-					0
-				},
+				rows_affected,
 			});
 
 			if let Err(e) = run_result {
@@ -710,7 +726,7 @@ impl Executor {
 		)?;
 
 		let mut tx = Transaction::Query(txn);
-		let Some(plan) = self.compiler.compile_query_plan_with_policy(
+		let Some((plan, named_system_columns)) = self.compiler.compile_query_plan_with_policy(
 			&bump,
 			&mut tx,
 			statements.remove(0),
@@ -748,6 +764,7 @@ impl Executor {
 			identity: tx.identity(),
 			symbols,
 			params,
+			named_system_columns,
 		};
 		sub_service.register_subscription(flow_dag, options.hydration.enabled, ctx, &mut tx)?;
 		Ok(SubscribeOutcome::Local {

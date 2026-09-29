@@ -4,8 +4,9 @@
 //! The gauge rule is enforced where tables are born: registration of a `current` table carrying a Counter
 //! column must fail at boot, not surface wrong numbers at query time.
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
-use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricKind, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricKind, value::batch::empty_batch};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::value_type::ValueType;
 
@@ -20,8 +21,8 @@ impl UserVTable for CounterTable {
 		]
 	}
 
-	fn get(&self) -> Columns {
-		Columns::new(vec![])
+	fn get(&self) -> RecordBatch {
+		empty_batch()
 	}
 }
 

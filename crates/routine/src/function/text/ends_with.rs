@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use arrow_string::like::ends_with;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	value_type::ValueType,
+};
+
+use crate::function::support::column::array_column;
 
 pub struct TextEndsWith {
 	info: RoutineInfo,
@@ -35,47 +43,50 @@ impl<'a> Routine<FunctionContext<'a>> for TextEndsWith {
 		ValueType::Boolean
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let str_data = &args[0];
-		let suffix_data = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let str_data = ColumnView::try_from(&args[0])?;
+		let suffix_data = ColumnView::try_from(&args[1])?;
 
-		match (str_data, suffix_data) {
+		match (&str_data.data, &suffix_data.data) {
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: str_container,
 					..
 				},
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					container: suffix_container,
 					..
 				},
 			) => {
-				let result_col_data =
-					ColumnBuffer::Bool(ends_with(str_container, suffix_container).map_err(
-						|err| RoutineError::FunctionExecutionFailed {
-							function: ctx.fragment.clone(),
-							reason: err.to_string(),
-						},
-					)?);
+				let result_col_data = ends_with(*str_container, *suffix_container).map_err(|err| {
+					RoutineError::FunctionExecutionFailed {
+						function: ctx.fragment.clone(),
+						reason: err.to_string(),
+					}
+				})?;
 
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_col_data)]))
+				Ok(array_column(ctx.fragment.text(), ValueType::Boolean, Arc::new(result_col_data)))
 			}
 			(
-				ColumnBuffer::Utf8 {
+				ViewData::Utf8 {
 					..
 				},
-				other,
+				_,
 			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: suffix_data.get_type(),
 			}),
-			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+			(_, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Utf8],
-				actual: other.get_type(),
+				actual: str_data.get_type(),
 			}),
 		}
 	}

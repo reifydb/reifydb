@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	error::{Diagnostic, Error},
-	value::{Value, datetime::DateTime, frame::frame::Frame},
+	value::{Value, datetime::DateTime, frame::frame::Frame, system_columns::SystemColumn},
 };
 
 pub trait ResultAssert<T> {
@@ -101,7 +101,7 @@ impl<'a> FrameAssertion<'a> {
 	}
 
 	pub fn row(&self, index: usize) -> RowAssertion {
-		let rows = self.frame.to_rows();
+		let rows = rows_without_system_columns(self.frame);
 		assert!(index < rows.len(), "row index {index} out of range (total: {})", rows.len());
 		RowAssertion {
 			row: rows.into_iter().nth(index).unwrap(),
@@ -131,8 +131,15 @@ impl RowAssertion {
 	}
 }
 
-pub fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
+fn rows_without_system_columns(frame: &Frame) -> Vec<Vec<(String, Value)>> {
 	frame.to_rows()
+		.into_iter()
+		.map(|row| row.into_iter().filter(|(name, _)| SystemColumn::from_name(name).is_none()).collect())
+		.collect()
+}
+
+pub fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
+	rows_without_system_columns(frame)
 		.into_iter()
 		.map(|row| {
 			row.into_iter()
@@ -144,7 +151,7 @@ pub fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
 }
 
 pub fn rows(frames: &[Frame]) -> Vec<Vec<(String, Value)>> {
-	frames.iter().flat_map(|frame| frame.to_rows()).collect()
+	frames.iter().flat_map(rows_without_system_columns).collect()
 }
 
 pub fn assert_same_rows(actual: &[Frame], expected: &[Frame]) {
@@ -169,7 +176,13 @@ pub struct TimedRow {
 
 pub fn timed_rows(frames: &[Frame]) -> Vec<TimedRow> {
 	frames.iter()
-		.flat_map(|frame| frame.to_rows().into_iter().zip(frame.time().iter().copied()))
+		.flat_map(|frame| {
+			let times: Vec<DateTime> = frame
+				.column("#time")
+				.expect("#time reads")
+				.map_or_else(Vec::new, |view| view.as_slice::<DateTime>().to_vec());
+			rows_without_system_columns(frame).into_iter().zip(times)
+		})
 		.map(|(columns, time)| TimedRow {
 			columns,
 			time,
@@ -200,12 +213,10 @@ pub fn assert_frames_eq(actual: &[Frame], expected: &[Frame]) {
 		actual.len()
 	);
 	for (index, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+		let (actual_rows, expected_rows) = (rows_without_system_columns(a), rows_without_system_columns(e));
 		assert_eq!(
-			a.to_rows(),
-			e.to_rows(),
-			"frame {index} mismatch: expected {:?}, found {:?}",
-			e.to_rows(),
-			a.to_rows()
+			actual_rows, expected_rows,
+			"frame {index} mismatch: expected {expected_rows:?}, found {actual_rows:?}"
 		);
 	}
 }

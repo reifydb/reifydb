@@ -22,7 +22,7 @@ use reifydb_core::{
 	},
 	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
 	row::row_shape_from_columns,
-	value::column::columns::Columns,
+	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
@@ -48,15 +48,15 @@ fn build_ringbuffer_insert_change(
 	shape: &RowShape,
 	row_number: RowNumber,
 	encoded: &EncodedBytes,
-) -> Change {
+) -> Result<Change> {
 	let ids = [row_number];
 	let rows = [encoded.clone()];
-	Change {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, &ids, &rows))],
+		diffs: smallvec![Diff::insert(from_encoded_bytes(shape, &ids, &rows)?)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 fn build_ringbuffer_update_change(
@@ -64,32 +64,32 @@ fn build_ringbuffer_update_change(
 	row_number: RowNumber,
 	pre: &EncodedBytes,
 	post: &EncodedBytes,
-) -> Change {
+) -> Result<Change> {
 	let shape = row_shape_from_columns(RowFamily::RingBuffer, &rb.columns);
 	let ids = [row_number];
 	let pres = [pre.clone()];
 	let posts = [post.clone()];
-	Change {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(
-			Columns::from_encoded_bytes(&shape, &ids, &pres),
-			Columns::from_encoded_bytes(&shape, &ids, &posts),
+			from_encoded_bytes(&shape, &ids, &pres)?,
+			from_encoded_bytes(&shape, &ids, &posts)?,
 		)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
-fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedBytes) -> Change {
+fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedBytes) -> Result<Change> {
 	let shape = row_shape_from_columns(RowFamily::RingBuffer, &rb.columns);
 	let ids = [row_number];
 	let rows = [encoded.clone()];
-	Change {
+	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(&shape, &ids, &rows))],
+		diffs: smallvec![Diff::remove(from_encoded_bytes(&shape, &ids, &rows)?)],
 		changed_at: DateTime::default(),
-	}
+	})
 }
 
 pub fn apply_ringbuffer_partition_metadata_after_delete(
@@ -180,9 +180,11 @@ impl RingBufferOperations for CommandTransaction {
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
-			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &bytes));
+			self.track_flow_change(build_ringbuffer_update_change(
+				ringbuffer, row_number, pre_row, &bytes,
+			)?);
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes)?);
 		}
 
 		Ok(bytes)
@@ -233,7 +235,7 @@ impl RingBufferOperations for CommandTransaction {
 		let pres = [pre.clone()];
 		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
 
-		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes));
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes)?);
 
 		Ok(bytes)
 	}
@@ -265,7 +267,7 @@ impl RingBufferOperations for CommandTransaction {
 		let pre_rows = [pre_for_cdc.clone()];
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc)?);
 
 		Ok(displayed)
 	}
@@ -309,9 +311,11 @@ impl RingBufferOperations for AdminTransaction {
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
-			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &bytes));
+			self.track_flow_change(build_ringbuffer_update_change(
+				ringbuffer, row_number, pre_row, &bytes,
+			)?);
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes)?);
 		}
 
 		Ok(bytes)
@@ -362,7 +366,7 @@ impl RingBufferOperations for AdminTransaction {
 		let pres = [pre.clone()];
 		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
 
-		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes));
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes)?);
 
 		Ok(bytes)
 	}
@@ -394,7 +398,7 @@ impl RingBufferOperations for AdminTransaction {
 		let pre_rows = [pre_for_cdc.clone()];
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc)?);
 
 		Ok(displayed)
 	}

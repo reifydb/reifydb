@@ -3,14 +3,17 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use arrow_array::{Array, ArrayRef};
+use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_row::{RowConverter, Rows};
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
 	expression::{AccessObjectExpression, Expression},
 	interface::identifier::ColumnObject,
 	internal_error,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{empty_batch, head},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -21,13 +24,13 @@ use reifydb_value::{
 	error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{system_columns::SystemColumns, value_type::ValueType},
+	value::{system_columns::user_columns, value_type::ValueType},
 };
 use tracing::instrument;
 
 use super::common::{
 	JoinContext, JoinSlot, ensure_join_keyable, eval_join_condition, join_key_types, load_and_merge_all,
-	materialize_join, resolve_column_names,
+	materialize_join, resolve_column_names, user_key_columns, user_row, user_views,
 };
 use crate::{
 	Result,
@@ -135,8 +138,10 @@ fn access_fragment(acc: &AccessObjectExpression) -> Fragment {
 	}
 }
 
-fn key_index(columns: &Columns, (name, fragment): &(String, Fragment)) -> Result<usize> {
-	columns.iter().position(|c| c.name().text() == name).ok_or_else(|| error!(column_not_found(fragment.clone())))
+fn key_index(columns: &RecordBatch, (name, fragment): &(String, Fragment)) -> Result<usize> {
+	user_columns(columns)
+		.position(|(field, _)| field.name() == name)
+		.ok_or_else(|| error!(column_not_found(fragment.clone())))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -148,16 +153,16 @@ enum HashJoinMode {
 type KeyTable = HashMap<Box<[u8]>, Vec<usize>>;
 
 struct HashJoinState {
-	build_columns: Columns,
+	build_columns: RecordBatch,
 	key_types: Vec<ValueType>,
 	converter: Option<RowConverter>,
 	hash_table: KeyTable,
 	resolved_names: Vec<String>,
-	probe_shells: Vec<ColumnBuffer>,
+	probe_shell: RecordBatch,
 	right_key_indices: Vec<usize>,
 	left_key_indices: Vec<usize>,
 
-	probe_batch: Option<Columns>,
+	probe_batch: Option<RecordBatch>,
 	probe_keys: Option<(Rows, Vec<ArrayRef>)>,
 	probe_row_idx: usize,
 	current_matches: Vec<usize>,
@@ -233,13 +238,10 @@ impl HashJoinNode {
 		state: &mut HashJoinState,
 		probe_slots: &[ProbeSlot],
 		build_picks: &[Option<usize>],
-		has_row_numbers: bool,
-	) -> Result<Columns> {
-		let no_system = SystemColumns::empty();
+	) -> Result<RecordBatch> {
 		let slots: Vec<JoinSlot<'_>> = if probe_slots.is_empty() {
 			vec![JoinSlot {
-				columns: &state.probe_shells,
-				system: &no_system,
+				columns: &state.probe_shell,
 				picks: &[],
 			}]
 		} else {
@@ -247,7 +249,6 @@ impl HashJoinNode {
 				.iter()
 				.map(|slot| JoinSlot {
 					columns: &slot.columns,
-					system: &slot.system,
 					picks: &slot.picks,
 				})
 				.collect()
@@ -255,19 +256,18 @@ impl HashJoinNode {
 		let columns = materialize_join(
 			&state.resolved_names,
 			&slots,
-			&state.build_columns.columns,
+			&state.build_columns,
+			&[],
 			build_picks,
-			state.build_columns.time(),
-			has_row_numbers,
 			state.emitted,
 		)?;
-		state.emitted += columns.row_count() as u64;
+		state.emitted += columns.num_rows() as u64;
 		Ok(columns)
 	}
 
 	fn resolve_without_probe(alias: &Option<Fragment>, state: &mut HashJoinState) {
 		if state.resolved_names.is_empty() {
-			let empty_left = Columns::empty();
+			let empty_left = empty_batch();
 			let resolved = resolve_column_names(&empty_left, &state.build_columns, alias, None);
 			state.resolved_names = resolved.qualified_names;
 		}
@@ -277,16 +277,16 @@ impl HashJoinNode {
 	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
-		let right_key_indices: Vec<usize> = if build_columns.is_empty() {
+		let right_key_indices: Vec<usize> = if user_columns(&build_columns).next().is_none() {
 			Vec::new()
 		} else {
 			self.right_keys.iter().map(|key| key_index(&build_columns, key)).collect::<Result<_>>()?
 		};
-		ensure_join_keyable(&build_columns, &right_key_indices)?;
+		ensure_join_keyable(&user_views(&build_columns)?, &right_key_indices, |key| {
+			self.right_keys[key].1.clone()
+		})?;
 
-		let key_columns: Vec<&ColumnBuffer> =
-			right_key_indices.iter().map(|&idx| &build_columns[idx]).collect();
-		let key_types = key_types(&key_columns);
+		let key_types = key_types(&user_key_columns(&build_columns, &right_key_indices))?;
 		let (converter, hash_table) = key_table(&build_columns, &right_key_indices, &key_types)?;
 
 		let compile_ctx = CompileContext {
@@ -301,7 +301,7 @@ impl HashJoinNode {
 			converter,
 			hash_table,
 			resolved_names: Vec::new(),
-			probe_shells: Vec::new(),
+			probe_shell: empty_batch(),
 			right_key_indices,
 			left_key_indices: Vec::new(),
 			probe_batch: None,
@@ -320,8 +320,7 @@ impl HashJoinNode {
 }
 
 struct ProbeSlot {
-	columns: Vec<ColumnBuffer>,
-	system: SystemColumns,
+	columns: RecordBatch,
 	picks: Vec<usize>,
 }
 
@@ -338,19 +337,18 @@ fn split_key_names(pairs: &[EquiKeyPair]) -> (KeyNamePairs, KeyNamePairs) {
 }
 
 fn key_table(
-	build_columns: &Columns,
+	build_columns: &RecordBatch,
 	key_indices: &[usize],
 	targets: &[ValueType],
 ) -> Result<(Option<RowConverter>, KeyTable)> {
 	let mut hash_table: KeyTable = HashMap::new();
-	if build_columns.is_empty() {
+	if user_columns(build_columns).next().is_none() {
 		return Ok((None, hash_table));
 	}
-	let key_columns: Vec<&ColumnBuffer> = key_indices.iter().map(|&idx| &build_columns[idx]).collect();
-	let (converter, arrays) = key_rows(&key_columns, targets)?;
+	let (converter, arrays) = key_rows(&user_key_columns(build_columns, key_indices), targets)?;
 	let rows =
 		converter.convert_columns(&arrays).map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
-	for j in 0..build_columns.row_count() {
+	for j in 0..build_columns.num_rows() {
 		if arrays.iter().any(|array| array.is_null(j)) {
 			continue;
 		}
@@ -367,15 +365,14 @@ fn key_table(
 
 fn probe_key_rows(
 	converter: Option<&RowConverter>,
-	probe: &Columns,
+	probe: &RecordBatch,
 	key_indices: &[usize],
 	targets: &[ValueType],
 ) -> Result<Option<(Rows, Vec<ArrayRef>)>> {
 	let Some(converter) = converter else {
 		return Ok(None);
 	};
-	let key_columns: Vec<&ColumnBuffer> = key_indices.iter().map(|&idx| &probe[idx]).collect();
-	let arrays = key_arrays(&key_columns, targets);
+	let arrays = key_arrays(&user_key_columns(probe, key_indices), targets);
 	let rows =
 		converter.convert_columns(&arrays).map_err(|e| internal_error!("Failed to build join keys: {}", e))?;
 	Ok(Some((rows, arrays)))
@@ -404,7 +401,7 @@ impl QueryNode for HashJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "HashJoinNode::next() called before initialize()");
 		}
@@ -424,9 +421,8 @@ impl QueryNode for HashJoinNode {
 				return Ok(None);
 			}
 			Self::resolve_without_probe(&self.alias, &mut state);
-			let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
-			let columns = Self::materialize(&mut state, &[], &[], left_rownum)?;
-			self.headers = Some(ColumnHeaders::from_columns(&columns));
+			let columns = Self::materialize(&mut state, &[], &[])?;
+			self.headers = Some(ColumnHeaders::from_batch(&columns));
 			self.state = Some(state);
 			return Ok(Some(columns));
 		}
@@ -436,24 +432,19 @@ impl QueryNode for HashJoinNode {
 
 		if let Some(batch) = state.probe_batch.as_ref() {
 			probe_slots.push(ProbeSlot {
-				columns: batch.columns.clone(),
-				system: batch.system.clone(),
+				columns: batch.clone(),
 				picks: Vec::new(),
 			});
 		}
 
 		let resolve_names_and_indices = |state: &mut HashJoinState,
-		                                 probe: &Columns,
+		                                 probe: &RecordBatch,
 		                                 left_keys: &[(String, Fragment)]|
 		 -> Result<()> {
 			if state.resolved_names.is_empty() {
 				let resolved = resolve_column_names(probe, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
-				state.probe_shells = probe
-					.columns
-					.iter()
-					.map(|column| column.extract_rows(&[]))
-					.collect::<Result<_>>()?;
+				state.probe_shell = head(probe, 0);
 			}
 			if state.left_key_indices.is_empty() {
 				state.left_key_indices =
@@ -470,14 +461,18 @@ impl QueryNode for HashJoinNode {
 				match self.left.next(rx, ctx)? {
 					Some(batch) => {
 						resolve_names_and_indices(&mut state, &batch, &self.left_keys)?;
-						ensure_join_keyable(&batch, &state.left_key_indices)?;
+						let probe_views = user_views(&batch)?;
+						ensure_join_keyable(&probe_views, &state.left_key_indices, |key| {
+							self.left_keys[key].1.clone()
+						})?;
 						let targets = join_key_types(
-							&batch,
+							&probe_views,
 							&state.left_key_indices,
-							&state.build_columns,
+							&user_views(&state.build_columns)?,
 							&state.right_key_indices,
 							|key| self.left_keys[key].1.clone(),
 						)?;
+						drop(probe_views);
 						if targets != state.key_types {
 							let (converter, hash_table) = key_table(
 								&state.build_columns,
@@ -492,13 +487,12 @@ impl QueryNode for HashJoinNode {
 						state.probe_row_idx = 0;
 
 						let probe = state.probe_batch.as_ref().unwrap();
-						if probe.row_count() == 0 {
+						if probe.num_rows() == 0 {
 							state.probe_batch = None;
 							continue;
 						}
 						probe_slots.push(ProbeSlot {
-							columns: probe.columns.clone(),
-							system: probe.system.clone(),
+							columns: probe.clone(),
 							picks: Vec::new(),
 						});
 						state.probe_keys = probe_key_rows(
@@ -523,7 +517,7 @@ impl QueryNode for HashJoinNode {
 			}
 
 			let probe = state.probe_batch.as_ref().unwrap();
-			let probe_row_count = probe.row_count();
+			let probe_row_count = probe.num_rows();
 
 			if state.current_match_idx >= state.current_matches.len() {
 				if self.mode == HashJoinMode::Left && !state.current_row_matched {
@@ -551,12 +545,14 @@ impl QueryNode for HashJoinNode {
 			state.current_match_idx += 1;
 
 			if !state.compiled_residual.is_empty() {
-				let left_row = probe.get_row(state.probe_row_idx);
-				let right_row = state.build_columns.get_row(build_idx);
+				let probe_views = user_views(probe)?;
+				let build_views = user_views(&state.build_columns)?;
+				let left_row = user_row(&probe_views, state.probe_row_idx);
+				let right_row = user_row(&build_views, build_idx);
 				if !eval_join_condition(
 					&state.compiled_residual,
-					probe,
-					&state.build_columns,
+					&probe_views,
+					&build_views,
 					&left_row,
 					&right_row,
 					&self.alias,
@@ -572,7 +568,6 @@ impl QueryNode for HashJoinNode {
 		}
 
 		self.state = Some(state);
-		let left_rownum = self.left.headers().is_some_and(|h| h.row_numbers);
 
 		if build_picks.is_empty() {
 			if self.headers.is_some() {
@@ -582,15 +577,15 @@ impl QueryNode for HashJoinNode {
 				return Ok(None);
 			};
 			Self::resolve_without_probe(&self.alias, state);
-			let columns = Self::materialize(state, &probe_slots, &build_picks, left_rownum)?;
-			self.headers = Some(ColumnHeaders::from_columns(&columns));
+			let columns = Self::materialize(state, &probe_slots, &build_picks)?;
+			self.headers = Some(ColumnHeaders::from_batch(&columns));
 			return Ok(Some(columns));
 		}
 
 		let state = self.state.as_mut().unwrap();
-		let columns = Self::materialize(state, &probe_slots, &build_picks, left_rownum)?;
+		let columns = Self::materialize(state, &probe_slots, &build_picks)?;
 
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_batch(&columns));
 		Ok(Some(columns))
 	}
 

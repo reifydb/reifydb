@@ -3,7 +3,9 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::{interface::catalog::queue::AttemptOutcome, value::column::columns::Columns};
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
+use reifydb_core::interface::catalog::queue::AttemptOutcome;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_value::value::value_type::ValueType;
 use tracing::{field::Empty, instrument};
@@ -44,7 +46,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueFail {
 	}
 
 	#[instrument(name = "queue::fail", level = "debug", skip_all, fields(status = Empty))]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 2)?;

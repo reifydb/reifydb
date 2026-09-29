@@ -49,6 +49,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
+use crate::read;
+
 #[test]
 fn a_declared_capability_reaches_the_host_through_the_descriptor() {
 	// The descriptor's capability list is the whole truth the host loads: losing a bit there
@@ -377,10 +379,10 @@ fn single_insert_emits_insert() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Insert);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.utf8("group").as_deref(), Some("BTC"));
-	assert_eq!(r.u64("window_start"), Some(window_order(0)));
-	assert_eq!(r.f64("volume"), Some(10.0));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<String>(r, "group").as_deref(), Some("BTC"));
+	assert_eq!(read::<u64>(r, "window_start"), Some(window_order(0)));
+	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 }
 
 #[test]
@@ -399,8 +401,8 @@ fn update_applies_post_minus_pre_no_double_count() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("volume"), Some(25.0));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "volume"), Some(25.0));
 }
 
 #[test]
@@ -421,8 +423,8 @@ fn two_contributions_then_remove_subtracts_pre() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("volume"), Some(10.0));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 }
 
 #[test]
@@ -437,8 +439,8 @@ fn remove_clears_window_emits_remove() {
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
-	let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(r.f64("volume"), Some(10.0));
+	let r = (out.diffs[0].pre().expect("remove pre"), 0);
+	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 }
 
 #[test]
@@ -453,10 +455,10 @@ fn an_update_carries_the_published_row_as_its_pre() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let pre = diff.pre().expect("pre").row_ref(0).expect("r0");
-	assert_eq!(pre.f64("volume"), Some(10.0));
-	let post = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(post.f64("volume"), Some(15.0));
+	let pre = (diff.pre().expect("pre"), 0);
+	assert_eq!(read::<f64>(pre, "volume"), Some(10.0));
+	let post = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(post, "volume"), Some(15.0));
 }
 
 #[test]
@@ -472,10 +474,10 @@ fn a_second_update_carries_the_row_of_the_first_update_as_its_pre() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let pre = diff.pre().expect("pre").row_ref(0).expect("r0");
-	assert_eq!(pre.f64("volume"), Some(15.0));
-	let post = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(post.f64("volume"), Some(16.0));
+	let pre = (diff.pre().expect("pre"), 0);
+	assert_eq!(read::<f64>(pre, "volume"), Some(15.0));
+	let post = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(post, "volume"), Some(16.0));
 }
 
 #[test]
@@ -492,9 +494,9 @@ fn boundary_slot_belongs_to_next_window() {
 		.expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 2);
-	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(window_order(0)));
-	assert_eq!(post.row_ref(1).expect("r1").u64("window_start"), Some(window_order(60)));
+	assert_eq!(post.num_rows(), 2);
+	assert_eq!(read::<u64>((post, 0), "window_start"), Some(window_order(0)));
+	assert_eq!(read::<u64>((post, 1), "window_start"), Some(window_order(60)));
 }
 
 #[test]
@@ -525,7 +527,7 @@ fn late_event_within_seal_is_accepted() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at watermark 120");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(99.0));
+	assert_eq!(read::<f64>((post, 0), "volume"), Some(99.0));
 }
 
 #[test]
@@ -542,7 +544,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 
 	assert_eq!(out.diffs.len(), 1, "with no watermark reported, an arbitrarily old window is still open");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(window_order(0)));
+	assert_eq!(read::<u64>((post, 0), "window_start"), Some(window_order(0)));
 }
 
 #[test]
@@ -577,8 +579,8 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 	assert_eq!(out.diffs.len(), 1, "retraction within the lateness must be honored");
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("volume"), Some(10.0));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(4, "BTC", 240, 2.0)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(240)).expect("advance watermark");
@@ -600,11 +602,11 @@ fn multiple_groups_isolate_state() {
 		.expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_count(), 2);
-	assert_eq!(post.row_ref(0).expect("r0").utf8("group").as_deref(), Some("BTC"));
-	assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(10.0));
-	assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
-	assert_eq!(post.row_ref(1).expect("r1").f64("volume"), Some(50.0));
+	assert_eq!(post.num_rows(), 2);
+	assert_eq!(read::<String>((post, 0), "group").as_deref(), Some("BTC"));
+	assert_eq!(read::<f64>((post, 0), "volume"), Some(10.0));
+	assert_eq!(read::<String>((post, 1), "group").as_deref(), Some("ETH"));
+	assert_eq!(read::<f64>((post, 1), "volume"), Some(50.0));
 }
 
 #[test]
@@ -630,8 +632,8 @@ fn min_update_replacing_minimum_raises_window_min() {
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
-	let r = diff.post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("min"), Some(6.0));
+	let r = (diff.post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "min"), Some(6.0));
 }
 
 #[test]
@@ -680,8 +682,8 @@ fn min_remove_duplicate_keeps_value_until_last_removed() {
 			.build())
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 5.0)).build()).expect("apply");
-	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.f64("min"), Some(5.0), "one occurrence of 5 remains, min stays 5");
+	let r = (out.diffs[0].post().expect("post"), 0);
+	assert_eq!(read::<f64>(r, "min"), Some(5.0), "one occurrence of 5 remains, min stays 5");
 }
 
 #[test]
@@ -737,9 +739,9 @@ fn throttled_harness() -> ExternCOperatorHarness<ExternCOperatorAdapter<PlainDri
 fn only_update(out: &reifydb_core::interface::change::Change) -> (f64, f64) {
 	let updates: Vec<_> = out.diffs.iter().filter(|d| d.kind() == DiffType::Update).collect();
 	assert_eq!(updates.len(), 1, "exactly one update diff");
-	assert_eq!(updates[0].post().expect("post").row_count(), 1, "exactly one updated row");
-	let pre = updates[0].pre().expect("pre").row_ref(0).expect("r0").f64("volume").expect("pre volume");
-	let post = updates[0].post().expect("post").row_ref(0).expect("r0").f64("volume").expect("post volume");
+	assert_eq!(updates[0].post().expect("post").num_rows(), 1, "exactly one updated row");
+	let pre = read::<f64>((updates[0].pre().expect("pre"), 0), "volume").expect("pre volume");
+	let post = read::<f64>((updates[0].post().expect("post"), 0), "volume").expect("post volume");
 	(pre, post)
 }
 
@@ -753,7 +755,7 @@ fn a_new_throttled_window_publishes_its_first_row_at_once() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 1_000, 7.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "a second new window inside the throttle still publishes at once");
 	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
-	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(7.0));
+	assert_eq!(read::<f64>((out.diffs[0].post().expect("post"), 0), "volume"), Some(7.0));
 }
 
 #[test]
@@ -800,8 +802,8 @@ fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
 		.expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
-	let pre = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(pre.f64("volume"), Some(10.0), "the removal retracts the row downstream holds");
+	let pre = (out.diffs[0].pre().expect("remove pre"), 0);
+	assert_eq!(read::<f64>(pre, "volume"), Some(10.0), "the removal retracts the row downstream holds");
 }
 
 #[test]
@@ -874,7 +876,7 @@ fn a_refilled_window_publishes_an_insert() {
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "a refilled window publishes at once, like any new window");
 	assert_eq!(out.diffs[0].kind(), DiffType::Insert);
-	assert_eq!(out.diffs[0].post().expect("post").row_ref(0).expect("r0").f64("volume"), Some(5.0));
+	assert_eq!(read::<f64>((out.diffs[0].post().expect("post"), 0), "volume"), Some(5.0));
 }
 
 #[test]

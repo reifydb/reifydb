@@ -137,15 +137,10 @@ pub fn get_op_value(body: &serde_json::Value, _row_index: usize) -> Option<i32> 
 		.map(|o| o as i32)
 }
 
-/// Row numbers ride the frame alongside the user columns, so they are read from the frame, not
-/// from `columns`.
+/// Row numbers ride the `#rownum` column, so a frame without that column has none.
 pub fn get_row_numbers(body: &serde_json::Value) -> Vec<u64> {
-	body.get("frames")
-		.and_then(|f| f.as_array())
-		.and_then(|f| f.first())
-		.and_then(|f| f.get("row_numbers"))
-		.and_then(|r| r.as_array())
-		.map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
+	find_column(body, "#rownum")
+		.map(|column| column.payload.iter().map(|v| v.parse().expect("a row number is a u64")).collect())
 		.unwrap_or_default()
 }
 

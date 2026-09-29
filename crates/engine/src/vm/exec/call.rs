@@ -3,6 +3,8 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
+use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	interface::catalog::{
@@ -10,12 +12,13 @@ use reifydb_core::{
 		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		builder::ColumnBuilder,
-		cast::{cast_column_data, convert::Convert},
-		columns::Columns,
+	value::{
+		batch::{batch, is_scalar, scalar_value},
+		column::{
+			builder::ColumnBuilder,
+			cast::{cast_column_data, convert::Convert},
+			factory,
+		},
 	},
 };
 use reifydb_evaluate::{
@@ -38,7 +41,14 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
-	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		constraint::TypeConstraint,
+		frame::frame::Frame,
+		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
+		value_type::ValueType,
+	},
 };
 
 use crate::{
@@ -72,25 +82,22 @@ impl<'a> Vm<'a> {
 		};
 		match result {
 			Variable::Columns {
-				columns,
+				batch: columns,
 			} => {
 				let ctx = self.eval_ctx();
-				let coerced: Vec<ColumnWithName> = columns
-					.names
-					.iter()
-					.zip(columns.columns.iter())
-					.map(|(column_name, data)| {
+				let coerced: Vec<(FieldRef, ArrayRef)> = user_columns(&columns)
+					.map(|(field, array)| {
 						let casted = cast_to_declared_return_type(
 							&ctx,
-							data,
+							&ColumnView::try_from((array, field.as_ref()))?,
 							declared,
 							name.text(),
 							name,
 						)?;
-						Ok(ColumnWithName::new(column_name.clone(), casted))
+						Ok(factory::rename(casted, field.name()))
 					})
 					.collect::<Result<Vec<_>>>()?;
-				Ok(Variable::columns(Columns::new(coerced)))
+				Ok(Variable::columns(batch(coerced)?))
 			}
 			other => Ok(other),
 		}
@@ -107,10 +114,15 @@ impl<'a> Vm<'a> {
 			(value, target) => {
 				let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
 				data.push_value(value);
-				let data = data.finish();
+				let data = data.finish("value");
 				let ctx = self.eval_ctx();
-				let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
-				Ok(cast.get_value(0))
+				let cast = cast_column_data(
+					&ctx,
+					&ColumnView::try_from(&data)?,
+					target.clone(),
+					fragment,
+				)?;
+				Ok(ColumnView::try_from(&cast)?.get_value(0))
 			}
 		}
 	}
@@ -118,33 +130,33 @@ impl<'a> Vm<'a> {
 
 pub(crate) fn cast_to_declared_return_type(
 	ctx: impl Convert + Copy,
-	data: &ColumnBuffer,
+	view: &ColumnView<'_>,
 	declared: &TypeConstraint,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	let target = declared.get_type();
-	cast_column_data(ctx, data, target.clone(), fragment.clone()).map_err(|err| {
+	let casted = cast_column_data(ctx, view, target.clone(), fragment.clone()).map_err(|err| {
 		EngineError::ReturnTypeMismatch {
 			name: name.to_string(),
 			declared: target,
 			fragment: fragment.clone(),
 			cause: Box::new(err.diagnostic()),
 		}
-		.into()
-	})
+	})?;
+	Ok(factory::rename(casted, name))
 }
 
 pub(crate) fn cast_to_parameter_type(
 	ctx: impl Convert + Copy,
 	parameter: &FunctionParameter,
-	argument: ColumnBuffer,
-) -> Result<ColumnBuffer> {
+	argument: (FieldRef, ArrayRef),
+) -> Result<(FieldRef, ArrayRef)> {
 	let Some(declared) = &parameter.type_constraint else {
 		return Ok(argument);
 	};
 	let fragment = Fragment::internal(strip_dollar_prefix(parameter.name.text()));
-	cast_column_data(ctx, &argument, declared.get_type(), fragment)
+	cast_column_data(ctx, &ColumnView::try_from(&argument)?, declared.get_type(), fragment)
 }
 
 pub(crate) fn declared_return_column(
@@ -153,15 +165,22 @@ pub(crate) fn declared_return_column(
 	declared: &TypeConstraint,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<ColumnBuffer> {
+) -> Result<(FieldRef, ArrayRef)> {
 	let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
 	for value in values {
-		data.extend(cast_to_declared_return_type(ctx, &ColumnBuffer::from(value), declared, name, fragment)?)?;
+		let single = factory::from_many(name, value, 1);
+		let casted =
+			cast_to_declared_return_type(ctx, &ColumnView::try_from(&single)?, declared, name, fragment)?;
+		data.extend(&ColumnView::try_from(&casted)?)?;
 	}
-	Ok(data.finish())
+	Ok(data.finish(name))
 }
 
-pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &Fragment) -> Result<ColumnBuffer> {
+pub(crate) fn untyped_return_column(
+	values: Vec<Value>,
+	name: &str,
+	fragment: &Fragment,
+) -> Result<(FieldRef, ArrayRef)> {
 	let mut layout: Option<BranchLayout> = None;
 	for value in &values {
 		let fits_any = matches!(
@@ -187,7 +206,7 @@ pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &F
 	for value in values {
 		data.push_value(value);
 	}
-	Ok(data.finish())
+	Ok(data.finish(name))
 }
 
 pub(crate) fn check_arity(
@@ -221,26 +240,26 @@ fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ReifyError {
 	.into()
 }
 
-fn assign_row_numbers_if_absent(columns: Columns) -> Columns {
-	if columns.row_numbers().is_empty() && columns.has_rows() {
-		let n = columns.row_count();
-		let rns = (1..=n as u64).map(RowNumber).collect();
-		columns.with_row_numbers(rns)
+fn assign_row_numbers_if_absent(columns: RecordBatch) -> Result<RecordBatch> {
+	if system_column(&columns, SystemColumn::RowNumbers).is_none() && columns.num_rows() > 0 {
+		let n = columns.num_rows() as u64;
+		let rns: ArrayRef = Arc::new(UInt64Array::from_iter_values(1..=n));
+		with_system_column(columns, SystemColumn::RowNumbers, rns)
 	} else {
-		columns
+		Ok(columns)
 	}
 }
 
 pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
-		ControlFlow::Return(c) => {
-			let columns = c.unwrap_or(Columns::single_row([("value", Value::none())]));
-			Variable::columns(columns)
-		}
+		ControlFlow::Return(c) => match c {
+			Some(columns) => Variable::columns(columns),
+			None => Variable::scalar(Value::none()),
+		},
 		_ => {
 			if let Some(frame) = func_result.pop() {
-				if !frame.columns.is_empty() && !frame.columns[0].data.is_empty() {
-					Variable::columns(frame.into())
+				if user_columns(&frame.batch).next().is_some() && frame.batch.num_rows() > 0 {
+					Variable::columns(frame.batch)
 				} else {
 					Variable::scalar(Value::none())
 				}
@@ -367,17 +386,16 @@ impl<'a> Vm<'a> {
 		function.arity().check(name, arity)?;
 
 		let arg_columns = self.pop_args_as_columns(arity)?;
-		let columns_args = Columns::new(arg_columns);
 		let identity = tx.identity();
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
 			identity,
-			row_count: columns_args.row_count(),
+			row_count: arg_columns.first().map_or(0, |c| c.1.len()),
 			runtime_context: &services.runtime_context,
 		};
-		let result_columns =
-			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
-		self.stack.push(Variable::columns(result_columns));
+		let result_column =
+			function.call(&mut fn_ctx, &arg_columns).map_err(|e| e.with_context(name.clone(), false))?;
+		self.stack.push(Variable::columns(batch(vec![result_column])?));
 		Ok(())
 	}
 
@@ -468,7 +486,7 @@ impl<'a> Vm<'a> {
 		check_arity(&callable.parameters, arity, name.text(), name)?;
 
 		if is_vectorizable(&callable.body) {
-			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
+			let row_count = arg_columns.first().map(|c| c.1.len()).unwrap_or(self.batch_size);
 			self.run_function_body_batch(
 				services,
 				tx,
@@ -497,26 +515,23 @@ impl<'a> Vm<'a> {
 	fn cast_arguments(
 		&self,
 		parameters: &[FunctionParameter],
-		arguments: Vec<ColumnWithName>,
-	) -> Result<Vec<ColumnWithName>> {
+		arguments: Vec<(FieldRef, ArrayRef)>,
+	) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let ctx = self.eval_ctx();
 		parameters
 			.iter()
 			.zip(arguments)
-			.map(|(parameter, argument)| {
-				let data = cast_to_parameter_type(&ctx, parameter, argument.data)?;
-				Ok(ColumnWithName::new(argument.name, data))
-			})
+			.map(|(parameter, argument)| cast_to_parameter_type(&ctx, parameter, argument))
 			.collect()
 	}
 
-	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<ColumnWithName>> {
+	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let mut arg_columns = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			arg_columns.push(self.pop_as_column()?);
 		}
 		arg_columns.reverse();
-		Ok(broadcast_many(arg_columns))
+		broadcast_many(arg_columns)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -526,7 +541,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
-		arg_columns: Vec<ColumnWithName>,
+		arg_columns: Vec<(FieldRef, ArrayRef)>,
 		_row_count: usize,
 		captured: &HashMap<String, Variable>,
 		return_type: Option<&TypeConstraint>,
@@ -551,7 +566,7 @@ impl<'a> Vm<'a> {
 
 		for (param, arg_col) in parameters.iter().zip(arguments) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
-			let col_var = Variable::columns(Columns::new(vec![arg_col]));
+			let col_var = Variable::columns(batch(vec![arg_col])?);
 			self.symbols.set(param_name, col_var, true)?;
 		}
 
@@ -577,13 +592,14 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
-		arg_columns: Vec<ColumnWithName>,
+		arg_columns: Vec<(FieldRef, ArrayRef)>,
 		captured: &HashMap<String, Variable>,
 		name: &Fragment,
 		return_type: Option<&TypeConstraint>,
 	) -> Result<()> {
 		let arg_columns = self.cast_arguments(parameters, arg_columns)?;
-		let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(0);
+		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let row_count = arg_columns.first().map(|c| c.1.len()).unwrap_or(0);
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 		let mut func_symbols = self.symbols.clone();
 
@@ -592,9 +608,9 @@ impl<'a> Vm<'a> {
 			for (cap_name, cap_var) in captured {
 				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 			}
-			for (param, arg_col) in parameters.iter().zip(arg_columns.iter()) {
+			for (param, arg_view) in parameters.iter().zip(arg_views.iter()) {
 				let param_name = strip_dollar_prefix(param.name.text()).to_string();
-				let value = arg_col.data().get_value(row_idx);
+				let value = arg_view.get_value(row_idx);
 				func_symbols.set(
 					param_name.clone(),
 					Variable::scalar_named(&param_name, value),
@@ -608,8 +624,8 @@ impl<'a> Vm<'a> {
 			let result_var = collect_call_result(&mut vm, &mut func_result);
 			let value = match result_var {
 				Variable::Columns {
-					columns: c,
-				} if c.is_scalar() => c.scalar_value(),
+					batch: c,
+				} if is_scalar(&c) => scalar_value(&c)?,
 				_ => Value::none(),
 			};
 
@@ -618,14 +634,13 @@ impl<'a> Vm<'a> {
 			results.push(value);
 		}
 
-		let data = match return_type {
+		let result_col = match return_type {
 			Some(declared) => {
 				declared_return_column(&self.eval_ctx(), results, declared, name.text(), name)?
 			}
 			None => untyped_return_column(results, name.text(), name)?,
 		};
-		let result_col = ColumnWithName::new(name.clone(), data);
-		self.stack.push(Variable::columns(Columns::new(vec![result_col])));
+		self.stack.push(Variable::columns(batch(vec![result_col])?));
 		Ok(())
 	}
 
@@ -641,7 +656,9 @@ impl<'a> Vm<'a> {
 		let ctx = self.eval_ctx();
 		let mut arguments = Vec::with_capacity(args.len());
 		for (param, arg) in callable.parameters.iter().zip(args) {
-			arguments.push(cast_to_parameter_type(&ctx, param, ColumnBuffer::from(arg))?.get_value(0));
+			let argument = factory::from_many(strip_dollar_prefix(param.name.text()), arg, 1);
+			let cast = cast_to_parameter_type(&ctx, param, argument)?;
+			arguments.push(ColumnView::try_from(&cast)?.get_value(0));
 		}
 
 		let saved_ip = self.ip;
@@ -716,13 +733,12 @@ impl<'a> Vm<'a> {
 						catalog: &ctx.services.catalog,
 						ioc: &ctx.services.ioc,
 					};
-					let empty = Columns::empty();
 					let attach_metadata = routine.attaches_row_metadata();
 					let columns = routine
-						.call(&mut proc_ctx, &empty)
+						.call(&mut proc_ctx, &[])
 						.map_err(|e| e.with_context(name.clone(), true))?;
 					let columns = if attach_metadata {
-						assign_row_numbers_if_absent(columns)
+						assign_row_numbers_if_absent(columns)?
 					} else {
 						columns
 					};
@@ -904,8 +920,7 @@ impl<'a> Vm<'a> {
 				token,
 			)?;
 			if let Some(frame) = frames.into_iter().next() {
-				let cols: Columns = frame.into();
-				self.stack.push(Variable::columns(cols));
+				self.stack.push(Variable::columns(frame.batch));
 			} else {
 				self.stack.push(Variable::scalar(Value::none()));
 			}
@@ -966,14 +981,14 @@ impl<'a> Vm<'a> {
 			CallSite::Named,
 		)?;
 		let columns = if attach_metadata {
-			assign_row_numbers_if_absent(columns)
+			assign_row_numbers_if_absent(columns)?
 		} else {
 			columns
 		};
 
 		if func_name == "identity::inject"
-			&& let Some(col) = columns.first()
-			&& let Value::IdentityId(id) = col.data().get_value(0)
+			&& let Some((field, array)) = user_columns(&columns).next()
+			&& let Value::IdentityId(id) = ColumnView::try_from((array, field.as_ref()))?.get_value(0)
 		{
 			ctx.tx.set_identity(id);
 		}
@@ -991,26 +1006,25 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 	) -> Result<()> {
 		generator.arity().check(name, args.len())?;
-		let arg_columns: Vec<ColumnWithName> = args
+		let arg_columns: Vec<(FieldRef, ArrayRef)> = args
 			.into_iter()
 			.enumerate()
 			.map(|(i, v)| {
 				let mut data = ColumnBuilder::with_capacity(v.get_type(), 1);
 				data.push_value(v);
-				ColumnWithName::new(format!("arg{}", i), data.finish())
+				data.finish(&format!("arg{}", i))
 			})
 			.collect();
-		let columns_args = Columns::new(arg_columns);
 		let identity = ctx.tx.identity();
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
 			identity,
-			row_count: columns_args.row_count(),
+			row_count: arg_columns.first().map_or(0, |c| c.1.len()),
 			runtime_context: &ctx.services.runtime_context,
 		};
-		let columns =
-			generator.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
-		self.stack.push(Variable::columns(columns));
+		let column =
+			generator.call(&mut fn_ctx, &arg_columns).map_err(|e| e.with_context(name.clone(), false))?;
+		self.stack.push(Variable::columns(batch(vec![column])?));
 		Ok(())
 	}
 
@@ -1030,16 +1044,15 @@ impl<'a> Vm<'a> {
 		})?;
 		function.arity().check(name, args.len())?;
 
-		let arg_columns: Vec<ColumnWithName> = args
+		let arg_columns: Vec<(FieldRef, ArrayRef)> = args
 			.into_iter()
 			.enumerate()
 			.map(|(i, v)| {
 				let mut data = ColumnBuilder::with_capacity(v.get_type(), 1);
 				data.push_value(v);
-				ColumnWithName::new(format!("arg{}", i), data.finish())
+				data.finish(&format!("arg{}", i))
 			})
 			.collect();
-		let columns_args = Columns::new(arg_columns);
 		let identity = ctx.tx.identity();
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
@@ -1047,12 +1060,12 @@ impl<'a> Vm<'a> {
 			row_count: 1,
 			runtime_context: &ctx.services.runtime_context,
 		};
-		let result_columns =
-			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
-		let value = if !result_columns.has_rows() {
+		let result_column =
+			function.call(&mut fn_ctx, &arg_columns).map_err(|e| e.with_context(name.clone(), false))?;
+		let value = if result_column.1.is_empty() {
 			Value::none()
 		} else {
-			result_columns.data_at(0).get_value(0)
+			ColumnView::try_from(&result_column)?.get_value(0)
 		};
 		self.stack.push(Variable::scalar(value));
 		Ok(())

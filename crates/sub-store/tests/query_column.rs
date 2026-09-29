@@ -14,7 +14,12 @@ use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConf
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,
-	value::{Value, duration::Duration, identity::IdentityId},
+	value::{
+		Value,
+		duration::Duration,
+		identity::IdentityId,
+		system_columns::{SystemColumn, system_column, user_columns},
+	},
 };
 
 const INSERT_THREE: &str = "INSERT test::t [{id: 1, name: \"alpha\", score: 1.5},\
@@ -54,12 +59,12 @@ fn await_column_rows(db: &TestDb, rql: &str, want: usize) -> ExecutionResult {
 }
 
 fn column_names(frame: &Frame) -> Vec<String> {
-	frame.columns.iter().map(|c| c.name.clone()).collect()
+	user_columns(&frame.batch).map(|(field, _)| field.name().clone()).collect()
 }
 
 fn cells(frame: &Frame, name: &str) -> Vec<Value> {
-	let column = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name} missing"));
-	(0..column.data.len()).map(|i| column.data.get_value(i)).collect()
+	let column = frame.column(name).expect("column view").unwrap_or_else(|| panic!("column {name} missing"));
+	(0..column.len()).map(|i| column.get_value(i)).collect()
 }
 
 fn rows_by_id(frames: &[Frame]) -> BTreeMap<i32, (String, f64)> {
@@ -168,8 +173,14 @@ fn an_empty_column_table_scan_keeps_rownum() {
 	let column = await_column_rows(&db, "from test::t", 0);
 	let row = db.query("from test::t");
 
-	assert!(row[0].has_row_numbers(), "the row path shows #rownum on an empty table");
-	assert!(column.frames[0].has_row_numbers(), "the column path must match the row path on an empty table");
+	assert!(
+		system_column(&row[0].batch, SystemColumn::RowNumbers).is_some(),
+		"the row path shows #rownum on an empty table"
+	);
+	assert!(
+		system_column(&column.frames[0].batch, SystemColumn::RowNumbers).is_some(),
+		"the column path must match the row path on an empty table"
+	);
 }
 
 #[test]
@@ -201,7 +212,10 @@ fn a_never_written_series_reads_as_empty_on_the_column_path() {
 	assert_eq!(result.frames.len(), 1, "an empty result still yields one frame");
 	assert_eq!(result.frames[0].row_count(), 0);
 	assert_eq!(column_names(&result.frames[0]), vec!["k", "value"]);
-	assert!(result.frames[0].has_row_numbers(), "the empty answer must show #rownum like the row path");
+	assert!(
+		system_column(&result.frames[0].batch, SystemColumn::RowNumbers).is_some(),
+		"the empty answer must show #rownum like the row path"
+	);
 }
 
 #[test]
@@ -391,13 +405,22 @@ fn an_empty_column_series_scan_keeps_rownum() {
 	plain_series(&db);
 	insert_keys(&db, "test::s", 1..=15);
 	let full = await_column_rows(&db, "from test::s", 9);
-	assert!(full.frames[0].has_row_numbers(), "a sealed series scan carries row numbers");
+	assert!(
+		system_column(&full.frames[0].batch, SystemColumn::RowNumbers).is_some(),
+		"a sealed series scan carries row numbers"
+	);
 
 	db.command("DELETE test::s FILTER { k > 0 }");
 
 	let empty = await_column_rows(&db, "from test::s", 0);
-	assert!(empty.frames[0].has_row_numbers(), "an emptied series must keep #rownum on the column path");
-	assert!(db.query("from test::s")[0].has_row_numbers(), "the row path shows #rownum on an emptied series");
+	assert!(
+		system_column(&empty.frames[0].batch, SystemColumn::RowNumbers).is_some(),
+		"an emptied series must keep #rownum on the column path"
+	);
+	assert!(
+		system_column(&db.query("from test::s")[0].batch, SystemColumn::RowNumbers).is_some(),
+		"the row path shows #rownum on an emptied series"
+	);
 }
 
 #[test]

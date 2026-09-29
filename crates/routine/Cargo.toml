@@ -20,6 +20,7 @@ default = []
 arrow-arith = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 arrow-string = { workspace = true }
 bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }

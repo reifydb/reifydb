@@ -31,6 +31,7 @@ reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-value = { workspace = true }
 
+arrow-array = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
@@ -44,6 +45,6 @@ reifydb-build = { workspace = true }
 
 [dev-dependencies]
 arrow-array = { workspace = true }
-arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }

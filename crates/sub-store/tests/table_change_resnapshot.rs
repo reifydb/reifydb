@@ -16,7 +16,7 @@ use reifydb_sub_store::{
 	subsystem::{StorageConfig, StorageSubsystem},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
 fn db() -> TestDb {
 	let config = StorageConfig {
@@ -62,12 +62,12 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 	}
 	let mut reader = SnapshotReader::new(block, 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
-	for row in 0..batch.row_count() {
-		let id = match batch.column("id").expect("id column").data().get_value(row) {
+	for row in 0..batch.num_rows() {
+		let id = match column_view(&batch, "id").expect("id view").expect("id column").get_value(row) {
 			Value::Int4(v) => v,
 			other => panic!("row {row}: expected Int4 id, got {other:?}"),
 		};
-		let v = match batch.column("v").expect("v column").data().get_value(row) {
+		let v = match column_view(&batch, "v").expect("v view").expect("v column").get_value(row) {
 			Value::Int4(v) => v,
 			other => panic!("row {row}: expected Int4 v, got {other:?}"),
 		};

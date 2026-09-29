@@ -3,17 +3,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
 	metrics::sample::{MetricKind, Reading},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
 	error::Error,
-	fragment::Fragment,
 	reifydb_assertions,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
@@ -36,7 +36,7 @@ pub struct MetricsRow {
 pub struct PublishedSurface {
 	pub domain: MetricsDomain,
 	pub surface: Surface,
-	pub columns: Columns,
+	pub columns: RecordBatch,
 }
 
 pub struct MetricsAccumulator {
@@ -245,14 +245,14 @@ fn advance_window(state: &mut DomainState) {
 	}
 }
 
-fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
+fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
 	match state.spec.shape {
 		DomainShape::Long => build_long(state, now, surface),
 		DomainShape::Wide => build_wide(state, now, surface),
 	}
 }
 
-fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
+fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
 	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, 0);
 	let mut scope = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 	let mut metric = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
@@ -339,17 +339,17 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Co
 		}
 	}
 
-	Ok(Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("ts"), ts.finish()),
-		ColumnWithName::new(Fragment::internal("scope"), scope.finish()),
-		ColumnWithName::new(Fragment::internal("metric"), metric.finish()),
-		ColumnWithName::new(Fragment::internal("value"), value.finish()),
-		ColumnWithName::new(Fragment::internal("unit"), unit.finish()),
-		ColumnWithName::new(Fragment::internal("kind"), kind.finish()),
-	]))
+	batch(vec![
+		ts.finish("ts"),
+		scope.finish("scope"),
+		metric.finish("metric"),
+		value.finish("value"),
+		unit.finish("unit"),
+		kind.finish("kind"),
+	])
 }
 
-fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
+fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
 	let spec = &state.spec;
 	let measures = spec.surface_measures(surface);
 	let capacity = state.rows.len();
@@ -379,14 +379,14 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Co
 		}
 	}
 
-	let mut out = vec![ColumnWithName::new(Fragment::internal("ts"), ts.finish())];
+	let mut out = vec![ts.finish("ts")];
 	for (dimension, buffer) in spec.dimensions.iter().zip(dimension_buffers) {
-		out.push(ColumnWithName::new(Fragment::internal(dimension.name), buffer.finish()));
+		out.push(buffer.finish(dimension.name));
 	}
 	for (measure, buffer) in measures.iter().zip(measure_buffers) {
-		out.push(ColumnWithName::new(Fragment::internal(measure.name), buffer.finish()));
+		out.push(buffer.finish(measure.name));
 	}
-	Ok(Columns::new(out))
+	batch(out)
 }
 
 fn column_error(
@@ -500,14 +500,12 @@ fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		metrics::sample::{MetricKind, Reading},
-		value::column::columns::Columns,
-	};
+	use arrow_array::RecordBatch;
+	use reifydb_core::metrics::sample::{MetricKind, Reading};
 	use reifydb_value::{
 		byte_size::ByteSize,
 		count::Count,
-		value::{Value, datetime::DateTime, value_type::ValueType},
+		value::{Value, datetime::DateTime, system_columns::column_view, value_type::ValueType},
 	};
 
 	use super::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface};
@@ -539,16 +537,16 @@ mod tests {
 		}
 	}
 
-	fn surface(published: &[PublishedSurface], domain: MetricsDomain, surface: Surface) -> &Columns {
+	fn surface(published: &[PublishedSurface], domain: MetricsDomain, surface: Surface) -> &RecordBatch {
 		&published.iter().find(|p| p.domain == domain && p.surface == surface).unwrap().columns
 	}
 
-	fn column_values(columns: &Columns, name: &str) -> Vec<Value> {
-		let column = columns.iter().find(|c| c.name().text() == name).unwrap();
-		(0..column.data().len()).map(|i| column.data().get_value(i)).collect()
+	fn column_values(columns: &RecordBatch, name: &str) -> Vec<Value> {
+		let column = column_view(columns, name).unwrap().unwrap();
+		(0..column.len()).map(|i| column.get_value(i)).collect()
 	}
 
-	fn long_value(columns: &Columns, scope: &str, metric: &str) -> Option<(f64, String)> {
+	fn long_value(columns: &RecordBatch, scope: &str, metric: &str) -> Option<(f64, String)> {
 		// Long-format rows are (scope, metric) keyed; return (value, kind) for the match.
 		let scopes = column_values(columns, "scope");
 		let metrics = column_values(columns, "metric");
@@ -699,13 +697,13 @@ mod tests {
 			acc.push(MetricsDomain::Lifecycle, Surface::Current, rows);
 			let published = acc.roll(now(1_000)).unwrap();
 			let columns = surface(&published, MetricsDomain::Lifecycle, Surface::Current);
-			let binding = columns.iter().find(|c| c.name().text() == "binding").unwrap();
+			let binding = column_view(columns, "binding").unwrap().unwrap();
 			assert_eq!(
-				binding.data().get_type(),
+				binding.get_type(),
 				declared,
 				"binding must publish Option(Utf8) regardless of which row lands first"
 			);
-			assert_eq!(binding.data().len(), 2);
+			assert_eq!(binding.len(), 2);
 		}
 	}
 
@@ -744,7 +742,7 @@ mod tests {
 		let total = surface(&published, MetricsDomain::StoreMultiRange, Surface::Total);
 		assert_eq!(column_values(total, "materializes"), vec![Value::Uint8(3), Value::Uint8(9)]);
 		assert!(
-			!total.iter().any(|c| c.name().text() == "used"),
+			!total.schema_ref().fields().iter().any(|field| field.name() == "used"),
 			"levels must not appear in a wide ::total surface"
 		);
 	}

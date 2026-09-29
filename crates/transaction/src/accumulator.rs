@@ -126,7 +126,7 @@ fn build_changes(entries: Vec<(ObjectId, Diff)>, version: CommitVersion, changed
 mod tests {
 	use reifydb_core::{
 		interface::catalog::id::{TableId, ViewId},
-		value::column::columns::Columns,
+		value::batch::empty_batch,
 	};
 
 	use super::*;
@@ -137,9 +137,9 @@ mod tests {
 		let table = ObjectId::Table(TableId(1));
 		let view = ObjectId::View(ViewId(2));
 
-		accumulator.track(table, Diff::insert(Columns::empty()));
-		accumulator.track(view, Diff::insert(Columns::empty()));
-		accumulator.track(table, Diff::insert(Columns::empty()));
+		accumulator.track(table, Diff::insert(empty_batch()));
+		accumulator.track(view, Diff::insert(empty_batch()));
+		accumulator.track(table, Diff::insert(empty_batch()));
 
 		assert_eq!(
 			accumulator.pending_objects(),
@@ -159,7 +159,7 @@ mod tests {
 		assert_eq!(accumulator.cursor(), 0);
 
 		let table = ObjectId::Table(TableId(1));
-		accumulator.track(table, Diff::insert(Columns::empty()));
+		accumulator.track(table, Diff::insert(empty_batch()));
 		let seen: Vec<ObjectId> =
 			accumulator.entries_from(accumulator.cursor()).iter().map(|(object, _)| *object).collect();
 		assert_eq!(seen, vec![table]);
@@ -172,10 +172,10 @@ mod tests {
 		let second = ObjectId::Table(TableId(2));
 		let third = ObjectId::View(ViewId(3));
 
-		accumulator.track(first, Diff::insert(Columns::empty()));
-		accumulator.track(second, Diff::insert(Columns::empty()));
+		accumulator.track(first, Diff::insert(empty_batch()));
+		accumulator.track(second, Diff::insert(empty_batch()));
 		accumulator.set_cursor(2);
-		accumulator.track(third, Diff::insert(Columns::empty()));
+		accumulator.track(third, Diff::insert(empty_batch()));
 
 		assert_eq!(accumulator.cursor(), 2);
 		let seen: Vec<ObjectId> =
@@ -191,7 +191,7 @@ mod tests {
 	fn test_truncate_below_cursor_clamps_it_so_new_entries_are_not_skipped() {
 		let mut accumulator = ChangeAccumulator::new();
 		for id in 1..=3 {
-			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(Columns::empty()));
+			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(empty_batch()));
 		}
 		accumulator.set_cursor(3);
 
@@ -199,7 +199,7 @@ mod tests {
 		assert_eq!(accumulator.cursor(), 1, "a cursor past the end would skip entries tracked after rollback");
 
 		let replacement = ObjectId::View(ViewId(9));
-		accumulator.track(replacement, Diff::insert(Columns::empty()));
+		accumulator.track(replacement, Diff::insert(empty_batch()));
 		let seen: Vec<ObjectId> =
 			accumulator.entries_from(accumulator.cursor()).iter().map(|(object, _)| *object).collect();
 		assert_eq!(seen, vec![replacement]);
@@ -209,7 +209,7 @@ mod tests {
 	fn test_truncate_above_cursor_keeps_it_so_processed_entries_are_not_reprocessed() {
 		let mut accumulator = ChangeAccumulator::new();
 		for id in 1..=3 {
-			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(Columns::empty()));
+			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(empty_batch()));
 		}
 		accumulator.set_cursor(1);
 
@@ -220,15 +220,15 @@ mod tests {
 	#[test]
 	fn test_take_changes_resets_cursor_so_later_entries_are_not_skipped() {
 		let mut accumulator = ChangeAccumulator::new();
-		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(Columns::empty()));
-		accumulator.track(ObjectId::Table(TableId(2)), Diff::insert(Columns::empty()));
+		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(empty_batch()));
+		accumulator.track(ObjectId::Table(TableId(2)), Diff::insert(empty_batch()));
 		accumulator.set_cursor(2);
 
 		accumulator.take_changes(CommitVersion(1), DateTime::default()).unwrap();
 		assert_eq!(accumulator.cursor(), 0);
 
 		let next = ObjectId::View(ViewId(3));
-		accumulator.track(next, Diff::insert(Columns::empty()));
+		accumulator.track(next, Diff::insert(empty_batch()));
 		let seen: Vec<ObjectId> =
 			accumulator.entries_from(accumulator.cursor()).iter().map(|(object, _)| *object).collect();
 		assert_eq!(seen, vec![next]);
@@ -238,7 +238,7 @@ mod tests {
 	fn test_take_changes_from_below_cursor_clamps_cursor_to_offset() {
 		let mut accumulator = ChangeAccumulator::new();
 		for id in 1..=3 {
-			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(Columns::empty()));
+			accumulator.track(ObjectId::Table(TableId(id)), Diff::insert(empty_batch()));
 		}
 		accumulator.set_cursor(3);
 
@@ -250,7 +250,7 @@ mod tests {
 	#[test]
 	fn test_clear_resets_cursor_so_later_entries_are_not_skipped() {
 		let mut accumulator = ChangeAccumulator::new();
-		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(Columns::empty()));
+		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(empty_batch()));
 		accumulator.set_cursor(1);
 
 		accumulator.clear();
@@ -261,7 +261,7 @@ mod tests {
 	#[should_panic(expected = "accumulator cursor 2 past accumulator length 1")]
 	fn test_set_cursor_past_length_panics_because_it_would_skip_future_entries() {
 		let mut accumulator = ChangeAccumulator::new();
-		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(Columns::empty()));
+		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(empty_batch()));
 		accumulator.set_cursor(2);
 	}
 }

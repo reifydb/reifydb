@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_arith::temporal::{DatePart, date_part};
-use arrow_array::{Array, Int32Array};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::{Array, ArrayRef, Int32Array};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int4_with_bitvec;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::times, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	container::temporal_array::times,
+	value_type::ValueType,
+};
+
+use crate::function::support::column::array_column;
 
 pub struct TimeMinute {
 	info: RoutineInfo,
@@ -36,13 +45,17 @@ impl<'a> Routine<FunctionContext<'a>> for TimeMinute {
 		ValueType::Int4
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let data = &args[0];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let data = ColumnView::try_from(&args[0])?;
 		let row_count = data.len();
 
-		match data {
-			ColumnBuffer::Time(container) => {
-				let parts = date_part(container, DatePart::Minute).map_err(|err| {
+		match &data.data {
+			ViewData::Time(container) => {
+				let parts = date_part(*container, DatePart::Minute).map_err(|err| {
 					RoutineError::FunctionExecutionFailed {
 						function: ctx.fragment.clone(),
 						reason: err.to_string(),
@@ -57,7 +70,11 @@ impl<'a> Routine<FunctionContext<'a>> for TimeMinute {
 				})?;
 
 				let result_data = if parts.null_count() == 0 {
-					ColumnBuffer::Int4(Int32Array::new(parts.values().clone(), None))
+					array_column(
+						ctx.fragment.text(),
+						ValueType::Int4,
+						Arc::new(Int32Array::new(parts.values().clone(), None)),
+					)
 				} else {
 					let values = times(container);
 					let mut result = Vec::with_capacity(row_count);
@@ -76,15 +93,15 @@ impl<'a> Routine<FunctionContext<'a>> for TimeMinute {
 						}
 					}
 
-					ColumnBuffer::int4_with_bitvec(result, res_bitvec)
+					int4_with_bitvec(ctx.fragment.text(), result, res_bitvec)
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(result_data)
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Time],
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}

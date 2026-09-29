@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
-	value::column::columns::Columns,
 };
 use reifydb_flow::operator::append::AppendOperator;
 use reifydb_value::Result;
@@ -37,7 +37,7 @@ impl HostOperator for AppendOperator {
 		Ok(None)
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }

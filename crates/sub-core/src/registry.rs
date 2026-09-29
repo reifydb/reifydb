@@ -10,12 +10,10 @@ use std::{
 	},
 };
 
+use arrow_array::RecordBatch;
 use dashmap::DashMap;
 use reifydb_codec::wire::RawChangePayload;
-use reifydb_core::{
-	interface::{catalog::id::SubscriptionId, change::StagedBatch},
-	value::column::columns::Columns,
-};
+use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_runtime::{
 	context::{clock::Clock, rng::Rng},
 	sync::mutex::Mutex,
@@ -624,7 +622,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		batch_id: BatchId,
 		subscription_id: &SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		columns: RecordBatch,
 	) -> DeliveryResult {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return DeliveryResult::Disconnected;
@@ -644,7 +642,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		&self,
 		subscription_id: &SubscriptionId,
 		op: DiffType,
-		columns: Columns,
+		columns: RecordBatch,
 		format: S::Format,
 		sink: S,
 		now: i64,
@@ -661,7 +659,12 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn queue_throttled(&self, state: &mut SubscriptionState<S>, op: DiffType, columns: Columns) -> DeliveryResult {
+	fn queue_throttled(
+		&self,
+		state: &mut SubscriptionState<S>,
+		op: DiffType,
+		columns: RecordBatch,
+	) -> DeliveryResult {
 		let was_empty = state.throttle.pending.is_empty();
 		state.throttle.pending.push((op, columns));
 		state.throttle.gate.on_pending(self.clock.now().to_millis());
@@ -772,7 +775,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 }
 
 impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
-	fn try_deliver(&self, subscription_id: &SubscriptionId, op: DiffType, columns: Columns) -> DeliveryResult {
+	fn try_deliver(&self, subscription_id: &SubscriptionId, op: DiffType, columns: RecordBatch) -> DeliveryResult {
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			return self.deliver_to_batch_subscription(batch_id, subscription_id, op, columns);
 		}

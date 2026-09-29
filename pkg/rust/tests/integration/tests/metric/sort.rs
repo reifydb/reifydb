@@ -67,13 +67,13 @@ sort {estimated_total_bytes:asc}";
 	let frames = db.query(multiline_query);
 
 	let frame = frames.first().expect("Expected at least one frame");
-	let id_col = frame.columns.iter().find(|c| c.name == "id").unwrap();
-	let bytes_col = frame.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
+	let id_col = frame.column("id").expect("the column reads").unwrap();
+	let bytes_col = frame.column("estimated_total_bytes").expect("the column reads").unwrap();
 
 	let mut data: Vec<(u64, u64)> = Vec::new();
-	for i in 0..id_col.data.len() {
-		let id = id_col.data.as_string(i).parse::<u64>().unwrap_or(0);
-		let bytes = bytes_col.data.as_string(i).parse::<u64>().unwrap_or(0);
+	for i in 0..id_col.len() {
+		let id = id_col.as_string(i).parse::<u64>().unwrap_or(0);
+		let bytes = bytes_col.as_string(i).parse::<u64>().unwrap_or(0);
 		data.push((id, bytes));
 	}
 
@@ -125,12 +125,12 @@ fn test_asc_is_not_desc() {
 	let frames_desc = db.query(desc);
 
 	let frame_asc = frames_asc.first().unwrap();
-	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
-	let first_asc = bytes_col_asc.data.as_string(0).parse::<u64>().unwrap();
+	let bytes_col_asc = frame_asc.column("estimated_total_bytes").expect("the column reads").unwrap();
+	let first_asc = bytes_col_asc.as_string(0).parse::<u64>().unwrap();
 
 	let frame_desc = frames_desc.first().unwrap();
-	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
-	let first_desc = bytes_col_desc.data.as_string(0).parse::<u64>().unwrap();
+	let bytes_col_desc = frame_desc.column("estimated_total_bytes").expect("the column reads").unwrap();
+	let first_desc = bytes_col_desc.as_string(0).parse::<u64>().unwrap();
 
 	assert_ne!(
 		first_asc, first_desc,
@@ -186,11 +186,11 @@ fn test_sort_table_storage_stats_by_estimated_total_bytes() {
 	let frames_asc = db.query(asc);
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
-	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
+	let bytes_col_asc = frame_asc.column("estimated_total_bytes").expect("the column reads").unwrap();
 
 	let mut byte_values_asc: Vec<u64> = Vec::new();
-	for i in 0..bytes_col_asc.data.len() {
-		byte_values_asc.push(bytes_col_asc.data.as_string(i).parse::<u64>().unwrap_or(0));
+	for i in 0..bytes_col_asc.len() {
+		byte_values_asc.push(bytes_col_asc.as_string(i).parse::<u64>().unwrap_or(0));
 	}
 
 	for i in 1..byte_values_asc.len() {
@@ -207,11 +207,11 @@ fn test_sort_table_storage_stats_by_estimated_total_bytes() {
 	);
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
-	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
+	let bytes_col_desc = frame_desc.column("estimated_total_bytes").expect("the column reads").unwrap();
 
 	let mut byte_values_desc: Vec<u64> = Vec::new();
-	for i in 0..bytes_col_desc.data.len() {
-		byte_values_desc.push(bytes_col_desc.data.as_string(i).parse::<u64>().unwrap_or(0));
+	for i in 0..bytes_col_desc.len() {
+		byte_values_desc.push(bytes_col_desc.as_string(i).parse::<u64>().unwrap_or(0));
 	}
 
 	for i in 1..byte_values_desc.len() {

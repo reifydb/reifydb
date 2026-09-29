@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -20,7 +21,6 @@ use reifydb_core::{
 	key::series::{PartitionedSeriesRowKey, SeriesRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
-	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	error::FlowSinkError,
@@ -35,7 +35,11 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::{Value, partition::Partition, system_columns::SystemColumn},
+	value::{
+		Value,
+		partition::Partition,
+		system_columns::{SystemColumn, column_view, require_row_numbers},
+	},
 };
 use tracing::instrument;
 
@@ -83,22 +87,27 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
-	fn series_key_at(&self, columns: &Columns, row_idx: usize) -> Result<u64> {
+	fn series_key_at(&self, columns: &RecordBatch, row_idx: usize) -> Result<u64> {
 		let key_column = self.key.column();
 
 		let key = if key_column.is_empty() {
-			columns.time().get(row_idx).and_then(|time| self.key.key_to_u64(Value::DateTime(*time)))
+			column_view(columns, SystemColumn::Time.name())?.and_then(|time| {
+				match time.get_value(row_idx) {
+					Value::DateTime(time) => self.key.key_to_u64(Value::DateTime(time)),
+					_ => None,
+				}
+			})
 		} else {
 			reifydb_assertions! {
 				assert!(
-					columns.iter().any(|col| col.name().text() == key_column),
+					columns.schema_ref().fields().iter().any(|field| field.name() == key_column),
 					"the series key column '{key_column}' must reach the sink for every row of \
 					 view '{}'; without it every row collapses onto a single key and overwrites \
 					 its predecessor",
 					self.view.def().name()
 				);
 			}
-			self.key.extract_key(columns, row_idx)
+			self.key.extract_key(columns, row_idx)?
 		};
 
 		key.ok_or_else(|| {
@@ -153,28 +162,33 @@ impl DurableSink for SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	#[inline]
-	#[instrument(name = "flow::operator::sink::series::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::sink::series::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_series_view_insert(
 		&mut self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
-		post: &Columns,
+		post: &RecordBatch,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[]
+		} else {
+			require_row_numbers(source)?
+		};
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx);
+				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(
 					txn,
 					object_id.into(),
@@ -203,15 +217,15 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::sink::series::update", level = "trace", skip_all, fields(rows = post.row_count()))]
+	#[instrument(name = "flow::operator::sink::series::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_series_view_update(
 		&mut self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
@@ -219,14 +233,19 @@ impl SinkSeriesViewOperator {
 		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
-		let row_count = source_post.row_count();
+		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
+			(&[][..], &[][..])
+		} else {
+			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+		};
 		for row_idx in 0..row_count {
-			let pre_row_number = source_pre.row_numbers()[row_idx];
-			let post_row_number = source_post.row_numbers()[row_idx];
+			let pre_row_number = pre_row_numbers[row_idx];
+			let post_row_number = post_row_numbers[row_idx];
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
@@ -235,9 +254,9 @@ impl SinkSeriesViewOperator {
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
-					partition_of(view, &self.partition_indices, source_pre, row_idx);
+					partition_of(view, &self.partition_indices, source_pre, row_idx)?;
 				let (post_partition, post_values) =
-					partition_of(view, &self.partition_indices, source_post, row_idx);
+					partition_of(view, &self.partition_indices, source_post, row_idx)?;
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -295,24 +314,30 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::sink::series::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
+	#[instrument(name = "flow::operator::sink::series::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
 	fn apply_series_view_remove(
 		&self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		object_id: StorageId,
-		pre: &Columns,
+		pre: &RecordBatch,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = coerced.row_count();
+		let row_count = coerced.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[]
+		} else {
+			require_row_numbers(&coerced)?
+		};
 		for row_idx in 0..row_count {
-			let row_number = coerced.row_numbers()[row_idx];
+			let row_number = row_numbers[row_idx];
 			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
-				let (partition, _values) = partition_of(view, &self.partition_indices, source, row_idx);
+				let (partition, _values) =
+					partition_of(view, &self.partition_indices, source, row_idx)?;
 				PartitionedSeriesRowKey::encoded(object_id, partition, None, series_key, row_number.0)
 			} else {
 				SeriesRowKey {

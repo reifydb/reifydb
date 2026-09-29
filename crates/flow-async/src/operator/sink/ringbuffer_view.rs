@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
+use arrow_array::RecordBatch;
 use reifydb_codec::{
 	key::{
 		encode_i64_asc, encode_u64_asc, encode_u128_asc,
@@ -50,7 +51,10 @@ use reifydb_core::{
 		timer::TimerKind,
 		typed::{SuffixBytes, typed_key},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{append_rows, batch},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_flow::operator::sink::{
 	coerce_columns, encode_row_at_index,
@@ -63,11 +67,10 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
-	fragment::Fragment,
 	reifydb_assertions,
 	value::{
 		Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns, value_type::ValueType,
+		system_columns::require_row_numbers, value_type::ValueType,
 	},
 };
 
@@ -78,7 +81,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, state::iter::StateIterator},
+	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, row_times, state::iter::StateIterator},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
@@ -847,14 +850,15 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
-		post: &Columns,
+		post: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.row_count();
+		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, shape);
+		let times = row_times(source)?;
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
@@ -864,7 +868,7 @@ impl SinkRingBufferViewOperator {
 			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
 			let mut group_index: HashMap<Partition, usize> = HashMap::new();
 			for row_idx in 0..row_count {
-				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx);
+				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
 				match group_index.get(&partition) {
 					Some(&group) => groups[group].2.push(row_idx),
 					None => {
@@ -893,6 +897,7 @@ impl SinkRingBufferViewOperator {
 					meta,
 					Some(partition),
 					source,
+					&times,
 					shape,
 					&field_columns,
 					&rows,
@@ -914,6 +919,7 @@ impl SinkRingBufferViewOperator {
 				meta,
 				None,
 				source,
+				&times,
 				shape,
 				&field_columns,
 				&rows,
@@ -940,7 +946,8 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
-		source: &Columns,
+		source: &RecordBatch,
+		times: &[Option<DateTime>],
 		shape: &RowShape,
 		field_columns: &[usize],
 		rows: &[usize],
@@ -968,16 +975,21 @@ impl SinkRingBufferViewOperator {
 		}
 
 		let skip = evict_needed.min(incoming) as usize;
+		let row_numbers = if rows.is_empty() {
+			&[]
+		} else {
+			require_row_numbers(source)?
+		};
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
-			let source_rn = source.row_numbers()[row_idx];
+			let source_rn = row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
 			evicted_rns.push(source_rn);
 			evicted.push(encoded);
 		}
 
 		for &row_idx in &rows[skip..] {
-			let source_rn = source.row_numbers()[row_idx];
+			let source_rn = row_numbers[row_idx];
 			let assigned_rn = RowNumber(meta.tail);
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
@@ -986,7 +998,7 @@ impl SinkRingBufferViewOperator {
 				partition,
 				assigned_rn,
 				source_rn,
-				source.time().get(row_idx).copied(),
+				times.get(row_idx).copied().flatten(),
 			)?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
 			values.push(encoded);
@@ -1010,7 +1022,7 @@ impl SinkRingBufferViewOperator {
 		if evicted_bytes_vec.is_empty() {
 			return Ok(None);
 		}
-		let storage_columns: Vec<ColumnWithName> = view
+		let storage_columns = view
 			.columns()
 			.iter()
 			.map(|col| {
@@ -1019,14 +1031,10 @@ impl SinkRingBufferViewOperator {
 				} else {
 					col.constraint.get_type()
 				};
-				ColumnWithName {
-					name: Fragment::internal(&col.name),
-					data: ColumnBuilder::with_capacity(ty, 0).finish(),
-				}
+				ColumnBuilder::with_capacity(ty, 0).finish(&col.name)
 			})
 			.collect();
-		let mut evicted = Columns::with_system(storage_columns, SystemColumns::default());
-		evicted.append_rows(shape, evicted_bytes_vec, evicted_rns)?;
+		let mut evicted = append_rows(batch(storage_columns)?, shape, evicted_bytes_vec, evicted_rns)?;
 		decode_dictionary_columns(&mut evicted, &mut TxnHostContext::new(txn, self.operator))?;
 		Ok(Some(Diff::remove(evicted)))
 	}
@@ -1039,8 +1047,8 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
-		pre: &Columns,
-		post: &Columns,
+		pre: &RecordBatch,
+		post: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
@@ -1049,18 +1057,23 @@ impl SinkRingBufferViewOperator {
 		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
-		let row_count = source_post.row_count();
+		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
+		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
+			(&[][..], &[][..])
+		} else {
+			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+		};
 		for row_idx in 0..row_count {
-			let pre_source_rn = source_pre.row_numbers()[row_idx];
-			let post_source_rn = source_post.row_numbers()[row_idx];
+			let pre_source_rn = pre_row_numbers[row_idx];
+			let post_source_rn = post_row_numbers[row_idx];
 
 			let partition = if self.is_partitioned() {
 				let (pre_partition, _) =
-					partition_of(view, &self.partition_indices, source_pre, row_idx);
+					partition_of(view, &self.partition_indices, source_pre, row_idx)?;
 				let (post_partition, post_values) =
-					partition_of(view, &self.partition_indices, source_post, row_idx);
+					partition_of(view, &self.partition_indices, source_post, row_idx)?;
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(
 					txn,
@@ -1114,23 +1127,28 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
-		pre: &Columns,
+		pre: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = coerced.row_count();
+		let row_count = coerced.num_rows();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
+		let row_numbers = if row_count == 0 {
+			&[]
+		} else {
+			require_row_numbers(&coerced)?
+		};
 		for row_idx in 0..row_count {
-			let source_rn = coerced.row_numbers()[row_idx];
+			let source_rn = row_numbers[row_idx];
 			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
 				continue;
 			};
 
 			let (partition, partition_values) = if self.is_partitioned() {
 				let (partition, partition_values) =
-					partition_of(view, &self.partition_indices, source, row_idx);
+					partition_of(view, &self.partition_indices, source, row_idx)?;
 				note_touched(touched, partition_values.clone());
 				(Some(partition), Some(partition_values))
 			} else {
@@ -1175,6 +1193,9 @@ impl SinkRingBufferViewOperator {
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, UInt64Array};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
@@ -1189,11 +1210,20 @@ mod tests {
 			resolved::ResolvedNamespace,
 		},
 		key::{any::TaggedKey, tag::KeyTag},
-		value::column::buffer::ColumnBuffer,
+		value::column::factory::{int4, utf8},
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			constraint::TypeConstraint,
+			container::temporal_array::datetime_array,
+			datetime::DateTime,
+			identity::IdentityId,
+			system_columns::{SystemColumn, with_system_column},
+		},
+	};
 
 	use super::*;
 	use crate::transaction::{mock::FlowTxn, substrate::apply_operator_state};
@@ -1302,17 +1332,26 @@ mod tests {
 		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
-	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: i64) -> Columns {
+	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: i64) -> RecordBatch {
 		let ns: Vec<i32> = rows.iter().map(|(_, n)| *n).collect();
-		let rns: Vec<RowNumber> = (0..rows.len() as u64).map(|i| RowNumber(first_source_rn + i)).collect();
+		let rns: Vec<u64> = (0..rows.len() as u64).map(|i| first_source_rn + i).collect();
 		let ts: Vec<DateTime> = rows.iter().map(|_| DateTime::from_nanos(time)).collect();
 		let mut cols = Vec::new();
 		if partitioned {
 			let bases: Vec<String> = rows.iter().map(|(b, _)| b.to_string()).collect();
-			cols.push(ColumnWithName::new(Fragment::internal("base"), ColumnBuffer::utf8(bases)));
+			cols.push(utf8("base", bases));
 		}
-		cols.push(ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(ns)));
-		Columns::with_system(cols, SystemColumns::new(rns, Vec::new(), ts.clone(), ts.clone(), ts, Vec::new()))
+		cols.push(int4("n", ns));
+		let stamp = || -> ArrayRef { Arc::new(datetime_array(ts.clone())) };
+		let system: [(SystemColumn, ArrayRef); 4] = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(rns))),
+			(SystemColumn::CreatedAt, stamp()),
+			(SystemColumn::UpdatedAt, stamp()),
+			(SystemColumn::Time, stamp()),
+		];
+		system.into_iter().fold(batch(cols).unwrap(), |columns, (column, array)| {
+			with_system_column(columns, column, array).unwrap()
+		})
 	}
 
 	fn insert(

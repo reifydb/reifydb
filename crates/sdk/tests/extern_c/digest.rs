@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{
+		batch::batch,
+		column::{
+			builder::ColumnBuilder,
+			factory::{self, rename},
+			nulls::split_nulls,
+		},
+	},
 };
 use reifydb_sdk::{
 	common::extern_wasm::marshal::marshal_columns_to_bytes, flow::operator::extern_c::binding::arena::Arena,
@@ -15,8 +24,7 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
 	error::Diagnostic,
-	fragment::Fragment,
-	value::{Value, datetime::DateTime, digest::Digest, value_type::ValueType},
+	value::{Value, column_view::ColumnView, datetime::DateTime, digest::Digest, value_type::ValueType},
 };
 
 use super::common::PassthroughOperator;
@@ -33,19 +41,19 @@ fn digest_type() -> ValueType {
 	digest_value().get_type()
 }
 
-fn digest_buffer() -> ColumnBuffer {
-	let (buffer, _) = ColumnBuffer::none_typed(digest_type(), 0).split_nulls();
-	let mut builder = buffer.into_builder();
+fn digest_buffer() -> (FieldRef, ArrayRef) {
+	let (buffer, _) = split_nulls(factory::none_typed("c", digest_type(), 0)).unwrap();
+	let mut builder = ColumnBuilder::from_view(&ColumnView::try_from(&buffer).unwrap());
 	builder.push_value(digest_value());
-	builder.finish()
+	builder.finish("c")
 }
 
-fn columns(name: &str, buffer: ColumnBuffer) -> Columns {
-	Columns::new(vec![ColumnWithName::new(Fragment::internal(name), buffer)])
+fn columns(name: &str, buffer: (FieldRef, ArrayRef)) -> RecordBatch {
+	batch(vec![rename(buffer, name)]).unwrap()
 }
 
-fn scalar_columns() -> Columns {
-	columns("a", ColumnBuffer::int4(vec![1]))
+fn scalar_columns() -> RecordBatch {
+	columns("a", factory::int4("c", vec![1]))
 }
 
 fn change(diffs: Vec<Diff>) -> Change {
@@ -88,9 +96,10 @@ fn marshal_change_with_a_digest_insert_reports_extern_001() {
 #[test]
 fn marshal_change_with_an_optional_digest_column_reports_extern_001() {
 	// An Option wrapper must not hide the digest from the check, since the marshaller unwraps it before encoding.
-	let mut builder = ColumnBuffer::none_typed(digest_type(), 1).into_builder();
+	let none = factory::none_typed("c", digest_type(), 1);
+	let mut builder = ColumnBuilder::from_view(&ColumnView::try_from(&none).unwrap());
 	builder.push_value(digest_value());
-	let buffer = builder.finish();
+	let buffer = builder.finish("c");
 
 	let diagnostic = marshal_change_error(&change(vec![Diff::insert(columns("o", buffer))]));
 
@@ -120,12 +129,9 @@ fn marshal_change_with_a_digest_in_a_later_remove_diff_reports_extern_001() {
 #[test]
 fn marshal_columns_to_bytes_with_a_digest_column_reports_extern_001() {
 	// The wasm byte format also lacks the inner type and accuracy, so it must refuse instead of panicking.
-	let input = Columns::new(vec![
-		ColumnWithName::new(Fragment::internal("a"), ColumnBuffer::int4(vec![1])),
-		ColumnWithName::new(Fragment::internal("d"), digest_buffer()),
-	]);
+	let input = vec![factory::int4("a", vec![1]), rename(digest_buffer(), "d")];
 
-	let diagnostic = marshal_columns_to_bytes(&input).unwrap_err().diagnostic();
+	let diagnostic = marshal_columns_to_bytes(&input, 1, &[]).unwrap_err().diagnostic();
 
 	assert_extern_001(&diagnostic, "d");
 }

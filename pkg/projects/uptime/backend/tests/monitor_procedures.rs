@@ -80,17 +80,17 @@ fn rows(frames: &[Frame]) -> usize {
 fn column(frames: &[Frame], name: &str) -> Value {
 	let frame = frames.first().expect("frame");
 	assert_eq!(frame.row_count(), 1, "expected exactly one row when reading column {name}");
-	frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name}")).data.get_value(0)
+	frame.column(name).expect("the column reads").unwrap_or_else(|| panic!("column {name}")).get_value(0)
 }
 
 fn values(frames: &[Frame], name: &str) -> Vec<Value> {
 	let Some(frame) = frames.first() else {
 		return Vec::new();
 	};
-	let Some(col) = frame.columns.iter().find(|c| c.name == name) else {
+	let Some(col) = frame.column(name).expect("the column reads") else {
 		return Vec::new();
 	};
-	(0..frame.row_count()).map(|i| col.data.get_value(i)).collect()
+	(0..frame.row_count()).map(|i| col.get_value(i)).collect()
 }
 
 fn expect_error(result: Result<Vec<Frame>, Error>, code: &str, message: &str) {

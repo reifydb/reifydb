@@ -3,11 +3,13 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::queue::{QueueItemStatus, decode_queue_item_state, encode_queue_item_state},
 	key::queue::{QueueItemStateKey, QueuePartitionKey},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_routine_abi::{
 	Routine, RoutineInfo,
@@ -53,7 +55,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 	}
 
 	#[instrument(name = "queue::extend", level = "debug", skip_all)]
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 2)?;
@@ -113,11 +119,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		tx.set(&state_key, encode_queue_item_state(&state))?;
 		tx.commit()?;
 
-		Ok(Columns::single_row([
+		Ok(single_row([
 			("item", Value::Uint8(token.row.0)),
 			("attempt", Value::Uint4(token.attempt)),
 			("deadline", Value::DateTime(deadline)),
-		]))
+		])?)
 	}
 }
 

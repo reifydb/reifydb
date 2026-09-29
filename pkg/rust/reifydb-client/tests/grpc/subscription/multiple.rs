@@ -133,7 +133,7 @@ fn test_changes_routed_to_correct_subscription() {
 
 		let frame = &change1.unwrap().changes[0].frame;
 		let id_col = find_column(frame, "id").unwrap();
-		assert_eq!(id_col.data.get_value(0), Value::Int4(100));
+		assert_eq!(id_col.get_value(0), Value::Int4(100));
 
 		let change2 = recv_with_timeout(&mut sub2, 500).await;
 		assert!(change2.is_none(), "Sub2 should NOT receive change for table1 insert");

@@ -7,7 +7,10 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, digest::Digest, frame::frame::Frame, value_type::ValueType},
+	value::{
+		Value, column_view::ColumnView, digest::Digest, frame::frame::Frame, system_columns::user_columns,
+		value_type::ValueType,
+	},
 };
 
 fn engine() -> TestEngine {
@@ -143,11 +146,10 @@ fn joining_on_a_scalar_key_carries_digest_columns_through() {
 	.unwrap();
 
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	let digests: Vec<Value> = frames[0]
-		.columns
-		.iter()
-		.filter(|c| c.name == "d" || c.name == "s_d")
-		.flat_map(|c| (0..c.data.len()).map(|row| c.data.get_value(row)))
+	let digests: Vec<Value> = user_columns(&frames[0].batch)
+		.filter(|(field, _)| field.name() == "d" || field.name() == "s_d")
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).unwrap())
+		.flat_map(|c| (0..c.len()).map(move |row| c.get_value(row)))
 		.collect();
 	assert_eq!(digests, vec![Value::Digest(Box::new(digest())); 4], "frame:\n{}", frames[0]);
 }

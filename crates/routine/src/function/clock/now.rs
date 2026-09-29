@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int8_with_bitvec;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
@@ -34,14 +36,17 @@ impl<'a> Routine<FunctionContext<'a>> for Now {
 		ValueType::Int8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let millis = ctx.runtime_context.clock.now().to_millis();
 		let row_count = ctx.row_count.max(1);
 		let data = vec![millis; row_count];
 		let bitvec = vec![true; row_count];
 
-		let result_data = ColumnBuffer::int8_with_bitvec(data, bitvec);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(int8_with_bitvec(ctx.fragment.text(), data, bitvec))
 	}
 }
 

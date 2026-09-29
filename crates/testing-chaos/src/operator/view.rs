@@ -3,11 +3,15 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_core::{
-	interface::change::{Change, Diff},
-	value::column::columns::Columns,
+use arrow_array::RecordBatch;
+use reifydb_core::interface::change::{Change, Diff};
+use reifydb_value::value::{
+	Value,
+	column_view::ColumnView,
+	datetime::DateTime,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, require_row_numbers, time},
 };
-use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowKey {
@@ -155,16 +159,35 @@ impl MaterializedView {
 		}
 	}
 
-	fn rows_of(&mut self, columns: &Columns) -> Vec<(OutputKey, MaterializedRow)> {
-		let names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
+	fn rows_of(&mut self, batch: &RecordBatch) -> Vec<(OutputKey, MaterializedRow)> {
+		let schema = batch.schema_ref();
+		let user: Vec<usize> = (0..batch.num_columns())
+			.filter(|&i| SystemColumn::from_name(schema.field(i).name()).is_none())
+			.collect();
+		let names: Vec<String> = user.iter().map(|&i| schema.field(i).name().to_string()).collect();
 		if self.columns.is_empty() {
 			self.columns = names.clone();
 		}
-		let times = columns.time();
-		(0..columns.row_count())
+		let views: Vec<ColumnView> = user
+			.iter()
+			.map(|&i| {
+				ColumnView::try_from((batch.column(i), schema.field(i))).unwrap_or_else(|error| {
+					panic!(
+						"column {} of a change batch has no column view: {error}",
+						schema.field(i).name()
+					)
+				})
+			})
+			.collect();
+		let numbers = require_row_numbers(batch)
+			.unwrap_or_else(|error| panic!("a change batch must carry its row numbers: {error}"));
+		let times = time(batch)
+			.unwrap_or_else(|error| panic!("the #time column of a change batch is unreadable: {error}"));
+		(0..batch.num_rows())
 			.map(|i| {
-				let number: RowNumber = columns.row_numbers()[i];
-				let row = MaterializedRow::from_pairs(names.iter().cloned().zip(columns.row(i)))
+				let number: RowNumber = numbers[i];
+				let values = views.iter().map(|view| view.get_value(i));
+				let row = MaterializedRow::from_pairs(names.iter().cloned().zip(values))
 					.at(times.get(i).copied());
 				(OutputKey::new(vec![Value::Uint8(number.0)]), row)
 			})
@@ -257,26 +280,26 @@ impl Default for MaterializedView {
 
 #[cfg(test)]
 mod fold_tests {
+	use std::sync::Arc;
+
+	use arrow_array::UInt64Array;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
 		interface::catalog::flow::OperatorId,
-		value::column::{ColumnWithName, builder::ColumnBuilder},
+		value::{batch::batch, column::builder::ColumnBuilder},
 	};
-	use reifydb_value::{
-		fragment::Fragment,
-		value::{datetime::DateTime, value_type::ValueType},
-	};
+	use reifydb_value::value::{datetime::DateTime, system_columns::with_system_column, value_type::ValueType};
 
 	use super::*;
 
-	fn columns(numbers: &[u64]) -> Columns {
+	fn columns(numbers: &[u64]) -> RecordBatch {
 		let mut buffer = ColumnBuilder::with_capacity(ValueType::Int8, numbers.len());
 		for number in numbers {
 			buffer.push_value(Value::Int8(*number as i64));
 		}
-		let buffer = buffer.finish();
-		Columns::new(vec![ColumnWithName::new(Fragment::internal("v"), buffer)])
-			.with_row_numbers(numbers.iter().map(|n| RowNumber(*n)).collect())
+		let values = batch(vec![buffer.finish("v")]).unwrap();
+		with_system_column(values, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(numbers.to_vec())))
+			.unwrap()
 	}
 
 	fn change(diffs: Vec<Diff>) -> Change {

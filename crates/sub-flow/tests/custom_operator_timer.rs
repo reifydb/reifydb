@@ -30,7 +30,7 @@ use reifydb_value::{
 	params::Params,
 	value::{
 		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
-		frame::frame::Frame, identity::IdentityId, value_type::ValueType,
+		frame::frame::Frame, identity::IdentityId, system_columns::time, value_type::ValueType,
 	},
 };
 
@@ -245,7 +245,8 @@ fn a_row_emitted_from_a_timer_carries_the_firing_instant_as_its_event_time() {
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
 
 	let frames = query_internal(&db, "FROM app::v filter { g == 7 }");
-	let stamps: Vec<DateTime> = frames.iter().flat_map(|frame| frame.time().iter().copied()).collect();
+	let stamps: Vec<DateTime> =
+		frames.iter().flat_map(|frame| time(&frame.batch).expect("#time").iter().copied()).collect();
 
 	assert_eq!(
 		stamps,

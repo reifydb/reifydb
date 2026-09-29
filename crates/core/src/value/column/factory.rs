@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use arrow_array::{
-	Array, ArrayRef, BooleanArray, LargeStringArray, NullArray, PrimitiveArray,
+	Array, ArrayRef, ArrowPrimitiveType, BooleanArray, LargeStringArray, NullArray, PrimitiveArray, make_array,
 	types::{
 		Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type,
 		UInt64Type,
@@ -32,6 +32,7 @@ use reifydb_value::value::{
 	datetime::DateTime,
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
+	digest::Digest,
 	duration::Duration,
 	identity::IdentityId,
 	time::Time,
@@ -65,7 +66,7 @@ fn validity(len: usize, bitvec: impl Into<BooleanBuffer>) -> Option<NullBuffer> 
 
 fn native<T>(values: Vec<T::Native>, nulls: Option<NullBuffer>) -> ArrayRef
 where
-	T: arrow_array::ArrowPrimitiveType,
+	T: ArrowPrimitiveType,
 {
 	Arc::new(PrimitiveArray::<T>::new(ScalarBuffer::from(values), nulls))
 }
@@ -316,7 +317,7 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 				}),
 				..FieldType::default()
 			},
-			Arc::new(digest_array((0..len).map(|_| None::<reifydb_value::value::digest::Digest>))),
+			Arc::new(digest_array((0..len).map(|_| None::<Digest>))),
 		),
 	};
 	let array = with_validity(array, NullBuffer::new_null(len));
@@ -390,7 +391,7 @@ pub(crate) fn with_validity(array: ArrayRef, nulls: NullBuffer) -> ArrayRef {
 		.nulls(Some(nulls))
 		.build()
 		.expect("a validity buffer of the array length always attaches");
-	arrow_array::make_array(data)
+	make_array(data)
 }
 
 #[cfg(test)]

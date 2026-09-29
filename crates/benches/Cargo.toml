@@ -19,7 +19,9 @@ hdrhistogram = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
+arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc", "sub_flow"] }
 reifydb-client = { workspace = true, features = ["http", "ws", "grpc"] }
 reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }

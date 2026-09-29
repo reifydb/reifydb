@@ -3,7 +3,10 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{Frame, WireFormat, WsClient};
+use reifydb_client::{
+	ColumnView, Frame, WireFormat, WsClient,
+	value::value::system_columns::{SystemColumn, row_numbers},
+};
 use rustyline::{DefaultEditor, error::ReadlineError};
 use terminal_size::{Width, terminal_size};
 
@@ -216,20 +219,30 @@ fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
 fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	use reifydb_client::value::util::unicode::UnicodeWidthStr;
 
-	let row_count = frame.first().map_or(0, |c| c.data.len());
-	let has_row_numbers = !frame.row_numbers().is_empty();
+	let row_count = frame.row_count();
+	let row_numbers = row_numbers(&frame.batch).expect("#rownum reads");
+	let has_row_numbers = !row_numbers.is_empty();
+	let columns: Vec<ColumnView<'_>> = frame
+		.batch
+		.schema_ref()
+		.fields()
+		.iter()
+		.zip(frame.batch.columns())
+		.filter(|(field, _)| field.name() != SystemColumn::RowNumbers.name())
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).expect("a frame column reads"))
+		.collect();
 
 	let mut natural_widths: Vec<usize> = Vec::new();
 
 	if has_row_numbers {
 		let header_width = "rownum".width();
-		let max_val_width = frame.row_numbers().iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
+		let max_val_width = row_numbers.iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
-	for col in &frame.columns {
-		let header_width = col.name.width();
-		let max_val_width = (0..col.data.len()).map(|i| col.data.as_string(i).width()).max().unwrap_or(0);
+	for col in &columns {
+		let header_width = col.field.name().width();
+		let max_val_width = (0..col.len()).map(|i| col.as_string(i).width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
@@ -277,11 +290,11 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 		col_idx += 1;
 	}
 
-	for col in &frame.columns {
+	for col in &columns {
 		if col_idx >= num_cols_to_show {
 			break;
 		}
-		let name = &col.name;
+		let name = col.field.name();
 		let w = natural_widths[col_idx];
 		let pad = w - name.width();
 		let l = pad / 2;
@@ -299,8 +312,8 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 
 		if has_row_numbers && col_idx < num_cols_to_show {
 			let w = natural_widths[col_idx];
-			let val = if row_idx < frame.row_numbers().len() {
-				frame.row_numbers()[row_idx].to_string()
+			let val = if row_idx < row_numbers.len() {
+				row_numbers[row_idx].to_string()
 			} else {
 				"none".to_string()
 			};
@@ -311,12 +324,12 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 			col_idx += 1;
 		}
 
-		for col in &frame.columns {
+		for col in &columns {
 			if col_idx >= num_cols_to_show {
 				break;
 			}
 			let w = natural_widths[col_idx];
-			let val = col.data.as_string(row_idx);
+			let val = col.as_string(row_idx);
 			let pad = w - val.width();
 			let l = pad / 2;
 			let r = pad - l;

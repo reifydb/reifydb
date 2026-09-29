@@ -4,7 +4,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_test_harness::engine::create_test_admin_transaction;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::params::Params;
+use reifydb_value::{params::Params, value::column_view::ColumnView};
 
 use super::{
 	authentications::SystemAuthentications,
@@ -155,8 +155,13 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 			match handler.next(&mut txn) {
 				Ok(None) => break,
 				Ok(Some(batch)) => {
-					let emitted: Vec<String> =
-						batch.columns.names.iter().map(|n| n.text().to_string()).collect();
+					let emitted: Vec<String> = batch
+						.batch
+						.schema_ref()
+						.fields()
+						.iter()
+						.map(|f| f.name().to_string())
+						.collect();
 
 					if emitted != declared {
 						failures.push(format!(
@@ -207,9 +212,11 @@ fn every_system_vtable_emits_the_types_its_schema_declares() {
 
 		while let Ok(Some(batch)) = handler.next(&mut txn) {
 			for (index, (name, expected)) in declared.iter().enumerate() {
-				let Some(emitted) = batch.columns.columns.get(index) else {
+				let Some(array) = batch.batch.columns().get(index) else {
 					continue;
 				};
+				let emitted = ColumnView::try_from((array, batch.batch.schema_ref().field(index)))
+					.unwrap_or_else(|e| panic!("{table}.{name}: unreadable column: {e:?}"));
 
 				if emitted.get_type() != *expected {
 					failures.push(format!(

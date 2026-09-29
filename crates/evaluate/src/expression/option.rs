@@ -1,9 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_buffer::NullBuffer;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder};
-use reifydb_value::{fragment::Fragment, util::bitmap::and_nulls, value::value_type::ValueType};
+use arrow_array::{Array, ArrayRef};
+use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_schema::FieldRef;
+use reifydb_core::value::{
+	batch::{batch, filter},
+	column::{
+		builder::ColumnBuilder,
+		factory::{none, none_typed},
+		nulls::{split_nulls, with_nulls},
+	},
+};
+use reifydb_value::{
+	fragment::Fragment,
+	util::bitmap::and_nulls,
+	value::{column_view::ColumnView, value_type::ValueType},
+};
 
 use crate::Result;
 
@@ -20,22 +33,32 @@ pub(crate) fn combine_option_bitvecs(a: Option<&NullBuffer>, b: Option<&NullBuff
 	}
 }
 
+fn filter_column(column: (FieldRef, ArrayRef), mask: &BooleanBuffer) -> Result<(FieldRef, ArrayRef)> {
+	let filtered = filter(&batch(vec![column])?, mask)?;
+	Ok((filtered.schema_ref().fields()[0].clone(), filtered.column(0).clone()))
+}
+
+fn empty_like(column: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
+	Ok(ColumnBuilder::like(&ColumnView::try_from(column)?, 0).finish(column.0.name()))
+}
+
 pub(crate) fn arith_op_unwrap_option(
-	left: &ColumnWithName,
-	right: &ColumnWithName,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
-	inner: impl FnOnce(&ColumnWithName, &ColumnWithName) -> Result<ColumnWithName>,
-) -> Result<ColumnWithName> {
-	let (left_data, left_nulls) = left.data().clone().split_nulls();
-	let (right_data, right_nulls) = right.data().clone().split_nulls();
-	let typed = match (left.data().is_untyped_none(), right.data().is_untyped_none()) {
-		(true, true) => return Ok(ColumnWithName::new(fragment, ColumnBuffer::none(left_data.len()))),
-		(true, false) => Some(&right_data),
-		(false, true) => Some(&left_data),
-		(false, false) => None,
-	};
+	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
+) -> Result<(FieldRef, ArrayRef)> {
+	let (left_data, left_nulls) = split_nulls(left.clone())?;
+	let (right_data, right_nulls) = split_nulls(right.clone())?;
+	let typed =
+		match (ColumnView::try_from(left)?.is_untyped_none(), ColumnView::try_from(right)?.is_untyped_none()) {
+			(true, true) => return Ok(none(fragment.text(), left_data.1.len())),
+			(true, false) => Some(&right_data),
+			(false, true) => Some(&left_data),
+			(false, false) => None,
+		};
 	if let Some(typed) = typed {
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(typed.get_type(), left_data.len())));
+		return Ok(none_typed(fragment.text(), ColumnView::try_from(typed)?.get_type(), left_data.1.len()));
 	}
 
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
@@ -46,94 +69,80 @@ pub(crate) fn arith_op_unwrap_option(
 		return binary_op_unwrap_option(left, right, fragment, inner);
 	};
 
-	let mut defined_left = left_data;
-	let mut defined_right = right_data;
-	defined_left.filter(nulls.inner())?;
-	defined_right.filter(nulls.inner())?;
+	let defined_left = filter_column(left_data, nulls.inner())?;
+	let defined_right = filter_column(right_data, nulls.inner())?;
 
-	let result = inner(
-		&ColumnWithName::new(left.name().clone(), defined_left),
-		&ColumnWithName::new(right.name().clone(), defined_right),
-	)?;
+	let computed = inner(&defined_left, &defined_right)?;
+	let result = ColumnView::try_from(&computed)?;
 
-	if result.data().is_empty() {
-		return Ok(ColumnWithName::new(
-			fragment,
-			ColumnBuffer::none_typed(result.data().get_type(), nulls.len()),
-		));
+	if result.is_empty() {
+		return Ok(none_typed(fragment.text(), result.get_type(), nulls.len()));
 	}
 
-	let placeholder = result.data().get_value(0);
-	let mut builder = ColumnBuilder::with_capacity(result.data().get_type(), nulls.len());
+	let placeholder = result.get_value(0);
+	let mut builder = ColumnBuilder::with_capacity(result.get_type(), nulls.len());
 	let mut defined = 0;
 	for row in 0..nulls.len() {
 		if nulls.is_null(row) {
 			builder.push_value(placeholder.clone());
 		} else {
-			builder.push_value(result.data().get_value(defined));
+			builder.push_value(result.get_value(defined));
 			defined += 1;
 		}
 	}
 
-	Ok(ColumnWithName::new(fragment, builder.finish().with_nulls(nulls)))
+	with_nulls(builder.finish(fragment.text()), nulls)
 }
 
 pub(crate) fn binary_op_unwrap_option(
-	left: &ColumnWithName,
-	right: &ColumnWithName,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
-	inner: impl FnOnce(&ColumnWithName, &ColumnWithName) -> Result<ColumnWithName>,
-) -> Result<ColumnWithName> {
-	let (left_data, left_nulls) = left.data().clone().split_nulls();
-	let (right_data, right_nulls) = right.data().clone().split_nulls();
+	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
+) -> Result<(FieldRef, ArrayRef)> {
+	let (left_data, left_nulls) = split_nulls(left.clone())?;
+	let (right_data, right_nulls) = split_nulls(right.clone())?;
 
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
-		let ty = if left.data().is_untyped_none() || right.data().is_untyped_none() {
+		let ty = if ColumnView::try_from(left)?.is_untyped_none()
+			|| ColumnView::try_from(right)?.is_untyped_none()
+		{
 			ValueType::Boolean
 		} else {
-			let l = ColumnWithName::new(left.name().clone(), ColumnBuilder::like(&left_data, 0).finish());
-			let r = ColumnWithName::new(right.name().clone(), ColumnBuilder::like(&right_data, 0).finish());
-			inner(&l, &r)?.data().get_type()
+			ColumnView::try_from(&inner(&empty_like(&left_data)?, &empty_like(&right_data)?)?)?.get_type()
 		};
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ty, left_data.len())));
+		return Ok(none_typed(fragment.text(), ty, left_data.1.len()));
 	}
 
 	let combined_nulls = combine_option_bitvecs(left_nulls.as_ref(), right_nulls.as_ref());
 
-	let l = ColumnWithName::new(left.name().clone(), left_data);
-	let r = ColumnWithName::new(right.name().clone(), right_data);
+	let result = inner(&left_data, &right_data)?;
 
-	let result = inner(&l, &r)?;
-
-	Ok(match combined_nulls {
-		Some(nulls) => result.with_new_data(result.data().clone().with_nulls(nulls)),
-		None => result,
-	})
+	match combined_nulls {
+		Some(nulls) => with_nulls(result, nulls),
+		None => Ok(result),
+	}
 }
 
 pub(crate) fn unary_op_unwrap_option(
-	col: &ColumnWithName,
-	inner: impl FnOnce(&ColumnWithName) -> Result<ColumnWithName>,
-) -> Result<ColumnWithName> {
-	let (inner_data, nulls) = col.data().clone().split_nulls();
+	col: &(FieldRef, ArrayRef),
+	inner: impl FnOnce(&(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
+) -> Result<(FieldRef, ArrayRef)> {
+	let (inner_data, nulls) = split_nulls(col.clone())?;
 
 	if is_all_none(nulls.as_ref()) {
-		let ty = if col.data().is_untyped_none() {
+		let ty = if ColumnView::try_from(col)?.is_untyped_none() {
 			ValueType::Boolean
 		} else {
-			inner(&ColumnWithName::new(col.name().clone(), ColumnBuilder::like(&inner_data, 0).finish()))?
-				.data()
-				.get_type()
+			ColumnView::try_from(&inner(&empty_like(&inner_data)?)?)?.get_type()
 		};
-		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(ty, inner_data.len())));
+		return Ok(none_typed(col.0.name(), ty, inner_data.1.len()));
 	}
 
-	let unwrapped = ColumnWithName::new(col.name().clone(), inner_data);
+	let result = inner(&inner_data)?;
 
-	let result = inner(&unwrapped)?;
-
-	Ok(match nulls {
-		Some(nulls) => result.with_new_data(result.data().clone().with_nulls(nulls)),
-		None => result,
-	})
+	match nulls {
+		Some(nulls) => with_nulls(result, nulls),
+		None => Ok(result),
+	}
 }

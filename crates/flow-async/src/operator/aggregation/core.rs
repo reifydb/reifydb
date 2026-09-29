@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::{FieldRef, Schema, SchemaRef};
 use postcard::to_stdvec;
 use reifydb_codec::row::{
 	bytes::RowBuilder,
@@ -19,7 +21,7 @@ use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::catalog::flow::OperatorId,
 	row::Row,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::batch::{empty_batch, from_row},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -38,12 +40,15 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
+	fragment::Fragment,
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
+		column_view::ColumnView,
 		datetime::DateTime,
 		digest::{Digest, DigestError},
 		row_number::RowNumber,
+		system_columns::column_view,
 		value_type::ValueType,
 	},
 };
@@ -62,7 +67,7 @@ pub enum SlotInput {
 	EventTime,
 }
 
-fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnBuffer) -> Result<()> {
+fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'_>) -> Result<()> {
 	let mut probe: Option<Digest> = None;
 	for row in 0..data.len() {
 		let value = data.get_value(row);
@@ -112,7 +117,7 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 
 pub struct Aggregation {
 	pub operator: OperatorId,
-	pub output_schema: Columns,
+	pub output_schema: SchemaRef,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
 	pub aggregate_output_names: Vec<String>,
@@ -136,7 +141,7 @@ impl Aggregation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		operator: OperatorId,
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		routines: Routines,
@@ -200,12 +205,12 @@ impl Aggregation {
 			(None, Vec::new(), Vec::new(), Vec::new())
 		};
 		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
-		let output_schema = Columns::new(
+		let output_schema = Arc::new(Schema::new(
 			group_by.iter()
 				.chain(&aggregations)
 				.map(|e| schema_column(parent_schema.as_ref(), e))
-				.collect(),
-		);
+				.collect::<Vec<FieldRef>>(),
+		));
 
 		Ok(Self {
 			operator,
@@ -231,8 +236,8 @@ impl Aggregation {
 		&mut self.tumbling_engine
 	}
 
-	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {
-		let row_count = columns.row_count();
+	pub fn compute_groups(&self, columns: &RecordBatch) -> Result<Vec<(Hash128, Vec<Value>)>> {
+		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -242,23 +247,27 @@ impl Aggregation {
 
 		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
-		let mut group_columns: Vec<ColumnWithName> = Vec::new();
+		let mut group_columns: Vec<(FieldRef, ArrayRef)> = Vec::new();
 		for compiled_expr in &self.compiled_group_by {
 			let column = compiled_expr.execute(&exec_ctx)?;
-			let ty = column.data().get_type();
+			let ty = ColumnView::try_from(&column)?.get_type();
 			if !ty.is_scalar() {
-				return Err(Error(Box::new(aggregate_group_by_unkeyable(column.name_owned(), ty))));
+				return Err(Error(Box::new(aggregate_group_by_unkeyable(
+					Fragment::internal(column.0.name()),
+					ty,
+				))));
 			}
 			group_columns.push(column);
 		}
+		let group_views = group_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 
 		let mut out = Vec::with_capacity(row_count);
 		let mut buf = Vec::with_capacity(128);
 		for row_idx in 0..row_count {
 			buf.clear();
-			let mut values = Vec::with_capacity(group_columns.len());
-			for col in &group_columns {
-				let value = col.data().get_value(row_idx);
+			let mut values = Vec::with_capacity(group_views.len());
+			for col in &group_views {
+				let value = col.get_value(row_idx);
 				let bytes = to_stdvec(&value).map_err(|e| {
 					Error::from(FlowStateError::Encode {
 						state: "group-by value",
@@ -273,10 +282,10 @@ impl Aggregation {
 		Ok(out)
 	}
 
-	pub fn evaluate_slot_inputs(&self, columns: &Columns) -> Result<Vec<ColumnWithName>> {
+	pub fn evaluate_slot_inputs(&self, columns: &RecordBatch) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let mut out = Vec::with_capacity(self.compiled_slot_args.len());
 		if !self.compiled_slot_args.is_empty() {
-			let row_count = columns.row_count();
+			let row_count = columns.num_rows();
 			let session = self.eval_session();
 			let exec_ctx = session.with_eval(columns.clone(), row_count);
 			for compiled in &self.compiled_slot_args {
@@ -287,7 +296,7 @@ impl Aggregation {
 		Ok(out)
 	}
 
-	fn check_digest_inputs(&self, columns: &Columns, slot_cols: &[ColumnWithName]) -> Result<()> {
+	fn check_digest_inputs(&self, columns: &RecordBatch, slot_cols: &[(FieldRef, ArrayRef)]) -> Result<()> {
 		let Some(kinds) = &self.slot_kinds else {
 			return Ok(());
 		};
@@ -299,32 +308,38 @@ impl Aggregation {
 				continue;
 			};
 			let data = match input {
-				SlotInput::Column(name) => match columns.column(name) {
-					Some(column) => column.data(),
+				SlotInput::Column(name) => match column_view(columns, name)? {
+					Some(column) => column,
 					None => continue,
 				},
-				SlotInput::Expr(idx) => slot_cols[*idx].data(),
+				SlotInput::Expr(idx) => ColumnView::try_from(&slot_cols[*idx])?,
 				SlotInput::Star | SlotInput::EventTime => continue,
 			};
-			check_digest_input(self.digests.function_written(slot), *accuracy, data)?;
+			check_digest_input(self.digests.function_written(slot), *accuracy, &data)?;
 		}
 		Ok(())
 	}
 
 	pub fn build_contribution(
 		&self,
-		columns: &Columns,
-		slot_cols: &[ColumnWithName],
+		columns: &RecordBatch,
+		slot_cols: &[(FieldRef, ArrayRef)],
 		row_idx: usize,
 		event_time: DateTime,
-	) -> Vec<Option<Value>> {
+	) -> Result<Vec<Option<Value>>> {
 		self.slot_inputs
 			.iter()
-			.map(|input| match input {
-				SlotInput::Star => None,
-				SlotInput::Column(name) => columns.column(name).map(|c| c.data().get_value(row_idx)),
-				SlotInput::Expr(idx) => Some(slot_cols[*idx].data().get_value(row_idx)),
-				SlotInput::EventTime => Some(Value::DateTime(event_time)),
+			.map(|input| -> Result<Option<Value>> {
+				Ok(match input {
+					SlotInput::Star => None,
+					SlotInput::Column(name) => {
+						column_view(columns, name)?.map(|column| column.get_value(row_idx))
+					}
+					SlotInput::Expr(idx) => {
+						Some(ColumnView::try_from(&slot_cols[*idx])?.get_value(row_idx))
+					}
+					SlotInput::EventTime => Some(Value::DateTime(event_time)),
+				})
 			})
 			.collect()
 	}
@@ -343,12 +358,13 @@ impl Aggregation {
 			encoded: encoded.freeze_bytes(),
 			shape: layout,
 		};
-		let columns = Columns::from_row(&row);
+		let columns = from_row(&row)?;
 		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns, 1);
 		let mut out = Vec::with_capacity(self.compiled_outputs.len());
 		for compiled in &self.compiled_outputs {
-			out.push(compiled.execute(&exec_ctx)?.data().get_value(0));
+			let column = compiled.execute(&exec_ctx)?;
+			out.push(ColumnView::try_from(&column)?.get_value(0));
 		}
 		Ok(out)
 	}
@@ -419,7 +435,7 @@ impl Aggregation {
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,
@@ -429,27 +445,34 @@ impl Aggregation {
 
 #[cfg(test)]
 mod tests {
+	use arrow_array::{ArrayRef, RecordBatch};
+	use arrow_schema::FieldRef;
 	use reifydb_codec::row::bytes::RowBuilder;
 	use reifydb_core::{
 		row::Row,
-		value::column::{buffer::ColumnBuffer, columns::Columns},
+		value::{batch::from_row, column::builder::ColumnBuilder},
 	};
 	use reifydb_flow::aggregate::DIGEST_FUNCTION;
 	use reifydb_value::value::{
-		Value, digest::Digest, duration::Duration, row_number::RowNumber, value_type::ValueType,
+		Value, column_view::ColumnView, digest::Digest, duration::Duration, row_number::RowNumber,
+		value_type::ValueType,
 	};
 
 	use super::{build_aggregation_shape, check_digest_input};
 
 	const PPM: u32 = 10_000;
 
-	fn column(values: Vec<Value>) -> ColumnBuffer {
+	fn column(values: Vec<Value>) -> (FieldRef, ArrayRef) {
 		let first_type = values.iter().find(|value| !matches!(value, Value::None { .. })).map(Value::get_type);
-		let mut builder = ColumnBuffer::none_typed(first_type.unwrap_or(ValueType::Float8), 0).into_builder();
+		let mut builder = ColumnBuilder::with_capacity(first_type.unwrap_or(ValueType::Float8), values.len());
 		for value in values {
 			builder.push_value(value);
 		}
-		builder.finish()
+		builder.finish("v")
+	}
+
+	fn view(columns: &RecordBatch, index: usize) -> ColumnView<'_> {
+		ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))).unwrap()
 	}
 
 	fn digest_of(values: &[f64]) -> Value {
@@ -461,7 +484,7 @@ mod tests {
 	}
 
 	fn code(accuracy: Option<u32>, values: Vec<Value>) -> String {
-		check_digest_input(DIGEST_FUNCTION, accuracy, &column(values))
+		check_digest_input(DIGEST_FUNCTION, accuracy, &ColumnView::try_from(&column(values)).unwrap())
 			.expect_err("the input must be refused")
 			.0
 			.code
@@ -499,9 +522,11 @@ mod tests {
 			(None, vec![Value::none(), Value::none()]),
 			(Some(PPM), vec![Value::none()]),
 		] {
-			check_digest_input(DIGEST_FUNCTION, accuracy, &column(values.clone())).unwrap_or_else(|err| {
-				panic!("{values:?} with accuracy {accuracy:?} must pass, got {err}")
-			});
+			let data = column(values.clone());
+			check_digest_input(DIGEST_FUNCTION, accuracy, &ColumnView::try_from(&data).unwrap())
+				.unwrap_or_else(|err| {
+					panic!("{values:?} with accuracy {accuracy:?} must pass, got {err}")
+				});
 		}
 	}
 
@@ -523,12 +548,12 @@ mod tests {
 			encoded: encoded.freeze_bytes(),
 			shape,
 		};
-		let columns = Columns::from_row(&row);
+		let columns = from_row(&row).unwrap();
 
-		assert_eq!(columns[0].get_value(0), Value::Int4(7));
-		assert_eq!(columns[1].get_type(), digest_type);
-		assert_eq!(columns[1].get_value(0), digest);
-		assert!(matches!(columns[2].get_value(0), Value::None { .. }));
-		assert_eq!(columns[3].get_value(0), values[3]);
+		assert_eq!(view(&columns, 0).get_value(0), Value::Int4(7));
+		assert_eq!(view(&columns, 1).get_type(), digest_type);
+		assert_eq!(view(&columns, 1).get_value(0), digest);
+		assert!(matches!(view(&columns, 2).get_value(0), Value::None { .. }));
+		assert_eq!(view(&columns, 3).get_value(0), values[3]);
 	}
 }

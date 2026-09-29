@@ -1,42 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
+use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str, sync::Arc};
 
-use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
+use arrow_array::{Array, ArrayRef, BooleanArray, LargeBinaryArray, LargeStringArray, RecordBatch, UInt64Array};
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
+use arrow_schema::FieldRef;
 use reifydb_codec::{
 	extern_c::cells::{decode_any_cell, decode_dictionary_id_cell},
 	tag::ValueKind,
 };
 use reifydb_core::{
 	interface::change::{Diff, Diffs},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{
+		batch::{batch, empty_batch},
+		column::{
+			factory::{
+				date, datetime, dictionary_id, duration, float4, float8, identity_id, int1, int2, int4,
+				int8, int16, rename, time, uint1, uint2, uint4, uint8, uint16, uuid4, uuid7,
+			},
+			nulls::with_nulls,
+		},
+	},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::common::{
 	extern_c::wire::callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 	family::{cell_width, decode_family_column, family_params, is_family},
 };
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value,
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
-		container::{
-			any_array::any_array_optional,
-			temporal_array::{date_array, datetime_array, duration_array, time_array},
-			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
-		},
-		date::Date,
-		datetime::DateTime,
-		dictionary::DictionaryEntryId,
-		duration::Duration,
-		identity::IdentityId,
-		row_number::RowNumber,
-		system_columns::SystemColumns,
-		time::Time,
-		uuid::{Uuid4, Uuid7},
+use reifydb_value::value::{
+	Value,
+	constraint::{precision::Precision, scale::Scale},
+	container::{any_array::any_array_optional, temporal_array::datetime_array},
+	date::Date,
+	datetime::DateTime,
+	dictionary::DictionaryEntryId,
+	duration::Duration,
+	identity::IdentityId,
+	system_columns::{SystemColumn, with_system_column},
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+	value_type::{
+		ValueType,
+		field::{FieldType, named},
 	},
 };
 
@@ -66,14 +72,14 @@ pub struct Active {
 }
 
 pub struct Committed {
-	pub buffer: ColumnBuffer,
+	pub buffer: (FieldRef, ArrayRef),
 	pub row_count: usize,
 }
 
 pub struct EmittedDiff {
 	pub kind: EmitDiffKind,
-	pub pre: Option<Columns>,
-	pub post: Option<Columns>,
+	pub pre: Option<RecordBatch>,
+	pub post: Option<RecordBatch>,
 }
 
 impl Default for TestBuilderRegistry {
@@ -499,7 +505,7 @@ fn assemble(
 	row_numbers_ptr: *const u64,
 	row_numbers_len: usize,
 	now: DateTime,
-) -> Result<Columns, i32> {
+) -> Result<RecordBatch, i32> {
 	if ptrs.handles.is_null() || ptrs.names.is_null() || ptrs.name_lens.is_null() {
 		return Err(-1);
 	}
@@ -516,7 +522,7 @@ fn assemble(
 	let names = unsafe { slice::from_raw_parts(ptrs.names, count) };
 	let lens = unsafe { slice::from_raw_parts(ptrs.name_lens, count) };
 
-	let mut cols: Vec<ColumnWithName> = Vec::with_capacity(count);
+	let mut cols: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(count);
 	for i in 0..count {
 		let h = Handle::decode(handles[i]);
 		let slot = inner.slots.remove(&h.id).ok_or(-1)?;
@@ -535,28 +541,21 @@ fn assemble(
 			let s = unsafe { slice::from_raw_parts(names[i], lens[i]) };
 			str::from_utf8(s).unwrap_or("")
 		};
-		cols.push(ColumnWithName::new(Fragment::internal(name), committed.buffer));
+		cols.push(rename(committed.buffer, name));
 	}
-	let row_numbers: Vec<RowNumber> = if row_count == 0 {
-		Vec::new()
-	} else {
+	let mut out = batch(cols).map_err(|_| -1)?;
+	if row_count > 0 {
 		// SAFETY: row_count is non-zero here, so row_numbers_ptr was null-checked above, and
 		// row_numbers_len was checked equal to row_count.
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
-		raw.iter().copied().map(RowNumber).collect()
-	};
-	let timestamps: Vec<DateTime> = vec![now; row_count];
-	Ok(Columns::with_system(
-		cols,
-		SystemColumns::new(
-			row_numbers,
-			Vec::new(),
-			timestamps.clone(),
-			timestamps.clone(),
-			timestamps,
-			Vec::new(),
-		),
-	))
+		out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec())))
+			.map_err(|_| -1)?;
+	}
+	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+		out = with_system_column(out, column, Arc::new(datetime_array(vec![now; row_count])))
+			.map_err(|_| -1)?;
+	}
+	Ok(out)
 }
 
 pub(crate) fn finalize_buffer(
@@ -566,79 +565,72 @@ pub(crate) fn finalize_buffer(
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
 	written_count: usize,
-) -> Option<ColumnBuffer> {
+) -> Option<(FieldRef, ArrayRef)> {
 	let inner = match type_code {
 		ValueKind::Boolean => {
 			data.truncate(written_count.div_ceil(8));
-			ColumnBuffer::Bool(BooleanArray::from(BooleanBuffer::new(
-				Buffer::from_vec(data),
-				0,
-				written_count,
-			)))
+			typed(
+				ValueType::Boolean,
+				BooleanArray::from(BooleanBuffer::new(Buffer::from_vec(data), 0, written_count)),
+			)
 		}
-		ValueKind::Float4 => ColumnBuffer::float4(bytes_to_vec::<f32>(&data, written_count)?),
-		ValueKind::Float8 => ColumnBuffer::float8(bytes_to_vec::<f64>(&data, written_count)?),
-		ValueKind::Int1 => ColumnBuffer::int1(bytes_to_vec::<i8>(&data, written_count)?),
-		ValueKind::Int2 => ColumnBuffer::int2(bytes_to_vec::<i16>(&data, written_count)?),
-		ValueKind::Int4 => ColumnBuffer::int4(bytes_to_vec::<i32>(&data, written_count)?),
-		ValueKind::Int8 => ColumnBuffer::int8(bytes_to_vec::<i64>(&data, written_count)?),
-		ValueKind::Int16 => ColumnBuffer::int16(bytes_to_vec::<i128>(&data, written_count)?),
-		ValueKind::Uint1 => ColumnBuffer::uint1(bytes_to_vec::<u8>(&data, written_count)?),
-		ValueKind::Uint2 => ColumnBuffer::uint2(bytes_to_vec::<u16>(&data, written_count)?),
-		ValueKind::Uint4 => ColumnBuffer::uint4(bytes_to_vec::<u32>(&data, written_count)?),
-		ValueKind::Uint8 => ColumnBuffer::uint8(bytes_to_vec::<u64>(&data, written_count)?),
-		ValueKind::Uint16 => ColumnBuffer::uint16(bytes_to_vec::<u128>(&data, written_count)?),
+		ValueKind::Float4 => float4("", bytes_to_vec::<f32>(&data, written_count)?),
+		ValueKind::Float8 => float8("", bytes_to_vec::<f64>(&data, written_count)?),
+		ValueKind::Int1 => int1("", bytes_to_vec::<i8>(&data, written_count)?),
+		ValueKind::Int2 => int2("", bytes_to_vec::<i16>(&data, written_count)?),
+		ValueKind::Int4 => int4("", bytes_to_vec::<i32>(&data, written_count)?),
+		ValueKind::Int8 => int8("", bytes_to_vec::<i64>(&data, written_count)?),
+		ValueKind::Int16 => int16("", bytes_to_vec::<i128>(&data, written_count)?),
+		ValueKind::Uint1 => uint1("", bytes_to_vec::<u8>(&data, written_count)?),
+		ValueKind::Uint2 => uint2("", bytes_to_vec::<u16>(&data, written_count)?),
+		ValueKind::Uint4 => uint4("", bytes_to_vec::<u32>(&data, written_count)?),
+		ValueKind::Uint8 => uint8("", bytes_to_vec::<u64>(&data, written_count)?),
+		ValueKind::Uint16 => uint16("", bytes_to_vec::<u128>(&data, written_count)?),
 		ValueKind::Date => {
 			let v = bytes_to_vec::<Date>(&data, written_count)?;
-			ColumnBuffer::Date(date_array(v))
+			date("", v)
 		}
 		ValueKind::DateTime => {
 			let v = bytes_to_vec::<DateTime>(&data, written_count)?;
-			ColumnBuffer::DateTime(datetime_array(v))
+			datetime("", v)
 		}
 		ValueKind::Time => {
 			let v = bytes_to_vec::<Time>(&data, written_count)?;
-			ColumnBuffer::Time(time_array(v))
+			time("", v)
 		}
 		ValueKind::Duration => {
 			let v = bytes_to_vec::<Duration>(&data, written_count)?;
-			ColumnBuffer::Duration(duration_array(v))
+			duration("", v)
 		}
 		ValueKind::IdentityId => {
 			let v = bytes_to_vec::<IdentityId>(&data, written_count)?;
-			ColumnBuffer::IdentityId(identity_id_array(v))
+			identity_id("", v)
 		}
 		ValueKind::Uuid4 => {
 			let v = bytes_to_vec::<Uuid4>(&data, written_count)?;
-			ColumnBuffer::Uuid4(uuid4_array(v))
+			uuid4("", v)
 		}
 		ValueKind::Uuid7 => {
 			let v = bytes_to_vec::<Uuid7>(&data, written_count)?;
-			ColumnBuffer::Uuid7(uuid7_array(v))
+			uuid7("", v)
 		}
 		ValueKind::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
 			let (offsets, values) = checked_varlen_parts(data, offsets)?;
-			ColumnBuffer::Utf8 {
-				container: LargeStringArray::try_new(offsets, values, None).ok()?,
-				max_bytes: MaxBytes::MAX,
-			}
+			typed(ValueType::Utf8, LargeStringArray::try_new(offsets, values, None).ok()?)
 		}
 		ValueKind::Blob => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
 			let (offsets, values) = checked_varlen_parts(data, offsets)?;
-			ColumnBuffer::Blob {
-				container: LargeBinaryArray::try_new(offsets, values, None).ok()?,
-				max_bytes: MaxBytes::MAX,
-			}
+			typed(ValueType::Blob, LargeBinaryArray::try_new(offsets, values, None).ok()?)
 		}
 		ValueKind::Decimal => {
 			let (precision, scale) = family?;
-			decode_family_column(type_code, precision, scale, &data, written_count).ok()?
+			decode_family_column("", type_code, precision, scale, &data, written_count).ok()?
 		}
 		ValueKind::Any => {
 			let values: Vec<Value> =
@@ -658,29 +650,33 @@ pub(crate) fn finalize_buffer(
 					value => Some(Some(value)),
 				})
 				.collect::<Option<Vec<Option<Value>>>>()?;
-			ColumnBuffer::Any {
-				container: any_array_optional(values),
-				declared_type: None,
-			}
+			typed(ValueType::Any, any_array_optional(values))
 		}
 		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =
 				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
 					decode_dictionary_id_cell(bytes).ok()
 				})?;
-			ColumnBuffer::dictionary_id(entries)
+			dictionary_id("", entries)
 		}
 		_ => return None,
 	};
-	let make_option_wrapped = |inner: ColumnBuffer| match bitvec {
+	match bitvec {
 		Some(mut bytes) => {
 			bytes.truncate(written_count.div_ceil(8));
-			inner.with_nulls(NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count)))
+			let nulls = NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count));
+			with_nulls(inner, nulls).ok()
 		}
-		None => inner,
-	};
+		None => Some(inner),
+	}
+}
 
-	Some(make_option_wrapped(inner))
+fn typed(value_type: ValueType, array: impl Array + 'static) -> (FieldRef, ArrayRef) {
+	let value_type = match array.null_count() > 0 {
+		true => ValueType::Option(Box::new(value_type)),
+		false => value_type,
+	};
+	named("", FieldType::from(value_type), Arc::new(array))
 }
 
 fn checked_varlen_parts(data: Vec<u8>, offsets: Vec<u64>) -> Option<(OffsetBuffer<i64>, Buffer)> {
@@ -735,12 +731,11 @@ fn bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 pub fn into_diffs(emitted: Vec<EmittedDiff>) -> Diffs {
 	emitted.into_iter()
 		.map(|d| match d.kind {
-			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(Columns::empty)),
-			EmitDiffKind::Update => Diff::update(
-				d.pre.unwrap_or_else(Columns::empty),
-				d.post.unwrap_or_else(Columns::empty),
-			),
-			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(Columns::empty)),
+			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(empty_batch)),
+			EmitDiffKind::Update => {
+				Diff::update(d.pre.unwrap_or_else(empty_batch), d.post.unwrap_or_else(empty_batch))
+			}
+			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(empty_batch)),
 		})
 		.collect()
 }
@@ -753,12 +748,15 @@ fn defined_at(bitvec: &Option<Vec<u8>>, row: usize) -> bool {
 mod tests {
 	use std::ptr;
 
-	use postcard::to_allocvec;
+	use arrow_array::ArrayRef;
+	use arrow_schema::FieldRef;
 	use reifydb_codec::tag::ValueKind;
-	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_core::value::column::factory;
 	use reifydb_sdk::common::extern_c::wire::callbacks::builder::ColumnBufferHandle;
-	use reifydb_value::value::blob::Blob;
-	use serde_json::to_string;
+	use reifydb_value::value::{
+		blob::Blob,
+		column_view::{ColumnView, ViewData},
+	};
 
 	use super::{
 		Handle, Slot, TestBuilderRegistry, bytes_to_vec, finalize_buffer, test_acquire, test_bitvec_ptr,
@@ -784,7 +782,7 @@ mod tests {
 		})
 	}
 
-	fn committed_buffer(registry: &TestBuilderRegistry, handle: *mut ColumnBufferHandle) -> ColumnBuffer {
+	fn committed_buffer(registry: &TestBuilderRegistry, handle: *mut ColumnBufferHandle) -> (FieldRef, ArrayRef) {
 		match registry.inner.lock().slots.remove(&Handle::decode(handle).id) {
 			Some(Slot::Committed(committed)) => committed.buffer,
 			_ => panic!("a successful commit must leave a committed column behind"),
@@ -838,7 +836,7 @@ mod tests {
 		let registry = TestBuilderRegistry::new();
 		let (code, handle) = commit_varlen(&registry, ValueKind::Utf8, "abcdéf".as_bytes(), &[0, 1, 3, 7]);
 		assert_eq!(code, 0);
-		assert_eq!(committed_buffer(&registry, handle), ColumnBuffer::utf8(["a", "bc", "déf"]));
+		assert_eq!(committed_buffer(&registry, handle), factory::utf8("", ["a", "bc", "déf"]));
 	}
 
 	#[test]
@@ -849,7 +847,7 @@ mod tests {
 		assert_eq!(code, 0);
 		assert_eq!(
 			committed_buffer(&registry, handle),
-			ColumnBuffer::blob([Blob::new(vec![0xff]), Blob::new(vec![]), Blob::new(vec![1, 2, 0xfe])])
+			factory::blob("", [Blob::new(vec![0xff]), Blob::new(vec![]), Blob::new(vec![1, 2, 0xfe])])
 		);
 	}
 
@@ -913,11 +911,12 @@ mod tests {
 		// A guest hands over one data byte per row, yet equal Bool columns must serialize byte for byte alike.
 		let guest =
 			finalize_buffer(ValueKind::Boolean, None, vec![5, 0, 0], None, None, 3).expect("a Bool column");
-		let host = ColumnBuffer::bool([true, false, true]);
-		assert_eq!(to_string(&guest).unwrap(), to_string(&host).unwrap());
-		assert_eq!(to_allocvec(&guest).unwrap(), to_allocvec(&host).unwrap());
-		let ColumnBuffer::Bool(bits) = &guest else {
-			panic!("expected a Bool column, got {:?}", guest.get_type())
+		let host = factory::bool("", [true, false, true]);
+		assert_eq!(guest, host);
+		assert_eq!(guest.1.to_data().buffers(), host.1.to_data().buffers());
+		let view = ColumnView::try_from(&guest).unwrap();
+		let ViewData::Bool(bits) = view.data else {
+			panic!("expected a Bool column, got {:?}", view.get_type())
 		};
 		assert_eq!(bits.values().inner().len(), 1, "3 rows must pack into exactly ceil(3 / 8) bytes");
 	}

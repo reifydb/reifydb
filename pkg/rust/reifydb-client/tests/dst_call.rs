@@ -38,8 +38,8 @@ fn error_code(response: ServerResponse) -> String {
 
 fn column_value(frames: &[Frame], column: &str) -> Value {
 	let frame = frames.first().expect("one frame");
-	let col = frame.columns.iter().find(|c| c.name == column).unwrap_or_else(|| panic!("column `{column}`"));
-	col.data.get_value(0)
+	let col = frame.column(column).expect("the column reads").unwrap_or_else(|| panic!("column `{column}`"));
+	col.get_value(0)
 }
 
 fn named_n(n: i32) -> Params {

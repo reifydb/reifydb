@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	interface::{
 		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId},
 		change::{Change, Diff},
 	},
-	value::column::{buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_flow::operator::{
 	append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
@@ -15,6 +19,7 @@ use reifydb_value::{
 	Result,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		dictionary::{DictionaryEntryId, DictionaryId},
 	},
 };
@@ -73,8 +78,17 @@ impl SourceNode {
 		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
 	}
 
-	fn output_schema(&self) -> Columns {
-		Columns::from_catalog_columns(&self.columns)
+	fn output_schema(&self) -> SchemaRef {
+		Arc::new(Schema::new(
+			self.columns
+				.iter()
+				.map(|column| {
+					ColumnBuilder::with_capacity(column.constraint.get_type(), 0)
+						.finish(&column.name)
+						.0
+				})
+				.collect::<Vec<_>>(),
+		))
 	}
 }
 
@@ -84,7 +98,7 @@ pub enum Node {
 	Map(MapOperator),
 	Extend(ExtendOperator),
 	Append(AppendOperator),
-	Sort(OperatorId, Option<Columns>),
+	Sort(OperatorId, Option<SchemaRef>),
 	Sink(TableSink),
 }
 
@@ -101,7 +115,7 @@ impl Node {
 		}
 	}
 
-	pub fn output_schema(&self) -> Option<Columns> {
+	pub fn output_schema(&self) -> Option<SchemaRef> {
 		match self {
 			Node::Source(source) => Some(source.output_schema()),
 			Node::Filter(filter) => filter.output_schema(),
@@ -133,32 +147,35 @@ impl Node {
 	}
 }
 
-fn decode_dictionary_columns<T: Lookup + Intern>(columns: &mut Columns, txn: &mut T) -> Result<()> {
+fn decode_dictionary_columns<T: Lookup + Intern>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {
 	let dict_columns: Vec<(usize, Dictionary)> = {
-		let ids: Vec<(usize, DictionaryId)> = columns
-			.iter()
-			.enumerate()
-			.filter_map(|(pos, col)| {
-				if let ColumnBuffer::DictionaryId {
-					dictionary_id,
-					..
-				} = col.data()
-				{
-					Some((pos, (*dictionary_id)?))
-				} else {
-					None
-				}
-			})
-			.collect();
+		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
+		for (pos, (field, array)) in columns.schema_ref().fields().iter().zip(columns.columns()).enumerate() {
+			if let ViewData::DictionaryId {
+				dictionary_id: Some(id),
+				..
+			} = ColumnView::try_from((array, field.as_ref()))?.data
+			{
+				ids.push((pos, id));
+			}
+		}
 		ids.into_iter().map(|(pos, id)| Ok((pos, txn.dictionary(id)?))).collect::<Result<Vec<_>>>()?
 	};
 
+	if dict_columns.is_empty() {
+		return Ok(());
+	}
+
+	let mut decoded: Vec<_> =
+		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
 	for (col_pos, dictionary) in &dict_columns {
-		let row_count = columns[*col_pos].len();
+		let (field, array) = &decoded[*col_pos];
+		let column = ColumnView::try_from((array, field.as_ref()))?;
+		let row_count = column.len();
 		let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
-			let id_value = columns[*col_pos].get_value(row_idx);
+			let id_value = column.get_value(row_idx);
 			let value = match DictionaryEntryId::from_value(&id_value) {
 				Some(entry_id) => txn.resolve(dictionary, entry_id)?.unwrap_or(Value::none()),
 				None => Value::none(),
@@ -166,14 +183,19 @@ fn decode_dictionary_columns<T: Lookup + Intern>(columns: &mut Columns, txn: &mu
 			new_data.push_value(value);
 		}
 
-		columns.columns[*col_pos] = new_data.finish();
+		let name = field.name().clone();
+		decoded[*col_pos] = new_data.finish(&name);
 	}
 
+	*columns = batch(decoded)?;
 	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, TimeSource},
 		interface::{
@@ -187,17 +209,21 @@ mod tests {
 			},
 			change::{Change, ChangeOrigin, Diff},
 		},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+		value::{
+			batch::batch,
+			column::{builder::ColumnBuilder, factory::int8},
+		},
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
 		value::{
 			Value,
+			column_view::ColumnView,
 			constraint::TypeConstraint,
+			container::temporal_array::datetime_array,
 			dictionary::{DictionaryEntryId, DictionaryId},
 			row_number::RowNumber,
-			system_columns::SystemColumns,
+			system_columns::{SystemColumn, row_numbers, with_system_column},
 			value_type::ValueType,
 		},
 	};
@@ -249,34 +275,32 @@ mod tests {
 		}
 	}
 
-	fn trades(rows: &[(u64, i64, DictionaryEntryId)]) -> Columns {
+	fn trades(rows: &[(u64, i64, DictionaryEntryId)]) -> RecordBatch {
 		let n = rows.len();
 		let mut symbol = ColumnBuilder::with_capacity(ValueType::DictionaryId, n);
 		for (_, _, entry) in rows {
 			symbol.push_value(entry.to_value());
 		}
 		symbol.set_dictionary_id(SYMBOLS);
-		Columns::with_system(
-			vec![
-				ColumnWithName::new(
-					Fragment::internal("qty"),
-					ColumnBuffer::int8(rows.iter().map(|(_, qty, _)| *qty).collect::<Vec<_>>()),
-				),
-				ColumnWithName::new(Fragment::internal("symbol"), symbol.finish()),
-			],
-			SystemColumns::new(
-				rows.iter().map(|(row, _, _)| RowNumber(*row)).collect(),
-				Vec::new(),
-				vec![at_millis(10); n],
-				vec![at_millis(20); n],
-				vec![at_millis(30); n],
-				Vec::new(),
+		let user =
+			batch(vec![int8("qty", rows.iter().map(|(_, qty, _)| *qty)), symbol.finish("symbol")]).unwrap();
+		let system: [(SystemColumn, ArrayRef); 4] = [
+			(
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from_iter_values(rows.iter().map(|(row, _, _)| *row))),
 			),
-		)
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(vec![at_millis(10); n]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(vec![at_millis(20); n]))),
+			(SystemColumn::Time, Arc::new(datetime_array(vec![at_millis(30); n]))),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 	}
 
-	fn values(columns: &Columns, position: usize) -> Vec<Value> {
-		(0..columns.row_count()).map(|row| columns[position].get_value(row)).collect()
+	fn values(columns: &RecordBatch, position: usize) -> Vec<Value> {
+		let column =
+			ColumnView::try_from((columns.column(position), columns.schema_ref().field(position))).unwrap();
+		(0..columns.num_rows()).map(|row| column.get_value(row)).collect()
 	}
 
 	fn utf8(text: &str) -> Value {
@@ -322,7 +346,7 @@ mod tests {
 		};
 		assert_eq!(values(post, 1), vec![utf8("sol"), utf8("eth")]);
 		assert_eq!(values(post, 0), vec![Value::Int8(10), Value::Int8(20)]);
-		assert_eq!(post.row_numbers(), &[RowNumber(1), RowNumber(2)]);
+		assert_eq!(row_numbers(post).unwrap(), &[RowNumber(1), RowNumber(2)]);
 		let Diff::Update {
 			pre,
 			post,

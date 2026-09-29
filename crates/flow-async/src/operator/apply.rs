@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_schema::SchemaRef;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
@@ -8,7 +9,6 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
-	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
@@ -30,7 +30,7 @@ use crate::{
 };
 
 pub struct ApplyOperator {
-	parent_schema: Option<Columns>,
+	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	inner: BoxedHostOperator,
 	seal_span: Option<Duration>,
@@ -39,7 +39,7 @@ pub struct ApplyOperator {
 
 impl ApplyOperator {
 	pub fn new(
-		parent_schema: Option<Columns>,
+		parent_schema: Option<SchemaRef>,
 		operator: OperatorId,
 		inner: BoxedHostOperator,
 		with: &ApplyWith,
@@ -53,7 +53,7 @@ impl ApplyOperator {
 		}
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
+	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}
 }
@@ -76,9 +76,9 @@ impl HostOperator for ApplyOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		let inherited = max_input_time(&change);
+		let inherited = max_input_time(&change)?;
 		let mut out = self.inner.apply(host, change)?;
-		stamp_output_time(&mut out, inherited);
+		stamp_output_time(&mut out, inherited)?;
 		Ok(out)
 	}
 
@@ -90,7 +90,7 @@ impl HostOperator for ApplyOperator {
 		let due = timer.due;
 		let mut out = self.inner.on_timer(host, timer)?;
 		if let Some(change) = out.as_mut() {
-			stamp_output_time(change, Some(due));
+			stamp_output_time(change, Some(due))?;
 		}
 		Ok(out)
 	}
@@ -99,7 +99,7 @@ impl HostOperator for ApplyOperator {
 		self.inner.sample()
 	}
 
-	fn output_schema(&self) -> Option<Columns> {
+	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, iter::once, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId},
@@ -10,13 +11,17 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	metrics::heap::HeapSize,
-	value::column::columns::Columns,
+	value::batch::take_rows,
 };
 use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{
+		diff_type::DiffType,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, keep_system_columns, require_row_numbers, system_column},
+	},
 };
 
 use crate::delivery::DeliveryBuffer;
@@ -30,6 +35,7 @@ struct DeliveredState {
 pub struct EphemeralSinkPlan {
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
+	keep: Vec<SystemColumn>,
 	delivery: Arc<DeliveryBuffer>,
 }
 
@@ -39,11 +45,19 @@ pub struct EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkSubscriptionOperator {
-	pub fn new(operator: OperatorId, subscription_id: SubscriptionId, delivery: Arc<DeliveryBuffer>) -> Self {
+	pub fn new(
+		operator: OperatorId,
+		subscription_id: SubscriptionId,
+		named_system_columns: &[SystemColumn],
+		delivery: Arc<DeliveryBuffer>,
+	) -> Self {
 		Self {
 			plan: Arc::new(EphemeralSinkPlan {
 				operator,
 				subscription_id,
+				keep: once(SystemColumn::RowNumbers)
+					.chain(named_system_columns.iter().copied())
+					.collect(),
 				delivery,
 			}),
 			state: DeliveredState::default(),
@@ -52,18 +66,26 @@ impl EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn stage(&self, columns: &Columns, op: DiffType) {
+	fn stage(&self, batch: &RecordBatch, op: DiffType) -> Result<()> {
+		let batch = keep_system_columns(batch, &self.keep)?;
 		reifydb_assertions! {
 			assert!(
-				columns.row_numbers().len() == columns.row_count(),
-				"a staged change batch carries {} row numbers for {} rows, so a subscriber could not \
+				batch.num_rows() == 0 || system_column(&batch, SystemColumn::RowNumbers).is_some(),
+				"a staged change batch carries no row numbers for {} rows, so a subscriber could not \
 				 identify which entity changed and would leak or drop rows",
-				columns.row_numbers().len(),
-				columns.row_count()
+				batch.num_rows()
 			);
 		}
-		self.delivery.push(self.subscription_id, op, columns.clone());
+		self.delivery.push(self.subscription_id, op, batch);
+		Ok(())
 	}
+}
+
+fn staged_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+	if batch.num_rows() == 0 {
+		return Ok(&[]);
+	}
+	require_row_numbers(batch)
 }
 
 impl HostOperator for EphemeralSinkSubscriptionOperator {
@@ -102,11 +124,12 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) -> Result<()> {
-		let row_count = post.row_count();
+	fn apply_insert(&self, state: &mut DeliveredState, post: &RecordBatch) -> Result<()> {
+		let row_count = post.num_rows();
+		let post_row_numbers = staged_row_numbers(post)?;
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			if state.rows.insert(post.row_numbers()[row_idx]) {
+			if state.rows.insert(post_row_numbers[row_idx]) {
 				new_indices.push(row_idx);
 			}
 		}
@@ -119,21 +142,23 @@ impl EphemeralSinkPlan {
 			);
 		}
 		if new_indices.len() == row_count {
-			self.stage(post, DiffType::Insert);
+			self.stage(post, DiffType::Insert)?;
 		} else if !new_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&new_indices)?;
-			self.stage(&sub_post, DiffType::Insert);
+			let sub_post = take_rows(post, &new_indices)?;
+			self.stage(&sub_post, DiffType::Insert)?;
 		}
 		Ok(())
 	}
 
-	fn apply_update(&self, state: &mut DeliveredState, pre: &Columns, post: &Columns) -> Result<()> {
-		let row_count = post.row_count();
+	fn apply_update(&self, state: &mut DeliveredState, pre: &RecordBatch, post: &RecordBatch) -> Result<()> {
+		let row_count = post.num_rows();
+		let pre_row_numbers = staged_row_numbers(pre)?;
+		let post_row_numbers = staged_row_numbers(post)?;
 		let mut update_indices: Vec<usize> = Vec::new();
 		let mut insert_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
-			let pre_rn = pre.row_numbers()[row_idx];
-			let post_rn = post.row_numbers()[row_idx];
+			let pre_rn = pre_row_numbers[row_idx];
+			let post_rn = post_row_numbers[row_idx];
 			reifydb_assertions! {
 				assert!(
 					pre_rn == post_rn,
@@ -162,28 +187,29 @@ impl EphemeralSinkPlan {
 			);
 		}
 		if !update_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&update_indices)?;
-			self.stage(&sub_post, DiffType::Update);
+			let sub_post = take_rows(post, &update_indices)?;
+			self.stage(&sub_post, DiffType::Update)?;
 		}
 		if !insert_indices.is_empty() {
-			let sub_post = post.extract_by_indices(&insert_indices)?;
-			self.stage(&sub_post, DiffType::Insert);
+			let sub_post = take_rows(post, &insert_indices)?;
+			self.stage(&sub_post, DiffType::Insert)?;
 		}
 		Ok(())
 	}
 
-	fn apply_remove(&self, state: &mut DeliveredState, pre: &Columns) -> Result<()> {
-		let row_count = pre.row_count();
+	fn apply_remove(&self, state: &mut DeliveredState, pre: &RecordBatch) -> Result<()> {
+		let row_count = pre.num_rows();
+		let pre_row_numbers = staged_row_numbers(pre)?;
 		let mut remove_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
-			let pre_rn = pre.row_numbers()[row_idx];
+			let pre_rn = pre_row_numbers[row_idx];
 			if state.rows.remove(&pre_rn) {
 				remove_indices.push(row_idx);
 			}
 		}
 		if !remove_indices.is_empty() {
-			let sub_pre = pre.extract_by_indices(&remove_indices)?;
-			self.stage(&sub_pre, DiffType::Remove);
+			let sub_pre = take_rows(pre, &remove_indices)?;
+			self.stage(&sub_pre, DiffType::Remove)?;
 		}
 		Ok(())
 	}

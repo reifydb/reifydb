@@ -19,6 +19,8 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, JoinType, WindowKind, WindowSize},
 	interface::{
@@ -27,7 +29,10 @@ use reifydb_core::{
 		consolidate::consolidate_diffs,
 	},
 	key::operator::state::KeyspaceId,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -49,9 +54,12 @@ use reifydb_testing_flow::{
 };
 use reifydb_value::{
 	factory::time::at_millis,
-	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, duration::Duration, row_number::RowNumber, system_columns::SystemColumns,
+		Value,
+		datetime::DateTime,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, with_system_column},
 		value_type::ValueType,
 	},
 };
@@ -107,9 +115,12 @@ fn change_of(events: &[Event]) -> Change {
 	let mut diffs = Vec::with_capacity(events.len());
 	for event in events {
 		diffs.push(match event {
-			Event::Insert(row) => Diff::insert(Columns::from_row(row)),
-			Event::Remove(row) => Diff::remove(Columns::from_row(row)),
-			Event::Update(pre, post) => Diff::update(Columns::from_row(pre), Columns::from_row(post)),
+			Event::Insert(row) => Diff::insert(batch::from_row(row).expect("a row converts")),
+			Event::Remove(row) => Diff::remove(batch::from_row(row).expect("a row converts")),
+			Event::Update(pre, post) => Diff::update(
+				batch::from_row(pre).expect("a row converts"),
+				batch::from_row(post).expect("a row converts"),
+			),
 		});
 	}
 	Change::from_flow(SOURCE, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
@@ -157,7 +168,7 @@ mod distinct {
 		let mut h = Harness::with_engine(move |engine, runtime| {
 			engine.mock_clock().set_millis(clock_ms);
 			DistinctOperator::new(
-				Some(Columns::empty()),
+				Some(Arc::new(Schema::empty())),
 				SUBJECT,
 				parse_expression("v").expect("the distinct key parses"),
 				routines(),
@@ -449,20 +460,15 @@ mod join {
 		Remove(Spec),
 	}
 
-	fn schema(spec: &[(&str, ValueType)]) -> Columns {
-		Columns::new(
+	fn schema(spec: &[(&str, ValueType)]) -> SchemaRef {
+		Arc::new(Schema::new(
 			spec.iter()
-				.map(|(name, ty)| {
-					ColumnWithName::new(
-						Fragment::internal(*name),
-						ColumnBuilder::with_capacity(ty.clone(), 0).finish(),
-					)
-				})
-				.collect(),
-		)
+				.map(|(name, ty)| ColumnBuilder::with_capacity(ty.clone(), 0).finish(name).0)
+				.collect::<Vec<_>>(),
+		))
 	}
 
-	fn columns_of(spec: Spec) -> Columns {
+	fn columns_of(spec: Spec) -> RecordBatch {
 		let shape = spec.side.spec();
 		let values = [Value::Int8(spec.rn as i64), Value::Int4(spec.k), Value::Int8(spec.v)];
 		let columns = shape
@@ -471,21 +477,21 @@ mod join {
 			.map(|((name, ty), value)| {
 				let mut buffer = ColumnBuilder::with_capacity(ty.clone(), 1);
 				buffer.push_value(value);
-				let buffer = buffer.finish();
-				ColumnWithName::new(Fragment::internal(*name), buffer)
+				buffer.finish(name)
 			})
 			.collect();
 		let time = at_millis(spec.ms);
-		Columns::with_system(
-			columns,
-			SystemColumns::new(
-				vec![RowNumber(spec.rn)],
-				Vec::new(),
-				vec![time],
-				vec![time],
-				vec![time],
-				Vec::new(),
-			),
+		let system = [
+			(SystemColumn::RowNumbers, factory::uint8("#rownum", [spec.rn]).1),
+			(SystemColumn::CreatedAt, factory::datetime("#created_at", [time]).1),
+			(SystemColumn::UpdatedAt, factory::datetime("#updated_at", [time]).1),
+			(SystemColumn::Time, factory::datetime("#time", [time]).1),
+		];
+		system.into_iter().fold(
+			batch::batch(columns).expect("the join columns form a batch"),
+			|columns, (column, array)| {
+				with_system_column(columns, column, array).expect("a system column attaches")
+			},
 		)
 	}
 
@@ -614,7 +620,7 @@ fn window_harness(kind: WindowKind, lateness: Option<Duration>, clock_ms: u64) -
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
-			parent_schema: Some(Columns::empty()),
+			parent_schema: Some(Arc::new(Schema::empty())),
 			operator: SUBJECT,
 			kind,
 			group_by: parse_expression("g").expect("group_by parses"),

@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::panic::catch_unwind;
+use std::{panic::catch_unwind, sync::Arc};
 
-use arrow_array::Int32Array;
+use arrow_array::{Int32Array, RecordBatch};
+use arrow_schema::Schema;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	wire::RawChangePayload,
 };
 use reifydb_value::value::{
 	diff_type::DiffType,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	frame::frame::Frame,
+	value_type::{ValueType, field::named},
 };
 
 fn frame(op: Option<DiffType>) -> Frame {
-	let mut frame = Frame::new(vec![FrameColumn {
-		name: "a".to_string(),
-		data: FrameColumnData::Int4(Int32Array::from(vec![7])),
-	}]);
+	let (field, array) = named("a", ValueType::Int4.into(), Arc::new(Int32Array::from(vec![7])));
+	let mut frame = Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap());
 	frame.op = op;
 	frame
 }

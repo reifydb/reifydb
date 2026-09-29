@@ -272,7 +272,7 @@ mod tests {
 	};
 	use reifydb_value::{
 		Result,
-		value::{Value, diff_type::DiffType, value_type::ValueType},
+		value::{Value, diff_type::DiffType, system_columns::row_numbers, value_type::ValueType},
 	};
 
 	use super::*;
@@ -800,7 +800,7 @@ mod tests {
 						DiffType::Remove => Kind::Remove,
 					};
 					let columns = diff.post().or(diff.pre()).expect("a diff carries a row");
-					(kind, columns.row_numbers()[0].0)
+					(kind, row_numbers(columns).unwrap()[0].0)
 				})
 			})
 			.collect();

@@ -19,7 +19,9 @@ use reifydb_core::{
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
-use reifydb_value::value::{Value, datetime::DateTime, frame::frame::Frame, row_number::RowNumber};
+use reifydb_value::value::{
+	Value, datetime::DateTime, frame::frame::Frame, row_number::RowNumber, system_columns::user_columns,
+};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -119,13 +121,13 @@ fn claim(t: &TestEngine, worker: &str, max_n: u32, ttl_seconds: u32) -> Vec<Fram
 
 fn column(frames: &[Frame], name: &str) -> Vec<Value> {
 	let frame = frames.first().expect("claim must always return a frame");
-	let column = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| {
+	let column = frame.column(name).unwrap().unwrap_or_else(|| {
 		panic!(
 			"claim result has no column {name}; got {:?}",
-			frame.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+			user_columns(&frame.batch).map(|(field, _)| field.name()).collect::<Vec<_>>()
 		)
 	});
-	(0..frame.row_count()).map(|i| column.data.get_value(i)).collect()
+	(0..frame.row_count()).map(|i| column.get_value(i)).collect()
 }
 
 fn claimed_items(frames: &[Frame]) -> BTreeSet<u64> {
@@ -285,7 +287,7 @@ fn test_a_claim_returns_the_declared_payload_alongside_the_lease() {
 	t.command(r#"INSERT test::jobs [{ id: 7, payload: "work" }]"#);
 
 	let frames = claim(&t, "w1", 1, 30);
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 
 	assert_eq!(names, vec!["token", "item", "attempt", "deadline", "id", "payload"]);
 	assert_eq!(column(&frames, "id")[0], Value::Int4(7));
@@ -319,7 +321,7 @@ fn test_an_empty_claim_still_reports_the_full_schema() {
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
 
 	let frames = claim(&t, "w1", 10, 30);
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 
 	assert_eq!(TestEngine::row_count(&frames), 0);
 	assert_eq!(names, vec!["token", "item", "attempt", "deadline", "id"]);

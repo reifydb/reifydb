@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::queue::Queue;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, system_columns::user_columns};
 
 fn find_queue(t: &TestEngine, namespace: &str, name: &str) -> Option<Queue> {
 	let catalog = t.inner().catalog();
@@ -216,7 +216,7 @@ fn test_queue_resolves_as_a_queue_not_another_primitive() {
 	t.admin("CREATE QUEUE test::jobs { id: int4, payload: utf8 } WITH { fifo: {} }");
 
 	let frames = t.query("FROM test::jobs");
-	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	let names: Vec<&str> = user_columns(&frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
 
 	assert_eq!(names, vec!["id", "payload"], "FROM must expose the queue's own declared columns");
 	assert_eq!(frames[0].rows().count(), 0, "a queue with no items scans empty, it does not error");

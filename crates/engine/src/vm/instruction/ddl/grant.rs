@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::GrantNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn grant(services: &Services, txn: &mut AdminTransaction, plan: GrantNode) -> Result<Columns> {
+pub(crate) fn grant(services: &Services, txn: &mut AdminTransaction, plan: GrantNode) -> Result<RecordBatch> {
 	let role_name = plan.role.text();
 	let user_name = plan.user.text();
 
@@ -17,9 +18,9 @@ pub(crate) fn grant(services: &Services, txn: &mut AdminTransaction, plan: Grant
 
 	services.catalog.grant_role(txn, identity.id, role.id)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("role", Value::Utf8(role_name.to_string())),
 		("identity", Value::Utf8(user_name.to_string())),
 		("granted", Value::Boolean(true)),
-	]))
+	])
 }

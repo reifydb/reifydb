@@ -3,6 +3,8 @@
 
 use std::{fmt::Debug, sync::Arc};
 
+use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, JoinType},
 	expression::Expression,
@@ -10,7 +12,10 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory},
+	},
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
@@ -23,9 +28,11 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
 	Result,
-	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, digest::Digest, row_number::RowNumber, system_columns::SystemColumns,
+		Value,
+		datetime::DateTime,
+		digest::Digest,
+		system_columns::{SystemColumn, column_view, with_system_column},
 		value_type::ValueType,
 	},
 };
@@ -35,28 +42,26 @@ const LEFT_OPERATOR: OperatorId = OperatorId(31);
 const RIGHT_OPERATOR: OperatorId = OperatorId(32);
 const JOIN_OPERATOR: OperatorId = OperatorId(33);
 
-fn columns_numbered(named: Vec<(&str, ColumnBuffer)>, numbers: &[u64]) -> Columns {
+fn columns_numbered(named: Vec<(FieldRef, ArrayRef)>, numbers: &[u64]) -> RecordBatch {
 	let at = DateTime::from_millis(1_000_000);
-	Columns::with_system(
-		named.into_iter().map(|(name, buffer)| ColumnWithName::new(Fragment::internal(name), buffer)).collect(),
-		SystemColumns::new(
-			numbers.iter().copied().map(RowNumber).collect(),
-			Vec::new(),
-			vec![at; numbers.len()],
-			vec![at; numbers.len()],
-			vec![at; numbers.len()],
-			Vec::new(),
-		),
-	)
+	let system = [
+		(SystemColumn::RowNumbers, factory::uint8("#rownum", numbers.iter().copied()).1),
+		(SystemColumn::CreatedAt, factory::datetime("#created_at", vec![at; numbers.len()]).1),
+		(SystemColumn::UpdatedAt, factory::datetime("#updated_at", vec![at; numbers.len()]).1),
+		(SystemColumn::Time, factory::datetime("#time", vec![at; numbers.len()]).1),
+	];
+	system.into_iter().fold(batch(named).expect("user columns form a batch"), |columns, (column, array)| {
+		with_system_column(columns, column, array).expect("a system column attaches")
+	})
 }
 
-fn columns(named: Vec<(&str, ColumnBuffer)>) -> Columns {
-	let row_count = named.first().map(|(_, buffer)| buffer.len()).unwrap_or(0) as u64;
+fn columns(named: Vec<(FieldRef, ArrayRef)>) -> RecordBatch {
+	let row_count = named.first().map(|(_, array)| array.len()).unwrap_or(0) as u64;
 	let numbers: Vec<u64> = (1..=row_count).collect();
 	columns_numbered(named, &numbers)
 }
 
-fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
+fn digest_buffer(name: &str, rows: &[&[f64]]) -> (FieldRef, ArrayRef) {
 	let ty = ValueType::Digest {
 		inner: Box::new(ValueType::Float8),
 		accuracy: 10_000,
@@ -69,7 +74,7 @@ fn digest_buffer(rows: &[&[f64]]) -> ColumnBuffer {
 		}
 		buffer.push_value(Value::Digest(Box::new(digest)));
 	}
-	buffer.finish()
+	buffer.finish(name)
 }
 
 fn change(origin: OperatorId, diffs: Vec<Diff>) -> Change {
@@ -99,7 +104,7 @@ fn distinct(engine: &TestEngine, expressions: Vec<Expression>) -> DistinctOperat
 	.expect("the distinct operator must build")
 }
 
-fn join(engine: &TestEngine, schema: Columns) -> JoinOperator {
+fn join(engine: &TestEngine, schema: SchemaRef) -> JoinOperator {
 	JoinOperator::new(
 		JoinSideConfig {
 			operator: LEFT_OPERATOR,
@@ -144,7 +149,7 @@ fn inserted_rows(output: &Change) -> usize {
 			Diff::Insert {
 				post,
 				..
-			} => post.row_count(),
+			} => post.num_rows(),
 			_ => 0,
 		})
 		.sum()
@@ -162,8 +167,8 @@ fn flow_distinct_on_named_columns_keeps_rows_whose_text_only_matches_when_concat
 	// The named-key path evaluates its own key columns, so it must keep the value boundary too.
 	let engine = TestEngine::new();
 	let input = columns(vec![
-		("x", ColumnBuffer::utf8(vec!["ab".to_string(), "a".to_string()])),
-		("y", ColumnBuffer::utf8(vec!["c".to_string(), "bc".to_string()])),
+		factory::utf8("x", vec!["ab".to_string(), "a".to_string()]),
+		factory::utf8("y", vec!["c".to_string(), "bc".to_string()]),
 	]);
 
 	let outputs = apply_distinct(&engine, keys(&["x", "y"]), vec![vec![Diff::insert(input)]]).expect("applies");
@@ -175,7 +180,7 @@ fn flow_distinct_on_named_columns_keeps_rows_whose_text_only_matches_when_concat
 fn flow_distinct_keeps_int_rows_whose_digits_only_match_when_concatenated() {
 	// (1, 23) and (12, 3) render to the same digits once joined, but are different rows.
 	let engine = TestEngine::new();
-	let input = columns(vec![("a", ColumnBuffer::int4(vec![1, 12])), ("b", ColumnBuffer::int4(vec![23, 3]))]);
+	let input = columns(vec![factory::int4("a", vec![1, 12]), factory::int4("b", vec![23, 3])]);
 
 	let outputs = apply_distinct(&engine, Vec::new(), vec![vec![Diff::insert(input)]]).expect("applies");
 
@@ -187,14 +192,11 @@ fn flow_distinct_retracting_one_of_two_text_colliding_rows_removes_exactly_that_
 	// Sharing one entry turns the retraction into an update that swaps in the other row instead of a remove.
 	let engine = TestEngine::new();
 	let both = columns(vec![
-		("x", ColumnBuffer::utf8(vec!["ab".to_string(), "a".to_string()])),
-		("y", ColumnBuffer::utf8(vec!["c".to_string(), "bc".to_string()])),
+		factory::utf8("x", vec!["ab".to_string(), "a".to_string()]),
+		factory::utf8("y", vec!["c".to_string(), "bc".to_string()]),
 	]);
 	let second = columns_numbered(
-		vec![
-			("x", ColumnBuffer::utf8(vec!["a".to_string()])),
-			("y", ColumnBuffer::utf8(vec!["bc".to_string()])),
-		],
+		vec![factory::utf8("x", vec!["a".to_string()]), factory::utf8("y", vec!["bc".to_string()])],
 		&[2],
 	);
 
@@ -210,14 +212,18 @@ fn flow_distinct_retracting_one_of_two_text_colliding_rows_removes_exactly_that_
 	else {
 		panic!("retracting the only row under its key must remove it: {retraction:?}");
 	};
-	assert_eq!(pre.column("x").unwrap().data().get_value(0), Value::Utf8("a".to_string()), "wrong row removed");
+	assert_eq!(
+		column_view(pre, "x").expect("x reads").unwrap().get_value(0),
+		Value::Utf8("a".to_string()),
+		"wrong row removed"
+	);
 }
 
 #[test]
 fn flow_distinct_merges_two_nones_into_one_row_like_group_by() {
 	// Two missing values are the same key, as they are one group in `by`; splitting them duplicates the row.
 	let engine = TestEngine::new();
-	let input = columns(vec![("x", ColumnBuffer::none_typed(ValueType::Utf8, 2))]);
+	let input = columns(vec![factory::none_typed("x", ValueType::Utf8, 2)]);
 
 	let outputs = apply_distinct(&engine, Vec::new(), vec![vec![Diff::insert(input)]]).expect("applies");
 
@@ -228,11 +234,14 @@ fn flow_distinct_merges_two_nones_into_one_row_like_group_by() {
 fn flow_distinct_on_a_tuple_column_is_an_error_not_a_panic() {
 	// The typed key encoding has no form for an any value, so reaching it would panic the flow.
 	let engine = TestEngine::new();
-	let tuples = ColumnBuffer::any(vec![
-		Value::Tuple(vec![Value::Utf8("ab".to_string()), Value::Utf8("c".to_string())]),
-		Value::Tuple(vec![Value::Utf8("a".to_string()), Value::Utf8("bc".to_string())]),
-	]);
-	let input = columns(vec![("t", tuples)]);
+	let tuples = factory::any(
+		"t",
+		vec![
+			Value::Tuple(vec![Value::Utf8("ab".to_string()), Value::Utf8("c".to_string())]),
+			Value::Tuple(vec![Value::Utf8("a".to_string()), Value::Utf8("bc".to_string())]),
+		],
+	);
+	let input = columns(vec![tuples]);
 
 	let code = error_code(apply_distinct(&engine, Vec::new(), vec![vec![Diff::insert(input)]]));
 
@@ -243,7 +252,7 @@ fn flow_distinct_on_a_tuple_column_is_an_error_not_a_panic() {
 fn flow_distinct_on_a_digest_column_reports_the_batch_code() {
 	// Flow must refuse a digest key with the same code as the batch distinct, on both key paths.
 	let engine = TestEngine::new();
-	let all_columns = columns(vec![("d", digest_buffer(&[&[1.0, 2.0], &[3.0, 4.0]]))]);
+	let all_columns = columns(vec![digest_buffer("d", &[&[1.0, 2.0], &[3.0, 4.0]])]);
 	let named = all_columns.clone();
 
 	let all_code = error_code(apply_distinct(&engine, Vec::new(), vec![vec![Diff::insert(all_columns)]]));
@@ -257,12 +266,12 @@ fn flow_distinct_on_a_digest_column_reports_the_batch_code() {
 fn flow_join_on_a_digest_key_reports_the_batch_code_on_either_side() {
 	// A right-side arrival hashes its key through the same path, so it must refuse a digest too.
 	let engine = TestEngine::new();
-	let schema = columns(vec![("k", digest_buffer(&[&[1.0]]))]);
+	let schema = batch(vec![digest_buffer("k", &[&[1.0]])]).expect("the key column forms a batch").schema();
 
 	for origin in [LEFT_OPERATOR, RIGHT_OPERATOR] {
 		let mut operator = join(&engine, schema.clone());
 		let mut txn = engine.flow_txn().deferred();
-		let rows = columns(vec![("k", digest_buffer(&[&[1.0]]))]);
+		let rows = columns(vec![digest_buffer("k", &[&[1.0]])]);
 
 		let result = operator.apply(
 			&mut TxnHostContext::new(&mut txn, JOIN_OPERATOR),
@@ -281,13 +290,14 @@ fn flow_join_on_an_all_none_digest_key_is_an_error_like_the_batch_join() {
 		inner: Box::new(ValueType::Float8),
 		accuracy: 10_000,
 	};
-	let schema = columns(vec![("k", ColumnBuffer::none_typed(ty.clone(), 1))]);
+	let schema =
+		batch(vec![factory::none_typed("k", ty.clone(), 1)]).expect("the key column forms a batch").schema();
 	let mut operator = join(&engine, schema.clone());
 	let mut txn = engine.flow_txn().deferred();
 
 	let result = operator.apply(
 		&mut TxnHostContext::new(&mut txn, JOIN_OPERATOR),
-		change(LEFT_OPERATOR, vec![Diff::insert(columns(vec![("k", ColumnBuffer::none_typed(ty, 1))]))]),
+		change(LEFT_OPERATOR, vec![Diff::insert(columns(vec![factory::none_typed("k", ty, 1)]))]),
 	);
 
 	assert_eq!(error_code(result.map(|c| c.diffs)), "JOIN_001");

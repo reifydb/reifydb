@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::int8_with_bitvec;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::wide_int_array::wide_at, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	container::wide_int_array::wide_at,
+	value_type::ValueType,
+};
 
 pub struct Lcm {
 	info: RoutineInfo,
@@ -32,17 +38,17 @@ fn failed(ctx: &FunctionContext, reason: String) -> RoutineError {
 	}
 }
 
-fn numeric_to_i128(data: &ColumnBuffer, i: usize) -> Option<i128> {
-	match data {
-		ColumnBuffer::Int1(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Int16(c) => wide_at::<i128>(c, i),
-		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i128),
-		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i128),
+fn numeric_to_i128(data: &ColumnView, i: usize) -> Option<i128> {
+	match &data.data {
+		ViewData::Int1(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Int2(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Int4(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Int8(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Int16(c) => wide_at::<i128>(c, i),
+		ViewData::Uint1(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Uint2(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Uint4(c) => c.values().get(i).map(|&v| v as i128),
+		ViewData::Uint8(c) => c.values().get(i).map(|&v| v as i128),
 		_ => None,
 	}
 }
@@ -74,9 +80,13 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 		ValueType::Int8
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let a_data = &args[0];
-		let b_data = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let a_data = ColumnView::try_from(&args[0])?;
+		let b_data = ColumnView::try_from(&args[1])?;
 		let row_count = a_data.len();
 
 		let expected_types = vec![
@@ -110,7 +120,7 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 		let mut res_bitvec = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			match (numeric_to_i128(a_data, i), numeric_to_i128(b_data, i)) {
+			match (numeric_to_i128(&a_data, i), numeric_to_i128(&b_data, i)) {
 				(Some(a), Some(b)) => {
 					let multiple = compute_lcm(a, b)
 						.and_then(|multiple| i64::try_from(multiple).ok())
@@ -133,9 +143,7 @@ impl<'a> Routine<FunctionContext<'a>> for Lcm {
 			}
 		}
 
-		let result_data = ColumnBuffer::int8_with_bitvec(result, res_bitvec);
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(int8_with_bitvec(ctx.fragment.text(), result, res_bitvec))
 	}
 }
 

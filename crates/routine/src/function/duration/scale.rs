@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::factory::duration;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::temporal_array::{duration_array, durations},
+	column_view::{ColumnView, ViewData},
+	container::temporal_array::durations,
 	duration::Duration,
 	value_type::ValueType,
 };
@@ -31,19 +34,19 @@ impl DurationScale {
 	}
 }
 
-fn is_integer_type(data: &ColumnBuffer) -> bool {
+fn is_integer_type(data: &ColumnView) -> bool {
 	matches!(
-		data,
-		ColumnBuffer::Int1(_)
-			| ColumnBuffer::Int2(_)
-			| ColumnBuffer::Int4(_)
-			| ColumnBuffer::Int8(_)
-			| ColumnBuffer::Int16(_)
-			| ColumnBuffer::Uint1(_)
-			| ColumnBuffer::Uint2(_)
-			| ColumnBuffer::Uint4(_)
-			| ColumnBuffer::Uint8(_)
-			| ColumnBuffer::Uint16(_)
+		&data.data,
+		ViewData::Int1(_)
+			| ViewData::Int2(_)
+			| ViewData::Int4(_)
+			| ViewData::Int8(_)
+			| ViewData::Int16(_)
+			| ViewData::Uint1(_)
+			| ViewData::Uint2(_)
+			| ViewData::Uint4(_)
+			| ViewData::Uint8(_)
+			| ViewData::Uint16(_)
 	)
 }
 
@@ -56,13 +59,17 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 		ValueType::Duration
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let dur_data = &args[0];
-		let scalar_data = &args[1];
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let dur_data = ColumnView::try_from(&args[0])?;
+		let scalar_data = ColumnView::try_from(&args[1])?;
 
-		match dur_data {
-			ColumnBuffer::Duration(dur_container) => {
-				if !is_integer_type(scalar_data) {
+		match &dur_data.data {
+			ViewData::Duration(dur_container) => {
+				if !is_integer_type(&scalar_data) {
 					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 1,
@@ -88,7 +95,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 				for i in 0..row_count {
 					match (
 						durations(dur_container).get(i),
-						read_i64(&ctx.fragment, scalar_data, i)?,
+						read_i64(&ctx.fragment, &scalar_data, i)?,
 					) {
 						(Some(dur), Some(scalar)) => {
 							container.push(dur.try_mul(scalar)?);
@@ -97,14 +104,14 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 					}
 				}
 
-				let result_data = ColumnBuffer::Duration(duration_array(container));
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				let result_data = duration(ctx.fragment.text(), container);
+				Ok(result_data)
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![ValueType::Duration],
-				actual: other.get_type(),
+				actual: dur_data.get_type(),
 			}),
 		}
 	}

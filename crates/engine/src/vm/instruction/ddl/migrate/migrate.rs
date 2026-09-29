@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationAction},
 	internal_error,
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled, IncrementalCompilation},
@@ -25,7 +26,7 @@ pub(crate) fn execute_migrate(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: MigrateNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let txn = require_admin_txn(tx)?;
 	let pending = list_pending_migrations(services, txn)?;
 	let to_apply = pick_migrations_to_apply(pending, plan.target.as_deref());
@@ -35,7 +36,7 @@ pub(crate) fn execute_migrate(
 		apply_migration(vm, services, txn, migration)?;
 		services.catalog.create_migration_event(txn, migration, MigrationAction::Applied)?;
 	}
-	Ok(Columns::single_row([("migrations_applied", Value::Uint4(applied_count as u32))]))
+	single_row([("migrations_applied", Value::Uint4(applied_count as u32))])
 }
 
 #[inline]

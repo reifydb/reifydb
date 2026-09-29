@@ -114,7 +114,7 @@ impl ColumnBlock {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
+	use reifydb_core::value::column::{data::canonical::Canonical, factory};
 	use reifydb_value::value::Value;
 
 	use super::*;
@@ -123,9 +123,7 @@ mod tests {
 		let chunks = parts
 			.iter()
 			.map(|p| {
-				Column::from_canonical(
-					Canonical::from_column_buffer(&ColumnBuffer::int4(p.to_vec())).unwrap(),
-				)
+				Column::from_canonical(Canonical::from_column(&factory::int4("c", p.to_vec())).unwrap())
 			})
 			.collect();
 		ColumnChunks::new(ValueType::Int4, false, chunks)

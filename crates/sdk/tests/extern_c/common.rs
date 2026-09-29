@@ -3,6 +3,10 @@
 
 #![allow(dead_code)]
 
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, UInt64Array};
+use arrow_schema::FieldRef;
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -12,7 +16,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	operator_with::ApplyWith,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory::rename},
 };
 use reifydb_sdk::{
 	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
@@ -27,8 +31,15 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
 	config::ExtensionParams,
-	fragment::Fragment,
-	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber, system_columns::SystemColumns},
+	value::{
+		Value,
+		column_view::ColumnView,
+		container::temporal_array::datetime_array,
+		datetime::DateTime,
+		diff_type::DiffType,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, user_columns, with_system_column},
+	},
 };
 
 /// Echoing every diff back drives both the input borrow path and the output builder path in a single apply, which
@@ -148,27 +159,20 @@ fn byte_clone_columns(
 	Ok((committed, names))
 }
 
-pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
+pub fn round_trip_column(name: &str, input: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
 	round_trip_column_through::<PassthroughOperator>(name, input)
 }
 
-pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: ColumnBuffer) -> ColumnBuffer {
-	let n = input.len();
-	let row_numbers: Vec<RowNumber> = (1..=(n as u64).max(1)).map(RowNumber).take(n).collect();
+pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
+	let n = input.1.len();
+	let row_numbers: Vec<u64> = (1..=(n as u64).max(1)).take(n).collect();
 	let now = DateTime::default();
-	let timestamps: Vec<DateTime> = vec![now; n];
-	let cols = vec![ColumnWithName::new(Fragment::internal(name), input)];
-	let columns = Columns::with_system(
-		cols,
-		SystemColumns::new(
-			row_numbers,
-			Vec::new(),
-			timestamps.clone(),
-			timestamps.clone(),
-			timestamps,
-			Vec::new(),
-		),
-	);
+	let mut columns = batch(vec![rename(input, name)]).unwrap();
+	columns = with_system_column(columns, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers)))
+		.unwrap();
+	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+		columns = with_system_column(columns, column, Arc::new(datetime_array(vec![now; n]))).unwrap();
+	}
 
 	let mut diffs: Diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
@@ -193,11 +197,19 @@ pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: ColumnBu
 			..
 		} => pre,
 	};
-	assert_eq!(out_columns.columns.len(), 1, "expected exactly one output column");
-	out_columns.columns[0].clone()
+	assert_eq!(user_columns(out_columns).count(), 1, "expected exactly one output column");
+	let (field, array) = user_columns(out_columns).next().unwrap();
+	(field.clone(), array.clone())
 }
 
-pub fn assert_column_eq(label: &str, expected: &ColumnBuffer, actual: &ColumnBuffer) {
+pub fn slice(column: (FieldRef, ArrayRef), start: usize, end: usize) -> (FieldRef, ArrayRef) {
+	let (field, array) = column;
+	(field, array.slice(start, end - start))
+}
+
+pub fn assert_column_eq(label: &str, expected: &(FieldRef, ArrayRef), actual: &(FieldRef, ArrayRef)) {
+	let expected = ColumnView::try_from(expected).unwrap();
+	let actual = ColumnView::try_from(actual).unwrap();
 	assert_eq!(
 		expected.get_type(),
 		actual.get_type(),

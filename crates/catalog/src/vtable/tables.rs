@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::catalog::vtable::VTable, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::catalog::vtable::VTable;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
 
@@ -67,7 +68,7 @@ use super::{
 };
 use crate::Result;
 
-pub type UserVTableDataFunction = Arc<dyn Fn(&Params) -> Columns + Send + Sync>;
+pub type UserVTableDataFunction = Arc<dyn Fn(&Params) -> RecordBatch + Send + Sync>;
 
 pub enum VTables {
 	Sequences(SystemSequences),
@@ -352,11 +353,11 @@ impl VTables {
 
 				let default_params = Params::default();
 				let params_ref = stored_params.as_ref().unwrap_or(&default_params);
-				let columns = data_fn(params_ref);
+				let batch = data_fn(params_ref);
 
 				*exhausted = true;
 				Ok(Some(Batch {
-					columns,
+					batch,
 				}))
 			}
 		}

@@ -46,14 +46,14 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn claim_one(t: &TestEngine, worker: &str) -> String {
 	let frames = t.command(&format!(r#"CALL queue::claim("{worker}", "test::jobs", 1, duration::seconds(30))"#));
-	match frames[0].columns.iter().find(|c| c.name == "token").unwrap().data.get_value(0) {
+	match frames[0].column("token").unwrap().unwrap().get_value(0) {
 		Value::Utf8(t) => t,
 		other => panic!("token must be Utf8, got {other:?}"),
 	}
 }
 
 fn deadline_of(frames: &[Frame]) -> DateTime {
-	match frames[0].columns.iter().find(|c| c.name == "deadline").unwrap().data.get_value(0) {
+	match frames[0].column("deadline").unwrap().unwrap().get_value(0) {
 		Value::DateTime(d) => d,
 		other => panic!("deadline must be DateTime, got {other:?}"),
 	}

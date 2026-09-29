@@ -3,11 +3,9 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	interface::catalog::policy::{CallableOp, PolicyTargetType},
-	value::column::columns::Columns,
-};
+use reifydb_core::interface::catalog::policy::{CallableOp, PolicyTargetType};
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_policy::error::PolicyError;
 use reifydb_routine_abi::{Procedure as RoutineProcedure, context::ProcedureContext};
@@ -37,7 +35,7 @@ pub(crate) fn invoke_procedure_routine(
 	tx: &mut Transaction<'_>,
 	call: ProcedureCall<'_>,
 	site: CallSite<'_>,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	enforce_call_policy(services, symbols, tx, call.target, site)?;
 
 	let identity = tx.identity();
@@ -51,8 +49,7 @@ pub(crate) fn invoke_procedure_routine(
 		catalog: &services.catalog,
 		ioc: &services.ioc,
 	};
-	let empty = Columns::empty();
-	call.routine.call(&mut ctx, &empty).map_err(|e| e.with_context(call.fragment.clone(), true))
+	call.routine.call(&mut ctx, &[]).map_err(|e| e.with_context(call.fragment.clone(), true))
 }
 
 pub(crate) fn enforce_call_policy(

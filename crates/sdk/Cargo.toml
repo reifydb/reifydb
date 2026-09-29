@@ -16,6 +16,7 @@ default = ["host"]
 host = [
     "dep:arrow-array",
     "dep:arrow-buffer",
+    "dep:arrow-schema",
     "dep:reifydb-codec",
     "dep:reifydb-flow-async",
     "dep:bumpalo",
@@ -36,6 +37,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 arrow-array = { workspace = true, optional = true }
 arrow-buffer = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-flow-async = { workspace = true, optional = true }
 bumpalo = { workspace = true, optional = true }

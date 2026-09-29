@@ -3,13 +3,13 @@
 
 use std::mem;
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
 		builder::ColumnBuilder,
-		columns::Columns,
+		nulls::split_nulls,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
 };
@@ -21,11 +21,14 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimal_at, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
+
+use crate::function::support::coerce::bare_type;
 
 pub struct Max {
 	info: RoutineInfo,
@@ -54,8 +57,13 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		for (i, col) in args.iter().enumerate() {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let columns = args.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, _>>()?;
+		for (i, col) in columns.iter().enumerate() {
 			if !col.get_type().is_number() {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
@@ -66,15 +74,15 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 			}
 		}
 
-		let row_count = args.row_count();
-		let input_type = args[0].get_type();
+		let row_count = ctx.row_count;
+		let input_type = columns[0].get_type();
 		let mut data = ColumnBuilder::with_capacity(input_type, row_count);
 
 		for i in 0..row_count {
 			let mut row_max: Option<Value> = None;
-			for col in args.iter() {
-				if col.data().is_defined(i) {
-					let val = col.data().get_value(i);
+			for col in columns.iter() {
+				if col.is_defined(i) {
+					let val = col.get_value(i);
 					row_max = Some(match row_max {
 						Some(current) if val > current => val,
 						Some(current) => current,
@@ -85,7 +93,7 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 			data.push_value(row_max.unwrap_or(Value::none()));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data.finish())]))
+		Ok(data.finish(ctx.fragment.text()))
 	}
 }
 
@@ -156,58 +164,59 @@ impl Accumulator for MaxAccumulator {
 		self.maxs.heap_size()
 	}
 
-	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
-		let column = &args[0];
-		let (data, _) = column.clone().split_nulls();
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let column = ColumnView::try_from(&args[0])?;
+		let (bare, _) = split_nulls(args[0].clone())?;
+		let data = ColumnView::try_from(&bare)?;
 
 		if self.input_type.is_none() {
-			self.input_type = Some(data.get_type());
+			self.input_type = Some(bare_type(&data));
 		}
 
-		match &data {
-			ColumnBuffer::Int1(container) => {
+		match &data.data {
+			ViewData::Int1(container) => {
 				max_arm!(self, column, groups, container.values(), Int1);
 				Ok(())
 			}
-			ColumnBuffer::Int2(container) => {
+			ViewData::Int2(container) => {
 				max_arm!(self, column, groups, container.values(), Int2);
 				Ok(())
 			}
-			ColumnBuffer::Int4(container) => {
+			ViewData::Int4(container) => {
 				max_arm!(self, column, groups, container.values(), Int4);
 				Ok(())
 			}
-			ColumnBuffer::Int8(container) => {
+			ViewData::Int8(container) => {
 				max_arm!(self, column, groups, container.values(), Int8);
 				Ok(())
 			}
-			ColumnBuffer::Int16(container) => {
+			ViewData::Int16(container) => {
 				let values = wides::<i128>(container);
 				max_arm!(self, column, groups, values, Int16);
 				Ok(())
 			}
-			ColumnBuffer::Uint1(container) => {
+			ViewData::Uint1(container) => {
 				max_arm!(self, column, groups, container.values(), Uint1);
 				Ok(())
 			}
-			ColumnBuffer::Uint2(container) => {
+			ViewData::Uint2(container) => {
 				max_arm!(self, column, groups, container.values(), Uint2);
 				Ok(())
 			}
-			ColumnBuffer::Uint4(container) => {
+			ViewData::Uint4(container) => {
 				max_arm!(self, column, groups, container.values(), Uint4);
 				Ok(())
 			}
-			ColumnBuffer::Uint8(container) => {
+			ViewData::Uint8(container) => {
 				max_arm!(self, column, groups, container.values(), Uint8);
 				Ok(())
 			}
-			ColumnBuffer::Uint16(container) => {
+			ViewData::Uint16(container) => {
 				let values = wides::<u128>(container);
 				max_arm!(self, column, groups, values, Uint16);
 				Ok(())
 			}
-			ColumnBuffer::Float4(container) => {
+			ViewData::Float4(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<f32> = None;
 					for &i in indices {
@@ -232,7 +241,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnBuffer::Float8(container) => {
+			ViewData::Float8(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<f64> = None;
 					for &i in indices {
@@ -257,7 +266,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnBuffer::Decimal(container) => {
+			ViewData::Decimal(container) => {
 				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<Decimal> = None;
 					for &i in indices {
@@ -283,16 +292,16 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			other => Err(RoutineError::FunctionInvalidArgumentType {
+			_ => Err(RoutineError::FunctionInvalidArgumentType {
 				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
-				actual: other.get_type(),
+				actual: data.get_type(),
 			}),
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(ValueType::Float8);
 		let mut keys = Vec::with_capacity(self.maxs.len());
 		let mut data = ColumnBuilder::with_capacity(ty, self.maxs.len());
@@ -302,6 +311,6 @@ impl Accumulator for MaxAccumulator {
 			data.push_value(max);
 		}
 
-		Ok((keys, data.finish()))
+		Ok((keys, data.finish(self.kind_name())))
 	}
 }

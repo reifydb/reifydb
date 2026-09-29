@@ -20,7 +20,14 @@ use reifydb_engine::{
 };
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, identity::IdentityId};
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	diff_type::DiffType,
+	duration::Duration,
+	identity::IdentityId,
+	system_columns::{column_view, row_numbers},
+};
 
 fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
 	match outcome {
@@ -80,7 +87,7 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, 3, "snapshot should contain 3 seeded rows");
 }
 
@@ -109,7 +116,7 @@ fn hydrate_500_rows_stages_scan_frame_batches_not_one_per_row() {
 	let outcome =
 		sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, ROWS as u64).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, ROWS, "batching must not drop or duplicate snapshot rows");
 
 	assert!(
@@ -136,7 +143,7 @@ fn hydrate_delivers_every_row_of_a_snapshot_larger_than_the_delivery_ring() {
 
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5000).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, ROWS, "snapshot must carry every row the query returned, not the ring's last 1024");
 }
 
@@ -151,9 +158,9 @@ fn seed_backdated(db: &TestDb, table: &str, rows: &[(i32, u64)]) {
 fn announced_ids(batches: &[StagedBatch]) -> Vec<i32> {
 	let mut out = Vec::new();
 	for (_, batch) in batches {
-		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
-		for row_idx in 0..batch.row_count() {
-			match id_col.data().get_value(row_idx) {
+		let id_col = column_view(&batch, "id").unwrap().expect("id column");
+		for row_idx in 0..batch.num_rows() {
+			match id_col.get_value(row_idx) {
 				Value::Int4(v) => out.push(v),
 				other => panic!("expected Int4 id, got {:?}", other),
 			}
@@ -235,10 +242,10 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 	let mut announced: HashSet<u64> = HashSet::new();
 	let mut seen = 0usize;
 	for (op, batch) in &outcome.batches {
-		let row_numbers = batch.row_numbers();
+		let row_numbers = row_numbers(&batch).unwrap();
 		assert_eq!(
 			row_numbers.len(),
-			batch.row_count(),
+			batch.num_rows(),
 			"row numbers must cover the batch or this guard cannot identify the rows it checks"
 		);
 		for row_number in row_numbers.iter() {
@@ -351,13 +358,13 @@ fn hydrate_pushes_filter_into_source_query() {
 		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
 		.expect("hydrate succeeds at cap=5 (matches TAKE 5)");
 
-	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert!(total_rows > 0, "snapshot must deliver at least one filtered row");
 
 	for (_, cols) in &outcome.batches {
-		let kind_col = cols.iter().find(|c| c.name() == "kind").expect("kind column present");
-		for i in 0..cols.row_count() {
-			match kind_col.data().get_value(i) {
+		let kind_col = column_view(&cols, "kind").unwrap().expect("kind column present");
+		for i in 0..cols.num_rows() {
+			match kind_col.get_value(i) {
 				Value::Utf8(s) => assert_eq!(s, "b", "filter must restrict to kind == 'b'"),
 				other => panic!("unexpected kind value: {:?}", other),
 			}
@@ -498,8 +505,8 @@ fn two_monitor_db() -> TestDb {
 fn lookup_identity(db: &TestDb, name: &str) -> IdentityId {
 	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }}"));
 	let frame = frames.first().expect("identity frame");
-	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
-	match col.data.get_value(0) {
+	let col = frame.column("id").unwrap().expect("id column");
+	match col.get_value(0) {
 		Value::IdentityId(id) => id,
 		other => panic!("unexpected identity value: {other:?}"),
 	}

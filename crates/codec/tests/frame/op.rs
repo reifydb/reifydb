@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::Int32Array;
+use std::sync::Arc;
+
+use arrow_array::{Int32Array, UInt64Array};
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	json::{from::frames_from_json, to::convert_frames},
 };
 use reifydb_value::value::{
 	diff_type::DiffType,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	frame::frame::Frame,
 	row_number::RowNumber,
+	system_columns::{SystemColumn, row_numbers, with_system_column},
+	value_type::ValueType,
 };
 use serde_json::to_string;
 
+use crate::common::{data, frame_of};
+
 fn frame_with_op(op: Option<DiffType>) -> Frame {
-	let mut frame = Frame::with_row_numbers(
-		vec![FrameColumn {
-			name: "id".to_string(),
-			data: FrameColumnData::Int4(Int32Array::from(vec![7])),
-		}],
-		vec![RowNumber::new(42)],
-	);
+	let user = frame_of(vec![("id", data(ValueType::Int4, Int32Array::from(vec![7])))]);
+	let batch = with_system_column(user.batch, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![42])))
+		.expect("row numbers fit the batch");
+	let mut frame = Frame::from(batch);
 	frame.op = op;
 	frame
 }
@@ -33,7 +36,7 @@ fn rbcf_carries_every_op_in_the_reserved_header_byte() {
 		let encoded = encode_frames(&[frame_with_op(Some(op))], &EncodeOptions::default()).expect("encode");
 		let decoded = decode_frames(&encoded).expect("decode");
 		assert_eq!(decoded[0].op, Some(op));
-		assert_eq!(decoded[0].row_numbers(), &[RowNumber::new(42)]);
+		assert_eq!(row_numbers(&decoded[0].batch).unwrap(), &[RowNumber::new(42)]);
 	}
 }
 
@@ -53,8 +56,9 @@ fn the_op_never_becomes_a_column() {
 	let encoded =
 		encode_frames(&[frame_with_op(Some(DiffType::Remove))], &EncodeOptions::default()).expect("encode");
 	let decoded = decode_frames(&encoded).expect("decode");
-	assert_eq!(decoded[0].columns.len(), 1);
-	assert_eq!(decoded[0].columns[0].name, "id");
+	let names: Vec<&str> =
+		decoded[0].batch.schema_ref().fields().iter().map(|field| field.name().as_str()).collect();
+	assert_eq!(names, ["id", "#rownum"]);
 }
 
 #[test]
@@ -62,19 +66,19 @@ fn the_json_frames_format_round_trips_the_op() {
 	// The frames format is a separate encoder from RBCF; both must report the same op or two
 	// clients on the same subscription would disagree about what happened to the row.
 	for op in [DiffType::Insert, DiffType::Update, DiffType::Remove] {
-		let response = convert_frames(&[frame_with_op(Some(op))]);
+		let response = convert_frames(&[frame_with_op(Some(op))]).unwrap();
 		assert_eq!(response[0].op, Some(DiffType::as_u8(op)));
 
 		let back = frames_from_json(&to_string(&response).unwrap()).expect("decode");
 		assert_eq!(back[0].op, Some(op));
-		assert_eq!(back[0].row_numbers(), &[RowNumber::new(42)]);
+		assert_eq!(row_numbers(&back[0].batch).unwrap(), &[RowNumber::new(42)]);
 	}
 }
 
 #[test]
 fn the_json_frames_format_omits_an_absent_op() {
 	// A query response must not gain an `op` key just because change notifications carry one.
-	let response = convert_frames(&[frame_with_op(None)]);
+	let response = convert_frames(&[frame_with_op(None)]).unwrap();
 	assert_eq!(response[0].op, None);
 	assert!(!to_string(&response).unwrap().contains("\"op\""));
 }

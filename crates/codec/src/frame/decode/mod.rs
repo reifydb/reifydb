@@ -5,21 +5,22 @@ mod any;
 mod fixed;
 mod varlen;
 
-use std::str;
+use std::{str, sync::Arc};
 
-use arrow_array::LargeStringArray;
-use arrow_buffer::{BooleanBuffer, Buffer};
+use arrow_array::{ArrayRef, LargeStringArray, RecordBatch, RecordBatchOptions, make_array};
+use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer};
+use arrow_schema::{FieldRef, Schema};
 use reifydb_value::{
 	encoding::LeBytes,
 	reifydb_assertions,
 	value::{
 		container::varlen_array::blob_array,
-		datetime::DateTime,
 		diff_type::DiffType,
-		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-		row_number::RowNumber,
-		system_columns::SystemColumns,
-		value_type::ValueType,
+		frame::frame::Frame,
+		value_type::{
+			ValueType,
+			field::{FieldType, to_field},
+		},
 	},
 };
 
@@ -29,8 +30,7 @@ use crate::{
 		encoding::dict::{decode_dict_blob, decode_dict_utf8},
 		format::{
 			COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE,
-			META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC,
-			RBCF_VERSION, dict_index_width_from_flags,
+			RBCF_MAGIC, RBCF_VERSION, dict_index_width_from_flags,
 		},
 	},
 	tag::{TypeTag, ValueKind},
@@ -79,32 +79,30 @@ pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 struct FrameHeader {
 	row_count: usize,
 	column_count: usize,
-	meta_flags: u8,
 	op: Option<DiffType>,
 }
 
 fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError> {
 	let (header, pos) = read_frame_header(data, start)?;
-	let (row_numbers, pos) = read_row_numbers(data, pos, header.row_count, header.meta_flags)?;
-	let (created_at, pos) =
-		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_CREATED_AT)?;
-	let (updated_at, pos) =
-		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_UPDATED_AT)?;
-	let (time, pos) = read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_TIME)?;
 	let (columns, pos) = read_frame_columns(data, pos, header.column_count)?;
-	let mut system = SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new());
-	if header.meta_flags & META_HAS_ROW_NUMBERS != 0 {
-		system.mark_row_numbers();
-	}
 
 	Ok((
 		Frame {
-			system,
-			columns,
+			batch: frame_batch(columns, header.row_count)?,
 			op: header.op,
 		},
 		pos,
 	))
+}
+
+pub(crate) fn frame_batch(columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch, DecodeError> {
+	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
+	RecordBatch::try_new_with_options(
+		Arc::new(Schema::new(fields)),
+		arrays,
+		&RecordBatchOptions::new().with_row_count(Some(row_count)),
+	)
+	.map_err(|error| DecodeError::InvalidData(format!("frame columns do not form a batch: {error}")))
 }
 
 #[inline]
@@ -116,6 +114,9 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 	let column_count = read_u16(data, pos) as usize;
 	pos += 2;
 	let meta_flags = data[pos];
+	if meta_flags != 0 {
+		return Err(DecodeError::InvalidData(format!("frame meta byte must be 0, found 0x{meta_flags:02X}")));
+	}
 	pos += 1;
 	let op = match data[pos] {
 		0 => None,
@@ -129,7 +130,6 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 		FrameHeader {
 			row_count,
 			column_count,
-			meta_flags,
 			op,
 		},
 		pos,
@@ -137,50 +137,11 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 }
 
 #[inline]
-fn read_row_numbers(
-	data: &[u8],
-	mut pos: usize,
-	row_count: usize,
-	meta_flags: u8,
-) -> Result<(Vec<RowNumber>, usize), DecodeError> {
-	if meta_flags & META_HAS_ROW_NUMBERS == 0 {
-		return Ok((Vec::new(), pos));
-	}
-	check_len(data, pos, row_count * RowNumber::ENCODED_SIZE)?;
-	let mut row_numbers = Vec::with_capacity(row_count);
-	for _ in 0..row_count {
-		row_numbers.push(RowNumber::read_le(&data[pos..]));
-		pos += RowNumber::ENCODED_SIZE;
-	}
-	Ok((row_numbers, pos))
-}
-
-#[inline]
-fn read_datetime_array(
-	data: &[u8],
-	mut pos: usize,
-	row_count: usize,
-	meta_flags: u8,
-	flag: u8,
-) -> Result<(Vec<DateTime>, usize), DecodeError> {
-	if meta_flags & flag == 0 {
-		return Ok((Vec::new(), pos));
-	}
-	check_len(data, pos, row_count * DateTime::ENCODED_SIZE)?;
-	let mut values = Vec::with_capacity(row_count);
-	for _ in 0..row_count {
-		values.push(DateTime::read_le(&data[pos..]));
-		pos += DateTime::ENCODED_SIZE;
-	}
-	Ok((values, pos))
-}
-
-#[inline]
 fn read_frame_columns(
 	data: &[u8],
 	mut pos: usize,
 	column_count: usize,
-) -> Result<(Vec<FrameColumn>, usize), DecodeError> {
+) -> Result<(Vec<(FieldRef, ArrayRef)>, usize), DecodeError> {
 	let mut columns = Vec::with_capacity(column_count);
 	for _ in 0..column_count {
 		let (col, new_pos) = decode_column(data, pos)?;
@@ -190,7 +151,7 @@ fn read_frame_columns(
 	Ok((columns, pos))
 }
 
-fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), DecodeError> {
+fn decode_column(data: &[u8], start: usize) -> Result<((FieldRef, ArrayRef), usize), DecodeError> {
 	let mut pos = start;
 	check_len(data, pos, COLUMN_DESCRIPTOR_SIZE)?;
 
@@ -231,7 +192,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 	let name_pad = (4 - (name_len % 4)) % 4;
 	pos += name_pad;
 
-	let result = (|| -> Result<(FrameColumnData, usize), DecodeError> {
+	let result = (|| -> Result<((FieldRef, ArrayRef), usize), DecodeError> {
 		let mut pos = pos;
 
 		if has_nones != (depth > 0) {
@@ -242,6 +203,11 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 				} else {
 					"clear"
 				}
+			)));
+		}
+		if depth > 1 {
+			return Err(DecodeError::InvalidData(format!(
+				"column type code 0x{type_code:02X} has option depth {depth}, but a column holds at most one option layer"
 			)));
 		}
 		let layer_len = row_count.div_ceil(8);
@@ -272,7 +238,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 		let extra_bytes = &data[pos..pos + extra_len];
 		pos += extra_len;
 
-		let col_data = decode_column_dispatch(
+		let (value_type, array) = decode_column_dispatch(
 			base_code,
 			encoding,
 			flags,
@@ -283,12 +249,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			layers.last(),
 		)?;
 
-		let col_data = layers.into_iter().rev().fold(col_data, |inner, bitvec| FrameColumnData::Option {
-			inner: Box::new(inner),
-			bitvec,
-		});
-
-		Ok((col_data, pos))
+		Ok((decoded_column(&name, value_type, array, layers.into_iter().next())?, pos))
 	})()
 	.map_err(|e| DecodeError::ColumnDecodeFailed {
 		column_name: name.clone(),
@@ -296,14 +257,45 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 		source: Box::new(e),
 	})?;
 
-	let (col_data, pos) = result;
-	Ok((
-		FrameColumn {
-			name,
-			data: col_data,
-		},
-		pos,
-	))
+	Ok(result)
+}
+
+pub(crate) fn decoded_column(
+	name: &str,
+	value_type: ValueType,
+	array: ArrayRef,
+	layer: Option<BooleanBuffer>,
+) -> Result<(FieldRef, ArrayRef), DecodeError> {
+	let declared_type = matches!(value_type, ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))
+		.then(|| value_type.clone());
+	let (value_type, array) = match layer {
+		Some(layer) => (ValueType::Option(Box::new(value_type)), attach_layer(array, layer)?),
+		None if array.logical_null_count() == 0 => (value_type, array),
+		None if matches!(value_type, ValueType::Digest { .. }) => {
+			(ValueType::Option(Box::new(value_type)), array)
+		}
+		None => {
+			return Err(DecodeError::InvalidData(format!(
+				"column of type {value_type:?} holds {} none cells but has no option layer",
+				array.logical_null_count()
+			)));
+		}
+	};
+	let field_type = FieldType {
+		value_type: Some(value_type),
+		declared_type,
+		..FieldType::default()
+	};
+	Ok((Arc::new(to_field(name, &field_type)), array))
+}
+
+fn attach_layer(array: ArrayRef, layer: BooleanBuffer) -> Result<ArrayRef, DecodeError> {
+	let nulls = NullBuffer::union(Some(&NullBuffer::new(layer)), array.logical_nulls().as_ref());
+	let data =
+		array.to_data().into_builder().nulls(nulls).build().map_err(|error| {
+			DecodeError::InvalidData(format!("option layer does not fit the column: {error}"))
+		})?;
+	Ok(make_array(data))
 }
 
 pub(crate) fn column_type_from_code(type_code: u8) -> Result<ValueType, DecodeError> {
@@ -320,7 +312,7 @@ fn decode_column_dispatch(
 	offsets: &[u8],
 	extra: &[u8],
 	defined: Option<&BooleanBuffer>,
-) -> Result<FrameColumnData, DecodeError> {
+) -> Result<(ValueType, ArrayRef), DecodeError> {
 	if type_code == ValueKind::Digest.byte() {
 		if encoding != Encoding::Plain {
 			return Err(DecodeError::InvalidData(format!(
@@ -334,38 +326,41 @@ fn decode_column_dispatch(
 	}
 	let ty = column_type_from_code(type_code)?;
 
-	match encoding {
+	let array: ArrayRef = match encoding {
 		Encoding::Plain | Encoding::BitPack => {
 			if ty == ValueType::Any {
-				return any::decode_any_column(row_count, data, defined);
+				any::decode_any_column(row_count, data, defined)?
+			} else if let Some(result) = fixed::decode_fixed_plain(type_code, row_count, data) {
+				result?
+			} else if let Some(result) = varlen::decode_varlen_plain(type_code, row_count, data, offsets) {
+				result?
+			} else {
+				return Err(DecodeError::UnsupportedType(format!("{:?}", ty)));
 			}
-
-			if let Some(result) = fixed::decode_fixed_plain(type_code, row_count, data) {
-				return result;
-			}
-
-			if let Some(result) = varlen::decode_varlen_plain(type_code, row_count, data, offsets) {
-				return result;
-			}
-			Err(DecodeError::UnsupportedType(format!("{:?}", ty)))
 		}
 		Encoding::Dict => match ty {
 			ValueType::Utf8 => {
 				let index_width = dict_index_width_from_flags(flags);
 				let strings = decode_dict_utf8(data, extra, row_count, index_width)?;
-				Ok(FrameColumnData::Utf8(LargeStringArray::from(strings)))
+				Arc::new(LargeStringArray::from(strings))
 			}
 			ValueType::Blob => {
 				let index_width = dict_index_width_from_flags(flags);
 				let blobs = decode_dict_blob(data, extra, row_count, index_width)?;
-				Ok(FrameColumnData::Blob(blob_array(&blobs)))
+				Arc::new(blob_array(&blobs))
 			}
-			_ => Err(DecodeError::InvalidData(format!("Dict encoding not supported for type {:?}", ty))),
+			_ => {
+				return Err(DecodeError::InvalidData(format!(
+					"Dict encoding not supported for type {:?}",
+					ty
+				)));
+			}
 		},
-		Encoding::Rle => fixed::decode_rle_column(type_code, row_count, data),
-		Encoding::Delta => fixed::decode_delta_column(type_code, row_count, data),
-		Encoding::DeltaRle => fixed::decode_delta_rle_column(type_code, row_count, data),
-	}
+		Encoding::Rle => fixed::decode_rle_column(type_code, row_count, data)?,
+		Encoding::Delta => fixed::decode_delta_column(type_code, row_count, data)?,
+		Encoding::DeltaRle => fixed::decode_delta_rle_column(type_code, row_count, data)?,
+	};
+	Ok((ty, array))
 }
 
 fn decode_bitvec(data: &[u8], len: usize) -> BooleanBuffer {

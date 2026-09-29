@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::{batch::batch, column::factory},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -56,14 +55,11 @@ impl BaseVTable for SystemPrimaryKeys {
 			object_ids.push(pk_info.object_id);
 		}
 
-		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(pk_ids)),
-			ColumnWithName::new(Fragment::internal("object_id"), ColumnBuffer::uint8(object_ids)),
-		];
+		let columns = vec![factory::uint8("id", pk_ids), factory::uint8("object_id", object_ids)];
 
 		self.exhausted = true;
 		Ok(Some(Batch {
-			columns: Columns::new(columns),
+			batch: batch(columns)?,
 		}))
 	}
 

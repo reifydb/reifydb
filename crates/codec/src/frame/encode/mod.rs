@@ -5,12 +5,11 @@ pub(crate) mod any;
 mod fixed;
 mod varlen;
 
-use reifydb_value::{
-	encoding::LeBytes,
-	value::{
-		diff_type::DiffType,
-		frame::{data::FrameColumnData, frame::Frame},
-	},
+use arrow_buffer::BooleanBuffer;
+use reifydb_value::value::{
+	column_view::{ColumnView, ViewData},
+	diff_type::DiffType,
+	frame::frame::Frame,
 };
 use tracing::{Span, instrument};
 
@@ -19,8 +18,7 @@ use crate::{
 	frame::{
 		encoding::plain::{encode_bitvec, encode_plain},
 		format::{
-			COL_FLAG_HAS_NONES, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE, META_HAS_CREATED_AT,
-			META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC, RBCF_VERSION,
+			COL_FLAG_HAS_NONES, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE, RBCF_MAGIC, RBCF_VERSION,
 		},
 		heuristics::choose_encoding,
 		options::EncodeOptions,
@@ -47,7 +45,7 @@ pub(crate) struct EncodedColumn {
 	skip_all,
 	fields(
 		frame_count = frames.len(),
-		total_rows = frames.iter().map(|f| f.columns.first().map_or(0, |c| c.data.len())).sum::<usize>(),
+		total_rows = frames.iter().map(|f| f.batch.num_rows()).sum::<usize>(),
 		bytes,
 	),
 )]
@@ -79,36 +77,16 @@ fn write_message_header(buf: &mut [u8], frame_count: u32) {
 
 fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Result<(), EncodeError> {
 	let frame_start = buf.len();
-	let row_count = frame.columns.first().map_or(0, |c| c.data.len()) as u32;
-	let column_count = frame.columns.len() as u16;
-	let meta_flags = compute_meta_flags(frame);
+	let row_count = frame.batch.num_rows() as u32;
+	let column_count = frame.batch.num_columns() as u16;
 
 	reserve_frame_header(buf);
-	write_frame_metadata(frame, meta_flags, buf);
 	encode_frame_columns(frame, buf, options)?;
 
 	let frame_size = (buf.len() - frame_start) as u32;
 	let op = frame.op.map_or(0, DiffType::as_u8);
-	write_frame_header(buf, frame_start, row_count, column_count, meta_flags, op, frame_size);
+	write_frame_header(buf, frame_start, row_count, column_count, op, frame_size);
 	Ok(())
-}
-
-#[inline]
-fn compute_meta_flags(frame: &Frame) -> u8 {
-	let mut flags = 0u8;
-	if frame.has_row_numbers() {
-		flags |= META_HAS_ROW_NUMBERS;
-	}
-	if !frame.created_at().is_empty() {
-		flags |= META_HAS_CREATED_AT;
-	}
-	if !frame.updated_at().is_empty() {
-		flags |= META_HAS_UPDATED_AT;
-	}
-	if !frame.time().is_empty() {
-		flags |= META_HAS_TIME;
-	}
-	flags
 }
 
 #[inline]
@@ -117,109 +95,67 @@ fn reserve_frame_header(buf: &mut Vec<u8>) {
 }
 
 #[inline]
-fn write_frame_metadata(frame: &Frame, meta_flags: u8, buf: &mut Vec<u8>) {
-	if meta_flags & META_HAS_ROW_NUMBERS != 0 {
-		for rn in frame.row_numbers() {
-			buf.extend_from_slice(rn.to_le_bytes().as_ref());
-		}
-	}
-	if meta_flags & META_HAS_CREATED_AT != 0 {
-		for dt in frame.created_at() {
-			buf.extend_from_slice(dt.to_le_bytes().as_ref());
-		}
-	}
-	if meta_flags & META_HAS_UPDATED_AT != 0 {
-		for dt in frame.updated_at() {
-			buf.extend_from_slice(dt.to_le_bytes().as_ref());
-		}
-	}
-	if meta_flags & META_HAS_TIME != 0 {
-		for dt in frame.time() {
-			buf.extend_from_slice(dt.to_le_bytes().as_ref());
-		}
-	}
-}
-
-#[inline]
 fn encode_frame_columns(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Result<(), EncodeError> {
-	for col in &frame.columns {
-		encode_column(&col.name, &col.data, buf, options)?;
+	let schema = frame.batch.schema_ref();
+	for (field, array) in schema.fields().iter().zip(frame.batch.columns()) {
+		let view = ColumnView::try_from((array, field.as_ref()))
+			.map_err(|error| EncodeError::UnsupportedType(error.to_string()))?;
+		encode_column(field.name(), &view, buf, options)?;
 	}
 	Ok(())
 }
 
 #[inline]
-fn write_frame_header(
-	buf: &mut [u8],
-	frame_start: usize,
-	row_count: u32,
-	column_count: u16,
-	meta_flags: u8,
-	op: u8,
-	frame_size: u32,
-) {
+fn write_frame_header(buf: &mut [u8], frame_start: usize, row_count: u32, column_count: u16, op: u8, frame_size: u32) {
 	let h = frame_start;
 	buf[h..h + 4].copy_from_slice(&row_count.to_le_bytes());
 	buf[h + 4..h + 6].copy_from_slice(&column_count.to_le_bytes());
-	buf[h + 6] = meta_flags;
+	buf[h + 6] = 0;
 	buf[h + 7] = op;
 	buf[h + 8..h + 12].copy_from_slice(&frame_size.to_le_bytes());
 }
 
 fn encode_column(
 	name: &str,
-	col_data: &FrameColumnData,
+	view: &ColumnView<'_>,
 	buf: &mut Vec<u8>,
 	options: &EncodeOptions,
 ) -> Result<(), EncodeError> {
-	let desired = options.force_encoding.unwrap_or_else(|| choose_encoding(col_data, options.compression));
-	let enc = try_encode_with(col_data, desired)?;
+	let desired = options.force_encoding.unwrap_or_else(|| choose_encoding(view, options.compression));
+	let enc = try_encode_with(view, desired)?;
 	write_column(name, &enc, buf);
 	Ok(())
 }
 
-fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<EncodedColumn, EncodeError> {
-	let row_count = col_data.len();
-	let mut inner = col_data;
-	let mut nones = Vec::new();
-	let mut depth = 0u32;
-	while let FrameColumnData::Option {
-		inner: next,
-		bitvec,
-	} = inner
-	{
-		if bitvec.len() != row_count {
-			return Err(EncodeError::BitvecLengthMismatch {
-				expected: row_count,
-				actual: bitvec.len(),
-			});
-		}
-		nones.extend(encode_bitvec(bitvec));
-		depth += 1;
-		inner = next;
-	}
-	let has_nones = depth > 0;
+fn try_encode_with(view: &ColumnView<'_>, desired: Encoding) -> Result<EncodedColumn, EncodeError> {
+	let row_count = view.len();
+	let has_nones = view.is_nullable() || view.is_none();
+	let nones = match (has_nones, view.logical_nulls()) {
+		(false, _) => Vec::new(),
+		(true, Some(nulls)) => encode_bitvec(nulls.inner()),
+		(true, None) => encode_bitvec(&BooleanBuffer::new_set(row_count)),
+	};
 
 	let row_count = row_count as u32;
 
 	let result = match desired {
-		Encoding::Dict => varlen::try_dict_varlen(inner),
-		Encoding::Rle => fixed::try_rle_fixed(inner),
-		Encoding::Delta => fixed::try_delta_fixed(inner),
-		Encoding::DeltaRle => fixed::try_delta_rle_fixed(inner),
+		Encoding::Dict => varlen::try_dict_varlen(view),
+		Encoding::Rle => fixed::try_rle_fixed(view),
+		Encoding::Delta => fixed::try_delta_fixed(view),
+		Encoding::DeltaRle => fixed::try_delta_rle_fixed(view),
 		_ => None,
 	};
 
 	let mut enc = match result {
 		Some(enc) => enc,
 		None => {
-			let plain = encode_plain(inner)?;
+			let plain = encode_plain(view)?;
 			let mut extra = Vec::new();
-			if let FrameColumnData::Digest {
+			if let ViewData::Digest {
 				inner: digest_inner,
 				accuracy,
 				..
-			} = inner
+			} = &view.data
 			{
 				encode_digest_params(digest_inner, *accuracy, &mut extra)?;
 			}
@@ -236,12 +172,12 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 		}
 	};
 
-	if let Some((precision, scale)) = params(&inner.get_type()) {
+	if let Some((precision, scale)) = params(&view.base_type()) {
 		enc.extra = vec![precision.value(), scale.value()];
 	}
 
 	if has_nones {
-		enc.type_code = TypeTag::of_type(&col_data.get_type())?.byte();
+		enc.type_code = TypeTag::of_type(&view.get_type())?.byte();
 		enc.nones = nones;
 		enc.flags |= COL_FLAG_HAS_NONES;
 	}

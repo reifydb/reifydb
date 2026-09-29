@@ -1,19 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	error::diagnostic::query,
 	sort::{SortDirection, SortKey},
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{concat, head, heap_size, take_rows},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, reifydb_assertions};
+use reifydb_value::{
+	error, reifydb_assertions,
+	value::{
+		column_view::ColumnView,
+		system_columns::{is_system_field, resolve_column},
+	},
+};
 use tracing::instrument;
 
 use crate::{
 	Result,
 	vm::volcano::{
-		query::{QueryContext, QueryNode, charge_query_memory, ensure_sort_key_orderable},
+		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
 		rank::rank_rows,
 	},
 };
@@ -47,7 +57,7 @@ impl QueryNode for TopKNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "TopKNode::next() called before initialize()");
 		}
@@ -58,30 +68,25 @@ impl QueryNode for TopKNode {
 			}
 			self.exhausted = true;
 			return match self.input.next(rx, ctx)? {
-				Some(mut columns) => {
-					columns.take(0)?;
-					Ok(Some(columns))
-				}
+				Some(batch) => Ok(Some(head(&batch, 0))),
 				None => Ok(None),
 			};
 		}
 
 		let columns_opt = self.collect_input(rx, ctx)?;
 
-		let mut columns = match columns_opt {
+		let columns = match columns_opt {
 			Some(f) => f,
 			None => return Ok(None),
 		};
 
-		let row_count = columns.row_count();
+		let row_count = columns.num_rows();
 
 		let key_cols: Vec<_> =
 			self.by.iter().map(|key| Self::resolve_key(&columns, key)).collect::<Result<Vec<_>>>()?;
 
 		let indices = rank_rows(&key_cols, row_count, Some(self.limit))?;
-		Self::permute(&mut columns, &indices)?;
-
-		Ok(Some(columns))
+		Ok(Some(Self::permute(&columns, &indices)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -90,49 +95,40 @@ impl QueryNode for TopKNode {
 }
 
 impl TopKNode {
-	fn resolve_key(columns: &Columns, key: &SortKey) -> Result<(ColumnBuffer, SortDirection)> {
-		let name = key.column.fragment();
-		if let Some(data) = columns.system_column(name) {
-			return Ok((data, key.direction.clone()));
-		}
-		let col = columns
-			.iter()
-			.find(|c| c.name() == name)
+	fn resolve_key<'b>(columns: &'b RecordBatch, key: &SortKey) -> Result<(ColumnView<'b>, SortDirection)> {
+		let index = resolve_column(columns, key.column.fragment())
 			.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-		ensure_sort_key_orderable(key, col.data())?;
-		Ok((col.data().clone(), key.direction.clone()))
+		let view = ColumnView::try_from((columns.column(index), columns.schema_ref().field(index)))?;
+		if !is_system_field(view.field) {
+			ensure_sort_key_orderable(key, &view)?;
+		}
+		Ok((view, key.direction.clone()))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::collect")]
-	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		let mut columns_opt: Option<Columns> = None;
+	fn collect_input<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>> {
+		let mut batches = Vec::new();
 		let mut charged = 0usize;
+		let mut total = 0usize;
 
-		while let Some(columns) = self.input.next(rx, ctx)? {
-			if let Some(existing_columns) = &mut columns_opt {
-				existing_columns.system.extend(&columns.system)?;
-				for (i, col) in columns.columns.iter().enumerate() {
-					existing_columns[i].extend(col.clone())?;
-				}
-			} else {
-				columns_opt = Some(columns);
-			}
-			if let Some(acc) = &columns_opt {
-				charge_query_memory(&ctx.memory, &mut charged, acc)?;
-			}
+		while let Some(batch) = self.input.next(rx, ctx)? {
+			total += heap_size(&batch)?;
+			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
+			batches.push(batch);
 		}
 
-		Ok(columns_opt)
+		if batches.is_empty() {
+			return Ok(None);
+		}
+		Ok(Some(concat(&batches)?))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::permute")]
-	fn permute(columns: &mut Columns, indices: &[usize]) -> Result<()> {
-		columns.system.permute_in_place(indices);
-
-		let cols = &mut columns.columns;
-		for col in cols.iter_mut() {
-			col.reorder(indices)?;
-		}
-		Ok(())
+	fn permute(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+		take_rows(columns, indices)
 	}
 }

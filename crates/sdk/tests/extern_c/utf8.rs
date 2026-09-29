@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::factory;
 
 use super::common::{assert_column_eq, round_trip_column};
 
 #[test]
 fn utf8_empty_string() {
-	let input = ColumnBuffer::utf8([""]);
+	let input = factory::utf8("c", [""]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_empty_string", &input, &output);
 }
 
 #[test]
 fn utf8_single_char() {
-	let input = ColumnBuffer::utf8(["a"]);
+	let input = factory::utf8("c", ["a"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_single_char", &input, &output);
 }
@@ -23,14 +23,14 @@ fn utf8_single_char() {
 fn utf8_eight_byte_payload_boundary() {
 	// Exactly 8 bytes: aligns to a u64 boundary, an alignment-sensitive
 	// var-len commit path may misbehave here.
-	let input = ColumnBuffer::utf8(["12345678"]);
+	let input = factory::utf8("c", ["12345678"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_eight_byte_boundary", &input, &output);
 }
 
 #[test]
 fn utf8_multibyte_unicode() {
-	let input = ColumnBuffer::utf8(["cafe", "kafe", "test", "ascii"]);
+	let input = factory::utf8("c", ["cafe", "kafe", "test", "ascii"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_multibyte", &input, &output);
 }
@@ -39,7 +39,7 @@ fn utf8_multibyte_unicode() {
 fn utf8_embedded_null() {
 	// A NUL byte is valid UTF-8, so an offsets-based round trip must carry all five bytes rather than treat
 	// the payload as a C string and truncate at the first 0x00.
-	let input = ColumnBuffer::utf8(["a\0b\0c"]);
+	let input = factory::utf8("c", ["a\0b\0c"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_embedded_null", &input, &output);
 }
@@ -47,7 +47,7 @@ fn utf8_embedded_null() {
 #[test]
 fn utf8_many_short_strings() {
 	let values: Vec<String> = (0..100).map(|i| format!("v{}", i)).collect();
-	let input = ColumnBuffer::utf8(values);
+	let input = factory::utf8("c", values);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_many_short", &input, &output);
 }
@@ -55,14 +55,14 @@ fn utf8_many_short_strings() {
 #[test]
 fn utf8_one_long_string() {
 	let s: String = (0..4096).map(|i| ((i % 26) as u8 + b'a') as char).collect();
-	let input = ColumnBuffer::utf8([s]);
+	let input = factory::utf8("c", [s]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_long_4kib", &input, &output);
 }
 
 #[test]
 fn utf8_mixed_lengths() {
-	let input = ColumnBuffer::utf8(["", "a", "ab", "abc", "abcd", "abcde", "abcdef", "abcdefg", "abcdefgh"]);
+	let input = factory::utf8("c", ["", "a", "ab", "abc", "abcd", "abcde", "abcdef", "abcdefg", "abcdefgh"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_mixed_lengths", &input, &output);
 }
@@ -70,7 +70,8 @@ fn utf8_mixed_lengths() {
 #[test]
 fn utf8_undefined_first_row() {
 	// offsets[0] sentinel: must remain 0 even when row 0 is undefined.
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[String::new(), "hello".to_string(), "world".to_string()],
 		vec![false, true, true],
 	);
@@ -80,7 +81,8 @@ fn utf8_undefined_first_row() {
 
 #[test]
 fn utf8_alternating_defined_undefined() {
-	let input = ColumnBuffer::utf8_with_bitvec(
+	let input = factory::utf8_with_bitvec(
+		"c",
 		[
 			"a".to_string(),
 			String::new(),
@@ -98,7 +100,7 @@ fn utf8_alternating_defined_undefined() {
 
 #[test]
 fn utf8_all_undefined() {
-	let input = ColumnBuffer::utf8_with_bitvec(vec![String::new(); 4], vec![false; 4]);
+	let input = factory::utf8_with_bitvec("c", vec![String::new(); 4], vec![false; 4]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_all_undefined", &input, &output);
 }

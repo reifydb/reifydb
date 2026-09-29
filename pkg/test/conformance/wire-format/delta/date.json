@@ -14,10 +14,7 @@
             ],
             "type": "Date"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -30,10 +27,7 @@
             "payload": [],
             "type": "Date"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -48,10 +42,7 @@
             ],
             "type": "Date"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -73,10 +64,7 @@
               "Option": "Date"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -93,10 +81,7 @@
               "Option": "Date"
             }
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -160,10 +145,7 @@
             ],
             "type": "Date"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   },
@@ -182,10 +164,7 @@
             ],
             "type": "Date"
           }
-        ],
-        "created_at": [],
-        "row_numbers": [],
-        "updated_at": []
+        ]
       }
     ]
   }

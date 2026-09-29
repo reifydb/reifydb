@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::json::{fixture::frames_from_fixture_json, from::frames_from_json};
-use reifydb_value::value::{frame::data::FrameColumnData, value_type::ValueType};
+use reifydb_value::value::{column_view::ColumnView, value_type::ValueType};
 
 fn fixture(ty: &str) -> String {
 	format!(
@@ -31,9 +31,10 @@ fn the_fixture_notation_carries_the_option_layer_into_the_column_data() {
 	// The notation is only a spelling: what it decodes to still has to be an optional column, or
 	// the corpus would be pinning the wrong thing.
 	let frames = frames_from_fixture_json(&fixture(r#"{"Option":"Int4"}"#)).expect("fixture notation must parse");
-	let data = &frames[0].columns[0].data;
+	let batch = &frames[0].batch;
+	let data = ColumnView::try_from((batch.column(0), batch.schema_ref().field(0))).unwrap();
 	assert_eq!(data.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
-	assert!(matches!(data, FrameColumnData::Option { .. }), "an Option type must decode into optional column data");
+	assert!(data.is_nullable(), "an Option type must decode into optional column data");
 }
 
 #[test]

@@ -3,10 +3,15 @@
 
 use std::sync::LazyLock;
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns},
+	value::{
+		batch::{batch, empty_batch},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
@@ -41,7 +46,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingHandlersInvoked {
 		ValueType::Any
 	}
 
-	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut ProcedureContext<'a, 'tx>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<RecordBatch, RoutineError> {
 		let invocations = match ctx.tx {
 			Transaction::Test(t) => &**t.invocations,
 			_ => {
@@ -66,7 +75,7 @@ fn extract_optional_string_param(params: &Params) -> Option<String> {
 	}
 }
 
-fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&str>) -> Result<Columns, Error> {
+fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&str>) -> Result<RecordBatch, Error> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
@@ -88,7 +97,7 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 		.collect();
 
 	if invocations.is_empty() {
-		return Ok(Columns::empty());
+		return Ok(empty_batch());
 	}
 
 	let mut seq_data = ColumnBuilder::with_capacity(ValueType::Uint8, invocations.len());
@@ -111,14 +120,14 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 		message_data.push(inv.message.as_str());
 	}
 
-	Ok(Columns::new(vec![
-		ColumnWithName::new("sequence", seq_data.finish()),
-		ColumnWithName::new("namespace", ns_data.finish()),
-		ColumnWithName::new("handler", handler_data.finish()),
-		ColumnWithName::new("event", event_data.finish()),
-		ColumnWithName::new("variant", variant_data.finish()),
-		ColumnWithName::new("duration", duration_data.finish()),
-		ColumnWithName::new("outcome", outcome_data.finish()),
-		ColumnWithName::new("message", message_data.finish()),
-	]))
+	batch(vec![
+		seq_data.finish("sequence"),
+		ns_data.finish("namespace"),
+		handler_data.finish("handler"),
+		event_data.finish("event"),
+		variant_data.finish("variant"),
+		duration_data.finish("duration"),
+		outcome_data.finish("outcome"),
+		message_data.finish("message"),
+	])
 }

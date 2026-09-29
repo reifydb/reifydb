@@ -8,9 +8,11 @@ use arrow_buffer::BooleanBuffer;
 use reifydb_value::{
 	encoding::LeBytes,
 	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
 		container::{
 			any_array,
-			decimal_array::DecimalArray,
+			decimal_array::DecimalView,
 			dictionary_array, digest_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
@@ -20,7 +22,6 @@ use reifydb_value::{
 		datetime::DateTime,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
-		frame::data::FrameColumnData,
 		identity::IdentityId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
@@ -56,26 +57,26 @@ pub struct PlainEncoded {
 	pub type_code: u8,
 }
 
-pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> {
-	let result = match col {
-		FrameColumnData::Bool(c) => PlainEncoded {
+pub fn encode_plain(col: &ColumnView<'_>) -> Result<PlainEncoded, EncodeError> {
+	let result = match &col.data {
+		ViewData::Bool(c) => PlainEncoded {
 			data: encode_bitvec(c.values()),
 			offsets: vec![],
 			type_code: ValueKind::Boolean.byte(),
 		},
-		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, f32),
-		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, f64),
-		FrameColumnData::Int1(c) => encode_fixed!(c, ValueType::Int1, i8),
-		FrameColumnData::Int2(c) => encode_fixed!(c, ValueType::Int2, i16),
-		FrameColumnData::Int4(c) => encode_fixed!(c, ValueType::Int4, i32),
-		FrameColumnData::Int8(c) => encode_fixed!(c, ValueType::Int8, i64),
-		FrameColumnData::Int16(c) => encode_fixed!(slice: &wides::<i128>(c), ValueType::Int16, i128),
-		FrameColumnData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, u8),
-		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, u16),
-		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, u32),
-		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, u64),
-		FrameColumnData::Uint16(c) => encode_fixed!(slice: &wides::<u128>(c), ValueType::Uint16, u128),
-		FrameColumnData::Date(c) => {
+		ViewData::Float4(c) => encode_fixed!(c, ValueType::Float4, f32),
+		ViewData::Float8(c) => encode_fixed!(c, ValueType::Float8, f64),
+		ViewData::Int1(c) => encode_fixed!(c, ValueType::Int1, i8),
+		ViewData::Int2(c) => encode_fixed!(c, ValueType::Int2, i16),
+		ViewData::Int4(c) => encode_fixed!(c, ValueType::Int4, i32),
+		ViewData::Int8(c) => encode_fixed!(c, ValueType::Int8, i64),
+		ViewData::Int16(c) => encode_fixed!(slice: &wides::<i128>(c), ValueType::Int16, i128),
+		ViewData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, u8),
+		ViewData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, u16),
+		ViewData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, u32),
+		ViewData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, u64),
+		ViewData::Uint16(c) => encode_fixed!(slice: &wides::<u128>(c), ValueType::Uint16, u128),
+		ViewData::Date(c) => {
 			let slice: &[Date] = dates(c);
 			let mut buf = Vec::with_capacity(slice.len() * Date::ENCODED_SIZE);
 			for v in slice {
@@ -87,7 +88,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Date.byte(),
 			}
 		}
-		FrameColumnData::DateTime(c) => {
+		ViewData::DateTime(c) => {
 			let slice: &[DateTime] = datetimes(c);
 			let mut buf = Vec::with_capacity(slice.len() * DateTime::ENCODED_SIZE);
 			for v in slice {
@@ -99,7 +100,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::DateTime.byte(),
 			}
 		}
-		FrameColumnData::Time(c) => {
+		ViewData::Time(c) => {
 			let slice: &[Time] = times(c);
 			let mut buf = Vec::with_capacity(slice.len() * Time::ENCODED_SIZE);
 			for v in slice {
@@ -111,7 +112,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Time.byte(),
 			}
 		}
-		FrameColumnData::Duration(c) => {
+		ViewData::Duration(c) => {
 			let slice: &[Duration] = durations(c);
 			let mut buf = Vec::with_capacity(slice.len() * Duration::ENCODED_SIZE);
 			for v in slice {
@@ -123,7 +124,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Duration.byte(),
 			}
 		}
-		FrameColumnData::IdentityId(c) => {
+		ViewData::IdentityId(c) => {
 			let slice: &[IdentityId] = identity_ids(c);
 			let mut buf = Vec::with_capacity(slice.len() * IdentityId::ENCODED_SIZE);
 			for v in slice {
@@ -135,7 +136,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::IdentityId.byte(),
 			}
 		}
-		FrameColumnData::Uuid4(c) => {
+		ViewData::Uuid4(c) => {
 			let slice: &[Uuid4] = uuid4s(c);
 			let mut buf = Vec::with_capacity(slice.len() * Uuid4::ENCODED_SIZE);
 			for v in slice {
@@ -147,7 +148,7 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Uuid4.byte(),
 			}
 		}
-		FrameColumnData::Uuid7(c) => {
+		ViewData::Uuid7(c) => {
 			let slice: &[Uuid7] = uuid7s(c);
 			let mut buf = Vec::with_capacity(slice.len() * Uuid7::ENCODED_SIZE);
 			for v in slice {
@@ -159,10 +160,16 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Uuid7.byte(),
 			}
 		}
-		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
-		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
-		FrameColumnData::Decimal(c) => encode_unscaled(c, ValueKind::Decimal),
-		FrameColumnData::Any {
+		ViewData::Utf8 {
+			container,
+			..
+		} => encode_varlen_strings(container, ValueType::Utf8),
+		ViewData::Blob {
+			container,
+			..
+		} => encode_varlen_blobs(container, ValueType::Blob),
+		ViewData::Decimal(c) => encode_unscaled(*c, ValueKind::Decimal),
+		ViewData::Any {
 			container,
 			..
 		} => {
@@ -176,11 +183,11 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				type_code: ValueKind::Any.byte(),
 			});
 		}
-		FrameColumnData::DictionaryId {
+		ViewData::DictionaryId {
 			container,
 			..
 		} => encode_dictionary_ids(container),
-		FrameColumnData::Digest {
+		ViewData::Digest {
 			container,
 			..
 		} => encode_varlen(
@@ -189,19 +196,29 @@ pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> 
 				Some(digest) => digest.encode(),
 				None => Vec::new(),
 			},
-			col.get_type(),
+			col.base_type(),
 		),
-		FrameColumnData::Option {
-			..
-		} => unreachable!("Option layers are stripped before plain encoding"),
+		ViewData::None {
+			array,
+		} => {
+			let mut data = Vec::new();
+			for _ in 0..array.len() {
+				encode_any_value(&Value::none(), &mut data)?;
+			}
+			return Ok(PlainEncoded {
+				data,
+				offsets: vec![],
+				type_code: ValueKind::Any.byte(),
+			});
+		}
 	};
 	Ok(result)
 }
 
-fn encode_unscaled(array: &DecimalArray, kind: ValueKind) -> PlainEncoded {
+fn encode_unscaled(array: DecimalView<'_>, kind: ValueKind) -> PlainEncoded {
 	let data = match array {
-		DecimalArray::Decimal128(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
-		DecimalArray::Decimal256(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
+		DecimalView::Decimal128(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
+		DecimalView::Decimal256(a) => a.values().iter().flat_map(|v| v.to_le_bytes()).collect(),
 	};
 	PlainEncoded {
 		data,

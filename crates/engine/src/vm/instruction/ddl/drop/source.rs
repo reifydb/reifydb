@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropSourceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_source(services: &Services, txn: &mut AdminTransaction, plan: DropSourceNode) -> Result<Columns> {
+pub(crate) fn drop_source(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: DropSourceNode,
+) -> Result<RecordBatch> {
 	let source = services.catalog.find_source_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
@@ -18,11 +23,11 @@ pub(crate) fn drop_source(services: &Services, txn: &mut AdminTransaction, plan:
 
 	let Some(source) = source else {
 		if plan.if_exists {
-			return Ok(Columns::single_row([
+			return single_row([
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("source", Value::Utf8(plan.name.text().to_string())),
 				("dropped", Value::Boolean(false)),
-			]));
+			]);
 		}
 		return Err(CatalogError::NotFound {
 			kind: CatalogObjectKind::Source,
@@ -35,9 +40,9 @@ pub(crate) fn drop_source(services: &Services, txn: &mut AdminTransaction, plan:
 
 	services.catalog.drop_source(txn, source)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("source", Value::Utf8(plan.name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

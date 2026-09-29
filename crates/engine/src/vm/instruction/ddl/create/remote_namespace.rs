@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::namespace::NamespaceToCreate;
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId},
-	value::column::columns::Columns,
+	value::batch::single_row,
 };
 use reifydb_rql::nodes::CreateRemoteNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -16,7 +17,7 @@ pub(crate) fn create_remote_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateRemoteNamespaceNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
 	let mut parent_id = NamespaceId::ROOT;
@@ -46,10 +47,7 @@ pub(crate) fn create_remote_namespace(
 	if services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?.is_some()
 		&& plan.if_not_exists
 	{
-		return Ok(Columns::single_row([
-			("namespace", Value::Utf8(full_name)),
-			("created", Value::Boolean(false)),
-		]));
+		return single_row([("namespace", Value::Utf8(full_name)), ("created", Value::Boolean(false))]);
 	}
 
 	let grpc_text = plan.grpc.text().to_string();
@@ -67,10 +65,7 @@ pub(crate) fn create_remote_namespace(
 	)?;
 	txn.track_namespace_created(result.clone())?;
 
-	Ok(Columns::single_row([
-		("namespace", Value::Utf8(result.name().to_string())),
-		("created", Value::Boolean(true)),
-	]))
+	single_row([("namespace", Value::Utf8(result.name().to_string())), ("created", Value::Boolean(true))])
 }
 
 #[cfg(test)]
@@ -79,7 +74,10 @@ pub mod tests {
 	use reifydb_transaction::transaction::query::QueryTransaction;
 	use reifydb_value::{
 		params::Params,
-		value::{Value, identity::IdentityId},
+		value::{
+			Value, column_view::ColumnView, frame::frame::Frame, identity::IdentityId,
+			system_columns::user_columns,
+		},
 	};
 
 	use crate::vm::{Admin, Query, executor::Executor};
@@ -101,8 +99,8 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Utf8("remote_ns".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Boolean(true));
 	}
 
 	#[test]
@@ -133,8 +131,8 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(false));
+		assert_eq!(value_at(frame, 0), Value::Utf8("remote_ns".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Boolean(false));
 	}
 
 	#[test]
@@ -169,7 +167,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		assert!(r.is_empty() || r.iter().all(|f| f.columns.is_empty()));
+		assert!(r.is_empty() || r.iter().all(|f| user_columns(&f.batch).next().is_none()));
 	}
 
 	#[test]
@@ -189,7 +187,14 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("blockchain::protocol".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
+		assert_eq!(value_at(frame, 0), Value::Utf8("blockchain::protocol".to_string()));
+		assert_eq!(value_at(frame, 1), Value::Boolean(true));
+	}
+
+	fn value_at(frame: &Frame, column: usize) -> Value {
+		// Positional read: without it a reordered result column would still pass.
+		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
+			.unwrap()
+			.get_value(0)
 	}
 }

@@ -3,11 +3,9 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_column::{predicate::Predicate, reader::SnapshotReader, snapshot::Schema};
-use reifydb_core::{
-	error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId,
-	value::column::columns::Columns,
-};
+use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId};
 use reifydb_store_column::store::ColumnStore;
 use reifydb_value::error::Error;
 
@@ -45,7 +43,7 @@ impl BlockSequenceReader {
 		self.schema.as_ref()
 	}
 
-	pub(crate) fn next(&mut self) -> Result<Option<Columns>> {
+	pub(crate) fn next(&mut self) -> Result<Option<RecordBatch>> {
 		loop {
 			if let Some(reader) = self.current.as_mut() {
 				match reader.next() {

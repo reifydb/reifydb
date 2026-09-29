@@ -16,6 +16,8 @@ use std::{
 	thread::{self, JoinHandle, sleep},
 };
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb::{
 	Params, embedded,
 	routine::abi::{
@@ -32,7 +34,7 @@ use reifydb_core::{
 		},
 		cdc::CdcConsumerId,
 	},
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::factory::rename,
 };
 use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex};
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, value_type::ValueType};
@@ -62,12 +64,16 @@ impl<'a> Routine<FunctionContext<'a>> for LatchedPass {
 		input_types[0].clone()
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		if self.latch.closed.load(Ordering::Acquire) {
 			self.latch.entered.send(()).unwrap();
 			self.latch.release.lock().recv().unwrap();
 		}
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), args[0].clone())]))
+		Ok(rename(args[0].clone(), ctx.fragment.text()))
 	}
 }
 

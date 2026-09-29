@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
 use arrow_buffer::{BooleanBuffer, NullBuffer, i256};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use arrow_schema::FieldRef;
+use reifydb_core::value::column::{
+	factory::{
+		decimal_with_bitvec, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec,
+		int4_with_bitvec, int8_with_bitvec, int16_with_bitvec, none, uint1_with_bitvec, uint2_with_bitvec,
+		uint4_with_bitvec, uint8_with_bitvec, uint16_with_bitvec,
+	},
+	nulls::split_nulls,
+};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
 	value::{
+		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimals, wide_int_array::wides},
 		decimal::Decimal,
 		is::IsNumber,
@@ -18,7 +28,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
-	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_pair},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_pair},
 };
 
 pub struct Power {
@@ -56,17 +66,25 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		}
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let (base_data, _) = args[0].clone().split_nulls();
-		let (exp_data, _) = args[1].clone().split_nulls();
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let (base_bare, _) = split_nulls(args[0].clone())?;
+		let (exp_bare, _) = split_nulls(args[1].clone())?;
+		let base_data = ColumnView::try_from(&base_bare)?;
+		let exp_data = ColumnView::try_from(&exp_bare)?;
 		ensure_numeric(ctx, &base_data, 0)?;
 		ensure_numeric(ctx, &exp_data, 1)?;
 
-		let promoted = promote_pair(base_data.get_type(), exp_data.get_type());
+		let base_view = ColumnView::try_from(&args[0])?;
+		let exp_view = ColumnView::try_from(&args[1])?;
+
+		let promoted = promote_pair(bare_type(&base_data), bare_type(&exp_data));
 		if promoted == ValueType::Any {
-			if all_rows_none(&args[0]) && all_rows_none(&args[1]) {
-				let result = ColumnBuffer::none(base_data.len());
-				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
+			if all_rows_none(&base_view) && all_rows_none(&exp_view) {
+				return Ok(none(ctx.fragment.text(), base_data.len()));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -75,11 +93,15 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				actual: ValueType::Any,
 			});
 		}
-		let base_cast = coerce_column(ctx, &args[0], promoted.clone(), CoerceMode::Error)?;
-		let exp_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
+		let base_cast = coerce_column(ctx, &base_view, promoted.clone(), CoerceMode::Error)?;
+		let exp_cast = coerce_column(ctx, &exp_view, promoted.clone(), CoerceMode::Error)?;
 
-		let (base_inner, base_bv) = (&base_cast, base_cast.nulls().map(NullBuffer::inner));
-		let (exp_inner, exp_bv) = (&exp_cast, exp_cast.nulls().map(NullBuffer::inner));
+		let base_inner = ColumnView::try_from(&base_cast)?;
+		let exp_inner = ColumnView::try_from(&exp_cast)?;
+		let base_nulls = base_inner.logical_nulls();
+		let exp_nulls = exp_inner.logical_nulls();
+		let base_bv = base_nulls.as_ref().map(NullBuffer::inner);
+		let exp_bv = exp_nulls.as_ref().map(NullBuffer::inner);
 
 		let overflow = || -> RoutineError {
 			TypeError::NumberOutOfRange {
@@ -92,15 +114,17 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 
 		macro_rules! run {
 			($variant:ident, $factory:ident, $op:expr) => {{
-				let (ColumnBuffer::$variant(b), ColumnBuffer::$variant(e)) = (base_inner, exp_inner)
+				let (ViewData::$variant(b), ViewData::$variant(e)) =
+					(&base_inner.data, &exp_inner.data)
 				else {
 					unreachable!()
 				};
 				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
-				ColumnBuffer::$factory(values, bits)
+				$factory(ctx.fragment.text(), values, bits)
 			}};
 			($variant:ident(..), $decode:ident, $build:expr, $op:expr) => {{
-				let (ColumnBuffer::$variant(b), ColumnBuffer::$variant(e)) = (base_inner, exp_inner)
+				let (ViewData::$variant(b), ViewData::$variant(e)) =
+					(&base_inner.data, &exp_inner.data)
 				else {
 					unreachable!()
 				};
@@ -134,7 +158,8 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			ValueType::Int4 => run!(Int4, int4_with_bitvec, signed_pow_op!()),
 			ValueType::Int8 => run!(Int8, int8_with_bitvec, signed_pow_op!()),
 			ValueType::Int16 => {
-				let (ColumnBuffer::Int16(b), ColumnBuffer::Int16(e)) = (base_inner, exp_inner) else {
+				let (ViewData::Int16(b), ViewData::Int16(e)) = (&base_inner.data, &exp_inner.data)
+				else {
 					unreachable!()
 				};
 				let (values, bits) = pow_rows(
@@ -145,14 +170,15 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 					signed_pow_op!(),
 					&overflow,
 				)?;
-				ColumnBuffer::int16_with_bitvec(values, bits)
+				int16_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Uint1 => run!(Uint1, uint1_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint2 => run!(Uint2, uint2_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint4 => run!(Uint4, uint4_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint8 => run!(Uint8, uint8_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint16 => {
-				let (ColumnBuffer::Uint16(b), ColumnBuffer::Uint16(e)) = (base_inner, exp_inner) else {
+				let (ViewData::Uint16(b), ViewData::Uint16(e)) = (&base_inner.data, &exp_inner.data)
+				else {
 					unreachable!()
 				};
 				let (values, bits) = pow_rows(
@@ -163,7 +189,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 					unsigned_pow_op!(),
 					&overflow,
 				)?;
-				ColumnBuffer::uint16_with_bitvec(values, bits)
+				uint16_with_bitvec(ctx.fragment.text(), values, bits)
 			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
@@ -173,7 +199,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			} => run!(
 				Decimal(..),
 				decimals,
-				|values, bits| ColumnBuffer::decimal_with_bitvec(precision, scale, values, bits),
+				|values, bits| decimal_with_bitvec(ctx.fragment.text(), precision, scale, values, bits),
 				|b: &Decimal, e: &Decimal| e
 					.rescale(0)
 					.and_then(|e| family_exponent(e.unscaled()))
@@ -185,7 +211,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
+		Ok(result)
 	}
 }
 

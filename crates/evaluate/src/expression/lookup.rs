@@ -1,25 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::{Array, ArrayRef};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::query::column_not_found,
 	expression::ColumnExpression,
-	value::column::{ColumnWithName, buffer::ColumnBuffer},
+	value::{
+		batch::is_scalar,
+		column::factory::{self, rename},
+	},
 };
 use reifydb_value::{
 	error,
 	value::{
 		Value,
 		blob::Blob,
+		column_view::{ColumnView, ViewData},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		system_columns::{is_system_field, resolve_column, user_columns},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
+		value_type::{
+			ValueType,
+			field::{from_field, named},
+		},
 	},
 };
 
@@ -30,7 +40,8 @@ macro_rules! extract_typed_column {
 		let mut data = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut count = 0;
-		for v in $col.data().iter() {
+		let view = ColumnView::try_from($col)?;
+		for v in view.iter() {
 			if count >= $take {
 				break;
 			}
@@ -46,43 +57,41 @@ macro_rules! extract_typed_column {
 			}
 			count += 1;
 		}
-		Ok($col.with_new_data(ColumnBuffer::$constructor($($arg,)* data, bitvec)))
+		Ok(factory::$constructor($col.0.name(), $($arg,)* data, bitvec))
 	}};
 }
 
-pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<ColumnWithName> {
+pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<(FieldRef, ArrayRef)> {
 	let name = column.0.name.text();
 
-	if let Some(data) = ctx.columns.system_column(name) {
-		return Ok(ColumnWithName::new(name.to_string(), data));
-	}
-
-	if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
-		let owned = ColumnWithName::new(col.name().clone(), col.data().clone());
+	if let Some(index) = resolve_column(&ctx.batch, name) {
+		let owned = (ctx.batch.schema_ref().fields()[index].clone(), ctx.batch.column(index).clone());
+		if is_system_field(&owned.0) {
+			return Ok(rename(owned, name));
+		}
 		return extract_column_data(&owned, ctx);
 	}
 
 	if let Some(Variable::Columns {
-		columns: scalar_cols,
+		batch: scalar_batch,
 	}) = ctx.symbols.get(name)
-		&& scalar_cols.is_scalar()
-		&& let Some(col) = scalar_cols.columns.first()
+		&& is_scalar(scalar_batch)
+		&& let Some((field, array)) = user_columns(scalar_batch).next()
 	{
-		let owned = ColumnWithName::new(scalar_cols.name_at(0).clone(), col.clone());
-		return extract_column_data(&owned, ctx);
+		return extract_column_data(&(field.clone(), array.clone()), ctx);
 	}
 
 	Err(error!(column_not_found(column.0.name.clone())))
 }
 
-fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
+fn extract_column_data(col: &(FieldRef, ArrayRef), ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
-	if take >= col.data().len() {
+	if take >= col.1.len() {
 		return Ok(col.clone());
 	}
 
-	let col_type = col.data().get_type();
+	let col_type = ColumnView::try_from(col)?.get_type();
 	let effective_type = match col_type {
 		ValueType::Option(inner) => *inner,
 		other => other,
@@ -91,15 +100,20 @@ fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<Column
 	extract_column_data_by_type(col, take, effective_type)
 }
 
-fn extract_any_column(col: &ColumnWithName, take: usize) -> Result<ColumnWithName> {
-	let values = col.data().iter().take(take).map(|value| match value {
+fn extract_any_column(col: &(FieldRef, ArrayRef), take: usize) -> Result<(FieldRef, ArrayRef)> {
+	let view = ColumnView::try_from(col)?;
+	let values = view.iter().take(take).map(|value| match value {
 		Value::Any(boxed) => Some(*boxed),
 		_ => None,
 	});
-	Ok(col.with_new_data(ColumnBuffer::any_optional(values)))
+	Ok(factory::any_optional(col.0.name(), values))
 }
 
-fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: ValueType) -> Result<ColumnWithName> {
+fn extract_column_data_by_type(
+	col: &(FieldRef, ArrayRef),
+	take: usize,
+	col_type: ValueType,
+) -> Result<(FieldRef, ArrayRef)> {
 	match col_type {
 		ValueType::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
 		ValueType::Float4 => {
@@ -139,26 +153,21 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 			extract_typed_column!(col, take, Uuid7(i) => i, Uuid7::default(), uuid7_with_bitvec)
 		}
 		ValueType::DictionaryId => {
-			let dictionary_id = match col.data() {
-				ColumnBuffer::DictionaryId {
+			let dictionary_id = match ColumnView::try_from(col)?.data {
+				ViewData::DictionaryId {
 					dictionary_id,
 					..
-				} => *dictionary_id,
+				} => dictionary_id,
 				_ => None,
 			};
-			let taken: Result<ColumnWithName> = extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec);
+			let taken: Result<(FieldRef, ArrayRef)> = extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec);
 			let taken = taken?;
 			if let Some(id) = dictionary_id
-				&& let ColumnBuffer::DictionaryId {
-					container,
-					..
-				} = taken.data()
+				&& matches!(ColumnView::try_from(&taken)?.data, ViewData::DictionaryId { .. })
 			{
-				let restored = ColumnBuffer::DictionaryId {
-					container: container.clone(),
-					dictionary_id: Some(id),
-				};
-				return Ok(taken.with_new_data(restored));
+				let mut field_type = from_field(&taken.0)?;
+				field_type.dictionary_id = Some(id);
+				return Ok(named(taken.0.name(), field_type, taken.1));
 			}
 			Ok(taken)
 		}
@@ -178,7 +187,7 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 		ValueType::Tuple(_) => extract_any_column(col, take),
 		ValueType::Digest {
 			..
-		} => Ok(col.with_new_data(col.data().take(take))),
+		} => Ok((col.0.clone(), col.1.slice(0, take))),
 	}
 }
 
@@ -187,7 +196,10 @@ pub mod tests {
 	use reifydb_core::{
 		expression::ColumnExpression,
 		interface::identifier::{ColumnIdentifier, ColumnObject},
-		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+		value::{
+			batch::{batch, empty_batch},
+			column::factory::int4,
+		},
 	};
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -199,10 +211,7 @@ pub mod tests {
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
 		// A missing column must be an error, otherwise a typo silently evaluates to none in every row.
-		let columns = Columns::new(vec![ColumnWithName::new(
-			"existing_col".to_string(),
-			ColumnBuffer::int4([1, 2, 3, 4, 5]),
-		)]);
+		let columns = batch(vec![int4("existing_col", [1, 2, 3, 4, 5])]).unwrap();
 
 		let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
 		let routines = Routines::empty();
@@ -213,7 +222,7 @@ pub mod tests {
 			runtime_context: &runtime_ctx,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
-			columns: Columns::empty(),
+			batch: empty_batch(),
 			row_count: 1,
 			target: None,
 			take: None,

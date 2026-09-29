@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, column_view::ColumnView, frame::frame::Frame, system_columns::user_columns};
 
 fn setup() -> TestEngine {
 	let t = TestEngine::new();
@@ -22,9 +22,10 @@ fn setup() -> TestEngine {
 
 fn bools(frames: &[Frame]) -> Vec<Option<bool>> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().next_back().unwrap();
-	(0..out_col.data.len())
-		.map(|i| match out_col.data.get_value(i) {
+	let (field, array) = user_columns(&frame.batch).last().unwrap();
+	let out_col = ColumnView::try_from((array, field.as_ref())).unwrap();
+	(0..out_col.len())
+		.map(|i| match out_col.get_value(i) {
 			Value::Boolean(b) => Some(b),
 			Value::None {
 				..
@@ -36,9 +37,10 @@ fn bools(frames: &[Frame]) -> Vec<Option<bool>> {
 
 fn strings(frames: &[Frame]) -> Vec<String> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().next_back().unwrap();
-	(0..out_col.data.len())
-		.map(|i| match out_col.data.get_value(i) {
+	let (field, array) = user_columns(&frame.batch).last().unwrap();
+	let out_col = ColumnView::try_from((array, field.as_ref())).unwrap();
+	(0..out_col.len())
+		.map(|i| match out_col.get_value(i) {
 			Value::Utf8(s) => s,
 			other => panic!("expected Utf8, got {:?}", other),
 		})
@@ -47,9 +49,10 @@ fn strings(frames: &[Frame]) -> Vec<String> {
 
 fn ints(frames: &[Frame]) -> Vec<i64> {
 	let frame = &frames[0];
-	let out_col = frame.columns.iter().next_back().unwrap();
-	(0..out_col.data.len())
-		.map(|i| match out_col.data.get_value(i) {
+	let (field, array) = user_columns(&frame.batch).last().unwrap();
+	let out_col = ColumnView::try_from((array, field.as_ref())).unwrap();
+	(0..out_col.len())
+		.map(|i| match out_col.get_value(i) {
 			Value::Int1(v) => v as i64,
 			Value::Int2(v) => v as i64,
 			Value::Int4(v) => v as i64,

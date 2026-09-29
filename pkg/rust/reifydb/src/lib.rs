@@ -25,6 +25,8 @@ pub use api::{
 	migration::{Migration, MigrationSource, MigrationStatement},
 	*,
 };
+pub use arrow_array;
+pub use arrow_schema;
 pub use builder::{
 	DatabaseBuilder, EmbeddedBuilder, InterceptBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem,
 };
@@ -141,9 +143,8 @@ pub use reifydb_value::{
 	params::Params,
 	value::{
 		Value,
+		column_view::{ColumnView, ViewData},
 		frame::{
-			column::FrameColumn,
-			data::FrameColumnData,
 			extract::FrameError,
 			frame::Frame,
 			from_frame::{FromFrame, FromFrameError},

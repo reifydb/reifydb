@@ -3,7 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::columns::Columns;
+use arrow_array::RecordBatch;
+use reifydb_core::value::batch::views;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	callsite,
@@ -21,6 +22,7 @@ use reifydb_runtime::{
 	sync::rwlock::RwLock,
 };
 use reifydb_value::{
+	Result,
 	params::Params,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
@@ -107,16 +109,16 @@ impl ProfilerCollectorActor {
 		}
 	}
 
-	fn publish(&self, state: &mut ProfilerActorState) {
+	fn publish(&self, state: &mut ProfilerActorState) -> Result<()> {
 		let Some(targets) = &state.targets else {
-			return;
+			return Ok(());
 		};
 		let drained = self.accumulator.write().drain();
 		let mut window_records: Vec<_> = drained.iter().map(|(_, record)| record.clone()).collect();
 		let now = self.clock.now();
-		let current_columns = spans_columns(&mut window_records, now);
+		let current_columns = spans_columns(&mut window_records, now)?;
 		if self.snapshot_due(targets, state.last_snapshot, now) {
-			append_spans_snapshot(&targets.engine, &current_columns);
+			append_spans_snapshot(&targets.engine, &current_columns)?;
 			state.last_snapshot = Some(now);
 		}
 		targets.current_cache.store(current_columns);
@@ -124,7 +126,8 @@ impl ProfilerCollectorActor {
 			state.horizon.absorb(ident, record);
 		}
 		let mut horizon_records = state.horizon.all();
-		targets.total_cache.store(spans_columns(&mut horizon_records, now));
+		targets.total_cache.store(spans_columns(&mut horizon_records, now)?);
+		Ok(())
 	}
 
 	fn snapshot_due(&self, targets: &PublishTargets, last: Option<DateTime>, now: DateTime) -> bool {
@@ -141,21 +144,22 @@ impl ProfilerCollectorActor {
 	}
 }
 
-fn append_spans_snapshot(engine: &StandardEngine, columns: &Columns) {
-	let row_count = columns.get(0).map(|column| column.data().len()).unwrap_or(0);
+fn append_spans_snapshot(engine: &StandardEngine, columns: &RecordBatch) -> Result<()> {
+	let row_count = columns.num_rows();
 	if row_count == 0 {
-		return;
+		return Ok(());
 	}
 	let Some(path) = MetricsDomain::ProfilerSpans.snapshots_path() else {
-		return;
+		return Ok(());
 	};
+	let views = views(columns)?;
 	let rows: Vec<Params> = (0..row_count)
 		.map(|index| {
 			let mut row = HashMap::new();
-			for column in columns.iter() {
-				let value = column.data().get_value(index);
+			for view in &views {
+				let value = view.get_value(index);
 				if !matches!(value, Value::None { .. }) {
-					row.insert(column.name().text().to_string(), value);
+					row.insert(view.field.name().to_string(), value);
 				}
 			}
 			Params::Named(Arc::new(row))
@@ -166,6 +170,7 @@ fn append_spans_snapshot(engine: &StandardEngine, columns: &Columns) {
 	if let Err(e) = builder.execute() {
 		error!("Failed to append profiler spans snapshot: {}", e);
 	}
+	Ok(())
 }
 
 fn span_name_for(category: ProfilerCategory) -> &'static str {
@@ -245,7 +250,9 @@ impl Actor for ProfilerCollectorActor {
 				}
 			}
 			ProfilerMessage::Tick => {
-				self.publish(state);
+				if let Err(error) = self.publish(state) {
+					panic!("profiler publish failed: {error}");
+				}
 				if let Some(targets) = &state.targets {
 					ctx.schedule_once(targets.interval, || ProfilerMessage::Tick);
 				}

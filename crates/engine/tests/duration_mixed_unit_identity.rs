@@ -6,13 +6,13 @@ use reifydb_value::value::frame::frame::Frame;
 
 fn ids(frames: &[Frame]) -> Vec<String> {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	let column = frames[0].columns.iter().find(|c| c.name == "id").expect("column id");
-	(0..column.data.len()).map(|i| column.data.get_value(i).to_string()).collect()
+	let column = frames[0].column("id").unwrap().expect("column id");
+	(0..column.len()).map(|i| column.get_value(i).to_string()).collect()
 }
 
 fn row_count(frames: &[Frame]) -> usize {
 	assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
-	frames[0].columns.first().map(|c| c.data.len()).unwrap_or(0)
+	frames[0].row_count()
 }
 
 #[test]

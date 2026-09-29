@@ -19,7 +19,7 @@ fn cell_to_js(payload: &JsonValue) -> Result<JsValue, JsValue> {
 }
 
 pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
-	let response_frames = convert_frames(frames);
+	let response_frames = convert_frames(frames).map_err(|e| JsError::from_message(&e.to_string()))?;
 
 	let js_array = Array::new();
 

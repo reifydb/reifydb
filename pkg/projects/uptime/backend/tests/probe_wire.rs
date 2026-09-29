@@ -57,7 +57,7 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 		.query_as_root("from system::identities filter { name == 'alice' } map { id }", Params::None)
 		.unwrap()
 		.first()
-		.and_then(|f| f.columns.iter().find(|c| c.name == "id").map(|c| c.data.get_value(0)))
+		.and_then(|f| f.column("id").expect("the column reads").map(|c| c.get_value(0)))
 	{
 		Some(Value::IdentityId(id)) => id,
 		other => panic!("unexpected alice id: {other:?}"),
@@ -119,15 +119,9 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 		let self_frames =
 			client.query("map { id: $identity.id, name: $identity.name }", None).await.expect("self query");
 		let self_frame = self_frames.first().expect("self frame");
-		let name = self_frame.columns.iter().find(|c| c.name == "name").expect("name column").data.get_value(0);
+		let name = self_frame.column("name").expect("the column reads").expect("name column").get_value(0);
 		assert_eq!(name, Value::Utf8("probe_wire".to_string()), "identity name must come from the token");
-		let probe_id = match self_frame
-			.columns
-			.iter()
-			.find(|c| c.name == "id")
-			.expect("id column")
-			.data
-			.get_value(0)
+		let probe_id = match self_frame.column("id").expect("the column reads").expect("id column").get_value(0)
 		{
 			Value::IdentityId(id) => id,
 			other => panic!("unexpected identity id: {other:?}"),

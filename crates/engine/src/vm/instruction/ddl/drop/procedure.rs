@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{error::diagnostic::catalog::procedure_has_live_bindings, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::{error::diagnostic::catalog::procedure_has_live_bindings, value::batch::single_row};
 use reifydb_rql::nodes::DropProcedureNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{return_error, value::Value};
@@ -12,13 +13,13 @@ pub(crate) fn drop_procedure(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropProcedureNode,
-) -> Result<Columns> {
+) -> Result<RecordBatch> {
 	let Some(procedure_id) = plan.procedure_id else {
-		return Ok(Columns::single_row([
+		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 			("procedure", Value::Utf8(plan.procedure_name.text().to_string())),
 			("dropped", Value::Boolean(false)),
-		]));
+		]);
 	};
 
 	let live_bindings = services.catalog.list_bindings_for_procedure(&mut Transaction::Admin(txn), procedure_id)?;
@@ -33,9 +34,9 @@ pub(crate) fn drop_procedure(
 
 	services.catalog.drop_procedure(txn, procedure_id)?;
 
-	Ok(Columns::single_row([
+	single_row([
 		("namespace", Value::Utf8(plan.namespace_name.text().to_string())),
 		("procedure", Value::Utf8(plan.procedure_name.text().to_string())),
 		("dropped", Value::Boolean(true)),
-	]))
+	])
 }

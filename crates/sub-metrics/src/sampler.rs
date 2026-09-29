@@ -3,10 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
-	value::column::columns::Columns,
+	value::batch::views,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -125,19 +126,20 @@ impl MetricsSamplerActor {
 		}
 	}
 
-	fn append_snapshot(&self, published: &PublishedSurface) {
+	fn append_snapshot(&self, published: &PublishedSurface) -> Result<()> {
 		let Some(path) = published.domain.snapshots_path() else {
-			return;
+			return Ok(());
 		};
-		let rows = snapshot_rows(&published.columns);
+		let rows = snapshot_rows(&published.columns)?;
 		if rows.is_empty() {
-			return;
+			return Ok(());
 		}
 		let mut builder = self.collectors.engine.bulk_insert_unchecked(IdentityId::system());
 		builder.series(path).rows(rows).done();
 		if let Err(e) = builder.execute() {
 			error!("Failed to append {} snapshot: {}", path, e);
 		}
+		Ok(())
 	}
 
 	fn sample_and_publish(&self, state: &mut SamplerState) -> Result<()> {
@@ -225,7 +227,7 @@ impl MetricsSamplerActor {
 		let rolled = state.accumulator.roll(now)?;
 		for published in rolled {
 			if snapshot_due && published.surface == Surface::Current {
-				self.append_snapshot(&published);
+				self.append_snapshot(&published)?;
 			}
 			self.surfaces.store(published);
 		}
@@ -236,20 +238,20 @@ impl MetricsSamplerActor {
 	}
 }
 
-fn snapshot_rows(columns: &Columns) -> Vec<Params> {
-	let row_count = columns.get(0).map(|column| column.data().len()).unwrap_or(0);
-	(0..row_count)
+fn snapshot_rows(columns: &RecordBatch) -> Result<Vec<Params>> {
+	let views = views(columns)?;
+	Ok((0..columns.num_rows())
 		.map(|index| {
 			let mut row = HashMap::new();
-			for column in columns.iter() {
-				let value = column.data().get_value(index);
+			for view in &views {
+				let value = view.get_value(index);
 				if !matches!(value, Value::None { .. }) {
-					row.insert(column.name().text().to_string(), value);
+					row.insert(view.field.name().to_string(), value);
 				}
 			}
 			Params::Named(Arc::new(row))
 		})
-		.collect()
+		.collect())
 }
 
 impl Actor for MetricsSamplerActor {

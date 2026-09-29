@@ -3,9 +3,13 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	expression::VariableExpression,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{is_scalar, scalar_value, try_from_records},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_evaluate::{error::EvaluateError, stack::Variable};
 use reifydb_transaction::transaction::Transaction;
@@ -45,7 +49,7 @@ impl QueryNode for VariableNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::variable::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
 		}
@@ -58,33 +62,33 @@ impl QueryNode for VariableNode {
 
 		match ctx.symbols.get(variable_name) {
 			Some(Variable::Columns {
-				columns,
-			}) if columns.is_scalar() => {
+				batch,
+			}) if is_scalar(batch) => {
 				self.executed = true;
-				let mut value = columns.scalar_value();
+				let mut value = scalar_value(batch)?;
 				while let Value::Any(inner) = value {
 					value = *inner;
 				}
 				match value {
 					Value::List(items) if items.iter().all(|v| matches!(v, Value::Record(_))) => {
-						Ok(Some(Columns::try_from_records(variable_name, &items)?))
+						Ok(Some(try_from_records(variable_name, &items)?))
 					}
-					_ => Ok(Some(columns.clone())),
+					_ => Ok(Some(batch.clone())),
 				}
 			}
 			Some(Variable::Columns {
-				columns,
+				batch,
 			}) => {
 				self.executed = true;
-				Ok(Some(columns.clone()))
+				Ok(Some(batch.clone()))
 			}
 			Some(Variable::ForIterator {
-				columns,
+				batch,
 				..
 			}) => {
 				self.executed = true;
 
-				Ok(Some(columns.clone()))
+				Ok(Some(batch.clone()))
 			}
 			Some(Variable::Closure(_)) => Err(TypeError::Runtime {
 				kind: RuntimeErrorKind::VariableIsClosure {

@@ -3,6 +3,8 @@
 
 use std::{ops::Bound, sync::Arc};
 
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::FieldRef;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, read_fingerprint},
 	shape::RowShape,
@@ -20,17 +22,22 @@ use reifydb_core::{
 		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, builder::ColumnBuilder, columns::Columns, headers::ColumnHeaders},
+	value::{
+		batch::{append_rows, batch, empty_for},
+		column::{builder::ColumnBuilder, headers::ColumnHeaders},
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	fragment::Fragment,
 	reifydb_assertions,
-	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
+	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumn, value_type::ValueType},
 };
 use tracing::instrument;
 
-use super::{super::decode_dictionary_columns, guard_view_read};
+use super::{
+	super::{decode_dictionary_columns, user_pairs},
+	empty_scan, guard_view_read, scan_headers, source_system_columns,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -76,6 +83,7 @@ pub(crate) struct ViewScanNode {
 	partitioned: bool,
 	series: bool,
 	partition: Option<Partition>,
+	system_columns: Vec<SystemColumn>,
 }
 
 impl ViewScanNode {
@@ -103,10 +111,8 @@ impl ViewScanNode {
 			}
 		}
 
-		let headers = ColumnHeaders {
-			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
-			row_numbers: true,
-		};
+		let system_columns = source_system_columns(false, true, false);
+		let headers = scan_headers(view.columns().iter().map(|col| col.name.as_str()), &system_columns);
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
 		let sorted = !view.def().sort().is_empty() && view.def().storage_kind() == ViewStorageKind::Table;
 		let partitioned = !view.def().partition_by().is_empty();
@@ -130,6 +136,7 @@ impl ViewScanNode {
 			partitioned,
 			series,
 			partition,
+			system_columns,
 		})
 	}
 
@@ -258,14 +265,13 @@ impl ViewScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::column_alloc")]
-	fn storage_columns(&self) -> Vec<ColumnWithName> {
+	fn storage_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
 		self.view
 			.columns()
 			.iter()
 			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(),
+			.map(|(idx, col)| {
+				ColumnBuilder::with_capacity(self.storage_types[idx].clone(), 0).finish(&col.name)
 			})
 			.collect()
 	}
@@ -274,13 +280,12 @@ impl ViewScanNode {
 	fn append_batch<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,
-		columns: &mut Columns,
+		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<()> {
+	) -> Result<RecordBatch> {
 		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
-		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
-		Ok(())
+		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
 }
 
@@ -291,7 +296,7 @@ impl QueryNode for ViewScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::view::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		}
@@ -304,7 +309,7 @@ impl QueryNode for ViewScanNode {
 		let batch_size = stored_ctx.batch_size;
 		let storage = self.view.def().storage_id();
 
-		let (batch, row_numbers, next_resume, resumed, drained) = match &self.resume {
+		let (batch_rows, row_numbers, next_resume, resumed, drained) = match &self.resume {
 			Resume::Partitioned(last) => {
 				let last = *last;
 				let (start, end) = partitioned_bounds(self.partition, last);
@@ -372,22 +377,21 @@ impl QueryNode for ViewScanNode {
 			self.exhausted = true;
 		}
 
-		if batch.is_empty() {
+		if batch_rows.is_empty() {
 			self.exhausted = true;
 			if !resumed {
-				return Ok(Some(Columns::from_catalog_columns(self.view.columns())));
+				let user = user_pairs(&empty_for(self.view.columns())?);
+				return Ok(Some(empty_scan(user, &self.system_columns)?));
 			}
 			return Ok(None);
 		}
 
 		self.resume = next_resume;
 
-		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
-		self.append_batch(rx, &mut columns, batch, row_numbers)?;
+		let columns = batch(self.storage_columns())?;
+		let columns = self.append_batch(rx, columns, batch_rows, row_numbers)?;
 
-		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
-
-		Ok(Some(columns))
+		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

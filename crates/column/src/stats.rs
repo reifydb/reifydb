@@ -71,16 +71,18 @@ fn chunk_none_count(chunk: &Column) -> usize {
 mod tests {
 	use std::sync::Arc;
 
+	use arrow_array::ArrayRef;
+	use arrow_schema::FieldRef;
 	use reifydb_core::value::column::{
-		buffer::ColumnBuffer,
 		data::{Column, canonical::Canonical},
+		factory,
 	};
 	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 	use super::*;
 
-	fn chunk(buffer: ColumnBuffer) -> Column {
-		Column::from_canonical(Canonical::from_column_buffer(&buffer).unwrap())
+	fn chunk(column: (FieldRef, ArrayRef)) -> Column {
+		Column::from_canonical(Canonical::from_column(&column).unwrap())
 	}
 
 	fn block(columns: Vec<(&str, ValueType, ColumnChunks)>) -> ColumnBlock {
@@ -94,7 +96,7 @@ mod tests {
 		ColumnChunks::new(
 			ValueType::Int4,
 			false,
-			parts.iter().map(|p| chunk(ColumnBuffer::int4(p.to_vec()))).collect(),
+			parts.iter().map(|p| chunk(factory::int4("c", p.to_vec()))).collect(),
 		)
 	}
 
@@ -126,8 +128,8 @@ mod tests {
 			ValueType::Int4,
 			true,
 			vec![
-				chunk(ColumnBuffer::int4_optional(vec![Some(1), None, Some(3)])),
-				chunk(ColumnBuffer::int4_optional(vec![None, Some(8)])),
+				chunk(factory::int4_optional("id", vec![Some(1), None, Some(3)])),
+				chunk(factory::int4_optional("id", vec![None, Some(8)])),
 			],
 		);
 		let t = block(vec![("id", ValueType::Int4, chunks)]);
@@ -145,7 +147,7 @@ mod tests {
 		let chunks = ColumnChunks::new(
 			ValueType::Int4,
 			true,
-			vec![chunk(ColumnBuffer::int4_optional(vec![None, None, None]))],
+			vec![chunk(factory::int4_optional("id", vec![None, None, None]))],
 		);
 		let t = block(vec![("id", ValueType::Int4, chunks)]);
 		let stats = block_stats(&t).unwrap();
@@ -204,11 +206,11 @@ mod tests {
 			ValueType::DateTime,
 			false,
 			vec![
-				chunk(ColumnBuffer::datetime(vec![
-					DateTime::from_nanos(300),
-					DateTime::from_nanos(100),
-				])),
-				chunk(ColumnBuffer::datetime(vec![DateTime::from_nanos(900)])),
+				chunk(factory::datetime(
+					"ts",
+					vec![DateTime::from_nanos(300), DateTime::from_nanos(100)],
+				)),
+				chunk(factory::datetime("ts", vec![DateTime::from_nanos(900)])),
 			],
 		);
 		let t = block(vec![("ts", ValueType::DateTime, chunks)]);
@@ -222,7 +224,7 @@ mod tests {
 		let chunks = ColumnChunks::new(
 			ValueType::Utf8,
 			false,
-			vec![chunk(ColumnBuffer::utf8(vec!["pear", "apple", "quince"]))],
+			vec![chunk(factory::utf8("name", vec!["pear", "apple", "quince"]))],
 		);
 		let t = block(vec![("name", ValueType::Utf8, chunks)]);
 		let stats = block_stats(&t).unwrap();
@@ -235,7 +237,7 @@ mod tests {
 		let chunks = ColumnChunks::new(
 			ValueType::Boolean,
 			false,
-			vec![chunk(ColumnBuffer::bool(vec![true, false]))],
+			vec![chunk(factory::bool("flag", vec![true, false]))],
 		);
 		let t = block(vec![("flag", ValueType::Boolean, chunks)]);
 		let stats = block_stats(&t).unwrap();
@@ -250,7 +252,7 @@ mod tests {
 		let chunks = ColumnChunks::new(
 			ValueType::Float8,
 			false,
-			vec![chunk(ColumnBuffer::float8(vec![2.5f64, -1.5f64, 9.0f64]))],
+			vec![chunk(factory::float8("v", vec![2.5f64, -1.5f64, 9.0f64]))],
 		);
 		let t = block(vec![("v", ValueType::Float8, chunks)]);
 		let stats = block_stats(&t).unwrap();

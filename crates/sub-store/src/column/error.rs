@@ -32,18 +32,16 @@ pub enum SubStoreError {
 		series: SeriesId,
 	},
 
-	#[error("{}", time_mismatch_message(*.timed, *.time, *.rows))]
+	#[error("{}", time_mismatch_message(*.timed, *.present))]
 	TimeMismatch {
 		timed: bool,
-		time: usize,
-		rows: usize,
+		present: bool,
 	},
 
-	#[error("{}", partition_mismatch_message(*.partitioned, *.partitions, *.rows))]
+	#[error("{}", partition_mismatch_message(*.partitioned, *.present))]
 	PartitionMismatch {
 		partitioned: bool,
-		partitions: usize,
-		rows: usize,
+		present: bool,
 	},
 }
 
@@ -120,12 +118,11 @@ impl IntoDiagnostic for SubStoreError {
 
 			SubStoreError::TimeMismatch {
 				timed,
-				time,
-				rows,
+				present,
 			} => Diagnostic {
 				code: "SCOL_004".to_string(),
 				rql: None,
-				message: time_mismatch_message(timed, time, rows),
+				message: time_mismatch_message(timed, present),
 				column: None,
 				fragment: Fragment::None,
 				label: Some("#time does not match the time declaration".to_string()),
@@ -137,12 +134,11 @@ impl IntoDiagnostic for SubStoreError {
 
 			SubStoreError::PartitionMismatch {
 				partitioned,
-				partitions,
-				rows,
+				present,
 			} => Diagnostic {
 				code: "SCOL_006".to_string(),
 				rql: None,
-				message: partition_mismatch_message(partitioned, partitions, rows),
+				message: partition_mismatch_message(partitioned, present),
 				column: None,
 				fragment: Fragment::None,
 				label: Some("#partition does not match the partition declaration".to_string()),
@@ -155,22 +151,30 @@ impl IntoDiagnostic for SubStoreError {
 	}
 }
 
-fn time_mismatch_message(timed: bool, time: usize, rows: usize) -> String {
+fn time_mismatch_message(timed: bool, present: bool) -> String {
 	let declaration = if timed {
 		"declares a time source"
 	} else {
 		"declares no time source"
 	};
-	format!("column_block_from_batches: #time holds {time} entries for {rows} rows but the object {declaration}")
+	let presence = if present {
+		"present"
+	} else {
+		"absent"
+	};
+	format!("column_block_from_batches: #time is {presence} but the object {declaration}")
 }
 
-fn partition_mismatch_message(partitioned: bool, partitions: usize, rows: usize) -> String {
+fn partition_mismatch_message(partitioned: bool, present: bool) -> String {
 	let declaration = if partitioned {
 		"declares a partition"
 	} else {
 		"declares no partition"
 	};
-	format!(
-		"column_block_from_batches: #partition holds {partitions} entries for {rows} rows but the object {declaration}"
-	)
+	let presence = if present {
+		"present"
+	} else {
+		"absent"
+	};
+	format!("column_block_from_batches: #partition is {presence} but the object {declaration}")
 }

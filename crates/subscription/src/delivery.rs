@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use arrow_array::RecordBatch;
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_value::{
 	error::Diagnostic,
 	value::{diff_type::DiffType, duration::Duration},
@@ -18,7 +19,7 @@ pub enum DeliveryResult {
 }
 
 pub trait SubscriptionDelivery: Send + Sync {
-	fn try_deliver(&self, subscription: &SubscriptionId, op: DiffType, columns: Columns) -> DeliveryResult;
+	fn try_deliver(&self, subscription: &SubscriptionId, op: DiffType, batch: RecordBatch) -> DeliveryResult;
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
 

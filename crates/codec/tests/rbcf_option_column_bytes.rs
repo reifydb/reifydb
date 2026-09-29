@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Write as _;
+use std::{fmt::Write as _, sync::Arc};
 
-use arrow_array::{Int32Array, LargeStringArray};
-use arrow_buffer::BooleanBuffer;
+use arrow_array::{Array, ArrayRef, Int32Array, LargeStringArray, RecordBatch, make_array};
+use arrow_buffer::NullBuffer;
+use arrow_schema::Schema;
 use reifydb_codec::frame::{
 	decode::decode_frames,
 	encode::encode_frames,
@@ -13,11 +14,12 @@ use reifydb_codec::frame::{
 };
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	container::{any_array::any_array_optional, dictionary_array::dictionary_array, digest_array::digest_array},
 	dictionary::DictionaryEntryId,
 	digest::Digest,
-	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	value_type::ValueType,
+	frame::frame::Frame,
+	value_type::{ValueType, field::named},
 };
 
 const ENCODING_AT: usize = MESSAGE_HEADER_SIZE + FRAME_HEADER_SIZE + 1;
@@ -74,27 +76,30 @@ const PINS: &[Pin] = &[
 		encoding: Encoding::Plain,
 		bytes: "5242434601000000010000004100000003000000010000003100000059000100010000000300000001000000040000000000000000000000630000000501030009",
 	},
-	Pin {
-		name: "plain_option_option_int4",
-		encoding: Encoding::Plain,
-		bytes: "5242434601000000010000004a00000003000000010000003a000000860001000100000003000000020000000c0000000000000000000000630000000305070000000000000009000000",
-	},
-	Pin {
-		name: "plain_option_option_option_int4",
-		encoding: Encoding::Plain,
-		bytes: "5242434601000000010000004f00000004000000010000003f000000c600010001000000040000000300000010000000000000000000000063000000070b0d01000000000000000000000004000000",
-	},
 ];
 
-fn option(inner: FrameColumnData, defined: &[bool]) -> FrameColumnData {
-	FrameColumnData::Option {
-		inner: Box::new(inner),
-		bitvec: BooleanBuffer::from(defined),
-	}
+const REJECTED_PINS: &[(&str, usize, &str)] = &[
+	(
+		"plain_option_option_int4",
+		2,
+		"5242434601000000010000004a00000003000000010000003a000000860001000100000003000000020000000c0000000000000000000000630000000305070000000000000009000000",
+	),
+	(
+		"plain_option_option_option_int4",
+		3,
+		"5242434601000000010000004f00000004000000010000003f000000c600010001000000040000000300000010000000000000000000000063000000070b0d01000000000000000000000004000000",
+	),
+];
+
+type Column = (ValueType, ArrayRef);
+
+fn option((value_type, array): Column, defined: &[bool]) -> Column {
+	let data = array.to_data().into_builder().nulls(Some(NullBuffer::from(defined))).build().unwrap();
+	(ValueType::Option(Box::new(value_type)), make_array(data))
 }
 
-fn int4(values: &[i32]) -> FrameColumnData {
-	FrameColumnData::Int4(Int32Array::from(values.to_vec()))
+fn int4(values: &[i32]) -> Column {
+	(ValueType::Int4, Arc::new(Int32Array::from(values.to_vec())))
 }
 
 fn float_digest(values: &[f64]) -> Digest {
@@ -105,16 +110,14 @@ fn float_digest(values: &[f64]) -> Digest {
 	digest
 }
 
-fn option_int4_bitmap_at_a_bit_offset() -> FrameColumnData {
+fn option_int4_bitmap_at_a_bit_offset() -> Column {
 	let values: Vec<i32> = (0..16).collect();
 	let defined: Vec<bool> = (0..16).map(|i| !(3..12).contains(&i) || i % 3 != 0).collect();
-	FrameColumnData::Option {
-		inner: Box::new(FrameColumnData::Int4(Int32Array::from(values).slice(3, 9))),
-		bitvec: BooleanBuffer::from(defined.as_slice()).slice(3, 9),
-	}
+	let (value_type, array) = option((ValueType::Int4, Arc::new(Int32Array::from(values))), &defined);
+	(value_type, array.slice(3, 9))
 }
 
-fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
+fn fixtures() -> Vec<(&'static str, EncodeOptions, Column)> {
 	vec![
 		("plain_option_int4", EncodeOptions::none(), option(int4(&[1, 99, 3]), &[true, false, true])),
 		("plain_option_int4_zero_nones", EncodeOptions::none(), option(int4(&[1, 2, 3]), &[true, true, true])),
@@ -127,9 +130,10 @@ fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
 			"dict_option_utf8",
 			EncodeOptions::forced(Encoding::Dict),
 			option(
-				FrameColumnData::Utf8(LargeStringArray::from(vec![
-					"x", "y", "x", "", "y", "x", "", "x",
-				])),
+				(
+					ValueType::Utf8,
+					Arc::new(LargeStringArray::from(vec!["x", "y", "x", "", "y", "x", "", "x"])),
+				),
 				&[true, true, true, false, true, true, false, true],
 			),
 		),
@@ -150,14 +154,14 @@ fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
 			"plain_option_any",
 			EncodeOptions::none(),
 			option(
-				FrameColumnData::Any {
-					container: any_array_optional([
+				(
+					ValueType::Any,
+					Arc::new(any_array_optional([
 						Some(Value::Int4(9)),
 						None,
 						Some(Value::Utf8("x".to_string())),
-					]),
-					declared_type: None,
-				},
+					])),
+				),
 				&[true, false, true],
 			),
 		),
@@ -165,15 +169,17 @@ fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
 			"plain_option_digest",
 			EncodeOptions::none(),
 			option(
-				FrameColumnData::Digest {
-					container: digest_array(vec![
+				(
+					ValueType::Digest {
+						inner: Box::new(ValueType::Float8),
+						accuracy: 10_000,
+					},
+					Arc::new(digest_array(vec![
 						Some(float_digest(&[1.0, 2.5])),
 						None,
 						Some(float_digest(&[-4.0])),
-					]),
-					inner: ValueType::Float8,
-					accuracy: 10_000,
-				},
+					])),
+				),
 				&[true, false, true],
 			),
 		),
@@ -181,41 +187,36 @@ fn fixtures() -> Vec<(&'static str, EncodeOptions, FrameColumnData)> {
 			"plain_option_dictionary_id",
 			EncodeOptions::none(),
 			option(
-				FrameColumnData::DictionaryId {
-					container: dictionary_array(vec![
+				(
+					ValueType::DictionaryId,
+					Arc::new(dictionary_array(vec![
 						DictionaryEntryId::U1(3),
 						DictionaryEntryId::U1(0),
 						DictionaryEntryId::U1(9),
-					]),
-					dictionary_id: None,
-				},
-				&[true, false, true],
-			),
-		),
-		(
-			"plain_option_option_int4",
-			EncodeOptions::none(),
-			option(option(int4(&[7, 0, 9]), &[true, false, true]), &[true, true, false]),
-		),
-		(
-			"plain_option_option_option_int4",
-			EncodeOptions::none(),
-			option(
-				option(
-					option(int4(&[1, 0, 0, 4]), &[true, false, true, true]),
-					&[true, true, false, true],
+					])),
 				),
-				&[true, true, true, false],
+				&[true, false, true],
 			),
 		),
 	]
 }
 
-fn frame(data: FrameColumnData) -> Frame {
-	Frame::new(vec![FrameColumn {
-		name: "c".to_string(),
-		data,
-	}])
+fn frame((value_type, array): Column) -> Frame {
+	let (field, array) = named("c", value_type.into(), array);
+	Frame::from(RecordBatch::try_new(Arc::new(Schema::new(vec![field])), vec![array]).unwrap())
+}
+
+fn view(frame: &Frame) -> ColumnView<'_> {
+	ColumnView::try_from((frame.batch.column(0), frame.batch.schema_ref().field(0))).unwrap()
+}
+
+fn names(frame: &Frame) -> Vec<String> {
+	frame.batch.schema_ref().fields().iter().map(|field| field.name().clone()).collect()
+}
+
+fn cells(array: &ArrayRef) -> (Vec<bool>, ArrayRef) {
+	let defined = (0..array.len()).map(|row| array.is_valid(row)).collect();
+	(defined, make_array(array.to_data().into_builder().nulls(None).build().unwrap()))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -283,20 +284,29 @@ fn pinned_rbcf_bytes_decode_to_the_fixture() {
 	// Bytes a previous build wrote must read back with the same layers, bits and placeholders under none rows.
 	let mismatches = fixtures()
 		.into_iter()
-		.filter_map(|(name, _, expected)| match decode_single(name, &unhex(pin(name).bytes)) {
-			Err(err) => Some(err),
-			Ok(decoded) if decoded.columns.len() != 1 || decoded.columns[0].name != "c" => {
-				Some(format!("{name}: decoded columns {:?}", decoded.columns))
+		.filter_map(|(name, _, expected)| {
+			let expected = frame(expected);
+			match decode_single(name, &unhex(pin(name).bytes)) {
+				Err(err) => Some(err),
+				Ok(decoded) if names(&decoded) != ["c"] => {
+					Some(format!("{name}: decoded columns {:?}", names(&decoded)))
+				}
+				Ok(decoded) if view(&decoded).get_type() != view(&expected).get_type() => {
+					Some(format!(
+						"{name}: decoded type {:?}, expected {:?}",
+						view(&decoded).get_type(),
+						view(&expected).get_type()
+					))
+				}
+				Ok(decoded) if cells(decoded.batch.column(0)) != cells(expected.batch.column(0)) => {
+					Some(format!(
+						"{name}: decoded {:?}, expected {:?}",
+						decoded.batch.column(0),
+						expected.batch.column(0)
+					))
+				}
+				Ok(_) => None,
 			}
-			Ok(decoded) if decoded.columns[0].data.get_type() != expected.get_type() => Some(format!(
-				"{name}: decoded type {:?}, expected {:?}",
-				decoded.columns[0].data.get_type(),
-				expected.get_type()
-			)),
-			Ok(decoded) if decoded.columns[0].data != expected => {
-				Some(format!("{name}: decoded {:?}, expected {:?}", decoded.columns[0].data, expected))
-			}
-			Ok(_) => None,
 		})
 		.collect();
 	report(mismatches);
@@ -319,4 +329,14 @@ fn decoded_option_columns_re_encode_to_the_pinned_bytes() {
 		})
 		.collect();
 	report(mismatches);
+}
+
+#[test]
+fn nested_option_pins_are_rejected_on_decode() {
+	// A column holds at most one option layer, so depth two or three bytes must never decode.
+	for (name, depth, bytes) in REJECTED_PINS {
+		let error = decode_single(name, &unhex(bytes)).map(|frame| frame.batch.num_rows()).unwrap_err();
+		let expected = format!("has option depth {depth}, but a column holds at most one option layer");
+		assert!(error.contains(&expected), "{error}");
+	}
 }
