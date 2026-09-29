@@ -36,6 +36,39 @@ fn diamond() -> TestEngine {
 	t
 }
 
+fn dictionary_chain() -> TestEngine {
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE ns");
+	t.admin("CREATE DICTIONARY ns::syms FOR utf8 AS uint4");
+	t.admin("CREATE TABLE ns::src { id: int4, sym: utf8 with { dictionary: ns::syms } }");
+	t.admin(
+		"CREATE TRANSACTIONAL VIEW ns::a { id: int4, sym: utf8 with { dictionary: ns::syms } } AS { FROM ns::src }",
+	);
+	t.admin("CREATE TRANSACTIONAL VIEW ns::b { id: int4, sym: utf8 } AS { FROM ns::a }");
+	t.admin(
+		"CREATE TRANSACTIONAL VIEW ns::c { id: int4, sym: utf8 with { dictionary: ns::syms } } AS { FROM ns::a }",
+	);
+	t
+}
+
+fn syms(frames: &[Frame]) -> Vec<String> {
+	let mut syms: Vec<String> = frames[0].rows().map(|row| row.get::<String>("sym").unwrap().unwrap()).collect();
+	syms.sort();
+	syms
+}
+
+fn follows_the_dictionary_source(view: &str) {
+	let t = dictionary_chain();
+	for (rql, want) in [
+		("INSERT ns::src [{ id: 1, sym: 'red' }]", vec!["red"]),
+		("UPDATE ns::src { sym: 'blue' } FILTER { id == 1 }", vec!["blue"]),
+		("DELETE ns::src FILTER { id == 1 }", vec![]),
+	] {
+		t.command(rql);
+		assert_eq!(syms(&t.query(&format!("FROM {view}"))), want, "{view} after: {rql}");
+	}
+}
+
 fn ids(frames: &[Frame]) -> Vec<i32> {
 	let mut ids: Vec<i32> = frames[0].rows().map(|row| row.get::<i32>("id").unwrap().unwrap()).collect();
 	ids.sort();
@@ -227,4 +260,16 @@ fn a_diamond_commit_emits_each_branch_row_once() {
 	t.command("INSERT ns::src [{ id: 2, v: 30 }]");
 	let last = last_cdc(&t);
 	assert_eq!(view_inserted_rows(&t, &last), vec![1, 1, 2]);
+}
+
+#[test]
+fn a_dictionary_view_feeds_its_values_to_a_plain_column_downstream() {
+	// b must get the text; a dictionary id read as a value would show a number or none instead.
+	follows_the_dictionary_source("ns::b");
+}
+
+#[test]
+fn a_dictionary_view_feeds_its_values_to_a_dictionary_column_downstream() {
+	// c re-interns what a hands on; the delete also takes the lookup path, which fails on a stray id.
+	follows_the_dictionary_source("ns::c");
 }
