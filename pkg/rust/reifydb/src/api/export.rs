@@ -316,6 +316,12 @@ impl Database {
 				rows.push(row.into_iter().map(|(_, v)| v).collect());
 			}
 		}
+		if let Some(idx) = columns.iter().position(|c| c == "#rownum") {
+			rows.sort_by_key(|row| match &row[idx] {
+				Value::Uint8(n) => *n,
+				other => panic!("#rownum must be uint8 in export, got {:?}", other),
+			});
+		}
 		Ok(ObjectRows {
 			columns,
 			rows,

@@ -10,7 +10,12 @@ use reifydb_examples::seed_demo;
 use tracing::info;
 
 fn rows(db: &Database, query: &str) -> Vec<Vec<(String, Value)>> {
-	db.query_as_root(query, Params::None).unwrap().into_iter().flat_map(|f| f.to_rows()).collect()
+	db.query_as_root(query, Params::None)
+		.unwrap()
+		.into_iter()
+		.flat_map(|f| f.to_rows())
+		.map(|row| row.into_iter().filter(|(name, _)| name != "#rownum").collect())
+		.collect()
 }
 
 // Order rows by debug form so two result sets can be compared regardless of scan
