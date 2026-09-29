@@ -15,6 +15,8 @@ mod call_argument_named_like_a_type;
 mod census_owner;
 #[path = "custom_operator_timer.rs"]
 mod custom_operator_timer;
+#[path = "deferred_over_transactional.rs"]
+mod deferred_over_transactional;
 #[path = "digest_view.rs"]
 mod digest_view;
 #[path = "digest_view_lifecycle.rs"]
