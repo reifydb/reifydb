@@ -58,27 +58,6 @@ pub fn flow_version_corrupted(flow_id: u64, byte_count: usize) -> Diagnostic {
 	}
 }
 
-pub fn flow_backfill_timeout(flow_id: u64, timeout_secs: u64) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_005".to_string(),
-		rql: None,
-		message: format!(
-			"Timeout waiting for flow {} backfill to complete after {} seconds",
-			flow_id, timeout_secs
-		),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow backfill operation did not complete within the timeout period. \
-			This may indicate a large dataset, slow queries, or resource constraints. \
-			Try increasing the timeout or check for performance issues."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn flow_dispatcher_unavailable() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_006".to_string(),

@@ -11,7 +11,7 @@ use reifydb_value::{
 use crate::error::{
 	CoreError,
 	diagnostic::flow::{
-		flow_already_registered, flow_backfill_timeout, flow_dispatcher_unavailable, flow_error,
+		flow_already_registered, flow_dispatcher_unavailable, flow_error,
 		flow_operator_retention_required, flow_operator_timer_kind_reserved, flow_operator_with_count_span,
 		flow_operator_with_duration_span, flow_operator_with_immutable_not_below_lateness,
 		flow_operator_with_not_accepted, flow_operator_with_pane_missing,
@@ -127,11 +127,6 @@ impl IntoDiagnostic for CoreError {
 				flow_id,
 				byte_count,
 			} => flow_version_corrupted(flow_id, byte_count),
-
-			CoreError::FlowBackfillTimeout {
-				flow_id,
-				timeout_secs,
-			} => flow_backfill_timeout(flow_id, timeout_secs),
 
 			CoreError::FlowDispatcherUnavailable => flow_dispatcher_unavailable(),
 

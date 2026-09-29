@@ -54,12 +54,6 @@ pub enum CoreError {
 		byte_count: usize,
 	},
 
-	#[error("Timeout waiting for flow {flow_id} backfill")]
-	FlowBackfillTimeout {
-		flow_id: u64,
-		timeout_secs: u64,
-	},
-
 	#[error("Flow dispatcher is unavailable")]
 	FlowDispatcherUnavailable,
 
