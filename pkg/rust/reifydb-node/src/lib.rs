@@ -7,7 +7,7 @@ compile_error!(
 	 polls async ones on its own runtime, which the Rc-backed dst executor cannot survive"
 );
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use napi::{
 	Error as NapiError, Result,
@@ -15,7 +15,7 @@ use napi::{
 };
 use napi_derive::napi;
 use reifydb::{
-	Database, Frame as CoreFrame, IdentityId, MigrationSource, Result as ReifyResult, WithSubsystem,
+	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
 	auth::service::AuthResponse,
 	core::interface::catalog::{
 		id::SubscriptionId,
@@ -224,6 +224,40 @@ impl ReifydbNode {
 			subscriptions: Arc::new(subscriptions),
 		})
 	}
+}
+
+#[napi(object)]
+pub struct MigrationEntry {
+	pub dir: Option<String>,
+	pub name: Option<String>,
+	pub statements: Option<Vec<String>>,
+	pub rollback: Option<Vec<String>>,
+}
+
+fn migration_source(entry: MigrationEntry) -> MigrationSource {
+	match entry.dir {
+		Some(dir) => MigrationSource::Directory(PathBuf::from(dir)),
+		None => {
+			let name = entry.name.unwrap_or_default();
+			let statements = entry.statements.unwrap_or_default();
+			let migration = match entry.rollback {
+				Some(rollback) => Migration::with_rollback(name, statements, rollback),
+				None => Migration::new(name, statements),
+			};
+			MigrationSource::List(vec![migration])
+		}
+	}
+}
+
+#[napi(js_name = "openWithMigrations")]
+pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode> {
+	let mut builder = embedded::memory().with_flow(|flow| flow);
+	if !entries.is_empty() {
+		let sources = entries.into_iter().map(migration_source).collect();
+		builder = builder.with_migrations(MigrationSource::Multiple(sources));
+	}
+	let db = builder.build().map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
+	ReifydbNode::wrap(db).map_err(|e| NapiError::from_reason(format!("{e:?}")))
 }
 
 #[napi]
