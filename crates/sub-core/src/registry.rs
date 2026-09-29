@@ -608,10 +608,6 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		self.throttle_pending.store(0, Ordering::Release);
 	}
 
-	pub fn subscription_count(&self) -> usize {
-		self.subscriptions.len()
-	}
-
 	pub fn connection_count(&self) -> usize {
 		self.connections.len()
 	}

@@ -418,6 +418,7 @@ impl Arena {
 mod tests {
 	use arrow_array::ArrayRef;
 	use arrow_schema::FieldRef;
+	use reifydb_codec::tag::ValueKind;
 	use reifydb_core::value::{
 		batch::batch,
 		column::{
@@ -440,7 +441,7 @@ mod tests {
 		let ffi = arena.marshal_columns(&columns).unwrap();
 		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
-		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		let column = borrowed.columns().next().expect("one column was marshalled");
 		(0..columns.num_rows())
 			.map(|row| read(&column, row).expect("every marshalled row must read back"))
 			.collect()
@@ -452,7 +453,7 @@ mod tests {
 		let ffi = arena.marshal_columns(&columns).unwrap();
 		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
-		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		let column = borrowed.columns().next().expect("one column was marshalled");
 		(column.data_bytes().to_vec(), column.offsets().to_vec(), column.row_count())
 	}
 
@@ -480,7 +481,10 @@ mod tests {
 	fn frozen_utf8_slice_reads_back_the_sliced_rows() {
 		// Absolute offsets leaking to the guest would read rows shifted by the slice start.
 		let parent = frozen(utf8("c", ["aa", "bb", "cc", "dd"]));
-		let got = read_back(slice(parent, 2, 4), |column, row| column.utf8_at(row).map(str::to_string));
+		let got = read_back(slice(parent, 2, 4), |column, row| {
+			assert!(column.type_code() == ValueKind::Utf8 && column.is_defined_at(row));
+			column.iter_str().nth(row).map(str::to_string)
+		});
 		assert_eq!(got, vec!["cc".to_string(), "dd".to_string()]);
 	}
 
@@ -495,7 +499,7 @@ mod tests {
 
 	#[test]
 	fn frozen_blob_slice_hands_guest_compact_parts() {
-		// The blob arm must rebase exactly like utf8, or blob_at reads the parent's bytes.
+		// The blob arm must rebase exactly like utf8, or a guest blob read gets the parent's bytes.
 		let parent = frozen(blob("c", [Blob::new(vec![1, 2]), Blob::new(vec![3]), Blob::new(vec![4, 5, 6])]));
 		let (data, offsets, rows) = marshalled_parts(slice(parent, 1, 3));
 		assert_eq!(rows, 2);
@@ -536,7 +540,7 @@ mod tests {
 				let ffi = arena.marshal_columns(&columns).unwrap();
 				// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 				let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
-				let column = borrowed.column_at_index(0).expect("one column was marshalled");
+				let column = borrowed.columns().next().expect("one column was marshalled");
 				let data = column.data_bytes();
 				assert_eq!(
 					data.as_ptr() as usize % 16,
@@ -554,7 +558,14 @@ mod tests {
 						value.to_le_bytes(),
 						"padding {padding}"
 					);
-					assert_eq!(column.u128_at(row), Some(*value), "padding {padding}");
+					assert!(
+						column.type_code() == ValueKind::Uint16 && column.is_defined_at(row),
+						"padding {padding}"
+					);
+					// SAFETY: asserted above: 16-aligned rows, `row_count` u128 cells long.
+					let cell = unsafe { column.as_slice::<u128>() }
+						.and_then(|cells| cells.get(row).copied());
+					assert_eq!(cell, Some(*value), "padding {padding}");
 				}
 			}
 		}
@@ -569,7 +580,11 @@ mod tests {
 			DateTime::from_nanos(1_700_000_000_000_000_000),
 			DateTime::from_nanos(i64::MAX),
 		];
-		let got = read_back(datetime("c", values.clone()), |column, row| column.datetime_at(row));
+		let got = read_back(datetime("c", values.clone()), |column, row| {
+			assert!(column.type_code() == ValueKind::DateTime && column.is_defined_at(row));
+			// SAFETY: DateTime cells marshal as aligned raw i64, and `DateTime` is transparent over i64.
+			unsafe { column.as_slice::<DateTime>() }?.get(row).copied()
+		});
 		assert_eq!(got, values);
 	}
 
@@ -577,7 +592,11 @@ mod tests {
 	fn date_column_marshal_borrow_roundtrip() {
 		// The marshal is zero-copy raw i32 days since the epoch, so the reader must read the same units.
 		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
-		let got = read_back(date("c", values.clone()), |column, row| column.date_at(row));
+		let got = read_back(date("c", values.clone()), |column, row| {
+			assert!(column.type_code() == ValueKind::Date && column.is_defined_at(row));
+			// SAFETY: Date cells marshal as aligned raw i32, and `Date` is transparent over i32.
+			unsafe { column.as_slice::<Date>() }?.get(row).copied()
+		});
 		assert_eq!(got, values);
 	}
 
@@ -602,7 +621,11 @@ mod tests {
 			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
 			Duration::from_seconds(-30).expect("duration"),
 		];
-		let got = read_back(duration("c", values.clone()), |column, row| column.duration_at(row));
+		let got = read_back(duration("c", values.clone()), |column, row| {
+			assert!(column.type_code() == ValueKind::Duration && column.is_defined_at(row));
+			// SAFETY: Duration cells marshal aligned and `repr(C)`, so every bit pattern is valid.
+			unsafe { column.as_slice::<Duration>() }?.get(row).copied()
+		});
 		assert_eq!(got, values);
 	}
 }

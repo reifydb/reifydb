@@ -897,7 +897,7 @@ mod tests {
 		let ffi = arena.marshal_columns(&columns).unwrap();
 		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
-		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		let column = borrowed.columns().next().expect("one column was marshalled");
 		let (data, offsets, rows) = (column.data_bytes(), column.offsets(), column.row_count());
 		let registry = BuilderRegistry::new();
 		let (code, handle) = with_registry(&registry, || {

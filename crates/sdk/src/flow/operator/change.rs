@@ -6,9 +6,7 @@ use core::{slice, str};
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{
-		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration, time::Time,
-	},
+	value::{decimal::Decimal, diff_type::DiffType, time::Time},
 };
 
 use crate::{
@@ -167,18 +165,6 @@ impl<'a> BorrowedColumns<'a> {
 		self.columns().find(|c| c.name() == name)
 	}
 
-	pub fn column_at_index(&self, idx: usize) -> Option<BorrowedColumn<'a>> {
-		if idx >= self.extern_c.column_count {
-			return None;
-		}
-		// SAFETY: `idx < column_count` was checked above, so the offset stays inside the initialized
-		// `ExternCColumn` array.
-		let col: &'a ExternCColumn = unsafe { &*self.extern_c.columns.add(idx) };
-		Some(BorrowedColumn {
-			extern_c: col,
-		})
-	}
-
 	pub fn index_of(&self, name: &str) -> Option<usize> {
 		self.columns().position(|c| c.name() == name)
 	}
@@ -302,52 +288,6 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	#[inline]
-	pub fn utf8_at(&self, index: usize) -> Option<&'a str> {
-		if self.type_code() != ValueKind::Utf8 || !self.is_defined_at(index) {
-			return None;
-		}
-		let offsets = self.offsets();
-		if index + 1 >= offsets.len() {
-			return None;
-		}
-		let start = offsets[index] as usize;
-		let end = offsets[index + 1] as usize;
-		let data = self.data_bytes();
-		if end > data.len() || start > end {
-			return None;
-		}
-		str::from_utf8(&data[start..end]).ok()
-	}
-
-	#[inline]
-	pub fn blob_at(&self, index: usize) -> Option<&'a [u8]> {
-		if self.type_code() != ValueKind::Blob || !self.is_defined_at(index) {
-			return None;
-		}
-		let offsets = self.offsets();
-		if index + 1 >= offsets.len() {
-			return None;
-		}
-		let start = offsets[index] as usize;
-		let end = offsets[index + 1] as usize;
-		let data = self.data_bytes();
-		if end > data.len() || start > end {
-			return None;
-		}
-		Some(&data[start..end])
-	}
-
-	#[inline]
-	pub fn u128_at(&self, index: usize) -> Option<u128> {
-		if self.type_code() != ValueKind::Uint16 || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Uint16 check above means the buffer is a marshalled &[u128], so it carries u128's
-		// 16-byte alignment and is initialized.
-		unsafe { self.as_slice::<u128>()?.get(index).copied() }
-	}
-
-	#[inline]
 	pub fn decimal_at(&self, index: usize) -> Option<Decimal> {
 		if !self.is_defined_at(index) {
 			return None;
@@ -383,26 +323,6 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	#[inline]
-	pub fn date_at(&self, index: usize) -> Option<Date> {
-		if self.type_code() != ValueKind::Date || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Date check above means the buffer is a marshalled &[Date]; `Date` is
-		// `repr(transparent)` over `i32`, so it is aligned and every bit pattern is a valid value.
-		unsafe { self.as_slice::<Date>()?.get(index).copied() }
-	}
-
-	#[inline]
-	pub fn datetime_at(&self, index: usize) -> Option<DateTime> {
-		if self.type_code() != ValueKind::DateTime || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the DateTime check above means the buffer is a marshalled &[DateTime]; `DateTime` is
-		// `repr(transparent)` over `i64`, so it is aligned and every bit pattern is a valid value.
-		unsafe { self.as_slice::<DateTime>()?.get(index).copied() }
-	}
-
-	#[inline]
 	pub fn time_at(&self, index: usize) -> Option<Time> {
 		if self.type_code() != ValueKind::Time || !self.is_defined_at(index) {
 			return None;
@@ -410,16 +330,6 @@ impl<'a> BorrowedColumn<'a> {
 		// SAFETY: the Time check above means the buffer is a marshalled &[Time]; `Time` is
 		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<Time>()?.get(index).copied() }
-	}
-
-	#[inline]
-	pub fn duration_at(&self, index: usize) -> Option<Duration> {
-		if self.type_code() != ValueKind::Duration || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Duration check above means the buffer is a marshalled &[Duration]; `Duration` is
-		// `repr(C)` over `i32`/`i32`/`i64`, so it is aligned and every bit pattern is a valid value.
-		unsafe { self.as_slice::<Duration>()?.get(index).copied() }
 	}
 }
 

@@ -60,16 +60,6 @@ impl AppendOperator {
 		}
 	}
 
-	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(operator: OperatorId, lanes: AppendLanes) -> Self {
-		Self {
-			operator,
-			parent_schema: None,
-			input_nodes: Vec::new(),
-			lanes,
-		}
-	}
-
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		self.parent_schema.clone()
 	}

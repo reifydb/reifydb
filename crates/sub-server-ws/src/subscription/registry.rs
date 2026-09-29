@@ -527,10 +527,10 @@ pub mod tests {
 			Duration::zero(),
 			Duration::zero(),
 		);
-		assert_eq!(registry.subscription_count(), 1);
+		assert_eq!(registry.active_subscriptions().len(), 1);
 
 		assert!(registry.unsubscribe(sub_id));
-		assert_eq!(registry.subscription_count(), 0);
+		assert_eq!(registry.active_subscriptions().len(), 0);
 		assert_eq!(registry.connection_count(), 0);
 
 		assert!(!registry.unsubscribe(sub_id));
@@ -564,10 +564,10 @@ pub mod tests {
 			Duration::zero(),
 			Duration::zero(),
 		);
-		assert_eq!(registry.subscription_count(), 2);
+		assert_eq!(registry.active_subscriptions().len(), 2);
 
 		registry.cleanup_connection(connection_id);
-		assert_eq!(registry.subscription_count(), 0);
+		assert_eq!(registry.active_subscriptions().len(), 0);
 		assert_eq!(registry.connection_count(), 0);
 	}
 

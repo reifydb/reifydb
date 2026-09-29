@@ -149,7 +149,7 @@ fn extern_c_parts(buffer: (FieldRef, ArrayRef)) -> String {
 	let ffi = arena.marshal_columns(&columns).unwrap();
 	// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
 	let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
-	let column = borrowed.column_at_index(0).expect("one column was marshalled");
+	let column = borrowed.columns().next().expect("one column was marshalled");
 	format!(
 		"rows {} columns {} name {} kind {:02x} column rows {} data {} bitvec {} offsets {:?}",
 		borrowed.row_count(),

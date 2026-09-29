@@ -25,7 +25,7 @@ fn lanes(bits: u32, stamps: [Option<u64>; 2]) -> AppendLanes {
 }
 
 fn op(bits: u32, stamps: [Option<u64>; 2]) -> AppendOperator {
-	AppendOperator::new_for_state_tests(OperatorId(1), lanes(bits, stamps))
+	AppendOperator::new(OperatorId(1), None, vec![OperatorId(2), OperatorId(3)], lanes(bits, stamps))
 }
 
 fn rows(source_rows: &[u64]) -> RecordBatch {
