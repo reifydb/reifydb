@@ -1648,6 +1648,8 @@ fn a_backfill_larger_than_the_batch_size_is_exact_and_readers_never_see_part_of_
 				seen.insert(count(&engine, "FROM bf::late"));
 				sleep(Duration::from_milliseconds_const(1).to_std());
 			}
+			// Without this read, a reader paused before the commit never sees the full view.
+			seen.insert(count(&engine, "FROM bf::late"));
 			seen
 		})
 	};
