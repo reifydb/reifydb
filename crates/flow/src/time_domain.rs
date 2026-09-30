@@ -7,8 +7,14 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{flow_join_retention_requires_event_time, flow_rolling_lag_requires_event_time},
-	flow::{dag::FlowDag, operator::OperatorDef},
-	interface::catalog::{flow::FlowId, id::ViewId},
+	flow::{
+		dag::FlowDag,
+		operator::{FlowNode, OperatorDef},
+	},
+	interface::catalog::{
+		flow::{FlowId, OperatorId},
+		id::ViewId,
+	},
 	internal,
 	operator_with::{JoinWith, LookupWith, WindowWith},
 };
@@ -122,7 +128,7 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 
 pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
 	let flow_name = format!("flow {}", flow.id.0);
-	let mut declared = false;
+	let mut retained = Vec::new();
 
 	for operator_id in flow.topological_order() {
 		let Some(operator) = flow.get_operator(operator_id) else {
@@ -135,22 +141,130 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 					..
 				},
 				..
-			} if retention.left.is_some() || retention.right.is_some() => declared = true,
+			} => {
+				if retention.left.is_some() {
+					retained.push(side_input(operator, 0)?);
+				}
+				if retention.right.is_some() {
+					retained.push(side_input(operator, 1)?);
+				}
+			}
 			OperatorDef::Lookup {
 				with: LookupWith {
 					retention: Some(_),
 				},
 				..
-			} => declared = true,
+			} => retained.push(side_input(operator, 0)?),
 			_ => {}
 		}
 	}
 
-	if declared && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
+	if retained.is_empty() {
+		return Ok(());
+	}
+
+	if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
 		return Err(Error(Box::new(flow_join_retention_requires_event_time(&flow_name))));
 	}
 
+	for input in retained {
+		if !fed_by_event_time_only(catalog, txn, flow, input)? {
+			return Err(Error(Box::new(flow_join_retention_requires_event_time(&flow_name))));
+		}
+	}
+
 	Ok(())
+}
+
+fn side_input(operator: &FlowNode, side: usize) -> Result<OperatorId> {
+	match operator.inputs.get(side) {
+		Some(input) => Ok(*input),
+		None => Err(Error(Box::new(internal!("operator {} has no input {}", operator.id.0, side)))),
+	}
+}
+
+fn fed_by_event_time_only(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+	input: OperatorId,
+) -> Result<bool> {
+	let mut path = HashSet::from([flow.id]);
+	let mut seen = HashSet::new();
+	let mut pending = vec![input];
+
+	while let Some(operator_id) = pending.pop() {
+		if !seen.insert(operator_id) {
+			continue;
+		}
+		let Some(operator) = flow.get_operator(&operator_id) else {
+			return Err(Error(Box::new(internal!("flow {} has no operator {}", flow.id.0, operator_id.0))));
+		};
+		if !operator.ty.is_source() {
+			pending.extend(operator.inputs.iter().copied());
+		} else if !source_is_event(catalog, txn, &operator.ty, &mut path)? {
+			return Ok(false);
+		}
+	}
+
+	Ok(true)
+}
+
+fn source_is_event(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	source: &OperatorDef,
+	path: &mut HashSet<FlowId>,
+) -> Result<bool> {
+	match source {
+		OperatorDef::SourceTable {
+			time_domain,
+			..
+		}
+		| OperatorDef::SourceRingBuffer {
+			time_domain,
+			..
+		}
+		| OperatorDef::SourceSeries {
+			time_domain,
+			..
+		} => Ok(*time_domain == TimeDomain::Event),
+		OperatorDef::SourceView {
+			view,
+		} => view_is_event(catalog, txn, *view, path),
+		_ => Ok(false),
+	}
+}
+
+fn view_is_event(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId, path: &mut HashSet<FlowId>) -> Result<bool> {
+	let Some(def) = catalog.find_view(&mut txn.reborrow(), view)? else {
+		return Err(Error(Box::new(internal!("view {} has no catalog entry", view.0))));
+	};
+
+	let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? else {
+		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
+	};
+
+	let dag = catalog.get_flow_dag(&mut txn.reborrow(), flow.id)?;
+
+	if !path.insert(dag.id) {
+		return Err(Error(Box::new(internal!("flow {} reaches itself through its own sources", dag.id.0))));
+	}
+
+	let mut event = true;
+	for operator_id in dag.topological_order() {
+		let Some(operator) = dag.get_operator(operator_id) else {
+			continue;
+		};
+		if operator.ty.is_source() && !source_is_event(catalog, txn, &operator.ty, path)? {
+			event = false;
+			break;
+		}
+	}
+
+	path.remove(&dag.id);
+
+	Ok(event)
 }
 
 #[cfg(test)]
@@ -169,7 +283,7 @@ mod tests {
 			flow::{FlowEdge, FlowStatus, OperatorId},
 			id::TableId,
 		},
-		row::OperatorRetention,
+		row::{JoinRetention, OperatorRetention},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -468,6 +582,31 @@ mod tests {
 		)
 	}
 
+	fn join(id: u64, left: Option<Duration>, right: Option<Duration>) -> FlowNode {
+		let retained = |duration: Option<Duration>| {
+			duration.map(|duration| OperatorRetention {
+				duration,
+			})
+		};
+		FlowNode::new(
+			OperatorId(id),
+			OperatorDef::Join {
+				join_type: JoinType::Left,
+				left: vec![],
+				right: vec![],
+				alias: None,
+				natural: false,
+				with: JoinWith {
+					retention: Some(JoinRetention {
+						left: retained(left),
+						right: retained(right),
+					}),
+					..JoinWith::default()
+				},
+			},
+		)
+	}
+
 	fn check_retention(harness: Harness, txn: &mut AdminTransaction) -> Result<()> {
 		check_join_retention_requirements(
 			&Catalog::testing(),
@@ -518,5 +657,78 @@ mod tests {
 			.edge(2, 3);
 
 		check_retention(harness, &mut txn).expect("no retention means no event-time requirement");
+	}
+
+	#[test]
+	fn a_lookup_retention_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+		// An unmatched time-less left row reaches the lookup with no #time, so it is never armed and never freed.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::None))
+			.node(table(2, TimeDomain::Event))
+			.node(join(3, None, None))
+			.node(lookup(4, Some(Duration::from_seconds(10).unwrap())))
+			.node(sink(5))
+			.edge(1, 3)
+			.edge(2, 3)
+			.edge(3, 4)
+			.edge(4, 5);
+
+		let err = check_retention(harness, &mut txn).expect_err("a time-less row would outlive the retention");
+
+		assert_eq!(err.diagnostic().code, "FLOW_049");
+	}
+
+	#[test]
+	fn a_join_retention_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+		// The event source elsewhere in the flow must not vouch for the side that actually holds time-less rows.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::None))
+			.node(table(2, TimeDomain::Event))
+			.node(join(3, Some(Duration::from_seconds(10).unwrap()), None))
+			.node(sink(4))
+			.edge(1, 3)
+			.edge(2, 3)
+			.edge(3, 4);
+
+		let err = check_retention(harness, &mut txn).expect_err("the left side holds rows with no #time");
+
+		assert_eq!(err.diagnostic().code, "FLOW_049");
+	}
+
+	#[test]
+	fn a_join_retention_on_an_event_side_is_accepted_beside_a_time_less_side() {
+		// Only the retained side is walked, otherwise a time-less reference table vetoes every right retention.
+		let mut txn = create_test_admin_transaction();
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::None))
+			.node(table(2, TimeDomain::Event))
+			.node(join(3, None, Some(Duration::from_seconds(10).unwrap())))
+			.node(sink(4))
+			.edge(1, 3)
+			.edge(2, 3)
+			.edge(3, 4);
+
+		check_retention(harness, &mut txn).expect("the retained right side is fed by event time only");
+	}
+
+	#[test]
+	fn a_lookup_retention_over_a_view_of_a_time_less_flow_is_rejected_with_flow_049() {
+		// The view may hold rows with no #time from its time-less source, so it must not pass as event time.
+		let mut txn = create_test_admin_transaction();
+		create_namespace(&mut txn, "test");
+		let mixed =
+			upstream(&mut txn, "mixed", vec![source_table(TimeDomain::None), source_table(TimeDomain::Event)]);
+		let harness = Harness::new()
+			.node(view_source(1, mixed))
+			.node(lookup(2, Some(Duration::from_seconds(10).unwrap())))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3);
+
+		let err = check_retention(harness, &mut txn).expect_err("the view carries time-less rows");
+
+		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 }
