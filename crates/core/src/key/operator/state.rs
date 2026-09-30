@@ -115,6 +115,12 @@ impl GroupId {
 		}
 	}
 
+	pub fn partition(&self) -> Hash128 {
+		let mut hash = [0u8; size_of::<u128>()];
+		hash.copy_from_slice(&self.0[Self::HASH_OFFSET..]);
+		Hash128(u128::from_be_bytes(hash))
+	}
+
 	fn at(window_id: u64, hash: u128) -> Self {
 		let mut bytes = [0u8; Self::WIDTH];
 		bytes[..Self::HASH_OFFSET].copy_from_slice(&(!window_id).to_be_bytes());
@@ -310,6 +316,8 @@ impl KeyspaceId {
 
 	pub const LOOKUP_READ: Self = Self(0x2A);
 
+	pub const SESSION_MEMBER: Self = Self(0x2B);
+
 	pub const LOOKUP_READ_BY_VERSION: Self = Self(0x2C);
 
 	pub fn name(&self) -> Cow<'static, str> {
@@ -364,6 +372,7 @@ impl KeyspaceId {
 			Self::GUEST_WINDOW_PUBLISH => "GUEST_WINDOW_PUBLISH",
 			Self::GUEST_RETAINED_ENTRY => "GUEST_RETAINED_ENTRY",
 			Self::LOOKUP_READ => "LOOKUP_READ",
+			Self::SESSION_MEMBER => "SESSION_MEMBER",
 			Self::LOOKUP_READ_BY_VERSION => "LOOKUP_READ_BY_VERSION",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
@@ -961,7 +970,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 51] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 52] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1012,6 +1021,7 @@ mod tests {
 		("GUEST_WINDOW_PUBLISH", KeyspaceId::GUEST_WINDOW_PUBLISH, Phase::Data, true),
 		("GUEST_RETAINED_ENTRY", KeyspaceId::GUEST_RETAINED_ENTRY, Phase::Data, true),
 		("LOOKUP_READ", KeyspaceId::LOOKUP_READ, Phase::Data, true),
+		("SESSION_MEMBER", KeyspaceId::SESSION_MEMBER, Phase::Data, true),
 		("LOOKUP_READ_BY_VERSION", KeyspaceId::LOOKUP_READ_BY_VERSION, Phase::Data, true),
 	];
 

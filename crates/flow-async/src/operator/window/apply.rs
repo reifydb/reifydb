@@ -878,6 +878,12 @@ pub fn apply_session_engine(
 						&mut bounds,
 					)? {
 						operator.store_row_index(host, *hash, post_rows[row_idx], session_id)?;
+						operator.store_session_member(
+							host,
+							*hash,
+							session_id,
+							post_rows[row_idx],
+						)?;
 						let contribution = operator.core.build_contribution(
 							post,
 							&slot_cols,
@@ -933,6 +939,12 @@ pub fn apply_session_engine(
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
 						);
+						operator.drop_session_member(
+							host,
+							*hash,
+							session_id,
+							pre_rows[row_idx],
+						)?;
 					}
 					operator.drop_row_index(host, *hash, pre_rows[row_idx])?;
 				}
@@ -970,6 +982,12 @@ pub fn apply_session_engine(
 								*post_hash,
 								post_rows[row_idx],
 								session_id,
+							)?;
+							operator.store_session_member(
+								host,
+								*post_hash,
+								session_id,
+								post_rows[row_idx],
 							)?;
 							let contribution = operator.core.build_contribution(
 								post,
@@ -1031,11 +1049,25 @@ pub fn apply_session_engine(
 									*hash,
 									pre_rows[row_idx],
 								)?;
+								for prior in &existing {
+									operator.drop_session_member(
+										host,
+										*hash,
+										*prior,
+										pre_rows[row_idx],
+									)?;
+								}
 								operator.store_row_index(
 									host,
 									*post_hash,
 									pre_rows[row_idx],
 									session_id,
+								)?;
+								operator.store_session_member(
+									host,
+									*post_hash,
+									session_id,
+									pre_rows[row_idx],
 								)?;
 								vec![session_id]
 							}
@@ -1045,6 +1077,14 @@ pub fn apply_session_engine(
 									*hash,
 									pre_rows[row_idx],
 								)?;
+								for prior in &existing {
+									operator.drop_session_member(
+										host,
+										*hash,
+										*prior,
+										pre_rows[row_idx],
+									)?;
+								}
 								Vec::new()
 							}
 							None => existing.clone(),

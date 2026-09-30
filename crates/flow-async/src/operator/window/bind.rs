@@ -165,6 +165,26 @@ impl WindowOperator {
 		Mint::new(self.meta_slot()).drop_membership(host, group, row_number)
 	}
 
+	pub(super) fn store_session_member(
+		&mut self,
+		host: &mut dyn HostContext,
+		group_hash: Hash128,
+		session_id: u64,
+		row_number: RowNumber,
+	) -> Result<()> {
+		self.meta_slot().store_session_member(host, GroupId::window(group_hash, session_id), row_number)
+	}
+
+	pub(super) fn drop_session_member(
+		&mut self,
+		host: &mut dyn HostContext,
+		group_hash: Hash128,
+		session_id: u64,
+		row_number: RowNumber,
+	) -> Result<()> {
+		self.meta_slot().drop_session_member(host, GroupId::window(group_hash, session_id), row_number)
+	}
+
 	pub fn get_and_increment_global_count(
 		&mut self,
 		host: &mut dyn HostContext,

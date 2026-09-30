@@ -66,6 +66,12 @@ pub struct RowIndexKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct SessionMemberKey {
+	pub group: Desc<GroupId>,
+	pub row: Asc<RowNumber>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct WindowMetaKey {
 	pub group: Desc<GroupId>,
 	pub window: Desc<Hash128>,
@@ -300,6 +306,29 @@ impl Keyspace for RowIndex {
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		RowIndexKey {
+			group: Desc(group),
+			row: suffix,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionMember;
+
+impl Keyspace for SessionMember {
+	const ID: KeyspaceId = KeyspaceId::SESSION_MEMBER;
+	const NAME: &'static str = "SESSION_MEMBER";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = SessionMemberKey;
+	type Suffix = Asc<RowNumber>;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(key.group.0, key.row)
+	}
+
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		SessionMemberKey {
 			group: Desc(group),
 			row: suffix,
 		}

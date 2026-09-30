@@ -3,12 +3,13 @@
 
 use std::mem::size_of;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::window::{
 				Count, EngineMeta as EngineMetaSpace, RollingMeta as RollingMetaSpace, RowIndex,
-				Session,
+				Session, SessionMember,
 			},
 			state::{GroupId, GroupStateKey, IntoGroupStateKey},
 		},
@@ -148,6 +149,21 @@ impl IntoGroupStateKey for &RowIndexKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct SessionMemberKey(pub GroupId, pub RowNumber);
+
+impl HeapSize for SessionMemberKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl IntoGroupStateKey for &SessionMemberKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		typed_key::<SessionMember>(self.0, &Asc(self.1))
+	}
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct SessionKey(pub GroupId);
 
 impl HeapSize for SessionKey {
@@ -261,6 +277,24 @@ impl WindowMeta {
 		row_number: RowNumber,
 	) -> Result<()> {
 		remove(store, &RowIndexKey(group, row_number))
+	}
+
+	pub fn store_session_member(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<()> {
+		store.state_set(&(&SessionMemberKey(group, row_number)).into_group_state_key(), EncodedPodRow::new(&[]))
+	}
+
+	pub fn drop_session_member(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<()> {
+		remove(store, &SessionMemberKey(group, row_number))
 	}
 
 	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {

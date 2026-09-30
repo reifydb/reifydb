@@ -13,6 +13,7 @@ pub mod window;
 use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 #[cfg(test)]
 use reifydb_value::util::hash::Hash128;
+use reifydb_value::value::row_number::RowNumber;
 
 #[cfg(test)]
 use crate::key::typed::{BoundedKey, DenseKey};
@@ -41,15 +42,18 @@ use crate::{
 				window::{
 					Accumulator, Buffer, Count, Emit, EngineMeta, GuestAccumulator, GuestBuffer,
 					GuestRetainedEntry, GuestRunning, GuestWindowPublish, RollingMeta, RowIndex,
-					Running, Session, WindowMeta,
+					Running, Session, SessionMember, WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 			traits::{Keyspace, group_scoped},
 		},
-		typed::layout::{KeyColumn, KeyLayout},
+		typed::{
+			direction::Asc,
+			layout::{KeyColumn, KeyLayout},
+		},
 	},
-	state::typed::SuffixBytes,
+	state::typed::{SuffixBytes, typed_key},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -165,6 +169,7 @@ catalogue!(
 	EngineMeta,
 	Emit,
 	RowIndex,
+	SessionMember,
 	WindowMeta,
 	GuestAccumulator,
 	GuestBuffer,
@@ -219,6 +224,7 @@ pub enum RootSibling {
 pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
 	match keyspace {
 		KeyspaceId::JOIN_ROW_EXPIRY => join_row_expiry_sibling(group, suffix, row),
+		KeyspaceId::SESSION_MEMBER => session_member_sibling(group, suffix),
 
 		KeyspaceId::ACCUMULATOR
 		| KeyspaceId::BUFFER
@@ -292,6 +298,13 @@ fn join_row_expiry_sibling(group: GroupId, suffix: &[u8], row: &EncodedPodRow) -
 		}
 	};
 	RootSibling::Derived(join_expiry_due_key(at, group, suffix.side.0, suffix.row.0))
+}
+
+fn session_member_sibling(group: GroupId, suffix: &[u8]) -> RootSibling {
+	let Some(row) = Asc::<RowNumber>::from_suffix_bytes(suffix) else {
+		panic!("a session member key carries a suffix that keyspace cannot decode");
+	};
+	RootSibling::Derived(typed_key::<RowIndex>(GroupId::hashed(group.partition()), &row))
 }
 
 pub fn root_sibling_of(key: &GroupStateKey, row: &EncodedPodRow) -> Option<RootSibling> {
@@ -386,7 +399,7 @@ fn carries_its_group<K: Keyspace>() {
 mod tests {
 	use std::collections::HashSet;
 
-	use reifydb_codec::row::operator::state::OperatorState;
+	use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 	use reifydb_value::{
 		util::hash::Hash128,
 		value::{datetime::DateTime, row_number::RowNumber},
@@ -399,12 +412,15 @@ mod tests {
 	use crate::{
 		key::{
 			operator::{
-				keyspace::join::{JoinRowExpiryState, JoinRowExpirySuffix},
+				keyspace::{
+					join::{JoinRowExpiryState, JoinRowExpirySuffix},
+					window::RowIndex,
+				},
 				state::{GroupId, KeyspaceId},
 			},
 			typed::direction::Asc,
 		},
-		state::typed::SuffixBytes,
+		state::typed::{SuffixBytes, typed_key},
 	};
 
 	fn catalogue() -> Vec<(&'static str, KeyspaceId, bool)> {
@@ -427,6 +443,10 @@ mod tests {
 		.unwrap();
 		let mut derived = Vec::new();
 		for spec in KEYSPACES {
+			if spec.id == KeyspaceId::SESSION_MEMBER {
+				// a session member must decode its own suffix, so join's bytes would panic it
+				continue;
+			}
 			if let RootSibling::Derived(_) =
 				root_sibling(GroupId::hashed(Hash128(7)), spec.id, &suffix, &row)
 			{
@@ -439,6 +459,23 @@ mod tests {
 			"only a keyspace whose ROOT key is a function of its own key and row may be reaped by \
 			 construction; any other name here claims a derivation it does not have"
 		);
+	}
+
+	#[test]
+	fn a_session_member_derives_the_row_index_entry_of_its_partition() {
+		// a member must derive exactly its row's partition index key, otherwise reaping leaks it or deletes a
+		// live one
+		let suffix = Asc(RowNumber(9)).to_suffix_bytes();
+		let derived = root_sibling(
+			GroupId::window(Hash128(7), 5),
+			KeyspaceId::SESSION_MEMBER,
+			&suffix,
+			&EncodedPodRow::new(&[]),
+		);
+		let RootSibling::Derived(key) = derived else {
+			panic!("a session member must derive the row index entry it shadows");
+		};
+		assert_eq!(key, typed_key::<RowIndex>(GroupId::hashed(Hash128(7)), &Asc(RowNumber(9))));
 	}
 
 	#[test]
@@ -458,7 +495,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 51, "the catalogue is forty nine keyspaces");
+		assert_eq!(seen.len(), 52, "the catalogue is forty nine keyspaces");
 	}
 
 	#[test]
@@ -482,12 +519,12 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			51,
+			52,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
 			group_scoped_keyspaces(),
-			27,
+			28,
 			"a keyspace changed group scope; confirm its key layout meant to"
 		);
 	}
