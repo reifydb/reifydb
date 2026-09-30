@@ -323,8 +323,10 @@ impl FlowActor {
 	}
 
 	fn drain_backfill(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, safe: CommitVersion) {
+		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		let mut snapshot = match state.snapshot.take() {
 			Some(snapshot) => snapshot,
+			None if !self.upstreams_backfilled(&upstreams) => return,
 			None => match self.engine.acquire_current_snapshot_lease() {
 				Ok((version, lease)) => {
 					state.backfill_pin = Some(self.engine.operator_state().checkpoint_pin(version));
@@ -340,7 +342,6 @@ impl FlowActor {
 				}
 			},
 		};
-		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		if !self.resolve_cuts(state, ctx, safe, &upstreams, &mut snapshot) {
 			state.snapshot = Some(snapshot);
 			return;
@@ -369,6 +370,12 @@ impl FlowActor {
 				self.retry_or_poison(state, ctx, format!("flow backfill failed: {e}"));
 			}
 		}
+	}
+
+	fn upstreams_backfilled(&self, upstreams: &FlowUpstreams) -> bool {
+		upstreams.keys().all(|producer| {
+			self.flow_tracker.position(*producer).is_some_and(|position| position > CommitVersion(0))
+		})
 	}
 
 	fn resolve_cuts(

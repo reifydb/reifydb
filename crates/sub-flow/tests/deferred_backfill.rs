@@ -583,6 +583,29 @@ impl ScanHooks for Writer {
 	}
 }
 
+struct HoldThenRefuse {
+	target: Mutex<Option<ObjectId>>,
+	held: AtomicBool,
+	opens: Mutex<u32>,
+	released: Mutex<Vec<bool>>,
+	release: Mutex<Receiver<()>>,
+}
+
+impl ScanHooks for HoldThenRefuse {
+	fn on_open(&self, source: ObjectId) -> Outcome {
+		if *self.target.lock() != Some(source) {
+			return Outcome::Land;
+		}
+		*self.opens.lock() += 1;
+		if self.held.swap(true, Ordering::SeqCst) {
+			return Outcome::Land;
+		}
+		let released = self.release.lock().recv_timeout(TIMEOUT.to_std()).is_ok();
+		self.released.lock().push(released);
+		Outcome::Err(refused())
+	}
+}
+
 #[test]
 fn a_late_filter_view_equals_an_early_one() {
 	// A snapshot row that skipped the filter, or kept a deleted row, shows up against the view fed live.
@@ -1370,6 +1393,98 @@ fn a_late_view_reads_a_producer_past_v_when_the_producer_commits_a_write_at_or_b
 		db.command(&rql);
 		agree(&db, "bf::early", "bf::late", Cols::WithRownum, &format!("after: {rql}"));
 	}
+}
+
+#[test]
+fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_past_v_equals_an_early_chain() {
+	// Cut before a producer's retried backfill, the consumer reads it empty and never pairs the rows fed live.
+	let (release, parked) = channel();
+	let hook = Arc::new(HoldThenRefuse {
+		target: Mutex::new(None),
+		held: AtomicBool::new(false),
+		opens: Mutex::new(0),
+		released: Mutex::new(Vec::new()),
+		release: Mutex::new(parked),
+	});
+	let db = TestDb::from(
+		embedded::memory()
+			.with_runtime_config(runtime())
+			.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(4))
+			.with_dependency(InstalledScanHooks(hook.clone()))
+			.with_flow(|f| f)
+			.build()
+			.expect("build memory db with flow and the scan hooks"),
+	);
+	tables(&db);
+	db.admin("CREATE TABLE bf::level { pool: utf8, px: int8 }");
+	db.admin("CREATE TABLE bf::snap { pool: utf8 }");
+	let curve = |name: &str| {
+		format!(
+			"CREATE DEFERRED VIEW bf::{name} {{ pool: utf8, usd: int8 }} AS {{ FROM bf::level MAP {{ pool, usd: px * 2 }} }}"
+		)
+	};
+	let hop = |name: &str, over: &str| {
+		format!(
+			"CREATE DEFERRED VIEW bf::{name} {{ pool: utf8, usd: int8 }} AS {{ FROM bf::{over} MAP {{ pool, usd }} }}"
+		)
+	};
+	let cost = |name: &str, over: &str| {
+		format!(
+			"CREATE DEFERRED VIEW bf::{name} {{ pool: utf8, usd: int8 }} AS {{ FROM bf::snap INNER JOIN {{ FROM bf::{over} }} AS c USING (pool, c.pool) WITH {{ snapshot: true, latest: true }} MAP {{ pool, usd: c_usd }} }}"
+		)
+	};
+	let paired = sorted(&["pool=a,usd=20"]);
+
+	db.admin(&curve("early_curve"));
+	db.admin(&hop("early_curve2", "early_curve"));
+	db.admin(&cost("early_cost", "early_curve2"));
+	settle(&db);
+	db.command("INSERT bf::level [{ pool: 'a', px: 10 }]");
+	db.command("INSERT bf::snap [{ pool: 'a' }]");
+	settle(&db);
+	await_rows(&db, "FROM bf::early_cost", Cols::User, &paired, "after the rung and the header, fed live");
+
+	db.admin(&curve("curve"));
+	settle(&db);
+	await_rows(&db, "FROM bf::curve", Cols::User, &paired, "right after the first hop backfilled");
+	*hook.target.lock() = Some(view_object(&db, "curve"));
+	db.admin(&hop("curve2", "curve"));
+	assert!(
+		await_value(true, TIMEOUT, || hook.held.load(Ordering::SeqCst)),
+		"precondition: the second hop's backfill must be parked in its scan of the first hop"
+	);
+	db.admin(&cost("cost", "curve2"));
+	// Never wait on the consumer's snapshot itself: a correct consumer takes none until its producer has committed.
+	sleep(HOLD.to_std());
+	// Without a commit after V the retry snapshots at V itself and the consumer's cut stays exact.
+	db.command("INSERT bf::src [{ id: 1, g: 1, sym: 'a', v: 5 }]");
+	let unrelated = db.engine().current_version().expect("the current version after the unrelated commit");
+	release.send(()).expect("release the second hop's backfill into its refusal");
+	settle(&db);
+
+	await_rows(&db, "FROM bf::curve2", Cols::User, &paired, "after the second hop's backfill retried");
+	assert_eq!(
+		*hook.released.lock(),
+		vec![true],
+		"the second hop must be released by the test, not by the hold timeout"
+	);
+	assert_eq!(
+		*hook.opens.lock(),
+		2,
+		"precondition: the second hop must open the first hop exactly twice, the refused open and one retry"
+	);
+	let produced = stamps(&db, view_object(&db, "curve2"));
+	assert!(
+		produced.first().is_some_and(|stamp| stamp.source >= SourceVersion::from(unrelated)),
+		"precondition: the second hop's retry must snapshot past the unrelated commit ({unrelated:?}): {produced:?}"
+	);
+	agree(
+		&db,
+		"bf::early_cost",
+		"bf::cost",
+		Cols::User,
+		"after its producer's backfill retried at a snapshot past V",
+	);
 }
 
 fn follows_the_source(db: &TestDb, view: &str, source: &str, cols: Cols, step: &str) {
