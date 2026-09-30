@@ -195,7 +195,6 @@ impl FlowProgress {
 			Some(last) if commit < last.commit => return,
 			Some(last) if commit == last.commit => {
 				last.position = last.position.max(position);
-				last.source = source;
 				return;
 			}
 			_ => {}
@@ -921,13 +920,15 @@ mod lookup_tests {
 	}
 
 	#[test]
-	fn an_equal_commit_keeps_the_highest_source() {
-		// An empty slice lands on the previous commit; its source is still complete there.
+	fn an_equal_commit_keeps_its_first_source() {
+		// An empty slice must keep the commit's first source, otherwise a lookup between the two sources finds
+		// no commit.
 		let tracker = FlowPositionTracker::new();
 		tracker.update_committed(PRODUCER, cv(10), cv(20), sv(10));
 		tracker.update_committed(PRODUCER, cv(14), cv(0), sv(14));
 
-		assert_eq!(sources(&tracker, PRODUCER), vec![14]);
+		assert_eq!(sources(&tracker, PRODUCER), vec![10]);
+		assert_eq!(tracker.commit_through_source(PRODUCER, sv(12)), Some(cv(20)));
 		assert_eq!(tracker.commit_through_source(PRODUCER, sv(14)), Some(cv(20)));
 	}
 
