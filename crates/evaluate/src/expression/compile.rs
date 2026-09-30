@@ -1192,9 +1192,12 @@ fn execute_if_multi(
 		}
 
 		if result_data.is_none() {
-			let mut data: Vec<ColumnBuilder> = branch_results
+			let mut data: Vec<ColumnBuilder> = layout
+				.as_ref()
+				.unwrap()
+				.types()
 				.iter()
-				.map(|view| ColumnBuilder::with_capacity(view.get_type(), ctx.row_count))
+				.map(|ty| ColumnBuilder::with_capacity(ty.clone(), ctx.row_count))
 				.collect();
 			for _ in 0..row_idx {
 				for col_data in data.iter_mut() {
