@@ -245,7 +245,7 @@ mod tests {
 	};
 
 	use super::run;
-	use crate::memory::MemoryTxn;
+	use crate::testing::TestingTx;
 
 	const TABLE: TableId = TableId(1);
 	const VIEW: ViewId = ViewId(2);
@@ -276,8 +276,8 @@ mod tests {
 		})
 	}
 
-	fn memory_txn(flows: Vec<FlowDag>) -> MemoryTxn {
-		let mut txn = MemoryTxn::default();
+	fn memory_txn(flows: Vec<FlowDag>) -> TestingTx {
+		let mut txn = TestingTx::default();
 		txn.tables.insert(
 			TABLE,
 			Table {
@@ -374,11 +374,11 @@ mod tests {
 		(ObjectId::table(TABLE), diff)
 	}
 
-	fn run_all(txn: &mut MemoryTxn) {
+	fn run_all(txn: &mut TestingTx) {
 		run(txn, &Routines::empty(), &runtime_context()).unwrap();
 	}
 
-	fn stored(txn: &MemoryTxn, view: ViewId, row: u64) -> Option<Value> {
+	fn stored(txn: &TestingTx, view: ViewId, row: u64) -> Option<Value> {
 		let shape = row_shape_from_columns(RowFamily::Table, &columns());
 		txn.rows.get(&row_key(transactional_view(view).storage_id(), RowNumber(row)))
 			.map(|bytes| shape.get_value(bytes, 0))
@@ -388,7 +388,7 @@ mod tests {
 		require_row_numbers(diff.post().or(diff.pre()).expect("every diff carries columns")).unwrap().to_vec()
 	}
 
-	fn emitted_to(txn: &MemoryTxn, view: ViewId) -> Vec<&Diff> {
+	fn emitted_to(txn: &TestingTx, view: ViewId) -> Vec<&Diff> {
 		txn.emitted.iter().filter(|(target, _)| *target == view).map(|(_, diff)| diff).collect()
 	}
 

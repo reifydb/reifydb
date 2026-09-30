@@ -229,7 +229,7 @@ mod tests {
 	};
 
 	use super::{Node, SourceNode};
-	use crate::{memory::MemoryTxn, txn::Intern};
+	use crate::{testing::TestingTx, txn::Intern};
 
 	const SYMBOLS: DictionaryId = DictionaryId(7);
 
@@ -313,7 +313,7 @@ mod tests {
 
 	#[test]
 	fn a_table_source_hands_downstream_the_dictionary_values_instead_of_the_entry_ids() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		txn.dictionaries.insert(SYMBOLS, symbols());
 		let sol = txn.intern(&symbols(), &utf8("sol")).unwrap();
 		let eth = txn.intern(&symbols(), &utf8("eth")).unwrap();
@@ -369,7 +369,7 @@ mod tests {
 
 	#[test]
 	fn a_sort_forwards_every_diff_untouched_under_its_own_origin() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let entry = DictionaryEntryId::U2(0);
 		let diffs = vec![
 			Diff::insert(trades(&[(1, 10, entry), (2, 20, entry)])),

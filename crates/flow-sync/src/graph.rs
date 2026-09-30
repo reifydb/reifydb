@@ -218,7 +218,7 @@ mod tests {
 	};
 
 	use super::build;
-	use crate::memory::MemoryTxn;
+	use crate::testing::TestingTx;
 
 	const TABLE: TableId = TableId(1);
 	const VIEW: ViewId = ViewId(2);
@@ -236,8 +236,8 @@ mod tests {
 		}]
 	}
 
-	fn memory_txn() -> MemoryTxn {
-		let mut txn = MemoryTxn::default();
+	fn memory_txn() -> TestingTx {
+		let mut txn = TestingTx::default();
 		txn.tables.insert(
 			TABLE,
 			Table {

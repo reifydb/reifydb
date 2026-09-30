@@ -458,7 +458,7 @@ mod tests {
 	};
 
 	use super::TableSink;
-	use crate::{memory::MemoryTxn, txn::Intern};
+	use crate::{testing::TestingTx, txn::Intern};
 
 	const VIEW: ViewId = ViewId(4);
 	const SYMBOLS: DictionaryId = DictionaryId(7);
@@ -544,7 +544,7 @@ mod tests {
 		Change::from_flow(OperatorId(0), ChangeVersion::from(CommitVersion(1)), diffs, at_millis(0))
 	}
 
-	fn stored(txn: &MemoryTxn, view: &View, key: &EncodedKey) -> Vec<Value> {
+	fn stored(txn: &TestingTx, view: &View, key: &EncodedKey) -> Vec<Value> {
 		let shape = row_shape_from_columns(RowFamily::Table, view.columns());
 		let row = txn.rows.get(key).expect("the view row must be stored under this key");
 		(0..view.columns().len()).map(|index| shape.get_value(row, index)).collect()
@@ -562,7 +562,7 @@ mod tests {
 
 	#[test]
 	fn an_insert_stores_each_source_row_under_its_row_key_and_emits_the_insert_once() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), Vec::new(), &[]);
 		let storage = view.storage_id();
 
@@ -591,7 +591,7 @@ mod tests {
 
 	#[test]
 	fn an_update_moves_the_row_to_its_new_key_keeps_the_prior_created_at_and_takes_updated_from_the_post_row() {
-		let mut txn = MemoryTxn {
+		let mut txn = TestingTx {
 			clock: MockClock::from_millis(500),
 			..Default::default()
 		};
@@ -632,7 +632,7 @@ mod tests {
 
 	#[test]
 	fn a_remove_deletes_only_the_removed_view_row_and_emits_the_remove() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), Vec::new(), &[]);
 		let storage = view.storage_id();
 		let mut sink = sink(&view);
@@ -660,7 +660,7 @@ mod tests {
 
 	#[test]
 	fn a_sorted_view_stores_rows_under_sort_keys_so_key_order_follows_the_sort_column() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), by_qty(), &[]);
 		let storage = view.storage_id();
 		let rows = inserted(&[(1, "sol", 30), (2, "eth", 10), (3, "btc", 20)]);
@@ -681,7 +681,7 @@ mod tests {
 
 	#[test]
 	fn a_partitioned_view_stores_rows_under_their_partition_key_and_registers_the_partition() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), Vec::new(), &["sym"]);
 		let storage = view.storage_id();
 		let rows = inserted(&[(1, "sol", 10), (2, "eth", 20)]);
@@ -702,7 +702,7 @@ mod tests {
 
 	#[test]
 	fn an_update_that_moves_a_row_to_another_partition_is_refused_before_anything_is_written() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), Vec::new(), &["sym"]);
 		let mut sink = sink(&view);
 		sink.apply(&mut txn, change(vec![Diff::insert(inserted(&[(1, "sol", 10)]))])).unwrap();
@@ -728,7 +728,7 @@ mod tests {
 
 	#[test]
 	fn a_dictionary_view_column_stores_the_interned_entry_id_and_emits_the_value() {
-		let mut txn = MemoryTxn::default();
+		let mut txn = TestingTx::default();
 		txn.dictionaries.insert(SYMBOLS, symbols());
 		txn.intern(&symbols(), &utf8("eth")).unwrap();
 		let symbol = column(

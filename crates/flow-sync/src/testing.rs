@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -17,6 +19,8 @@ use reifydb_core::{
 		change::Diff,
 	},
 };
+#[cfg(test)]
+use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -236,6 +240,159 @@ impl<T: ClockNow> ClockNow for TestingTxn<T> {
 }
 
 #[cfg(test)]
+pub(crate) struct TestingTx {
+	pub entries: Vec<(ObjectId, Diff)>,
+	pub cursor: usize,
+	pub rows: BTreeMap<EncodedKey, EncodedBytes>,
+	pub emitted: Vec<(ViewId, Diff)>,
+	pub flows: Vec<FlowDag>,
+	pub views: BTreeMap<ViewId, View>,
+	pub tables: BTreeMap<TableId, Table>,
+	pub dictionaries: BTreeMap<DictionaryId, Dictionary>,
+	pub dictionary_values: BTreeMap<DictionaryId, Vec<Value>>,
+	pub clock: MockClock,
+}
+
+#[cfg(test)]
+impl Default for TestingTx {
+	fn default() -> Self {
+		Self {
+			entries: Vec::new(),
+			cursor: 0,
+			rows: BTreeMap::new(),
+			emitted: Vec::new(),
+			flows: Vec::new(),
+			views: BTreeMap::new(),
+			tables: BTreeMap::new(),
+			dictionaries: BTreeMap::new(),
+			dictionary_values: BTreeMap::new(),
+			clock: MockClock::from_millis(0),
+		}
+	}
+}
+
+#[cfg(test)]
+impl Changes for TestingTx {
+	fn cursor(&self) -> usize {
+		self.cursor
+	}
+
+	fn entries_from(&self, at: usize) -> Vec<(ObjectId, Diff)> {
+		if at >= self.entries.len() {
+			return Vec::new();
+		}
+		self.entries[at..].to_vec()
+	}
+
+	fn set_cursor(&mut self, at: usize) {
+		assert!(
+			at <= self.entries.len(),
+			"cursor {} is past the {} entries of the memory transaction",
+			at,
+			self.entries.len()
+		);
+		self.cursor = at;
+	}
+}
+
+#[cfg(test)]
+impl Rows for TestingTx {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		Ok(self.rows.get(key).cloned())
+	}
+
+	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
+		self.rows.insert(key.clone(), row);
+		Ok(())
+	}
+
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		self.rows.remove(key);
+		Ok(())
+	}
+}
+
+#[cfg(test)]
+impl Emit for TestingTx {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+		self.entries.push((ObjectId::view(view), diff.clone()));
+		self.emitted.push((view, diff));
+		Ok(())
+	}
+}
+
+#[cfg(test)]
+impl Lookup for TestingTx {
+	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
+		Ok(self.flows.clone())
+	}
+
+	fn view(&mut self, id: ViewId) -> Result<View> {
+		Ok(self.views
+			.get(&id)
+			.unwrap_or_else(|| panic!("view {} is not in the memory transaction", id))
+			.clone())
+	}
+
+	fn table(&mut self, id: TableId) -> Result<Table> {
+		Ok(self.tables
+			.get(&id)
+			.unwrap_or_else(|| panic!("table {} is not in the memory transaction", id))
+			.clone())
+	}
+
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Dictionary> {
+		Ok(self.dictionaries
+			.get(&id)
+			.unwrap_or_else(|| panic!("dictionary {} is not in the memory transaction", id))
+			.clone())
+	}
+}
+
+#[cfg(test)]
+impl Intern for TestingTx {
+	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+		let values = self.dictionary_values.entry(dictionary.id).or_default();
+		let position = match values.iter().position(|existing| existing == value) {
+			Some(position) => position,
+			None => {
+				values.push(value.clone());
+				values.len() - 1
+			}
+		};
+		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())
+	}
+
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		let Some(position) = self
+			.dictionary_values
+			.get(&dictionary.id)
+			.and_then(|values| values.iter().position(|existing| existing == value))
+		else {
+			return Ok(None);
+		};
+		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
+		let Some(offset) = id.to_u128().checked_sub(1) else {
+			return Ok(None);
+		};
+		let Ok(position) = usize::try_from(offset) else {
+			return Ok(None);
+		};
+		Ok(self.dictionary_values.get(&dictionary.id).and_then(|values| values.get(position)).cloned())
+	}
+}
+
+#[cfg(test)]
+impl ClockNow for TestingTx {
+	fn now(&self) -> DateTime {
+		self.clock.now()
+	}
+}
+
+#[cfg(test)]
 mod tests {
 	use std::{
 		collections::BTreeMap,
@@ -269,11 +426,8 @@ mod tests {
 		value::{Value, dictionary::DictionaryId, value_type::ValueType},
 	};
 
-	use super::{Continue, LookupOutcome, LookupTarget, NoFaults, Outcome, SyncHooks, TestingTxn};
-	use crate::{
-		memory::MemoryTxn,
-		txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
-	};
+	use super::{Continue, LookupOutcome, LookupTarget, NoFaults, Outcome, SyncHooks, TestingTx, TestingTxn};
+	use crate::txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows};
 
 	const VIEW: ViewId = ViewId(4);
 	const TABLE: TableId = TableId(5);
@@ -333,8 +487,8 @@ mod tests {
 		}
 	}
 
-	fn catalog() -> MemoryTxn {
-		let mut txn = MemoryTxn::default();
+	fn catalog() -> TestingTx {
+		let mut txn = TestingTx::default();
 		txn.views.insert(VIEW, positions());
 		txn.tables.insert(TABLE, trades());
 		txn.dictionaries.insert(SYMBOLS, symbols());
@@ -411,7 +565,7 @@ mod tests {
 
 	#[test]
 	fn a_refused_write_returns_the_injected_error_and_leaves_the_rows_untouched() {
-		let mut inner = MemoryTxn::default();
+		let mut inner = TestingTx::default();
 		inner.set(&key(1), row(1)).unwrap();
 		let before = inner.rows.clone();
 		let mut txn = TestingTxn::over(inner, Arc::new(RefuseWrites));
@@ -424,7 +578,7 @@ mod tests {
 
 	#[test]
 	fn a_refused_emit_returns_the_injected_error_and_records_no_entry_or_emission() {
-		let mut txn = TestingTxn::over(MemoryTxn::default(), Arc::new(RefuseEmits));
+		let mut txn = TestingTxn::over(TestingTx::default(), Arc::new(RefuseEmits));
 
 		assert_eq!(txn.emit(VIEW, Diff::insert(empty_batch())), Err(refused()));
 
@@ -434,7 +588,7 @@ mod tests {
 
 	#[test]
 	fn a_refused_intern_adds_no_value_and_a_refused_resolve_returns_the_injected_error() {
-		let mut inner = MemoryTxn::default();
+		let mut inner = TestingTx::default();
 		let sol = inner.intern(&symbols(), &utf8("sol")).unwrap();
 		let mut txn = TestingTxn::over(inner, Arc::new(RefuseDictionary));
 
@@ -456,7 +610,7 @@ mod tests {
 
 	#[test]
 	fn a_refused_lookup_returns_the_injected_error_for_every_target() {
-		let mut txn = TestingTxn::over(MemoryTxn::default(), Arc::new(RefuseLookups));
+		let mut txn = TestingTxn::over(TestingTx::default(), Arc::new(RefuseLookups));
 
 		assert_eq!(txn.transactional_flows().unwrap_err(), refused());
 		assert_eq!(txn.view(VIEW), Err(refused()));
@@ -500,7 +654,7 @@ mod tests {
 
 	#[test]
 	fn a_crash_at_the_third_call_keeps_the_first_two_writes_and_stops_before_the_third() {
-		let mut txn = TestingTxn::over(MemoryTxn::default(), Arc::new(CrashAt(3)));
+		let mut txn = TestingTxn::over(TestingTx::default(), Arc::new(CrashAt(3)));
 
 		let payload = catch_unwind(AssertUnwindSafe(|| {
 			txn.set(&key(1), row(1)).unwrap();
