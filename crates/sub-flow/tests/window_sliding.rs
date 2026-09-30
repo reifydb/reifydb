@@ -5,12 +5,17 @@
 // slide sequence. These tests pin the three places that distinction is observable: which windows
 // a row lands in, what a window stamps #time with, and when a window seals.
 
-use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{
+	WithSubsystem, embedded,
+	testing::db::{TestDb, await_value},
+};
 use reifydb_test_harness::assert::{column_values, timed_rows};
 use reifydb_value::{
 	params::Params,
 	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
+
+use crate::state_keys::{keyspace_keys, setup_with_metrics};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
@@ -146,4 +151,28 @@ fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
 		"the two that took the row must be exactly the latest-starting windows, the ones whose horizons \
 		 the watermark has not yet reached"
 	);
+}
+
+#[test]
+fn a_time_sliding_row_leaves_no_row_index_once_its_windows_seal() {
+	// a time sliding row must leave no row index once its windows seal, otherwise every row ever seen leaks one.
+	let db = setup_with_metrics();
+	sliding_window(&db, "1m", "15s", "0s");
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T10:00:10Z" }]"#);
+	assert_eq!(
+		await_value(4, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		4,
+		"the row must land in the four windows covering it"
+	);
+
+	db.admin("call storage::advance(app::t, cast('2026-01-01T12:00:00Z', datetime))");
+	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
+
+	assert_eq!(
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		0,
+		"every window covering the row sealed, so their accumulators must be reaped"
+	);
+	assert_eq!(keyspace_keys(&db, "ROW_INDEX"), 0, "a sealed row must not keep an index row");
 }
