@@ -1162,6 +1162,7 @@ mod seal_tests {
 		},
 		value::{batch::batch, column::factory::int4},
 	};
+	use reifydb_flow::txn::{Batch, Get};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1186,6 +1187,7 @@ mod seal_tests {
 			deferred::DeferredTransaction,
 			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
+			pending_get,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
 			substrate::{FlowSubstrate, apply_operator_state},
@@ -1422,6 +1424,24 @@ mod seal_tests {
 	impl CountingTxn {
 		fn scans_from(&self, start: &EncodedKey) -> usize {
 			self.scan_starts.iter().filter(|recorded| recorded.as_slice() == start.as_slice()).count()
+		}
+	}
+
+	impl Get for CountingTxn {
+		fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+			pending_get(self, key)
+		}
+	}
+
+	impl Batch for CountingTxn {
+		fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+			self.pending_mut().insert_batch(keys, rows);
+			Ok(())
+		}
+
+		fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+			self.pending_mut().remove_batch(keys);
+			Ok(())
 		}
 	}
 

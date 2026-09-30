@@ -1,42 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod partition;
+#[cfg(test)]
+mod partition;
 pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;
 
-use std::collections::HashMap;
+use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
+use reifydb_value::Result;
 
-use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::FieldRef;
-use reifydb_core::{
-	common::ChangeVersion,
-	interface::{
-		catalog::{flow::OperatorId, object::ObjectId, view::View},
-		change::{Change, ChangeOrigin, Diff},
-		flow::OperatorCapability,
-	},
-	value::{batch::batch, column::builder::ColumnBuilder},
-};
-use reifydb_flow::error::FlowSinkError;
-use reifydb_value::{
-	Result,
-	error::Error,
-	value::{
-		Value,
-		column_view::{ColumnView, ViewData},
-		dictionary::{DictionaryEntryId, DictionaryId},
-		value_type::ValueType,
-	},
-};
-use smallvec::smallvec;
-
-use crate::{
-	operator::host::HostContext,
-	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
-};
+use crate::{timer::Timer, transaction::deferred::DeferredTransaction};
 
 pub trait DurableSink: Send {
 	fn id(&self) -> OperatorId;
@@ -52,87 +26,17 @@ pub trait DurableSink: Send {
 
 pub type BoxedDurableSink = Box<dyn DurableSink>;
 
-pub(crate) fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
-	let version = ChangeVersion::from(txn.version());
-	let changed_at = txn.clock().now();
-	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
-		version,
-		diffs: smallvec![diff],
-		changed_at,
-	});
-}
-
-pub(crate) fn decode_dictionary_columns(columns: &mut RecordBatch, host: &mut dyn HostContext) -> Result<()> {
-	let dict_columns: Vec<(usize, DictionaryId, ValueType)> = {
-		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
-		for (pos, (field, array)) in columns.schema_ref().fields().iter().zip(columns.columns()).enumerate() {
-			if let ViewData::DictionaryId {
-				dictionary_id: Some(id),
-				..
-			} = ColumnView::try_from((array, field.as_ref()))?.data
-			{
-				ids.push((pos, id));
-			}
-		}
-		ids.into_iter()
-			.map(|(pos, id)| {
-				let value_type = host.dictionary_value_type(id).ok_or_else(|| {
-					Error::from(FlowSinkError::DictionaryNotFound {
-						dictionary_id: format!("{:?}", id),
-						column: columns.schema_ref().field(pos).name().clone(),
-					})
-				})?;
-				Ok((pos, id, value_type))
-			})
-			.collect::<Result<Vec<_>>>()?
-	};
-
-	if dict_columns.is_empty() {
-		return Ok(());
-	}
-
-	let mut decoded: Vec<(FieldRef, ArrayRef)> =
-		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
-	let mut resolved: HashMap<(DictionaryId, DictionaryEntryId), Value> = HashMap::new();
-	for (col_pos, dictionary, value_type) in &dict_columns {
-		let (field, array) = &decoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let mut new_data = ColumnBuilder::with_capacity(value_type.clone(), row_count);
-
-		for row_idx in 0..row_count {
-			let id_value = column.get_value(row_idx);
-			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => match resolved.get(&(*dictionary, entry_id)) {
-					Some(value) => value.clone(),
-					None => match host.dictionary_get(*dictionary, entry_id)? {
-						Some(value) => {
-							resolved.insert((*dictionary, entry_id), value.clone());
-							value
-						}
-						None => Value::none(),
-					},
-				},
-				None => Value::none(),
-			};
-			new_data.push_value(value);
-		}
-
-		let name = field.name().clone();
-		decoded[*col_pos] = new_data.finish(&name);
-	}
-
-	*columns = batch(decoded)?;
-	Ok(())
-}
-
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
 
-	use arrow_array::UInt64Array;
-	use reifydb_core::{actors::pending::Pending, interface::catalog::dictionary::Dictionary};
+	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+	use reifydb_core::{
+		actors::pending::Pending,
+		interface::catalog::{dictionary::Dictionary, flow::OperatorId},
+		value::{batch::batch, column::builder::ColumnBuilder},
+	};
+	use reifydb_flow::operator::source::decode_dictionary_columns;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -140,14 +44,16 @@ mod tests {
 		interceptor::interceptors::Interceptors,
 	};
 	use reifydb_value::value::{
+		Value,
+		column_view::ColumnView,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		identity::IdentityId,
 		system_columns::{SystemColumn, with_system_column},
 		value_type::ValueType,
 	};
 
-	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
 		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},

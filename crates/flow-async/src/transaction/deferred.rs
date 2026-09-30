@@ -13,14 +13,15 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion, SourceVersion},
 	interface::{
-		catalog::{flow::OperatorId, id::ViewId},
-		change::Change,
+		catalog::{dictionary::Dictionary, flow::OperatorId, id::ViewId, object::ObjectId},
+		change::{Change, ChangeOrigin, Diff},
 		store::MultiVersionRow,
 	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
+use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -34,9 +35,10 @@ use reifydb_transaction::{
 			DictionaryPreDeleteInterceptor, DictionaryPreUpdateInterceptor,
 		},
 		dictionary_row::{
-			DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor,
-			DictionaryRowPostUpdateInterceptor, DictionaryRowPreDeleteInterceptor,
-			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
+			DictionaryRowInterceptor, DictionaryRowPostDeleteInterceptor,
+			DictionaryRowPostInsertInterceptor, DictionaryRowPostUpdateInterceptor,
+			DictionaryRowPreDeleteInterceptor, DictionaryRowPreInsertInterceptor,
+			DictionaryRowPreUpdateInterceptor,
 		},
 		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
 		identity::{IdentityPostCreateInterceptor, IdentityPreDeleteInterceptor},
@@ -83,7 +85,15 @@ use reifydb_transaction::{
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	},
+};
+use smallvec::smallvec;
 use tracing::instrument;
 
 use crate::{
@@ -91,6 +101,8 @@ use crate::{
 	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
+		dictionary::DictionaryExtension,
+		pending_get,
 		read::{OperatorStateRangeIter, ReadFrom, read_from},
 		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
 		substrate::FlowSubstrate,
@@ -417,6 +429,80 @@ impl FlowTransaction for DeferredTransaction {
 	) -> Result<()> {
 		deferred_fetch_state_external(self.substrate.operators.as_ref(), self.version, keys, items);
 		Ok(())
+	}
+}
+
+impl Get for DeferredTransaction {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		pending_get(self, key)
+	}
+}
+
+impl Batch for DeferredTransaction {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		self.pending_mut().insert_batch(keys, rows);
+		Ok(())
+	}
+
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		self.pending_mut().remove_batch(keys);
+		Ok(())
+	}
+}
+
+impl Emit for DeferredTransaction {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+		let version = ChangeVersion::from(self.version());
+		let changed_at = self.clock().now();
+		self.track_flow_change(Change {
+			origin: ChangeOrigin::Object(ObjectId::view(view)),
+			version,
+			diffs: smallvec![diff],
+			changed_at,
+		});
+		Ok(())
+	}
+}
+
+impl Resolve for DeferredTransaction {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.find_dictionary(id))
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
+		self.get_from_dictionary(dictionary, id)
+	}
+}
+
+impl Intern for DeferredTransaction {
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		self.find_in_dictionary(dictionary, value)
+	}
+
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		let mut prepared: Vec<Value> = Vec::with_capacity(values.len());
+		for value in values {
+			let mut values_buf = [value.clone()];
+			DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
+			let [value] = values_buf;
+			prepared.push(value);
+		}
+
+		let outcomes = self.dictionary_allocators().intern_batch(dictionary, &prepared)?;
+
+		let mut created_ids: Vec<DictionaryEntryId> = Vec::new();
+		let mut created_values: Vec<Value> = Vec::new();
+		for (outcome, value) in outcomes.iter().zip(&prepared) {
+			if outcome.created {
+				created_ids.push(outcome.id);
+				created_values.push(value.clone());
+			}
+		}
+		if !created_ids.is_empty() {
+			DictionaryRowInterceptor::post_insert(self, dictionary, &created_ids, &created_values)?;
+		}
+
+		Ok(outcomes.into_iter().map(|outcome| outcome.id).collect())
 	}
 }
 

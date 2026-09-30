@@ -134,7 +134,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		self.set(&scoped, row.into_bytes())
+		self.set_one(&scoped, row.into_bytes())
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
@@ -409,7 +409,7 @@ fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, Option<By
 		if let Some(pre) = pre {
 			txn.classify(&key, Some(pre));
 		}
-		txn.remove(&key)?;
+		txn.remove_one(&key)?;
 	}
 	Ok(())
 }

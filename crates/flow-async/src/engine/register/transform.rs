@@ -27,10 +27,8 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::{
-		append::{AppendOperator, lane::assign_lanes},
-		extend::ExtendOperator,
-		filter::FilterOperator,
-		map::MapOperator,
+		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, first_input, map::MapOperator,
+		sort::SortOperator, source::catalog_schema,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -44,10 +42,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	engine::{
-		FlowEngineInner,
-		register::{config::evaluate_operator_params, first_input},
-	},
+	engine::{FlowEngineInner, register::config::evaluate_operator_params},
 	operator::{
 		aggregation::operator::AggregateOperator,
 		apply::ApplyOperator,
@@ -55,8 +50,6 @@ use crate::{
 		gate::GateOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
 		lookup::operator::{LookupConfig, LookupOperator},
-		scan::catalog_schema,
-		sort::SortOperator,
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
@@ -167,10 +160,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
-		self.operators.insert(
-			(flow_id, operator_id),
-			Box::new(SortOperator::new(parent_schema, operator_id, Vec::new())),
-		);
+		self.operators.insert((flow_id, operator_id), Box::new(SortOperator::new(parent_schema, operator_id)));
 		Ok(())
 	}
 
@@ -394,14 +384,6 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 	) -> Result<()> {
-		if inputs.len() != 2 {
-			return Err(Error::from(FlowGraphError::NodeInputArity {
-				operator: "Append",
-				expected: "exactly 2",
-				found: inputs.len(),
-			}));
-		}
-
 		let mut parent_schemas = Vec::with_capacity(inputs.len());
 
 		for input_node_id in inputs {
@@ -417,11 +399,9 @@ impl FlowEngineInner {
 			parent_schemas.push(schema);
 		}
 
-		let parent_schema = parent_schemas.swap_remove(0);
-		let lanes = assign_lanes(flow, operator_id)?;
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), lanes)),
+			Box::new(AppendOperator::from_flow(flow, operator_id, inputs, parent_schemas)?),
 		);
 		Ok(())
 	}

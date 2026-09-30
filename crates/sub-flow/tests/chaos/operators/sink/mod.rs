@@ -29,10 +29,10 @@ use reifydb_core::interface::{
 	flow::OperatorCapability,
 	resolved::{ResolvedNamespace, ResolvedView},
 };
+use reifydb_flow::operator::sink::table::TableSink;
 use reifydb_flow_async::{
 	operator::sink::{
 		DurableSink, ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-		view::SinkTableViewOperator,
 	},
 	transaction::deferred::DeferredTransaction,
 };
@@ -141,7 +141,7 @@ fn resolved(def: View) -> ResolvedView {
 
 /// United here because `Harness` is generic over a concrete `HostOperator`.
 pub enum SinkOp {
-	Table(SinkTableViewOperator),
+	Table(TableSink),
 	Series(SinkSeriesViewOperator),
 	Ring(SinkRingBufferViewOperator),
 }
@@ -165,7 +165,7 @@ impl DurableSink for SinkOp {
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
-			SinkOp::Table(o) => o.apply(txn, change),
+			SinkOp::Table(o) => DurableSink::apply(o, txn, change),
 			SinkOp::Series(o) => o.apply(txn, change),
 			SinkOp::Ring(o) => o.apply(txn, change),
 		}
@@ -187,7 +187,7 @@ pub fn build(kind: Kind, layout: Layout, runtime: RuntimeContext) -> SinkOp {
 				partition_by: partition_by.clone(),
 				sort: vec![],
 			});
-			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), partition_by, runtime))
+			SinkOp::Table(TableSink::new(SINK, def, runtime))
 		}
 		Kind::Series => {
 			let key = SeriesKey::Integer {

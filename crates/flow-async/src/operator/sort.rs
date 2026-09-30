@@ -2,37 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_schema::SchemaRef;
-use reifydb_core::{
-	expression::Expression,
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-};
+use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
+use reifydb_flow::operator::sort::SortOperator;
 use reifydb_value::Result;
 
 use crate::operator::{HostOperator, host::HostContext};
 
-pub struct SortOperator {
-	parent_schema: Option<SchemaRef>,
-	operator: OperatorId,
-	_expressions: Vec<Expression>,
-}
-
-impl SortOperator {
-	pub fn new(parent_schema: Option<SchemaRef>, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
-		Self {
-			parent_schema,
-			operator,
-			_expressions,
-		}
-	}
-
-	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
-		self.parent_schema.clone()
-	}
-}
-
 impl HostOperator for SortOperator {
 	fn id(&self) -> OperatorId {
-		self.operator
+		self.id()
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -40,9 +18,7 @@ impl HostOperator for SortOperator {
 	}
 
 	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		// TODO: Implement single-encoded sort processing
-
-		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))
+		Ok(SortOperator::apply(self, change))
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {

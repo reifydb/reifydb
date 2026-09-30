@@ -22,12 +22,15 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 	key::any::TaggedKey,
 };
-use reifydb_flow::error::FlowGraphError;
+use reifydb_flow::{
+	error::FlowGraphError,
+	txn::{Batch, Get},
+};
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction,
+		ChangeCoordinate, FlowTransaction, pending_get,
 		read::{ReadFrom, read_from},
 		substrate::FlowSubstrate,
 	},
@@ -195,6 +198,24 @@ fn ephemeral_fetch_state_external(
 				version,
 			});
 		}
+	}
+}
+
+impl Get for EphemeralTransaction {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		pending_get(self, key)
+	}
+}
+
+impl Batch for EphemeralTransaction {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		self.pending_mut().insert_batch(keys, rows);
+		Ok(())
+	}
+
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		self.pending_mut().remove_batch(keys);
+		Ok(())
 	}
 }
 

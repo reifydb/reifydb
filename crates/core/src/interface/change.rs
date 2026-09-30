@@ -236,6 +236,15 @@ impl Change {
 		}
 	}
 
+	pub fn from_operator(
+		operator: OperatorId,
+		version: ChangeVersion,
+		changed_at: DateTime,
+		result: Change,
+	) -> Self {
+		Self::from_flow(operator, version, result.diffs, changed_at.max(result.changed_at))
+	}
+
 	pub fn row_count(&self) -> usize {
 		self.diffs.iter().map(Diff::row_count).sum()
 	}

@@ -711,7 +711,10 @@ mod join_row_expiry_guard_tests {
 	use reifydb_core::{
 		common::{CommitVersion, OperatorClass, SourceVersion},
 		interface::{
-			catalog::{config::ConfigKey, flow::OperatorId, id::ViewId, storage::StorageId},
+			catalog::{
+				config::ConfigKey, dictionary::Dictionary, flow::OperatorId, id::ViewId,
+				storage::StorageId,
+			},
 			store::MultiVersionRow,
 		},
 		key::{
@@ -726,6 +729,7 @@ mod join_row_expiry_guard_tests {
 		},
 		state::timer::{StateStore, TimerStore},
 	};
+	use reifydb_flow::txn::Resolve;
 	use reifydb_flow_async::{
 		operator::{
 			host::HostContext,
@@ -843,6 +847,16 @@ mod join_row_expiry_guard_tests {
 		}
 	}
 
+	impl Resolve for RecordingHost {
+		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+			Ok(None)
+		}
+
+		fn resolve(&mut self, _dictionary: &Dictionary, _id: DictionaryEntryId) -> Result<Option<Value>> {
+			Ok(None)
+		}
+	}
+
 	impl HostContext for RecordingHost {
 		fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
 			&mut self.row_shape_cache
@@ -955,10 +969,6 @@ mod join_row_expiry_guard_tests {
 
 		fn dictionary_id_by_name(&mut self, _name: &str) -> Result<Option<DictionaryId>> {
 			Ok(None)
-		}
-
-		fn dictionary_value_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
-			None
 		}
 
 		fn dictionary_id_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {

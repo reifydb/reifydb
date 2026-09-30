@@ -26,9 +26,11 @@ use reifydb_flow::{
 	error::FlowSinkError,
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
-		partition::{ensure_partition_unchanged, partition_of},
+		partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 		shape_field_columns,
+		table::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
 	},
+	txn::Emit,
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -45,11 +47,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{
-	DurableSink, emit_view_change,
-	partition::resolve_partition_flow,
-	view::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
-};
+use super::DurableSink;
 use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 
 pub struct SinkSeriesViewOperator {
@@ -223,9 +221,9 @@ impl SinkSeriesViewOperator {
 			encoded_bytes_list.push(encoded);
 		}
 		for (key, encoded) in keys.iter().zip(encoded_bytes_list.iter()) {
-			txn.set(key, encoded.clone())?;
+			txn.set_one(key, encoded.clone())?;
 		}
-		emit_view_change(txn, view, Diff::insert(coerced));
+		txn.emit(view.id(), Diff::insert(coerced))?;
 		Ok(())
 	}
 
@@ -324,10 +322,10 @@ impl SinkSeriesViewOperator {
 		for ((pre_key, post_key), post_encoded) in
 			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_bytes_vec.iter())
 		{
-			txn.remove(pre_key)?;
-			txn.set(post_key, post_encoded.clone())?;
+			txn.remove_one(pre_key)?;
+			txn.set_one(post_key, post_encoded.clone())?;
 		}
-		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
+		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
 	}
 
@@ -368,9 +366,9 @@ impl SinkSeriesViewOperator {
 			keys.push(key);
 		}
 		for key in keys.iter() {
-			txn.remove(key)?;
+			txn.remove_one(key)?;
 		}
-		emit_view_change(txn, view, Diff::remove(coerced));
+		txn.emit(view.id(), Diff::remove(coerced))?;
 		Ok(())
 	}
 }

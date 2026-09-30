@@ -23,6 +23,7 @@ runtime = [
     "dep:reifydb-rql",
     "dep:reifydb-runtime",
     "dep:reifydb-transaction",
+    "dep:postcard",
     "dep:serde",
 ]
 
@@ -39,6 +40,7 @@ reifydb-runtime = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 
+postcard = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 tracing = { workspace = true }

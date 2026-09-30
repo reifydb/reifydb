@@ -5,15 +5,13 @@ use reifydb_core::{
 	flow::dag::FlowDag,
 	interface::catalog::{flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId},
 };
+use reifydb_flow::operator::{first_input, sink::table::TableSink};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
 use crate::{
-	engine::{FlowEngineInner, register::first_input},
-	operator::sink::{
-		ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-		view::SinkTableViewOperator,
-	},
+	engine::FlowEngineInner,
+	operator::sink::{ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator},
 };
 
 impl FlowEngineInner {
@@ -29,15 +27,9 @@ impl FlowEngineInner {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = resolved.def().partition_by().to_vec();
 		self.durable_sinks.insert(
 			(flow.id, operator_id),
-			Box::new(SinkTableViewOperator::new(
-				operator_id,
-				resolved,
-				partition_by,
-				self.runtime_context.clone(),
-			)),
+			Box::new(TableSink::new(operator_id, resolved.def().clone(), self.runtime_context.clone())),
 		);
 		Ok(())
 	}

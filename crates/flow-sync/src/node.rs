@@ -1,142 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use arrow_array::RecordBatch;
-use arrow_schema::{Schema, SchemaRef};
-use reifydb_core::{
-	interface::{
-		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId},
-		change::{Change, Diff},
+use arrow_schema::SchemaRef;
+use reifydb_core::interface::{catalog::flow::OperatorId, change::Change};
+use reifydb_flow::{
+	operator::{
+		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
+		sink::table::TableSink, sort::SortOperator, source::SourceOperator,
 	},
-	value::{batch::batch, column::builder::ColumnBuilder},
+	txn::{Batch, Emit, Get, Intern},
 };
-use reifydb_flow::operator::{
-	append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
-};
-use reifydb_value::{
-	Result,
-	value::{
-		Value,
-		column_view::{ColumnView, ViewData},
-		dictionary::{DictionaryEntryId, DictionaryId},
-	},
-};
-
-use crate::{
-	sink::TableSink,
-	txn::{Emit, Intern, Lookup, Rows},
-};
-
-pub struct SourceNode {
-	operator: OperatorId,
-	columns: Vec<Column>,
-}
-
-impl SourceNode {
-	pub(crate) fn new(operator: OperatorId, columns: Vec<Column>) -> Self {
-		Self {
-			operator,
-			columns,
-		}
-	}
-
-	fn apply<T: Lookup + Intern>(&self, txn: &mut T, change: Change) -> Result<Change> {
-		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
-		for diff in change.diffs {
-			decoded_diffs.push(match diff {
-				Diff::Insert {
-					post,
-					..
-				} => {
-					let mut decoded = post;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::insert(decoded)
-				}
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => {
-					let mut decoded_pre = pre;
-					let mut decoded_post = post;
-					decode_dictionary_columns(&mut decoded_pre, txn)?;
-					decode_dictionary_columns(&mut decoded_post, txn)?;
-					Diff::update(decoded_pre, decoded_post)
-				}
-				Diff::Remove {
-					pre,
-					..
-				} => {
-					let mut decoded = pre;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::remove(decoded)
-				}
-			});
-		}
-		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
-	}
-
-	fn output_schema(&self) -> SchemaRef {
-		Arc::new(Schema::new(
-			self.columns
-				.iter()
-				.map(|column| {
-					ColumnBuilder::with_capacity(column.constraint.get_type(), 0)
-						.finish(&column.name)
-						.0
-				})
-				.collect::<Vec<_>>(),
-		))
-	}
-}
+use reifydb_value::Result;
 
 pub enum Node {
-	Source(SourceNode),
+	Source(SourceOperator),
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
 	Append(AppendOperator),
-	Sort(OperatorId, Option<SchemaRef>),
+	Sort(SortOperator),
 	Sink(TableSink),
 }
 
 impl Node {
 	pub fn id(&self) -> OperatorId {
 		match self {
-			Node::Source(source) => source.operator,
+			Node::Source(source) => source.id(),
 			Node::Filter(filter) => filter.id(),
 			Node::Map(map) => map.id(),
 			Node::Extend(extend) => extend.id(),
 			Node::Append(append) => append.id(),
-			Node::Sort(operator, _) => *operator,
+			Node::Sort(sort) => sort.id(),
 			Node::Sink(sink) => sink.id(),
 		}
 	}
 
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		match self {
-			Node::Source(source) => Some(source.output_schema()),
+			Node::Source(source) => source.output_schema(),
 			Node::Filter(filter) => filter.output_schema(),
 			Node::Map(map) => map.output_schema(),
 			Node::Extend(extend) => extend.output_schema(),
 			Node::Append(append) => append.output_schema(),
-			Node::Sort(_, parent_schema) => parent_schema.clone(),
+			Node::Sort(sort) => sort.output_schema(),
 			Node::Sink(_) => None,
 		}
 	}
 
-	pub fn apply<T: Rows + Emit + Lookup + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		match self {
 			Node::Source(source) => source.apply(txn, change),
 			Node::Filter(filter) => filter.apply(change),
 			Node::Map(map) => map.apply(change),
 			Node::Extend(extend) => extend.apply(change),
 			Node::Append(append) => append.apply(change),
-			Node::Sort(operator, _) => {
-				Ok(Change::from_flow(*operator, change.version, change.diffs, change.changed_at))
-			}
+			Node::Sort(sort) => Ok(sort.apply(change)),
 			Node::Sink(sink) => {
 				let version = change.version;
 				let changed_at = change.changed_at;
@@ -145,50 +63,6 @@ impl Node {
 			}
 		}
 	}
-}
-
-fn decode_dictionary_columns<T: Lookup + Intern>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {
-	let dict_columns: Vec<(usize, Dictionary)> = {
-		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
-		for (pos, (field, array)) in columns.schema_ref().fields().iter().zip(columns.columns()).enumerate() {
-			if let ViewData::DictionaryId {
-				dictionary_id: Some(id),
-				..
-			} = ColumnView::try_from((array, field.as_ref()))?.data
-			{
-				ids.push((pos, id));
-			}
-		}
-		ids.into_iter().map(|(pos, id)| Ok((pos, txn.dictionary(id)?))).collect::<Result<Vec<_>>>()?
-	};
-
-	if dict_columns.is_empty() {
-		return Ok(());
-	}
-
-	let mut decoded: Vec<_> =
-		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
-	for (col_pos, dictionary) in &dict_columns {
-		let (field, array) = &decoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
-
-		for row_idx in 0..row_count {
-			let id_value = column.get_value(row_idx);
-			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => txn.resolve(dictionary, entry_id)?.unwrap_or(Value::none()),
-				None => Value::none(),
-			};
-			new_data.push_value(value);
-		}
-
-		let name = field.name().clone();
-		decoded[*col_pos] = new_data.finish(&name);
-	}
-
-	*columns = batch(decoded)?;
-	Ok(())
 }
 
 #[cfg(test)]
@@ -214,6 +88,10 @@ mod tests {
 			column::{builder::ColumnBuilder, factory::int8},
 		},
 	};
+	use reifydb_flow::{
+		operator::{sort::SortOperator, source::SourceOperator},
+		txn::Intern,
+	};
 	use reifydb_value::{
 		factory::time::at_millis,
 		value::{
@@ -228,8 +106,8 @@ mod tests {
 		},
 	};
 
-	use super::{Node, SourceNode};
-	use crate::{testing::TestingTx, txn::Intern};
+	use super::Node;
+	use crate::testing::TestingTx;
 
 	const SYMBOLS: DictionaryId = DictionaryId(7);
 
@@ -315,9 +193,9 @@ mod tests {
 	fn a_table_source_hands_downstream_the_dictionary_values_instead_of_the_entry_ids() {
 		let mut txn = TestingTx::default();
 		txn.dictionaries.insert(SYMBOLS, symbols());
-		let sol = txn.intern(&symbols(), &utf8("sol")).unwrap();
-		let eth = txn.intern(&symbols(), &utf8("eth")).unwrap();
-		let mut source = Node::Source(SourceNode::new(OperatorId(1), trades_table().columns));
+		let sol = txn.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
+		let eth = txn.intern(&symbols(), &[utf8("eth")]).unwrap()[0];
+		let mut source = Node::Source(SourceOperator::from_columns(OperatorId(1), &trades_table().columns));
 
 		let out = source
 			.apply(
@@ -376,7 +254,7 @@ mod tests {
 			Diff::update(trades(&[(3, 30, entry)]), trades(&[(3, 31, entry)])),
 			Diff::remove(trades(&[(4, 40, entry)])),
 		];
-		let mut sort = Node::Sort(OperatorId(4), None);
+		let mut sort = Node::Sort(SortOperator::new(None, OperatorId(4)));
 
 		let out = sort
 			.apply(&mut txn, Change::from_flow(OperatorId(2), version(), diffs.clone(), at_millis(5)))

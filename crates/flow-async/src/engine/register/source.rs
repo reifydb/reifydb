@@ -9,16 +9,11 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
+use reifydb_flow::operator::source::SourceOperator;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::{
-	engine::FlowEngineInner,
-	operator::scan::{
-		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-		view::SourceViewOperator,
-	},
-};
+use crate::engine::FlowEngineInner;
 
 impl FlowEngineInner {
 	#[inline]
@@ -32,7 +27,10 @@ impl FlowEngineInner {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
 		self.add_source(flow.id, operator_id, ObjectId::table(table.id));
-		self.operators.insert((flow.id, operator_id), Box::new(SourceTableOperator::new(operator_id, table)));
+		self.operators.insert(
+			(flow.id, operator_id),
+			Box::new(SourceOperator::from_columns(operator_id, &table.columns)),
+		);
 		Ok(())
 	}
 
@@ -46,7 +44,10 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
 		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
-		self.operators.insert((flow.id, operator_id), Box::new(SourceRingBufferOperator::new(operator_id, rb)));
+		self.operators.insert(
+			(flow.id, operator_id),
+			Box::new(SourceOperator::from_columns(operator_id, &rb.columns)),
+		);
 		Ok(())
 	}
 
@@ -60,10 +61,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
-		self.operators.insert(
-			(flow.id, operator_id),
-			Box::new(SourceSeriesOperator::new(operator_id).with_series(&s)),
-		);
+		self.operators.insert((flow.id, operator_id), Box::new(SourceOperator::from_series(operator_id, &s)));
 		Ok(())
 	}
 
@@ -77,7 +75,10 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));
-		self.operators.insert((flow.id, operator_id), Box::new(SourceViewOperator::new(operator_id, view)));
+		self.operators.insert(
+			(flow.id, operator_id),
+			Box::new(SourceOperator::from_columns(operator_id, view.columns())),
+		);
 		Ok(())
 	}
 }

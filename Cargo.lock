@@ -3836,6 +3836,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-flow",
  "reifydb-flow-async",
  "reifydb-routine-abi",
  "reifydb-runtime",
@@ -3865,6 +3866,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
+ "postcard",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -3921,7 +3923,6 @@ version = "0.9.3"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
- "postcard",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -4788,6 +4789,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-flow",
  "reifydb-flow-async",
  "reifydb-macro",
  "reifydb-runtime",

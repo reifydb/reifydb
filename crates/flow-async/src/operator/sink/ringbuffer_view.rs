@@ -57,10 +57,17 @@ use reifydb_core::{
 		column::builder::ColumnBuilder,
 	},
 };
-use reifydb_flow::operator::sink::{
-	SourceRowEncoder, coerce_columns,
-	partition::{ensure_partition_unchanged, partition_of},
-	shape_field_columns,
+use reifydb_flow::{
+	operator::{
+		sink::{
+			SourceRowEncoder, coerce_columns,
+			partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+			shape_field_columns,
+			table::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
+		},
+		source::decode_dictionary_columns,
+	},
+	txn::{Batch, Emit, Get},
 };
 use reifydb_macro::operator_state;
 use reifydb_runtime::context::RuntimeContext;
@@ -75,14 +82,10 @@ use reifydb_value::{
 	},
 };
 
-use super::{
-	DurableSink, decode_dictionary_columns, emit_view_change,
-	partition::resolve_partition_flow,
-	view::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
-};
+use super::DurableSink;
 use crate::{
 	error::FlowStateError,
-	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, row_times, state::iter::StateIterator},
+	operator::{join::column::JoinedColumnsBuilder, row_times, state::iter::StateIterator},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
@@ -301,7 +304,7 @@ impl SinkRingBufferViewOperator {
 	fn write_metadata(&self, txn: &mut DeferredTransaction, metadata: &RingBufferMetadata) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded(self.storage);
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row.into_bytes())?;
+		txn.set_one(&key, row.into_bytes())?;
 		self.write_meta_mirror(txn, None, metadata)?;
 		self.assert_mirrors_mvcc(txn, None, &key)
 	}
@@ -332,7 +335,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row.into_bytes())?;
+		txn.set_one(&key, row.into_bytes())?;
 		let partition = partition_of_values(partition_values);
 		self.write_meta_mirror(txn, partition, metadata)?;
 		self.assert_mirrors_mvcc(txn, partition, &key)
@@ -340,7 +343,7 @@ impl SinkRingBufferViewOperator {
 
 	fn remove_partition_metadata(&self, txn: &mut DeferredTransaction, partition_values: &[Value]) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
-		txn.remove(&key)?;
+		txn.remove_one(&key)?;
 		let partition = partition_of_values(partition_values);
 		self.state_remove(txn, &self.meta_key(partition))?;
 		self.assert_mirrors_mvcc(txn, partition, &key)
@@ -925,11 +928,11 @@ impl SinkRingBufferViewOperator {
 			)?;
 		}
 
-		txn.set_batch(&row_keys, &values_bytes_vec)?;
-		emit_view_change(txn, view, Diff::insert(coerced));
+		txn.set(&row_keys, &values_bytes_vec)?;
+		txn.emit(view.id(), Diff::insert(coerced))?;
 
 		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted)? {
-			emit_view_change(txn, view, diff);
+			txn.emit(view.id(), diff)?;
 		}
 		Ok(())
 	}
@@ -963,7 +966,7 @@ impl SinkRingBufferViewOperator {
 			};
 			evicted_rns.push(source_rn.unwrap_or(oldest_rn));
 			evicted.push(row);
-			txn.remove(&pre_key)?;
+			txn.remove_one(&pre_key)?;
 			meta.count = meta.count.saturating_sub(1);
 			evict_needed -= 1;
 		}
@@ -1022,7 +1025,7 @@ impl SinkRingBufferViewOperator {
 			})
 			.collect();
 		let mut evicted = append_rows(batch(storage_columns)?, shape, evicted_bytes_vec, evicted_rns)?;
-		decode_dictionary_columns(&mut evicted, &mut TxnHostContext::new(txn, self.operator))?;
+		decode_dictionary_columns(&mut evicted, txn)?;
 		Ok(Some(Diff::remove(evicted)))
 	}
 
@@ -1087,18 +1090,17 @@ impl SinkRingBufferViewOperator {
 			};
 			let key = self.rb_key(object_id, storage_rn, partition);
 
-			txn.set(&key, encoded[row_idx].clone())?;
+			txn.set_one(&key, encoded[row_idx].clone())?;
 			applied.push(row_idx);
 		}
 		if !applied.is_empty() {
-			emit_view_change(
-				txn,
-				view,
+			txn.emit(
+				view.id(),
 				Diff::update(
 					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied)?,
 					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied)?,
 				),
-			);
+			)?;
 		}
 		Ok(())
 	}
@@ -1144,7 +1146,7 @@ impl SinkRingBufferViewOperator {
 			self.drop_row_entry(txn, partition, storage_rn)?;
 
 			let key = self.rb_key(object_id, storage_rn, partition);
-			txn.remove(&key)?;
+			txn.remove_one(&key)?;
 
 			if let Some(partition_values) = partition_values {
 				if !partition_metadata.contains_key(&partition_values) {
@@ -1164,11 +1166,7 @@ impl SinkRingBufferViewOperator {
 			applied.push(row_idx);
 		}
 		if !applied.is_empty() {
-			emit_view_change(
-				txn,
-				view,
-				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)?),
-			);
+			txn.emit(view.id(), Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)?))?;
 		}
 		Ok(())
 	}

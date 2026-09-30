@@ -23,13 +23,14 @@ use reifydb_core::{
 	internal_err,
 	key::any::TaggedKey,
 };
+use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
 #[cfg(feature = "testing")]
 use reifydb_flow_sync::testing::{InstalledHooks, TestingTxn};
 use reifydb_flow_sync::{
 	graph::build,
 	node::Node,
 	run::{flow_sources, run, run_flow},
-	txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
+	txn::{Changes, ClockNow, Lookup},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
@@ -159,24 +160,32 @@ impl Changes for FlowTransaction<'_> {
 	}
 }
 
-impl Rows for FlowTransaction<'_> {
+impl Get for FlowTransaction<'_> {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.tx.get(&tagged(key))?.map(|row| row.bytes))
 	}
+}
 
-	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
-		self.tx.set(&tagged(key), row)
+impl Batch for FlowTransaction<'_> {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		for (key, row) in keys.iter().zip(rows) {
+			self.tx.set(&tagged(key), row.clone())?;
+		}
+		Ok(())
 	}
 
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		let key = tagged(key);
-		match self.tx.get_committed(&key)? {
-			Some(committed) => {
-				self.tx.mark_preexisting(&key)?;
-				self.tx.remove_with_pre(&key, committed.bytes)
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			let key = tagged(key);
+			match self.tx.get_committed(&key)? {
+				Some(committed) => {
+					self.tx.mark_preexisting(&key)?;
+					self.tx.remove_with_pre(&key, committed.bytes)?;
+				}
+				None => self.tx.remove(&key)?,
 			}
-			None => self.tx.remove(&key),
 		}
+		Ok(())
 	}
 }
 
@@ -204,23 +213,25 @@ impl Lookup for FlowTransaction<'_> {
 	fn table(&mut self, id: TableId) -> Result<Table> {
 		self.catalog.get_table(&mut self.tx, id)
 	}
-
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Dictionary> {
-		self.catalog.get_dictionary(&mut self.tx, id)
-	}
 }
 
-impl Intern for FlowTransaction<'_> {
-	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		self.tx.insert_into_dictionary(dictionary, value)
-	}
-
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		self.tx.find_in_dictionary(dictionary, value)
+impl Resolve for FlowTransaction<'_> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		self.catalog.find_dictionary(&mut self.tx, id)
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		self.tx.get_from_dictionary(dictionary, id)
+	}
+}
+
+impl Intern for FlowTransaction<'_> {
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		self.tx.find_in_dictionary(dictionary, value)
+	}
+
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		values.iter().map(|value| self.tx.insert_into_dictionary(dictionary, value)).collect()
 	}
 }
 
@@ -239,7 +250,8 @@ mod tests {
 		},
 		value::batch::single_row,
 	};
-	use reifydb_flow_sync::txn::{Changes, Emit, Lookup};
+	use reifydb_flow::txn::Emit;
+	use reifydb_flow_sync::txn::{Changes, Lookup};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::{params::Params, value::Value};

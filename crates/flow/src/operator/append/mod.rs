@@ -5,9 +5,12 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::SchemaRef;
-use reifydb_core::interface::{
-	catalog::flow::OperatorId,
-	change::{Change, ChangeOrigin, Diff},
+use reifydb_core::{
+	flow::dag::FlowDag,
+	interface::{
+		catalog::flow::OperatorId,
+		change::{Change, ChangeOrigin, Diff},
+	},
 };
 use reifydb_value::{
 	Result,
@@ -19,7 +22,10 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowGraphError,
-	operator::{FORWARDED_SYSTEM_COLUMNS, append::lane::AppendLanes},
+	operator::{
+		FORWARDED_SYSTEM_COLUMNS,
+		append::lane::{AppendLanes, assign_lanes},
+	},
 };
 
 pub mod lane;
@@ -58,6 +64,24 @@ impl AppendOperator {
 			input_nodes,
 			lanes,
 		}
+	}
+
+	pub fn from_flow(
+		flow: &FlowDag,
+		operator: OperatorId,
+		inputs: &[OperatorId],
+		mut parent_schemas: Vec<Option<SchemaRef>>,
+	) -> Result<Self> {
+		if inputs.len() != 2 {
+			return Err(Error::from(FlowGraphError::NodeInputArity {
+				operator: "Append",
+				expected: "exactly 2",
+				found: inputs.len(),
+			}));
+		}
+		let parent_schema = parent_schemas.swap_remove(0);
+		let lanes = assign_lanes(flow, operator)?;
+		Ok(Self::new(operator, parent_schema, inputs.to_vec(), lanes))
 	}
 
 	pub fn output_schema(&self) -> Option<SchemaRef> {

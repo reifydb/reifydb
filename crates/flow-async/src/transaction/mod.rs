@@ -22,6 +22,7 @@ use reifydb_core::{
 	},
 	key::any::TaggedKey,
 };
+use reifydb_flow::txn::{Batch, Get};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -111,7 +112,7 @@ impl DeferredParams {
 	}
 }
 
-pub trait FlowTransaction: Sized + Send + 'static {
+pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 	fn version(&self) -> CommitVersion;
 
 	fn clock(&self) -> &Clock;
@@ -187,20 +188,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		take(self.armed_mut())
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		let pending = match self.pending().write_at(key) {
-			Some(PendingWrite::Remove {
-				..
-			}) => Some(None),
-			Some(PendingWrite::Set(value)) => Some(Some(value.clone())),
-			None => None,
-		};
-		if let Some(result) = pending {
-			return Ok(result);
-		}
-		self.storage_get(key)
-	}
-
 	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		let pending = match self.pending().write_at(key) {
 			Some(PendingWrite::Remove {
@@ -238,12 +225,12 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		})
 	}
 
-	fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
+	fn set_one(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert(key.clone(), value.into());
 		Ok(())
 	}
 
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_one(&mut self, key: &EncodedKey) -> Result<()> {
 		self.pending_mut().remove(key.clone());
 		Ok(())
 	}
@@ -255,16 +242,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		self.pending_mut().remove_silent(key.clone());
-		Ok(())
-	}
-
-	fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		self.pending_mut().insert_batch(keys, values);
-		Ok(())
-	}
-
-	fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}
 
@@ -313,5 +290,12 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
 		self.accumulator_mut().take_entries()
+	}
+}
+
+pub fn pending_get<T: FlowTransaction>(txn: &mut T, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+	match txn.lookup_overlays(key) {
+		Some(overlay) => Ok(overlay),
+		None => txn.storage_get(key),
 	}
 }

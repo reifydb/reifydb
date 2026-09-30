@@ -142,6 +142,7 @@ mod tests {
 			state::{GroupId, KeyspaceId, unmanaged_key},
 		},
 	};
+	use reifydb_flow::operator::source::SourceOperator;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 	use reifydb_test_harness::engine::TestEngine;
@@ -153,10 +154,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{
-			metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
-			scan::series::SourceSeriesOperator,
-		},
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{join_expiry::join_expiry_key, substrate::FlowSubstrate},
 	};
 
@@ -220,7 +218,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.apply_batch(&[OperatorWrite::Insert {
@@ -273,7 +271,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		let at = DateTime::from_millis(5_000);
@@ -344,7 +342,7 @@ mod tests {
 				},
 			));
 			inner.register_flow_dag(builder.build());
-			inner.insert_operator(flow_id, operator, Box::new(SourceSeriesOperator::new(operator)));
+			inner.insert_operator(flow_id, operator, Box::new(SourceOperator::from_columns(operator, &[])));
 		}
 
 		inner.remove_flow(FlowId(1));
@@ -391,7 +389,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
 
 		inner.remove_flow(FlowId(1));
 

@@ -18,6 +18,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
+use reifydb_flow::txn::Get;
 use reifydb_flow_async::transaction::{
 	ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
 };

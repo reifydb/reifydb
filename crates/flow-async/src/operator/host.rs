@@ -11,6 +11,7 @@ use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
+		dictionary::Dictionary,
 		flow::OperatorId,
 		id::ViewId,
 		storage::StorageId,
@@ -29,6 +30,7 @@ use reifydb_core::{
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 };
+use reifydb_flow::txn::Resolve;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -63,7 +65,7 @@ use crate::{
 	},
 };
 
-pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
+pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn version(&self) -> CommitVersion;
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
@@ -123,8 +125,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
-
-	fn dictionary_value_type(&mut self, dictionary: DictionaryId) -> Option<ValueType>;
 
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType>;
 
@@ -547,10 +547,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		Ok(self.txn.find_dictionary_by_name(name).map(|d| d.id))
 	}
 
-	fn dictionary_value_type(&mut self, dictionary: DictionaryId) -> Option<ValueType> {
-		self.txn.find_dictionary(dictionary).map(|d| d.value_type)
-	}
-
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType> {
 		self.txn.find_dictionary(dictionary).map(|d| d.id_type)
 	}
@@ -567,6 +563,16 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 			Some(dict) => self.txn.get_from_dictionary(&dict, id),
 			None => Ok(None),
 		}
+	}
+}
+
+impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.txn.find_dictionary(id))
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
+		self.txn.get_from_dictionary(dictionary, id)
 	}
 }
 

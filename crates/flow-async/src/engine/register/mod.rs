@@ -306,7 +306,3 @@ impl FlowEngineInner {
 		Ok(self.require_parent(flow_id, input)?.output_schema())
 	}
 }
-
-fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
-	inputs.first().copied().ok_or_else(|| Error::from(FlowGraphError::MissingInputEdge))
-}

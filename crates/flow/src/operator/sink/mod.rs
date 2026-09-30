@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod partition;
+pub mod table;
 pub mod view;
 
 use std::sync::LazyLock;

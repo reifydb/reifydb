@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The four source operators over inserts, updates and removes.
+//! The one source operator, built from each of the four source kinds, over inserts, updates and removes.
 //!
-//! Their `apply` bodies are byte-identical, so the matrix is not four contracts but a guard against
-//! them drifting apart unnoticed. What is actually under test is dictionary decode, the only thing a
+//! All four kinds share one `apply`, so the matrix is not four contracts but a guard on the column
+//! shapes each kind builds. What is actually under test is dictionary decode, the only thing a
 //! source does: a plain column passes through untouched and a sweep over one would prove nothing.
 //!
 //! The retracted half is NOT covered here and cannot be: a folded view keys an update's `pre` by row
@@ -31,14 +31,8 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 };
-use reifydb_flow_async::operator::{
-	HostOperator,
-	host::HostContext,
-	scan::{
-		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-		view::SourceViewOperator,
-	},
-};
+use reifydb_flow::operator::source::SourceOperator;
+use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -75,10 +69,10 @@ pub const MATRIX: [Kind; 4] = [Kind::Series, Kind::Table, Kind::View, Kind::Ring
 
 /// United here because `Harness` is generic over a concrete `HostOperator`.
 pub enum SourceOp {
-	Series(SourceSeriesOperator),
-	Table(SourceTableOperator),
-	View(SourceViewOperator),
-	RingBuffer(SourceRingBufferOperator),
+	Series(SourceOperator),
+	Table(SourceOperator),
+	View(SourceOperator),
+	RingBuffer(SourceOperator),
 }
 
 impl HostOperator for SourceOp {
@@ -165,10 +159,10 @@ fn ringbuffer() -> RingBuffer {
 
 pub fn build(kind: Kind) -> SourceOp {
 	match kind {
-		Kind::Series => SourceOp::Series(SourceSeriesOperator::new(SOURCE)),
-		Kind::Table => SourceOp::Table(SourceTableOperator::new(SOURCE, table())),
-		Kind::View => SourceOp::View(SourceViewOperator::new(SOURCE, series_view())),
-		Kind::RingBuffer => SourceOp::RingBuffer(SourceRingBufferOperator::new(SOURCE, ringbuffer())),
+		Kind::Series => SourceOp::Series(SourceOperator::from_columns(SOURCE, &[])),
+		Kind::Table => SourceOp::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
+		Kind::View => SourceOp::View(SourceOperator::from_columns(SOURCE, series_view().columns())),
+		Kind::RingBuffer => SourceOp::RingBuffer(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
 	}
 }
 

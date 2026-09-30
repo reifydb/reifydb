@@ -40,3 +40,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-flow = { workspace = true }

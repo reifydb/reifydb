@@ -345,7 +345,7 @@ fn clear_views(
 		}
 	}
 	for key in &keys {
-		txn.remove(key)?;
+		txn.remove_one(key)?;
 	}
 	Ok(())
 }

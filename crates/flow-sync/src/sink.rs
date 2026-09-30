@@ -1,395 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
-
-use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::FieldRef;
-use postcard::to_stdvec;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
-		shape::{RowFamily, RowShape, RowShapeField},
-		table::EncodedTableRow,
-	},
-};
-use reifydb_core::{
-	interface::{
-		catalog::{
-			dictionary::Dictionary,
-			flow::OperatorId,
-			object::ObjectId,
-			storage::StorageId,
-			view::{View, ViewSortKey},
-		},
-		change::{Change, Diff},
-	},
-	key::partition::PartitionKey,
-	partition::{PartitionError, partition_col_indices},
-	row::row_shape_from_columns,
-	value::{batch::batch, column::builder::ColumnBuilder},
-};
-use reifydb_flow::{
-	error::FlowSinkError,
-	operator::sink::{
-		SourceRowEncoder, coerce_columns,
-		partition::{ensure_partition_unchanged, partition_of},
-		shape_field_columns,
-		view::{partitioned_key, sort_runs, sorted_view_key},
-	},
-};
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{
-	Result,
-	error::Error,
-	value::{
-		Value, blob::Blob, column_view::ColumnView, partition::Partition, system_columns::require_row_numbers,
-		value_type::ValueType,
-	},
-};
-
-use crate::txn::{Emit, Intern, Lookup, Rows};
-
-static REGISTRY_SHAPE: LazyLock<RowShape> =
-	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
-
-pub struct TableSink {
-	operator: OperatorId,
-	view: View,
-	storage: StorageId,
-	shape: RowShape,
-	sort: Vec<ViewSortKey>,
-	partition_indices: Vec<usize>,
-	runtime_context: RuntimeContext,
-}
-
-impl TableSink {
-	pub(crate) fn new(operator: OperatorId, view: View, runtime_context: RuntimeContext) -> Self {
-		let storage = view.storage_id();
-		let shape = row_shape_from_columns(RowFamily::Table, view.columns());
-		let sort = view.sort().to_vec();
-		let partition_indices = partition_col_indices(view.columns(), view.partition_by());
-		Self {
-			operator,
-			view,
-			storage,
-			shape,
-			sort,
-			partition_indices,
-			runtime_context,
-		}
-	}
-
-	pub(crate) fn id(&self) -> OperatorId {
-		self.operator
-	}
-
-	pub fn apply<T: Rows + Emit + Lookup + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
-		for diff in change.diffs.iter() {
-			match diff {
-				Diff::Insert {
-					post,
-					..
-				} => self.apply_table_view_insert(txn, post)?,
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => self.apply_table_view_update(txn, pre, post)?,
-				Diff::Remove {
-					pre,
-					..
-				} => self.apply_table_view_remove(txn, pre)?,
-			}
-		}
-		Ok(())
-	}
-
-	fn is_partitioned(&self) -> bool {
-		!self.partition_indices.is_empty()
-	}
-
-	fn apply_table_view_insert<T: Rows + Emit + Lookup + Intern>(
-		&self,
-		txn: &mut T,
-		post: &RecordBatch,
-	) -> Result<()> {
-		let coerced = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
-		let dict_encoded = dictionary_encode_view_columns(txn, &self.view, &coerced)?;
-		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.num_rows();
-		let field_columns = shape_field_columns(source, &self.shape);
-		let encoder = SourceRowEncoder::new(source, &self.shape, &field_columns)?;
-		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source)?
-		};
-		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
-		let encoded = encoder.encode_all()?;
-
-		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let key = if self.is_partitioned() {
-				let (partition, values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
-				resolve_partition_flow(txn, ObjectId::from(self.storage), partition, &values)?;
-				partitioned_key(self.storage, runs.next(), partition, row_number)
-			} else {
-				sorted_view_key(self.storage, runs.next(), row_number)
-			};
-			keys.push(key);
-			encoded_bytes_list.push(encoded);
-		}
-
-		for (key, encoded) in keys.iter().zip(encoded_bytes_list) {
-			txn.set(key, encoded)?;
-		}
-
-		txn.emit(self.view.id(), Diff::insert(coerced))
-	}
-
-	fn apply_table_view_update<T: Rows + Emit + Lookup + Intern>(
-		&self,
-		txn: &mut T,
-		pre: &RecordBatch,
-		post: &RecordBatch,
-	) -> Result<()> {
-		let coerced_pre = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
-		let coerced_post = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
-		let dict_pre = dictionary_encode_view_columns(txn, &self.view, &coerced_pre)?;
-		let dict_post = dictionary_encode_view_columns(txn, &self.view, &coerced_post)?;
-		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
-		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
-		let row_count = source_post.num_rows();
-		let field_columns = shape_field_columns(source_post, &self.shape);
-		let encoder = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?;
-		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
-			(&[][..], &[][..])
-		} else {
-			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
-		};
-		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
-		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
-		let encoded = encoder.encode_all()?;
-		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
-			let pre_row_number = pre_row_numbers[row_idx];
-			let post_row_number = post_row_numbers[row_idx];
-
-			let (pre_key, post_key) = if self.is_partitioned() {
-				let (pre_partition, _pre_values) =
-					partition_of(&self.view, &self.partition_indices, source_pre, row_idx)?;
-				let (post_partition, post_values) =
-					partition_of(&self.view, &self.partition_indices, source_post, row_idx)?;
-				ensure_partition_unchanged(
-					ObjectId::from(self.storage),
-					pre_partition,
-					post_partition,
-				)?;
-				resolve_partition_flow(
-					txn,
-					ObjectId::from(self.storage),
-					post_partition,
-					&post_values,
-				)?;
-				(
-					partitioned_key(self.storage, pre_runs.next(), pre_partition, pre_row_number),
-					partitioned_key(
-						self.storage,
-						post_runs.next(),
-						post_partition,
-						post_row_number,
-					),
-				)
-			} else {
-				(
-					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
-					sorted_view_key(self.storage, post_runs.next(), post_row_number),
-				)
-			};
-
-			let mut prior_created = match txn.get(&post_key)? {
-				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-					Some(read_created_at(&prior)).filter(|c| !c.is_epoch())
-				}
-				_ => None,
-			};
-			if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
-				prior_created = match txn.get(&pre_key)? {
-					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-						Some(read_created_at(&prior)).filter(|c| !c.is_epoch())
-					}
-					_ => None,
-				};
-			}
-			if let Some(c) = prior_created
-				&& post_encoded.len() >= SHAPE_HEADER_SIZE
-			{
-				let updated = self.shape.updated_at(&post_encoded);
-				let mut builder = EncodedTableRow::from(post_encoded).thaw();
-				builder.set_timestamps(c, updated);
-				post_encoded = builder.freeze_bytes();
-			}
-
-			pre_keys.push(pre_key);
-			post_keys.push(post_key);
-			post_encoded_bytes_vec.push(post_encoded);
-		}
-
-		for key in &pre_keys {
-			txn.remove(key)?;
-		}
-		for (key, encoded) in post_keys.iter().zip(post_encoded_bytes_vec) {
-			txn.set(key, encoded)?;
-		}
-
-		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
-	}
-
-	fn apply_table_view_remove<T: Rows + Emit + Lookup + Intern>(
-		&self,
-		txn: &mut T,
-		pre: &RecordBatch,
-	) -> Result<()> {
-		let coerced = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
-		let dict_encoded = dictionary_lookup_view_columns(txn, &self.view, &coerced)?;
-		let source = dict_encoded.as_ref().unwrap_or(&coerced);
-		let row_count = source.num_rows();
-		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source)?
-		};
-		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
-		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let key = if self.is_partitioned() {
-				let (partition, _values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
-				partitioned_key(self.storage, runs.next(), partition, row_number)
-			} else {
-				sorted_view_key(self.storage, runs.next(), row_number)
-			};
-			keys.push(key);
-		}
-
-		for key in &keys {
-			txn.remove(key)?;
-		}
-
-		txn.emit(self.view.id(), Diff::remove(coerced))
-	}
-}
-
-fn dictionary_encode_view_columns<T: Lookup + Intern>(
-	txn: &mut T,
-	view: &View,
-	columns: &RecordBatch,
-) -> Result<Option<RecordBatch>> {
-	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
-	for (pos, col) in view.columns().iter().enumerate() {
-		if let Some(dict_id) = col.dictionary_id {
-			dict_columns.push((pos, txn.dictionary(dict_id)?));
-		}
-	}
-
-	if dict_columns.is_empty() {
-		return Ok(None);
-	}
-
-	let mut encoded = pairs(columns);
-	for (col_pos, dictionary) in &dict_columns {
-		let (field, array) = &encoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for row_idx in 0..row_count {
-			let value = column.get_value(row_idx);
-			new_data.push_value(txn.intern(dictionary, &value)?.to_value());
-		}
-		let name = field.name().clone();
-		encoded[*col_pos] = new_data.finish(&name);
-	}
-
-	Ok(Some(batch(encoded)?))
-}
-
-fn dictionary_lookup_view_columns<T: Lookup + Intern>(
-	txn: &mut T,
-	view: &View,
-	columns: &RecordBatch,
-) -> Result<Option<RecordBatch>> {
-	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
-	for (pos, col) in view.columns().iter().enumerate() {
-		if let Some(dict_id) = col.dictionary_id {
-			dict_columns.push((pos, txn.dictionary(dict_id)?));
-		}
-	}
-
-	if dict_columns.is_empty() {
-		return Ok(None);
-	}
-
-	let mut encoded = pairs(columns);
-	for (col_pos, dictionary) in &dict_columns {
-		let (field, array) = &encoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for row_idx in 0..row_count {
-			let value = column.get_value(row_idx);
-			let id = txn.find(dictionary, &value)?.ok_or_else(|| {
-				Error::from(FlowSinkError::DictionaryEntryNotFound {
-					dictionary_id: format!("{:?}", dictionary.id),
-					column: view.columns()[*col_pos].name.to_string(),
-				})
-			})?;
-			new_data.push_value(id.to_value());
-		}
-		let name = field.name().clone();
-		encoded[*col_pos] = new_data.finish(&name);
-	}
-
-	Ok(Some(batch(encoded)?))
-}
-
-fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
-	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
-}
-
-fn resolve_partition_flow<T: Rows>(
-	txn: &mut T,
-	object: ObjectId,
-	partition: Partition,
-	values: &[Value],
-) -> Result<()> {
-	let key = PartitionKey::encoded(object, partition);
-	let encoded = to_stdvec(values).expect("value postcard is total");
-	let candidate = Value::Blob(Blob::from(encoded));
-	match txn.get(&key)? {
-		Some(row) => {
-			if REGISTRY_SHAPE.get_value(&row, 0) != candidate {
-				return Err(PartitionError::PartitionHashCollision {
-					object,
-					hash: partition.0,
-				}
-				.into());
-			}
-		}
-		None => {
-			let mut row = REGISTRY_SHAPE.allocate_pod();
-			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&key, row.freeze().into())?;
-		}
-	}
-	Ok(())
-}
-
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
@@ -418,9 +29,13 @@ mod tests {
 		sort::SortDirection,
 		value::{batch::batch, column::factory},
 	};
-	use reifydb_flow::operator::sink::{
-		partition::ensure_partition_unchanged,
-		view::{partitioned_key, row_key, sort_runs, sorted_view_key},
+	use reifydb_flow::{
+		operator::sink::{
+			partition::ensure_partition_unchanged,
+			table::TableSink,
+			view::{partitioned_key, row_key, sort_runs, sorted_view_key},
+		},
+		txn::Intern,
 	};
 	use reifydb_runtime::context::{
 		RuntimeContext,
@@ -441,8 +56,7 @@ mod tests {
 		},
 	};
 
-	use super::TableSink;
-	use crate::{testing::TestingTx, txn::Intern};
+	use crate::testing::TestingTx;
 
 	const VIEW: ViewId = ViewId(4);
 	const SYMBOLS: DictionaryId = DictionaryId(7);
@@ -720,7 +334,7 @@ mod tests {
 	fn a_dictionary_view_column_stores_the_interned_entry_id_and_emits_the_value() {
 		let mut txn = TestingTx::default();
 		txn.dictionaries.insert(SYMBOLS, symbols());
-		txn.intern(&symbols(), &utf8("eth")).unwrap();
+		txn.intern(&symbols(), &[utf8("eth")]).unwrap();
 		let symbol = column(
 			0,
 			"sym",
@@ -737,8 +351,8 @@ mod tests {
 			.apply(&mut txn, change(vec![Diff::insert(inserted(&[(1, "sol", 10), (2, "eth", 20)]))]))
 			.unwrap();
 
-		let sol = txn.intern(&symbols(), &utf8("sol")).unwrap();
-		let eth = txn.intern(&symbols(), &utf8("eth")).unwrap();
+		let sol = txn.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
+		let eth = txn.intern(&symbols(), &[utf8("eth")]).unwrap()[0];
 		assert_ne!(sol, eth);
 		assert_eq!(txn.dictionary_values[&SYMBOLS], vec![utf8("eth"), utf8("sol")]);
 		assert_eq!(stored(&txn, &view, &row_key(storage, RowNumber(1)))[0], sol.to_value());

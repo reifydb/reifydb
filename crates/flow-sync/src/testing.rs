@@ -3,7 +3,7 @@
 
 #[cfg(any(test, feature = "testing"))]
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -20,6 +20,7 @@ use reifydb_core::{
 	},
 };
 #[cfg(any(test, feature = "testing"))]
+use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
@@ -31,7 +32,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows};
+use crate::txn::{Changes, ClockNow, Lookup};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Continue {
@@ -143,25 +144,33 @@ impl<T: Changes> Changes for TestingTxn<T> {
 	}
 }
 
-impl<T: Rows> Rows for TestingTxn<T> {
+impl<T: Get> Get for TestingTxn<T> {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.txn.get(key)
 	}
+}
 
-	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
-		self.call();
-		match self.hooks.on_write(key) {
-			Outcome::Land => self.txn.set(key, row),
-			Outcome::Err(error) => Err(error),
+impl<T: Batch> Batch for TestingTxn<T> {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		for (key, row) in keys.iter().zip(rows) {
+			self.call();
+			match self.hooks.on_write(key) {
+				Outcome::Land => self.txn.set(slice::from_ref(key), slice::from_ref(row))?,
+				Outcome::Err(error) => return Err(error),
+			}
 		}
+		Ok(())
 	}
 
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.call();
-		match self.hooks.on_write(key) {
-			Outcome::Land => self.txn.remove(key),
-			Outcome::Err(error) => Err(error),
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.call();
+			match self.hooks.on_write(key) {
+				Outcome::Land => self.txn.remove(slice::from_ref(key))?,
+				Outcome::Err(error) => return Err(error),
+			}
 		}
+		Ok(())
 	}
 }
 
@@ -199,29 +208,14 @@ impl<T: Lookup> Lookup for TestingTxn<T> {
 			LookupOutcome::Err(error) => Err(error),
 		}
 	}
-
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Dictionary> {
-		match self.hooks.on_lookup(LookupTarget::Dictionary(id)) {
-			LookupOutcome::Clean => self.txn.dictionary(id),
-			LookupOutcome::Absent => panic!("lookup of dictionary {id} cannot be absent"),
-			LookupOutcome::Err(error) => Err(error),
-		}
-	}
 }
 
-impl<T: Intern> Intern for TestingTxn<T> {
-	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		self.call();
-		match self.hooks.on_intern(dictionary.id) {
-			Outcome::Land => self.txn.intern(dictionary, value),
-			Outcome::Err(error) => Err(error),
-		}
-	}
-
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		match self.hooks.on_find(dictionary.id) {
-			Outcome::Land => self.txn.find(dictionary, value),
-			Outcome::Err(error) => Err(error),
+impl<T: Resolve> Resolve for TestingTxn<T> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		match self.hooks.on_lookup(LookupTarget::Dictionary(id)) {
+			LookupOutcome::Clean => self.txn.dictionary(id),
+			LookupOutcome::Absent => Ok(None),
+			LookupOutcome::Err(error) => Err(error),
 		}
 	}
 
@@ -230,6 +224,27 @@ impl<T: Intern> Intern for TestingTxn<T> {
 			Outcome::Land => self.txn.resolve(dictionary, id),
 			Outcome::Err(error) => Err(error),
 		}
+	}
+}
+
+impl<T: Intern> Intern for TestingTxn<T> {
+	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		match self.hooks.on_find(dictionary.id) {
+			Outcome::Land => self.txn.find(dictionary, value),
+			Outcome::Err(error) => Err(error),
+		}
+	}
+
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		let mut ids = Vec::with_capacity(values.len());
+		for value in values {
+			self.call();
+			match self.hooks.on_intern(dictionary.id) {
+				Outcome::Land => ids.extend(self.txn.intern(dictionary, slice::from_ref(value))?),
+				Outcome::Err(error) => return Err(error),
+			}
+		}
+		Ok(ids)
 	}
 }
 
@@ -296,18 +311,25 @@ impl Changes for TestingTx {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl Rows for TestingTx {
+impl Get for TestingTx {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.rows.get(key).cloned())
 	}
+}
 
-	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
-		self.rows.insert(key.clone(), row);
+#[cfg(any(test, feature = "testing"))]
+impl Batch for TestingTx {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		for (key, row) in keys.iter().zip(rows) {
+			self.rows.insert(key.clone(), row.clone());
+		}
 		Ok(())
 	}
 
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.rows.remove(key);
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.rows.remove(key);
+		}
 		Ok(())
 	}
 }
@@ -340,29 +362,27 @@ impl Lookup for TestingTx {
 			.unwrap_or_else(|| panic!("table {} is not in the memory transaction", id))
 			.clone())
 	}
+}
 
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Dictionary> {
-		Ok(self.dictionaries
-			.get(&id)
-			.unwrap_or_else(|| panic!("dictionary {} is not in the memory transaction", id))
-			.clone())
+#[cfg(any(test, feature = "testing"))]
+impl Resolve for TestingTx {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.dictionaries.get(&id).cloned())
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
+		let Some(offset) = id.to_u128().checked_sub(1) else {
+			return Ok(None);
+		};
+		let Ok(position) = usize::try_from(offset) else {
+			return Ok(None);
+		};
+		Ok(self.dictionary_values.get(&dictionary.id).and_then(|values| values.get(position)).cloned())
 	}
 }
 
 #[cfg(any(test, feature = "testing"))]
 impl Intern for TestingTx {
-	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let values = self.dictionary_values.entry(dictionary.id).or_default();
-		let position = match values.iter().position(|existing| existing == value) {
-			Some(position) => position,
-			None => {
-				values.push(value.clone());
-				values.len() - 1
-			}
-		};
-		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())
-	}
-
 	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		let Some(position) = self
 			.dictionary_values
@@ -374,14 +394,20 @@ impl Intern for TestingTx {
 		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let Some(offset) = id.to_u128().checked_sub(1) else {
-			return Ok(None);
-		};
-		let Ok(position) = usize::try_from(offset) else {
-			return Ok(None);
-		};
-		Ok(self.dictionary_values.get(&dictionary.id).and_then(|values| values.get(position)).cloned())
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		let mut ids = Vec::with_capacity(values.len());
+		for value in values {
+			let known = self.dictionary_values.entry(dictionary.id).or_default();
+			let position = match known.iter().position(|existing| existing == value) {
+				Some(position) => position,
+				None => {
+					known.push(value.clone());
+					known.len() - 1
+				}
+			};
+			ids.push(DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())?);
+		}
+		Ok(ids)
 	}
 }
 
@@ -419,6 +445,7 @@ mod tests {
 			column::factory::int8,
 		},
 	};
+	use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		error::{Diagnostic, Error},
@@ -427,7 +454,7 @@ mod tests {
 	};
 
 	use super::{Continue, LookupOutcome, LookupTarget, NoFaults, Outcome, SyncHooks, TestingTx, TestingTxn};
-	use crate::txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows};
+	use crate::txn::{Changes, ClockNow, Lookup};
 
 	const VIEW: ViewId = ViewId(4);
 	const TABLE: TableId = TableId(5);
@@ -566,12 +593,12 @@ mod tests {
 	#[test]
 	fn a_refused_write_returns_the_injected_error_and_leaves_the_rows_untouched() {
 		let mut inner = TestingTx::default();
-		inner.set(&key(1), row(1)).unwrap();
+		inner.set(&[key(1)], &[row(1)]).unwrap();
 		let before = inner.rows.clone();
 		let mut txn = TestingTxn::over(inner, Arc::new(RefuseWrites));
 
-		assert_eq!(txn.set(&key(2), row(2)), Err(refused()));
-		assert_eq!(txn.remove(&key(1)), Err(refused()));
+		assert_eq!(txn.set(&[key(2)], &[row(2)]), Err(refused()));
+		assert_eq!(txn.remove(&[key(1)]), Err(refused()));
 
 		assert_eq!(txn.txn().rows, before);
 	}
@@ -589,10 +616,10 @@ mod tests {
 	#[test]
 	fn a_refused_intern_adds_no_value_and_a_refused_resolve_returns_the_injected_error() {
 		let mut inner = TestingTx::default();
-		let sol = inner.intern(&symbols(), &utf8("sol")).unwrap();
+		let sol = inner.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
 		let mut txn = TestingTxn::over(inner, Arc::new(RefuseDictionary));
 
-		assert_eq!(txn.intern(&symbols(), &utf8("eth")), Err(refused()));
+		assert_eq!(txn.intern(&symbols(), &[utf8("eth")]), Err(refused()));
 		assert_eq!(txn.resolve(&symbols(), sol), Err(refused()));
 
 		assert_eq!(txn.txn().dictionary_values, BTreeMap::from([(SYMBOLS, vec![utf8("sol")])]));
@@ -634,10 +661,10 @@ mod tests {
 		let mut txn = TestingTxn::over(catalog(), hooks.clone());
 
 		txn.get(&key(1)).unwrap();
-		txn.set(&key(1), row(1)).unwrap();
-		txn.remove(&key(1)).unwrap();
+		txn.set(&[key(1)], &[row(1)]).unwrap();
+		txn.remove(&[key(1)]).unwrap();
 		txn.emit(VIEW, Diff::insert(empty_batch())).unwrap();
-		let sol = txn.intern(&symbols(), &utf8("sol")).unwrap();
+		let sol = txn.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
 		txn.resolve(&symbols(), sol).unwrap();
 		txn.transactional_flows().unwrap();
 		txn.view(VIEW).unwrap();
@@ -657,9 +684,9 @@ mod tests {
 		let mut txn = TestingTxn::over(TestingTx::default(), Arc::new(CrashAt(3)));
 
 		let payload = catch_unwind(AssertUnwindSafe(|| {
-			txn.set(&key(1), row(1)).unwrap();
-			txn.set(&key(2), row(2)).unwrap();
-			txn.set(&key(3), row(3)).unwrap();
+			txn.set(&[key(1)], &[row(1)]).unwrap();
+			txn.set(&[key(2)], &[row(2)]).unwrap();
+			txn.set(&[key(3)], &[row(3)]).unwrap();
 		}))
 		.unwrap_err();
 
@@ -677,13 +704,13 @@ mod tests {
 		let diff = Diff::insert(batch(vec![int8("qty", vec![10])]).unwrap());
 
 		assert_eq!(txn.get(&key(1)), bare.get(&key(1)));
-		assert_eq!(txn.set(&key(1), row(1)), bare.set(&key(1), row(1)));
-		assert_eq!(txn.remove(&key(1)), bare.remove(&key(1)));
+		assert_eq!(txn.set(&[key(1)], &[row(1)]), bare.set(&[key(1)], &[row(1)]));
+		assert_eq!(txn.remove(&[key(1)]), bare.remove(&[key(1)]));
 		assert_eq!(txn.emit(VIEW, diff.clone()), bare.emit(VIEW, diff));
-		let sol = txn.intern(&symbols(), &utf8("sol"));
-		let bare_sol = bare.intern(&symbols(), &utf8("sol"));
+		let sol = txn.intern(&symbols(), &[utf8("sol")]);
+		let bare_sol = bare.intern(&symbols(), &[utf8("sol")]);
 		assert_eq!(sol, bare_sol);
-		assert_eq!(txn.resolve(&symbols(), sol.unwrap()), bare.resolve(&symbols(), bare_sol.unwrap()));
+		assert_eq!(txn.resolve(&symbols(), sol.unwrap()[0]), bare.resolve(&symbols(), bare_sol.unwrap()[0]));
 		assert_eq!(txn.transactional_flows(), bare.transactional_flows());
 		assert_eq!(txn.view(VIEW), bare.view(VIEW));
 		assert_eq!(txn.table(TABLE), bare.table(TABLE));

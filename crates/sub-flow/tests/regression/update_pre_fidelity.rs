@@ -565,14 +565,8 @@ mod source {
 			column::{builder::ColumnBuilder, factory},
 		},
 	};
-	use reifydb_flow_async::operator::{
-		HostOperator,
-		host::HostContext,
-		scan::{
-			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-			view::SourceViewOperator,
-		},
-	};
+	use reifydb_flow::operator::source::SourceOperator;
+	use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
 	use reifydb_value::value::{
@@ -665,10 +659,12 @@ mod source {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
 				match kind {
-					"series" => Op::Series(SourceSeriesOperator::new(SOURCE)),
-					"table" => Op::Table(SourceTableOperator::new(SOURCE, table())),
-					"view" => Op::View(SourceViewOperator::new(SOURCE, series_view())),
-					_ => Op::Ring(SourceRingBufferOperator::new(SOURCE, ringbuffer())),
+					"series" => Op::Series(SourceOperator::from_columns(SOURCE, &[])),
+					"table" => Op::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
+					"view" => {
+						Op::View(SourceOperator::from_columns(SOURCE, series_view().columns()))
+					}
+					_ => Op::Ring(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
 				}
 			})
 			.with_dictionaries();
@@ -717,10 +713,12 @@ mod source {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
 				match kind {
-					"series" => Op::Series(SourceSeriesOperator::new(SOURCE)),
-					"table" => Op::Table(SourceTableOperator::new(SOURCE, table())),
-					"view" => Op::View(SourceViewOperator::new(SOURCE, series_view())),
-					_ => Op::Ring(SourceRingBufferOperator::new(SOURCE, ringbuffer())),
+					"series" => Op::Series(SourceOperator::from_columns(SOURCE, &[])),
+					"table" => Op::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
+					"view" => {
+						Op::View(SourceOperator::from_columns(SOURCE, series_view().columns()))
+					}
+					_ => Op::Ring(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
 				}
 			})
 			.with_dictionaries();
@@ -755,10 +753,10 @@ mod source {
 	}
 
 	enum Op {
-		Series(SourceSeriesOperator),
-		Table(SourceTableOperator),
-		View(SourceViewOperator),
-		Ring(SourceRingBufferOperator),
+		Series(SourceOperator),
+		Table(SourceOperator),
+		View(SourceOperator),
+		Ring(SourceOperator),
 	}
 
 	impl HostOperator for Op {

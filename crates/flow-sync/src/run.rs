@@ -16,6 +16,7 @@ use reifydb_core::{
 	},
 	internal_err,
 };
+use reifydb_flow::txn::{Batch, Emit, Get, Intern};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -23,10 +24,10 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::{
 	graph::build,
 	node::Node,
-	txn::{Changes, ClockNow, Emit, Intern, Lookup, Rows},
+	txn::{Changes, ClockNow, Lookup},
 };
 
-pub fn run<T: Changes + Rows + Emit + Lookup + Intern + ClockNow>(
+pub fn run<T: Changes + Get + Batch + Emit + Lookup + Intern + ClockNow>(
 	txn: &mut T,
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
@@ -57,7 +58,7 @@ pub fn flow_sources(flow: &FlowDag) -> BTreeSet<ObjectId> {
 		.collect()
 }
 
-pub fn run_flow<T: Rows + Emit + Lookup + Intern>(
+pub fn run_flow<T: Get + Batch + Emit + Intern>(
 	txn: &mut T,
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
@@ -168,7 +169,7 @@ fn seed_entry_nodes(
 	Ok(pending)
 }
 
-fn run_topology<T: Rows + Emit + Lookup + Intern>(
+fn run_topology<T: Get + Batch + Emit + Intern>(
 	txn: &mut T,
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
@@ -196,7 +197,7 @@ fn run_topology<T: Rows + Emit + Lookup + Intern>(
 	Ok(())
 }
 
-fn dispatch_node<T: Rows + Emit + Lookup + Intern>(
+fn dispatch_node<T: Get + Batch + Emit + Intern>(
 	txn: &mut T,
 	operator_id: OperatorId,
 	node: &mut Node,
@@ -206,7 +207,7 @@ fn dispatch_node<T: Rows + Emit + Lookup + Intern>(
 	let version = merged.version;
 	let changed_at = merged.changed_at;
 	let result = node.apply(txn, merged)?;
-	Ok(Change::from_flow(operator_id, version, result.diffs, changed_at.max(result.changed_at)))
+	Ok(Change::from_operator(operator_id, version, changed_at, result))
 }
 
 #[cfg(test)]

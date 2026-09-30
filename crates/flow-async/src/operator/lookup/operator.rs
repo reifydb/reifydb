@@ -27,7 +27,7 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
-use reifydb_flow::{context::FlowContext, error::FlowGraphError};
+use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_dictionary_columns};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -54,7 +54,6 @@ use crate::{
 		host::HostContext,
 		join::column::{JoinedColumnsBuilder, JoinedColumnsCache},
 		row_times,
-		sink::decode_dictionary_columns,
 		state::seal::ledger::FiredAt,
 		state_access::{RowNumberReserve, mint_row_numbers},
 	},
@@ -605,15 +604,12 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::ChangeVersion,
-		interface::{
-			catalog::{
-				column::ColumnIndex,
-				dictionary::Dictionary,
-				id::{ColumnId, ViewId},
-				table::Table,
-				view::{TableView, View, ViewKind},
-			},
-			resolved::{ResolvedNamespace, ResolvedView},
+		interface::catalog::{
+			column::ColumnIndex,
+			dictionary::Dictionary,
+			id::{ColumnId, ViewId},
+			table::Table,
+			view::{TableView, View, ViewKind},
 		},
 		key::{any::TaggedKey, row::StoragePartitionedRowKey},
 		row::row_shape_from_columns,
@@ -622,12 +618,12 @@ mod tests {
 			column::factory::{int4, utf8, utf8_with_bitvec},
 		},
 	};
+	use reifydb_flow::operator::{sink::table::TableSink, source::catalog_schema};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
 		factory::time::at_millis,
-		fragment::Fragment,
 		value::{
 			constraint::{Constraint, TypeConstraint},
 			container::temporal_array::datetime_array,
@@ -640,12 +636,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{
-			host::TxnHostContext,
-			lookup::store::stored_read,
-			scan::catalog_schema,
-			sink::{DurableSink, view::SinkTableViewOperator},
-		},
+		operator::{host::TxnHostContext, lookup::store::stored_read, sink::DurableSink},
 		timer::extension::TimerExtension,
 		transaction::{
 			FlowTransaction, LookupContext, LookupVersions, deferred::DeferredTransaction, mock::FlowTxn,
@@ -885,16 +876,7 @@ mod tests {
 			sort: vec![],
 		});
 		let storage = view.storage_id();
-		let mut sink = SinkTableViewOperator::new(
-			OperatorId(OP + 1),
-			ResolvedView::new(
-				Fragment::internal("pv"),
-				ResolvedNamespace::new(Fragment::internal("t"), namespace),
-				view,
-			),
-			vec!["k".to_string()],
-			RuntimeContext::testing(0, 1),
-		);
+		let mut sink = TableSink::new(OperatorId(OP + 1), view, RuntimeContext::testing(0, 1));
 		let stamp = || -> ArrayRef { Arc::new(datetime_array([DateTime::from_nanos(1_000)])) };
 		let input = [
 			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64])) as ArrayRef),
@@ -907,7 +889,8 @@ mod tests {
 			with_system_column(columns, column, array).unwrap()
 		});
 		let mut sink_txn = txn_at(&engine, version);
-		sink.apply(
+		DurableSink::apply(
+			&mut sink,
 			&mut sink_txn,
 			Change::from_flow(
 				OperatorId(LEFT),

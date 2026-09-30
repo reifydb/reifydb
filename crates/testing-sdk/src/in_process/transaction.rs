@@ -14,10 +14,11 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 	key::any::TaggedKey,
 };
+use reifydb_flow::txn::{Batch, Get};
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
-	transaction::{ChangeCoordinate, FlowTransaction, substrate::FlowSubstrate},
+	transaction::{ChangeCoordinate, FlowTransaction, pending_get, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -159,6 +160,24 @@ impl FlowTransaction for TestFlowTransaction {
 		_keys: Vec<EncodedKey>,
 		_items: &mut Vec<MultiVersionRow<TaggedKey>>,
 	) -> Result<()> {
+		Ok(())
+	}
+}
+
+impl Get for TestFlowTransaction {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		pending_get(self, key)
+	}
+}
+
+impl Batch for TestFlowTransaction {
+	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		self.pending_mut().insert_batch(keys, rows);
+		Ok(())
+	}
+
+	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}
 }

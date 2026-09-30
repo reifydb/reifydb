@@ -23,21 +23,15 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::{
-		append::{AppendOperator, lane::assign_lanes},
-		extend::ExtendOperator,
-		filter::FilterOperator,
-		map::MapOperator,
+		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, first_input, map::MapOperator,
+		sink::table::TableSink, sort::SortOperator, source::SourceOperator,
 	},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, error::Error};
 
-use crate::{
-	node::{Node, SourceNode},
-	sink::TableSink,
-	txn::Lookup,
-};
+use crate::{node::Node, txn::Lookup};
 
 pub fn build<T: Lookup>(
 	txn: &mut T,
@@ -56,10 +50,16 @@ pub fn build<T: Lookup>(
 			SourceTable {
 				table,
 				..
-			} => Node::Source(SourceNode::new(*operator_id, txn.table(table)?.columns)),
+			} => Node::Source(SourceOperator::from_columns(*operator_id, &txn.table(table)?.columns)),
 			SourceView {
 				view,
-			} => Node::Source(SourceNode::new(*operator_id, txn.view(view)?.columns().to_vec())),
+			} => Node::Source(SourceOperator::from_columns(*operator_id, txn.view(view)?.columns())),
+			SourceRingBuffer {
+				..
+			} => unimplemented!(),
+			SourceSeries {
+				..
+			} => unimplemented!(),
 			Filter {
 				conditions,
 			} => Node::Filter(FilterOperator::new(
@@ -91,26 +91,15 @@ pub fn build<T: Lookup>(
 				Arc::clone(&ctx),
 			)?),
 			Append {} => {
-				if inputs.len() != 2 {
-					return Err(Error::from(FlowGraphError::NodeInputArity {
-						operator: "Append",
-						expected: "exactly 2",
-						found: inputs.len(),
-					}));
-				}
-
 				let mut parent_schemas = Vec::with_capacity(inputs.len());
 				for input_node_id in inputs {
 					parent_schemas.push(parent_schema(&nodes, *input_node_id)?);
 				}
-
-				let parent_schema = parent_schemas.swap_remove(0);
-				let lanes = assign_lanes(flow, *operator_id)?;
-				Node::Append(AppendOperator::new(*operator_id, parent_schema, inputs.to_vec(), lanes))
+				Node::Append(AppendOperator::from_flow(flow, *operator_id, inputs, parent_schemas)?)
 			}
 			Sort {
 				..
-			} => Node::Sort(*operator_id, parent_schema(&nodes, first_input(inputs)?)?),
+			} => Node::Sort(SortOperator::new(parent_schema(&nodes, first_input(inputs)?)?, *operator_id)),
 			SinkTableView {
 				view,
 			} => {
@@ -118,12 +107,6 @@ pub fn build<T: Lookup>(
 				Node::Sink(TableSink::new(*operator_id, txn.view(view)?, runtime_context.clone()))
 			}
 			SourceInlineData {
-				..
-			}
-			| SourceRingBuffer {
-				..
-			}
-			| SourceSeries {
 				..
 			}
 			| Gate {
@@ -175,10 +158,6 @@ fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&No
 
 fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<SchemaRef>> {
 	Ok(require_parent(nodes, input)?.output_schema())
-}
-
-fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
-	inputs.first().copied().ok_or_else(|| Error::from(FlowGraphError::MissingInputEdge))
 }
 
 #[cfg(test)]

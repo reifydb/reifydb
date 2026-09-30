@@ -19,6 +19,7 @@ arrow-array = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core.workspace = true
+reifydb-flow = { workspace = true }
 reifydb-flow-async = { workspace = true }
 reifydb-runtime.workspace = true
 reifydb-sdk = { workspace = true, features = ["mount"] }

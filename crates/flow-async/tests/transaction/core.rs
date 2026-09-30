@@ -17,6 +17,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
+use reifydb_flow::txn::Get;
 use reifydb_flow_async::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -59,7 +60,7 @@ fn test_get_from_pending() {
 	let key = make_key("key1");
 	let value = make_value("value1");
 
-	txn.set(&key, value.clone()).unwrap();
+	txn.set_one(&key, value.clone()).unwrap();
 
 	let result = txn.get(&key).unwrap();
 	assert_eq!(result, Some(value));
@@ -112,7 +113,7 @@ fn test_get_pending_shadows_committed() {
 	));
 
 	let new_value = make_value("new");
-	txn.set(&key, new_value.clone()).unwrap();
+	txn.set_one(&key, new_value.clone()).unwrap();
 
 	let result = txn.get(&key).unwrap();
 	assert_eq!(result, Some(new_value));
@@ -135,7 +136,7 @@ fn test_get_removed_returns_none() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 
 	let result = txn.get(&key).unwrap();
 	assert_eq!(result, None);
@@ -170,7 +171,7 @@ fn test_contains_key_pending() {
 	));
 
 	let key = make_key("key1");
-	txn.set(&key, make_value("value1")).unwrap();
+	txn.set_one(&key, make_value("value1")).unwrap();
 
 	assert!(txn.contains_key(&key).unwrap());
 }
@@ -217,7 +218,7 @@ fn test_contains_key_removed_returns_false() {
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 
 	assert!(!txn.contains_key(&key).unwrap());
 }
@@ -265,9 +266,9 @@ fn test_scan_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("b"), make_value("2")).unwrap();
-	txn.set(&make_key("a"), make_value("1")).unwrap();
-	txn.set(&make_key("c"), make_value("3")).unwrap();
+	txn.set_one(&make_key("b"), make_value("2")).unwrap();
+	txn.set_one(&make_key("a"), make_value("1")).unwrap();
+	txn.set_one(&make_key("c"), make_value("3")).unwrap();
 
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -290,9 +291,9 @@ fn test_scan_filters_removes() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("a"), make_value("1")).unwrap();
-	txn.remove(&make_key("b")).unwrap();
-	txn.set(&make_key("c"), make_value("3")).unwrap();
+	txn.set_one(&make_key("a"), make_value("1")).unwrap();
+	txn.remove_one(&make_key("b")).unwrap();
+	txn.set_one(&make_key("c"), make_value("3")).unwrap();
 
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -331,10 +332,10 @@ fn test_range_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("a"), make_value("1")).unwrap();
-	txn.set(&make_key("b"), make_value("2")).unwrap();
-	txn.set(&make_key("c"), make_value("3")).unwrap();
-	txn.set(&make_key("d"), make_value("4")).unwrap();
+	txn.set_one(&make_key("a"), make_value("1")).unwrap();
+	txn.set_one(&make_key("b"), make_value("2")).unwrap();
+	txn.set_one(&make_key("c"), make_value("3")).unwrap();
+	txn.set_one(&make_key("d"), make_value("4")).unwrap();
 
 	let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
 	let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -373,9 +374,9 @@ fn test_prefix_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("test_a"), make_value("1")).unwrap();
-	txn.set(&make_key("test_b"), make_value("2")).unwrap();
-	txn.set(&make_key("other_c"), make_value("3")).unwrap();
+	txn.set_one(&make_key("test_a"), make_value("1")).unwrap();
+	txn.set_one(&make_key("test_b"), make_value("2")).unwrap();
+	txn.set_one(&make_key("other_c"), make_value("3")).unwrap();
 
 	let prefix = make_key("test_");
 	let iter = txn.prefix(&prefix).unwrap();
@@ -401,7 +402,7 @@ fn test_set_buffers_to_pending() {
 	let key = make_key("key1");
 	let value = make_value("value1");
 
-	txn.set(&key, value.clone()).unwrap();
+	txn.set_one(&key, value.clone()).unwrap();
 
 	assert_eq!(txn.pending().get(&key), Some(&value));
 }
@@ -418,9 +419,9 @@ fn test_set_multiple_keys() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("key1"), make_value("value1")).unwrap();
-	txn.set(&make_key("key2"), make_value("value2")).unwrap();
-	txn.set(&make_key("key3"), make_value("value3")).unwrap();
+	txn.set_one(&make_key("key1"), make_value("value1")).unwrap();
+	txn.set_one(&make_key("key2"), make_value("value2")).unwrap();
+	txn.set_one(&make_key("key3"), make_value("value3")).unwrap();
 
 	assert_eq!(txn.pending().get(&make_key("key1")), Some(&make_value("value1")));
 	assert_eq!(txn.pending().get(&make_key("key2")), Some(&make_value("value2")));
@@ -440,8 +441,8 @@ fn test_set_overwrites_same_key() {
 	));
 
 	let key = make_key("key1");
-	txn.set(&key, make_value("value1")).unwrap();
-	txn.set(&key, make_value("value2")).unwrap();
+	txn.set_one(&key, make_value("value1")).unwrap();
+	txn.set_one(&key, make_value("value2")).unwrap();
 
 	assert_eq!(txn.pending().get(&key), Some(&make_value("value2")));
 }
@@ -459,7 +460,7 @@ fn test_remove_buffers_to_pending() {
 	));
 
 	let key = make_key("key1");
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 
 	assert!(txn.pending().is_removed(&key));
 }
@@ -476,9 +477,9 @@ fn test_remove_multiple_keys() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.remove(&make_key("key1")).unwrap();
-	txn.remove(&make_key("key2")).unwrap();
-	txn.remove(&make_key("key3")).unwrap();
+	txn.remove_one(&make_key("key1")).unwrap();
+	txn.remove_one(&make_key("key2")).unwrap();
+	txn.remove_one(&make_key("key3")).unwrap();
 
 	assert!(txn.pending().is_removed(&make_key("key1")));
 	assert!(txn.pending().is_removed(&make_key("key2")));
@@ -498,10 +499,10 @@ fn test_set_then_remove() {
 	));
 
 	let key = make_key("key1");
-	txn.set(&key, make_value("value1")).unwrap();
+	txn.set_one(&key, make_value("value1")).unwrap();
 	assert_eq!(txn.pending().get(&key), Some(&make_value("value1")));
 
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 	assert!(txn.pending().is_removed(&key));
 	assert_eq!(txn.pending().get(&key), None);
 }
@@ -519,10 +520,10 @@ fn test_remove_then_set() {
 	));
 
 	let key = make_key("key1");
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 	assert!(txn.pending().is_removed(&key));
 
-	txn.set(&key, make_value("value1")).unwrap();
+	txn.set_one(&key, make_value("value1")).unwrap();
 	assert!(!txn.pending().is_removed(&key));
 	assert_eq!(txn.pending().get(&key), Some(&make_value("value1")));
 }
@@ -542,7 +543,7 @@ fn test_writes_not_visible_to_parent() {
 	let key = make_key("key1");
 	let value = make_value("value1");
 
-	txn.set(&key, value.clone()).unwrap();
+	txn.set_one(&key, value.clone()).unwrap();
 
 	assert_eq!(get_row(&mut parent, &key), None);
 }
@@ -565,7 +566,7 @@ fn test_removes_not_visible_to_parent() {
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
-	txn.remove(&key).unwrap();
+	txn.remove_one(&key).unwrap();
 
 	assert_eq!(get_row(&mut parent, &key), Some(value));
 }
@@ -582,10 +583,10 @@ fn test_mixed_writes_and_removes() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set(&make_key("write1"), make_value("v1")).unwrap();
-	txn.remove(&make_key("remove1")).unwrap();
-	txn.set(&make_key("write2"), make_value("v2")).unwrap();
-	txn.remove(&make_key("remove2")).unwrap();
+	txn.set_one(&make_key("write1"), make_value("v1")).unwrap();
+	txn.remove_one(&make_key("remove1")).unwrap();
+	txn.set_one(&make_key("write2"), make_value("v2")).unwrap();
+	txn.remove_one(&make_key("remove2")).unwrap();
 
 	assert_eq!(txn.pending().get(&make_key("write1")), Some(&make_value("v1")));
 	assert_eq!(txn.pending().get(&make_key("write2")), Some(&make_value("v2")));
