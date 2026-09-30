@@ -65,6 +65,8 @@ mod ringbuffer_eviction_propagation;
 mod ringbuffer_row_ttl;
 #[path = "state.rs"]
 mod state;
+#[path = "common/state_keys.rs"]
+mod state_keys;
 #[path = "time_propagation.rs"]
 mod time_propagation;
 #[path = "transactional_twin.rs"]

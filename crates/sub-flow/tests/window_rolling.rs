@@ -6,46 +6,24 @@
 // committed - a double-merge, a stale high_water, or a missed eviction.
 
 use reifydb::{
-	ConfigKey, WithSubsystem, embedded,
+	WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
 use reifydb_core::interface::catalog::subscription::HydrationConfig;
-use reifydb_test_harness::assert::{column_values, rows};
+use reifydb_test_harness::assert::rows;
 use reifydb_value::{
 	params::Params,
 	value::{Value, digest::Digest, duration::Duration, value_type::ValueType},
 };
 
+use crate::state_keys::{keyspace_keys, setup_with_metrics};
+
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 const PPM: u32 = 10_000;
 
-const WINDOW_META_KEYS: &str = "from system::metrics::flow::state::current filter { keyspace == 'WINDOW_META' }";
-
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
-}
-
-fn setup_with_metrics() -> TestDb {
-	TestDb::from(
-		embedded::memory()
-			.with_flow(|f| f)
-			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
-			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
-			.build()
-			.expect("build memory db with flow and metrics"),
-	)
-}
-
-fn window_meta_keys(db: &TestDb) -> u64 {
-	db.query(WINDOW_META_KEYS)
-		.iter()
-		.flat_map(|frame| column_values(frame, "keys"))
-		.map(|value| match value {
-			Value::Uint8(keys) => keys,
-			other => panic!("the keys measure must be an unsigned count, found {other:?}"),
-		})
-		.sum()
 }
 
 #[test]
@@ -551,7 +529,11 @@ fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_exp
 			{ id: 2, g: 1, v: 2.0, ts: "2026-01-01T10:30:00Z" }
 		]"#,
 	);
-	assert_eq!(await_value(1, TIMEOUT, || window_meta_keys(&db)), 1, "the group's high water must be visible");
+	assert_eq!(
+		await_value(1, TIMEOUT, || keyspace_keys(&db, "WINDOW_META")),
+		1,
+		"the group's high water must be visible"
+	);
 
 	db.command("DELETE app::t FILTER { id == 2 }");
 	assert!(db.await_all_flows(TIMEOUT), "the delete must drain");
@@ -559,7 +541,7 @@ fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_exp
 	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
 
 	assert_eq!(
-		await_value(0, TIMEOUT, || window_meta_keys(&db)),
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "WINDOW_META")),
 		0,
 		"the group left the frame, so its high water row must be freed"
 	);
