@@ -7,7 +7,6 @@ use reifydb_core::{
 	common::CommitVersion,
 	flow::dag::FlowDag,
 	interface::{catalog::id::SubscriptionId, change::StagedBatch},
-	metrics::execution::ExecutionMetrics,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
@@ -15,7 +14,7 @@ use reifydb_value::{
 	Result,
 	error::Error as TypeError,
 	params::Params,
-	value::{identity::IdentityId, system_columns::SystemColumn},
+	value::{duration::Duration, identity::IdentityId, system_columns::SystemColumn},
 };
 
 use crate::engine::StandardEngine;
@@ -31,7 +30,7 @@ pub struct SubscriptionContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HydrationBound {
-	Pushed,
+	Present,
 	Absent,
 }
 
@@ -39,7 +38,7 @@ impl HydrationBound {
 	pub fn advice(&self) -> String {
 		match self {
 			Self::Absent => "add `TAKE N` upstream, raise the hydration.max_rows subscribe option, or set the hydration.enabled subscribe option to false".to_string(),
-			Self::Pushed => "the query's `TAKE` still returns more rows than the cap, so raise the hydration.max_rows subscribe option or set the hydration.enabled subscribe option to false".to_string(),
+			Self::Present => "the query's `TAKE` still returns more rows than the cap, so raise the hydration.max_rows subscribe option or set the hydration.enabled subscribe option to false".to_string(),
 		}
 	}
 }
@@ -114,7 +113,7 @@ impl HydrateError {
 pub struct HydrateOutcome {
 	pub version: CommitVersion,
 	pub batches: Vec<StagedBatch>,
-	pub metrics: ExecutionMetrics,
+	pub total: Duration,
 }
 
 pub trait SubscriptionService: Send + Sync {
@@ -133,7 +132,6 @@ pub trait SubscriptionService: Send + Sync {
 	fn hydrate(
 		&self,
 		sub_id: SubscriptionId,
-		engine: &StandardEngine,
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,

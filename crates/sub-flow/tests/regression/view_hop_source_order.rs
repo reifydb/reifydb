@@ -238,8 +238,8 @@ fn rungs_and_header_in_one_commit_pair_through_the_view_hop() {
 }
 
 #[test]
-fn rungs_before_header_pair_through_the_view_hop_on_replay() {
-	// Views created after the data replay from zero, so curve's output always lands above the header's version.
+fn rungs_before_header_pair_through_the_view_hop_on_backfill() {
+	// Cost must backfill only after curve has, otherwise the header pairs with nothing.
 	let db = memory_db();
 	create_tables(&db);
 	insert_rung(&db, "a", 10);

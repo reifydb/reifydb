@@ -142,7 +142,7 @@ fn hydrate(
 ) -> Result<HydrateOutcome, HydrateError> {
 	let engine: StandardEngine = db.engine().clone();
 	let service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("subscription service");
-	service.hydrate(id, &engine, identity, lease, max_rows)
+	service.hydrate(id, identity, lease, max_rows)
 }
 
 fn drain(db: &TestDb, id: SubscriptionId) -> Vec<StagedBatch> {

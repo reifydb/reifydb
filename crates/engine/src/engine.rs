@@ -309,21 +309,6 @@ impl StandardEngine {
 		outcome
 	}
 
-	#[instrument(name = "engine::query_in_txn", level = "debug", skip(self, txn, params), fields(rql = %rql))]
-	pub fn query_in_txn(&self, txn: &mut QueryTransaction, rql: &str, params: Params) -> ExecutionResult {
-		let mut outcome = self.executor.query(
-			txn,
-			Query {
-				rql,
-				params,
-			},
-		);
-		if let Some(ref mut e) = outcome.error {
-			e.with_rql(rql.to_string());
-		}
-		outcome
-	}
-
 	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params, options), fields(query = %query))]
 	pub fn subscribe_as(
 		&self,

@@ -190,7 +190,7 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 	let services = engine.services();
 	let sub_service = services.ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 100_000).expect("hydrate");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 100_000).expect("hydrate");
 
 	let mut all = outcome.batches;
 	all.extend(drain_after_consumer_caught_up(&db, sub_id));
@@ -218,7 +218,7 @@ pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[S
 	let services = engine.services();
 	let sub_service = services.ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 100_000).expect("hydrate");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 100_000).expect("hydrate");
 
 	let mut all = outcome.batches;
 	all.extend(drain_after_consumer_caught_up(&db, sub_id));

@@ -763,7 +763,7 @@ fn backfill_at_v_emits_exactly_the_rows_live_at_v() {
 
 #[test]
 fn every_change_carries_v_even_when_table_rows_were_last_written_earlier() {
-	// B2b: the per-row #commit_version must neither leak into the change version nor into the batch
+	// the per-row #commit_version must neither leak into the change version nor into the batch
 	let sources = MemorySources::default();
 	define(&sources, TRADES, TimeSource::None);
 	let first = sources.insert(TRADES, version(1), at(1), values(1, "a"));
@@ -838,7 +838,7 @@ fn emitted_column_set_equals_the_live_column_set_for_every_source_kind() {
 
 #[test]
 fn changed_at_is_the_stored_updated_at_of_the_row_with_batch_size_one() {
-	// B2: changed_at must be the row's own updated_at, never V's commit time or the insert time
+	// changed_at must be the row's own updated_at, never V's commit time or the insert time
 	let sources = MemorySources::default();
 	define(&sources, TRADES, TimeSource::None);
 	let first = sources.insert(TRADES, version(1), at(10), values(1, "a"));
@@ -910,7 +910,7 @@ fn row_number_created_at_and_time_ride_along_unchanged() {
 
 #[test]
 fn a_source_larger_than_batch_size_splits_into_full_chunks_and_one_tail_with_no_gap_or_duplicate() {
-	// B5: chunks must be full except the last, never exceed batch_size, and union to exactly the source
+	// chunks must be full except the last, never exceed batch_size, and union to exactly the source
 	for (count, batch_size, sizes) in [
 		(7, 3, vec![3, 3, 1]),
 		(6, 3, vec![3, 3]),
@@ -955,7 +955,7 @@ fn deleted_rows_do_not_count_toward_a_chunk() {
 
 #[test]
 fn several_sources_are_read_in_object_id_order_at_one_v_even_when_later_ones_change_mid_scan() {
-	// P+7: writes at V+1 to sources not yet opened must never leak in, so every source is read at the same V
+	// writes at V+1 to sources not yet opened must never leak in, so every source is read at the same V
 	let sources = MemorySources::default();
 	let labelled = [(TRADES, "t"), (QUOTES, "q"), (POSITIONS, "p"), (TICKS, "k")];
 	for (source, label) in labelled {
@@ -1249,7 +1249,7 @@ fn a_zero_row_chunk_is_skipped_even_without_stamps_and_the_source_keeps_going() 
 
 #[test]
 fn a_non_empty_chunk_without_updated_at_is_an_error() {
-	// without #updated_at there is no changed_at (B2), so the backfill must fail instead of guessing
+	// without #updated_at there is no changed_at, so the backfill must fail instead of guessing
 	let chunk = batch(vec![int4("id", [1]), uint8("#rownum", [1]), datetime("#created_at", [at(1)])]).unwrap();
 	let mut scan =
 		ScriptedScan::new(vec![(TRADES, vec![Scripted::Chunk(chunk), Scripted::Chunk(stamped(&[2], &[2]))])]);

@@ -721,7 +721,7 @@ fn a_late_aggregate_view_built_one_row_per_chunk_equals_an_early_one() {
 
 #[test]
 fn a_late_take_view_equals_an_early_one() {
-	// Take ranks by stored stamps, so the snapshot must keep the same rows the replay kept.
+	// Take ranks by stored stamps, so the snapshot must keep the same rows the early view kept from live changes.
 	let db = memory();
 	let (past, future) = only("bf::src");
 	late_equals_early(

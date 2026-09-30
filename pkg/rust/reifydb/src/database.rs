@@ -526,8 +526,7 @@ impl Database {
 			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
 		let (_, lease) = acquire_hand_off_lease(&self.engine, &[id])?;
 		let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
-		let outcome =
-			service.hydrate(id, &self.engine, identity, lease, max_rows).map_err(hydrate_error_to_error)?;
+		let outcome = service.hydrate(id, identity, lease, max_rows).map_err(hydrate_error_to_error)?;
 		Ok(outcome.batches.into_iter().map(|(op, columns)| Frame::from(columns).with_op(op)).collect())
 	}
 

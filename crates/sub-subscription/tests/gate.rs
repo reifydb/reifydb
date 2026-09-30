@@ -115,7 +115,7 @@ fn a_subscription_with_hydration_delivers_every_row_once_across_the_hand_off() {
 	let engine = db.engine().clone();
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
 	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
 
 	db.command("INSERT app::t [{id: 3}]");
 	wait_for_consumer_caught_up(&db);

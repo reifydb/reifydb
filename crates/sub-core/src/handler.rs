@@ -17,7 +17,6 @@ use reifydb_core::{
 		},
 		change::StagedBatch,
 	},
-	metrics::execution::ExecutionMetrics,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -889,14 +888,12 @@ async fn run_subscription_hydrate<S: WireSink>(
 		}
 	};
 
-	let engine = ctx.engine_clone();
-
 	#[cfg(not(reifydb_single_threaded))]
-	let hydrated = run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await;
+	let hydrated = run_hydrate(service, subscription_id, identity, lease, max_rows).await;
 	#[cfg(reifydb_single_threaded)]
-	let hydrated = run_hydrate_sync(service, engine, subscription_id, identity, lease, max_rows);
+	let hydrated = run_hydrate_sync(service, subscription_id, identity, lease, max_rows);
 
-	let (version, batches, metrics): (CommitVersion, Vec<StagedBatch>, ExecutionMetrics) = match hydrated {
+	let (version, batches, total): (CommitVersion, Vec<StagedBatch>, Duration) = match hydrated {
 		Ok(t) => t,
 		Err(err) => {
 			abort_warming(ctx.engine(), registry, subscription_id).await?;
@@ -913,11 +910,8 @@ async fn run_subscription_hydrate<S: WireSink>(
 		debug!(
 			subscription_id = subscription_id.0,
 			version = version.0,
-			total_us = metrics.total.microseconds().unwrap_or(0),
-			compute_us = metrics.compute.microseconds().unwrap_or(0),
-			statement_count = metrics.statements.len(),
+			total_us = total.microseconds().unwrap_or(0),
 			row_count = row_count,
-			fingerprint = %metrics.fingerprint.to_hex(),
 			"hydrate completed"
 		);
 		if let Some(batch_id) = registry.batch_for(&subscription_id) {

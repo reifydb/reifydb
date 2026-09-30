@@ -39,22 +39,19 @@ pub fn run<'a>(
 	sources: &BTreeSet<ObjectId>,
 	batch_size: NonZeroU64,
 	mut consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
-) -> Result<CommitVersion> {
+) -> Result<()> {
 	let mut scan = TransactionScan {
 		services: Arc::clone(services),
 		tx,
 		opened: None,
 	};
-	let version = scan.version();
 	#[cfg(feature = "testing")]
 	if let Some(InstalledScanHooks(hooks)) = services.ioc.try_resolve::<InstalledScanHooks>() {
-		backfill(&mut TestingScan::over(scan, hooks), sources, batch_size, |testing, change| {
+		return backfill(&mut TestingScan::over(scan, hooks), sources, batch_size, |testing, change| {
 			consume(testing.scan_mut(), change)
-		})?;
-		return Ok(version);
+		});
 	}
-	backfill(&mut scan, sources, batch_size, &mut consume)?;
-	Ok(version)
+	backfill(&mut scan, sources, batch_size, &mut consume)
 }
 
 pub struct TransactionScan<'a> {

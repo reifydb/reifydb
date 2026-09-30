@@ -14,10 +14,7 @@ use reifydb_core::interface::{
 	},
 	change::StagedBatch,
 };
-use reifydb_engine::{
-	engine::StandardEngine,
-	subscription::{HydrateError, HydrationBound, SubscriptionServiceRef},
-};
+use reifydb_engine::subscription::{HydrateError, HydrationBound, SubscriptionServiceRef};
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::value::{
@@ -41,11 +38,11 @@ fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
 	}
 }
 
-fn engine_lease_service(db: &TestDb) -> (StandardEngine, VersionLeaseGuard, SubscriptionServiceRef) {
-	let engine = db.engine().clone();
+fn engine_lease_service(db: &TestDb) -> (VersionLeaseGuard, SubscriptionServiceRef) {
+	let engine = db.engine();
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
 	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
-	(engine, lease, sub_service)
+	(lease, sub_service)
 }
 
 fn seed_id_qty(db: &TestDb, table: &str, rows: usize) {
@@ -60,18 +57,15 @@ fn seed_id_qty(db: &TestDb, table: &str, rows: usize) {
 	db.command(&insert_stmt);
 }
 
-fn create_and_setup(
-	db: &TestDb,
-	query: &str,
-) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
+fn create_and_setup(db: &TestDb, query: &str) -> (SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
 	let outcome = db
 		.engine()
 		.subscribe_as(IdentityId::root(), query, Params::None, SubscribeOptions::default())
 		.expect("subscribe as root");
 	let sub_id = extract_sub_id(outcome);
-	let (engine, lease, sub_service) = engine_lease_service(db);
+	let (lease, sub_service) = engine_lease_service(db);
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
-	(engine, sub_id, lease, sub_service)
+	(sub_id, lease, sub_service)
 }
 
 #[test]
@@ -83,9 +77,9 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 
 	db.command("INSERT app::orders [{id: 1, qty: 10}, {id: 2, qty: 20}, {id: 3, qty: 30}]");
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::orders");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::orders");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
 
 	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, 3, "snapshot should contain 3 seeded rows");
@@ -111,10 +105,9 @@ fn hydrate_500_rows_stages_scan_frame_batches_not_one_per_row() {
 	insert_stmt.push(']');
 	db.command(&insert_stmt);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::wide");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::wide");
 
-	let outcome =
-		sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, ROWS as u64).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, ROWS as u64).expect("hydrate succeeds");
 
 	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, ROWS, "batching must not drop or duplicate snapshot rows");
@@ -139,9 +132,9 @@ fn hydrate_delivers_every_row_of_a_snapshot_larger_than_the_delivery_ring() {
 	db.admin("CREATE TABLE app::deep { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::deep", ROWS);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::deep | take 2000");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::deep | take 2000");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5000).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 5000).expect("hydrate succeeds");
 
 	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
 	assert_eq!(total_rows, ROWS, "snapshot must carry every row the query returned, not the ring's last 1024");
@@ -171,7 +164,7 @@ fn announced_ids(batches: &[StagedBatch]) -> Vec<i32> {
 
 #[test]
 fn hydrate_take_selects_the_newest_by_created_at_not_by_row_number() {
-	// A pushed take cuts by row number while the operator keeps the newest created_at, so a backfill disagrees.
+	// Take must keep the newest created_at, never the highest row number.
 	let db = TestDb::builder().mock_time(DateTime::from_millis(1_000)).memory();
 
 	db.admin("CREATE NAMESPACE app");
@@ -179,9 +172,9 @@ fn hydrate_take_selects_the_newest_by_created_at_not_by_row_number() {
 
 	seed_backdated(&db, "app::backfill", &[(1, 5_000), (2, 4_000), (3, 3_000), (4, 2_000), (5, 1_000)]);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::backfill | take 2");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::backfill | take 2");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 50).expect("hydrate succeeds");
 
 	let mut got = announced_ids(&outcome.batches);
 	got.sort();
@@ -197,9 +190,9 @@ fn hydrate_take_breaks_created_at_ties_by_row_number() {
 	db.admin("CREATE TABLE app::tied { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::tied", 20);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::tied | take 3");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::tied | take 3");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 50).expect("hydrate succeeds");
 
 	let mut got = announced_ids(&outcome.batches);
 	got.sort();
@@ -216,9 +209,9 @@ fn hydrate_snapshot_announces_inserts_only() {
 	db.admin("CREATE TABLE app::churn { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::churn", 50);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::churn | take 5");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::churn | take 5");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 50).expect("hydrate succeeds");
 
 	for (op, _) in &outcome.batches {
 		assert_eq!(*op, DiffType::Insert, "hydration snapshot must announce inserts only, saw op={:?}", op);
@@ -235,9 +228,9 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 	db.admin("CREATE TABLE app::phantom { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::phantom", 50);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::phantom | take 5");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::phantom | take 5");
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 50).expect("hydrate succeeds");
 
 	let mut announced: HashSet<u64> = HashSet::new();
 	let mut seen = 0usize;
@@ -284,11 +277,9 @@ fn hydrate_fails_when_row_cap_exceeded() {
 	insert_stmt.push(']');
 	db.command(&insert_stmt);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::big");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::big");
 
-	let err = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
-		.expect_err("expected RowCapExceeded");
+	let err = sub_service.hydrate(sub_id, IdentityId::root(), lease, 10).expect_err("expected RowCapExceeded");
 
 	match err {
 		HydrateError::RowCapExceeded {
@@ -304,7 +295,7 @@ fn hydrate_fails_when_row_cap_exceeded() {
 }
 
 #[test]
-fn hydrate_pushes_take_into_source_query() {
+fn hydrate_caps_the_rows_a_take_outputs_not_the_rows_it_reads() {
 	let db = TestDb::memory();
 
 	db.admin("CREATE NAMESPACE app");
@@ -320,15 +311,15 @@ fn hydrate_pushes_take_into_source_query() {
 	insert_stmt.push(']');
 	db.command(&insert_stmt);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::big | take 5");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::big | take 5");
 
 	sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
-		.expect("hydrate succeeds: take 5 should be pushed into source so cap=10 holds");
+		.hydrate(sub_id, IdentityId::root(), lease, 10)
+		.expect("hydrate succeeds: take 5 outputs 5 rows, under a cap of 10");
 }
 
 #[test]
-fn hydrate_pushes_filter_into_source_query() {
+fn hydrate_applies_the_filter_before_the_take() {
 	let db = TestDb::memory();
 
 	db.admin("CREATE NAMESPACE app");
@@ -348,14 +339,11 @@ fn hydrate_pushes_filter_into_source_query() {
 	insert_stmt.push(']');
 	db.command(&insert_stmt);
 
-	let (engine, sub_id, lease, sub_service) =
-		create_and_setup(&db, "from app::events | filter { kind == 'b' } | take 5");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::events | filter { kind == 'b' } | take 5");
 
-	// The filter must reach the source query, or the 5-row take selects 5 'a' rows that the in-flow filter
-	// then discards, leaving the snapshot empty. The cap is the take limit, so both variants fit under it
-	// and the assertion rests on the rows matching the filter, not on a cap-exceeded error.
+	// Take must run after the filter, otherwise it keeps 5 'a' rows the filter drops and the snapshot is empty.
 	let outcome = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.hydrate(sub_id, IdentityId::root(), lease, 5)
 		.expect("hydrate succeeds at cap=5 (matches TAKE 5)");
 
 	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.num_rows()).sum();
@@ -373,24 +361,23 @@ fn hydrate_pushes_filter_into_source_query() {
 }
 
 #[test]
-fn hydrate_keeps_the_take_earned_before_an_unrenderable_filter() {
-	// Mul cannot render, but the take sits above it and was already earned; dropping it pulls all 50 rows.
+fn hydrate_bounds_a_take_followed_by_a_filter_by_its_limit() {
+	// A filter after the take must not lift the bound: 50 source rows still fit a cap of 5.
 	let db = TestDb::memory();
 
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::big { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::big", 50);
 
-	let (engine, sub_id, lease, sub_service) =
-		create_and_setup(&db, "from app::big | take 5 | filter { qty * 2 > 0 }");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::big | take 5 | filter { qty * 2 > 0 }");
 
 	sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
-		.expect("hydrate succeeds: take 5 survives the unrenderable filter below it");
+		.hydrate(sub_id, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 bounds the output even with a filter after it");
 }
 
 #[test]
-fn hydrate_pushes_take_through_map() {
+fn hydrate_bounds_a_take_after_map_by_its_limit() {
 	// Map is one row in, one row out, so the take below it selects the same rows at the source.
 	let db = TestDb::memory();
 
@@ -398,15 +385,15 @@ fn hydrate_pushes_take_through_map() {
 	db.admin("CREATE TABLE app::mapped { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::mapped", 50);
 
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::mapped | map { id, qty } | take 5");
+	let (sub_id, lease, sub_service) = create_and_setup(&db, "from app::mapped | map { id, qty } | take 5");
 
 	sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
-		.expect("hydrate succeeds: take 5 should be pushed through map so cap=5 holds");
+		.hydrate(sub_id, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 after map outputs 5 rows, so cap=5 holds");
 }
 
 #[test]
-fn hydrate_pushes_take_through_extend() {
+fn hydrate_bounds_a_take_after_extend_by_its_limit() {
 	// Extend adds a column without changing cardinality or order, so a source take is exact.
 	let db = TestDb::memory();
 
@@ -414,12 +401,12 @@ fn hydrate_pushes_take_through_extend() {
 	db.admin("CREATE TABLE app::extended { id: int4, qty: int4 }");
 	seed_id_qty(&db, "app::extended", 50);
 
-	let (engine, sub_id, lease, sub_service) =
+	let (sub_id, lease, sub_service) =
 		create_and_setup(&db, "from app::extended | extend { qty_x2: qty * 2 } | take 5");
 
 	sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
-		.expect("hydrate succeeds: take 5 should be pushed through extend so cap=5 holds");
+		.hydrate(sub_id, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 after extend outputs 5 rows, so cap=5 holds");
 }
 
 fn subscribe_with_params(
@@ -427,15 +414,15 @@ fn subscribe_with_params(
 	identity: IdentityId,
 	query: &str,
 	params: Params,
-) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
+) -> (SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
 	let outcome = db
 		.engine()
 		.subscribe_as(identity, query, params, SubscribeOptions::default())
 		.expect("subscribe failed");
 	let sub_id = extract_sub_id(outcome);
-	let (engine, lease, sub_service) = engine_lease_service(db);
+	let (lease, sub_service) = engine_lease_service(db);
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
-	(engine, sub_id, lease, sub_service)
+	(sub_id, lease, sub_service)
 }
 
 fn monitor_param(monitor: &str) -> Params {
@@ -493,10 +480,10 @@ fn ids_with_op(batches: &[StagedBatch], want: DiffType) -> Vec<i32> {
 
 #[test]
 fn hydrate_bounds_a_param_filtered_take_by_its_limit_not_by_the_matching_rows() {
-	// A $name filter that stops the take reaching the source makes take 5 fail a cap of 5 it satisfies.
+	// The $name filter must not lift the bound: take 5 fits a cap of 5 however many rows match.
 	let db = two_monitor_db();
 
-	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+	let (sub_id, lease, sub_service) = subscribe_with_params(
 		&db,
 		IdentityId::root(),
 		"from app::checks | filter { monitor == $monitor } | take 5",
@@ -504,7 +491,7 @@ fn hydrate_bounds_a_param_filtered_take_by_its_limit_not_by_the_matching_rows() 
 	);
 
 	let outcome = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.hydrate(sub_id, IdentityId::root(), lease, 5)
 		.expect("take 5 bounds the snapshot, so a cap of 5 must hold however many rows match");
 
 	assert_eq!(
@@ -516,7 +503,7 @@ fn hydrate_bounds_a_param_filtered_take_by_its_limit_not_by_the_matching_rows() 
 
 #[test]
 fn hydrate_bounds_a_policy_scoped_param_filtered_take_by_its_limit() {
-	// The injected $identity.id policy filter sits first, so it must not block the take reaching the source.
+	// The injected $identity.id policy filter must not lift the take's bound.
 	let db = TestDb::memory();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::checks { id: int4, monitor: utf8, owner: identity_id }");
@@ -548,7 +535,7 @@ fn hydrate_bounds_a_policy_scoped_param_filtered_take_by_its_limit() {
 	insert_stmt.push(']');
 	db.command(&insert_stmt);
 
-	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+	let (sub_id, lease, sub_service) = subscribe_with_params(
 		&db,
 		alice,
 		"from app::checks filter { monitor == $monitor } map { id, monitor } take 5",
@@ -556,7 +543,7 @@ fn hydrate_bounds_a_policy_scoped_param_filtered_take_by_its_limit() {
 	);
 
 	let outcome = sub_service
-		.hydrate(sub_id, &engine, alice, lease, 5)
+		.hydrate(sub_id, alice, lease, 5)
 		.expect("take 5 bounds the snapshot, so a cap of 5 must hold however many rows alice owns");
 
 	assert_eq!(
@@ -584,10 +571,10 @@ fn hydrate_refuses_an_identity_other_than_the_subscriber() {
 		 {{id: 3, owner: cast('{alice}', identity_id)}}, {{id: 4, owner: cast('{bob}', identity_id)}}]"
 	));
 
-	let (engine, sub_id, lease, sub_service) =
+	let (sub_id, lease, sub_service) =
 		subscribe_with_params(&db, alice, "from app::checks map { id }", Params::None);
 
-	match sub_service.hydrate(sub_id, &engine, bob, lease, 50) {
+	match sub_service.hydrate(sub_id, bob, lease, 50) {
 		Err(HydrateError::SubscriptionNotFound) => {}
 		Ok(outcome) => panic!(
 			"bob hydrated alice's subscription and received ids {:?}",
@@ -596,9 +583,8 @@ fn hydrate_refuses_an_identity_other_than_the_subscriber() {
 		Err(other) => panic!("unexpected error: {other:?}"),
 	}
 
-	let (_, lease, _) = engine_lease_service(&db);
-	let outcome =
-		sub_service.hydrate(sub_id, &engine, alice, lease, 50).expect("alice hydrates her own subscription");
+	let (lease, _) = engine_lease_service(&db);
+	let outcome = sub_service.hydrate(sub_id, alice, lease, 50).expect("alice hydrates her own subscription");
 	let mut ids = announced_ids(&outcome.batches);
 	ids.sort_unstable();
 	assert_eq!(ids, vec![1, 3], "alice's snapshot must hold exactly her rows");
@@ -609,7 +595,7 @@ fn hydrate_still_refuses_a_param_filtered_take_larger_than_the_cap() {
 	// take 20 admits twenty matching rows, so a cap of 10 must refuse the snapshot rather than truncate it.
 	let db = two_monitor_db();
 
-	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+	let (sub_id, lease, sub_service) = subscribe_with_params(
 		&db,
 		IdentityId::root(),
 		"from app::checks | filter { monitor == $monitor } | take 20",
@@ -617,7 +603,7 @@ fn hydrate_still_refuses_a_param_filtered_take_larger_than_the_cap() {
 	);
 
 	let err = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
+		.hydrate(sub_id, IdentityId::root(), lease, 10)
 		.expect_err("expected RowCapExceeded: take 20 exceeds a cap of 10");
 
 	match err {
@@ -628,8 +614,8 @@ fn hydrate_still_refuses_a_param_filtered_take_larger_than_the_cap() {
 			assert_eq!(cap, 10);
 			assert_eq!(
 				bound,
-				HydrationBound::Pushed,
-				"the take reached the source, so only raising the cap helps"
+				HydrationBound::Present,
+				"the flow has a take, so only raising the cap helps"
 			);
 		}
 		other => panic!("unexpected error: {:?}", other),
@@ -638,10 +624,10 @@ fn hydrate_still_refuses_a_param_filtered_take_larger_than_the_cap() {
 
 #[test]
 fn hydrate_still_refuses_a_param_filter_with_no_take_over_the_cap() {
-	// Pushing the filter must not pass for a bound: thirty matching rows with no take still exceed a cap of 10.
+	// A filter alone must never count as a bound: thirty matching rows with no take exceed a cap of 10.
 	let db = two_monitor_db();
 
-	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+	let (sub_id, lease, sub_service) = subscribe_with_params(
 		&db,
 		IdentityId::root(),
 		"from app::checks | filter { monitor == $monitor }",
@@ -649,7 +635,7 @@ fn hydrate_still_refuses_a_param_filter_with_no_take_over_the_cap() {
 	);
 
 	let err = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
+		.hydrate(sub_id, IdentityId::root(), lease, 10)
 		.expect_err("expected RowCapExceeded: nothing bounds thirty matching rows");
 
 	match err {
@@ -670,16 +656,16 @@ fn hydrate_still_refuses_a_param_filter_with_no_take_over_the_cap() {
 
 #[test]
 fn a_live_match_after_a_param_filtered_hydration_evicts_the_oldest_hydrated_row() {
-	// A window seeded from the pushed snapshot must evict its oldest row on the next match and ignore a non-match.
+	// A window seeded from the snapshot must evict its oldest row on the next match and ignore a non-match.
 	let db = two_monitor_db();
 
-	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+	let (sub_id, lease, sub_service) = subscribe_with_params(
 		&db,
 		IdentityId::root(),
 		"from app::checks | filter { monitor == $monitor } | take 5",
 		monitor_param("a"),
 	);
-	sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5).expect("hydrate succeeds");
+	sub_service.hydrate(sub_id, IdentityId::root(), lease, 5).expect("hydrate succeeds");
 	drain_live(&db, sub_id);
 
 	db.command("INSERT app::checks [{id: 60, monitor: 'a'}]");
@@ -694,10 +680,10 @@ fn a_live_match_after_a_param_filtered_hydration_evicts_the_oldest_hydrated_row(
 fn hydrate_returns_subscription_not_found_for_unknown_id() {
 	let db = TestDb::memory();
 
-	let (engine, lease, sub_service) = engine_lease_service(&db);
+	let (lease, sub_service) = engine_lease_service(&db);
 
 	let err = sub_service
-		.hydrate(SubscriptionId(99_999), &engine, IdentityId::root(), lease, 1024)
+		.hydrate(SubscriptionId(99_999), IdentityId::root(), lease, 1024)
 		.expect_err("expected SubscriptionNotFound");
 
 	match err {

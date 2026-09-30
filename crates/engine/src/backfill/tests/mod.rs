@@ -223,12 +223,7 @@ impl Db {
 		txn.commit().unwrap()
 	}
 
-	fn backfill(
-		&self,
-		tx: Transaction<'_>,
-		sources: &[ObjectId],
-		batch_size: u64,
-	) -> (Result<CommitVersion>, Vec<Change>) {
+	fn backfill(&self, tx: Transaction<'_>, sources: &[ObjectId], batch_size: u64) -> (Result<()>, Vec<Change>) {
 		let mut changes = Vec::new();
 		let result = run(self.executor.services(), tx, &set(sources), size(batch_size), |_, change| {
 			changes.push(change);
@@ -238,8 +233,10 @@ impl Db {
 	}
 
 	fn snapshot(&self, tx: Transaction<'_>, sources: &[ObjectId], batch_size: u64) -> (CommitVersion, Vec<Change>) {
+		let version = tx.version();
 		let (result, changes) = self.backfill(tx, sources, batch_size);
-		(result.unwrap(), changes)
+		result.unwrap();
+		(version, changes)
 	}
 
 	fn raw_scan<'a>(&self, tx: Transaction<'a>) -> TransactionScan<'a> {
@@ -429,7 +426,6 @@ fn a_table_backfill_at_v_equals_from_at_v_after_inserts_updates_and_deletes() {
 	let mut q = db.query();
 	let t = db.id(&mut Transaction::Query(&mut q), Kind::Table, "t");
 	let (v, changes) = db.snapshot(Transaction::Query(&mut q), &[t], 2);
-	assert_eq!(v, q.version(), "V is the version the query txn reads at");
 	let from = db.from(&mut Transaction::Query(&mut q), "ns::t");
 	let rows = assert_matches_from(&changes, t, v, &from, &DROPPED);
 	assert_eq!(user_values(&changes), pairs(&[(1, 10), (2, 21), (4, 40), (5, 51), (7, 70)]));
@@ -592,7 +588,7 @@ fn a_series_backfill_equals_from_after_updates_and_deletes() {
 
 #[test]
 fn a_tagged_series_backfill_drops_the_tag_column_that_live_changes_never_carry() {
-	// B2b: snapshot rows must have the live change shape; live series inserts carry key and data columns, no tag.
+	// snapshot rows must have the live change shape; live series inserts carry key and data columns, no tag.
 	let db = Db::new();
 	db.commit(&[
 		"CREATE NAMESPACE ns",
@@ -667,7 +663,7 @@ fn a_partitioned_ringbuffer_backfill_equals_from_without_the_partition_column() 
 
 #[test]
 fn several_sources_are_scanned_one_after_another_in_object_id_order_at_one_version() {
-	// P+7: every source of one backfill is read at the same V; interleaved sources would break per-source chunking.
+	// every source of one backfill is read at the same V; interleaved sources would break per-source chunking.
 	let db = Db::new();
 	db.commit(&[
 		"CREATE NAMESPACE ns",

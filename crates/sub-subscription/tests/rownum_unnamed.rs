@@ -88,7 +88,7 @@ fn hydration_carries_rownum_it_never_names() {
 	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
-	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
+	let outcome = sub_service.hydrate(sub_id, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
 
 	let mut seen: Vec<u64> = Vec::new();
 	for (_, batch) in &outcome.batches {

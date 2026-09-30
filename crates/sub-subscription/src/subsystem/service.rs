@@ -11,10 +11,7 @@ use reifydb_core::{
 	flow::dag::FlowDag,
 	interface::catalog::{flow::FlowId, id::SubscriptionId},
 };
-use reifydb_engine::{
-	engine::StandardEngine,
-	subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService},
-};
+use reifydb_engine::subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	sync::rwlock::RwLock,
@@ -181,7 +178,6 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	fn hydrate(
 		&self,
 		sub_id: SubscriptionId,
-		_engine: &StandardEngine,
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,
@@ -367,9 +363,7 @@ mod tests {
 		let version = t.inner().current_version().expect("current version");
 		let lease = t.inner().acquire_version_lease(version).expect("lease the current version");
 
-		let message = panic_message(|| {
-			fixture.service.hydrate(SUBSCRIPTION, t.inner(), IdentityId::root(), lease, 16)
-		});
+		let message = panic_message(|| fixture.service.hydrate(SUBSCRIPTION, IdentityId::root(), lease, 16));
 
 		assert_names_op_worker_and_subscription(&message, "hydrate");
 	}
@@ -472,7 +466,7 @@ mod tests {
 		let version = t.inner().current_version().expect("current version");
 		let lease = t.inner().acquire_version_lease(version).expect("lease the current version");
 
-		match service.hydrate(SUBSCRIPTION, t.inner(), IdentityId::root(), lease, 16) {
+		match service.hydrate(SUBSCRIPTION, IdentityId::root(), lease, 16) {
 			Err(HydrateError::Engine(error)) if TransactionError::is_shutting_down(&error) => {}
 			other => panic!("hydrate during shutdown must fail as shutting down, got {:?}", other),
 		}

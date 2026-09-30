@@ -33,7 +33,7 @@ fn sort_by_rownum_over_an_empty_table_returns_no_rows() {
 
 #[test]
 fn sort_take_fusion_over_an_empty_table_returns_no_rows() {
-	// This is the shape hydration pushes down for a take, so an empty source must not fail the subscription.
+	// Sort-take fusion must return no rows over an empty table, never fail on its system columns.
 	let t = empty_table();
 
 	let frames = t.query("FROM test::rows | sort {created_at:DESC, rownum:DESC} | take 5");

@@ -50,7 +50,7 @@ pub(crate) fn hydration_bound(flow: &FlowDag) -> HydrationBound {
 		flow.get_operator(operator_id).is_some_and(|operator| matches!(operator.ty, OperatorDef::Take { .. }))
 	});
 	if bounded {
-		HydrationBound::Pushed
+		HydrationBound::Present
 	} else {
 		HydrationBound::Absent
 	}

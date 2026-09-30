@@ -165,7 +165,7 @@ impl FlowSupervisor {
 	}
 
 	fn handle_bootstrap(&self, state: &mut SupervisorState, flows: Vec<FlowId>, scan_from: Option<CommitVersion>) {
-		let migration_base = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
+		let ddl_cursor = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
 		let mut known: BTreeSet<FlowId> = flows.iter().copied().collect();
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
@@ -194,7 +194,7 @@ impl FlowSupervisor {
 				continue;
 			}
 			state.analyzer.add(flow.clone());
-			let checkpoint = resolve_seed(&operators, flow_id);
+			let checkpoint = stored_checkpoint(&operators, flow_id);
 			to_spawn.push((flow, checkpoint));
 		}
 
@@ -216,7 +216,7 @@ impl FlowSupervisor {
 
 		self.hydrate_frontiers();
 
-		let scan_cursor = scan_from.unwrap_or(migration_base);
+		let scan_cursor = scan_from.unwrap_or(ddl_cursor);
 		state.scan_cursor = scan_cursor;
 		state.last_control_commit_at = self.clock.now();
 		self.control.store(scan_cursor);
@@ -639,7 +639,7 @@ fn wake_targets(sets: &BTreeMap<ObjectId, BTreeSet<FlowId>>, changed: &BTreeSet<
 	changed.iter().filter_map(|object| sets.get(object)).flatten().copied().collect()
 }
 
-fn resolve_seed(operators: &OperatorStore, flow_id: FlowId) -> Option<CommitVersion> {
+fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<CommitVersion> {
 	match operators.checkpoint_get(flow_id) {
 		Ok(checkpoint) => checkpoint.filter(|version| *version > CommitVersion(0)),
 		Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
@@ -737,7 +737,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
-	use super::{reap_orphan_checkpoints, resolve_seed, retire_flow, wake_sets, wake_targets};
+	use super::{reap_orphan_checkpoints, retire_flow, stored_checkpoint, wake_sets, wake_targets};
 	use crate::progress::tracker::FlowPositionTracker;
 
 	struct StopRecorder {
@@ -775,13 +775,13 @@ mod tests {
 		store.checkpoint_set(FlowId(1), CommitVersion(77)).unwrap();
 
 		assert_eq!(
-			resolve_seed(&store, FlowId(1)),
+			stored_checkpoint(&store, FlowId(1)),
 			Some(CommitVersion(77)),
 			"a stored checkpoint is the resume point; dropping it makes the flow wipe its view and rescan \
 			 every source instead of resuming at 77"
 		);
 		assert_eq!(
-			resolve_seed(&store, FlowId(2)),
+			stored_checkpoint(&store, FlowId(2)),
 			None,
 			"a flow that never checkpointed must get none so it wipes its view and backfills; any version \
 			 here makes it replay cdc into a view that was never built"
@@ -795,7 +795,7 @@ mod tests {
 		store.checkpoint_set(FlowId(1), CommitVersion(0)).unwrap();
 
 		assert_eq!(
-			resolve_seed(&store, FlowId(1)),
+			stored_checkpoint(&store, FlowId(1)),
 			None,
 			"a checkpoint of 0 was never a committed slice, so the flow must wipe its view and backfill"
 		);
@@ -808,7 +808,7 @@ mod tests {
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.shutdown();
 
-		resolve_seed(&store, FlowId(1));
+		stored_checkpoint(&store, FlowId(1));
 	}
 
 	#[test]

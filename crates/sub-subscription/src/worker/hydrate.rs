@@ -16,7 +16,6 @@ use reifydb_core::{
 		change::{Change, StagedBatch},
 	},
 	internal_err,
-	metrics::execution::ExecutionMetrics,
 	value::batch::{concat, take_rows},
 };
 use reifydb_engine::{
@@ -160,16 +159,11 @@ impl SubscriptionWorkerActor {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;
 		let total = Duration::from_nanoseconds(elapsed_nanos).unwrap_or_default();
-		let metrics = ExecutionMetrics {
-			total,
-			compute: total,
-			..ExecutionMetrics::default()
-		};
 
 		HydrateOutcome {
 			version,
 			batches,
-			metrics,
+			total,
 		}
 	}
 }
