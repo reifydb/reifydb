@@ -182,6 +182,13 @@ pub(crate) enum MetaFate {
 }
 
 impl MetaSweep {
+	pub(crate) fn lower_low_water(&mut self, high_water: u64) {
+		self.low_water = self.low_water.map(|low| low.min(high_water));
+		if self.cursor.is_some() {
+			self.surviving = Some(self.surviving.map_or(high_water, |low| low.min(high_water)));
+		}
+	}
+
 	pub(crate) fn sweep<M>(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize>
 	where
 		M: MetaHighWater + Clone + OperatorState + HeapSize,

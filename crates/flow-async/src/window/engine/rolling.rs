@@ -6,6 +6,7 @@ use std::{
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
+	mem,
 	ops::Bound,
 };
 
@@ -23,7 +24,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -135,6 +136,7 @@ pub struct RollingEngine<G, S: Slot, Accumulator> {
 	expire_batch: usize,
 	lag: <S::Coord as Coord>::Span,
 	expiry: ExpiryIndex<Expiry>,
+	stranded: Vec<(Hash128, u64)>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
@@ -208,6 +210,7 @@ where
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
 			expiry: ExpiryIndex::default(),
+			stranded: Vec::new(),
 			_pd: PhantomData,
 		}
 	}
@@ -221,6 +224,10 @@ where
 	pub fn with_lag(mut self, lag: <S::Coord as Coord>::Span) -> Self {
 		self.lag = lag;
 		self
+	}
+
+	pub fn take_stranded(&mut self) -> Vec<(Hash128, u64)> {
+		mem::take(&mut self.stranded)
 	}
 
 	pub fn apply<K, CB, Output>(
@@ -276,7 +283,7 @@ where
 			&combine,
 			indexed,
 		)?;
-		let results = self.combine_and_collect(store, group_slots, &combine, indexed)?;
+		let results = self.combine_and_collect(store, group_slots, &meta_loaded, &combine, indexed)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
@@ -441,6 +448,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Output>>,
+		meta_loaded: &MetaLoaded<G, S>,
 		combine: &CB,
 		indexed: Option<IndexedPane>,
 	) -> Result<Vec<RollingResult<G, Output>>>
@@ -473,6 +481,12 @@ where
 				}
 			}
 			let output = combine(&group, &group_slot.buffer);
+			if let Some(high_water) =
+				meta_loaded.get(&group).and_then(BatchMeta::high_water).filter(|high_water| {
+					group_slot.buffer.last_key_value().is_none_or(|(newest, _)| newest < high_water)
+				}) {
+				self.stranded.push((group_hash(&group)?, high_water.order_key().to_order()));
+			}
 			if group_slot.buffer.is_empty() {
 				remove(
 					store,
@@ -696,6 +710,11 @@ where
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
+		for batch in meta_loaded.values() {
+			if let Some(bumped) = batch.bumped {
+				self.meta_sweep.lower_low_water(bumped.order_key().to_order());
+			}
+		}
 		persist_batch_meta(store, meta_loaded)
 	}
 }
@@ -901,6 +920,11 @@ where
 			} else {
 				None
 			};
+			if let Some(high_water) = high_water.filter(|high_water| {
+				group_slot.buffer.last_key_value().is_none_or(|(newest, _)| newest < high_water)
+			}) {
+				self.stranded.push((group_hash(&group)?, high_water.order_key().to_order()));
+			}
 			if group_slot.buffer.is_empty() {
 				remove(
 					store,

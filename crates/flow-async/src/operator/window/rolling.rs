@@ -30,7 +30,9 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			seal::{domain::SealDomain, gate::EvictionGate, ledger::FiredAt, rule::is_sealed},
+			seal::{
+				coord::Coord, domain::SealDomain, gate::EvictionGate, ledger::FiredAt, rule::is_sealed,
+			},
 			store,
 		},
 	},
@@ -401,6 +403,7 @@ fn apply_rolling<S: RollingDomain>(
 	};
 
 	rearm_rolling_seal::<S>(operator, host, armed_before, runnable, lag)?;
+	arm_stranded_meta_seals::<S>(operator, host, runnable, lag)?;
 
 	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -431,6 +434,23 @@ fn rearm_rolling_seal<S: RollingDomain>(
 	}
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
 	gate.rearm(host, &EncodedKey::new(Vec::new()), before.map(S::to_order), after.map(S::to_order))
+}
+
+fn arm_stranded_meta_seals<S: RollingDomain>(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	runnable: bool,
+	lag: S::Span,
+) -> Result<()> {
+	let stranded = S::engine(operator, runnable, lag).take_stranded();
+	if !S::arms_timer() {
+		return Ok(());
+	}
+	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
+	for (group, high_water) in stranded {
+		gate.rearm(host, &EncodedKey::new(group.0.to_be_bytes()), None, Some(high_water))?;
+	}
+	Ok(())
 }
 
 fn finish_rolling_results(
@@ -513,7 +533,7 @@ pub fn seal_rolling_engine(
 
 	let expiries = match cutoff {
 		Some(cutoff) => {
-			if runnable {
+			let expiries = if runnable {
 				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
 				engine.expire_before_running(host, cutoff)?
 			} else {
@@ -521,7 +541,10 @@ pub fn seal_rolling_engine(
 				engine.expire_before(host, cutoff, |_g, buffer| {
 					combine_rolling::<DateTime>(buffer, &kinds, lag, immutable)
 				})?
-			}
+			};
+			<DateTime as RollingDomain>::engine(operator, runnable, lag)
+				.expire_meta(host, cutoff.to_order().saturating_add(1))?;
+			expiries
 		}
 		None => Vec::new(),
 	};
