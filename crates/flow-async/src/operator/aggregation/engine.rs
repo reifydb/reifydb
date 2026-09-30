@@ -179,7 +179,7 @@ pub(crate) fn finish_tumbling_engine(
 					group,
 					&store::empty_key(),
 					prior_index,
-					None,
+					anchor.of(window_start, None),
 				)?;
 				remove(host, &EngineMetaKey(group))?;
 			}

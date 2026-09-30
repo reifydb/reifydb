@@ -158,21 +158,6 @@ impl MockStore {
 		keys.len()
 	}
 
-	pub(crate) fn mapping_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::GUEST_ROW_MAPPING)
-	}
-
-	pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
-		let mut bytes = vec![0u8; 16];
-		bytes[15] = suffix;
-		self.data.insert(
-			OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::GUEST_ROW_MAPPING, bytes)
-				.as_slice()
-				.to_vec(),
-			EncodedPodRow::new(&[0u8]),
-		);
-	}
-
 	pub(crate) fn contains_row_mapping(&self, group: GroupId) -> bool {
 		self.rows.contains_key(&(group, Vec::new()))
 	}

@@ -270,7 +270,6 @@ where
 			expired.push(window.group_id);
 			*reap_queue_empty = false;
 		}
-		engine.expire_meta(store, horizon.to_order())?;
 		if *reap_queue_empty {
 			reifydb_assertions! {
 				let pending = queued(store, 1)?;

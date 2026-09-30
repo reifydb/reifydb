@@ -145,11 +145,8 @@ fn state_of(operator: u64) -> String {
 }
 
 fn per_window_state_of(operator: u64) -> String {
-	// The counters, the ledger and the meta are the operator's own bookkeeping, so the rest is per window.
-	format!(
-		"{} filter {{ keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' and keyspace != 'WINDOW_META' }}",
-		state_of(operator)
-	)
+	// The counters and the ledger are the operator's own bookkeeping, so the rest is per window.
+	format!("{} filter {{ keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' }}", state_of(operator))
 }
 
 fn guest_window(db: &TestDb) {

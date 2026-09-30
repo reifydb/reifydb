@@ -35,17 +35,14 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, WindowResult,
-			WindowStateKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
-			note_when_expiry_capped, persist_batch_meta,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, WindowResult, WindowStateKey,
+			config::WindowEngineConfig, group_hash, note_when_expiry_capped,
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
 };
 
 pub type TumblingBuckets<G, S, Contribution> = BTreeMap<(G, WindowSpan<S>), Vec<AccumulatorEvent<Contribution>>>;
-
-type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 
 #[derive(Clone)]
 struct ResolvedSlot {
@@ -91,7 +88,6 @@ where
 
 pub struct TumblingEngine<G, S, Accumulator> {
 	family: KeyspaceFamily,
-	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	dropped_retractions: u64,
 	expiry: ExpiryIndex<TumblingExpiry>,
@@ -104,13 +100,11 @@ where
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 	G: StateCodec,
-	GroupMeta<S>: OperatorState,
 	TumblingIndexEntry<G, S>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			family: config.family(),
-			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
 			expiry: ExpiryIndex::default(),
@@ -168,7 +162,6 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let slot_resolved = Self::resolve_slots(order, &slot_key);
 		reifydb_assertions! {
 			let ordered = slot_resolved.len();
@@ -181,25 +174,7 @@ where
 				 (order={ordered}, buckets={bucketed})"
 			);
 		}
-		let results =
-			self.apply_events(store, buckets, order, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
-		self.persist_meta(store, meta_loaded)?;
-		Ok(results)
-	}
-
-	fn load_meta(
-		&mut self,
-		store: &mut dyn StateStore,
-		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, S>> {
-		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
-		for (group, _) in buckets.keys() {
-			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
-				meta_loaded.insert(group.clone(), batch);
-			}
-		}
-		Ok(meta_loaded)
+		self.apply_events(store, buckets, order, &slot_resolved, &new_accumulator)
 	}
 
 	fn resolve_slots<K>(order: &[(G, WindowSpan<S>)], slot_key: &K) -> SlotResolved<G, S>
@@ -226,7 +201,6 @@ where
 		mut buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
 		order: &[(G, WindowSpan<S>)],
 		slot_resolved: &SlotResolved<G, S>,
-		meta_loaded: &mut MetaLoaded<G, S>,
 		new_accumulator: &NA,
 	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>>
 	where
@@ -239,7 +213,6 @@ where
 				continue;
 			};
 			let (group, span) = ordered.clone();
-			meta_loaded.entry(group.clone()).or_default().observe(span.start);
 
 			let Some(ResolvedSlot {
 				group: id,
@@ -385,14 +358,6 @@ where
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
 		self.expiry.earliest(store)
 	}
-
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
-		persist_batch_meta(store, meta_loaded)
-	}
-
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
-	}
 }
 
 #[cfg(test)]
@@ -408,20 +373,16 @@ mod tests {
 	use reifydb_value::{Result, factory::time::at_millis, util::hash::Hash128, value::datetime::DateTime};
 
 	use crate::{
-		operator::{
-			state::{
-				mock::MockStore,
-				reaper::{StoreReaper, enqueue, reap_group},
-				seal::coord::Coord,
-			},
-			state_access::{get, put},
+		operator::state::{
+			mock::MockStore,
+			reaper::{StoreReaper, enqueue, reap_group},
+			seal::coord::Coord,
 		},
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{
-				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
+				AccumulatorEvent, EmitKind, WindowResult,
 				config::WindowEngineConfig,
-				group_hash, meta_key_for,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
 			span::WindowSpan,
@@ -483,10 +444,6 @@ mod tests {
 			prior,
 			new,
 		)
-	}
-
-	fn order(millis: i64) -> u64 {
-		at_millis(millis).to_order()
 	}
 
 	fn seed_window(
@@ -758,70 +715,6 @@ mod tests {
 	}
 
 	#[test]
-	fn meta_reclaimed_when_group_stale_past_threshold() {
-		// A group whose high water falls below the staleness threshold has stopped advancing and its
-		// GroupMeta must be reclaimed. `persist_meta` writes one meta per group and never removes
-		// it, so without the sweep one internal-state key leaks per distinct group forever.
-		let mut store = MockStore::default();
-		seed_window(&mut store, 0, 5);
-		assert_eq!(store.meta_entry_count(), 1, "applying a window persisted the group's meta");
-
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let dropped = engine.expire_meta(&mut store, order(100)).unwrap();
-		assert_eq!(dropped, 1, "the group's high water (0ms) is below the threshold (100ms)");
-		assert_eq!(store.meta_entry_count(), 0, "a stale group must not leak its GroupMeta");
-	}
-
-	#[test]
-	fn meta_survives_while_group_high_water_at_or_after_threshold() {
-		// A group whose high water is at or beyond the threshold is still live, its late-event
-		// horizon not yet passed, and must keep its meta.
-		let mut store = MockStore::default();
-		seed_window(&mut store, 100, 7);
-		assert_eq!(store.meta_entry_count(), 1);
-
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let dropped = engine.expire_meta(&mut store, 50).unwrap();
-		assert_eq!(dropped, 0, "high water (100) is not below the threshold (50)");
-		assert_eq!(store.meta_entry_count(), 1, "a group within the staleness horizon keeps its meta");
-	}
-
-	#[test]
-	fn meta_sweep_leaves_row_number_mappings_intact() {
-		// The sweep targets only meta keys and must not touch the write-once row-number mappings
-		// that share the same tier; deleting those corrupts the operator.
-		let mut store = MockStore::default();
-		seed_window(&mut store, 0, 5);
-		store.seed_mapping_key(0x01);
-		assert_eq!(store.mapping_entry_count(), 1);
-
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		engine.expire_meta(&mut store, order(100)).unwrap();
-		assert_eq!(store.meta_entry_count(), 0, "the stale group's meta is swept");
-		assert_eq!(store.mapping_entry_count(), 1, "the sweep must not touch row-number mapping keys");
-	}
-
-	#[test]
-	fn meta_sweep_skips_then_reclaims_as_threshold_advances() {
-		// The low-water guard skips the scan while the smallest high water is at or above the
-		// threshold, but must still reclaim once the threshold advances past it: it is an
-		// optimization to avoid scanning every apply, never a correctness hole.
-		let mut store = MockStore::default();
-		seed_window(&mut store, 100, 7);
-
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		// Below the group's high water: nothing stale; the sweep records the low-water bound (100).
-		assert_eq!(engine.expire_meta(&mut store, order(50)).unwrap(), 0);
-		assert_eq!(store.meta_entry_count(), 1);
-		// Threshold equals the bound: still nothing strictly below it, a no-op skip.
-		assert_eq!(engine.expire_meta(&mut store, order(100)).unwrap(), 0);
-		assert_eq!(store.meta_entry_count(), 1);
-		// Threshold crosses the group's high water: it is now stale and reclaimed.
-		assert_eq!(engine.expire_meta(&mut store, order(101)).unwrap(), 1);
-		assert_eq!(store.meta_entry_count(), 0, "the guard must not permanently skip a group that goes stale");
-	}
-
-	#[test]
 	fn expire_threshold_is_inclusive() {
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 4);
@@ -1044,60 +937,6 @@ mod tests {
 			COUNTING_ACC_CLONES.load(Ordering::SeqCst) - before,
 			0,
 			"expire must not clone accumulators on either the Native or the archived path"
-		);
-	}
-
-	fn read_high_water(store: &mut MockStore, group: u32) -> Option<u64> {
-		get::<_, GroupMeta<DateTime>>(store, &meta_key_for(group_hash(&group).unwrap()))
-			.unwrap()
-			.and_then(|meta| meta.high_water_order())
-	}
-
-	#[test]
-	fn warmed_meta_high_water_advances_across_engine_restarts() {
-		// A bump applied by one engine must be visible to the next, or a restart replays late events.
-		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(5)]);
-		apply_sums(&mut engine, &mut store, buckets).unwrap();
-
-		let mut fresh = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, WindowSpan::new(at_millis(200), at_millis(201))), vec![AccumulatorEvent::Add(7)]);
-		apply_sums(&mut fresh, &mut store, buckets).unwrap();
-
-		assert_eq!(
-			read_high_water(&mut store, 1),
-			Some(order(200)),
-			"the bump must be durable the moment it is applied"
-		);
-
-		assert_eq!(read_high_water(&mut store, 1), Some(order(200)), "the write round-trips through the store");
-	}
-
-	#[test]
-	fn a_persisted_none_high_water_still_accepts_a_bump() {
-		// Retraction-only groups persist a none high water; refusing to advance it strands them.
-		let mut store = MockStore::default();
-		put(
-			&mut store,
-			&meta_key_for(group_hash(&1u32).unwrap()),
-			GroupMeta::<DateTime> {
-				high_water: None,
-			},
-		)
-		.unwrap();
-
-		let mut fresh = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(7)]);
-		apply_sums(&mut fresh, &mut store, buckets).unwrap();
-
-		assert_eq!(
-			read_high_water(&mut store, 1),
-			Some(order(100)),
-			"a none high water must advance to the first observed coordinate"
 		);
 	}
 }

@@ -39,11 +39,8 @@ fn state_of(operator: u64) -> String {
 }
 
 fn per_window_state_of(operator: u64) -> String {
-	// The counters, the ledger and the meta are the operator's own bookkeeping, so the rest is per window.
-	format!(
-		"{} filter {{ keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' and keyspace != 'WINDOW_META' }}",
-		state_of(operator)
-	)
+	// The counters and the ledger are the operator's own bookkeeping, so the rest is per window.
+	format!("{} filter {{ keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' }}", state_of(operator))
 }
 
 fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
@@ -53,18 +50,14 @@ fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
 
 	assert_eq!(
 		column_values(frame, "keyspace"),
-		vec![
-			Value::Utf8("NODE_COUNTER".to_string()),
-			Value::Utf8("SEAL_LEDGER".to_string()),
-			Value::Utf8("WINDOW_META".to_string()),
-		],
-		"the counter keeps row numbers unique, the ledger keeps sealing monotonic, the meta drops late events; surface now: {:?}",
+		vec![Value::Utf8("NODE_COUNTER".to_string()), Value::Utf8("SEAL_LEDGER".to_string())],
+		"the counter keeps row numbers unique, the ledger keeps sealing monotonic; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(1), Value::Uint8(1), Value::Uint8(2)],
-		"one row number counter and one meta per group, but never a key per window; surface now: {:?}",
+		vec![Value::Uint8(1), Value::Uint8(1)],
+		"one row number counter and one ledger row, but never a key per window; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }
