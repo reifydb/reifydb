@@ -498,3 +498,33 @@ fn a_session_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
 		"the emptied session sealed, so its accumulator must be reaped"
 	);
 }
+
+#[test]
+fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
+	// a zero gap session must still seal once the watermark passes it, otherwise it is never reaped.
+	let db = setup_with_metrics();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
+			FROM app::t
+				| window session { total: math::sum(v) }
+					with { gap: 0s, lateness: 0s }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T10:00:10Z" }]"#);
+	assert_eq!(
+		await_value(1, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		1,
+		"the session's accumulator must be visible"
+	);
+
+	db.admin("call storage::advance(app::t, cast('2026-01-01T12:00:00Z', datetime))");
+	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
+
+	assert_eq!(
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		0,
+		"the zero gap session sealed, so its accumulator must be reaped"
+	);
+}
