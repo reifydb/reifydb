@@ -1032,7 +1032,6 @@ dependencies = [
  "arrow-select",
  "crossbeam-skiplist",
  "indexmap",
- "num-traits",
  "paste",
  "reifydb-build",
  "reifydb-codec",

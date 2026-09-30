@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ use reifydb_core::{
 		change::Diff,
 	},
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
@@ -239,8 +239,8 @@ impl<T: ClockNow> ClockNow for TestingTxn<T> {
 	}
 }
 
-#[cfg(test)]
-pub(crate) struct TestingTx {
+#[cfg(any(test, feature = "testing"))]
+pub struct TestingTx {
 	pub entries: Vec<(ObjectId, Diff)>,
 	pub cursor: usize,
 	pub rows: BTreeMap<EncodedKey, EncodedBytes>,
@@ -253,7 +253,7 @@ pub(crate) struct TestingTx {
 	pub clock: MockClock,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Default for TestingTx {
 	fn default() -> Self {
 		Self {
@@ -271,7 +271,7 @@ impl Default for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Changes for TestingTx {
 	fn cursor(&self) -> usize {
 		self.cursor
@@ -295,7 +295,7 @@ impl Changes for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Rows for TestingTx {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.rows.get(key).cloned())
@@ -312,7 +312,7 @@ impl Rows for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Emit for TestingTx {
 	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
 		self.entries.push((ObjectId::view(view), diff.clone()));
@@ -321,7 +321,7 @@ impl Emit for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Lookup for TestingTx {
 	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
 		Ok(self.flows.clone())
@@ -349,7 +349,7 @@ impl Lookup for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl Intern for TestingTx {
 	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
 		let values = self.dictionary_values.entry(dictionary.id).or_default();
@@ -385,7 +385,7 @@ impl Intern for TestingTx {
 	}
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl ClockNow for TestingTx {
 	fn now(&self) -> DateTime {
 		self.clock.now()
