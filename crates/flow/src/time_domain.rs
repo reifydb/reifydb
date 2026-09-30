@@ -240,7 +240,12 @@ fn source_is_event(
 	}
 }
 
-fn view_is_event(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId, path: &mut HashSet<FlowId>) -> Result<bool> {
+fn view_is_event(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	view: ViewId,
+	path: &mut HashSet<FlowId>,
+) -> Result<bool> {
 	let dag = view_flow_dag(catalog, txn, view)?;
 
 	if !path.insert(dag.id) {
@@ -657,7 +662,8 @@ mod tests {
 
 	#[test]
 	fn a_lookup_retention_fed_by_a_time_less_source_is_rejected_with_flow_049() {
-		// An unmatched time-less left row reaches the lookup with no #time, so it is never armed and never freed.
+		// An unmatched time-less left row reaches the lookup with no #time, so it is never armed and never
+		// freed.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::None))
@@ -677,7 +683,8 @@ mod tests {
 
 	#[test]
 	fn a_join_retention_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
-		// The event source elsewhere in the flow must not vouch for the side that actually holds time-less rows.
+		// The event source elsewhere in the flow must not vouch for the side that actually holds time-less
+		// rows.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::None))
@@ -714,8 +721,11 @@ mod tests {
 		// The view may hold rows with no #time from its time-less source, so it must not pass as event time.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
-		let mixed =
-			upstream(&mut txn, "mixed", vec![source_table(TimeDomain::None), source_table(TimeDomain::Event)]);
+		let mixed = upstream(
+			&mut txn,
+			"mixed",
+			vec![source_table(TimeDomain::None), source_table(TimeDomain::Event)],
+		);
 		let harness = Harness::new()
 			.node(view_source(1, mixed))
 			.node(lookup(2, Some(Duration::from_seconds(10).unwrap())))

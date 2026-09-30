@@ -652,7 +652,9 @@ mod tests {
 	}
 
 	fn stored(txn: &mut DeferredTransaction, row: u64) -> Option<CommitVersion> {
-		stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row)).unwrap().map(|(version, _)| version)
+		stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row))
+			.unwrap()
+			.map(|(version, _)| version)
 	}
 
 	fn stored_output(txn: &mut DeferredTransaction, row: u64) -> RowNumber {
@@ -861,7 +863,11 @@ mod tests {
 			&[stored_output(&mut txn, 7)],
 			"IC4: the output carries the id minted for its left row"
 		);
-		assert_ne!(require_row_numbers(&out).unwrap(), &[RowNumber(7)], "the output id is minted, not the input's");
+		assert_ne!(
+			require_row_numbers(&out).unwrap(),
+			&[RowNumber(7)],
+			"the output id is minted, not the input's"
+		);
 		assert_eq!(stored(&mut txn, 7), Some(version), "MD28: the read version is stored per published row");
 	}
 
@@ -998,15 +1004,20 @@ mod tests {
 
 	#[test]
 	fn an_in_place_update_keeps_the_minted_output_id() {
-		// Pre and post of one update must share an output id, otherwise downstream sees a row move under an update.
+		// Pre and post of one update must share an output id, otherwise downstream sees a row move under an
+		// update.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		put_right(&engine, "a", 10);
 		let version = put_right(&engine, "b", 30);
 		let mut op = lookup(&table, JoinType::Inner, None);
 		let mut txn = txn_at(&engine, version);
-		let published =
-			only_insert(&run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		let published = only_insert(&run(
+			&mut op,
+			&mut txn,
+			version,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
 		let minted = require_row_numbers(&published).unwrap()[0];
 
 		let out = run(
@@ -1025,7 +1036,11 @@ mod tests {
 			panic!("expected an update, got {out:?}");
 		};
 		assert_eq!(require_row_numbers(pre).unwrap(), &[minted], "the pre is the published row");
-		assert_eq!(require_row_numbers(post).unwrap(), &[minted], "the post reuses the pre's id, no fresh mint");
+		assert_eq!(
+			require_row_numbers(post).unwrap(),
+			&[minted],
+			"the post reuses the pre's id, no fresh mint"
+		);
 		assert_eq!(stored_output(&mut txn, 7), minted, "the stored id survives the update");
 	}
 

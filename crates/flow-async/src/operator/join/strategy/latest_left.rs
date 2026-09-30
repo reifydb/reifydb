@@ -337,7 +337,12 @@ impl LatestLeftHashJoin {
 							idx,
 						)? {
 							result.push(Diff::update(
-								ctx.operator.join_left_with_slot(pre, &[idx], &slot, &[id])?,
+								ctx.operator.join_left_with_slot(
+									pre,
+									&[idx],
+									&slot,
+									&[id],
+								)?,
 								ctx.operator.join_left_with_slot(
 									post,
 									&[idx],
@@ -358,7 +363,10 @@ impl LatestLeftHashJoin {
 							true,
 							withdrawn.as_ref().map(|(_, id)| *id),
 						)?;
-						result.extend(update_diff(withdrawn.map(|(columns, _)| columns), published));
+						result.extend(update_diff(
+							withdrawn.map(|(columns, _)| columns),
+							published,
+						));
 					}
 					return Ok(result);
 				}

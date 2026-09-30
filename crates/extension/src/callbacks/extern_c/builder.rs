@@ -864,8 +864,8 @@ mod tests {
 		common::extern_c::wire::{
 			callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 			status::{
-				EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_ERROR_ROW_NUMBER_MISMATCH,
-				EXTERN_C_OK,
+				EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL,
+				EXTERN_C_ERROR_ROW_NUMBER_MISMATCH, EXTERN_C_OK,
 			},
 		},
 		flow::operator::{change::BorrowedColumns, extern_c::binding::arena::Arena},
@@ -920,7 +920,8 @@ mod tests {
 		let name = b"c".as_ptr();
 		let len = 1usize;
 		with_registry(registry, || {
-			// SAFETY: a registry is installed and every pointer is a live local valid for the count passed with it.
+			// SAFETY: a registry is installed and every pointer is a live local valid for the count passed
+			// with it.
 			unsafe {
 				host_builder_emit_diff(
 					0,
@@ -1051,7 +1052,8 @@ mod tests {
 
 	#[test]
 	fn an_update_that_changes_its_row_number_is_rejected_without_a_diff() {
-		// a downstream join keys its output by row number, so a renumbering update would leave a stale live row.
+		// a downstream join keys its output by row number, so a renumbering update would leave a stale live
+		// row.
 		let registry = BuilderRegistry::new();
 		assert_eq!(emit_update(&registry, &[1], &[2]), EXTERN_C_ERROR_ROW_NUMBER_MISMATCH);
 		assert!(registry.inner.lock().accumulator.is_empty(), "a rejected update must not emit a diff");

@@ -82,8 +82,15 @@ impl LatestInnerHashJoin {
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
 					};
-					let published =
-						publish_slot(host, &snapshot_ctx, key_hash, post, indices, false, None)?;
+					let published = publish_slot(
+						host,
+						&snapshot_ctx,
+						key_hash,
+						post,
+						indices,
+						false,
+						None,
+					)?;
 					return Ok(published
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
@@ -294,7 +301,12 @@ impl LatestInnerHashJoin {
 							idx,
 						)? {
 							result.push(Diff::update(
-								ctx.operator.join_left_with_slot(pre, &[idx], &slot, &[id])?,
+								ctx.operator.join_left_with_slot(
+									pre,
+									&[idx],
+									&slot,
+									&[id],
+								)?,
 								ctx.operator.join_left_with_slot(
 									post,
 									&[idx],
@@ -315,7 +327,10 @@ impl LatestInnerHashJoin {
 							false,
 							withdrawn.as_ref().map(|(_, id)| *id),
 						)?;
-						result.extend(update_diff(withdrawn.map(|(columns, _)| columns), published));
+						result.extend(update_diff(
+							withdrawn.map(|(columns, _)| columns),
+							published,
+						));
 					}
 					return Ok(result);
 				}

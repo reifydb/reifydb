@@ -212,8 +212,12 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 		);
 	}
 
+	let unclaimed = (0..=u8::MAX)
+		.map(KeyspaceId)
+		.find(|id| KEYSPACES.iter().all(|spec| spec.id != *id))
+		.expect("the catalogue must leave at least one keyspace id unclaimed");
 	assert_eq!(
-		dispatch(KeyspaceId(0x2B), Name),
+		dispatch(unclaimed, Name),
 		None,
 		"an id no keyspace claims must report itself rather than answering as a neighbour"
 	);

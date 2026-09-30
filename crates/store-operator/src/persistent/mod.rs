@@ -93,8 +93,10 @@ impl PersistentTier {
 		limit: u64,
 	) -> Vec<EncodedKey> {
 		match self {
+			Self::Absent => Vec::new(),
+			Self::Memory(storage) => storage.state_keys_after(operator, keyspace, after, limit),
+			Self::Testing(storage) => storage.state_keys_after(operator, keyspace, after, limit),
 			Self::Sqlite(storage) => storage.state_keys_after(operator, keyspace, after, limit),
-			_ => Vec::new(),
 		}
 	}
 

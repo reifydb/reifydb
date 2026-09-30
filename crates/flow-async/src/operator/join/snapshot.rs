@@ -593,7 +593,8 @@ pub(crate) fn withdraw_slot(
 		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
-				let columns = ctx.operator.unmatched_left_latest(left, &[left_idx], &[entry.row_number])?;
+				let columns =
+					ctx.operator.unmatched_left_latest(left, &[left_idx], &[entry.row_number])?;
 				return Ok(Some((columns, entry.row_number)));
 			}
 			PublishedRight::Row(right_number) => right_number,

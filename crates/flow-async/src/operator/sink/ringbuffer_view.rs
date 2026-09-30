@@ -1051,7 +1051,6 @@ impl SinkRingBufferViewOperator {
 			require_row_numbers(source_pre)?
 		};
 		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
-
 			let partition = if self.is_partitioned() {
 				let (pre_partition, _) =
 					partition_of(view, &self.partition_indices, source_pre, row_idx)?;

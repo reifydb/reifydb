@@ -243,7 +243,11 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 99 }"), 1, "the post of a sealed row lands as a fresh row");
-	assert_eq!(db.row_count("FROM app::j FILTER { lv == 5 }"), 1, "and the sealed row keeps the value it was sealed on");
+	assert_eq!(
+		db.row_count("FROM app::j FILTER { lv == 5 }"),
+		1,
+		"and the sealed row keeps the value it was sealed on"
+	);
 	assert_eq!(db.row_count("FROM app::j"), 2, "the frozen row and the fresh post, nothing more");
 }
 

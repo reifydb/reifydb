@@ -9,6 +9,8 @@ use std::{
 	},
 };
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
@@ -98,6 +100,17 @@ pub struct TestingPersistent(Arc<Inner>);
 impl TestingPersistent {
 	pub fn new(hooks: Arc<dyn PersistentHooks>) -> Self {
 		Self::over(MemoryPersistent::new(), hooks)
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn state_keys_after(
+		&self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		after: Option<&EncodedKey>,
+		limit: u64,
+	) -> Vec<EncodedKey> {
+		self.0.durable.state_keys_after(operator, keyspace, after, limit)
 	}
 
 	pub fn over(durable: MemoryPersistent, hooks: Arc<dyn PersistentHooks>) -> Self {

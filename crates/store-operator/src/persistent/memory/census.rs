@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupStateKey, KeyspaceId},
@@ -45,6 +47,29 @@ impl Measure for MemoryPersistent {
 			.map(|rows| rows.iter().map(|(key, row)| row_bytes(key, row)).sum())
 			.unwrap_or(0u64);
 		Ok(ByteSize::from_bytes(total))
+	}
+}
+
+impl MemoryPersistent {
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	#[instrument(name = "store::operator::persistent::memory::state_keys_after", level = "trace", skip_all)]
+	pub fn state_keys_after(
+		&self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		after: Option<&EncodedKey>,
+		limit: u64,
+	) -> Vec<EncodedKey> {
+		let rows = self.0.rows.lock();
+		let Some(rows) = rows.get(&operator) else {
+			return Vec::new();
+		};
+		rows.keys()
+			.filter(|key| key.keyspace() == Some(keyspace))
+			.filter(|key| after.is_none_or(|after| key.as_encoded() > after))
+			.take(usize::try_from(limit).unwrap_or(usize::MAX))
+			.map(|key| key.as_encoded().clone())
+			.collect()
 	}
 }
 

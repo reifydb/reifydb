@@ -352,7 +352,8 @@ impl JoinOperator {
 		let row_numbers = require_row_numbers(columns)?;
 		let mut armed = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
-			let (Some(group), Some(at)) = (self.expiry_group(side, *key), times.get(row_idx).copied().flatten())
+			let (Some(group), Some(at)) =
+				(self.expiry_group(side, *key), times.get(row_idx).copied().flatten())
 			else {
 				continue;
 			};
