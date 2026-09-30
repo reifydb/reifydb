@@ -72,7 +72,7 @@ use crate::{
 	operator::provider::StandardOperatorProvider,
 	progress::{
 		frontier::ControlFrontier,
-		tracker::{FlowPositionTracker, FlowUpstreams},
+		tracker::{FLOW_WAKE_COALESCE_NANOS, FlowPositionTracker, FlowUpstreams},
 	},
 };
 
@@ -992,6 +992,24 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Wake => {
 				if !state.poisoned {
+					ctx.schedule_once(
+						Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
+						|| FlowActorMessage::TrailingWake,
+					);
+					if state.committing || state.awaiting_load {
+						state.drain_after_commit = true;
+					} else {
+						let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+					}
+				}
+				Directive::Continue
+			}
+			FlowActorMessage::TrailingWake => {
+				if !state.poisoned && self.wake_pending.load(Ordering::SeqCst) {
+					ctx.schedule_once(
+						Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
+						|| FlowActorMessage::TrailingWake,
+					);
 					if state.committing || state.awaiting_load {
 						state.drain_after_commit = true;
 					} else {

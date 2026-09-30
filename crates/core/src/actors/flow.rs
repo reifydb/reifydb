@@ -18,6 +18,8 @@ pub enum FlowActorMessage {
 
 	Wake,
 
+	TrailingWake,
+
 	Loaded {
 		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
 	},

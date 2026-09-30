@@ -68,7 +68,7 @@ struct Completion {
 
 const COMPLETION_HISTORY: usize = 65_536;
 
-const FLOW_WAKE_COALESCE_NANOS: i64 = 20_000_000;
+pub(crate) const FLOW_WAKE_COALESCE_NANOS: i64 = 20_000_000;
 
 #[derive(Clone)]
 pub struct FlowWaker {
@@ -92,6 +92,7 @@ impl FlowWaker {
 		let now = self.clock.now().to_nanos();
 		let next = self.next_wake_nanos.load(Ordering::Relaxed);
 		if now < next {
+			self.pending.store(true, Ordering::SeqCst);
 			return;
 		}
 		let deadline = now.saturating_add(FLOW_WAKE_COALESCE_NANOS);
