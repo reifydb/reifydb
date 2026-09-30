@@ -440,33 +440,65 @@ fn sliding_insert_anchors(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	hash: Hash128,
-	event_ts: DateTime,
-	is_count: bool,
 ) -> Result<Vec<u64>> {
-	let coord = if is_count {
-		operator.get_and_increment_global_count(host, hash)?.value()
-	} else {
-		event_ts.to_order()
-	};
+	let coord = operator.get_and_increment_global_count(host, hash)?.value();
 	Ok(operator.sliding_window_anchors(coord))
 }
 
-#[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
-pub fn apply_sliding_engine(
+#[allow(clippy::too_many_arguments)]
+fn route_time_sliding(
+	operator: &WindowOperator,
+	columns: &RecordBatch,
+	is_add: bool,
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	window_min_ts: &mut EarliestTimes,
+) -> Result<()> {
+	let groups = operator.core.compute_groups(columns)?;
+	let row_numbers = required_row_numbers(columns)?;
+	let timestamps = operator.row_times(columns, columns.num_rows())?;
+	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
+	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+		let event_ts = timestamps[row_idx];
+		let contribution = operator.core.build_contribution(columns, &slot_cols, row_idx, event_ts)?;
+		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
+		for wid in operator.sliding_window_anchors(event_ts.to_order()) {
+			let event = if is_add {
+				AccumulatorEvent::Add(contribution.clone())
+			} else {
+				AccumulatorEvent::Remove(contribution.clone())
+			};
+			push_count_event(
+				buckets,
+				group_values,
+				arrival,
+				window_max_ts,
+				window_min_ts,
+				*hash,
+				gvals,
+				operator.sliding_window_span(wid),
+				coord,
+				event,
+				event_ts,
+			);
+		}
+	}
+	Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_count_sliding(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
-	change: Change,
-) -> Result<Change> {
-	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let is_count = operator.is_count_based();
-	let window_size = operator.size_duration().unwrap_or_default();
-
-	let mut buckets: EngineBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
-	let mut window_min_ts: EarliestTimes = HashMap::new();
-
+	change: &Change,
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	window_min_ts: &mut EarliestTimes,
+) -> Result<()> {
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
@@ -479,28 +511,22 @@ pub fn apply_sliding_engine(
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..post.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
-					let event_ts = if is_count {
-						DateTime::default()
-					} else {
-						timestamps[row_idx]
-					};
-					let window_ids =
-						sliding_insert_anchors(operator, host, *hash, event_ts, is_count)?;
+					let window_ids = sliding_insert_anchors(operator, host, *hash)?;
 					let contribution = operator.core.build_contribution(
 						post,
 						&slot_cols,
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
 					)?;
-					let coord = slot_coord(is_count, event_ts, post_rows[row_idx].0);
+					let coord = slot_coord(true, DateTime::default(), post_rows[row_idx].0);
 					for wid in &window_ids {
 						operator.store_row_index(host, *hash, post_rows[row_idx], *wid)?;
 						push_count_event(
-							&mut buckets,
-							&mut group_values,
-							&mut arrival,
-							&mut window_max_ts,
-							&mut window_min_ts,
+							buckets,
+							group_values,
+							arrival,
+							window_max_ts,
+							window_min_ts,
 							*hash,
 							gvals,
 							operator.sliding_window_span(*wid),
@@ -521,25 +547,20 @@ pub fn apply_sliding_engine(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for row_idx in 0..pre.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
-					let event_ts = if is_count {
-						DateTime::default()
-					} else {
-						timestamps[row_idx]
-					};
 					let contribution = operator.core.build_contribution(
 						pre,
 						&slot_cols,
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
 					)?;
-					let coord = slot_coord(is_count, event_ts, pre_rows[row_idx].0);
+					let coord = slot_coord(true, DateTime::default(), pre_rows[row_idx].0);
 					for wid in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
 						push_count_event(
-							&mut buckets,
-							&mut group_values,
-							&mut arrival,
-							&mut window_max_ts,
-							&mut window_min_ts,
+							buckets,
+							group_values,
+							arrival,
+							window_max_ts,
+							window_min_ts,
 							*hash,
 							gvals,
 							operator.sliding_window_span(wid),
@@ -568,23 +589,16 @@ pub fn apply_sliding_engine(
 					let (hash, gvals) = &groups[row_idx];
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre_rows[row_idx];
-					let event_ts = if is_count {
-						DateTime::default()
-					} else {
-						timestamps[row_idx]
-					};
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
-						let window_ids = sliding_insert_anchors(
-							operator, host, *post_hash, event_ts, is_count,
-						)?;
+						let window_ids = sliding_insert_anchors(operator, host, *post_hash)?;
 						let contribution = operator.core.build_contribution(
 							post,
 							&post_cols,
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
 						)?;
-						let coord = slot_coord(is_count, event_ts, row_number.0);
+						let coord = slot_coord(true, DateTime::default(), row_number.0);
 						for wid in &window_ids {
 							operator.store_row_index(
 								host,
@@ -593,11 +607,11 @@ pub fn apply_sliding_engine(
 								*wid,
 							)?;
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								buckets,
+								group_values,
+								arrival,
+								window_max_ts,
+								window_min_ts,
 								*post_hash,
 								post_gvals,
 								operator.sliding_window_span(*wid),
@@ -619,16 +633,11 @@ pub fn apply_sliding_engine(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
 						)?;
-						let pre_coord =
-							slot_coord(is_count, pre_timestamps[row_idx], row_number.0);
-						let post_coord = slot_coord(is_count, event_ts, row_number.0);
-						let targets = if post_hash != hash
-							|| (!is_count && pre_timestamps[row_idx] != timestamps[row_idx])
-						{
+						let coord = slot_coord(true, DateTime::default(), row_number.0);
+						let targets = if post_hash != hash {
 							operator.drop_row_index(host, *hash, row_number)?;
-							let window_ids = sliding_insert_anchors(
-								operator, host, *post_hash, event_ts, is_count,
-							)?;
+							let window_ids =
+								sliding_insert_anchors(operator, host, *post_hash)?;
 							for wid in &window_ids {
 								operator.store_row_index(
 									host, *post_hash, row_number, *wid,
@@ -640,35 +649,123 @@ pub fn apply_sliding_engine(
 						};
 						for wid in existing {
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								buckets,
+								group_values,
+								arrival,
+								window_max_ts,
+								window_min_ts,
 								*hash,
 								gvals,
 								operator.sliding_window_span(wid),
-								pre_coord,
+								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								pre_timestamps[row_idx],
 							);
 						}
 						for wid in targets {
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								buckets,
+								group_values,
+								arrival,
+								window_max_ts,
+								window_min_ts,
 								*post_hash,
 								post_gvals,
 								operator.sliding_window_span(wid),
-								post_coord,
+								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								timestamps[row_idx],
 							);
 						}
 					}
+				}
+			}
+		}
+	}
+	Ok(())
+}
+
+#[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
+pub fn apply_sliding_engine(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	change: Change,
+) -> Result<Change> {
+	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+	let is_count = operator.is_count_based();
+	let window_size = operator.size_duration().unwrap_or_default();
+
+	let mut buckets: EngineBuckets = BTreeMap::new();
+	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
+	let mut window_min_ts: EarliestTimes = HashMap::new();
+
+	if is_count {
+		route_count_sliding(
+			operator,
+			host,
+			&change,
+			&mut buckets,
+			&mut group_values,
+			&mut arrival,
+			&mut window_max_ts,
+			&mut window_min_ts,
+		)?;
+	} else {
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => route_time_sliding(
+					operator,
+					post,
+					true,
+					&mut buckets,
+					&mut group_values,
+					&mut arrival,
+					&mut window_max_ts,
+					&mut window_min_ts,
+				)?,
+				Diff::Remove {
+					pre,
+					..
+				} => route_time_sliding(
+					operator,
+					pre,
+					false,
+					&mut buckets,
+					&mut group_values,
+					&mut arrival,
+					&mut window_max_ts,
+					&mut window_min_ts,
+				)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					route_time_sliding(
+						operator,
+						pre,
+						false,
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+						&mut window_min_ts,
+					)?;
+					route_time_sliding(
+						operator,
+						post,
+						true,
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+						&mut window_min_ts,
+					)?;
 				}
 			}
 		}
