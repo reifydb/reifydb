@@ -57,7 +57,7 @@ export class Shell {
     this.continuationPromptLen = options.continuationPromptLength ?? DEFAULT_CONTINUATION_PROMPT_LEN;
 
     // Initialize components
-    this.terminal = new TerminalAdapter(container, options.theme);
+    this.terminal = new TerminalAdapter(container, options.theme, options.fontFamily, options.fontSize);
     this.lineEditor = new LineEditor(this.terminal);
     this.history = new CommandHistory(options.historyStorage, options.historyKey);
     this.multiline = new MultilineBuffer();
@@ -97,6 +97,16 @@ export class Shell {
   exitFullscreen(): void {
     this.terminal.exitFullscreen();
     this.onFullscreenChange?.(false);
+  }
+
+  async run(): Promise<void> {
+    if (this.isExited) return;
+    await this.handleEnter();
+  }
+
+  clear(): void {
+    if (this.isExited) return;
+    this.clearScreen();
   }
 
   private showWelcomeBanner(): void {

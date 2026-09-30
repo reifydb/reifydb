@@ -17,12 +17,17 @@ export class TerminalAdapter {
   private resizeObserver: ResizeObserver | null = null;
   private _isFullscreen: boolean = false;
 
-  constructor(container: HTMLElement, theme: TerminalTheme = defaultTheme) {
+  constructor(
+    container: HTMLElement,
+    theme: TerminalTheme = defaultTheme,
+    fontFamily: string = "'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace",
+    fontSize: number = 14,
+  ) {
     this.container = container;
     this.terminal = new Terminal({
       theme,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace",
-      fontSize: 14,
+      fontFamily,
+      fontSize,
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: 'block',

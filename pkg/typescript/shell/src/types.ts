@@ -107,6 +107,8 @@ export interface ShellOptions {
    * Terminal theme colors
    */
   theme?: TerminalTheme;
+  fontFamily?: string;
+  fontSize?: number;
 
   /**
    * Key for localStorage history (default: "reifydb-shell-history")
