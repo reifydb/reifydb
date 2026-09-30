@@ -26,6 +26,7 @@ export default defineConfig({
                 singleThread: false
             }
         },
+        fileParallelism: false,
 
         retry: 2,
         reporters: process.env.CI
