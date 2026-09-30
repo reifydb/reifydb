@@ -348,10 +348,11 @@ fn apply_rolling<S: RollingDomain>(
 		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
 
-	let ledger = operator.seal_ledger(host)?;
-	let eviction = S::eviction(operator, ledger.at(), lag);
+	let ledger = operator.seal_ledger(host)?.at();
+	let frontier = host.flow_watermark()?.map_or(ledger, |watermark| ledger.max(watermark));
+	let eviction = S::eviction(operator, frontier, lag);
 
-	if let Some(horizon) = S::seal_horizon(operator, ledger.at()) {
+	if let Some(horizon) = S::seal_horizon(operator, frontier) {
 		let mut dropped = 0u64;
 		buckets.retain(|&(_, slot), events| {
 			if is_sealed(slot, horizon) {

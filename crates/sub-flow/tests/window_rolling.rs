@@ -9,8 +9,12 @@ use reifydb::{
 	WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
+use reifydb_core::interface::catalog::subscription::HydrationConfig;
 use reifydb_test_harness::assert::rows;
-use reifydb_value::value::{Value, digest::Digest, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	params::Params,
+	value::{Value, digest::Digest, duration::Duration, value_type::ValueType},
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
@@ -198,9 +202,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
-	// A late row must be ignored, not withdraw the whole group it belongs to. Lateness is decided
-	// by the seal ledger, which moves only when a seal timer fires, so the 14:00 row is not
-	// padding: without it nothing can be late and the refusal path is never entered.
+	// lateness follows the watermark, so without the 14:00 row nothing is late and the refusal path is never entered.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
@@ -469,5 +471,39 @@ fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_th
 		&columns,
 		vec![vec![median(&[2.0, 20.0, 30.0]), Value::float8(2.0)]],
 		"an update forty minutes older than the newest row",
+	);
+}
+
+#[test]
+fn a_row_behind_the_watermark_reaches_no_subscriber_of_a_rolling_view() {
+	// a refused late row must emit nothing, otherwise a subscriber sees an update for a row the window never took.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
+			FROM app::t
+				| window rolling { total: math::sum(v) }
+					with { duration: 1h, lateness: 5m }
+					by { g }
+		}"#);
+	let sub = db
+		.subscribe_as_root("FROM app::r MAP { g, total }", Params::None, HydrationConfig::default())
+		.expect("subscribe to the rolling view");
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10.0, ts: "2026-01-01T12:00:00Z" }]"#);
+	db.await_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
+	db.await_all_flows(TIMEOUT);
+	db.caught_up().expect("the first row must be staged");
+	sub.drain(usize::MAX);
+
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 99.0, ts: "2026-01-01T10:00:00Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+	db.caught_up().expect("the late row must be staged");
+
+	let frames = sub.drain(usize::MAX);
+	assert!(
+		frames.is_empty(),
+		"a row two hours behind the watermark must reach no subscriber, got {:?}",
+		frames.iter().map(|f| f.op).collect::<Vec<_>>()
 	);
 }
