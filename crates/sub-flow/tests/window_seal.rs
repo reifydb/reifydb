@@ -528,3 +528,34 @@ fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
 		"the zero gap session sealed, so its accumulator must be reaped"
 	);
 }
+
+#[test]
+fn a_session_group_keeps_no_tracker_once_its_sessions_seal() {
+	// a group whose sessions all sealed must drop its tracker, otherwise every group key ever seen leaks one.
+	let db = setup_with_metrics();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
+			FROM app::t
+				| window session { total: math::sum(v) }
+					with { gap: 2s, lateness: 0s }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T10:00:10Z" }]"#);
+	assert_eq!(
+		await_value(1, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		1,
+		"the session's accumulator must be visible"
+	);
+	assert!(keyspace_keys(&db, "SESSION") > 0, "precondition: the open session must report its tracker");
+
+	db.admin("call storage::advance(app::t, cast('2026-01-01T12:00:00Z', datetime))");
+	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
+
+	assert_eq!(
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "SESSION")),
+		0,
+		"every session of the group sealed, so its tracker must be dropped"
+	);
+}
