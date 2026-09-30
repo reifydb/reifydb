@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 #[cfg(feature = "sub_flow")]
-use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
+use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef, acquire_hand_off_lease};
 use reifydb_runtime::{
 	Runtime, RuntimeHandle,
 	actor::{mailbox::ActorRef, system::ActorSpawner},
@@ -37,6 +37,8 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::HealthStatus;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_core::cleanup::cleanup_subscription_sync;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
 #[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
@@ -468,7 +470,14 @@ impl Database {
 		hydration: HydrationConfig,
 	) -> Result<Subscription> {
 		let store = self.resolve_subscription_store()?;
-		let id = match self.engine.subscribe_as(identity, query, params.into(), SubscribeOptions::default())? {
+		let options = SubscribeOptions {
+			hydration: HydrationConfig {
+				enabled: hydration.enabled,
+				max_rows: None,
+			},
+			..SubscribeOptions::default()
+		};
+		let id = match self.engine.subscribe_as(identity, query, params.into(), options)? {
 			SubscribeOutcome::Local {
 				id,
 			} => id,
@@ -480,7 +489,13 @@ impl Database {
 				))));
 			}
 		};
-		let prelude = self.build_hydration_prelude(id, identity, &hydration)?;
+		let prelude = match self.build_hydration_prelude(id, identity, &hydration) {
+			Ok(prelude) => prelude,
+			Err(e) => {
+				cleanup_subscription_sync(&self.engine, id)?;
+				return Err(e);
+			}
+		};
 		Ok(Subscription::new(id, store, prelude))
 	}
 
@@ -509,7 +524,7 @@ impl Database {
 			.ioc()
 			.try_resolve::<SubscriptionServiceRef>()
 			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
-		let (_, lease) = self.engine.acquire_current_snapshot_lease()?;
+		let (_, lease) = acquire_hand_off_lease(&self.engine, &[id])?;
 		let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
 		let outcome =
 			service.hydrate(id, &self.engine, identity, lease, max_rows).map_err(hydrate_error_to_error)?;

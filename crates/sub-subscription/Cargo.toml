@@ -25,7 +25,6 @@ reifydb-engine = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-flow-async = { workspace = true, features = ["runtime"] }
 reifydb-macro = { workspace = true }
-reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-cdc = { workspace = true }
 reifydb-sub-api = { workspace = true }
@@ -36,13 +35,13 @@ reifydb-value = { workspace = true }
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
 dashmap = { workspace = true }
-postcard = { workspace = true }
-serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-engine = { workspace = true, features = ["testing"] }
+reifydb-flow = { workspace = true, features = ["runtime", "testing"] }
 rand = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow", "testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }

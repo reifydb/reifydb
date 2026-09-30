@@ -422,40 +422,6 @@ fn hydrate_pushes_take_through_extend() {
 		.expect("hydrate succeeds: take 5 should be pushed through extend so cap=5 holds");
 }
 
-#[test]
-fn hydrate_does_not_push_take_below_distinct() {
-	// Distinct changes cardinality, so this bound is genuinely unpushable and the cap must still fire.
-	let db = TestDb::memory();
-
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::keyed { id: int4, qty: int4 }");
-	seed_id_qty(&db, "app::keyed", 50);
-
-	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::keyed | distinct {id} | take 5");
-
-	let err = sub_service
-		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
-		.expect_err("expected RowCapExceeded: take must not be pushed below distinct");
-
-	match err {
-		HydrateError::RowCapExceeded {
-			cap,
-			bound,
-		} => {
-			assert_eq!(cap, 5);
-			// The user already wrote a take, so advice to add one is wrong; the error must name the
-			// blocker.
-			assert_eq!(
-				bound,
-				HydrationBound::Blocked {
-					operator: "Distinct".to_string(),
-				}
-			);
-		}
-		other => panic!("unexpected error: {:?}", other),
-	}
-}
-
 fn subscribe_with_params(
 	db: &TestDb,
 	identity: IdentityId,

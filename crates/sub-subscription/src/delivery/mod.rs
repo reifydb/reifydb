@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
@@ -11,7 +11,6 @@ use reifydb_value::value::diff_type::DiffType;
 use crate::store::SubscriptionStore;
 
 pub(crate) mod hydration;
-mod pushdown;
 pub(crate) mod sink;
 
 pub struct DeliveryBuffer {
@@ -36,10 +35,14 @@ impl DeliveryBuffer {
 	}
 
 	pub fn commit_batch(&self) {
-		let staged = {
-			let mut guard = self.staging.lock();
-			mem::take(&mut *guard)
-		};
+		let staged: HashMap<SubscriptionId, Vec<StagedBatch>> =
+			self.staging.lock().extract_if(|id, _| !self.store.is_hydrating(id)).collect();
+		self.store.commit_staged(staged);
+	}
+
+	pub fn commit_for(&self, subscription_id: SubscriptionId) {
+		let staged: HashMap<SubscriptionId, Vec<StagedBatch>> =
+			self.staging.lock().remove_entry(&subscription_id).into_iter().collect();
 		self.store.commit_staged(staged);
 	}
 }

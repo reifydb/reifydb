@@ -2,10 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::catalog::{
-	id::SubscriptionId,
-	subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
+use reifydb_core::interface::{
+	catalog::{
+		id::SubscriptionId,
+		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
+	},
+	change::StagedBatch,
 };
+use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
@@ -54,6 +58,21 @@ fn drain(db: &TestDb, sub_id: SubscriptionId) -> Vec<i32> {
 	out
 }
 
+fn snapshot_ids(batches: &[StagedBatch]) -> Vec<i32> {
+	let mut out = Vec::new();
+	for (_, batch) in batches {
+		let id_col = column_view(batch, "id").unwrap().expect("id column");
+		for i in 0..batch.num_rows() {
+			match id_col.get_value(i) {
+				Value::Int4(v) => out.push(v),
+				other => panic!("expected Int4 id, got {:?}", other),
+			}
+		}
+	}
+	out.sort();
+	out
+}
+
 fn wait_for_consumer_caught_up(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
@@ -85,21 +104,28 @@ fn a_subscription_without_hydration_delivers_only_rows_after_registration() {
 }
 
 #[test]
-fn a_subscription_with_hydration_delivers_only_rows_after_registration() {
-	// Enabling hydration must not move the live floor, or rows before registration leak or rows after it vanish.
+fn a_subscription_with_hydration_delivers_every_row_once_across_the_hand_off() {
+	// A row at or below the snapshot must arrive only in it and a later row only live, or one is lost or doubled.
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
 
 	let sub_id = extract_sub_id(subscribe(&db, true));
 
 	db.command("INSERT app::t [{id: 2}]");
+	let engine = db.engine().clone();
+	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
+	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
+
+	db.command("INSERT app::t [{id: 3}]");
 	wait_for_consumer_caught_up(&db);
 
 	assert_eq!(
-		drain(&db, sub_id),
-		vec![2],
-		"a hydrating subscription must deliver exactly the rows committed after registration"
+		snapshot_ids(&outcome.batches),
+		vec![1, 2],
+		"the snapshot must hold every row committed up to its version"
 	);
+	assert_eq!(drain(&db, sub_id), vec![3], "only the row committed after the snapshot may arrive live");
 }
 
 #[test]

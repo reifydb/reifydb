@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::SubscribeOptions};
+use reifydb_core::interface::catalog::{
+	id::SubscriptionId,
+	subscription::{HydrationConfig, SubscribeOptions},
+};
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::value::identity::IdentityId;
 
@@ -39,7 +42,18 @@ fn a_live_subscriber_that_falls_behind_is_terminated_not_truncated() {
 
 	let outcome = db
 		.engine()
-		.subscribe_as(IdentityId::root(), "from app::t", Params::None, SubscribeOptions::default())
+		.subscribe_as(
+			IdentityId::root(),
+			"from app::t",
+			Params::None,
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
+		)
 		.expect("subscribe as root");
 	let sub_id = extract_sub_id(outcome);
 

@@ -27,7 +27,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, params::Params, value::identity::IdentityId};
+use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::error;
 
 use crate::{
@@ -55,6 +55,7 @@ pub enum SubscriptionWorkerMessage {
 		flow_id: FlowId,
 		flow_dag: FlowDag,
 		ctx: SubscriptionContext,
+		hydration_enabled: bool,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	},
 
@@ -81,16 +82,16 @@ struct SubscriptionFlowState {
 	keyed_state: HashMap<EncodedKey, EncodedBytes>,
 	gate: CommitVersion,
 	identity: IdentityId,
-	params: Params,
+	held: Option<Vec<Change>>,
 }
 
 impl SubscriptionFlowState {
-	fn new(gate: CommitVersion, identity: IdentityId, params: Params) -> Self {
+	fn new(gate: CommitVersion, identity: IdentityId, hydration_enabled: bool) -> Self {
 		Self {
 			keyed_state: HashMap::new(),
 			gate,
 			identity,
-			params,
+			held: hydration_enabled.then(Vec::new),
 		}
 	}
 }
@@ -162,8 +163,9 @@ impl Actor for SubscriptionWorkerActor {
 					flow_id,
 					flow_dag,
 					ctx,
+					hydration_enabled,
 					reply,
-				} => self.handle_register(state, flow_id, flow_dag, ctx, reply),
+				} => self.handle_register(state, flow_id, flow_dag, ctx, hydration_enabled, reply),
 				SubscriptionWorkerMessage::Unregister {
 					flow_id,
 					reply,
@@ -200,6 +202,7 @@ impl SubscriptionWorkerActor {
 		flow_id: FlowId,
 		flow_dag: FlowDag,
 		ctx: SubscriptionContext,
+		hydration_enabled: bool,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
 		if state.flows.contains_key(&flow_id) {
@@ -232,7 +235,10 @@ impl SubscriptionWorkerActor {
 						return;
 					}
 				};
-				state.flows.insert(flow_id, SubscriptionFlowState::new(gate, ctx.identity, ctx.params));
+				state.flows.insert(
+					flow_id,
+					SubscriptionFlowState::new(gate, ctx.identity, hydration_enabled),
+				);
 				reply(Ok(()));
 			}
 			Err(e) => reply(Err(e)),

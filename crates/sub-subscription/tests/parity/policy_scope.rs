@@ -8,7 +8,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
+use reifydb_core::interface::{
+	catalog::subscription::{HydrationConfig, SubscribeOptions},
+	change::StagedBatch,
+};
 use reifydb_value::value::{Value, identity::IdentityId, system_columns::column_view};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
@@ -67,7 +70,18 @@ fn from_policy_scopes_live_diffs_per_subscriber() {
 
 	let outcome = db
 		.engine()
-		.subscribe_as(alice, "from app::docs", Params::None, SubscribeOptions::default())
+		.subscribe_as(
+			alice,
+			"from app::docs",
+			Params::None,
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
+		)
 		.expect("subscribe as alice failed");
 	let sub_id = extract_sub_id(outcome);
 
@@ -88,7 +102,18 @@ fn root_subscription_bypasses_policies() {
 
 	let outcome = db
 		.engine()
-		.subscribe_as(IdentityId::root(), "from app::docs", Params::None, SubscribeOptions::default())
+		.subscribe_as(
+			IdentityId::root(),
+			"from app::docs",
+			Params::None,
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
+		)
 		.expect("subscribe as root failed");
 	let sub_id = extract_sub_id(outcome);
 
@@ -109,7 +134,18 @@ fn non_matching_subscriber_receives_no_diffs() {
 
 	let outcome = db
 		.engine()
-		.subscribe_as(bob, "from app::docs", Params::None, SubscribeOptions::default())
+		.subscribe_as(
+			bob,
+			"from app::docs",
+			Params::None,
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
+		)
 		.expect("subscribe as bob failed");
 	let sub_id = extract_sub_id(outcome);
 
@@ -133,7 +169,13 @@ fn subscription_params_resolve_in_flow_filters() {
 			IdentityId::root(),
 			"from app::docs filter { content == $wanted }",
 			Params::Named(Arc::new(named)),
-			SubscribeOptions::default(),
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
 		)
 		.expect("subscribe with params failed");
 	let sub_id = extract_sub_id(outcome);

@@ -4204,7 +4204,6 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "dashmap",
- "postcard",
  "rand 0.10.1",
  "reifydb",
  "reifydb-build",
@@ -4216,7 +4215,6 @@ dependencies = [
  "reifydb-flow",
  "reifydb-flow-async",
  "reifydb-macro",
- "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-cdc",
  "reifydb-sub-api",
@@ -4224,7 +4222,6 @@ dependencies = [
  "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
- "serde",
  "tokio",
  "tracing",
 ]

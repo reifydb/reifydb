@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	subscription::{HydrateError, SubscriptionServiceRef},
+	subscription::{HydrateError, SubscriptionServiceRef, acquire_hand_off_lease},
 };
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
@@ -261,7 +261,7 @@ async fn handle_subscribe_local<S: WireSink, H: SubscribeHost>(
 	}
 
 	if hydration.enabled {
-		let lease = match ctx.engine().acquire_current_snapshot_lease() {
+		let lease = match acquire_hand_off_lease(ctx.engine(), &[subscription_id]) {
 			Ok((_, lease)) => lease,
 			Err(e) => {
 				let code = if e.0.code == "TXN_012" {
@@ -432,7 +432,10 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 	.await?
 	{
 		Ok(parts) => parts,
-		Err(e) => return Ok(Err(e)),
+		Err(e) => {
+			rollback_local_subscriptions(ctx.engine(), &local_hydrations).await?;
+			return Ok(Err(e));
+		}
 	};
 
 	if let Err(e) = hydrate_batch_locals(
@@ -704,7 +707,6 @@ async fn register_batch_and_ack<S: WireSink, E>(
 		.collect();
 	if !matches!(sink.send_batch_subscribed(batch_id, &subscribed_entries), DeliveryResult::Delivered) {
 		registry.unsubscribe_batch(batch_id);
-		rollback_batch_subscriptions(ctx.engine(), &[]).await?;
 		return Ok(Err(BatchSubscribeError::LeaseFailed {
 			code: "STREAM_CLOSED",
 			message: "Client stream closed before BatchSubscribed could be delivered".to_string(),
@@ -727,9 +729,10 @@ async fn hydrate_batch_locals<S: WireSink, E>(
 	effective_max_rows: &HashMap<SubscriptionId, u64>,
 	server_cap: u64,
 ) -> Result<Result<(), BatchSubscribeError<E>>, Error> {
-	let any_hydration = local_hydrations.iter().any(|(_, _, h, _)| h.enabled);
-	if any_hydration {
-		let lease = match ctx.engine().acquire_current_snapshot_lease() {
+	let hydrating: Vec<SubscriptionId> =
+		local_hydrations.iter().filter(|(_, _, h, _)| h.enabled).map(|(sub_id, _, _, _)| *sub_id).collect();
+	if !hydrating.is_empty() {
+		let lease = match acquire_hand_off_lease(ctx.engine(), &hydrating) {
 			Ok((_, lease)) => lease,
 			Err(e) => {
 				let code = if e.0.code == "TXN_012" {
@@ -738,6 +741,7 @@ async fn hydrate_batch_locals<S: WireSink, E>(
 					"PIN_VERSION_FAILED"
 				};
 				registry.unsubscribe_batch(batch_id);
+				rollback_local_subscriptions(ctx.engine(), local_hydrations).await?;
 				return Ok(Err(BatchSubscribeError::LeaseFailed {
 					code,
 					message: e.to_string(),
@@ -763,6 +767,7 @@ async fn hydrate_batch_locals<S: WireSink, E>(
 			.await?
 			{
 				registry.unsubscribe_batch(batch_id);
+				rollback_local_subscriptions(ctx.engine(), local_hydrations).await?;
 				return Ok(Err(err.into_batch()));
 			}
 		}
@@ -998,6 +1003,19 @@ async fn rollback_batch_subscriptions(
 			#[cfg(reifydb_single_threaded)]
 			cleanup_subscription_sync(engine, *subscription_id)?;
 		}
+	}
+	Ok(())
+}
+
+async fn rollback_local_subscriptions(
+	engine: &StandardEngine,
+	local_hydrations: &[LocalHydration],
+) -> Result<(), Error> {
+	for (subscription_id, _, _, _) in local_hydrations {
+		#[cfg(not(reifydb_single_threaded))]
+		cleanup_subscription(engine, *subscription_id).await?;
+		#[cfg(reifydb_single_threaded)]
+		cleanup_subscription_sync(engine, *subscription_id)?;
 	}
 	Ok(())
 }

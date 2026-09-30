@@ -87,7 +87,12 @@ impl SubscriptionServiceImpl {
 		self.state.subscription_flows.read().get(&sub_id).copied().ok_or(HydrateError::SubscriptionNotFound)
 	}
 
-	fn register_with_worker(&self, flow_dag: FlowDag, ctx: SubscriptionContext) -> Result<()> {
+	fn register_with_worker(
+		&self,
+		flow_dag: FlowDag,
+		hydration_enabled: bool,
+		ctx: SubscriptionContext,
+	) -> Result<()> {
 		let current = self.state.multi.begin_query()?.version();
 		self.state.position_tracker.update(ctx.id, current);
 
@@ -104,6 +109,7 @@ impl SubscriptionServiceImpl {
 				flow_id,
 				flow_dag,
 				ctx,
+				hydration_enabled,
 				reply,
 			})
 			.is_err()
@@ -127,7 +133,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	fn register_subscription(
 		&self,
 		flow_dag: FlowDag,
-		_hydration_enabled: bool,
+		hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		_txn: &mut Transaction<'_>,
 	) -> Result<()> {
@@ -135,7 +141,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		let flow_id = flow_dag.id;
 		self.state.store.register(id);
 
-		self.register_with_worker(flow_dag, ctx).inspect_err(|_| {
+		self.register_with_worker(flow_dag, hydration_enabled, ctx).inspect_err(|_| {
 			self.state.store.unregister(&id);
 			self.state.position_tracker.remove(&id);
 		})?;

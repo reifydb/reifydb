@@ -1,135 +1,57 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
+use std::{collections::BTreeSet, result::Result as StdResult};
 
-use arrow_array::RecordBatch;
-use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::object::ObjectId,
-	metrics::execution::StatementMetrics,
 };
-use reifydb_engine::{
-	engine::StandardEngine,
-	subscription::{HydrateError, HydrationBound},
-};
-use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_value::params::Params;
+use reifydb_engine::subscription::{HydrateError, HydrationBound};
 
-use super::pushdown::{append_pushdown, walk_for_source_pushdown};
-
-pub(crate) type SourceFrames = Vec<(ObjectId, Vec<RecordBatch>)>;
-
-pub(crate) struct SourceDescriptor {
-	pub object: ObjectId,
-	pub query: String,
-	pub bound: HydrationBound,
-}
-
-pub(crate) fn run_source_queries(
-	engine: &StandardEngine,
-	outer: &mut QueryTransaction,
-	sources: Vec<SourceDescriptor>,
-	params: &Params,
-	max_rows: u64,
-) -> StdResult<(SourceFrames, Vec<StatementMetrics>), HydrateError> {
-	let mut total_rows: u64 = 0;
-	let mut source_frames: SourceFrames = Vec::with_capacity(sources.len());
-	let mut statements: Vec<StatementMetrics> = Vec::new();
-	for SourceDescriptor {
-		object: shape,
-		query: query_string,
-		bound,
-	} in sources
-	{
-		let result = engine.query_in_txn(outer, &query_string, params.clone());
-		if let Some(err) = result.error {
-			return Err(err.into());
-		}
-		statements.extend(result.metrics.statements);
-		let mut shape_columns: Vec<RecordBatch> = Vec::new();
-		for frame in result.frames {
-			let columns = frame.batch;
-			let row_count = columns.num_rows() as u64;
-			total_rows = total_rows.saturating_add(row_count);
-			if total_rows > max_rows {
-				return Err(HydrateError::RowCapExceeded {
-					cap: max_rows,
-					bound,
-				});
-			}
-			shape_columns.push(columns);
-		}
-		source_frames.push((shape, shape_columns));
-	}
-	Ok((source_frames, statements))
-}
-
-pub(crate) fn collect_source_descriptors(
-	flow: &FlowDag,
-	catalog: &Catalog,
-	outer: &mut QueryTransaction,
-) -> StdResult<Vec<SourceDescriptor>, HydrateError> {
-	let mut txn = Transaction::Query(outer);
-
-	let mut out: Vec<SourceDescriptor> = Vec::new();
+pub(crate) fn backfill_sources(flow: &FlowDag) -> StdResult<BTreeSet<ObjectId>, HydrateError> {
+	let mut sources = BTreeSet::new();
 	for operator_id in flow.topological_order() {
-		let operator = match flow.get_operator(operator_id) {
-			Some(n) => n,
-			None => continue,
+		let Some(operator) = flow.get_operator(operator_id) else {
+			continue;
 		};
 		match &operator.ty {
 			OperatorDef::SourceTable {
 				table,
 				..
 			} => {
-				let t = catalog.get_table(&mut txn, *table)?;
-				let ns = catalog.get_namespace(&mut txn, t.namespace)?;
-				let mut q = format!("from {}::{}", ns.name(), t.name);
-				let bound = append_pushdown(&mut q, walk_for_source_pushdown(flow, operator_id));
-				out.push(SourceDescriptor {
-					object: ObjectId::Table(*table),
-					query: q,
-					bound,
-				});
+				sources.insert(ObjectId::Table(*table));
 			}
 			OperatorDef::SourceView {
 				view,
 			} => {
-				let v = catalog.get_view(&mut txn, *view)?;
-				let ns = catalog.get_namespace(&mut txn, v.namespace())?;
-				let mut q = format!("from {}::{}", ns.name(), v.name());
-				let bound = append_pushdown(&mut q, walk_for_source_pushdown(flow, operator_id));
-				out.push(SourceDescriptor {
-					object: ObjectId::View(*view),
-					query: q,
-					bound,
-				});
+				sources.insert(ObjectId::View(*view));
 			}
 			OperatorDef::SourceRingBuffer {
 				ringbuffer,
 				..
 			} => {
-				let r = catalog.get_ringbuffer(&mut txn, *ringbuffer)?;
-				let ns = catalog.get_namespace(&mut txn, r.namespace)?;
-				let mut q = format!("from {}::{}", ns.name(), r.name);
-				let bound = append_pushdown(&mut q, walk_for_source_pushdown(flow, operator_id));
-				out.push(SourceDescriptor {
-					object: ObjectId::RingBuffer(*ringbuffer),
-					query: q,
-					bound,
-				});
+				sources.insert(ObjectId::RingBuffer(*ringbuffer));
 			}
-			_ => {
-				if matches!(
-					&operator.ty,
-					OperatorDef::SourceInlineData { .. } | OperatorDef::SourceSeries { .. }
-				) {
-					return Err(HydrateError::UnsupportedSourceType);
-				}
+			OperatorDef::SourceInlineData {
+				..
 			}
+			| OperatorDef::SourceSeries {
+				..
+			} => return Err(HydrateError::UnsupportedSourceType),
+			_ => {}
 		}
 	}
-	Ok(out)
+	Ok(sources)
+}
+
+pub(crate) fn hydration_bound(flow: &FlowDag) -> HydrationBound {
+	let bounded = flow.topological_order().iter().any(|operator_id| {
+		flow.get_operator(operator_id).is_some_and(|operator| matches!(operator.ty, OperatorDef::Take { .. }))
+	});
+	if bounded {
+		HydrationBound::Pushed
+	} else {
+		HydrationBound::Absent
+	}
 }

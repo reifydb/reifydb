@@ -14,7 +14,7 @@ use reifydb::{Params, testing::db::TestDb};
 use reifydb_core::interface::{
 	catalog::{
 		id::SubscriptionId,
-		subscription::{SubscribeOptions, SubscribeOutcome},
+		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
 	},
 	change::StagedBatch,
 };
@@ -263,7 +263,18 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 
 	let outcome = db
 		.engine()
-		.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+		.subscribe_as(
+			IdentityId::root(),
+			rql,
+			Params::None,
+			SubscribeOptions {
+				hydration: HydrationConfig {
+					enabled: false,
+					max_rows: None,
+				},
+				..SubscribeOptions::default()
+			},
+		)
 		.expect("subscribe as root");
 	let sub_id = extract_sub_id(outcome);
 

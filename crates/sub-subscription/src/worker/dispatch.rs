@@ -53,8 +53,6 @@ impl SubscriptionWorkerActor {
 				state.carry_lease = Some(lease);
 				self.evaluate_batch(state, &base_query, changes);
 				drop(base_query);
-				drop(protect);
-				return Ok(());
 			}
 			Ok(lease) => {
 				state.carry_lease = Some(lease);
@@ -63,7 +61,41 @@ impl SubscriptionWorkerActor {
 			Err(e) => return Err(e),
 		}
 		drop(protect);
+		hold_for_warming_flows(state, changes);
 		Ok(())
+	}
+
+	pub(super) fn replay_held(
+		&self,
+		state: &mut SubscriptionWorkerState,
+		flow_id: FlowId,
+		base_query: &MultiReadTransaction,
+		held: &[Change],
+	) {
+		let SubscriptionWorkerState {
+			flow_engine,
+			flows,
+			..
+		} = state;
+
+		for change in held {
+			let source_shape = match &change.origin {
+				ChangeOrigin::Object(s) => *s,
+				ChangeOrigin::Flow(_) => continue,
+			};
+			let Some(flow_entries) = flow_engine.flows_for_source_object(source_shape) else {
+				continue;
+			};
+			for (entry_flow_id, operator_id) in flow_entries {
+				if entry_flow_id != flow_id {
+					continue;
+				}
+				let Some(flow_state) = flows.get_mut(&flow_id) else {
+					return;
+				};
+				self.evaluate_flow(flow_engine, flow_state, base_query, change, flow_id, operator_id);
+			}
+		}
 	}
 
 	fn evaluate_batch(
@@ -87,7 +119,7 @@ impl SubscriptionWorkerActor {
 				continue;
 			};
 			for (flow_id, operator_id) in flow_entries {
-				let Some(flow_state) = flows.get_mut(&flow_id) else {
+				let Some(flow_state) = flows.get_mut(&flow_id).filter(|fs| fs.held.is_none()) else {
 					continue;
 				};
 				self.evaluate_flow(flow_engine, flow_state, base_query, change, flow_id, operator_id);
@@ -145,12 +177,45 @@ fn min_version_the_flows_will_read(state: &SubscriptionWorkerState, changes: &[C
 		let Some(flow_entries) = state.flow_engine.flows_for_source_object(source_shape) else {
 			continue;
 		};
-		let read_by_any_flow = flow_entries
-			.iter()
-			.any(|(flow_id, _)| state.flows.get(flow_id).is_some_and(|fs| change.version.commit > fs.gate));
+		let read_by_any_flow = flow_entries.iter().any(|(flow_id, _)| {
+			state.flows.get(flow_id).is_some_and(|fs| fs.held.is_none() && change.version.commit > fs.gate)
+		});
 		if read_by_any_flow {
 			min_needed = Some(min_needed.map_or(change.version.commit, |m| m.min(change.version.commit)));
 		}
 	}
 	min_needed
+}
+
+fn hold_for_warming_flows(state: &mut SubscriptionWorkerState, changes: &[Change]) {
+	let SubscriptionWorkerState {
+		flow_engine,
+		flows,
+		..
+	} = state;
+
+	for change in changes {
+		let source_shape = match &change.origin {
+			ChangeOrigin::Object(s) => *s,
+			ChangeOrigin::Flow(_) => continue,
+		};
+		let Some(flow_entries) = flow_engine.flows_for_source_object(source_shape) else {
+			continue;
+		};
+		let mut holding: Vec<FlowId> = Vec::new();
+		for (flow_id, _) in flow_entries {
+			if holding.contains(&flow_id) {
+				continue;
+			}
+			let Some(held) = flows
+				.get_mut(&flow_id)
+				.filter(|fs| change.version.commit > fs.gate)
+				.and_then(|fs| fs.held.as_mut())
+			else {
+				continue;
+			};
+			held.push(change.clone());
+			holding.push(flow_id);
+		}
+	}
 }

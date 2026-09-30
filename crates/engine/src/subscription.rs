@@ -33,22 +33,13 @@ pub struct SubscriptionContext {
 pub enum HydrationBound {
 	Pushed,
 	Absent,
-	Blocked {
-		operator: String,
-	},
 }
 
 impl HydrationBound {
 	pub fn advice(&self) -> String {
 		match self {
 			Self::Absent => "add `TAKE N` upstream, raise the hydration.max_rows subscribe option, or set the hydration.enabled subscribe option to false".to_string(),
-			Self::Blocked {
-				operator,
-			} => format!(
-				"the query's `TAKE` sits below `{}`, which the hydration pushdown cannot see through, so the source was read unbounded; move the `TAKE` above `{}`, raise the hydration.max_rows subscribe option, or set the hydration.enabled subscribe option to false",
-				operator, operator
-			),
-			Self::Pushed => "the query's `TAKE` was already applied at the source and it still returns more rows than the cap, so raise the hydration.max_rows subscribe option or set the hydration.enabled subscribe option to false".to_string(),
+			Self::Pushed => "the query's `TAKE` still returns more rows than the cap, so raise the hydration.max_rows subscribe option or set the hydration.enabled subscribe option to false".to_string(),
 		}
 	}
 }
@@ -150,3 +141,25 @@ pub trait SubscriptionService: Send + Sync {
 }
 
 pub type SubscriptionServiceRef = Arc<dyn SubscriptionService>;
+
+#[cfg(feature = "testing")]
+pub trait HandOffHooks: Send + Sync {
+	fn during_hand_off(&self, _subscription: SubscriptionId) {}
+}
+
+#[cfg(feature = "testing")]
+#[derive(Clone)]
+pub struct InstalledHandOffHooks(pub Arc<dyn HandOffHooks>);
+
+pub fn acquire_hand_off_lease(
+	engine: &StandardEngine,
+	_subscriptions: &[SubscriptionId],
+) -> Result<(CommitVersion, VersionLeaseGuard)> {
+	#[cfg(feature = "testing")]
+	if let Some(InstalledHandOffHooks(hooks)) = engine.ioc().try_resolve::<InstalledHandOffHooks>() {
+		for subscription in _subscriptions {
+			hooks.during_hand_off(*subscription);
+		}
+	}
+	engine.acquire_current_snapshot_lease()
+}

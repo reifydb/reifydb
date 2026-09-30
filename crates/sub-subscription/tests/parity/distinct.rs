@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
+use reifydb_core::interface::{
+	catalog::subscription::{HydrationConfig, SubscribeOptions},
+	change::StagedBatch,
+};
 use reifydb_value::value::{Value, diff_type::DiffType, identity::IdentityId, system_columns::column_view};
 
 use crate::common::{
@@ -65,7 +68,18 @@ fn ops_and_qty(batches: Vec<StagedBatch>) -> Vec<(DiffType, i32)> {
 fn subscribe(db: &TestDb, rql: &str) -> reifydb_core::interface::catalog::id::SubscriptionId {
 	extract_sub_id(
 		db.engine()
-			.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+			.subscribe_as(
+				IdentityId::root(),
+				rql,
+				Params::None,
+				SubscribeOptions {
+					hydration: HydrationConfig {
+						enabled: false,
+						max_rows: None,
+					},
+					..SubscribeOptions::default()
+				},
+			)
 			.expect("subscribe as root"),
 	)
 }
