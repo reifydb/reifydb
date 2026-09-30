@@ -3,7 +3,7 @@
 
 use std::{
 	collections::HashMap,
-	sync::{Arc, LazyLock, Mutex},
+	sync::{Arc, LazyLock},
 	thread,
 };
 
@@ -18,7 +18,7 @@ use reifydb_core::{
 	lifecycle::task::LifecycleTask,
 	operator_with::ApplyWith,
 };
-use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
+use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig, sync::mutex::Mutex};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
@@ -54,11 +54,11 @@ struct Gate {
 static GATES: LazyLock<Mutex<HashMap<String, Gate>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn set_gate(name: &str, open: bool) {
-	GATES.lock().unwrap().entry(name.to_string()).or_default().open = open;
+	GATES.lock().entry(name.to_string()).or_default().open = open;
 }
 
 fn gate(name: &str) -> Gate {
-	GATES.lock().unwrap().get(name).copied().unwrap_or_default()
+	GATES.lock().get(name).copied().unwrap_or_default()
 }
 
 struct GatedPassThrough {
@@ -128,9 +128,9 @@ impl UnmanagedOperator for GatedPassThrough {
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
-		GATES.lock().unwrap().entry(self.gate.clone()).or_default().entered = true;
+		GATES.lock().entry(self.gate.clone()).or_default().entered = true;
 		while !gate(&self.gate).open {
-			thread::sleep(std::time::Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds_const(10).to_std());
 		}
 		for index in 0..change.diff_count() {
 			let Some(diff) = change.diff(index) else {
