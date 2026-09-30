@@ -87,21 +87,11 @@ struct PublishedSet {
 	entries: Vec<PublishedEntry>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Numbering {
-	Pair,
-	LeftRow,
-}
-
-pub(crate) struct SnapshotLedger {
-	numbering: Numbering,
-}
+pub(crate) struct SnapshotLedger;
 
 impl SnapshotLedger {
-	pub(crate) fn new(numbering: Numbering) -> Self {
-		Self {
-			numbering,
-		}
+	pub(crate) fn new() -> Self {
+		Self
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
@@ -156,6 +146,18 @@ impl SnapshotLedger {
 		right: RowNumber,
 		content: &EncodedBytes,
 	) -> Result<(RowNumber, bool)> {
+		self.publish_as(host, group, left, right, content, None)
+	}
+
+	pub(crate) fn publish_as(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		right: RowNumber,
+		content: &EncodedBytes,
+		reuse: Option<RowNumber>,
+	) -> Result<(RowNumber, bool)> {
 		let version = ContentVersion::of(content);
 		let mut set = self.published_set(host, group, left)?;
 		let published =
@@ -171,9 +173,9 @@ impl SnapshotLedger {
 					(row_number, false)
 				}
 				None => {
-					let row_number = match self.numbering {
-						Numbering::LeftRow => left,
-						Numbering::Pair => mint_row_numbers(host, 1)?,
+					let row_number = match reuse {
+						Some(id) => id,
+						None => mint_row_numbers(host, 1)?,
 					};
 					set.entries.push(PublishedEntry {
 						tag: TAG_JOINED,
@@ -215,13 +217,23 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<(RowNumber, bool)> {
+		self.publish_unmatched_as(host, group, left, None)
+	}
+
+	pub(crate) fn publish_unmatched_as(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		reuse: Option<RowNumber>,
+	) -> Result<(RowNumber, bool)> {
 		let mut set = self.published_set(host, group, left)?;
 		if let Some(entry) = set.entries.iter().find(|entry| entry.tag == TAG_UNMATCHED) {
 			return Ok((RowNumber(entry.row_number), false));
 		}
-		let row_number = match self.numbering {
-			Numbering::LeftRow => left,
-			Numbering::Pair => mint_row_numbers(host, 1)?,
+		let row_number = match reuse {
+			Some(id) => id,
+			None => mint_row_numbers(host, 1)?,
 		};
 		set.entries.push(PublishedEntry {
 			tag: TAG_UNMATCHED,
@@ -542,6 +554,7 @@ pub(crate) fn publish_slot(
 	left: &RecordBatch,
 	left_indices: &[usize],
 	outer: bool,
+	reuse: Option<RowNumber>,
 ) -> Result<Option<RecordBatch>> {
 	if left_indices.is_empty() {
 		return Ok(None);
@@ -554,16 +567,18 @@ pub(crate) fn publish_slot(
 		if !outer {
 			return Ok(None);
 		}
+		let mut ids = Vec::with_capacity(left_numbers.len());
 		for left_number in &left_numbers {
-			ctx.ledger.publish_unmatched(host, group, *left_number)?;
+			ids.push(ctx.ledger.publish_unmatched_as(host, group, *left_number, reuse)?.0);
 		}
-		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices)?));
+		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices, &ids)?));
 	};
 
+	let mut ids = Vec::with_capacity(left_numbers.len());
 	for left_number in &left_numbers {
-		ctx.ledger.publish(host, group, *left_number, number, &content)?;
+		ids.push(ctx.ledger.publish_as(host, group, *left_number, number, &content, reuse)?.0);
 	}
-	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)?))
+	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot, &ids)?))
 }
 
 pub(crate) fn withdraw_slot(
@@ -572,13 +587,14 @@ pub(crate) fn withdraw_slot(
 	group: GroupId,
 	left: &RecordBatch,
 	left_idx: usize,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<(RecordBatch, RowNumber)>> {
 	let left_number = require_row_numbers(left)?[left_idx];
 	for entry in ctx.ledger.published(host, group, left_number)? {
 		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
-				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])?));
+				let columns = ctx.operator.unmatched_left_latest(left, &[left_idx], &[entry.row_number])?;
+				return Ok(Some((columns, entry.row_number)));
 			}
 			PublishedRight::Row(right_number) => right_number,
 		};
@@ -594,7 +610,8 @@ pub(crate) fn withdraw_slot(
 			continue;
 		};
 		let slot = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
-		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)?));
+		let columns = ctx.operator.join_left_with_slot(left, &[left_idx], &slot, &[entry.row_number])?;
+		return Ok(Some((columns, entry.row_number)));
 	}
 	Ok(None)
 }
@@ -604,7 +621,7 @@ pub(crate) fn retain_published_slot(
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: RowNumber,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<(RecordBatch, RowNumber)>> {
 	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		return Ok(None);
 	};
@@ -618,7 +635,7 @@ pub(crate) fn retain_published_slot(
 	{
 		return Ok(None);
 	}
-	Ok(Some(slot))
+	Ok(Some((slot, entry.row_number)))
 }
 
 pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
@@ -660,7 +677,7 @@ mod tests {
 	}
 
 	fn ledger() -> SnapshotLedger {
-		SnapshotLedger::new(Numbering::Pair)
+		SnapshotLedger::new()
 	}
 
 	fn b(txn: &mut DeferredTransaction) -> TxnHostContext<'_, DeferredTransaction> {

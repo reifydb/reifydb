@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
-use reifydb_core::interface::change::Diff;
+use reifydb_core::{interface::change::Diff, key::operator::state::GroupId};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -23,12 +23,40 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
+		operator::JoinOperator,
 		snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
 };
 
 pub(crate) struct LatestLeftHashJoin;
+
+fn publish_unkeyed(
+	host: &mut dyn HostContext,
+	operator: &JoinOperator,
+	left: &RecordBatch,
+	row_idx: usize,
+	reuse: Option<RowNumber>,
+) -> Result<RecordBatch> {
+	let left_number = require_row_numbers(left)?[row_idx];
+	let (id, _) = operator.snapshot_ledger().publish_unmatched_as(host, GroupId::UNKEYED, left_number, reuse)?;
+	operator.unmatched_left_latest(left, &[row_idx], &[id])
+}
+
+fn withdraw_unkeyed(
+	host: &mut dyn HostContext,
+	ctx: &JoinContext,
+	pre: &RecordBatch,
+	row_idx: usize,
+) -> Result<Option<(RecordBatch, RowNumber)>> {
+	let ledger = ctx.operator.snapshot_ledger();
+	let snapshot_ctx = SnapshotJoinContext {
+		ledger: &ledger,
+		operator: ctx.operator,
+		right_store: &ctx.state.right,
+	};
+	withdraw_slot(host, &snapshot_ctx, GroupId::UNKEYED, pre, row_idx)
+}
 
 impl LatestLeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
@@ -40,7 +68,7 @@ impl LatestLeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left if ctx.operator.snapshot => {
-				Ok(vec![Diff::insert(ctx.operator.unmatched_left_latest(post, &[row_idx])?)])
+				Ok(vec![Diff::insert(publish_unkeyed(host, ctx.operator, post, row_idx, None)?)])
 			}
 			JoinSide::Left => Ok(ctx
 				.operator
@@ -58,9 +86,9 @@ impl LatestLeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
-			JoinSide::Left if ctx.operator.snapshot => {
-				Ok(vec![Diff::remove(ctx.operator.unmatched_left_latest(pre, &[row_idx])?)])
-			}
+			JoinSide::Left if ctx.operator.snapshot => Ok(withdraw_unkeyed(host, ctx, pre, row_idx)?
+				.map(|(columns, _)| vec![Diff::remove(columns)])
+				.unwrap_or_default()),
 			JoinSide::Left => Ok(ctx
 				.operator
 				.latest_columns(host, pre, &[row_idx], None, Identity::Consume)?
@@ -81,9 +109,10 @@ impl LatestLeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left if ctx.operator.snapshot => {
-				let pre_unmatched = ctx.operator.unmatched_left_latest(pre, &[row_idx])?;
-				let post_unmatched = ctx.operator.unmatched_left_latest(post, &[row_idx])?;
-				Ok(vec![Diff::update(pre_unmatched, post_unmatched)])
+				let withdrawn = withdraw_unkeyed(host, ctx, pre, row_idx)?;
+				let reuse = withdrawn.as_ref().map(|(_, id)| *id);
+				let published = publish_unkeyed(host, ctx.operator, post, row_idx, reuse)?;
+				Ok(update_diff(withdrawn.map(|(columns, _)| columns), Some(published)))
 			}
 			JoinSide::Left => republish(host, ctx.operator, (pre, None), (post, None), &[row_idx]),
 			JoinSide::Right => Ok(Vec::new()),
@@ -112,7 +141,7 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let published =
-						publish_slot(host, &snapshot_ctx, key_hash, post, indices, true)?;
+						publish_slot(host, &snapshot_ctx, key_hash, post, indices, true, None)?;
 					return Ok(published
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
@@ -191,7 +220,7 @@ impl LatestLeftHashJoin {
 					let mut withdrawn = Vec::new();
 					let group = ctx.state.right.group_of(key_hash);
 					for &idx in indices {
-						if let Some(columns) =
+						if let Some((columns, _)) =
 							withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
 						{
 							withdrawn.push(Diff::remove(columns));
@@ -299,7 +328,7 @@ impl LatestLeftHashJoin {
 					let mut result = Vec::new();
 					let withdraw_group = ctx.state.right.group_of(keys.pre);
 					for &idx in indices {
-						if let Some(slot) = republished_slot(
+						if let Some((slot, id)) = republished_slot(
 							host,
 							&snapshot_ctx,
 							withdraw_group,
@@ -308,11 +337,12 @@ impl LatestLeftHashJoin {
 							idx,
 						)? {
 							result.push(Diff::update(
-								ctx.operator.join_left_with_slot(pre, &[idx], &slot)?,
+								ctx.operator.join_left_with_slot(pre, &[idx], &slot, &[id])?,
 								ctx.operator.join_left_with_slot(
 									post,
 									&[idx],
 									&slot,
+									&[id],
 								)?,
 							));
 							continue;
@@ -326,8 +356,9 @@ impl LatestLeftHashJoin {
 							post,
 							&[idx],
 							true,
+							withdrawn.as_ref().map(|(_, id)| *id),
 						)?;
-						result.extend(update_diff(withdrawn, published));
+						result.extend(update_diff(withdrawn.map(|(columns, _)| columns), published));
 					}
 					return Ok(result);
 				}

@@ -55,7 +55,7 @@ use tracing::instrument;
 
 use super::{
 	column::JoinedColumnsBuilder,
-	snapshot::{Numbering, SnapshotLedger},
+	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
@@ -548,10 +548,7 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
-		SnapshotLedger::new(match self.strategy {
-			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => Numbering::LeftRow,
-			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => Numbering::Pair,
-		})
+		SnapshotLedger::new()
 	}
 
 	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.num_rows()))]
@@ -851,20 +848,22 @@ impl JoinOperator {
 		left: &RecordBatch,
 		left_indices: &[usize],
 		slot: &RecordBatch,
+		row_numbers: &[RowNumber],
 	) -> Result<RecordBatch> {
-		let left_numbers = require_row_numbers(left)?;
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left_numbers[idx]).collect();
 		let builder =
 			JoinedColumnsBuilder::new(left.schema_ref(), slot.schema_ref(), &self.alias, self.natural);
-		builder.join_cartesian(&row_numbers, left, left_indices, slot, &[0])
+		builder.join_cartesian(row_numbers, left, left_indices, slot, &[0])
 	}
 
-	pub(crate) fn unmatched_left_latest(&self, left: &RecordBatch, left_indices: &[usize]) -> Result<RecordBatch> {
-		let left_numbers = require_row_numbers(left)?;
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left_numbers[idx]).collect();
+	pub(crate) fn unmatched_left_latest(
+		&self,
+		left: &RecordBatch,
+		left_indices: &[usize],
+		row_numbers: &[RowNumber],
+	) -> Result<RecordBatch> {
 		let builder =
 			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
-		builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)
+		builder.unmatched_left_batch(row_numbers, left, left_indices, &self.right_schema)
 	}
 
 	pub(crate) fn latest_columns(
@@ -2026,6 +2025,39 @@ mod seal_tests {
 			"and its last reference must take the pin with it"
 		);
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Right), 1, "while the right row it read survives");
+	}
+
+	#[test]
+	fn an_update_to_an_expired_snapshot_latest_left_row_never_lands_on_its_frozen_id() {
+		// Expiry is silent, so the frozen row keeps its id and a post published there overwrites history.
+		let engine = TestEngine::new();
+		let mut op = join_with(18, true, Some(JoinPick::latest()), Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		let published = insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[42], at_millis(5_000)));
+		let frozen: Vec<RowNumber> = published
+			.iter()
+			.filter_map(|diff| diff.post())
+			.flat_map(|post| require_row_numbers(post).unwrap().to_vec())
+			.collect();
+		assert_eq!(frozen.len(), 1, "precondition: the left row published once, got {published:?}");
+
+		fire(&mut op, &mut txn, at_millis(15_001));
+		let out = update(
+			&mut op,
+			&mut txn,
+			JoinSide::Left,
+			&rows(&[7], &[42], at_millis(5_000)),
+			&rows(&[7], &[42], at_millis(20_000)),
+		);
+
+		let landed: Vec<RowNumber> = out
+			.iter()
+			.filter_map(|diff| diff.post())
+			.flat_map(|post| require_row_numbers(post).unwrap().to_vec())
+			.collect();
+		assert_eq!(landed.len(), 1, "the post of the expired row is published once, got {out:?}");
+		assert_ne!(landed, frozen, "the post must take a fresh id beside the frozen row, never its id");
 	}
 
 	#[test]

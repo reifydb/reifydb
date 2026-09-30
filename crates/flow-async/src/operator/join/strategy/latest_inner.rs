@@ -83,7 +83,7 @@ impl LatestInnerHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let published =
-						publish_slot(host, &snapshot_ctx, key_hash, post, indices, false)?;
+						publish_slot(host, &snapshot_ctx, key_hash, post, indices, false, None)?;
 					return Ok(published
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
@@ -169,7 +169,7 @@ impl LatestInnerHashJoin {
 					let mut withdrawn = Vec::new();
 					let group = ctx.state.right.group_of(key_hash);
 					for &idx in indices {
-						if let Some(columns) =
+						if let Some((columns, _)) =
 							withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
 						{
 							withdrawn.push(Diff::remove(columns));
@@ -285,7 +285,7 @@ impl LatestInnerHashJoin {
 					let mut result = Vec::new();
 					let withdraw_group = ctx.state.right.group_of(keys.pre);
 					for &idx in indices {
-						if let Some(slot) = republished_slot(
+						if let Some((slot, id)) = republished_slot(
 							host,
 							&snapshot_ctx,
 							withdraw_group,
@@ -294,11 +294,12 @@ impl LatestInnerHashJoin {
 							idx,
 						)? {
 							result.push(Diff::update(
-								ctx.operator.join_left_with_slot(pre, &[idx], &slot)?,
+								ctx.operator.join_left_with_slot(pre, &[idx], &slot, &[id])?,
 								ctx.operator.join_left_with_slot(
 									post,
 									&[idx],
 									&slot,
+									&[id],
 								)?,
 							));
 							continue;
@@ -312,8 +313,9 @@ impl LatestInnerHashJoin {
 							post,
 							&[idx],
 							false,
+							withdrawn.as_ref().map(|(_, id)| *id),
 						)?;
-						result.extend(update_diff(withdrawn, published));
+						result.extend(update_diff(withdrawn.map(|(columns, _)| columns), published));
 					}
 					return Ok(result);
 				}
@@ -359,7 +361,7 @@ pub(crate) fn republished_slot(
 	pre: &RecordBatch,
 	post: &RecordBatch,
 	idx: usize,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<(RecordBatch, RowNumber)>> {
 	let left = require_row_numbers(pre)?[idx];
 	if left != require_row_numbers(post)?[idx] {
 		return Ok(None);
