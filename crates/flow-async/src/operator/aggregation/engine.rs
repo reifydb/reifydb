@@ -179,9 +179,8 @@ pub(crate) fn finish_tumbling_engine(
 					group,
 					&store::empty_key(),
 					prior_index,
-					anchor.of(window_start, None),
+					prior_index,
 				)?;
-				remove(host, &EngineMetaKey(group))?;
 			}
 			EmitKind::Insert | EmitKind::Update => {
 				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
