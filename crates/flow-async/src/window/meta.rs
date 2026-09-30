@@ -264,14 +264,21 @@ impl WindowMeta {
 	}
 
 	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
-		let Some(state) = get_classified::<_, SessionState>(store, &SessionKey(group))? else {
-			return Ok(SessionTracker::default());
-		};
-		Ok(SessionTracker::resumed(
-			state.session_id,
-			<DateTime as Coord>::from_order(state.last_event_time),
-			<DateTime as Coord>::from_order(state.session_start),
-		))
+		Ok(self.stored_session(store, group)?.unwrap_or_default())
+	}
+
+	pub fn stored_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<SessionTracker>> {
+		Ok(get_classified::<_, SessionState>(store, &SessionKey(group))?.map(|state| {
+			SessionTracker::resumed(
+				state.session_id,
+				<DateTime as Coord>::from_order(state.last_event_time),
+				<DateTime as Coord>::from_order(state.session_start),
+			)
+		}))
+	}
+
+	pub fn drop_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
+		remove(store, &SessionKey(group))
 	}
 
 	pub fn save_session(

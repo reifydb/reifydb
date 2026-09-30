@@ -225,7 +225,7 @@ impl HostOperator for WindowOperator {
 			} => seal_rolling_engine(self, host, fired)?,
 			WindowKind::Session {
 				..
-			} => seal_session_engine(self, host, fired)?,
+			} => seal_session_engine(self, host, fired, &timer.key)?,
 			_ => vec![],
 		};
 

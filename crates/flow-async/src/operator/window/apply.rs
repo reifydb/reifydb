@@ -1085,18 +1085,22 @@ pub fn apply_session_engine(
 		}
 	}
 
+	let rule = operator.session_rule();
+	let gap = operator.session_gap();
 	for (hash, tracker) in &trackers {
+		let before = operator
+			.stored_session_tracker(host, *hash)?
+			.map(|stored| stored.last.saturating_add(gap).to_order());
 		operator.save_session_tracker(host, *hash, tracker)?;
+		rearm_seal(host, rule, &tracker_key(*hash), before, Some(tracker.last.saturating_add(gap).to_order()))?;
 	}
 
-	let rule = operator.session_rule();
 	drop_sealed_events(operator, host, &mut buckets, &mut arrival, &window_max_ts, rule, ExpiryAnchor::LastEvent)?;
 
 	let groups = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
-	let gap = operator.session_gap();
 	let armed_before = armed_engine_seal(operator, host)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
@@ -1267,9 +1271,38 @@ pub fn seal_session_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	fired: FiredAt,
+	key: &EncodedKey,
 ) -> Result<Vec<Diff>> {
 	let rule = operator.session_rule();
-	seal_due_windows(operator, host, fired, rule)
+	let diffs = seal_due_windows(operator, host, fired, rule)?;
+	if !key.as_slice().is_empty() {
+		retire_session_tracker(operator, host, fired, key)?;
+	}
+	Ok(diffs)
+}
+
+fn tracker_key(hash: Hash128) -> EncodedKey {
+	EncodedKey::new(hash.0.to_be_bytes())
+}
+
+fn retire_session_tracker(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	fired: FiredAt,
+	key: &EncodedKey,
+) -> Result<()> {
+	let hash = Hash128(u128::from_be_bytes(
+		key.as_slice().try_into().expect("a session tracker timer is keyed by its group hash"),
+	));
+	let rule = operator.session_rule();
+	let gap = operator.session_gap();
+	let Some(tracker) = operator.stored_session_tracker(host, hash)? else {
+		return Ok(());
+	};
+	if rule.seal_instant(tracker.last.saturating_add(gap)).at() <= fired.at() {
+		operator.drop_session_tracker(host, hash)?;
+	}
+	Ok(())
 }
 
 pub fn seal_engine_windows(
