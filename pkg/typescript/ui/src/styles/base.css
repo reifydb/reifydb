@@ -19,8 +19,8 @@
     outline-offset: 2px;
   }
   ::selection {
-    background: var(--color-primary);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+    color: var(--color-text-primary);
   }
   input::placeholder,
   textarea::placeholder {
@@ -28,6 +28,13 @@
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+  }
+  h1, h2 {
+    font-weight: 400;
+    letter-spacing: -0.03em;
+  }
+  h3, h4, h5, h6 {
+    font-weight: 600;
   }
   table, [data-numeric] {
     font-variant-numeric: tabular-nums;
@@ -109,7 +116,7 @@
   bottom: 0;
   left: 0;
   width: 0;
-  height: 3px;
+  height: 2px;
   background: var(--color-primary);
   transition: width 0.15s ease;
 }
@@ -120,7 +127,7 @@
 /* ── Uppercase label ─────────────────────────────────────── */
 .label-uppercase {
   text-transform: uppercase;
-  letter-spacing: 1.4px;
+  letter-spacing: 0.06em;
   font-weight: 600;
 }
 
@@ -172,7 +179,7 @@
 /* ── Scrollbar ───────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--color-border-subtle); border-radius: 0; }
+::-webkit-scrollbar-thumb { background: var(--color-border-subtle); border-radius: var(--radius-pill); }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
 
 /* ── Reduced motion ──────────────────────────────────────── */

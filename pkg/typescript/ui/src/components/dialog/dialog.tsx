@@ -37,7 +37,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/60" onClick={() => onOpenChange(false)} />
+      <div className="fixed inset-0 bg-text-primary/40" onClick={() => onOpenChange(false)} />
       <div className="relative z-50">{children}</div>
     </div>
   );

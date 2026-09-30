@@ -6,11 +6,11 @@ import type { ReactNode } from "react";
 type BadgeVariant = "active" | "inactive" | "coming-soon" | "default" | "signal" | "success" | "danger" | "warning" | "error" | "outline";
 
 const variantStyles: Record<BadgeVariant, string> = {
-  active: "font-bold text-primary",
+  active: "font-medium text-primary",
   inactive: "text-text-secondary",
   "coming-soon": "text-text-secondary",
   default: "text-text-primary",
-  signal: "font-bold text-primary",
+  signal: "font-medium text-primary",
   success: "text-[11px] font-medium rounded-full border px-2.5 py-0.5 bg-status-success/15 text-status-success border-status-success/30",
   danger: "text-[11px] font-medium rounded-full border px-2.5 py-0.5 bg-status-error/15 text-status-error border-status-error/30",
   warning: "text-[11px] font-medium rounded-full border px-2.5 py-0.5 bg-status-warning/15 text-status-warning border-status-warning/30",

@@ -7,13 +7,13 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "forest" | "danger" | "
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-white font-bold border-border-default hover:brightness-90",
-  secondary: "bg-bg-tertiary text-text-primary border-border-default font-semibold hover:bg-bg-elevated",
+  primary: "bg-primary text-text-primary font-semibold border-primary-dark shadow-soft hover:brightness-90",
+  secondary: "bg-bg-secondary text-text-primary border-border-light font-semibold hover:bg-bg-elevated",
   ghost:
     "text-text-secondary border-transparent hover:bg-bg-tertiary hover:text-text-primary",
   forest: "bg-forest text-white font-semibold border-forest-border hover:brightness-90",
   danger: "bg-status-error/10 text-status-error border-status-error/30 hover:bg-status-error/20",
-  destructive: "bg-status-error text-white font-bold border-border-default hover:brightness-90",
+  destructive: "bg-status-error text-white font-semibold border-status-error hover:brightness-90",
   link:
     "text-primary border-transparent underline-offset-4 hover:underline active:text-primary-dark",
 };

@@ -13,7 +13,7 @@ describe("Separator", () => {
 
   it("applies default styling", () => {
     const { container } = render(<Separator />);
-    expect(container.firstElementChild?.className).toContain("bg-border-default");
+    expect(container.firstElementChild?.className).toContain("bg-border-light");
   });
 
   it("applies custom className", () => {

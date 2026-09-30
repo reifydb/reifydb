@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children, className = "" }: ModalP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-text-primary/40" onClick={onClose} />
       <div
         className={`relative w-full max-w-md rounded-lg border border-border-light bg-bg-secondary p-6 shadow-[var(--shadow-medium)] ${className}`}
       >

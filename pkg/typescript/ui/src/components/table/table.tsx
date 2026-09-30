@@ -53,7 +53,7 @@ export interface TableRowProps {
 
 export function TableRow({ children, className = "", onClick }: TableRowProps) {
   return (
-    <tr className={`border-l-2 border-l-transparent even:bg-bg-tertiary/40 hover:border-l-primary hover:bg-bg-tertiary transition-colors ${onClick ? "cursor-pointer" : ""} ${className}`} onClick={onClick}>
+    <tr className={`even:bg-bg-tertiary/40 hover:bg-bg-tertiary transition-colors ${onClick ? "cursor-pointer" : ""} ${className}`} onClick={onClick}>
       {children}
     </tr>
   );

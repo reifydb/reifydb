@@ -19,8 +19,8 @@ export interface NavTabsProps {
 const variantStyles = {
   underline: {
     container: "flex border-b border-border-light bg-transparent",
-    item: "px-5 py-2.5 font-mono text-xs uppercase tracking-[1.4px] transition-colors border-b-2",
-    active: "border-primary font-bold text-text-primary",
+    item: "px-5 py-2.5 text-sm font-medium transition-colors border-b-2",
+    active: "border-primary font-semibold text-text-primary",
     inactive: "border-transparent text-text-muted hover:text-text-primary",
   },
   pill: {
