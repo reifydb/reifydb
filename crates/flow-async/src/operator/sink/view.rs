@@ -261,9 +261,6 @@ impl SinkTableViewOperator {
 
 			let mut prior_created =
 				self.created_at.get(&post_row_number).copied().filter(|c| !c.is_epoch());
-			if prior_created.is_none() && pre_row_number != post_row_number {
-				prior_created = self.created_at.get(&pre_row_number).copied().filter(|c| !c.is_epoch());
-			}
 			if prior_created.is_none() {
 				prior_created = match txn.get(&post_key)? {
 					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
@@ -299,9 +296,6 @@ impl SinkTableViewOperator {
 				post_encoded = builder.freeze_bytes();
 			}
 
-			if pre_row_number != post_row_number {
-				self.created_at.remove(&pre_row_number);
-			}
 			remember_created_at(&mut self.created_at, post_row_number, read_created_at(&post_encoded));
 
 			pre_keys.push(pre_key);

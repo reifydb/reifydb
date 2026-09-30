@@ -457,21 +457,6 @@ impl SinkRingBufferViewOperator {
 		Ok(())
 	}
 
-	fn readdress_row_entry(
-		&self,
-		txn: &mut DeferredTransaction,
-		partition: Option<Partition>,
-		storage_rn: RowNumber,
-		source_rn: RowNumber,
-	) -> Result<()> {
-		let key = self.row_entry_key(partition, storage_rn);
-		let Some(row) = self.state_get(txn, &key)? else {
-			return Ok(());
-		};
-		let (time, _) = self.decode_row_entry(&row)?;
-		self.set_row_entry(txn, partition, storage_rn, source_rn, time)
-	}
-
 	fn drop_row_entry(
 		&self,
 		txn: &mut DeferredTransaction,
@@ -1060,14 +1045,12 @@ impl SinkRingBufferViewOperator {
 		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
-		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
-			(&[][..], &[][..])
+		let pre_row_numbers = if row_count == 0 {
+			&[][..]
 		} else {
-			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+			require_row_numbers(source_pre)?
 		};
-		for row_idx in 0..row_count {
-			let pre_source_rn = pre_row_numbers[row_idx];
-			let post_source_rn = post_row_numbers[row_idx];
+		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
 
 			let partition = if self.is_partitioned() {
 				let (pre_partition, _) =
@@ -1093,12 +1076,6 @@ impl SinkRingBufferViewOperator {
 				continue;
 			};
 			let key = self.rb_key(object_id, storage_rn, partition);
-
-			if post_source_rn != pre_source_rn {
-				self.drop_forward(txn, pre_source_rn)?;
-				self.set_forward(txn, post_source_rn, storage_rn)?;
-				self.readdress_row_entry(txn, partition, storage_rn, post_source_rn)?;
-			}
 
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, storage_rn, &field_columns)?;
