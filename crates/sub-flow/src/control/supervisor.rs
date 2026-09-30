@@ -14,9 +14,9 @@ use reifydb_cdc::{
 	rebuild::changed_objects,
 };
 use reifydb_core::{
-	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
+	actors::flow::{FlowActorHandle, FlowActorMessage},
 	common::{CommitVersion, SourceVersion},
-	flow::{dag::FlowDag, operator::OperatorDef},
+	flow::dag::FlowDag,
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},

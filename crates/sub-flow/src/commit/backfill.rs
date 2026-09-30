@@ -213,6 +213,7 @@ pub(crate) fn compute_backfill(
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
 		substrate: flow_engine.substrate().clone(),
+		lookup: None,
 	});
 
 	clear_views(engine, &mut txn, flow, &snapshot.lease, batch_size)?;

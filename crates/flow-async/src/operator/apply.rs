@@ -531,6 +531,39 @@ mod reclaim_tests {
 	}
 
 	#[test]
+	fn a_late_write_never_moves_a_groups_reclaim_earlier() {
+		// A write stamped with an older row time must not free state a newer write still needs.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine);
+		let (mut operator, _) = managed(2);
+		let span = operator.retention();
+
+		write_at(&mut txn, 12_000, span, &managed_key(group(1))).unwrap();
+		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
+
+		assert_eq!(due_entries(&mut txn), 1, "the late write keeps one due entry for the group");
+		assert_eq!(latest_entries(&mut txn), 1);
+
+		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+
+		assert_eq!(
+			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
+			1,
+			"the late write's due must not free the group the newer write keeps"
+		);
+
+		fire(&mut operator, &mut txn, TimerKind::Reclaim, 15_000);
+
+		assert_eq!(
+			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
+			0,
+			"the newer write's due frees the group"
+		);
+		assert_eq!(due_entries(&mut txn), 0);
+		assert_eq!(latest_entries(&mut txn), 0);
+	}
+
+	#[test]
 	fn root_and_unmanaged_writes_arm_nothing() {
 		// ROOT holds state no group owns, so arming it would free that state on the first fire.
 		let engine = TestEngine::new();

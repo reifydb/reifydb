@@ -178,9 +178,11 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		let Some(retention) = self.retention else {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
-		let due = reclaim_due(self.now, retention);
 		let latest = managed_latest_key(group);
-		if let Some(previous) = expiry_get::<DateTime>(self, &latest)?.filter(|previous| *previous != due) {
+		let previous = expiry_get::<DateTime>(self, &latest)?;
+		let due = reclaim_due(self.now, retention);
+		let due = previous.map_or(due, |previous| previous.max(due));
+		if let Some(previous) = previous.filter(|previous| *previous != due) {
 			expiry_drop(self, &managed_due_key(previous, group))?;
 		}
 		expiry_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
