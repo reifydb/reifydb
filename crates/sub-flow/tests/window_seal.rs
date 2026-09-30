@@ -559,3 +559,34 @@ fn a_session_group_keeps_no_tracker_once_its_sessions_seal() {
 		"every session of the group sealed, so its tracker must be dropped"
 	);
 }
+
+#[test]
+fn a_session_row_leaves_no_row_index_once_its_session_seals() {
+	// a row whose session sealed must drop its index entry, otherwise every row ever seen leaks one.
+	let db = setup_with_metrics();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
+			FROM app::t
+				| window session { total: math::sum(v) }
+					with { gap: 2s, lateness: 0s }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T10:00:10Z" }]"#);
+	assert_eq!(
+		await_value(1, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
+		1,
+		"the session's accumulator must be visible"
+	);
+	assert!(keyspace_keys(&db, "ROW_INDEX") > 0, "precondition: the open session must index its row");
+
+	db.admin("call storage::advance(app::t, cast('2026-01-01T12:00:00Z', datetime))");
+	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
+
+	assert_eq!(
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "ROW_INDEX")),
+		0,
+		"the row's session sealed, so its index entry must be dropped"
+	);
+}
