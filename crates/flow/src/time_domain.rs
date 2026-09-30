@@ -72,12 +72,7 @@ fn declared_source_domain(
 	Ok(resolved.unwrap_or(TimeDomain::None))
 }
 
-fn upstream_view_domain(
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	view: ViewId,
-	path: &mut HashSet<FlowId>,
-) -> Result<TimeDomain> {
+fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag> {
 	let Some(def) = catalog.find_view(&mut txn.reborrow(), view)? else {
 		return Err(Error(Box::new(internal!("view {} has no catalog entry", view.0))));
 	};
@@ -86,7 +81,16 @@ fn upstream_view_domain(
 		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
 	};
 
-	let dag = catalog.get_flow_dag(&mut txn.reborrow(), flow.id)?;
+	catalog.get_flow_dag(&mut txn.reborrow(), flow.id)
+}
+
+fn upstream_view_domain(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	view: ViewId,
+	path: &mut HashSet<FlowId>,
+) -> Result<TimeDomain> {
+	let dag = view_flow_dag(catalog, txn, view)?;
 
 	declared_source_domain(catalog, txn, &dag, path)
 }
@@ -237,15 +241,7 @@ fn source_is_event(
 }
 
 fn view_is_event(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId, path: &mut HashSet<FlowId>) -> Result<bool> {
-	let Some(def) = catalog.find_view(&mut txn.reborrow(), view)? else {
-		return Err(Error(Box::new(internal!("view {} has no catalog entry", view.0))));
-	};
-
-	let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? else {
-		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
-	};
-
-	let dag = catalog.get_flow_dag(&mut txn.reborrow(), flow.id)?;
+	let dag = view_flow_dag(catalog, txn, view)?;
 
 	if !path.insert(dag.id) {
 		return Err(Error(Box::new(internal!("flow {} reaches itself through its own sources", dag.id.0))));
