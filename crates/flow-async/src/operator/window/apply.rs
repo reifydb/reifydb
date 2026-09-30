@@ -1529,7 +1529,7 @@ mod seal_arm_tests {
 	use std::sync::Arc;
 
 	use reifydb_core::{
-		common::{CommitVersion, WindowSize},
+		common::{ChangeVersion, CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
 			any::TaggedKey,
@@ -1721,5 +1721,89 @@ mod seal_arm_tests {
 		}
 
 		assert!(seal_timers(&mut txn, id).is_empty(), "an empty expiry index must hold no seal timer");
+	}
+
+	fn accumulators(txn: &mut DeferredTransaction, operator: OperatorId, group: GroupId) -> usize {
+		txn.state_range(
+			operator,
+			StateRange::forward(keyspace_inner_range(group, KeyspaceId::ACCUMULATOR), "test"),
+		)
+		.unwrap()
+		.items
+		.len()
+	}
+
+	#[test]
+	fn a_window_that_nets_to_empty_in_one_batch_is_still_reaped_once_it_seals() {
+		// a window that publishes nothing must still be indexed, otherwise its accumulator is never reaped
+		let engine = TestEngine::new();
+		let mut operator = window();
+		let id = operator.core.operator;
+		let hash = Hash128(7);
+		let start = at_millis(0);
+		let span = WindowSpan {
+			start,
+			end: at_millis(SIZE_MS as i64),
+		};
+		let group = GroupId::window(hash, start.to_order());
+		let mut txn = txn_at(&engine, 100);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			let mut buckets: EngineBuckets = BTreeMap::new();
+			let mut group_values = HashMap::new();
+			let mut arrival = Vec::new();
+			let mut window_max_ts = HashMap::new();
+			let mut window_min_ts = HashMap::new();
+			for event in [AccumulatorEvent::Add(Vec::new()), AccumulatorEvent::Remove(Vec::new())] {
+				push_count_event(
+					&mut buckets,
+					&mut group_values,
+					&mut arrival,
+					&mut window_max_ts,
+					&mut window_min_ts,
+					hash,
+					&[],
+					span,
+					slot_coord(false, start, 1),
+					event,
+					start,
+				);
+			}
+			let groups = intern_batch(&arrival);
+			let change = Change::from_flow(id, ChangeVersion::from(CommitVersion(100)), Vec::new(), start);
+			let config = operator.engine_config();
+			let diffs = finish_tumbling_engine(
+				&mut operator.core,
+				&mut host,
+				&change,
+				buckets,
+				&group_values,
+				arrival,
+				window_max_ts,
+				&groups,
+				&[],
+				config,
+				None,
+				ExpiryAnchor::WindowStart,
+				false,
+				Stamp::SpanStart,
+			)
+			.unwrap();
+			assert!(diffs.is_empty(), "precondition: a window that nets to empty publishes nothing");
+		}
+		assert_eq!(accumulators(&mut txn, id, group), 1, "precondition: the empty accumulator is stored");
+
+		let seal = FiredAt::of(&Timer {
+			due: at_millis(SIZE_MS as i64 + 1),
+			kind: TimerKind::Seal,
+			key: EncodedKey::new(Vec::new()),
+		});
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			seal_engine_windows(&mut operator, &mut host, seal).unwrap();
+			reap_sealed_groups(&mut operator, &mut host, seal).unwrap();
+		}
+
+		assert_eq!(accumulators(&mut txn, id, group), 0, "a sealed window must not keep its accumulator");
 	}
 }
