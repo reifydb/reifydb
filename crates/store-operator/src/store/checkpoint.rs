@@ -42,13 +42,11 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
 	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+		let pinned = self.pins.floor();
 		let buffered = self.resident.checkpoint_floor();
 		self.checkpoint_interlock();
 		let durable = self.persistent.checkpoint_floor()?;
-		Ok(match (durable, buffered) {
-			(Some(durable), Some(buffered)) => Some(durable.min(buffered)),
-			(durable, buffered) => durable.or(buffered),
-		})
+		Ok([pinned, buffered, durable].into_iter().flatten().min())
 	}
 
 	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]

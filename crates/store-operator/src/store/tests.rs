@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod pin;
+
 use std::{
 	cmp::Reverse,
 	sync::{

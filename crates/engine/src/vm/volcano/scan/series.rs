@@ -37,7 +37,11 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{empty_scan, partition_array, scan_headers, source_system_columns};
+use super::{
+	empty_scan,
+	merge::{MergeLayout, PartitionMerge},
+	partition_array, scan_headers, source_system_columns,
+};
 use crate::{
 	Result,
 	transaction::operation::dictionary::DictionaryOperations,
@@ -58,6 +62,8 @@ pub struct SeriesScanNode {
 	last_key: Option<TaggedKey>,
 	exhausted: bool,
 	system_columns: Vec<SystemColumn>,
+	oldest_first: bool,
+	merge: Option<PartitionMerge>,
 }
 
 impl SeriesScanNode {
@@ -94,7 +100,14 @@ impl SeriesScanNode {
 			last_key: None,
 			exhausted: false,
 			system_columns,
+			oldest_first: false,
+			merge: None,
 		})
+	}
+
+	pub(crate) fn oldest_first(mut self) -> Self {
+		self.oldest_first = true;
+		self
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::range_open")]
@@ -103,7 +116,11 @@ impl SeriesScanNode {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: u64,
+		oldest_first: bool,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
+		if oldest_first {
+			return rx.range_rev(range, scope, batch_size as usize);
+		}
 		rx.range(range, scope, batch_size as usize)
 	}
 
@@ -301,6 +318,11 @@ impl QueryNode for SeriesScanNode {
 
 		let partitioned = !series.partition_by.is_empty();
 		let storage = StorageId::series(series.id);
+		let after = if self.oldest_first {
+			None
+		} else {
+			self.last_key.as_ref()
+		};
 		let range = if partitioned {
 			match self.partition {
 				Some(partition) => PartitionedSeriesRowKeyRange::scan_range(
@@ -310,9 +332,9 @@ impl QueryNode for SeriesScanNode {
 					self.variant_tag,
 					self.key_range_start,
 					self.key_range_end,
-					self.last_key.as_ref(),
+					after,
 				),
-				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref()),
+				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, after),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(
@@ -321,8 +343,13 @@ impl QueryNode for SeriesScanNode {
 				self.variant_tag,
 				self.key_range_start,
 				self.key_range_end,
-				self.last_key.as_ref(),
+				after,
 			)
+		};
+		let range = if self.oldest_first {
+			range.resume_before(self.last_key.as_ref())
+		} else {
+			range
 		};
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
@@ -331,8 +358,22 @@ impl QueryNode for SeriesScanNode {
 		let scope = RangeScope::All;
 
 		let data_column_count = series.data_columns().count();
-		let batch = {
-			let mut stream = Self::open_range(rx, range, scope, batch_size)?;
+		let batch = if self.oldest_first && partitioned {
+			let fixed = self.partition.map(|_| range);
+			let merge = self
+				.merge
+				.get_or_insert_with(|| PartitionMerge::new(MergeLayout::Series, storage, fixed));
+			let rows = merge.next(rx, batch_size)?;
+			Self::drain_batch(
+				&mut rows.into_iter().map(Ok),
+				batch_size,
+				partitioned,
+				has_tag,
+				data_column_count,
+				&read_shape,
+			)?
+		} else {
+			let mut stream = Self::open_range(rx, range, scope, batch_size, self.oldest_first)?;
 			Self::drain_batch(
 				&mut stream,
 				batch_size,

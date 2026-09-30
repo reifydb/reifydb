@@ -134,7 +134,7 @@ pub struct SupervisorState {
 	stall_watches: BTreeMap<FlowId, StallWatch>,
 }
 
-type PreparedFlow = (FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
+type PreparedFlow = (FlowDag, Option<CommitVersion>, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
 
 impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
@@ -177,8 +177,7 @@ impl FlowSupervisor {
 		};
 
 		let operators = self.engine.operator_state();
-		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
-		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
+		let mut to_spawn: Vec<(FlowDag, Option<CommitVersion>)> = Vec::new();
 		for flow_id in flows {
 			let flow = match self
 				.engine
@@ -195,9 +194,8 @@ impl FlowSupervisor {
 				continue;
 			}
 			state.analyzer.add(flow.clone());
-			let seed = resolve_seed(&operators, flow_id, migration_base);
-			seeds.push((flow_id, seed));
-			to_spawn.push((flow, seed));
+			let checkpoint = resolve_seed(&operators, flow_id);
+			to_spawn.push((flow, checkpoint));
 		}
 
 		match self.engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
@@ -222,30 +220,28 @@ impl FlowSupervisor {
 		state.scan_cursor = scan_cursor;
 		state.last_control_commit_at = self.clock.now();
 		self.control.store(scan_cursor);
-		self.poll_frontier.store(scan_cursor);
 		self.backlog.set_anchor(scan_cursor);
-
-		self.commit_control(seeds, None);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
-		for (flow, seed) in to_spawn {
+		for (flow, checkpoint) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
 			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
-			prepared.push((flow, seed, source_objects, completeness_objects));
+			prepared.push((flow, checkpoint, source_objects, completeness_objects));
 		}
-		for (flow, seed, source_objects, completeness_objects) in prepared {
+		for (flow, checkpoint, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, checkpoint);
 			state.flows.insert(flow_id, handle);
-			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
+			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
+		self.poll_frontier.store(scan_cursor);
 	}
 
 	fn hydrate_frontiers(&self) {
@@ -302,7 +298,7 @@ impl FlowSupervisor {
 		};
 
 		let changed = self.update_tracker(&items);
-		let seeds = self.process_ddl(state, &items, bound);
+		self.process_ddl(state, &items);
 
 		state.scan_cursor = bound;
 		self.control.store(bound);
@@ -319,8 +315,8 @@ impl FlowSupervisor {
 		self.backlog.evict_below(eviction_floor);
 
 		let now = self.clock.now();
-		if !seeds.is_empty() || now - state.last_control_commit_at >= self.checkpoint_max_age {
-			self.commit_control(seeds, Some(bound));
+		if now - state.last_control_commit_at >= self.checkpoint_max_age {
+			self.commit_control(bound);
 			state.last_control_commit_at = now;
 		}
 
@@ -365,12 +361,7 @@ impl FlowSupervisor {
 		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
 	}
 
-	fn process_ddl(
-		&self,
-		state: &mut SupervisorState,
-		items: &[Arc<Cdc>],
-		bound: CommitVersion,
-	) -> Vec<(FlowId, CommitVersion)> {
+	fn process_ddl(&self, state: &mut SupervisorState, items: &[Arc<Cdc>]) {
 		let deleted = extract_deleted_flow_ids(items);
 		let operators = self.engine.operator_state();
 		let mut changed = false;
@@ -386,8 +377,7 @@ impl FlowSupervisor {
 			lineage_dirty = true;
 		}
 
-		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
-		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
+		let mut to_spawn: Vec<FlowDag> = Vec::new();
 		for (flow_id, version) in extract_new_flows(items) {
 			if deleted.contains(&flow_id) {
 				continue;
@@ -403,13 +393,7 @@ impl FlowSupervisor {
 			}
 			state.analyzer.add(flow.clone());
 			lineage_dirty = true;
-			let seed = if flow.is_subscription() {
-				bound
-			} else {
-				CommitVersion(0)
-			};
-			seeds.push((flow_id, seed));
-			to_spawn.push((flow, seed));
+			to_spawn.push(flow);
 			changed = true;
 		}
 
@@ -418,27 +402,27 @@ impl FlowSupervisor {
 		}
 
 		let registered: BTreeSet<FlowId> =
-			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
+			state.flows.keys().copied().chain(to_spawn.iter().map(|f| f.id)).collect();
 		let closure = if changed || !to_spawn.is_empty() {
 			state.analyzer.get_dependency_graph().upstream_closure()
 		} else {
 			BTreeMap::new()
 		};
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
-		for (flow, seed) in to_spawn {
+		for flow in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
 			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
-			prepared.push((flow, seed, source_objects, completeness_objects));
+			prepared.push((flow, None, source_objects, completeness_objects));
 		}
-		for (flow, seed, source_objects, completeness_objects) in prepared {
+		for (flow, checkpoint, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, checkpoint);
 			state.flows.insert(flow_id, handle);
-			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
+			debug!(flow_id = flow_id.0, "spawned new deferred flow actor");
 		}
 
 		if changed {
@@ -462,8 +446,6 @@ impl FlowSupervisor {
 		if lineage_dirty || changed {
 			state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		}
-
-		seeds
 	}
 
 	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<FlowDag> {
@@ -538,9 +520,10 @@ impl FlowSupervisor {
 		flow: FlowDag,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
-		cursor: CommitVersion,
+		checkpoint: Option<CommitVersion>,
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
+		let cursor = checkpoint.unwrap_or(CommitVersion(0));
 
 		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until());
 		let params = FlowActorParams {
@@ -567,7 +550,10 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};
-		let actor = FlowActor::new(params);
+		let actor = match checkpoint {
+			Some(_) => FlowActor::new(params),
+			None => FlowActor::backfilling(params),
+		};
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
 		self.flow_tracker
@@ -581,13 +567,9 @@ impl FlowSupervisor {
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 	}
 
-	fn commit_control(&self, seeds: Vec<(FlowId, CommitVersion)>, cursor: Option<CommitVersion>) {
-		if seeds.is_empty() && cursor.is_none() {
-			return;
-		}
+	fn commit_control(&self, cursor: CommitVersion) {
 		let mut slice = FlowSlice::empty();
-		slice.checkpoints = seeds;
-		slice.control_cursor = cursor.map(|v| (self.consumer_id.clone(), v));
+		slice.control_cursor = Some((self.consumer_id.clone(), cursor));
 		let reply: SliceCommitReply = Box::new(|_| {});
 		let _ = self.committer.send(CommitterMessage::Slice {
 			slice,
@@ -657,10 +639,9 @@ fn wake_targets(sets: &BTreeMap<ObjectId, BTreeSet<FlowId>>, changed: &BTreeSet<
 	changed.iter().filter_map(|object| sets.get(object)).flatten().copied().collect()
 }
 
-fn resolve_seed(operators: &OperatorStore, flow_id: FlowId, migration_base: CommitVersion) -> CommitVersion {
+fn resolve_seed(operators: &OperatorStore, flow_id: FlowId) -> Option<CommitVersion> {
 	match operators.checkpoint_get(flow_id) {
-		Ok(Some(version)) => version,
-		Ok(None) => migration_base,
+		Ok(checkpoint) => checkpoint.filter(|version| *version > CommitVersion(0)),
 		Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
 	}
 }
@@ -788,35 +769,46 @@ mod tests {
 	}
 
 	#[test]
-	fn a_flow_with_a_checkpoint_resumes_from_it_and_one_without_starts_at_the_migration_base() {
-		// the seed is where the flow re-reads cdc from, so confusing "no checkpoint" with a stored one
-		// either replays slices already folded in or skips slices never folded in.
+	fn a_flow_with_a_checkpoint_resumes_from_it_and_one_without_has_none_so_it_backfills() {
+		// mixing up "no checkpoint" and a stored one either replays folded-in slices or skips the backfill
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), CommitVersion(77)).unwrap();
 
 		assert_eq!(
-			resolve_seed(&store, FlowId(1), CommitVersion(5)),
-			CommitVersion(77),
-			"a stored checkpoint must win over the migration base; taking the base replays every slice \
-			 between 5 and 77 and double-counts every aggregate over it"
+			resolve_seed(&store, FlowId(1)),
+			Some(CommitVersion(77)),
+			"a stored checkpoint is the resume point; dropping it makes the flow wipe its view and rescan \
+			 every source instead of resuming at 77"
 		);
 		assert_eq!(
-			resolve_seed(&store, FlowId(2), CommitVersion(5)),
-			CommitVersion(5),
-			"a flow that never checkpointed has to start at the migration base, which is the version \
-			 its view was built at"
+			resolve_seed(&store, FlowId(2)),
+			None,
+			"a flow that never checkpointed must get none so it wipes its view and backfills; any version \
+			 here makes it replay cdc into a view that was never built"
+		);
+	}
+
+	#[test]
+	fn a_checkpoint_stored_at_zero_counts_as_none_so_the_flow_backfills() {
+		// older stores seeded new flows at 0; resuming there replays cdc from 0 into an empty view
+		let store = OperatorStore::testing_memory();
+		store.checkpoint_set(FlowId(1), CommitVersion(0)).unwrap();
+
+		assert_eq!(
+			resolve_seed(&store, FlowId(1)),
+			None,
+			"a checkpoint of 0 was never a committed slice, so the flow must wipe its view and backfill"
 		);
 	}
 
 	#[test]
 	#[should_panic(expected = "checkpoint unreadable at bootstrap")]
-	fn a_checkpoint_that_cannot_be_read_at_bootstrap_stops_instead_of_seeding_from_the_migration_base() {
-		// an unreadable checkpoint is not the same as an absent one; falling back to the base seeds the
-		// flow at the wrong version and it derives wrong rows from then on with nothing to signal it.
+	fn a_checkpoint_that_cannot_be_read_at_bootstrap_stops_instead_of_being_taken_as_absent() {
+		// an unreadable checkpoint taken as absent silently wipes the view and backfills it again
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.shutdown();
 
-		resolve_seed(&store, FlowId(1), CommitVersion(5));
+		resolve_seed(&store, FlowId(1));
 	}
 
 	#[test]

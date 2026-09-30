@@ -159,12 +159,6 @@ impl FlowDag {
 		self.inner.graph.edge_count()
 	}
 
-	pub fn is_subscription(&self) -> bool {
-		self.get_operator_ids().any(|id| {
-			self.get_operator(&id).is_some_and(|n| matches!(n.ty, OperatorDef::SinkSubscription { .. }))
-		})
-	}
-
 	pub fn ticks(&self) -> bool {
 		self.get_operator_ids().any(|id| self.get_operator(&id).is_some_and(|n| n.ty.ticks()))
 	}

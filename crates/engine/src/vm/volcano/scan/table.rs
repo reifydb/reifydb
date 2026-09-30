@@ -14,7 +14,10 @@ use reifydb_core::{
 		resolved::ResolvedTable,
 		store::MultiVersionRow,
 	},
-	key::row::{StoragePartitionedRowKey, StorageRowKey},
+	key::{
+		any::TaggedKey,
+		row::{PartitionedRowKey, RowKeyRange, StoragePartitionedRowKey, StorageRowKey},
+	},
 	value::{
 		batch::{append_rows, batch},
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
@@ -32,7 +35,12 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{super::decode_dictionary_columns, empty_scan, partition_array, scan_headers, source_system_columns};
+use super::{
+	super::decode_dictionary_columns,
+	empty_scan,
+	merge::{MergeLayout, PartitionMerge},
+	partition_array, scan_headers, source_system_columns, storage_partitioned_row, storage_row,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -54,6 +62,10 @@ pub struct TableScanNode {
 	partition: Option<Partition>,
 
 	system_columns: Vec<SystemColumn>,
+
+	oldest_first: bool,
+
+	merge: Option<PartitionMerge>,
 }
 
 impl TableScanNode {
@@ -105,7 +117,14 @@ impl TableScanNode {
 			exhausted: false,
 			partition,
 			system_columns,
+			oldest_first: false,
+			merge: None,
 		})
+	}
+
+	pub(crate) fn oldest_first(mut self) -> Self {
+		self.oldest_first = true;
+		self
 	}
 
 	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
@@ -275,6 +294,24 @@ impl QueryNode for TableScanNode {
 		let storage: StorageId = self.table.def().id.into();
 
 		let (scanned, next_resume, resumed) = match self.resume {
+			Resume::Partitioned(last) if self.oldest_first => {
+				let partition = self.partition;
+				let merge = self.merge.get_or_insert_with(|| {
+					PartitionMerge::new(
+						MergeLayout::Row,
+						storage,
+						partition.map(|partition| {
+							PartitionedRowKey::partition_range(storage, partition)
+						}),
+					)
+				});
+				let rows = merge.next(rx, batch_size)?;
+				let (scanned, new_last) = Self::drain_batch_partitioned(
+					&mut rows.into_iter().map(storage_partitioned_row),
+					batch_size,
+				)?;
+				(scanned, Resume::Partitioned(new_last), last.is_some())
+			}
 			Resume::Partitioned(last) => {
 				let (start, end) = partitioned_bounds(self.partition, last);
 				let (scanned, new_last) = {
@@ -288,6 +325,17 @@ impl QueryNode for TableScanNode {
 					Self::drain_batch_partitioned(&mut stream, batch_size)?
 				};
 				(scanned, Resume::Partitioned(new_last), last.is_some())
+			}
+			Resume::Row(last) if self.oldest_first => {
+				let last_key = last.map(|key| TaggedKey::Row(key.with_storage(storage)));
+				let range = RowKeyRange::scan_range_rev(storage, last_key.as_ref());
+				let (scanned, new_last) = {
+					let mut stream = rx
+						.range_rev(range, scope, batch_size as usize)?
+						.map(|row| row.and_then(storage_row));
+					Self::drain_batch_row(&mut stream, batch_size)?
+				};
+				(scanned, Resume::Row(new_last), last.is_some())
 			}
 			Resume::Row(last) => {
 				let start = match last {

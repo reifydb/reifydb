@@ -11,6 +11,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
+		store::MultiVersionRow,
 	},
 	internal_error,
 	key::{
@@ -31,7 +32,12 @@ use reifydb_value::value::{
 };
 use tracing::instrument;
 
-use super::{super::decode_dictionary_columns, empty_scan, partition_array, scan_headers, source_system_columns};
+use super::{
+	super::decode_dictionary_columns,
+	empty_scan,
+	merge::{MergeLayout, PartitionMerge},
+	partition_array, scan_headers, source_system_columns, storage_partitioned_row,
+};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -57,6 +63,7 @@ pub struct RingBufferScan {
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
 	system_columns: Vec<SystemColumn>,
+	merge: Option<PartitionMerge>,
 }
 
 impl RingBufferScan {
@@ -113,7 +120,15 @@ impl RingBufferScan {
 			context: Some(context),
 			initialized: false,
 			system_columns,
+			merge: None,
 		})
+	}
+
+	pub(crate) fn oldest_first(mut self) -> Self {
+		if !self.partition_col_indices.is_empty() {
+			self.merge = Some(PartitionMerge::new(MergeLayout::Row, self.ringbuffer.def().id.into(), None));
+		}
+		self
 	}
 
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
@@ -288,7 +303,10 @@ impl QueryNode for RingBufferScan {
 		let batch_size = self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
 		let partitioned = !self.partition_col_indices.is_empty();
 
-		let (batch_rows, row_numbers, partitions_sidecar) = self.drain_batch(txn, batch_size, partitioned)?;
+		let (batch_rows, row_numbers, partitions_sidecar) = match self.merge.as_mut() {
+			Some(merge) => merged_batch(merge.next(txn, batch_size as u64)?)?,
+			None => self.drain_batch(txn, batch_size, partitioned)?,
+		};
 
 		if !batch_rows.is_empty() {
 			let columns = batch(self.storage_columns())?;
@@ -314,4 +332,17 @@ impl QueryNode for RingBufferScan {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
+}
+
+fn merged_batch(rows: Vec<MultiVersionRow<TaggedKey>>) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<Partition>)> {
+	let mut batch = Vec::with_capacity(rows.len());
+	let mut row_numbers = Vec::with_capacity(rows.len());
+	let mut partitions = Vec::with_capacity(rows.len());
+	for row in rows {
+		let row = storage_partitioned_row(row)?;
+		batch.push(row.bytes);
+		row_numbers.push(row.key.row());
+		partitions.push(row.key.partition());
+	}
+	Ok((batch, row_numbers, partitions))
 }

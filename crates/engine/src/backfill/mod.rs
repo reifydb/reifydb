@@ -80,15 +80,18 @@ impl<'a> TransactionScan<'a> {
 		match source {
 			ObjectId::Table(id) => {
 				let table = catalog.resolve_table(tx, id)?;
-				Ok((Box::new(TableScanNode::new(table, None, Arc::clone(context), tx)?), false))
+				let node = TableScanNode::new(table, None, Arc::clone(context), tx)?.oldest_first();
+				Ok((Box::new(node), false))
 			}
 			ObjectId::View(id) => {
 				let view = catalog.resolve_view(tx, id)?;
-				Ok((Box::new(ViewScanNode::new(view, None, Arc::clone(context), tx)?), false))
+				let node = ViewScanNode::new(view, None, Arc::clone(context), tx)?.oldest_first();
+				Ok((Box::new(node), false))
 			}
 			ObjectId::RingBuffer(id) => {
 				let ringbuffer = catalog.resolve_ringbuffer(tx, id)?;
-				Ok((Box::new(RingBufferScan::new(ringbuffer, Arc::clone(context), tx)?), false))
+				let node = RingBufferScan::new(ringbuffer, Arc::clone(context), tx)?.oldest_first();
+				Ok((Box::new(node), false))
 			}
 			ObjectId::Series(id) => {
 				let series = catalog.get_series(tx, id)?;
@@ -96,7 +99,8 @@ impl<'a> TransactionScan<'a> {
 				let tagged = series.tag.is_some();
 				let series =
 					ResolvedSeries::new(Fragment::internal(series.name.clone()), namespace, series);
-				let node = SeriesScanNode::new(series, None, None, None, None, Arc::clone(context))?;
+				let node = SeriesScanNode::new(series, None, None, None, None, Arc::clone(context))?
+					.oldest_first();
 				Ok((Box::new(node), tagged))
 			}
 			ObjectId::TableVirtual(_) | ObjectId::Dictionary(_) | ObjectId::Queue(_) => {

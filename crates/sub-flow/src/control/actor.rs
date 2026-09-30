@@ -47,6 +47,7 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 	fatal::describe_payload,
 };
+use reifydb_store_operator::store::pin::CheckpointPin;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -59,6 +60,7 @@ use tracing::{error, warn};
 use crate::{
 	builder::CustomOperators,
 	commit::{
+		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_backfill, upstream_write_after},
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
 		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
@@ -124,6 +126,7 @@ pub struct FlowActor {
 	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	initial_cursor: CommitVersion,
 	wake_pending: Arc<AtomicBool>,
+	backfill: bool,
 }
 
 pub struct FlowActorState {
@@ -144,6 +147,9 @@ pub struct FlowActorState {
 	read_cache: ReadCache,
 	held_reads: HeldReads,
 	loading_from: CommitVersion,
+	backfilling: bool,
+	snapshot: Option<Snapshot>,
+	backfill_pin: Option<CheckpointPin>,
 }
 
 impl FlowActor {
@@ -179,6 +185,14 @@ impl FlowActor {
 			initial_completeness_objects: params.completeness_objects,
 			initial_cursor: params.cursor,
 			wake_pending: Arc::new(AtomicBool::new(false)),
+			backfill: false,
+		}
+	}
+
+	pub fn backfilling(params: FlowActorParams) -> Self {
+		Self {
+			backfill: true,
+			..Self::new(params)
 		}
 	}
 
@@ -287,6 +301,10 @@ impl FlowActor {
 			}
 			return;
 		}
+		if state.backfilling {
+			self.drain_backfill(state, ctx, safe);
+			return;
+		}
 		state.read_cache.retain_after(state.cursor);
 		if safe <= state.cursor {
 			self.checkpoint_if_stale(state, ctx);
@@ -302,6 +320,93 @@ impl FlowActor {
 			return;
 		};
 		self.apply_items(state, ctx, &read.items, read.read_to, read.more)
+	}
+
+	fn drain_backfill(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, safe: CommitVersion) {
+		let mut snapshot = match state.snapshot.take() {
+			Some(snapshot) => snapshot,
+			None => match self.engine.acquire_current_snapshot_lease() {
+				Ok((version, lease)) => {
+					state.backfill_pin = Some(self.engine.operator_state().checkpoint_pin(version));
+					Snapshot {
+						version,
+						lease,
+						cuts: HashMap::new(),
+					}
+				}
+				Err(e) => {
+					self.retry_or_poison(state, ctx, format!("flow backfill snapshot failed: {e}"));
+					return;
+				}
+			},
+		};
+		let upstreams = self.flow_tracker.upstreams(self.flow_id);
+		if !self.resolve_cuts(state, ctx, safe, &upstreams, &mut snapshot) {
+			state.snapshot = Some(snapshot);
+			return;
+		}
+
+		state.flow_engine.remove_flow(self.flow_id);
+		let mut flow_engine = self.build_flow_engine();
+		if let Err(e) = self.register_flow(&mut flow_engine) {
+			state.backfill_pin = None;
+			self.retry_or_poison(state, ctx, format!("flow engine reset before backfill failed: {e}"));
+			return;
+		}
+		state.flow_engine = flow_engine;
+		let reads = backfill_reads(&self.flow, &state.flow_engine, &snapshot, &upstreams);
+
+		let computed = catch_unwind(AssertUnwindSafe(|| {
+			compute_backfill(&self.engine, &mut state.flow_engine, &self.flow, &snapshot, &reads)
+		}))
+		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))));
+		let version = snapshot.version;
+		drop(snapshot);
+		match computed {
+			Ok((slice, holds)) => self.dispatch_commit(state, ctx, slice, version, true, holds),
+			Err(e) => {
+				state.backfill_pin = None;
+				self.retry_or_poison(state, ctx, format!("flow backfill failed: {e}"));
+			}
+		}
+	}
+
+	fn resolve_cuts(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		safe: CommitVersion,
+		upstreams: &FlowUpstreams,
+		snapshot: &mut Snapshot,
+	) -> bool {
+		let version = snapshot.version;
+		for (producer, views) in upstreams {
+			let mut cut = snapshot.cuts.get(producer).copied().unwrap_or(UpstreamCut {
+				read_to: version,
+				at: None,
+			});
+			while cut.at.is_none() && cut.read_to < safe {
+				let from = cut.read_to;
+				let Some(read) = self.read_range(state, ctx, from, safe) else {
+					snapshot.cuts.insert(*producer, cut);
+					return false;
+				};
+				cut.at = upstream_write_after(&read, from, views, version);
+				cut.read_to = read.read_to;
+				if !read.more || read.read_to <= from {
+					break;
+				}
+			}
+			if cut.at.is_none()
+				&& self.flow_tracker
+					.upstream_complete_through(*producer, cut.read_to)
+					.is_some_and(|position| position >= version)
+			{
+				cut.at = Some(cut.read_to);
+			}
+			snapshot.cuts.insert(*producer, cut);
+		}
+		upstreams.keys().all(|producer| snapshot.cuts.get(producer).is_some_and(|cut| cut.at.is_some()))
 	}
 
 	fn drain_merged(
@@ -635,6 +740,7 @@ impl FlowActor {
 		committed: Option<CommitVersion>,
 	) {
 		state.committing = false;
+		state.backfill_pin = None;
 		let holds = take(&mut state.pending_holds);
 		if result.is_ok()
 			&& let Some(version) = committed
@@ -651,6 +757,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
+				state.backfilling = false;
 				for (producer, cursor) in take(&mut state.pending_view_cursors) {
 					let current = state.view_cursors.entry(producer).or_insert(cursor);
 					if cursor > *current {
@@ -713,7 +820,7 @@ impl FlowActor {
 
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let mut retrying = false;
-		if self.ticks_enabled && !state.poisoned && !state.committing {
+		if self.ticks_enabled && !state.poisoned && !state.committing && !state.backfilling {
 			let ticked = self.computer.tick(&mut state.flow_engine, self.flow_id, state.durable_cursor);
 			match ticked {
 				Ok((pending, view_changes)) => {
@@ -859,6 +966,9 @@ impl Actor for FlowActor {
 			read_cache: ReadCache::default(),
 			held_reads: HeldReads::default(),
 			loading_from: self.initial_cursor,
+			backfilling: self.backfill,
+			snapshot: None,
+			backfill_pin: None,
 		};
 
 		if !state.poisoned {

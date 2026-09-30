@@ -61,6 +61,8 @@ libloading = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-testing-sdk = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-engine = { workspace = true, features = ["testing"] }
+reifydb-flow = { workspace = true, features = ["runtime", "testing"] }
 reifydb-value = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow", "testing"] }

@@ -46,6 +46,15 @@ fn sqlite_db(config: &SqliteConfig) -> TestDb {
 	)
 }
 
+fn sqlite_db_without_flow(config: &SqliteConfig) -> TestDb {
+	TestDb::from(
+		embedded::sqlite(config.clone())
+			.with_runtime_config(disarmed())
+			.build()
+			.expect("build sqlite db without flow"),
+	)
+}
+
 fn settle(db: &TestDb) {
 	assert!(
 		db.await_all_flows(SETTLE),
@@ -160,10 +169,11 @@ fn view(db: &TestDb, name: &str) -> ObjectId {
 }
 
 fn stamps(db: &TestDb, object: ObjectId) -> Vec<ChangeVersion> {
+	let head = db.engine().current_version().expect("the current version before the read");
 	let batch = db
 		.engine()
 		.cdc_store()
-		.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+		.read_range(Bound::Unbounded, Bound::Included(head), 10_000)
 		.expect("the cdc store must answer a full read");
 	assert!(!batch.has_more, "a truncated read would hide commits and pass a count check it should fail");
 	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version).collect()
@@ -306,6 +316,7 @@ fn a_header_pairs_with_the_rung_value_as_of_its_own_commit() {
 	create_tables(&db);
 	create_curve(&db);
 	create_cost(&db, "curve");
+	settle(&db);
 	insert_rung(&db, "a", 10);
 	insert_header(&db, "a");
 	db.command("UPDATE app::level { px: 20 } FILTER { pool == 'a' }");
@@ -320,9 +331,8 @@ fn a_header_pairs_with_the_rung_value_as_of_its_own_commit() {
 }
 
 #[test]
-fn a_header_before_its_rungs_stays_unpaired() {
-	// Guards against putting view rows first regardless of stamp, which would pair a header with rungs from its
-	// future.
+fn a_backfilled_header_pairs_at_the_snapshot_and_a_live_header_stays_unpaired_with_later_rungs() {
+	// At V header and rung are one snapshot and must pair; live, a rung from the header's future must never pair.
 	let db = memory_db();
 	create_tables(&db);
 	insert_header(&db, "a");
@@ -332,11 +342,31 @@ fn a_header_before_its_rungs_stays_unpaired() {
 	create_cost(&db, "curve");
 	settle(&db);
 	assert_curve_rows(&db, 1);
-
 	assert_eq!(
 		cost_rows(&db),
-		Vec::new(),
-		"a snapshot join must never pair a header with rungs committed after it"
+		vec![paired("a", 20)],
+		"the backfill reads the header and its later rung at one V, so the snapshot join must pair them"
+	);
+
+	insert_header(&db, "b");
+	settle(&db);
+	insert_rung(&db, "b", 30);
+	settle(&db);
+	assert_curve_rows(&db, 2);
+	assert_eq!(
+		cost_rows(&db),
+		vec![paired("a", 20)],
+		"a snapshot join must never pair a live header with a rung committed after it"
+	);
+
+	insert_header(&db, "c");
+	insert_rung(&db, "c", 50);
+	settle(&db);
+	assert_curve_rows(&db, 3);
+	assert_eq!(
+		cost_rows(&db),
+		vec![paired("a", 20)],
+		"cost ran the curve row from a later rung commit before the header, pairing the header with its future"
 	);
 }
 
@@ -469,18 +499,39 @@ fn a_view_over_a_view_keeps_the_original_table_version() {
 
 #[test]
 fn a_view_with_downstream_readers_commits_once_per_source_version() {
-	// A reader of curve must see each rung's rows at the rung's own version, so a replay of two rungs must not
-	// merge into one commit.
-	let db = memory_db();
-	create_tables(&db);
-	insert_rung(&db, "a", 10);
-	insert_rung(&db, "b", 30);
-	let level = await_level_commits(&db, 2);
+	// A reader of curve joins by source version, so a live backlog of two rungs merged into one commit hides one.
+	let (config, _guard) = SqliteConfig::test();
+	{
+		let mut db = sqlite_db(&config);
+		create_tables(&db);
+		create_curve_and_cost(&db);
+		create_depth(&db);
+		settle(&db);
+		assert_curve_rows(&db, 0);
+		db.stop();
+	}
+	{
+		let mut db = sqlite_db_without_flow(&config);
+		insert_rung(&db, "a", 10);
+		insert_rung(&db, "b", 30);
+		// A stop with no flow never drains the cdc producer, so an unwritten rung would miss the backlog.
+		let head = db.engine().current_version().expect("the current version after the rungs");
+		poll_until(|| (db.engine().cdc_producer_watermark() >= head).then_some(()), SETTLE)
+			.expect("the rung cdc was never written before the stop");
+		db.stop();
+	}
 
-	create_curve_and_cost(&db);
+	let db = sqlite_db(&config);
 	settle(&db);
 	assert_curve_rows(&db, 2);
+	let level = await_level_commits(&db, 2);
 
+	let depth: Vec<SourceVersion> = stamps(&db, view(&db, "depth")).iter().map(|version| version.source).collect();
+	assert_eq!(
+		depth,
+		vec![SourceVersion::from(level[1].commit)],
+		"precondition: the rungs must reach the flows as one backlog, which a view with no readers folds"
+	);
 	let sources: Vec<SourceVersion> =
 		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
 	assert_eq!(
@@ -492,13 +543,13 @@ fn a_view_with_downstream_readers_commits_once_per_source_version() {
 
 #[test]
 fn a_view_with_no_readers_folds_its_backlog_into_one_commit() {
-	// Nothing merges this view by source version, so a backlog must drain in one commit; one commit per source
-	// version caps the view at its producer's commit rate and it can never catch up once behind.
+	// A backfill stamped with a row's own commit, or split per row, breaks the hand-off that goes live after V.
 	let db = memory_db();
 	create_tables(&db);
 	insert_rung(&db, "a", 10);
 	insert_rung(&db, "b", 30);
 	let level = await_level_commits(&db, 2);
+	let head = db.engine().current_version().expect("the current version before the create");
 
 	create_curve(&db);
 	settle(&db);
@@ -506,10 +557,16 @@ fn a_view_with_no_readers_folds_its_backlog_into_one_commit() {
 
 	let sources: Vec<SourceVersion> =
 		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
-	assert_eq!(
-		sources,
-		vec![SourceVersion::from(level[1].commit)],
-		"both rungs must land in one commit stamped with the newest rung version they folded"
+	let v = *sources.first().expect("the backfill commit never reached the cdc store");
+	assert_eq!(sources, vec![v], "both rungs must land in one backfill commit stamped with its snapshot version V");
+	assert!(
+		v >= SourceVersion::from(level[1].commit),
+		"the snapshot at V {v:?} must cover the newest rung {:?}",
+		level[1].commit
+	);
+	assert!(
+		v > SourceVersion::from(head),
+		"V {v:?} must be read after the create, above {head:?}, not taken from the newest rung's own commit"
 	);
 }
 

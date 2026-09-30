@@ -19,7 +19,10 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		bound::TaggedKeyBoundRange,
-		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
+		row::{
+			PartitionedRowKey, PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey,
+			StoragePartitionedRowKey,
+		},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::{
@@ -36,7 +39,9 @@ use tracing::instrument;
 
 use super::{
 	super::{decode_dictionary_columns, user_pairs},
-	empty_scan, guard_view_read, scan_headers, source_system_columns,
+	empty_scan, guard_view_read,
+	merge::{MergeLayout, PartitionMerge},
+	scan_headers, source_system_columns, storage_partitioned_row,
 };
 use crate::{
 	Result,
@@ -84,6 +89,8 @@ pub(crate) struct ViewScanNode {
 	series: bool,
 	partition: Option<Partition>,
 	system_columns: Vec<SystemColumn>,
+	oldest_first: bool,
+	merge: Option<PartitionMerge>,
 }
 
 impl ViewScanNode {
@@ -137,7 +144,14 @@ impl ViewScanNode {
 			series,
 			partition,
 			system_columns,
+			oldest_first: false,
+			merge: None,
 		})
+	}
+
+	pub(crate) fn oldest_first(mut self) -> Self {
+		self.oldest_first = !self.sorted;
+		self
 	}
 
 	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
@@ -166,7 +180,11 @@ impl ViewScanNode {
 		rx: &'rx mut Transaction<'tx>,
 		range: TaggedKeyBoundRange,
 		batch_size: u64,
+		oldest_first: bool,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
+		if oldest_first {
+			return rx.range_rev(range, RangeScope::All, batch_size as usize);
+		}
 		rx.range(range, RangeScope::All, batch_size as usize)
 	}
 
@@ -312,8 +330,24 @@ impl QueryNode for ViewScanNode {
 		let (batch_rows, row_numbers, next_resume, resumed, drained) = match &self.resume {
 			Resume::Partitioned(last) => {
 				let last = *last;
-				let (start, end) = partitioned_bounds(self.partition, last);
-				let (batch, row_numbers, new_last_key, drained) = {
+				let (batch, row_numbers, new_last_key, drained) = if self.oldest_first {
+					let partition = self.partition;
+					let merge = self.merge.get_or_insert_with(|| {
+						PartitionMerge::new(
+							MergeLayout::Row,
+							storage,
+							partition.map(|partition| {
+								PartitionedRowKey::partition_range(storage, partition)
+							}),
+						)
+					});
+					let rows = merge.next(rx, batch_size)?;
+					Self::drain_batch_partitioned(
+						&mut rows.into_iter().map(storage_partitioned_row),
+						batch_size,
+					)?
+				} else {
+					let (start, end) = partitioned_bounds(self.partition, last);
 					let mut stream = rx.range_partitioned_row(
 						storage,
 						start,
@@ -325,48 +359,68 @@ impl QueryNode for ViewScanNode {
 				};
 				(batch, row_numbers, Resume::Partitioned(new_last_key), last.is_some(), drained)
 			}
+			Resume::Key(last) if self.oldest_first && self.series && self.partitioned => {
+				let partition = self.partition;
+				let merge = self.merge.get_or_insert_with(|| {
+					PartitionMerge::new(
+						MergeLayout::Series,
+						storage,
+						partition.map(|partition| {
+							PartitionedSeriesRowKeyRange::partition_range(
+								storage, partition,
+							)
+						}),
+					)
+				});
+				let rows = merge.next(rx, batch_size)?;
+				let resumed = last.is_some();
+				let (batch, row_numbers, new_last_key, drained) =
+					self.drain_batch(&mut rows.into_iter().map(Ok), batch_size)?;
+				(batch, row_numbers, Resume::Key(new_last_key), resumed, drained)
+			}
 			Resume::Key(last) => {
+				let after = if self.oldest_first {
+					None
+				} else {
+					last.as_ref()
+				};
 				let range = match (self.series, self.partitioned, self.partition) {
 					(true, true, Some(partition)) => {
 						PartitionedSeriesRowKeyRange::partition_scan_range(
-							storage,
-							partition,
-							last.as_ref(),
+							storage, partition, after,
 						)
 					}
 					(true, true, None) => {
-						PartitionedSeriesRowKeyRange::full_scan_range(storage, last.as_ref())
+						PartitionedSeriesRowKeyRange::full_scan_range(storage, after)
 					}
-					(true, false, _) => SeriesRowKeyRange::scan_range(
-						storage,
-						false,
-						None,
-						None,
-						None,
-						last.as_ref(),
-					),
+					(true, false, _) => {
+						SeriesRowKeyRange::scan_range(storage, false, None, None, None, after)
+					}
 					(false, true, Some(partition)) if self.sorted => {
 						PartitionedSortedViewRowKey::partition_scan_range(
-							storage,
-							partition,
-							last.as_ref(),
+							storage, partition, after,
 						)
 					}
 					(false, true, None) if self.sorted => {
-						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref())
+						PartitionedSortedViewRowKey::scan_range(storage, after)
 					}
 					(false, false, _) if self.sorted => {
-						SortedViewRowKey::scan_range(storage, last.as_ref())
+						SortedViewRowKey::scan_range(storage, after)
 					}
-					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()),
+					(false, false, _) => RowKeyRange::scan_range(storage, after),
 					(false, true, _) => unreachable!(
 						"unsorted partitioned view rows resume through Resume::Partitioned"
 					),
 				};
+				let range = if self.oldest_first {
+					range.resume_before(last.as_ref())
+				} else {
+					range
+				};
 
 				let resumed = last.is_some();
 				let (batch, row_numbers, new_last_key, drained) = {
-					let mut stream = Self::open_range(rx, range, batch_size)?;
+					let mut stream = Self::open_range(rx, range, batch_size, self.oldest_first)?;
 					self.drain_batch(&mut stream, batch_size)?
 				};
 				(batch, row_numbers, Resume::Key(new_last_key), resumed, drained)

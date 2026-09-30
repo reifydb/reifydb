@@ -13,6 +13,12 @@ use reifydb_core::{
 			view::ViewKind,
 		},
 		resolved::ResolvedView,
+		store::MultiVersionRow,
+	},
+	internal_err,
+	key::{
+		any::TaggedKey,
+		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	value::{
 		batch::batch,
@@ -39,6 +45,7 @@ pub mod column_table;
 pub mod column_unsupported;
 pub mod dictionary;
 pub mod index;
+mod merge;
 pub mod queue;
 pub mod remote;
 pub mod ringbuffer;
@@ -76,6 +83,30 @@ pub(crate) fn empty_scan(user: Vec<(FieldRef, ArrayRef)>, system: &[SystemColumn
 
 pub(crate) fn partition_array(partitions: &[Partition]) -> ArrayRef {
 	uint16(SystemColumn::Partitions.name(), partitions.iter().map(|partition| partition.0)).1
+}
+
+pub(crate) fn storage_row(row: MultiVersionRow<TaggedKey>) -> Result<MultiVersionRow<StorageRowKey>> {
+	match row.key {
+		TaggedKey::Row(key) => Ok(MultiVersionRow {
+			key: StorageRowKey::new(key.row),
+			bytes: row.bytes,
+			version: row.version,
+		}),
+		key => internal_err!("a row scan range yielded a non-row key {:?}", key),
+	}
+}
+
+pub(crate) fn storage_partitioned_row(
+	row: MultiVersionRow<TaggedKey>,
+) -> Result<MultiVersionRow<StoragePartitionedRowKey>> {
+	match row.key {
+		TaggedKey::PartitionedRow(key) => Ok(MultiVersionRow {
+			key: key.into(),
+			bytes: row.bytes,
+			version: row.version,
+		}),
+		key => internal_err!("a partitioned row scan range yielded a non-partitioned-row key {:?}", key),
+	}
 }
 
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {

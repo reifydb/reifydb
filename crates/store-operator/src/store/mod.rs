@@ -5,6 +5,7 @@ mod census;
 mod checkpoint;
 pub mod occupancy;
 mod pager;
+pub mod pin;
 pub mod state;
 #[cfg(test)]
 mod tests;
@@ -47,7 +48,7 @@ use crate::{
 		tiers::{RangeKeyspaceMetrics, RangeTiers},
 	},
 	resident::Resident,
-	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
+	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy, pin::CheckpointPins},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
@@ -78,6 +79,7 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) census: OperatorCensus,
 	pub(crate) persistent: PersistentTier,
 	pub(crate) range: OperatorRangeTier,
+	pub(crate) pins: CheckpointPins,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
@@ -178,6 +180,7 @@ impl StandardOperatorStore {
 			),
 			persistent,
 			range,
+			pins: CheckpointPins::new(),
 			flush,
 			spawner,
 			#[cfg(test)]
