@@ -6,11 +6,11 @@
 // committed - a double-merge, a stale high_water, or a missed eviction.
 
 use reifydb::{
-	WithSubsystem, embedded,
+	ConfigKey, WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
 use reifydb_core::interface::catalog::subscription::HydrationConfig;
-use reifydb_test_harness::assert::rows;
+use reifydb_test_harness::assert::{column_values, rows};
 use reifydb_value::{
 	params::Params,
 	value::{Value, digest::Digest, duration::Duration, value_type::ValueType},
@@ -20,8 +20,32 @@ const TIMEOUT: Duration = Duration::from_seconds_const(5);
 
 const PPM: u32 = 10_000;
 
+const WINDOW_META_KEYS: &str = "from system::metrics::flow::state::current filter { keyspace == 'WINDOW_META' }";
+
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
+}
+
+fn setup_with_metrics() -> TestDb {
+	TestDb::from(
+		embedded::memory()
+			.with_flow(|f| f)
+			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
+			.build()
+			.expect("build memory db with flow and metrics"),
+	)
+}
+
+fn window_meta_keys(db: &TestDb) -> u64 {
+	db.query(WINDOW_META_KEYS)
+		.iter()
+		.flat_map(|frame| column_values(frame, "keys"))
+		.map(|value| match value {
+			Value::Uint8(keys) => keys,
+			other => panic!("the keys measure must be an unsigned count, found {other:?}"),
+		})
+		.sum()
 }
 
 #[test]
@@ -202,7 +226,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
-	// lateness follows the watermark, so without the 14:00 row nothing is late and the refusal path is never entered.
+	// lateness follows the watermark, so without the 14:00 row nothing is late and refusal is never reached.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
@@ -505,5 +529,38 @@ fn a_row_behind_the_watermark_reaches_no_subscriber_of_a_rolling_view() {
 		frames.is_empty(),
 		"a row two hours behind the watermark must reach no subscriber, got {:?}",
 		frames.iter().map(|f| f.op).collect::<Vec<_>>()
+	);
+}
+
+#[test]
+fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_expires() {
+	// a group whose newest row was removed must free its high water row once the rest expires, otherwise it leaks.
+	let db = setup_with_metrics();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
+			FROM app::t
+				| window rolling { total: math::sum(v) }
+					with { duration: 1h }
+					by { g }
+		}"#);
+
+	db.command(
+		r#"INSERT app::t [
+			{ id: 1, g: 1, v: 1.0, ts: "2026-01-01T10:00:00Z" },
+			{ id: 2, g: 1, v: 2.0, ts: "2026-01-01T10:30:00Z" }
+		]"#,
+	);
+	assert_eq!(await_value(1, TIMEOUT, || window_meta_keys(&db)), 1, "the group's high water must be visible");
+
+	db.command("DELETE app::t FILTER { id == 2 }");
+	assert!(db.await_all_flows(TIMEOUT), "the delete must drain");
+	db.admin("call storage::advance(app::t, cast('2026-01-01T23:00:00Z', datetime))");
+	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
+
+	assert_eq!(
+		await_value(0, TIMEOUT, || window_meta_keys(&db)),
+		0,
+		"the group left the frame, so its high water row must be freed"
 	);
 }
