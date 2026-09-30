@@ -1396,8 +1396,8 @@ fn a_late_view_reads_a_producer_past_v_when_the_producer_commits_a_write_at_or_b
 }
 
 #[test]
-fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_past_v_equals_an_early_chain() {
-	// Cut before a producer's retried backfill, the consumer reads it empty and never pairs the rows fed live.
+fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_keeps_v_and_equals_an_early_chain() {
+	// A retry that snapshots past V stamps the producer past the consumer's cut, so the consumer reads it empty.
 	let (release, parked) = channel();
 	let hook = Arc::new(HoldThenRefuse {
 		target: Mutex::new(None),
@@ -1454,9 +1454,9 @@ fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_past_v_equals_an
 		"precondition: the second hop's backfill must be parked in its scan of the first hop"
 	);
 	db.admin(&cost("cost", "curve2"));
-	// Never wait on the consumer's snapshot itself: a correct consumer takes none until its producer has committed.
+	// Never wait on the consumer's snapshot itself: its cut must hold until the producer has committed.
 	sleep(HOLD.to_std());
-	// Without a commit after V the retry snapshots at V itself and the consumer's cut stays exact.
+	// A commit after V that a retry at "current" would fold into the producer's backfill.
 	db.command("INSERT bf::src [{ id: 1, g: 1, sym: 'a', v: 5 }]");
 	let unrelated = db.engine().current_version().expect("the current version after the unrelated commit");
 	release.send(()).expect("release the second hop's backfill into its refusal");
@@ -1475,15 +1475,15 @@ fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_past_v_equals_an
 	);
 	let produced = stamps(&db, view_object(&db, "curve2"));
 	assert!(
-		produced.first().is_some_and(|stamp| stamp.source >= SourceVersion::from(unrelated)),
-		"precondition: the second hop's retry must snapshot past the unrelated commit ({unrelated:?}): {produced:?}"
+		produced.first().is_some_and(|stamp| stamp.source < SourceVersion::from(unrelated)),
+		"the second hop's retry must keep its create version, below the unrelated commit ({unrelated:?}): {produced:?}"
 	);
 	agree(
 		&db,
 		"bf::early_cost",
 		"bf::cost",
 		Cols::User,
-		"after its producer's backfill retried at a snapshot past V",
+		"after its producer's backfill retried at its create version",
 	);
 }
 

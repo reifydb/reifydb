@@ -38,7 +38,7 @@ use reifydb_value::{
 
 use super::{SubscriptionFlowState, SubscriptionWorkerActor, SubscriptionWorkerState};
 use crate::{
-	delivery::hydration::{backfill_sources, hydration_bound},
+	delivery::hydration::{backfill_sources, hydration_bound, sorted_view_source},
 	store::HydrationGuard,
 	transaction::EphemeralTransaction,
 };
@@ -71,6 +71,7 @@ impl SubscriptionWorkerActor {
 		let version = lease.version();
 		let base_query = self.engine.multi().begin_query_at_version(&lease)?;
 		let mut scan = self.engine.begin_query_at_version(&lease, identity)?;
+		let newest_first = !sorted_view_source(&self.catalog, &mut Transaction::Query(&mut scan), &sources)?;
 
 		let _hydration = HydrationGuard::new(&self.store, sub_id);
 
@@ -104,7 +105,7 @@ impl SubscriptionWorkerActor {
 			)
 		};
 		let batches = match backfilled {
-			Ok(_) => snapshot.into_batches().map_err(HydrateError::from),
+			Ok(_) => snapshot.into_batches(newest_first).map_err(HydrateError::from),
 			Err(_) if over_cap => Err(HydrateError::RowCapExceeded {
 				cap: max_rows,
 				bound: hydration_bound(&flow),
@@ -237,14 +238,17 @@ impl Snapshot {
 		Ok(())
 	}
 
-	fn into_batches(mut self) -> Result<Vec<StagedBatch>> {
+	fn into_batches(mut self, newest_first: bool) -> Result<Vec<StagedBatch>> {
 		self.compact()?;
-		let mut newest_first = Vec::with_capacity(self.batches.len());
+		if !newest_first {
+			return Ok(self.batches.into_iter().map(|batch| (DiffType::Insert, batch)).collect());
+		}
+		let mut reversed = Vec::with_capacity(self.batches.len());
 		for batch in self.batches.iter().rev() {
 			let indices: Vec<usize> = (0..batch.num_rows()).rev().collect();
-			newest_first.push((DiffType::Insert, take_rows(batch, &indices)?));
+			reversed.push((DiffType::Insert, take_rows(batch, &indices)?));
 		}
-		Ok(newest_first)
+		Ok(reversed)
 	}
 }
 

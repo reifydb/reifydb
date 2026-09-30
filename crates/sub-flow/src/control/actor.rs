@@ -46,8 +46,10 @@ use reifydb_runtime::{
 	},
 	context::{RuntimeContext, clock::Clock},
 	fatal::describe_payload,
+	sync::mutex::Mutex,
 };
 use reifydb_store_operator::store::pin::CheckpointPin;
+use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -127,6 +129,7 @@ pub struct FlowActor {
 	initial_cursor: CommitVersion,
 	wake_pending: Arc<AtomicBool>,
 	backfill: bool,
+	create_snapshot: Mutex<Option<(CommitVersion, VersionLeaseGuard, CheckpointPin)>>,
 }
 
 pub struct FlowActorState {
@@ -149,7 +152,6 @@ pub struct FlowActorState {
 	loading_from: CommitVersion,
 	backfilling: bool,
 	snapshot: Option<Snapshot>,
-	backfill_pin: Option<CheckpointPin>,
 }
 
 impl FlowActor {
@@ -186,12 +188,17 @@ impl FlowActor {
 			initial_cursor: params.cursor,
 			wake_pending: Arc::new(AtomicBool::new(false)),
 			backfill: false,
+			create_snapshot: Mutex::new(None),
 		}
 	}
 
-	pub fn backfilling(params: FlowActorParams) -> Self {
+	pub fn backfilling(
+		params: FlowActorParams,
+		create_snapshot: (CommitVersion, VersionLeaseGuard, CheckpointPin),
+	) -> Self {
 		Self {
 			backfill: true,
+			create_snapshot: Mutex::new(Some(create_snapshot)),
 			..Self::new(params)
 		}
 	}
@@ -212,6 +219,7 @@ impl FlowActor {
 		error!(flow_id = self.flow_id.0, reason = %reason, "poisoning flow");
 		self.health.mark_poisoned(self.flow_id, reason);
 		state.poisoned = true;
+		*self.create_snapshot.lock() = None;
 	}
 
 	fn publish_position(&self, cursor: CommitVersion) {
@@ -326,21 +334,21 @@ impl FlowActor {
 		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		let mut snapshot = match state.snapshot.take() {
 			Some(snapshot) => snapshot,
-			None if !self.upstreams_backfilled(&upstreams) => return,
-			None => match self.engine.acquire_current_snapshot_lease() {
-				Ok((version, lease)) => {
-					state.backfill_pin = Some(self.engine.operator_state().checkpoint_pin(version));
-					Snapshot {
-						version,
-						lease,
-						cuts: HashMap::new(),
-					}
+			None => {
+				let create_snapshot = self
+					.create_snapshot
+					.lock()
+					.as_ref()
+					.map(|(version, lease, _)| (*version, lease.clone()));
+				let Some((version, lease)) = create_snapshot else {
+					panic!("flow {} is backfilling without a create snapshot", self.flow_id.0);
+				};
+				Snapshot {
+					version,
+					lease,
+					cuts: HashMap::new(),
 				}
-				Err(e) => {
-					self.retry_or_poison(state, ctx, format!("flow backfill snapshot failed: {e}"));
-					return;
-				}
-			},
+			}
 		};
 		if !self.resolve_cuts(state, ctx, safe, &upstreams, &mut snapshot) {
 			state.snapshot = Some(snapshot);
@@ -350,7 +358,6 @@ impl FlowActor {
 		state.flow_engine.remove_flow(self.flow_id);
 		let mut flow_engine = self.build_flow_engine();
 		if let Err(e) = self.register_flow(&mut flow_engine) {
-			state.backfill_pin = None;
 			self.retry_or_poison(state, ctx, format!("flow engine reset before backfill failed: {e}"));
 			return;
 		}
@@ -366,16 +373,9 @@ impl FlowActor {
 		match computed {
 			Ok((slice, holds)) => self.dispatch_commit(state, ctx, slice, version, true, holds),
 			Err(e) => {
-				state.backfill_pin = None;
 				self.retry_or_poison(state, ctx, format!("flow backfill failed: {e}"));
 			}
 		}
-	}
-
-	fn upstreams_backfilled(&self, upstreams: &FlowUpstreams) -> bool {
-		upstreams.keys().all(|producer| {
-			self.flow_tracker.position(*producer).is_some_and(|position| position > CommitVersion(0))
-		})
 	}
 
 	fn resolve_cuts(
@@ -747,7 +747,6 @@ impl FlowActor {
 		committed: Option<CommitVersion>,
 	) {
 		state.committing = false;
-		state.backfill_pin = None;
 		let holds = take(&mut state.pending_holds);
 		if result.is_ok()
 			&& let Some(version) = committed
@@ -765,6 +764,7 @@ impl FlowActor {
 			Ok(()) => {
 				state.retry_count = 0;
 				state.backfilling = false;
+				*self.create_snapshot.lock() = None;
 				for (producer, cursor) in take(&mut state.pending_view_cursors) {
 					let current = state.view_cursors.entry(producer).or_insert(cursor);
 					if cursor > *current {
@@ -975,7 +975,6 @@ impl Actor for FlowActor {
 			loading_from: self.initial_cursor,
 			backfilling: self.backfill,
 			snapshot: None,
-			backfill_pin: None,
 		};
 
 		if !state.poisoned {

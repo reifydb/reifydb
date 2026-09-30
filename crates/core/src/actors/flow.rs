@@ -8,10 +8,7 @@ use reifydb_value::Result;
 
 use crate::{
 	common::CommitVersion,
-	interface::{
-		catalog::{flow::FlowId, object::ObjectId},
-		cdc::Cdc,
-	},
+	interface::{catalog::object::ObjectId, cdc::Cdc},
 };
 
 pub type FlowActorHandle = ActorHandle<FlowActorMessage>;
@@ -51,21 +48,4 @@ pub enum FlowActorMessage {
 		delete_checkpoint: bool,
 		reply: Box<dyn FnOnce() + Send>,
 	},
-}
-
-pub type FlowSupervisorHandle = ActorHandle<FlowSupervisorMessage>;
-
-pub enum FlowSupervisorMessage {
-	Bootstrap {
-		flows: Vec<FlowId>,
-		scan_from: Option<CommitVersion>,
-	},
-
-	Wake,
-
-	WakeAll,
-
-	PersistFrontiers,
-
-	CheckStalls,
 }

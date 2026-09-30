@@ -28,7 +28,6 @@ use reifydb_cdc::consume::{
 	watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
 };
 use reifydb_core::{
-	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
@@ -71,7 +70,7 @@ use crate::{
 	},
 	control::{
 		health::FlowHealthRegistry,
-		supervisor::{FlowSupervisor, FlowSupervisorParams},
+		supervisor::{FlowSupervisor, FlowSupervisorHandle, FlowSupervisorMessage, FlowSupervisorParams},
 	},
 	discovery::loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 	progress::{
@@ -198,11 +197,12 @@ impl FlowSubsystem {
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
-		let scan_from = engine.current_version().ok();
+		let (scan_from, scan_lease) = engine.acquire_current_snapshot_lease()?;
 		let bootstrap_flows = Self::bootstrap_flows(&engine);
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
 			flows: bootstrap_flows,
 			scan_from,
+			scan_lease,
 		});
 
 		let supervisor_ref = supervisor_handle.actor_ref().clone();

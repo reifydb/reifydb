@@ -276,10 +276,6 @@ impl FlowPositionTracker {
 		self.inner.read().complete_through(flow_id, read_to)
 	}
 
-	pub fn position(&self, flow_id: FlowId) -> Option<CommitVersion> {
-		self.inner.read().positions.get(&flow_id).copied()
-	}
-
 	pub fn set_upstreams(&self, flow_id: FlowId, upstreams: FlowUpstreams) {
 		let mut progress = self.inner.write();
 		progress.unlink_reader(flow_id);

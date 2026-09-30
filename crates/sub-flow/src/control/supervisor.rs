@@ -9,13 +9,12 @@ use std::{
 use reifydb_cdc::{
 	consume::{
 		backlog::{BacklogPull, FlowBacklog},
-		checkpoint::CdcCheckpoint,
 		watermark::CdcConsumerWatermark,
 	},
 	rebuild::changed_objects,
 };
 use reifydb_core::{
-	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
+	actors::flow::{FlowActorHandle, FlowActorMessage},
 	common::CommitVersion,
 	flow::dag::FlowDag,
 	interface::{
@@ -30,15 +29,14 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorConfig, ActorSpawner},
+		system::{ActorConfig, ActorHandle, ActorSpawner},
 		traits::{Actor, Directive},
 	},
 	context::clock::Clock,
 };
-use reifydb_store_operator::store::OperatorStore;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_store_operator::store::{OperatorStore, pin::CheckpointPin};
+use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
@@ -72,6 +70,24 @@ const FLOW_STALL_TIMEOUT_MS: i64 = 30_000;
 const FLOW_STALL_CHECK_INTERVAL_MS: i64 = 1_000;
 
 const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
+
+pub type FlowSupervisorHandle = ActorHandle<FlowSupervisorMessage>;
+
+pub enum FlowSupervisorMessage {
+	Bootstrap {
+		flows: Vec<FlowId>,
+		scan_from: CommitVersion,
+		scan_lease: VersionLeaseGuard,
+	},
+
+	Wake,
+
+	WakeAll,
+
+	PersistFrontiers,
+
+	CheckStalls,
+}
 
 pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
@@ -128,13 +144,19 @@ pub struct SupervisorState {
 	flows: BTreeMap<FlowId, FlowActorHandle>,
 	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
 	scan_cursor: CommitVersion,
+	scan_lease: Option<VersionLeaseGuard>,
 	last_control_commit_at: DateTime,
 	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
 	full_wake_armed: bool,
 	stall_watches: BTreeMap<FlowId, StallWatch>,
 }
 
-type PreparedFlow = (FlowDag, Option<CommitVersion>, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
+enum FlowStart {
+	Resume(CommitVersion),
+	Backfill(CommitVersion, VersionLeaseGuard, CheckpointPin),
+}
+
+type PreparedFlow = (FlowDag, FlowStart, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
 
 impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
@@ -164,8 +186,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_bootstrap(&self, state: &mut SupervisorState, flows: Vec<FlowId>, scan_from: Option<CommitVersion>) {
-		let ddl_cursor = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
+	fn handle_bootstrap(
+		&self,
+		state: &mut SupervisorState,
+		flows: Vec<FlowId>,
+		scan_from: CommitVersion,
+		scan_lease: VersionLeaseGuard,
+	) {
 		let mut known: BTreeSet<FlowId> = flows.iter().copied().collect();
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
@@ -216,8 +243,9 @@ impl FlowSupervisor {
 
 		self.hydrate_frontiers();
 
-		let scan_cursor = scan_from.unwrap_or(ddl_cursor);
+		let scan_cursor = scan_from;
 		state.scan_cursor = scan_cursor;
+		state.scan_lease = Some(scan_lease.clone());
 		state.last_control_commit_at = self.clock.now();
 		self.control.store(scan_cursor);
 		self.backlog.set_anchor(scan_cursor);
@@ -232,11 +260,23 @@ impl FlowSupervisor {
 			state.sources.insert(flow_id, source_objects.clone());
 			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
-			prepared.push((flow, checkpoint, source_objects, completeness_objects));
+			let start = match checkpoint {
+				Some(checkpoint) => FlowStart::Resume(checkpoint),
+				None => FlowStart::Backfill(
+					scan_from,
+					scan_lease.clone(),
+					self.engine.operator_state().checkpoint_pin(scan_from),
+				),
+			};
+			prepared.push((flow, start, source_objects, completeness_objects));
 		}
-		for (flow, checkpoint, source_objects, completeness_objects) in prepared {
+		for (flow, start, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, checkpoint);
+			let checkpoint = match &start {
+				FlowStart::Resume(checkpoint) => Some(*checkpoint),
+				FlowStart::Backfill(..) => None,
+			};
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, start);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
@@ -300,6 +340,13 @@ impl FlowSupervisor {
 		let changed = self.update_tracker(&items);
 		self.process_ddl(state, &items);
 
+		let scan_lease = self.engine.acquire_version_lease(bound).unwrap_or_else(|e| {
+			panic!(
+				"flow supervisor failed to move its scan lease from {} to {}: {e}",
+				state.scan_cursor.0, bound.0
+			)
+		});
+		state.scan_lease = Some(scan_lease);
 		state.scan_cursor = bound;
 		self.control.store(bound);
 		self.poll_frontier.store(bound);
@@ -377,7 +424,7 @@ impl FlowSupervisor {
 			lineage_dirty = true;
 		}
 
-		let mut to_spawn: Vec<FlowDag> = Vec::new();
+		let mut to_spawn: Vec<(FlowDag, CommitVersion, VersionLeaseGuard)> = Vec::new();
 		for (flow_id, version) in extract_new_flows(items) {
 			if deleted.contains(&flow_id) {
 				continue;
@@ -385,7 +432,7 @@ impl FlowSupervisor {
 			if state.flows.contains_key(&flow_id) {
 				continue;
 			}
-			let Some(flow) = self.load_flow_at(flow_id, version) else {
+			let Some((flow, lease)) = self.load_flow_at(flow_id, version) else {
 				continue;
 			};
 			if self.is_transactional_flow(&flow) {
@@ -393,7 +440,7 @@ impl FlowSupervisor {
 			}
 			state.analyzer.add(flow.clone());
 			lineage_dirty = true;
-			to_spawn.push(flow);
+			to_spawn.push((flow, version, lease));
 			changed = true;
 		}
 
@@ -402,25 +449,31 @@ impl FlowSupervisor {
 		}
 
 		let registered: BTreeSet<FlowId> =
-			state.flows.keys().copied().chain(to_spawn.iter().map(|f| f.id)).collect();
+			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _, _)| f.id)).collect();
 		let closure = if changed || !to_spawn.is_empty() {
 			state.analyzer.get_dependency_graph().upstream_closure()
 		} else {
 			BTreeMap::new()
 		};
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
-		for flow in to_spawn {
+		for (flow, version, lease) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
 			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
-			prepared.push((flow, None, source_objects, completeness_objects));
+			let pin = self.engine.operator_state().checkpoint_pin(version);
+			prepared.push((
+				flow,
+				FlowStart::Backfill(version, lease, pin),
+				source_objects,
+				completeness_objects,
+			));
 		}
-		for (flow, checkpoint, source_objects, completeness_objects) in prepared {
+		for (flow, start, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, checkpoint);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, start);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, "spawned new deferred flow actor");
 		}
@@ -448,16 +501,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<FlowDag> {
+	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<(FlowDag, VersionLeaseGuard)> {
 		let lease = match self.engine.acquire_version_lease(version) {
 			Ok(lease) => lease,
-			Err(e) if e.0.code == "TXN_012" => match self.engine.acquire_current_snapshot_lease() {
-				Ok((_, lease)) => lease,
-				Err(e) => {
-					warn!(flow_id = flow_id.0, error = %e, "failed to lease snapshot for new flow, skipping");
-					return None;
-				}
-			},
+			Err(e) if e.0.code == "TXN_012" => panic!(
+				"flow supervisor could not lease create version {} of flow {} under its scan lease: {e}",
+				version.0, flow_id.0
+			),
 			Err(e) => {
 				warn!(flow_id = flow_id.0, error = %e, "failed to lease creation version for new flow, skipping");
 				return None;
@@ -471,7 +521,7 @@ impl FlowSupervisor {
 			}
 		};
 		match self.engine.catalog().get_flow_dag(&mut Transaction::Query(&mut query), flow_id) {
-			Ok(loaded) => Some(loaded),
+			Ok(loaded) => Some((loaded, lease)),
 			Err(e) => {
 				warn!(flow_id = flow_id.0, error = %e, "failed to load flow in supervisor, skipping");
 				None
@@ -520,10 +570,13 @@ impl FlowSupervisor {
 		flow: FlowDag,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
-		checkpoint: Option<CommitVersion>,
+		start: FlowStart,
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
-		let cursor = checkpoint.unwrap_or(CommitVersion(0));
+		let cursor = match &start {
+			FlowStart::Resume(checkpoint) => *checkpoint,
+			FlowStart::Backfill(..) => CommitVersion(0),
+		};
 
 		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until());
 		let params = FlowActorParams {
@@ -550,9 +603,11 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};
-		let actor = match checkpoint {
-			Some(_) => FlowActor::new(params),
-			None => FlowActor::backfilling(params),
+		let actor = match start {
+			FlowStart::Resume(_) => FlowActor::new(params),
+			FlowStart::Backfill(version, lease, pin) => {
+				FlowActor::backfilling(params, (version, lease, pin))
+			}
 		};
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
@@ -586,12 +641,6 @@ impl FlowSupervisor {
 			}
 		}
 		changed
-	}
-
-	fn fetch_ddl_cursor(&self) -> Result<CommitVersion> {
-		let mut query = self.engine.begin_query(IdentityId::system())?;
-		Ok(CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_id)
-			.unwrap_or(CommitVersion(0)))
 	}
 }
 
@@ -678,6 +727,7 @@ impl Actor for FlowSupervisor {
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
 			scan_cursor: CommitVersion(0),
+			scan_lease: None,
 			last_control_commit_at: self.clock.now(),
 			wake_sets: BTreeMap::new(),
 			full_wake_armed: false,
@@ -690,7 +740,8 @@ impl Actor for FlowSupervisor {
 			FlowSupervisorMessage::Bootstrap {
 				flows,
 				scan_from,
-			} => self.handle_bootstrap(state, flows, scan_from),
+				scan_lease,
+			} => self.handle_bootstrap(state, flows, scan_from, scan_lease),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
