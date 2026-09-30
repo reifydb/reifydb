@@ -93,7 +93,7 @@ macro_rules! leaf_operator_state {
 	};
 }
 
-leaf_operator_state!(u64, i64, Vec<u8>, (i64, i64, i64), DateTime);
+leaf_operator_state!(u64, i64, Vec<u8>, (u64, u64), (i64, i64, i64), DateTime);
 
 impl<K, V> OperatorState for BTreeMap<K, V>
 where

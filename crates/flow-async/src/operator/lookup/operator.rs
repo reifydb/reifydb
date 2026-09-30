@@ -51,7 +51,7 @@ use super::{
 use crate::{
 	operator::{
 		HostOperator, host::HostContext, join::column::JoinedColumnsBuilder, row_times,
-		sink::decode_dictionary_columns, state::seal::ledger::FiredAt,
+		sink::decode_dictionary_columns, state::seal::ledger::FiredAt, state_access::mint_row_numbers,
 	},
 	timer::Timer,
 };
@@ -280,6 +280,7 @@ impl LookupOperator {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn publish(
 		&self,
 		host: &mut dyn HostContext,
@@ -287,6 +288,7 @@ impl LookupOperator {
 		left_idx: usize,
 		key: Option<&Vec<Value>>,
 		source: SourceVersion,
+		reuse: Option<RowNumber>,
 		output: &mut Output,
 	) -> Result<Option<Published>> {
 		if key.is_none() && self.config.join_type == JoinType::Inner {
@@ -298,8 +300,12 @@ impl LookupOperator {
 			return Ok(None);
 		}
 		let row_number = require_row_numbers(post)?[left_idx];
-		let published = self.build(host, post, left_idx, row_number, right)?;
-		store_read(host, row_number, version)?;
+		let output_id = match reuse {
+			Some(id) => id,
+			None => mint_row_numbers(host, 1)?,
+		};
+		let published = self.build(host, post, left_idx, output_id, right)?;
+		store_read(host, row_number, version, output_id)?;
 		if let Some(at) = row_times(post)?.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
 		}
@@ -313,9 +319,9 @@ impl LookupOperator {
 		left_idx: usize,
 		key: Option<&Vec<Value>>,
 		output: &mut Output,
-	) -> Result<Option<Published>> {
+	) -> Result<Option<(Published, RowNumber)>> {
 		let row_number = require_row_numbers(pre)?[left_idx];
-		let Some(version) = take_read(host, row_number)? else {
+		let Some((version, output_id)) = take_read(host, row_number)? else {
 			return Ok(None);
 		};
 		output.cleared.push(row_number);
@@ -327,7 +333,7 @@ impl LookupOperator {
 				version.0
 			);
 		}
-		Ok(Some(self.build(host, pre, left_idx, row_number, right)?))
+		Ok(Some((self.build(host, pre, left_idx, output_id, right)?, output_id)))
 	}
 
 	fn apply_insert(
@@ -341,7 +347,7 @@ impl LookupOperator {
 		let mut output = Output::default();
 		for (left_idx, key) in keys.iter().enumerate() {
 			if let Some(published) =
-				self.publish(host, post, left_idx, key.as_ref(), source, &mut output)?
+				self.publish(host, post, left_idx, key.as_ref(), source, None, &mut output)?
 			{
 				output.insert(published);
 			}
@@ -358,7 +364,7 @@ impl LookupOperator {
 		let keys = self.key_values(pre)?;
 		let mut output = Output::default();
 		for (left_idx, key) in keys.iter().enumerate() {
-			if let Some(published) = self.undo(host, pre, left_idx, key.as_ref(), &mut output)? {
+			if let Some((published, _)) = self.undo(host, pre, left_idx, key.as_ref(), &mut output)? {
 				output.remove(published);
 			}
 		}
@@ -390,9 +396,10 @@ impl LookupOperator {
 				left_idx,
 				post_keys.get(left_idx).and_then(Option::as_ref),
 				source,
+				undone.as_ref().map(|(_, id)| *id),
 				&mut output,
 			)?;
-			match (undone, published) {
+			match (undone.map(|(pre, _)| pre), published) {
 				(Some(pre), Some(post)) => output.update(pre, post),
 				(Some(pre), None) => output.remove(pre),
 				(None, Some(post)) => output.insert(post),
@@ -645,7 +652,12 @@ mod tests {
 	}
 
 	fn stored(txn: &mut DeferredTransaction, row: u64) -> Option<CommitVersion> {
-		stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row)).unwrap()
+		stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row)).unwrap().map(|(version, _)| version)
+	}
+
+	fn stored_output(txn: &mut DeferredTransaction, row: u64) -> RowNumber {
+		let read = stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row)).unwrap();
+		read.unwrap_or_else(|| panic!("row {row} has no stored read")).1
 	}
 
 	fn oldest(op: &LookupOperator, txn: &mut DeferredTransaction) -> Option<CommitVersion> {
@@ -846,9 +858,10 @@ mod tests {
 		assert_eq!(cell(&out, "r_v", 0), Value::Int4(10), "the row of partition a, not of b");
 		assert_eq!(
 			require_row_numbers(&out).unwrap(),
-			&[RowNumber(7)],
-			"IC4: the output keeps the left row number"
+			&[stored_output(&mut txn, 7)],
+			"IC4: the output carries the id minted for its left row"
 		);
+		assert_ne!(require_row_numbers(&out).unwrap(), &[RowNumber(7)], "the output id is minted, not the input's");
 		assert_eq!(stored(&mut txn, 7), Some(version), "MD28: the read version is stored per published row");
 	}
 
@@ -981,6 +994,39 @@ mod tests {
 		let removed = only_remove(&out);
 		assert_eq!(cell(&removed, "r_v", 0), Value::Int4(30), "an inner update to no match is a remove");
 		assert_eq!(stored(&mut txn, 7), None);
+	}
+
+	#[test]
+	fn an_in_place_update_keeps_the_minted_output_id() {
+		// Pre and post of one update must share an output id, otherwise downstream sees a row move under an update.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		put_right(&engine, "a", 10);
+		let version = put_right(&engine, "b", 30);
+		let mut op = lookup(&table, JoinType::Inner, None);
+		let mut txn = txn_at(&engine, version);
+		let published =
+			only_insert(&run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		let minted = require_row_numbers(&published).unwrap()[0];
+
+		let out = run(
+			&mut op,
+			&mut txn,
+			version,
+			Diff::update(rows(&[Some("a")], &[7], at_millis(5)), rows(&[Some("b")], &[7], at_millis(6))),
+		);
+
+		let Diff::Update {
+			pre,
+			post,
+			..
+		} = &out[0]
+		else {
+			panic!("expected an update, got {out:?}");
+		};
+		assert_eq!(require_row_numbers(pre).unwrap(), &[minted], "the pre is the published row");
+		assert_eq!(require_row_numbers(post).unwrap(), &[minted], "the post reuses the pre's id, no fresh mint");
+		assert_eq!(stored_output(&mut txn, 7), minted, "the stored id survives the update");
 	}
 
 	#[test]

@@ -40,31 +40,36 @@ pub(crate) fn read_by_version_key(version: CommitVersion, row: RowNumber) -> Gro
 	)
 }
 
-pub(crate) fn stored_read(host: &mut dyn HostContext, row: RowNumber) -> Result<Option<CommitVersion>> {
+pub(crate) fn stored_read(host: &mut dyn HostContext, row: RowNumber) -> Result<Option<(CommitVersion, RowNumber)>> {
 	match host.state_get(&read_key(row))? {
-		Some(stored) => Ok(Some(CommitVersion(decode::<u64>(&stored)?))),
+		Some(stored) => {
+			let (version, output) = decode::<(u64, u64)>(&stored)?;
+			Ok(Some((CommitVersion(version), RowNumber(output))))
+		}
 		None => Ok(None),
 	}
 }
 
-pub(crate) fn store_read(host: &mut dyn HostContext, row: RowNumber, version: CommitVersion) -> Result<()> {
-	if let Some(previous) = stored_read(host, row)? {
-		if previous == version {
-			return Ok(());
-		}
+pub(crate) fn store_read(
+	host: &mut dyn HostContext,
+	row: RowNumber,
+	version: CommitVersion,
+	output: RowNumber,
+) -> Result<()> {
+	if let Some((previous, _)) = stored_read(host, row)? {
 		host.state_remove(&read_by_version_key(previous, row))?;
 	}
-	host.state_set(&read_key(row), version.0.encode_state()?)?;
+	host.state_set(&read_key(row), (version.0, output.0).encode_state()?)?;
 	host.state_set(&read_by_version_key(version, row), EncodedPodRow::new(&[]))
 }
 
-pub(crate) fn take_read(host: &mut dyn HostContext, row: RowNumber) -> Result<Option<CommitVersion>> {
-	let Some(version) = stored_read(host, row)? else {
+pub(crate) fn take_read(host: &mut dyn HostContext, row: RowNumber) -> Result<Option<(CommitVersion, RowNumber)>> {
+	let Some((version, output)) = stored_read(host, row)? else {
 		return Ok(None);
 	};
 	host.state_remove(&read_key(row))?;
 	host.state_remove(&read_by_version_key(version, row))?;
-	Ok(Some(version))
+	Ok(Some((version, output)))
 }
 
 pub(crate) fn oldest_read(host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
