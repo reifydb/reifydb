@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
@@ -260,6 +260,29 @@ pub(crate) fn finish_tumbling_engine(
 				(span(pre), span(now))
 			}
 		});
+	}
+	let published: HashSet<(Hash128, WindowSpan<DateTime>)> = results.iter().map(|r| (r.group, r.span)).collect();
+	for (hash, span) in arrival.iter().filter(|key| !published.contains(key)) {
+		let group = group_of(groups, *hash, span.start.to_order());
+		let window_start = span.start.to_order();
+		let prior_meta = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
+		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
+		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
+		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
+		let batch_first = match stamp {
+			Stamp::Earliest(earliest) => earliest.get(&(*hash, *span)).map(|ts| ts.to_order()),
+			Stamp::SpanStart | Stamp::Session(..) => None,
+		};
+		let first = prior_first.into_iter().chain(batch_first).min();
+		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
+		let last_event_time = prior_last.max(batch_max);
+		let new_index = anchor.of(window_start, last_event_time);
+		engine.reindex_window(host, hash, span.start, group, &store::empty_key(), prior_index, new_index)?;
+		let meta = EngineMeta {
+			last_event_time: last_event_time.unwrap_or_default(),
+			first_event_time: first.unwrap_or_default(),
+		};
+		put(host, &EngineMetaKey(group), meta)?;
 	}
 	*core.tumbling_engine_slot() = Some(engine);
 
