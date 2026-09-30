@@ -405,7 +405,7 @@ pub fn apply_tumbling_engine(
 	} else {
 		ExpiryAnchor::WindowStart
 	};
-	let armed_before = armed_engine_seal(operator, host, rule)?;
+	let armed_before = armed_engine_seal(operator, host)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -792,7 +792,7 @@ pub fn apply_sliding_engine(
 	} else {
 		ExpiryAnchor::WindowStart
 	};
-	let armed_before = armed_engine_seal(operator, host, rule)?;
+	let armed_before = armed_engine_seal(operator, host)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -1097,7 +1097,7 @@ pub fn apply_session_engine(
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
 	let gap = operator.session_gap();
-	let armed_before = armed_engine_seal(operator, host, rule)?;
+	let armed_before = armed_engine_seal(operator, host)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -1128,7 +1128,7 @@ fn drop_sealed_events(
 	rule: SealRule,
 	anchor: ExpiryAnchor,
 ) -> Result<()> {
-	if rule.is_inert() || operator.is_count_based() {
+	if operator.is_count_based() {
 		return Ok(());
 	}
 	let gate = operator.seal_gate(host, rule)?;
@@ -1163,8 +1163,8 @@ fn drop_sealed_events(
 	Ok(())
 }
 
-fn engine_arms_seal(operator: &WindowOperator, rule: SealRule) -> bool {
-	!rule.is_inert() && !operator.is_count_based()
+fn engine_arms_seal(operator: &WindowOperator) -> bool {
+	!operator.is_count_based()
 }
 
 fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
@@ -1179,8 +1179,8 @@ fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostCont
 	Ok(earliest)
 }
 
-fn armed_engine_seal(operator: &mut WindowOperator, host: &mut dyn HostContext, rule: SealRule) -> Result<Option<u64>> {
-	if !engine_arms_seal(operator, rule) {
+fn armed_engine_seal(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
+	if !engine_arms_seal(operator) {
 		return Ok(None);
 	}
 	engine_earliest_expiry(operator, host)
@@ -1192,7 +1192,7 @@ fn rearm_engine_seal(
 	rule: SealRule,
 	before: Option<u64>,
 ) -> Result<()> {
-	if !engine_arms_seal(operator, rule) {
+	if !engine_arms_seal(operator) {
 		return Ok(());
 	}
 	let after = engine_earliest_expiry(operator, host)?;
@@ -1207,9 +1207,6 @@ fn seal_due_windows(
 	fired: FiredAt,
 	rule: SealRule,
 ) -> Result<Vec<Diff>> {
-	if rule.is_inert() {
-		return Ok(Vec::new());
-	}
 	operator.advance_seal_ledger(host, fired)?;
 	let Some(threshold) = SealSweep::new(rule).horizon(fired) else {
 		return Ok(Vec::new());

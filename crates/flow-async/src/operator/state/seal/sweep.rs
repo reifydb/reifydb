@@ -75,9 +75,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_inert_rule_still_sweeps_by_the_fired_instant_alone() {
-		// Callers gate on is_inert() before sweeping; this pins the arithmetic for one that does
-		// not, so the horizon lands one millisecond behind the fired instant rather than wrapping.
+	fn a_zero_admissible_rule_sweeps_one_millisecond_behind_the_fired_instant() {
+		// a zero admissible span must sweep just behind the fired instant, otherwise a zero gap never seals.
 		let sweep = SealSweep::new(SealRule::tumbling(ms(0), ms(0)));
 
 		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTime::from_millis(4_999)));

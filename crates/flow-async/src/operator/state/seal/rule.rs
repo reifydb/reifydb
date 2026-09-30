@@ -110,10 +110,6 @@ impl SealRule {
 		self.admissible
 	}
 
-	pub fn is_inert(self) -> bool {
-		self.admissible.0.is_zero()
-	}
-
 	pub fn seal_instant(self, event: DateTime) -> SealInstant {
 		SealInstant(event.saturating_add(self.admissible.0).saturating_add(SEAL_GATE_STEP))
 	}
