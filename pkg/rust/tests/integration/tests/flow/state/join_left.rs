@@ -232,7 +232,7 @@ fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its
 
 #[test]
 fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() {
-	// A sealed row's mapping is gone, so the update has nowhere to land and must not half-apply.
+	// A sealed row's mapping is gone, so the post must land as a fresh row and never overwrite the frozen one.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
@@ -242,9 +242,9 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 	db.command(r#"UPDATE app::lhs { lv: 99, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
-	assert_eq!(db.row_count("FROM app::j FILTER { lv == 99 }"), 0, "a sealed row must not accept a later value");
-	assert_eq!(db.row_count("FROM app::j FILTER { lv == 5 }"), 1, "and must still hold the value it was sealed on");
-	assert_eq!(db.row_count("FROM app::j"), 1, "a dropped mutation must never add a row either");
+	assert_eq!(db.row_count("FROM app::j FILTER { lv == 99 }"), 1, "the post of a sealed row lands as a fresh row");
+	assert_eq!(db.row_count("FROM app::j FILTER { lv == 5 }"), 1, "and the sealed row keeps the value it was sealed on");
+	assert_eq!(db.row_count("FROM app::j"), 2, "the frozen row and the fresh post, nothing more");
 }
 
 #[test]
