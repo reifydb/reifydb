@@ -8,15 +8,10 @@ use std::{
 	vec::IntoIter as VecIntoIter,
 };
 
-use arrow_array::{
-	Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray,
-	cast::AsArray,
-	make_array,
-	types::{Float32Type, Float64Type},
-};
+use arrow_array::{Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray, make_array};
 use arrow_buffer::{NullBuffer, ScalarBuffer, i256};
 use arrow_row::{RowConverter, Rows, SortField};
-use arrow_schema::{ArrowError, DataType};
+use arrow_schema::ArrowError;
 use indexmap::IndexMap;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
@@ -368,46 +363,6 @@ fn row_format_matches_value_key(view: &ColumnView) -> bool {
 	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8)
 }
 
-macro_rules! canonical_float {
-	($value:expr, $ty:ty) => {
-		if $value.is_nan() {
-			<$ty>::NAN
-		} else if $value == 0.0 {
-			0.0
-		} else {
-			$value
-		}
-	};
-}
-
-macro_rules! needs_canonical {
-	($value:expr) => {
-		$value.is_nan() || (*$value == 0.0 && $value.is_sign_negative())
-	};
-}
-
-pub fn key_column(array: &ArrayRef) -> ArrayRef {
-	match array.data_type() {
-		DataType::Float32
-			if array.as_primitive::<Float32Type>().values().iter().any(|f| needs_canonical!(f)) =>
-		{
-			Arc::new(
-				array.as_primitive::<Float32Type>()
-					.unary::<_, Float32Type>(|f| canonical_float!(f, f32)),
-			)
-		}
-		DataType::Float64
-			if array.as_primitive::<Float64Type>().values().iter().any(|f| needs_canonical!(f)) =>
-		{
-			Arc::new(
-				array.as_primitive::<Float64Type>()
-					.unary::<_, Float64Type>(|f| canonical_float!(f, f64)),
-			)
-		}
-		_ => array.clone(),
-	}
-}
-
 impl HeapSize for GroupKeyDict {
 	fn heap_size(&self) -> usize {
 		self.entries.capacity()
@@ -418,17 +373,8 @@ impl HeapSize for GroupKeyDict {
 }
 
 pub(crate) fn group_rows(views: &[ColumnView<'_>], row_count: usize, dict: &mut GroupKeyDict) -> Result<GroupRows> {
-	let arrays: Vec<ArrayRef> = views.iter().map(|view| key_column(&make_array(view.array().to_data()))).collect();
-	let normalized: Vec<ColumnView<'_>> = arrays
-		.iter()
-		.zip(views)
-		.map(|(array, view)| ColumnView::try_from((array, view.field)))
-		.collect::<Result<_>>()?;
-
-	let row_columns: Vec<&ColumnView> =
-		normalized.iter().filter(|view| row_format_matches_value_key(view)).collect();
-	let value_columns: Vec<&ColumnView> =
-		normalized.iter().filter(|view| !row_format_matches_value_key(view)).collect();
+	let row_columns: Vec<&ColumnView> = views.iter().filter(|view| row_format_matches_value_key(view)).collect();
+	let value_columns: Vec<&ColumnView> = views.iter().filter(|view| !row_format_matches_value_key(view)).collect();
 	let row_keys = match row_columns.is_empty() {
 		true => None,
 		false => Some(dict.row_keys(&row_columns)?),
