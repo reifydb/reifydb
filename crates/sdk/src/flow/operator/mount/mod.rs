@@ -132,7 +132,8 @@ mod tests {
 		operator::host::{HostContext, TxnHostContext},
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};
-	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::{InProcessContext, OperatorId};
@@ -147,8 +148,7 @@ mod tests {
 	#[test]
 	fn a_dylib_read_of_an_absent_group_writes_nothing() {
 		// a probe that wrote would resurrect groups the reaper had already erased
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
 		});
@@ -169,8 +169,7 @@ mod tests {
 	#[test]
 	fn a_dylib_batch_read_hands_back_the_key_the_guest_wrote() {
 		// Handing back an operator-scoped key unstripped makes the guest's own lookups miss.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
 		});
@@ -199,8 +198,7 @@ mod tests {
 	#[test]
 	fn an_in_process_guest_cannot_arm_or_disarm_the_reclaim_timer() {
 		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
 		});

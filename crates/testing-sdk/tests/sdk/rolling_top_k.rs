@@ -23,7 +23,6 @@ use reifydb_sdk::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{AllKinds, Emit, WindowedOperator},
@@ -34,7 +33,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -204,7 +203,7 @@ fn dead_with() -> ApplyWith {
 
 #[test]
 fn same_window_volume_accumulates_per_trader() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -232,7 +231,7 @@ fn same_window_volume_accumulates_per_trader() {
 
 #[test]
 fn update_subtracts_old_volume_no_double_count() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -265,7 +264,7 @@ fn update_subtracts_old_volume_no_double_count() {
 
 #[test]
 fn top_2_across_three_windows() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -293,7 +292,7 @@ fn top_2_across_three_windows() {
 
 #[test]
 fn vanishing_rank_emits_remove_at_high_water() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -313,7 +312,7 @@ fn vanishing_rank_emits_remove_at_high_water() {
 
 #[test]
 fn time_eviction_drops_oldest_window() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -347,7 +346,7 @@ fn time_eviction_drops_oldest_window() {
 #[test]
 fn buried_window_insert_accepted_while_lateness_is_open() {
 	// while the lateness window has not elapsed, an insert into an older coordinate must still merge
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -411,7 +410,7 @@ impl Emit for SealedTopVolume {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<SealedTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<SealedTopVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -437,7 +436,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 #[test]
 fn a_rolling_top_k_time_window_arms_a_seal_timer() {
 	// a driver with a required window must always acquire a seal retention policy
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -449,9 +448,8 @@ fn a_rolling_top_k_time_window_arms_a_seal_timer() {
 #[test]
 fn create_without_a_window_reports_flow_065() {
 	// require_window must refuse a missing window before any row reaches the aggregator
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
-		.with(ApplyWith::default())
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new().with(ApplyWith::default()).build()
 	else {
 		panic!("create must refuse a missing window");
 	};
@@ -470,10 +468,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		retention: None,
 		throttle: None,
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
-		.with(with)
-		.build()
-	else {
+	let Err(err) = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
@@ -497,7 +492,7 @@ fn a_top_k_operator_publishes_rolling_only_and_needs_pane() {
 #[test]
 fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 	// A dead group must remove every ranked row, otherwise the sink keeps a ranking nobody updates.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(dead_with())
 		.build()
 		.expect("harness");
@@ -533,7 +528,7 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 #[test]
 fn a_top_k_group_revived_inside_its_window_keeps_its_old_panes() {
 	// A group must live one size past its horizon, otherwise a revived row loses the panes still in its window.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(dead_with())
 		.build()
 		.expect("harness");

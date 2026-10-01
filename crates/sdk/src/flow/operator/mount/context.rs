@@ -378,7 +378,15 @@ impl GuestEmitContext for InProcessContext<'_> {
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).remove_row_number(group, key) }.map_err(to_sdk_err)
+		unsafe {
+			let host = &mut *self.host;
+			if key.is_empty() {
+				host.remove_row_number_for_group(group)
+			} else {
+				host.remove_row_number(group, key)
+			}
+		}
+		.map_err(to_sdk_err)
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
@@ -446,8 +454,10 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::common::CommitVersion;
 	use reifydb_flow_async::operator::host::TxnHostContext;
-	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 
 	use super::*;
 	use crate::flow::operator::context::Windowed;
@@ -456,8 +466,7 @@ mod tests {
 	fn the_byte_accessors_refuse_a_key_that_frames_no_known_keyspace() {
 		// Without this a guest writes under a key naming no known keyspace and no later range scan can reach
 		// that row again.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
+		let mut txn = TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0)));
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(1));
 		let mut ctx = InProcessContext::new(&mut host, OperatorId(1));
 		let mut state = GuestContext::<Windowed>::window_state(&mut ctx);

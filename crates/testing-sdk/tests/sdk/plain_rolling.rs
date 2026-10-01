@@ -35,6 +35,7 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
 	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -228,7 +229,7 @@ pub(crate) fn render(out: &Change) -> Emitted {
 
 macro_rules! harness {
 	($driver:ty, $with:expr) => {
-		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<$driver>>>::new().with($with).build()
+		InProcessOperatorHarnessBuilder::<PlainDriver<$driver>>::new().with($with).build()
 	};
 }
 
@@ -382,7 +383,10 @@ fn a_stopped_rolling_group_gives_back_its_meta_once_the_watermark_passes_it() {
 fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
 	// Each withdrawn group may keep one row for the seal to reclaim; a leaked row number mapping doubles it.
 	let state_after = |groups: u64| {
-		let mut h = harness!(SumAnyKind, rolling(3, Some(1), 3_600_000)).expect("harness");
+		let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SumAnyKind>>>::new()
+			.with(rolling(3, Some(1), 3_600_000))
+			.build()
+			.expect("harness");
 		for i in 0..groups {
 			let group = format!("G{i}");
 			h.apply(TestChangeBuilder::new().insert(input_row(i + 1, &group, 0, 5.0)).build())
@@ -440,7 +444,10 @@ fn a_group_revived_inside_its_window_keeps_its_old_panes() {
 #[test]
 fn a_quiet_stream_frees_every_dead_group() {
 	// Each dead timer must re-arm for the next group, otherwise a quiet stream strands all but the first.
-	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SumAnyKind>>>::new()
+		.with(rolling(3, Some(1), 10))
+		.build()
+		.expect("harness");
 	h.apply(TestChangeBuilder::new()
 		.insert(input_row(1, "A", 100, 1.0))
 		.insert(input_row(2, "B", 110, 2.0))

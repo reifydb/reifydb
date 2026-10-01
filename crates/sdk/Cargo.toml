@@ -55,7 +55,6 @@ uuid = { workspace = true, optional = true }
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing-sdk = { workspace = true }
-reifydb-test-harness = { workspace = true, features = ["operator"] }
 
 [[test]]
 name = "extern_c"

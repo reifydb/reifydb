@@ -66,8 +66,6 @@ pub struct ExternCOperatorHarness<T: ExternCOperator> {
 	operator: T,
 	context: Box<TestContext>,
 	extern_c_context: Box<ExternCContextRaw>,
-	params: HashMap<String, Value>,
-	with: ApplyWith,
 	operator_id: OperatorId,
 	clock: Clock,
 	history: Vec<Change>,
@@ -246,10 +244,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		(*self.context).version()
 	}
 
-	pub fn set_version(&mut self, version: CommitVersion) {
-		(*self.context).set_version(version);
-	}
-
 	pub fn state(&self) -> TestStateStore {
 		let store = self.context.state_store();
 		let data = store.lock();
@@ -258,14 +252,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			result.set(k.clone(), v.clone());
 		}
 		result
-	}
-
-	pub fn logs(&self) -> Vec<String> {
-		(*self.context).logs()
-	}
-
-	pub fn clear_logs(&self) {
-		(*self.context).clear_logs()
 	}
 
 	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedBytes> {
@@ -279,28 +265,9 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		}
 	}
 
-	pub fn reset(&mut self) -> Result<()> {
-		(*self.context).clear_state();
-		(*self.context).clear_logs();
-		(*self.context).set_version(CommitVersion(1));
-		self.history.clear();
-
-		self.operator =
-			T::new(self.operator_id, &ExtensionParams::new("operator", self.params.clone()), &self.with)?;
-		Ok(())
-	}
-
 	pub fn create_operator_context(&mut self) -> ExternCContext {
 		self.refresh_written_at();
 		ExternCContext::new(&mut *self.extern_c_context as *mut ExternCContextRaw)
-	}
-
-	pub fn operator(&self) -> &T {
-		&self.operator
-	}
-
-	pub fn operator_id(&self) -> OperatorId {
-		self.operator_id
 	}
 }
 
@@ -421,8 +388,6 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 			operator,
 			context,
 			extern_c_context,
-			params: self.params,
-			with: self.with,
 			operator_id: self.operator_id,
 			clock: self.clock,
 			history: Vec::new(),

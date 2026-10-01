@@ -41,7 +41,8 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::{ExternCOperatorHarness, ExternCOperatorHarnessBuilder},
+	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::{InProcessOperatorHarness, InProcessOperatorHarnessBuilder},
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -371,7 +372,7 @@ fn sealed_with() -> ApplyWith {
 
 #[test]
 fn single_insert_emits_insert() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -388,7 +389,7 @@ fn single_insert_emits_insert() {
 #[test]
 fn update_applies_post_minus_pre_no_double_count() {
 	// An update routed as remove(pre)+add(post) lands on 25; folding only post would give 35.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -409,7 +410,7 @@ fn update_applies_post_minus_pre_no_double_count() {
 fn two_contributions_then_remove_subtracts_pre() {
 	// The diff's pre value is what gets subtracted, so no per-slot key is needed to find the
 	// contribution being withdrawn.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -431,7 +432,7 @@ fn two_contributions_then_remove_subtracts_pre() {
 fn remove_clears_window_emits_remove() {
 	// The accumulator finalizes to nothing, so the prior value has to come from the engine for
 	// the driver to withdraw the stale row instead of leaking it.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -446,7 +447,7 @@ fn remove_clears_window_emits_remove() {
 #[test]
 fn an_update_carries_the_published_row_as_its_pre() {
 	// A pre equal to the post makes every downstream consumer retract the new value instead of the old one.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -464,7 +465,7 @@ fn an_update_carries_the_published_row_as_its_pre() {
 #[test]
 fn a_second_update_carries_the_row_of_the_first_update_as_its_pre() {
 	// A pre frozen at the insert row would retract a value downstream no longer holds.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -482,7 +483,7 @@ fn a_second_update_carries_the_row_of_the_first_update_as_its_pre() {
 
 #[test]
 fn boundary_slot_belongs_to_next_window() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -503,7 +504,7 @@ fn boundary_slot_belongs_to_next_window() {
 fn late_event_for_sealed_window_dropped() {
 	// A window seals once the watermark passes start + lateness, and a sealed window must
 	// refuse further inserts rather than reopen.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -518,7 +519,7 @@ fn late_event_within_seal_is_accepted() {
 	// The boundary is inclusive on the mutable side: at watermark == start + lateness the
 	// window is still open. The watermark must be advanced explicitly, or the gate never
 	// closes and the assertion would hold under any boundary rule.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -535,7 +536,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 	// The frontier comes from the seal ledger and the flow watermark, not from arrivals, so a
 	// flow that has reported no progress has nothing to measure lateness against. If this ever
 	// starts dropping, the frontier is being derived from the batch again.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -550,7 +551,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 #[test]
 fn late_event_while_lateness_is_open_is_accepted() {
 	// while the lateness window has not elapsed, a driver must accept an arbitrarily late mutation
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -564,7 +565,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 	// Grace is the single mutability horizon for every mutation kind, retractions included: a
 	// remove is honored while the window is open and dropped once it seals, because the sealed
 	// value is final by contract.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -590,7 +591,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 
 #[test]
 fn multiple_groups_isolate_state() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -613,7 +614,7 @@ fn multiple_groups_isolate_state() {
 fn min_update_replacing_minimum_raises_window_min() {
 	// Raising the minimum away is what a running scalar min cannot do; the multiset has to
 	// surface the next-smallest value instead.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestMin>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestMin>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -640,7 +641,7 @@ fn min_update_replacing_minimum_raises_window_min() {
 fn sealing_frees_window_state_from_the_store() {
 	// Sealing has to reclaim the window's accumulator state, not just gate its mutations;
 	// state left behind is only reaped by the wall-clock operator-state TTL backstop.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -653,7 +654,7 @@ fn sealing_frees_window_state_from_the_store() {
 	assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");
 
 	// Control: reclamation may only come from the seal sweep, never from ordinary apply churn.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -670,7 +671,7 @@ fn sealing_frees_window_state_from_the_store() {
 #[test]
 fn min_remove_duplicate_keeps_value_until_last_removed() {
 	// Removing one of two equal values must not evict the value itself from the multiset.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestMin>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestMin>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -689,9 +690,8 @@ fn min_remove_duplicate_keeps_value_until_last_removed() {
 #[test]
 fn create_without_a_window_reports_flow_065() {
 	// require_window must refuse a missing window before any row reaches the aggregator
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
-		.with(ApplyWith::default())
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new().with(ApplyWith::default()).build()
 	else {
 		panic!("create must refuse a missing window");
 	};
@@ -712,17 +712,14 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		retention: None,
 		throttle: None,
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
-		.with(with)
-		.build()
-	else {
+	let Err(err) = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
 }
 
-fn throttled_harness() -> ExternCOperatorHarness<ExternCOperatorAdapter<PlainDriver<TestVolume>>> {
-	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+fn throttled_harness() -> InProcessOperatorHarness<PlainDriver<TestVolume>> {
+	InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(millis(60_000)),
@@ -809,7 +806,18 @@ fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
 #[test]
 fn a_dirty_window_publishes_once_more_when_it_closes() {
 	// A window closing with unpublished changes would leave its final value unseen forever.
-	let mut h = throttled_harness();
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>::new()
+		.with(ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(millis(60_000)),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+			throttle: Some(millis(10_000)),
+		})
+		.build()
+		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1_000, 5.0)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");

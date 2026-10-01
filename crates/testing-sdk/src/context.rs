@@ -188,10 +188,6 @@ impl TestContext {
 		self.version
 	}
 
-	pub fn set_version(&mut self, version: CommitVersion) {
-		self.version = version;
-	}
-
 	pub fn get_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
 		self.state_store.lock().get(key).map(|v| v.0.to_vec())
 	}
