@@ -29,7 +29,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::{compress::Compressor, snapshot::ColumnBlock, store::ColumnStore};
+use reifydb_store_column::{compress::Compressor, device::BlockKey, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
@@ -249,9 +249,8 @@ impl TableMaterializationActor {
 				stats: Vec::new(),
 			},
 		)?;
-		self.block_store.persist(column_snapshot.id, block_arc.as_ref())?;
+		self.block_store.write(&BlockKey::of(&column_snapshot), block_arc.as_ref())?;
 		commit_admin(admin)?;
-		self.block_store.put(column_snapshot.id, block_arc);
 		Ok(())
 	}
 }

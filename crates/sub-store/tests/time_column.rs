@@ -12,11 +12,11 @@ use reifydb::{
 };
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
-	interface::catalog::id::ColumnSnapshotId,
 	value::{batch, column::factory},
 };
 use reifydb_store_column::{
-	compress::Compressor, reader::SnapshotReader, session::new_session, snapshot::ColumnBlock, store::ColumnStore,
+	compress::Compressor, device::BlockKey, reader::SnapshotReader, session::new_session, snapshot::ColumnBlock,
+	store::ColumnStore,
 };
 use reifydb_sub_store::{
 	column::actor::batches::{column_block_from_batches, system_column_schema},
@@ -61,14 +61,12 @@ fn at(second: u64) -> DateTime {
 }
 
 fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -> Vec<Arc<ColumnBlock>> {
-	// Entries are read before the catalog so a block put after its snapshot commit is never missed.
-	let entries = store.entries();
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
-	let owned: Vec<ColumnSnapshotId> = match object {
+	let owned = match object {
 		Object::Table => {
 			let table = catalog
 				.find_table_by_name(&mut tx, namespace.id(), name)
@@ -83,11 +81,18 @@ fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -
 				.expect("series");
 			catalog.list_column_snapshots_for_series(&mut tx, series.id).expect("list series snapshots")
 		}
-	}
-	.into_iter()
-	.map(|snapshot| snapshot.id)
-	.collect();
-	entries.into_iter().filter(|(id, _)| owned.contains(id)).map(|(_, block)| block).collect()
+	};
+	owned.into_iter()
+		.map(|snapshot| {
+			Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			)
+		})
+		.collect()
 }
 
 fn schema_names(block: &ColumnBlock) -> Vec<&str> {

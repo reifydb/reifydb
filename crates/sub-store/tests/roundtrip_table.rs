@@ -3,18 +3,41 @@
 
 #![cfg(feature = "column")]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_store_column::reader::SnapshotReader;
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{Value, duration::Duration, system_columns::column_view};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
+
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
+	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
+	catalog.list_column_snapshots_for_table(&mut tx, table.id)
+		.expect("list table snapshots")
+		.into_iter()
+		.map(|snapshot| {
+			Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			)
+		})
+		.collect()
+}
 
 #[test]
 fn table_materialization_populates_block_store() {
@@ -43,10 +66,7 @@ fn table_materialization_populates_block_store() {
 	let block_store = storage.block_store().clone();
 
 	let block = poll_until(
-		|| {
-			let entries = block_store.entries();
-			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
-		},
+		|| table_blocks(&db, &block_store, "t").into_iter().find(|b| b.len() == 3),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("block with 3 rows did not appear in block_store within 5 seconds");

@@ -51,9 +51,6 @@ use reifydb_routine::{
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
-#[cfg(feature = "column")]
-#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
 use reifydb_store_cdc::{CdcStoreVersion, store::CdcStore};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
@@ -126,7 +123,7 @@ pub struct DatabaseBuilder {
 	#[cfg(feature = "column")]
 	storage_config: Option<StorageConfig>,
 	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-	column_sqlite: Option<SqliteConfig>,
+	column_dir: Option<PathBuf>,
 }
 
 impl DatabaseBuilder {
@@ -177,7 +174,7 @@ impl DatabaseBuilder {
 			#[cfg(feature = "column")]
 			storage_config: None,
 			#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-			column_sqlite: None,
+			column_dir: None,
 		}
 	}
 
@@ -188,8 +185,8 @@ impl DatabaseBuilder {
 	}
 
 	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-	pub fn with_column_sqlite(mut self, config: Option<SqliteConfig>) -> Self {
-		self.column_sqlite = config;
+	pub fn with_column_dir(mut self, dir: Option<PathBuf>) -> Self {
+		self.column_dir = dir;
 		self
 	}
 
@@ -624,7 +621,7 @@ impl DatabaseBuilder {
 				None => StorageSubsystemFactory::default(),
 			};
 			#[cfg(not(target_arch = "wasm32"))]
-			let storage = storage.with_column_sqlite(self.column_sqlite.take());
+			let storage = storage.with_column_dir(self.column_dir.take());
 			let factory: Box<dyn SubsystemFactory> = Box::new(storage);
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());

@@ -1,17 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use reifydb_core::value::column::factory;
+use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
 	compress::Compressor,
 	convert::to_arrow,
-	persist::{deserialize_block, serialize_block},
+	persist::{BlockHandle, serialize_block},
 	session::new_session,
 	snapshot::ColumnBlock,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::{Result, value::value_type::ValueType};
+use vortex_session::VortexSession;
+
+fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+	let fs = MemoryFs::new();
+	let path = Path::new("/block.borg");
+	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
+	assert_eq!(written, bytes.len(), "the fixture file must hold every byte");
+	BlockHandle::open(fs.open(path).unwrap(), session.clone())?.read(None)
+}
 
 fn one_chunk_bytes() -> Vec<u8> {
 	let session = new_session();
@@ -22,7 +32,7 @@ fn one_chunk_bytes() -> Vec<u8> {
 }
 
 fn rejection_code(bytes: &[u8]) -> String {
-	match deserialize_block(bytes, &new_session()) {
+	match load(bytes, &new_session()) {
 		Ok(_) => panic!("a damaged block must be rejected"),
 		Err(err) => err.0.code.clone(),
 	}
@@ -36,7 +46,7 @@ fn the_prefix_is_magic_version_and_header_length() {
 	assert_eq!(&bytes[4..6], &1u16.to_le_bytes());
 	let header_len = u32::from_le_bytes(bytes[6..10].try_into().unwrap()) as usize;
 	assert!(header_len + 10 <= bytes.len(), "the header must fit inside the block");
-	assert!(deserialize_block(&bytes, &new_session()).is_ok(), "the untouched block must load");
+	assert!(load(&bytes, &new_session()).is_ok(), "the untouched block must load");
 }
 
 #[test]
@@ -72,7 +82,32 @@ fn a_truncated_data_section_is_rejected() {
 #[test]
 fn garbage_is_rejected_without_panicking() {
 	// Random bytes must surface as an error, never abort the process.
-	assert!(deserialize_block(&[0xff; 5], &new_session()).is_err());
+	assert!(load(&[0xff; 5], &new_session()).is_err());
+}
+
+#[test]
+fn a_cut_file_fails_at_open_even_when_the_damaged_column_is_not_read() {
+	// Otherwise a cut file reads cleanly whenever a query skips the damaged column.
+	let session = new_session();
+	let compressor = Compressor::new(session.clone());
+	let schema = vec![("a".to_string(), ValueType::Int4, false), ("b".to_string(), ValueType::Int4, false)];
+	let columns = vec![
+		compressor.compress(ValueType::Int4, &factory::int4("a", [1, 5, 2, 9])).unwrap(),
+		compressor.compress(ValueType::Int4, &factory::int4("b", [3, 4, 6, 7])).unwrap(),
+	];
+	let bytes = serialize_block(&ColumnBlock::new(Arc::new(schema), columns), &session).unwrap();
+	let cut = &bytes[..bytes.len() - 1];
+	let fs = MemoryFs::new();
+	let path = Path::new("/block.borg");
+	fs.create(path, cut.len() as u64).unwrap().pwrite(0, cut).unwrap();
+	let code = match BlockHandle::open(fs.open(path).unwrap(), session) {
+		Ok(handle) => match handle.read(Some(&["a"])) {
+			Ok(_) => panic!("a cut file read cleanly through its undamaged column"),
+			Err(err) => panic!("a cut file must fail at open, not at read ({})", err.0.code),
+		},
+		Err(err) => err.0.code.clone(),
+	};
+	assert_eq!(code, "COL_019");
 }
 
 fn utf8_block_with_invalid_bytes(values: Vec<String>) -> Vec<u8> {
@@ -97,7 +132,7 @@ fn a_utf8_column_whose_stored_bytes_are_not_utf8_fails_to_read() {
 	let distinct = (0..2000).map(|i| format!("row \u{e9}t\u{e9} {i} {}", "x".repeat(i % 13))).collect();
 	for (label, values) in [("plain", plain), ("repeated", repeated), ("distinct", distinct)] {
 		let session = new_session();
-		let code = match deserialize_block(&utf8_block_with_invalid_bytes(values), &session) {
+		let code = match load(&utf8_block_with_invalid_bytes(values), &session) {
 			Err(err) => err.0.code.clone(),
 			Ok(block) => {
 				let column = &block.columns[0];

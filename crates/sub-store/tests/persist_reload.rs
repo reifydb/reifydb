@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+#![cfg(all(feature = "column", reifydb_target = "host"))]
 
 use std::sync::Arc;
 
@@ -9,27 +9,51 @@ use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_sqlite::SqliteConfig;
-use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, reader::SnapshotReader, store::ColumnStore};
+use reifydb_core::interface::catalog::column_snapshot::ColumnSnapshot;
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{Value, duration::Duration, system_columns::column_view};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
+
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<(ColumnSnapshot, Arc<ColumnBlock>)> {
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
+	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
+	catalog.list_column_snapshots_for_table(&mut tx, table.id)
+		.expect("list table snapshots")
+		.into_iter()
+		.map(|snapshot| {
+			let block = Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			);
+			(snapshot, block)
+		})
+		.collect()
+}
 
 #[test]
 fn materialized_columns_persist_to_disk_and_reload_after_restart() {
-	// A shared column.db surviving two independent opens is what simulates a process restart: the
-	// first database writes blocks, a fresh tier reads them back.
-	let (column_cfg, _guard) = SqliteConfig::in_memory();
+	// Two opens of one column dir simulate a restart: the first writes blocks, a fresh store reads them back.
+	let column_dir = tempfile::tempdir().expect("create column dir");
 
-	{
+	let snapshot = {
 		let storage_config = StorageConfig {
 			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			..StorageConfig::default()
 		};
-		let factory = StorageSubsystemFactory::new(storage_config).with_column_sqlite(Some(column_cfg.clone()));
+		let factory = StorageSubsystemFactory::new(storage_config)
+			.with_column_dir(Some(column_dir.path().to_path_buf()));
 
 		let mut db =
 			TestDb::from(db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build"));
@@ -43,31 +67,25 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 		let block_store = storage.block_store().clone();
 
-		// The actor persists before the catalog commit and puts into the cache last, so a block
-		// visible in the cache is already durable.
-		poll_until(
-			|| block_store.entries().into_iter().map(|(_, b)| b).find(|b| b.len() == 3),
+		let (snapshot, _) = poll_until(
+			|| table_blocks(&db, &block_store, "t").into_iter().find(|(_, b)| b.len() == 3),
 			Duration::from_seconds(5).unwrap().to_std(),
 		)
 		.expect("a 3-row block did not materialize within 5 seconds");
 
 		db.stop();
-	}
+		snapshot
+	};
 
 	// The reload runs with no database and no re-materialization, so only disk state can satisfy it.
-	let tier = Arc::new(SqliteColumnStore::new(column_cfg));
-	let persisted = tier.load_all().expect("load_all");
-	assert!(!persisted.is_empty(), "column.db must contain a persisted block after materialization");
-
-	let reloaded = ColumnStore::with_persistent(Some(tier));
-	reloaded.warm().expect("warm from column.db");
-
-	let block = reloaded
-		.entries()
-		.into_iter()
-		.map(|(_, b)| b)
-		.find(|b| b.len() == 3)
-		.expect("reloaded block store must contain the 3-row block from disk");
+	let reloaded = ColumnStore::host(column_dir.path().to_path_buf()).expect("reopen column dir");
+	let block = Arc::new(
+		reloaded.open(&BlockKey::of(&snapshot))
+			.expect("open block")
+			.expect("reloaded block store must contain the 3-row block from disk")
+			.read(None)
+			.expect("read block"),
+	);
 
 	let mut reader = SnapshotReader::new(block, 100, reloaded.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");

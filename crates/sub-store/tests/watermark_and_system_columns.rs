@@ -10,17 +10,63 @@ use reifydb::{
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::common::CommitVersion;
-use reifydb_store_column::reader::SnapshotReader;
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
 	datetime::DateTime,
 	duration::Duration,
+	identity::IdentityId,
 	row_number::RowNumber,
 	system_columns::{created_at, row_numbers, updated_at},
 };
+
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
+	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
+	catalog.list_column_snapshots_for_table(&mut tx, table.id)
+		.expect("list table snapshots")
+		.into_iter()
+		.map(|snapshot| {
+			Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			)
+		})
+		.collect()
+}
+
+fn series_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
+	let series = catalog.find_series_by_name(&mut tx, namespace.id(), name).expect("find series").expect("series");
+	catalog.list_column_snapshots_for_series(&mut tx, series.id)
+		.expect("list series snapshots")
+		.into_iter()
+		.map(|snapshot| {
+			Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			)
+		})
+		.collect()
+}
 
 #[test]
 fn series_snapshot_records_sealed_at_commit_version() {
@@ -60,7 +106,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 
 	poll_until(
 		|| {
-			if !block_store.is_empty() {
+			if !series_blocks(&db, &block_store, "s").is_empty() {
 				Some(())
 			} else {
 				None
@@ -117,10 +163,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	let block_store = storage.block_store().clone();
 
 	let block = poll_until(
-		|| {
-			let entries = block_store.entries();
-			entries.into_iter().map(|(_, b)| b).find(|b| !b.is_empty())
-		},
+		|| series_blocks(&db, &block_store, "s").into_iter().find(|b| !b.is_empty()),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
@@ -173,10 +216,7 @@ fn table_snapshot_system_columns_match_row_metadata() {
 	let block_store = storage.block_store().clone();
 
 	let block = poll_until(
-		|| {
-			let entries = block_store.entries();
-			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
-		},
+		|| table_blocks(&db, &block_store, "t").into_iter().find(|b| b.len() == 3),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("table snapshot did not materialize within 5 seconds");

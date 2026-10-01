@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::builder::ColumnBuilder;
+use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
 	compress::Compressor,
-	persist::{deserialize_block, serialize_block},
+	persist::{BlockHandle, serialize_block},
 	predicate::{ColRef, Predicate, evaluate},
 	selection::Selection,
 	session::new_session,
@@ -32,10 +33,19 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 use uuid::Uuid;
+use vortex_session::VortexSession;
 
 type Column = (FieldRef, ArrayRef);
 
 const OPS: [&str; 6] = ["eq", "ne", "lt", "lt_eq", "gt", "gt_eq"];
+
+fn load(bytes: &[u8], session: &VortexSession) -> reifydb_value::Result<ColumnBlock> {
+	let fs = MemoryFs::new();
+	let path = Path::new("/block.borg");
+	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
+	assert_eq!(written, bytes.len(), "the fixture file must hold every byte");
+	BlockHandle::open(fs.open(path).unwrap(), session.clone())?.read(None)
+}
 
 fn column_of(ty: &ValueType, values: &[Value]) -> Column {
 	let mut builder = ColumnBuilder::with_capacity(ty.clone(), values.len() + 1);
@@ -159,7 +169,7 @@ fn reloaded(ty: &ValueType, column: &Column) -> Result<ColumnBlock, String> {
 		Compressor::new(new_session()).compress(ty.clone(), column).map_err(|e| format!("compress: {e}"))?;
 	let block = ColumnBlock::new(Arc::new(vec![("c".to_string(), ty.clone(), true)]), vec![chunks]);
 	let bytes = serialize_block(&block, &new_session()).map_err(|e| format!("persist: {e}"))?;
-	deserialize_block(&bytes, &new_session()).map_err(|e| format!("load: {e}"))
+	load(&bytes, &new_session()).map_err(|e| format!("load: {e}"))
 }
 
 fn predicate(op: &str, value: &Value) -> Predicate {

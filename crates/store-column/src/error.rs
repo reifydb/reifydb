@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::io::fs::FsError;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -48,6 +49,12 @@ pub enum ColumnError {
 		column: String,
 		stored: String,
 		expected: String,
+	},
+
+	#[error("{operation}: {source}")]
+	Fs {
+		operation: &'static str,
+		source: FsError,
 	},
 }
 
@@ -175,6 +182,22 @@ impl IntoDiagnostic for ColumnError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			ColumnError::Fs {
+				operation,
+				source,
+			} => Diagnostic {
+				code: "COL_024".to_string(),
+				rql: None,
+				message: format!("{operation}: {source}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
 }
@@ -184,6 +207,16 @@ pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> Err
 		ColumnError::Vortex {
 			operation,
 			reason: err.to_string(),
+		}
+		.into()
+	}
+}
+
+pub(crate) fn fs(operation: &'static str) -> impl FnOnce(FsError) -> Error {
+	move |source| {
+		ColumnError::Fs {
+			operation,
+			source,
 		}
 		.into()
 	}

@@ -157,12 +157,8 @@ impl ColumnSeriesScanNode {
 
 		Ok(ScanState::Reading {
 			reader: Box::new(
-				BlockSequenceReader::new(
-					store,
-					pruned.iter().map(|snapshot| snapshot.id).collect(),
-					self.context.batch_size as usize,
-				)
-				.with_predicate(predicate),
+				BlockSequenceReader::new(store, pruned, self.context.batch_size as usize)
+					.with_predicate(predicate),
 			),
 			emitted: false,
 		})

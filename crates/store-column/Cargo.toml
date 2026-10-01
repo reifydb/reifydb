@@ -13,6 +13,7 @@ doctest = false
 [features]
 default = []
 sqlite = ["rusqlite", "reifydb-sqlite"]
+testing = ["reifydb-runtime/testing"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -26,7 +27,6 @@ reifydb-value = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-schema = { workspace = true }
-dashmap = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
@@ -55,4 +55,5 @@ rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-runtime = { workspace = true, features = ["testing"] }
 uuid = { workspace = true }

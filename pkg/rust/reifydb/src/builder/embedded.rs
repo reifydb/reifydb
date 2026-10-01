@@ -74,7 +74,7 @@ use reifydb_sub_store::subsystem::StorageConfig;
 use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
 use crate::{
 	Database, MigrationSource, Result,
-	api::{StorageFactory, transaction},
+	api::{self, StorageFactory, transaction},
 };
 
 pub struct EmbeddedBuilder {
@@ -237,8 +237,8 @@ impl EmbeddedBuilder {
 			operator_flush_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
 		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-		let column_sqlite = match &self.storage_factory {
-			StorageFactory::Sqlite(config) => Some(config.clone()),
+		let column_dir = match &self.storage_factory {
+			StorageFactory::Sqlite(config) => Some(api::column_dir(config)),
 			StorageFactory::Memory => None,
 		};
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -283,7 +283,7 @@ impl EmbeddedBuilder {
 
 		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
 		{
-			builder = builder.with_column_sqlite(column_sqlite);
+			builder = builder.with_column_dir(column_dir);
 		}
 
 		for dependency in self.dependencies {

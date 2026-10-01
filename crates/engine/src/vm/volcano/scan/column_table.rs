@@ -70,7 +70,7 @@ impl ColumnTableScanNode {
 		Ok(ScanState::Reading {
 			reader: Box::new(BlockSequenceReader::new(
 				store,
-				vec![snapshot.id],
+				vec![snapshot],
 				self.context.batch_size as usize,
 			)),
 			emitted: false,

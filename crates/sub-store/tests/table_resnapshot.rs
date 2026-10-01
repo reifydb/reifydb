@@ -3,10 +3,13 @@
 
 #![cfg(feature = "column")]
 
+use std::sync::Arc;
+
 use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
+use reifydb_store_column::{device::BlockKey, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -22,6 +25,28 @@ fn snapshot_count(db: &TestDb, name: &str) -> usize {
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
 	catalog.list_column_snapshots_for_table(&mut tx, table.id).expect("list table snapshots").len()
+}
+
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
+	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
+	catalog.list_column_snapshots_for_table(&mut tx, table.id)
+		.expect("list table snapshots")
+		.into_iter()
+		.map(|snapshot| {
+			Arc::new(
+				store.open(&BlockKey::of(&snapshot))
+					.expect("open block")
+					.expect("a cataloged snapshot must have a block file")
+					.read(None)
+					.expect("read block"),
+			)
+		})
+		.collect()
 }
 
 #[test]
@@ -45,7 +70,7 @@ fn an_unchanged_table_is_not_snapshotted_again_on_every_tick() {
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let store = storage.block_store().clone();
 	poll_until(
-		|| store.entries().into_iter().find(|(_, b)| b.len() == 1),
+		|| table_blocks(&db, &store, "t").into_iter().find(|b| b.len() == 1),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("a 1-row block did not materialize within 5 seconds");

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, Int32Array, LargeStringArray, RecordBatch};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
@@ -15,15 +15,17 @@ use reifydb_core::value::{
 		nulls::with_nulls,
 	},
 };
+use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
 	compress::Compressor,
 	convert::to_arrow,
-	persist::{deserialize_block, serialize_block},
+	persist::{BlockHandle, serialize_block},
 	reader::SnapshotReader,
 	session::new_session,
 	snapshot::ColumnBlock,
 };
 use reifydb_value::{
+	Result,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -48,8 +50,17 @@ use reifydb_value::{
 	},
 };
 use uuid::Uuid;
+use vortex_session::VortexSession;
 
 type Column = (FieldRef, ArrayRef);
+
+fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+	let fs = MemoryFs::new();
+	let path = Path::new("/block.borg");
+	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
+	assert_eq!(written, bytes.len(), "the fixture file must hold every byte");
+	BlockHandle::open(fs.open(path).unwrap(), session.clone())?.read(None)
+}
 
 fn system_columns(rows: usize) -> Vec<Column> {
 	vec![
@@ -77,7 +88,7 @@ fn round_trip_all(label: &str, columns: &[Column]) -> Vec<Column> {
 	let bytes =
 		serialize_block(&block, &new_session()).unwrap_or_else(|err| panic!("{label}: persist failed: {err}"));
 	let session = new_session();
-	let restored = deserialize_block(&bytes, &session).unwrap_or_else(|err| panic!("{label}: load failed: {err}"));
+	let restored = load(&bytes, &session).unwrap_or_else(|err| panic!("{label}: load failed: {err}"));
 	let restored = Arc::new(restored);
 	let mut reader = SnapshotReader::new(Arc::clone(&restored), rows.max(1), session.clone());
 	match reader.next() {

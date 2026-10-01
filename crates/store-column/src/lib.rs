@@ -11,6 +11,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 pub mod bucket;
 pub mod compress;
 pub mod convert;
+pub mod device;
 pub mod error;
 pub mod persist;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

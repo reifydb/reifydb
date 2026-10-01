@@ -15,8 +15,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			column_snapshot::{ColumnSnapshotSource, ColumnStats},
-			id::{ColumnSnapshotId, SeriesId},
+			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource, ColumnStats},
+			id::SeriesId,
 			object::ObjectId,
 			series::{Series, SeriesPartitionMetadata},
 		},
@@ -42,6 +42,7 @@ use reifydb_runtime::actor::{
 use reifydb_store_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
+	device::BlockKey,
 	snapshot::ColumnBlock,
 	stats::block_stats,
 	store::ColumnStore,
@@ -210,7 +211,7 @@ impl SeriesMaterializationActor {
 		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
-		let stale: Vec<ColumnSnapshotId> = catalog
+		let stale: Vec<ColumnSnapshot> = catalog
 			.list_column_snapshots_for_series(&mut Transaction::Admin(&mut admin), series.id)?
 			.into_iter()
 			.filter(|snapshot| match snapshot.source {
@@ -220,17 +221,16 @@ impl SeriesMaterializationActor {
 				} => partition == stored_partition,
 				_ => false,
 			})
-			.map(|snapshot| snapshot.id)
 			.collect();
 		if stale.is_empty() {
 			return Ok(());
 		}
-		for id in &stale {
-			catalog.drop_column_snapshot(&mut admin, *id)?;
+		for snapshot in &stale {
+			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
 		}
 		commit_admin(admin)?;
-		for id in &stale {
-			self.block_store.remove(*id)?;
+		for snapshot in &stale {
+			self.block_store.remove(&BlockKey::of(snapshot))?;
 		}
 		state.bucket_state.retain(|(id, part, _)| *id != series.id || *part != partition);
 		self.reset_dirty_mark(series, partition)
@@ -502,9 +502,8 @@ impl SeriesMaterializationActor {
 				},
 			)?,
 		};
-		self.block_store.persist(column_snapshot.id, block.as_ref())?;
+		self.block_store.write(&BlockKey::of(&column_snapshot), block.as_ref())?;
 		commit_admin(admin)?;
-		self.block_store.put(column_snapshot.id, block);
 		Ok(())
 	}
 }

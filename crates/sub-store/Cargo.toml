@@ -55,3 +55,4 @@ sqlite = [
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { workspace = true, features = ["testing", "column"] }
 reifydb-test-harness = { workspace = true }
+tempfile = { workspace = true }

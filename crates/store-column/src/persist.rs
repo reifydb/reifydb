@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use arrow_array::new_empty_array;
+use reifydb_runtime::io::fs::{FsError, Len, Pread, Pwrite};
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -28,7 +29,7 @@ use vortex_session::{
 
 use crate::{
 	convert::to_vortex,
-	error::{ColumnError, vortex},
+	error::{ColumnError, fs, vortex},
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 
@@ -62,10 +63,13 @@ struct BorgChunk {
 
 pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<Vec<u8>> {
 	let array_ctx = ArrayContext::empty();
-	let mut data: Vec<u8> = Vec::new();
+	let options = SerializeOptions {
+		offset: 0,
+		include_padding: true,
+	};
 	let mut align = 1usize;
-	let mut columns = Vec::with_capacity(block.columns.len());
-	for ((name, ty, nullable), column) in block.schema.iter().zip(&block.columns) {
+	let mut serialized = Vec::with_capacity(block.columns.len());
+	for ((name, _, _), column) in block.schema.iter().zip(&block.columns) {
 		let dtype = expected_dtype(session, name, &column.field_type)?;
 		let mut chunks = Vec::with_capacity(column.chunks.len());
 		for chunk in &column.chunks {
@@ -76,22 +80,36 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 					"persist: column '{name}' holds a chunk whose dtype differs from its field type, so reload would decode it against the wrong shape"
 				);
 			}
-			let offset = data.len();
-			let options = SerializeOptions {
-				offset,
-				include_padding: true,
-			};
 			let parts = chunk.serialize(&array_ctx, session, &options).map_err(vortex("persist"))?;
 			if let Some(first) = parts.first() {
 				align = align.max(first.alignment().as_usize());
 			}
+			chunks.push((parts, chunk.len()));
+		}
+		serialized.push((dtype, chunks));
+	}
+	let mut data: Vec<u8> = Vec::new();
+	let mut columns = Vec::with_capacity(block.columns.len());
+	for (((name, ty, nullable), column), (dtype, chunks)) in block.schema.iter().zip(&block.columns).zip(serialized)
+	{
+		let mut borg_chunks = Vec::with_capacity(chunks.len());
+		for (parts, rows) in chunks {
+			data.resize(align_up(data.len(), align), 0);
+			let offset = data.len();
+			reifydb_assertions! {
+				assert_eq!(
+					offset % align,
+					0,
+					"persist: chunk of column '{name}' starts at {offset}, not a multiple of the block alignment {align}, so a read would copy it"
+				);
+			}
 			for part in &parts {
 				data.extend_from_slice(part.as_slice());
 			}
-			chunks.push(BorgChunk {
+			borg_chunks.push(BorgChunk {
 				offset: offset as u64,
 				len: (data.len() - offset) as u64,
-				rows: chunk.len() as u64,
+				rows: rows as u64,
 			});
 		}
 		columns.push(BorgColumn {
@@ -100,7 +118,7 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 			nullable: *nullable,
 			field_type: column.field_type.clone(),
 			dtype: dtype.write_flatbuffer_bytes().map_err(vortex("persist"))?.as_slice().to_vec(),
-			chunks,
+			chunks: borg_chunks,
 		});
 	}
 	let header = BorgHeader {
@@ -124,67 +142,121 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 	Ok(out)
 }
 
-pub fn deserialize_block(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
-	if bytes.len() < PREFIX || &bytes[..4] != MAGIC {
-		return Err(corrupt("not a BORG column block"));
-	}
-	let version = u16::from_le_bytes([bytes[4], bytes[5]]);
-	if version != VERSION {
-		return Err(ColumnError::PersistVersionUnsupported {
-			version,
+pub struct BlockHandle<R: Pread + Len> {
+	file: R,
+	header: BorgHeader,
+	data_start: u64,
+	session: VortexSession,
+}
+
+impl<R: Pread + Len> BlockHandle<R> {
+	pub fn open(file: R, session: VortexSession) -> Result<Self> {
+		let len = file.len().map_err(fs("open"))?;
+		let mut prefix = [0u8; PREFIX];
+		if !read_exact(&file, 0, &mut prefix).map_err(fs("open"))? || &prefix[..4] != MAGIC {
+			return Err(corrupt("not a BORG column block"));
 		}
-		.into());
-	}
-	let header_len = u32::from_le_bytes([bytes[6], bytes[7], bytes[8], bytes[9]]) as usize;
-	let Some(header_end) = PREFIX.checked_add(header_len).filter(|end| *end <= bytes.len()) else {
-		return Err(corrupt("header runs past the end of the block"));
-	};
-	let header: BorgHeader =
-		postcard::from_bytes(&bytes[PREFIX..header_end]).map_err(|err| ColumnError::PersistDeserialize {
-			reason: err.to_string(),
-		})?;
-	let align = header.align as usize;
-	if !align.is_power_of_two() {
-		return Err(corrupt("alignment is not a power of two"));
-	}
-	let data_start = align_up(header_end, align);
-	if data_start > bytes.len() {
-		return Err(corrupt("padding runs past the end of the block"));
-	}
-	let mut aligned = ByteBufferMut::with_capacity_aligned(bytes.len() - data_start, Alignment::new(align));
-	aligned.extend_from_slice(&bytes[data_start..]);
-	let data = aligned.freeze();
-	let read_ctx = ReadContext::new(header.encodings.iter().map(|id| Id::new(id)).collect::<Vec<_>>());
-	let mut schema = Vec::with_capacity(header.columns.len());
-	let mut columns = Vec::with_capacity(header.columns.len());
-	for column in header.columns {
-		let stored = DType::from_flatbuffer(FlatBuffer::copy_from(&column.dtype), session)
-			.map_err(vortex("persist"))?;
-		let expected = expected_dtype(session, &column.name, &column.field_type)?;
-		if stored != expected {
-			return Err(ColumnError::DTypeMismatch {
-				column: column.name,
-				stored: stored.to_string(),
-				expected: expected.to_string(),
+		let version = u16::from_le_bytes([prefix[4], prefix[5]]);
+		if version != VERSION {
+			return Err(ColumnError::PersistVersionUnsupported {
+				version,
 			}
 			.into());
 		}
-		let mut chunks = Vec::with_capacity(column.chunks.len());
-		for chunk in &column.chunks {
-			let start = chunk.offset as usize;
-			let Some(end) = start.checked_add(chunk.len as usize).filter(|end| *end <= data.len()) else {
-				return Err(corrupt("chunk runs past the end of the block"));
-			};
-			let serialized = SerializedArray::try_from(data.slice_unaligned(start..end))
-				.map_err(vortex("persist"))?;
-			chunks.push(serialized
-				.decode(&stored, chunk.rows as usize, &read_ctx, session)
-				.map_err(vortex("persist"))?);
+		let header_len = u32::from_le_bytes([prefix[6], prefix[7], prefix[8], prefix[9]]);
+		let header_end = PREFIX as u64 + header_len as u64;
+		if header_end > len {
+			return Err(corrupt("header runs past the end of the block"));
 		}
-		schema.push((column.name, column.ty.clone(), column.nullable));
-		columns.push(ColumnChunks::new(column.ty, column.nullable, column.field_type, chunks));
+		let mut header = vec![0u8; header_len as usize];
+		if !read_exact(&file, PREFIX as u64, &mut header).map_err(fs("open"))? {
+			return Err(corrupt("header runs past the end of the block"));
+		}
+		let header: BorgHeader =
+			postcard::from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
+				reason: err.to_string(),
+			})?;
+		let align = header.align as u64;
+		if !align.is_power_of_two() {
+			return Err(corrupt("alignment is not a power of two"));
+		}
+		let data_start = header_end.next_multiple_of(align);
+		if data_start > len {
+			return Err(corrupt("padding runs past the end of the block"));
+		}
+		for column in &header.columns {
+			for chunk in &column.chunks {
+				let end = data_start
+					.checked_add(chunk.offset)
+					.and_then(|start| start.checked_add(chunk.len));
+				if !end.is_some_and(|end| end <= len) {
+					return Err(corrupt("chunk runs past the end of the block"));
+				}
+			}
+		}
+		Ok(Self {
+			file,
+			header,
+			data_start,
+			session,
+		})
 	}
-	Ok(ColumnBlock::new(Arc::new(schema), columns))
+
+	pub fn read(&self, columns: Option<&[&str]>) -> Result<ColumnBlock> {
+		if let Some(names) = columns
+			&& let Some(missing) = names
+				.iter()
+				.find(|name| !self.header.columns.iter().any(|column| column.name == **name))
+		{
+			return Err(ColumnError::ColumnNotInSchema {
+				operation: "read",
+				name: missing.to_string(),
+			}
+			.into());
+		}
+		let alignment = Alignment::new(self.header.align as usize);
+		let read_ctx = ReadContext::new(self.header.encodings.iter().map(|id| Id::new(id)).collect::<Vec<_>>());
+		let mut schema = Vec::new();
+		let mut out = Vec::new();
+		for column in &self.header.columns {
+			if columns.is_some_and(|names| !names.contains(&column.name.as_str())) {
+				continue;
+			}
+			let stored = DType::from_flatbuffer(FlatBuffer::copy_from(&column.dtype), &self.session)
+				.map_err(vortex("persist"))?;
+			let expected = expected_dtype(&self.session, &column.name, &column.field_type)?;
+			if stored != expected {
+				return Err(ColumnError::DTypeMismatch {
+					column: column.name.clone(),
+					stored: stored.to_string(),
+					expected: expected.to_string(),
+				}
+				.into());
+			}
+			let mut chunks = Vec::with_capacity(column.chunks.len());
+			for chunk in &column.chunks {
+				let mut buffer = ByteBufferMut::zeroed_aligned(chunk.len as usize, alignment);
+				if !read_exact(&self.file, self.data_start + chunk.offset, buffer.as_mut_slice())
+					.map_err(fs("read"))?
+				{
+					return Err(corrupt("chunk runs past the end of the block"));
+				}
+				let serialized =
+					SerializedArray::try_from(buffer.freeze()).map_err(vortex("persist"))?;
+				chunks.push(serialized
+					.decode(&stored, chunk.rows as usize, &read_ctx, &self.session)
+					.map_err(vortex("persist"))?);
+			}
+			schema.push((column.name.clone(), column.ty.clone(), column.nullable));
+			out.push(ColumnChunks::new(
+				column.ty.clone(),
+				column.nullable,
+				column.field_type.clone(),
+				chunks,
+			));
+		}
+		Ok(ColumnBlock::new(Arc::new(schema), out))
+	}
 }
 
 fn expected_dtype(session: &VortexSession, name: &str, field_type: &FieldType) -> Result<DType> {
@@ -197,6 +269,40 @@ fn align_up(offset: usize, align: usize) -> usize {
 	offset.div_ceil(align) * align
 }
 
+fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> std::result::Result<bool, FsError> {
+	let mut read = 0;
+	while read < buf.len() {
+		let n = file.pread(offset, &mut buf[read..])?;
+		if n == 0 {
+			return Ok(false);
+		}
+		read += n;
+		offset += n as u64;
+	}
+	Ok(true)
+}
+
+pub(crate) fn write_all<W: Pwrite>(
+	file: &W,
+	path: &Path,
+	mut offset: u64,
+	buf: &[u8],
+) -> std::result::Result<(), FsError> {
+	let mut written = 0;
+	while written < buf.len() {
+		let n = file.pwrite(offset, &buf[written..])?;
+		if n == 0 {
+			return Err(FsError::Io {
+				path: path.to_path_buf(),
+				message: format!("write made no progress at offset {offset}"),
+			});
+		}
+		written += n;
+		offset += n as u64;
+	}
+	Ok(())
+}
+
 fn corrupt(reason: &str) -> Error {
 	ColumnError::PersistDeserialize {
 		reason: reason.to_string(),
@@ -206,9 +312,19 @@ fn corrupt(reason: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
+	use std::mem;
+
 	use arrow_array::{Array, ArrayRef as ArrowArrayRef};
 	use arrow_schema::FieldRef;
 	use reifydb_core::value::column::{builder::ColumnBuilder, factory};
+	use reifydb_runtime::{
+		io::fs::{
+			Create, Open,
+			memory::MemoryFs,
+			testing::{FileId, ReadOutcome, TestingFs, TestingHooks},
+		},
+		sync::mutex::Mutex,
+	};
 	use reifydb_value::value::{
 		Value,
 		column_view::ColumnView,
@@ -258,9 +374,17 @@ mod tests {
 			.collect()
 	}
 
+	fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+		let fs = MemoryFs::new();
+		let path = Path::new("/block.borg");
+		let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
+		assert_eq!(written, bytes.len(), "the fixture file must hold every byte");
+		BlockHandle::open(fs.open(path).unwrap(), session.clone())?.read(None)
+	}
+
 	fn round_trip(block: &ColumnBlock) -> ColumnBlock {
 		let session = new_session();
-		deserialize_block(&serialize_block(block, &session).unwrap(), &session).unwrap()
+		load(&serialize_block(block, &session).unwrap(), &session).unwrap()
 	}
 
 	fn assert_round_trips(block: ColumnBlock) {
@@ -385,7 +509,58 @@ mod tests {
 	}
 
 	#[test]
-	fn deserialize_rejects_garbage_without_panicking() {
-		assert!(deserialize_block(&[0xff, 0xff, 0xff, 0xff, 0xff], &new_session()).is_err());
+	fn open_rejects_garbage_without_panicking() {
+		assert!(load(&[0xff, 0xff, 0xff, 0xff, 0xff], &new_session()).is_err());
+	}
+
+	struct ReadLog(Mutex<Vec<(u64, usize)>>);
+
+	impl TestingHooks for ReadLog {
+		fn on_pread(&self, _file: FileId, offset: u64, len: usize) -> ReadOutcome {
+			self.0.lock().push((offset, len));
+			ReadOutcome::Clean
+		}
+	}
+
+	#[test]
+	fn a_column_read_touches_only_that_columns_byte_ranges() {
+		// Otherwise a column read pulls the whole file and projection saves no disk reads.
+		let schema = Arc::new(vec![
+			("a".to_string(), ValueType::Int4, false),
+			("b".to_string(), ValueType::Utf8, false),
+			("c".to_string(), ValueType::Uint8, false),
+		]);
+		let columns = vec![
+			chunks(ValueType::Int4, false, &factory::int4("a", [1i32, 2, 3])),
+			chunks(ValueType::Utf8, false, &factory::utf8("b", ["x", "y", "z"])),
+			chunks(ValueType::Uint8, false, &factory::uint8("c", vec![7u64, 8, 9])),
+		];
+		let block = ColumnBlock::new(schema, columns);
+		let session = new_session();
+		let bytes = serialize_block(&block, &session).unwrap();
+		let log = Arc::new(ReadLog(Mutex::new(Vec::new())));
+		let fs = TestingFs::new(MemoryFs::new(), log.clone());
+		let path = Path::new("/block.borg");
+		fs.create(path, bytes.len() as u64).unwrap().pwrite(0, &bytes).unwrap();
+
+		let handle = BlockHandle::open(fs.open(path).unwrap(), session).unwrap();
+		let header_len = u32::from_le_bytes(bytes[6..10].try_into().unwrap()) as usize;
+		assert_eq!(
+			mem::take(&mut *log.0.lock()),
+			vec![(0, PREFIX), (PREFIX as u64, header_len)],
+			"open must read only the prefix and the header"
+		);
+
+		let read = handle.read(Some(&["b"])).unwrap();
+
+		let expected: Vec<(u64, usize)> = handle.header.columns[1]
+			.chunks
+			.iter()
+			.map(|chunk| (handle.data_start + chunk.offset, chunk.len as usize))
+			.collect();
+		assert!(!expected.is_empty(), "column b must own at least one chunk");
+		assert_eq!(*log.0.lock(), expected, "reading b must touch only the byte ranges of its chunks");
+		assert_eq!(read.schema.iter().map(|(name, _, _)| name.as_str()).collect::<Vec<_>>(), vec!["b"]);
+		assert_eq!(block_values(&read), vec![block_values(&block)[1].clone()]);
 	}
 }

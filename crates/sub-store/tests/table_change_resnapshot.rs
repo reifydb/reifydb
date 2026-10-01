@@ -3,13 +3,13 @@
 
 #![cfg(feature = "column")]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb::{
 	WithSubsystem, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_store_column::{reader::SnapshotReader, store::ColumnStore};
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -39,8 +39,6 @@ fn block_store(db: &TestDb) -> ColumnStore {
 }
 
 fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
-	// Entries are read before the catalog so a block put after its snapshot commit is never missed.
-	let entries = store.entries();
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
@@ -51,9 +49,14 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 		.list_column_snapshots_for_table(&mut tx, table.id)
 		.expect("list table snapshots")
 		.into_iter()
-		.map(|snapshot| snapshot.id)
-		.max()?;
-	let block = entries.into_iter().find(|(id, _)| *id == latest).map(|(_, block)| block)?;
+		.max_by_key(|snapshot| snapshot.id)?;
+	let block = Arc::new(
+		store.open(&BlockKey::of(&latest))
+			.expect("open block")
+			.expect("a cataloged snapshot must have a block file")
+			.read(None)
+			.expect("read block"),
+	);
 
 	let mut rows = BTreeMap::new();
 	if block.is_empty() {

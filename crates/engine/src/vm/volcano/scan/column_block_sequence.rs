@@ -4,15 +4,17 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId};
-use reifydb_store_column::{predicate::Predicate, reader::SnapshotReader, snapshot::Schema, store::ColumnStore};
+use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::column_snapshot::ColumnSnapshot};
+use reifydb_store_column::{
+	device::BlockKey, predicate::Predicate, reader::SnapshotReader, snapshot::Schema, store::ColumnStore,
+};
 use reifydb_value::error::Error;
 
 use crate::Result;
 
 pub(crate) struct BlockSequenceReader {
 	store: Arc<ColumnStore>,
-	snapshots: Vec<ColumnSnapshotId>,
+	snapshots: Vec<ColumnSnapshot>,
 	batch_size: usize,
 	index: usize,
 	current: Option<SnapshotReader>,
@@ -21,7 +23,7 @@ pub(crate) struct BlockSequenceReader {
 }
 
 impl BlockSequenceReader {
-	pub(crate) fn new(store: Arc<ColumnStore>, snapshots: Vec<ColumnSnapshotId>, batch_size: usize) -> Self {
+	pub(crate) fn new(store: Arc<ColumnStore>, snapshots: Vec<ColumnSnapshot>, batch_size: usize) -> Self {
 		Self {
 			store,
 			snapshots,
@@ -55,15 +57,20 @@ impl BlockSequenceReader {
 				return Ok(None);
 			}
 
-			let id = self.snapshots[self.index];
+			let snapshot = &self.snapshots[self.index];
 			self.index += 1;
 
-			let block = self.store.get(id)?.ok_or_else(|| {
-				Error(Box::new(internal(format!(
-					"column block for snapshot {} is missing from the column store",
-					id
-				))))
-			})?;
+			let block = Arc::new(
+				self.store
+					.open(&BlockKey::of(snapshot))?
+					.ok_or_else(|| {
+						Error(Box::new(internal(format!(
+							"column block for snapshot {} is missing from the column store",
+							snapshot.id
+						))))
+					})?
+					.read(None)?,
+			);
 
 			if self.schema.is_none() {
 				self.schema = Some(Arc::clone(&block.schema));

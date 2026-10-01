@@ -4340,7 +4340,6 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-schema",
- "dashmap 7.0.0-rc2",
  "postcard",
  "reifydb-build",
  "reifydb-core",
@@ -4757,6 +4756,7 @@ dependencies = [
  "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
 ]
