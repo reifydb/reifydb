@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{
-	expression::{CallExpression, Expression, name::display_label},
+	expression::CallExpression,
 	value::column::{
 		builder::ColumnBuilder,
 		factory::rename,
 		view::group_by::{GroupId, GroupRows},
 	},
 };
-use reifydb_routine_abi::{FunctionKind, context::FunctionContext, error::RoutineError};
+use reifydb_routine_abi::{Function, FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_value::{error::Error, value::value_type::ValueType};
 
 use crate::{Result, error::EvaluateError, expression::context::EvalContext};
@@ -19,11 +21,12 @@ use crate::{Result, error::EvaluateError, expression::context::EvalContext};
 pub(crate) fn call_builtin(
 	ctx: &EvalContext,
 	call: &CallExpression,
+	routine: Option<&Arc<dyn Function>>,
+	result_label: &str,
 	arguments: &[(FieldRef, ArrayRef)],
 ) -> Result<(FieldRef, ArrayRef)> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
-	let result_label = display_label(&Expression::Call(call.clone()));
 
 	assert!(
 		ctx.symbols.get_function(function_name).is_none(),
@@ -31,7 +34,7 @@ pub(crate) fn call_builtin(
 		function_name
 	);
 
-	let routine = ctx.routines.get_function(function_name).ok_or_else(|| -> Error {
+	let routine = routine.ok_or_else(|| -> Error {
 		EvaluateError::UnknownFunction {
 			name: function_name.to_string(),
 			fragment: fn_fragment.clone(),
@@ -67,9 +70,9 @@ pub(crate) fn call_builtin(
 
 		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment, false))?;
 
-		return Ok(rename(result_data, result_label.text()));
+		return Ok(rename(result_data, result_label));
 	}
 
 	let result = routine.call(&mut fn_ctx, arguments).map_err(|e| e.with_context(fn_fragment, false))?;
-	Ok(rename(result, result_label.text()))
+	Ok(rename(result, result_label))
 }

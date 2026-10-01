@@ -3380,6 +3380,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-ord",
  "arrow-schema",
+ "arrow-select",
  "reifydb-build",
  "reifydb-core",
  "reifydb-routine-abi",
@@ -3460,6 +3461,7 @@ dependencies = [
 name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
+ "arrow-arith",
  "arrow-array",
  "arrow-schema",
  "dashmap",

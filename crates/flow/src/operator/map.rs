@@ -37,6 +37,7 @@ pub struct MapOperator {
 	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	expressions: Vec<Expression>,
+	labels: Vec<String>,
 	compiled_expressions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -57,11 +58,13 @@ impl MapOperator {
 		};
 		let compiled_expressions: Vec<CompiledExpr> =
 			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 
 		Ok(Self {
 			parent_schema,
 			operator,
 			expressions,
+			labels,
 			compiled_expressions,
 			routines,
 			runtime_context,
@@ -101,13 +104,9 @@ impl MapOperator {
 
 		let mut result_columns = Vec::with_capacity(self.expressions.len());
 
-		for (i, compiled_expr) in self.compiled_expressions.iter().enumerate() {
+		for (compiled_expr, label) in self.compiled_expressions.iter().zip(&self.labels) {
 			let evaluated_col = compiled_expr.execute(&exec_ctx)?;
-
-			let expr = &self.expressions[i];
-			let field_name = display_label(expr).text().to_string();
-
-			result_columns.push(rename(evaluated_col, &field_name));
+			result_columns.push(rename(evaluated_col, label));
 		}
 
 		forward_system_columns(&with_system_columns_of(result_columns, columns)?)

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::discriminant, slice::from_ref, str::FromStr};
+use std::{mem::discriminant, slice::from_ref, str::FromStr, sync::OnceLock};
 
-use arrow_array::{Array, ArrayRef};
+use arrow_array::{Array, ArrayRef, UInt32Array};
 use arrow_schema::FieldRef;
+use arrow_select::take::take;
 use reifydb_core::{
-	error::diagnostic::catalog::{variant_enum_not_known, variant_in_expression},
-	expression::{Expression, name::display_label},
+	error::{
+		CoreError,
+		diagnostic::catalog::{variant_enum_not_known, variant_in_expression},
+	},
+	expression::{Expression, VariableExpression, name::display_label},
 	value::{
 		batch::{is_scalar, scalar_value},
 		column::{
@@ -170,9 +174,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::Constant(e) => {
 			let constant = e.clone();
 			let label = display_label(expr);
+			let scalar = OnceLock::new();
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
-				constant_value(&constant, label.text(), row_count)
+				broadcast(&scalar, row_count, |rows| constant_value(&constant, label.text(), rows))
 			})
 		}
 
@@ -183,87 +188,18 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 		Expression::Variable(e) => {
 			let expr = e.clone();
+			let scalar = OnceLock::new();
 			CompiledExpr::new(move |ctx| {
-				let variable_name = expr.name();
-
-				if variable_name == "env" {
-					return Err(TypeError::Runtime {
-						kind: RuntimeErrorKind::VariableIsDataframe {
-							name: variable_name.to_string(),
-						},
-						message: format!(
-							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-							variable_name
-						),
-					}
-					.into());
-				}
-
-				match ctx.symbols.get(variable_name) {
-					Some(Variable::Columns {
-						batch,
-					}) if is_scalar(batch) => {
-						let value = match scalar_value(batch)? {
-							Value::Any(inner)
-								if matches!(
-									inner.as_ref(),
-									Value::List(items)
-										if items.iter().all(|v| matches!(v, Value::Record(_)))
-								) =>
-							{
-								*inner
-							}
-							other => other,
-						};
-						let mut data =
-							ColumnBuilder::with_capacity(value.get_type(), ctx.row_count);
-						for _ in 0..ctx.row_count {
-							data.push_value(value.clone());
-						}
-						Ok(data.finish(variable_name))
-					}
-					Some(Variable::Columns {
-						..
-					})
-					| Some(Variable::ForIterator {
-						..
-					})
-					| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
-						kind: RuntimeErrorKind::VariableIsDataframe {
-							name: variable_name.to_string(),
-						},
-						message: format!(
-							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-							variable_name
-						),
-					}
-					.into()),
-					None => {
-						if let Some(value) = ctx.params.get_named(variable_name) {
-							let mut data = ColumnBuilder::with_capacity(
-								value.get_type(),
-								ctx.row_count,
-							);
-							for _ in 0..ctx.row_count {
-								data.push_value(value.clone());
-							}
-							return Ok(data.finish(variable_name));
-						}
-						Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::VariableNotFound {
-								fragment: expr.fragment.clone(),
-							},
-							message: format!("Variable '{}' is not defined", variable_name),
-						}
-						.into())
-					}
-				}
+				broadcast(&scalar, ctx.row_count, |rows| variable_column(ctx, &expr, rows))
 			})
 		}
 
 		Expression::Parameter(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| parameter_lookup(ctx, &expr))
+			let scalar = OnceLock::new();
+			CompiledExpr::new(move |ctx| {
+				broadcast(&scalar, ctx.row_count, |rows| parameter_lookup(ctx, &expr, rows))
+			})
 		}
 
 		Expression::Alias(e) => {
@@ -347,7 +283,11 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::Type(e) => {
 			let ty = e.ty.clone();
 			let fragment = e.fragment.clone();
-			CompiledExpr::new(move |ctx| Ok(type_column(ctx, &ty, &fragment)))
+			let scalar = OnceLock::new();
+			CompiledExpr::new(move |ctx| {
+				let row_count = ctx.take.unwrap_or(ctx.row_count);
+				broadcast(&scalar, row_count, |rows| Ok(type_column(rows, &ty, &fragment)))
+			})
 		}
 
 		Expression::AccessSource(e) => {
@@ -605,14 +545,17 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				let const_expr = const_expr.clone();
 				let target_type = e.to.ty.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
+				let scalar = OnceLock::new();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
-					let data = constant_value(&const_expr, label.text(), row_count)?;
-					if ColumnView::try_from(&data)?.get_type() == target_type {
-						Ok(data)
-					} else {
-						apply_cast(ctx, &data, &target_type, &inner_fragment)
-					}
+					broadcast(&scalar, row_count, |rows| {
+						let data = constant_value(&const_expr, label.text(), rows)?;
+						if ColumnView::try_from(&data)?.get_type() == target_type {
+							Ok(data)
+						} else {
+							apply_cast(ctx, &data, &target_type, &inner_fragment)
+						}
+					})
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
@@ -671,25 +614,36 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						_ => None,
 					})
 					.collect();
+			let label = display_label(expr);
+			let resolved = OnceLock::new();
 			let expr = e.clone();
 			CompiledExpr::new(move |ctx| {
-				let function = ctx.routines.get_function(expr.func.0.text());
-				if let Some(function) = &function {
+				let function = match resolved.get() {
+					Some(function) => Some(function),
+					None => ctx
+						.routines
+						.get_function(expr.func.0.text())
+						.map(|function| resolved.get_or_init(|| function)),
+				};
+				if let Some(function) = function {
 					function.arity().check(&expr.func.0, compiled_args.len())?;
 				}
-				let type_positions = function
-					.map(|function| function.type_argument_positions().to_vec())
-					.unwrap_or_default();
+				let type_positions =
+					function.map_or(&[][..], |function| function.type_argument_positions());
 				let mut arg_columns = Vec::with_capacity(compiled_args.len());
 				for (index, compiled_arg) in compiled_args.iter().enumerate() {
 					match &type_named_args[index] {
 						Some((ty, fragment)) if type_positions.contains(&index) => {
-							arg_columns.push(type_column(ctx, ty, fragment));
+							arg_columns.push(type_column(
+								ctx.take.unwrap_or(ctx.row_count),
+								ty,
+								fragment,
+							));
 						}
 						_ => arg_columns.push(compiled_arg.execute(ctx)?),
 					}
 				}
-				call_builtin(ctx, &expr, &arg_columns)
+				call_builtin(ctx, &expr, function, label.text(), &arg_columns)
 			})
 		}
 
@@ -851,8 +805,103 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
 }
 
-fn type_column(ctx: &EvalContext, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
-	let row_count = ctx.take.unwrap_or(ctx.row_count);
+fn broadcast(
+	scalar: &OnceLock<(FieldRef, ArrayRef)>,
+	row_count: usize,
+	compute: impl FnOnce(usize) -> Result<(FieldRef, ArrayRef)>,
+) -> Result<(FieldRef, ArrayRef)> {
+	if row_count == 0 {
+		return compute(0);
+	}
+	let (field, array) = match scalar.get() {
+		Some(scalar) => scalar,
+		None => {
+			let computed = compute(1)?;
+			scalar.get_or_init(|| computed)
+		}
+	};
+	let repeated = take(array.as_ref(), &UInt32Array::from_value(0, row_count), None).map_err(|err| {
+		CoreError::FrameError {
+			message: err.to_string(),
+		}
+	})?;
+	Ok((field.clone(), repeated))
+}
+
+fn variable_column(ctx: &EvalContext, expr: &VariableExpression, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
+	let variable_name = expr.name();
+
+	if variable_name == "env" {
+		return Err(TypeError::Runtime {
+			kind: RuntimeErrorKind::VariableIsDataframe {
+				name: variable_name.to_string(),
+			},
+			message: format!(
+				"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+				variable_name
+			),
+		}
+		.into());
+	}
+
+	match ctx.symbols.get(variable_name) {
+		Some(Variable::Columns {
+			batch,
+		}) if is_scalar(batch) => {
+			let value = match scalar_value(batch)? {
+				Value::Any(inner)
+					if matches!(
+						inner.as_ref(),
+						Value::List(items)
+							if items.iter().all(|v| matches!(v, Value::Record(_)))
+					) =>
+				{
+					*inner
+				}
+				other => other,
+			};
+			let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
+			for _ in 0..row_count {
+				data.push_value(value.clone());
+			}
+			Ok(data.finish(variable_name))
+		}
+		Some(Variable::Columns {
+			..
+		})
+		| Some(Variable::ForIterator {
+			..
+		})
+		| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+			kind: RuntimeErrorKind::VariableIsDataframe {
+				name: variable_name.to_string(),
+			},
+			message: format!(
+				"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+				variable_name
+			),
+		}
+		.into()),
+		None => {
+			if let Some(value) = ctx.params.get_named(variable_name) {
+				let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
+				for _ in 0..row_count {
+					data.push_value(value.clone());
+				}
+				return Ok(data.finish(variable_name));
+			}
+			Err(TypeError::Runtime {
+				kind: RuntimeErrorKind::VariableNotFound {
+					fragment: expr.fragment.clone(),
+				},
+				message: format!("Variable '{}' is not defined", variable_name),
+			}
+			.into())
+		}
+	}
+}
+
+fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
 	let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
 	factory::any(fragment.text(), values)
 }
