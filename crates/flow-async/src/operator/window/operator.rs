@@ -76,6 +76,7 @@ pub struct WindowOperator {
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 	sealed_drops: SealedDrops,
+	refused_rows: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
 	meta: WindowMeta,
 }
@@ -98,6 +99,7 @@ impl WindowOperator {
 			lateness: config.lateness,
 			immutable: config.immutable,
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
+			refused_rows: SealedDrops::new(config.operator, "session rows refused by assignment"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
 		})
@@ -137,6 +139,10 @@ impl WindowOperator {
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
 		self.sealed_drops.note(dropped);
+	}
+
+	pub(crate) fn note_refused_rows(&self, refused: u64) {
+		self.refused_rows.note(refused);
 	}
 
 	pub fn size_duration(&self) -> Option<Duration> {

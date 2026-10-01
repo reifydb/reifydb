@@ -26,7 +26,7 @@ impl SessionTracker {
 		}
 	}
 
-	fn is_unopened(&self) -> bool {
+	pub(crate) fn is_unopened(&self) -> bool {
 		!self.opened
 	}
 

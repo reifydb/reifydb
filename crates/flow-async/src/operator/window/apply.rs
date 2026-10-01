@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, hash_map::Entry};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
@@ -13,17 +13,20 @@ use reifydb_core::{
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 use tracing::{Span, instrument};
 
-use super::operator::{WindowOperator, required_row_numbers};
+use super::{
+	bind::SlidingBound,
+	operator::{WindowOperator, required_row_numbers},
+};
 use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{
-				EarliestTimes, EngineBuckets, SessionBounds, Stamp, WindowGroups,
+				EarliestTimes, EngineBuckets, GatedMeta, SessionBounds, Stamp, WindowGroups,
 				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
 			},
 		},
@@ -32,7 +35,7 @@ use crate::{
 			reaper::{drain, enqueue},
 			seal::{coord::Coord, gate::rearm_seal, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
 		},
-		state_access::get,
+		state_access::get_classified,
 	},
 	window::{
 		coord::{EventCoord, RowSpan},
@@ -128,17 +131,13 @@ fn route_count_tumbling(
 				let groups = operator.core.compute_groups(post)?;
 				let post_rows = required_row_numbers(post)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				let views = operator.core.slot_views(post, &slot_cols)?;
 				let times = operator.row_times(post, post.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let ordinal = operator.get_and_increment_global_count(host, *hash)?;
 					let window_id = rows.window_id(ordinal);
 					operator.store_row_index(host, *hash, post_rows[row_idx], window_id)?;
-					let contribution = operator.core.build_contribution(
-						post,
-						&slot_cols,
-						row_idx,
-						times[row_idx],
-					)?;
+					let contribution = views.contribution(row_idx, times[row_idx]);
 					let coord = slot_coord(true, times[row_idx], post_rows[row_idx].0);
 					push_count_event(
 						buckets,
@@ -162,14 +161,10 @@ fn route_count_tumbling(
 				let groups = operator.core.compute_groups(pre)?;
 				let pre_rows = required_row_numbers(pre)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let views = operator.core.slot_views(pre, &slot_cols)?;
 				let times = operator.row_times(pre, pre.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let contribution = operator.core.build_contribution(
-						pre,
-						&slot_cols,
-						row_idx,
-						times[row_idx],
-					)?;
+					let contribution = views.contribution(row_idx, times[row_idx]);
 					let coord = slot_coord(true, times[row_idx], pre_rows[row_idx].0);
 					for window_id in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
 						push_count_event(
@@ -200,6 +195,8 @@ fn route_count_tumbling(
 				let post_rows = required_row_numbers(post)?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
+				let post_views = operator.core.slot_views(post, &post_cols)?;
 				let times = operator.row_times(post, post.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let (post_hash, post_gvals) = &post_groups[row_idx];
@@ -215,12 +212,7 @@ fn route_count_tumbling(
 							post_rows[row_idx],
 							window_id,
 						)?;
-						let contribution = operator.core.build_contribution(
-							post,
-							&post_cols,
-							row_idx,
-							times[row_idx],
-						)?;
+						let contribution = post_views.contribution(row_idx, times[row_idx]);
 						let coord = slot_coord(true, times[row_idx], post_rows[row_idx].0);
 						push_count_event(
 							buckets,
@@ -236,18 +228,8 @@ fn route_count_tumbling(
 							times[row_idx],
 						);
 					} else {
-						let pre_contrib = operator.core.build_contribution(
-							pre,
-							&pre_cols,
-							row_idx,
-							times[row_idx],
-						)?;
-						let post_contrib = operator.core.build_contribution(
-							post,
-							&post_cols,
-							row_idx,
-							times[row_idx],
-						)?;
+						let pre_contrib = pre_views.contribution(row_idx, times[row_idx]);
+						let post_contrib = post_views.contribution(row_idx, times[row_idx]);
 						let coord = slot_coord(true, times[row_idx], pre_rows[row_idx].0);
 						let targets = if post_hash != hash {
 							operator.drop_row_index(host, *hash, row_number)?;
@@ -439,15 +421,17 @@ fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTime>)]) -> WindowGroups {
 fn sliding_insert_anchors(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
+	bound: &SlidingBound,
 	hash: Hash128,
 ) -> Result<Vec<u64>> {
 	let coord = operator.get_and_increment_global_count(host, hash)?.value();
-	Ok(operator.sliding_window_anchors(coord))
+	Ok(bound.anchors(coord))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn route_time_sliding(
 	operator: &WindowOperator,
+	bound: &SlidingBound,
 	columns: &RecordBatch,
 	is_add: bool,
 	buckets: &mut EngineBuckets,
@@ -460,11 +444,12 @@ fn route_time_sliding(
 	let row_numbers = required_row_numbers(columns)?;
 	let timestamps = operator.row_times(columns, columns.num_rows())?;
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
+	let views = operator.core.slot_views(columns, &slot_cols)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let event_ts = timestamps[row_idx];
-		let contribution = operator.core.build_contribution(columns, &slot_cols, row_idx, event_ts)?;
+		let contribution = views.contribution(row_idx, event_ts);
 		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
-		for wid in operator.sliding_window_anchors(event_ts.to_order()) {
+		for wid in bound.anchors(event_ts.to_order()) {
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution.clone())
 			} else {
@@ -478,7 +463,7 @@ fn route_time_sliding(
 				window_min_ts,
 				*hash,
 				gvals,
-				operator.sliding_window_span(wid),
+				bound.span(wid),
 				coord,
 				event,
 				event_ts,
@@ -492,6 +477,7 @@ fn route_time_sliding(
 fn route_count_sliding(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
+	bound: &SlidingBound,
 	change: &Change,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
@@ -509,18 +495,17 @@ fn route_count_sliding(
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				let views = operator.core.slot_views(post, &slot_cols)?;
 				for row_idx in 0..post.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
-					let window_ids = sliding_insert_anchors(operator, host, *hash)?;
-					let contribution = operator.core.build_contribution(
-						post,
-						&slot_cols,
+					let window_ids = sliding_insert_anchors(operator, host, bound, *hash)?;
+					let contribution = views.contribution(
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
-					)?;
+					);
 					let coord = slot_coord(true, DateTime::default(), post_rows[row_idx].0);
+					operator.store_row_indexes(host, *hash, post_rows[row_idx], &window_ids)?;
 					for wid in &window_ids {
-						operator.store_row_index(host, *hash, post_rows[row_idx], *wid)?;
 						push_count_event(
 							buckets,
 							group_values,
@@ -529,7 +514,7 @@ fn route_count_sliding(
 							window_min_ts,
 							*hash,
 							gvals,
-							operator.sliding_window_span(*wid),
+							bound.span(*wid),
 							coord,
 							AccumulatorEvent::Add(contribution.clone()),
 							timestamps[row_idx],
@@ -545,14 +530,13 @@ fn route_count_sliding(
 				let pre_rows = required_row_numbers(pre)?;
 				let timestamps = operator.row_times(pre, pre.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let views = operator.core.slot_views(pre, &slot_cols)?;
 				for row_idx in 0..pre.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
-					let contribution = operator.core.build_contribution(
-						pre,
-						&slot_cols,
+					let contribution = views.contribution(
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
-					)?;
+					);
 					let coord = slot_coord(true, DateTime::default(), pre_rows[row_idx].0);
 					for wid in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
 						push_count_event(
@@ -563,7 +547,7 @@ fn route_count_sliding(
 							window_min_ts,
 							*hash,
 							gvals,
-							operator.sliding_window_span(wid),
+							bound.span(wid),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							timestamps[row_idx],
@@ -585,27 +569,28 @@ fn route_count_sliding(
 				let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
+				let post_views = operator.core.slot_views(post, &post_cols)?;
 				for row_idx in 0..pre.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre_rows[row_idx];
 					let existing = operator.lookup_row_index(host, *hash, row_number)?;
 					if existing.is_empty() {
-						let window_ids = sliding_insert_anchors(operator, host, *post_hash)?;
-						let contribution = operator.core.build_contribution(
-							post,
-							&post_cols,
+						let window_ids =
+							sliding_insert_anchors(operator, host, bound, *post_hash)?;
+						let contribution = post_views.contribution(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
-						)?;
+						);
 						let coord = slot_coord(true, DateTime::default(), row_number.0);
+						operator.store_row_indexes(
+							host,
+							*post_hash,
+							post_rows[row_idx],
+							&window_ids,
+						)?;
 						for wid in &window_ids {
-							operator.store_row_index(
-								host,
-								*post_hash,
-								post_rows[row_idx],
-								*wid,
-							)?;
 							push_count_event(
 								buckets,
 								group_values,
@@ -614,35 +599,31 @@ fn route_count_sliding(
 								window_min_ts,
 								*post_hash,
 								post_gvals,
-								operator.sliding_window_span(*wid),
+								bound.span(*wid),
 								coord,
 								AccumulatorEvent::Add(contribution.clone()),
 								timestamps[row_idx],
 							);
 						}
 					} else {
-						let pre_contrib = operator.core.build_contribution(
-							pre,
-							&pre_cols,
-							row_idx,
-							pre_timestamps[row_idx],
-						)?;
-						let post_contrib = operator.core.build_contribution(
-							post,
-							&post_cols,
+						let pre_contrib =
+							pre_views.contribution(row_idx, pre_timestamps[row_idx]);
+						let post_contrib = post_views.contribution(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
-						)?;
+						);
 						let coord = slot_coord(true, DateTime::default(), row_number.0);
 						let targets = if post_hash != hash {
 							operator.drop_row_index(host, *hash, row_number)?;
-							let window_ids =
-								sliding_insert_anchors(operator, host, *post_hash)?;
-							for wid in &window_ids {
-								operator.store_row_index(
-									host, *post_hash, row_number, *wid,
-								)?;
-							}
+							let window_ids = sliding_insert_anchors(
+								operator, host, bound, *post_hash,
+							)?;
+							operator.store_row_indexes(
+								host,
+								*post_hash,
+								row_number,
+								&window_ids,
+							)?;
 							window_ids
 						} else {
 							existing.clone()
@@ -656,7 +637,7 @@ fn route_count_sliding(
 								window_min_ts,
 								*hash,
 								gvals,
-								operator.sliding_window_span(wid),
+								bound.span(wid),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								pre_timestamps[row_idx],
@@ -671,7 +652,7 @@ fn route_count_sliding(
 								window_min_ts,
 								*post_hash,
 								post_gvals,
-								operator.sliding_window_span(wid),
+								bound.span(wid),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								timestamps[row_idx],
@@ -694,6 +675,7 @@ pub fn apply_sliding_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let window_size = operator.size_duration().unwrap_or_default();
+	let bound = operator.sliding_bound();
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
@@ -705,6 +687,7 @@ pub fn apply_sliding_engine(
 		route_count_sliding(
 			operator,
 			host,
+			&bound,
 			&change,
 			&mut buckets,
 			&mut group_values,
@@ -720,6 +703,7 @@ pub fn apply_sliding_engine(
 					..
 				} => route_time_sliding(
 					operator,
+					&bound,
 					post,
 					true,
 					&mut buckets,
@@ -733,6 +717,7 @@ pub fn apply_sliding_engine(
 					..
 				} => route_time_sliding(
 					operator,
+					&bound,
 					pre,
 					false,
 					&mut buckets,
@@ -748,6 +733,7 @@ pub fn apply_sliding_engine(
 				} => {
 					route_time_sliding(
 						operator,
+						&bound,
 						pre,
 						false,
 						&mut buckets,
@@ -758,6 +744,7 @@ pub fn apply_sliding_engine(
 					)?;
 					route_time_sliding(
 						operator,
+						&bound,
 						post,
 						true,
 						&mut buckets,
@@ -817,22 +804,80 @@ pub fn apply_sliding_engine(
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
+type SealedWindows = HashSet<(Hash128, WindowSpan<DateTime>)>;
+
+struct BatchTracker {
+	loaded: SessionTracker,
+	current: SessionTracker,
+	sessions: Vec<(u64, SessionTracker)>,
+}
+
+impl BatchTracker {
+	fn admitted(&self, hash: Hash128, sealed: &SealedWindows) -> Option<SessionTracker> {
+		self.sessions
+			.iter()
+			.rev()
+			.find(|(session_id, _)| !sealed.contains(&(hash, ordinal_window_span(*session_id))))
+			.map(|(_, tracker)| *tracker)
+	}
+}
+
+struct IndexEvent {
+	hash: Hash128,
+	row_number: RowNumber,
+	session_id: u64,
+	added: bool,
+}
+
+fn withdraw_sealed_admissions(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	events: &[IndexEvent],
+	sealed: &SealedWindows,
+) -> Result<()> {
+	let mut first_touch: HashMap<(Hash128, RowNumber, u64), bool> = HashMap::new();
+	for event in events {
+		if sealed.contains(&(event.hash, ordinal_window_span(event.session_id))) {
+			first_touch.entry((event.hash, event.row_number, event.session_id)).or_insert(event.added);
+		}
+	}
+	for ((hash, row_number, session_id), added) in first_touch {
+		if added {
+			operator.withdraw_row_index(host, hash, row_number, session_id)?;
+			operator.drop_session_member(host, hash, session_id, row_number)?;
+		}
+	}
+	Ok(())
+}
+
 fn session_assign(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	hash: Hash128,
 	event_ts: DateTime,
 	kind: &SessionKind,
-	trackers: &mut HashMap<Hash128, SessionTracker>,
+	trackers: &mut HashMap<Hash128, BatchTracker>,
 	bounds: &mut SessionBounds,
 ) -> Result<Option<u64>> {
-	let mut tracker = match trackers.get(&hash) {
-		Some(&tracker) => tracker,
-		None => operator.load_session_tracker(host, hash)?,
+	let batch = match trackers.entry(hash) {
+		Entry::Occupied(entry) => entry.into_mut(),
+		Entry::Vacant(entry) => {
+			let loaded = operator.load_session_tracker(host, hash)?;
+			entry.insert(BatchTracker {
+				loaded,
+				current: loaded,
+				sessions: Vec::new(),
+			})
+		}
 	};
+	let mut tracker = batch.current;
 	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
 	if let Some(session_id) = assignment.session_id() {
-		trackers.insert(hash, tracker);
+		batch.current = tracker;
+		match batch.sessions.last_mut() {
+			Some((last, state)) if *last == session_id => *state = tracker,
+			_ => batch.sessions.push((session_id, tracker)),
+		}
 		bounds.insert((hash, session_id), (tracker.start, tracker.last));
 	}
 	Ok(assignment.session_id())
@@ -852,8 +897,10 @@ pub fn apply_session_engine(
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 	let mut window_min_ts: EarliestTimes = HashMap::new();
-	let mut trackers: HashMap<Hash128, SessionTracker> = HashMap::new();
+	let mut trackers: HashMap<Hash128, BatchTracker> = HashMap::new();
 	let mut bounds: SessionBounds = HashMap::new();
+	let mut index_events: Vec<IndexEvent> = Vec::new();
+	let mut refused = 0u64;
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -865,10 +912,12 @@ pub fn apply_session_engine(
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				let views = operator.core.slot_views(post, &slot_cols)?;
 				for row_idx in 0..post.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					if let Some(session_id) = session_assign(
+					let row_number = post_rows[row_idx];
+					let Some(session_id) = session_assign(
 						operator,
 						host,
 						*hash,
@@ -876,35 +925,34 @@ pub fn apply_session_engine(
 						&kind,
 						&mut trackers,
 						&mut bounds,
-					)? {
-						operator.store_row_index(host, *hash, post_rows[row_idx], session_id)?;
-						operator.store_session_member(
-							host,
-							*hash,
-							session_id,
-							post_rows[row_idx],
-						)?;
-						let contribution = operator.core.build_contribution(
-							post,
-							&slot_cols,
-							row_idx,
-							timestamps[row_idx],
-						)?;
-						let coord = slot_coord(false, event_ts, post_rows[row_idx].0);
-						push_count_event(
-							&mut buckets,
-							&mut group_values,
-							&mut arrival,
-							&mut window_max_ts,
-							&mut window_min_ts,
-							*hash,
-							gvals,
-							ordinal_window_span(session_id),
-							coord,
-							AccumulatorEvent::Add(contribution),
-							event_ts,
-						);
-					}
+					)?
+					else {
+						refused += 1;
+						continue;
+					};
+					operator.store_row_index(host, *hash, row_number, session_id)?;
+					operator.store_session_member(host, *hash, session_id, row_number)?;
+					index_events.push(IndexEvent {
+						hash: *hash,
+						row_number,
+						session_id,
+						added: true,
+					});
+					let contribution = views.contribution(row_idx, timestamps[row_idx]);
+					let coord = slot_coord(false, event_ts, row_number.0);
+					push_count_event(
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+						&mut window_min_ts,
+						*hash,
+						gvals,
+						ordinal_window_span(session_id),
+						coord,
+						AccumulatorEvent::Add(contribution),
+						event_ts,
+					);
 				}
 			}
 			Diff::Remove {
@@ -915,15 +963,11 @@ pub fn apply_session_engine(
 				let pre_rows = required_row_numbers(pre)?;
 				let timestamps = operator.row_times(pre, pre.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let views = operator.core.slot_views(pre, &slot_cols)?;
 				for row_idx in 0..pre.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					let contribution = operator.core.build_contribution(
-						pre,
-						&slot_cols,
-						row_idx,
-						timestamps[row_idx],
-					)?;
+					let contribution = views.contribution(row_idx, timestamps[row_idx]);
 					let coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
 					for session_id in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
 						push_count_event(
@@ -939,6 +983,12 @@ pub fn apply_session_engine(
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
 						);
+						index_events.push(IndexEvent {
+							hash: *hash,
+							row_number: pre_rows[row_idx],
+							session_id,
+							added: false,
+						});
 						operator.drop_session_member(
 							host,
 							*hash,
@@ -962,6 +1012,8 @@ pub fn apply_session_engine(
 				let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
+				let post_views = operator.core.slot_views(post, &post_cols)?;
 				for row_idx in 0..pre.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
 					let (post_hash, post_gvals) = &post_groups[row_idx];
@@ -989,12 +1041,14 @@ pub fn apply_session_engine(
 								session_id,
 								post_rows[row_idx],
 							)?;
-							let contribution = operator.core.build_contribution(
-								post,
-								&post_cols,
-								row_idx,
-								timestamps[row_idx],
-							)?;
+							index_events.push(IndexEvent {
+								hash: *post_hash,
+								row_number: post_rows[row_idx],
+								session_id,
+								added: true,
+							});
+							let contribution =
+								post_views.contribution(row_idx, timestamps[row_idx]);
 							let coord = slot_coord(false, event_ts, post_rows[row_idx].0);
 							push_count_event(
 								&mut buckets,
@@ -1009,20 +1063,14 @@ pub fn apply_session_engine(
 								AccumulatorEvent::Add(contribution),
 								event_ts,
 							);
+						} else {
+							refused += 1;
 						}
 					} else {
-						let pre_contrib = operator.core.build_contribution(
-							pre,
-							&pre_cols,
-							row_idx,
-							pre_timestamps[row_idx],
-						)?;
-						let post_contrib = operator.core.build_contribution(
-							post,
-							&post_cols,
-							row_idx,
-							timestamps[row_idx],
-						)?;
+						let pre_contrib =
+							pre_views.contribution(row_idx, pre_timestamps[row_idx]);
+						let post_contrib =
+							post_views.contribution(row_idx, timestamps[row_idx]);
 						let pre_coord =
 							slot_coord(false, pre_timestamps[row_idx], pre_rows[row_idx].0);
 						let post_coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
@@ -1085,6 +1133,7 @@ pub fn apply_session_engine(
 										pre_rows[row_idx],
 									)?;
 								}
+								refused += 1;
 								Vec::new()
 							}
 							None => existing.clone(),
@@ -1103,6 +1152,20 @@ pub fn apply_session_engine(
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								pre_timestamps[row_idx],
 							);
+							index_events.push(IndexEvent {
+								hash: *hash,
+								row_number: pre_rows[row_idx],
+								session_id,
+								added: false,
+							});
+						}
+						if let Some(session_id) = assigned {
+							index_events.push(IndexEvent {
+								hash: *post_hash,
+								row_number: pre_rows[row_idx],
+								session_id,
+								added: true,
+							});
 						}
 						for session_id in targets {
 							push_count_event(
@@ -1127,15 +1190,28 @@ pub fn apply_session_engine(
 
 	let rule = operator.session_rule();
 	let gap = operator.session_gap();
-	for (hash, tracker) in &trackers {
-		let before = operator
-			.stored_session_tracker(host, *hash)?
-			.map(|stored| stored.last.saturating_add(gap).to_order());
-		operator.save_session_tracker(host, *hash, tracker)?;
+	operator.note_refused_rows(refused);
+
+	let (gated, sealed) = drop_sealed_events(
+		operator,
+		host,
+		&mut buckets,
+		&mut arrival,
+		&window_max_ts,
+		rule,
+		ExpiryAnchor::LastEvent,
+	)?;
+	if !sealed.is_empty() {
+		withdraw_sealed_admissions(operator, host, &index_events, &sealed)?;
+	}
+	for (hash, batch) in &trackers {
+		let Some(tracker) = batch.admitted(*hash, &sealed) else {
+			continue;
+		};
+		let before = (!batch.loaded.is_unopened()).then(|| batch.loaded.last.saturating_add(gap).to_order());
+		operator.save_session_tracker(host, *hash, &tracker)?;
 		rearm_seal(host, rule, &tracker_key(*hash), before, Some(tracker.last.saturating_add(gap).to_order()))?;
 	}
-
-	drop_sealed_events(operator, host, &mut buckets, &mut arrival, &window_max_ts, rule, ExpiryAnchor::LastEvent)?;
 
 	let groups = intern_batch(&arrival);
 
@@ -1156,7 +1232,7 @@ pub fn apply_session_engine(
 		engine_immutable,
 		ExpiryAnchor::LastEvent,
 		true,
-		Stamp::Session(gap, &bounds),
+		Stamp::Session(gap, &bounds, &gated),
 	)?;
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -1171,21 +1247,29 @@ fn drop_sealed_events(
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	rule: SealRule,
 	anchor: ExpiryAnchor,
-) -> Result<()> {
+) -> Result<(GatedMeta, SealedWindows)> {
+	let mut gated = GatedMeta::new();
 	if operator.is_count_based() {
-		return Ok(());
+		return Ok((gated, SealedWindows::new()));
 	}
 	let gate = operator.seal_gate(host, rule)?;
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
 		for (key, events) in buckets.iter() {
-			let group = GroupId::window(key.0, key.1.start.to_order());
-			let prior_last = get::<_, EngineMeta>(host, &EngineMetaKey(group))?.map(|m| m.last_event_time);
-			let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
-			let last = prior_last.max(batch_last);
 			let window_start = key.1.start.to_order();
-			let Some(horizon) = anchor.of(window_start, last) else {
+			let horizon = match anchor {
+				ExpiryAnchor::LastEvent => {
+					let group = GroupId::window(key.0, window_start);
+					let prior = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
+					let prior_last = prior.as_ref().map(|meta| meta.last_event_time);
+					let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
+					gated.insert(*key, prior);
+					anchor.of(window_start, prior_last.max(batch_last))
+				}
+				ExpiryAnchor::WindowStart | ExpiryAnchor::Unindexed => anchor.of(window_start, None),
+			};
+			let Some(horizon) = horizon else {
 				continue;
 			};
 			if !gate.admits(horizon) {
@@ -1196,15 +1280,15 @@ fn drop_sealed_events(
 	}
 
 	if sealed.is_empty() {
-		return Ok(());
+		return Ok((gated, SealedWindows::new()));
 	}
 	for key in &sealed {
 		buckets.remove(key);
 	}
-	let sealed: HashSet<(Hash128, WindowSpan<DateTime>)> = sealed.into_iter().collect();
+	let sealed: SealedWindows = sealed.into_iter().collect();
 	arrival.retain(|key| !sealed.contains(key));
 	operator.note_sealed_drops(dropped);
-	Ok(())
+	Ok((gated, sealed))
 }
 
 fn engine_arms_seal(operator: &WindowOperator) -> bool {

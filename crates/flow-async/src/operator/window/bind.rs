@@ -35,6 +35,35 @@ use crate::{
 	},
 };
 
+pub(super) struct SlidingBound {
+	over_time: Option<SlidingOverTime>,
+	over_rows: Option<SlidingOverRows>,
+	count_based: bool,
+}
+
+impl SlidingBound {
+	pub(super) fn anchors(&self, timestamp_or_row_index: u64) -> Vec<u64> {
+		if let Some(kind) = &self.over_time {
+			let instant = <DateTime as Coord>::from_order(timestamp_or_row_index);
+			return kind.anchors(EventCoord::of(&instant));
+		}
+		if let Some(kind) = &self.over_rows {
+			return kind.anchors(OrdinalCoord::from_arrival_counter(timestamp_or_row_index));
+		}
+		vec![0]
+	}
+
+	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
+		if self.count_based {
+			return ordinal_window_span(anchor);
+		}
+		self.over_time.as_ref().map_or_else(
+			|| TumblingOverRows::holding(RowSpan::of(1)).span(OrdinalCoord::from_arrival_counter(anchor)),
+			|kind| kind.span(anchor),
+		)
+	}
+}
+
 impl WindowOperator {
 	pub(super) fn session_gap(&self) -> Duration {
 		match &self.kind {
@@ -109,25 +138,12 @@ impl WindowOperator {
 		}
 	}
 
-	pub fn sliding_window_anchors(&self, timestamp_or_row_index: u64) -> Vec<u64> {
-		if let Some(kind) = self.sliding_over_time() {
-			let instant = <DateTime as Coord>::from_order(timestamp_or_row_index);
-			return kind.anchors(EventCoord::of(&instant));
+	pub(super) fn sliding_bound(&self) -> SlidingBound {
+		SlidingBound {
+			over_time: self.sliding_over_time(),
+			over_rows: self.sliding_over_rows(),
+			count_based: self.is_count_based(),
 		}
-		if let Some(kind) = self.sliding_over_rows() {
-			return kind.anchors(OrdinalCoord::from_arrival_counter(timestamp_or_row_index));
-		}
-		vec![0]
-	}
-
-	pub(super) fn sliding_window_span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		if self.is_count_based() {
-			return ordinal_window_span(anchor);
-		}
-		self.sliding_over_time().map_or_else(
-			|| TumblingOverRows::holding(RowSpan::of(1)).span(OrdinalCoord::from_arrival_counter(anchor)),
-			|kind| kind.span(anchor),
-		)
 	}
 
 	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {
@@ -143,6 +159,28 @@ impl WindowOperator {
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).record_membership(host, group, row_number, window_id)
+	}
+
+	pub(super) fn store_row_indexes(
+		&mut self,
+		host: &mut dyn HostContext,
+		group_hash: Hash128,
+		row_number: RowNumber,
+		window_ids: &[u64],
+	) -> Result<()> {
+		let group = self.partition_group(group_hash);
+		Mint::new(self.meta_slot()).record_memberships(host, group, row_number, window_ids)
+	}
+
+	pub(super) fn withdraw_row_index(
+		&mut self,
+		host: &mut dyn HostContext,
+		group_hash: Hash128,
+		row_number: RowNumber,
+		window_id: u64,
+	) -> Result<()> {
+		let group = self.partition_group(group_hash);
+		Mint::new(self.meta_slot()).withdraw_membership(host, group, row_number, window_id)
 	}
 
 	pub(super) fn lookup_row_index(

@@ -270,6 +270,49 @@ impl WindowMeta {
 		put(store, &key, state)
 	}
 
+	pub fn store_row_indexes(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+		window_ids: &[u64],
+	) -> Result<()> {
+		if window_ids.is_empty() {
+			return Ok(());
+		}
+		let key = RowIndexKey(group, row_number);
+		let mut state: RowIndexState = get_or_default(store, &key)?;
+		for window_id in window_ids {
+			if !state.window_ids.contains(window_id) {
+				state.window_ids.push(*window_id);
+			}
+		}
+		put(store, &key, state)
+	}
+
+	pub fn withdraw_row_index(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+		window_id: u64,
+	) -> Result<()> {
+		let key = RowIndexKey(group, row_number);
+		let Some(mut state) = get_classified::<_, RowIndexState>(store, &key)? else {
+			return Ok(());
+		};
+		let held = state.window_ids.len();
+		state.window_ids.retain(|id| *id != window_id);
+		if state.window_ids.len() == held {
+			return Ok(());
+		}
+		if state.window_ids.is_empty() {
+			remove(store, &key)
+		} else {
+			put(store, &key, state)
+		}
+	}
+
 	pub fn drop_row_index(
 		&mut self,
 		store: &mut dyn StateStore,

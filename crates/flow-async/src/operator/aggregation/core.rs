@@ -41,6 +41,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
+	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
@@ -105,6 +106,37 @@ fn digest_input_error(function: &str, error: DigestError) -> Error {
 	Error(Box::new(flow_digest_input_rejected(function, error.to_string())))
 }
 
+fn bare_slot(output: &Expression, slot_count: usize) -> Option<usize> {
+	match output {
+		Expression::Alias(alias) => bare_slot(&alias.expression, slot_count),
+		Expression::Column(column) => {
+			let name = column.0.name.text();
+			(0..slot_count).find(|slot| synthetic_aggregate_column_name(*slot) == name)
+		}
+		_ => None,
+	}
+}
+
+enum SlotView<'a> {
+	Absent,
+	Column(ColumnView<'a>),
+	EventTime,
+}
+
+pub struct SlotViews<'a>(Vec<SlotView<'a>>);
+
+impl SlotViews<'_> {
+	pub fn contribution(&self, row_idx: usize, event_time: DateTime) -> Vec<Option<Value>> {
+		self.0.iter()
+			.map(|view| match view {
+				SlotView::Absent => None,
+				SlotView::Column(column) => Some(column.get_value(row_idx)),
+				SlotView::EventTime => Some(Value::DateTime(event_time)),
+			})
+			.collect()
+	}
+}
+
 #[inline]
 fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 	let fields: Vec<RowShapeField> = names
@@ -129,6 +161,8 @@ pub struct Aggregation {
 	pub compiled_slot_args: Vec<CompiledExpr>,
 
 	pub compiled_outputs: Vec<CompiledExpr>,
+
+	bare_outputs: Option<Vec<usize>>,
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
@@ -179,7 +213,9 @@ impl Aggregation {
 				break;
 			}
 		}
-		let (slot_kinds, slot_inputs, compiled_slot_args, compiled_outputs) = if all_representable {
+		let slot_count = slots.len();
+		let (slot_kinds, slot_inputs, compiled_slot_args, compiled_outputs, bare_outputs) = if all_representable
+		{
 			let mut kinds = Vec::with_capacity(slots.len());
 			let mut inputs = Vec::with_capacity(slots.len());
 			let mut compiled_args = Vec::new();
@@ -200,9 +236,10 @@ impl Aggregation {
 				.iter()
 				.map(|e| compile_expression(&compile_ctx, e))
 				.collect::<Result<Vec<_>>>()?;
-			(Some(kinds), inputs, compiled_args, outputs)
+			let bare = rewritten_outputs.iter().map(|output| bare_slot(output, slot_count)).collect();
+			(Some(kinds), inputs, compiled_args, outputs, bare)
 		} else {
-			(None, Vec::new(), Vec::new(), Vec::new())
+			(None, Vec::new(), Vec::new(), Vec::new(), None)
 		};
 		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
 		let output_schema = Arc::new(Schema::new(
@@ -222,6 +259,7 @@ impl Aggregation {
 			slot_inputs,
 			compiled_slot_args,
 			compiled_outputs,
+			bare_outputs,
 			routines,
 			runtime_context,
 			tumbling_engine: None,
@@ -320,34 +358,53 @@ impl Aggregation {
 		Ok(())
 	}
 
-	pub fn build_contribution(
+	pub fn slot_views<'a>(
 		&self,
-		columns: &RecordBatch,
-		slot_cols: &[(FieldRef, ArrayRef)],
-		row_idx: usize,
-		event_time: DateTime,
-	) -> Result<Vec<Option<Value>>> {
-		self.slot_inputs
-			.iter()
-			.map(|input| -> Result<Option<Value>> {
-				Ok(match input {
-					SlotInput::Star => None,
-					SlotInput::Column(name) => {
-						column_view(columns, name)?.map(|column| column.get_value(row_idx))
-					}
-					SlotInput::Expr(idx) => {
-						Some(ColumnView::try_from(&slot_cols[*idx])?.get_value(row_idx))
-					}
-					SlotInput::EventTime => Some(Value::DateTime(event_time)),
+		columns: &'a RecordBatch,
+		slot_cols: &'a [(FieldRef, ArrayRef)],
+	) -> Result<SlotViews<'a>> {
+		if columns.num_rows() == 0 {
+			return Ok(SlotViews(Vec::new()));
+		}
+		let views =
+			self.slot_inputs
+				.iter()
+				.map(|input| -> Result<SlotView<'a>> {
+					Ok(match input {
+						SlotInput::Star => SlotView::Absent,
+						SlotInput::Column(name) => column_view(columns, name)?
+							.map_or(SlotView::Absent, SlotView::Column),
+						SlotInput::Expr(idx) => {
+							SlotView::Column(ColumnView::try_from(&slot_cols[*idx])?)
+						}
+						SlotInput::EventTime => SlotView::EventTime,
+					})
 				})
-			})
-			.collect()
+				.collect::<Result<Vec<_>>>()?;
+		Ok(SlotViews(views))
 	}
 
 	pub fn compute_outputs(&self, slot_values: &[Value]) -> Result<Vec<Value>> {
 		if self.compiled_outputs.is_empty() {
 			return Ok(slot_values.to_vec());
 		}
+		let Some(bare) = &self.bare_outputs else {
+			return self.evaluate_outputs(slot_values);
+		};
+		let out: Vec<Value> = bare.iter().map(|slot| slot_values[*slot].clone()).collect();
+		reifydb_assertions! {
+			let evaluated = self.evaluate_outputs(slot_values)?;
+			let same_types = out.iter().map(Value::get_type).eq(evaluated.iter().map(Value::get_type));
+			assert!(
+				out == evaluated && same_types,
+				"a bare aggregate output must publish exactly what evaluating it on the slot row returns; \
+				 skipping the evaluation published {out:?} where the expression yields {evaluated:?}"
+			);
+		}
+		Ok(out)
+	}
+
+	fn evaluate_outputs(&self, slot_values: &[Value]) -> Result<Vec<Value>> {
 		let names: Vec<String> = (0..slot_values.len()).map(synthetic_aggregate_column_name).collect();
 		let types: Vec<_> = slot_values.iter().map(Value::get_type).collect();
 		let layout = build_aggregation_shape(&names, &types);

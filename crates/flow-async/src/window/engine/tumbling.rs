@@ -23,7 +23,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 #[cfg(reifydb_assertions)]
-use crate::operator::state::expiry::expiry_all;
+use crate::operator::state::expiry::{expiry_all, expiry_earliest};
 use crate::{
 	operator::{
 		state::{
@@ -91,6 +91,7 @@ pub struct TumblingEngine<G, S, Accumulator> {
 	expire_batch: usize,
 	dropped_retractions: u64,
 	expiry: ExpiryIndex<TumblingExpiry>,
+	earliest: Option<Option<u64>>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
@@ -108,6 +109,7 @@ where
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
 			expiry: ExpiryIndex::default(),
+			earliest: None,
 			_pd: PhantomData,
 		}
 	}
@@ -133,6 +135,9 @@ where
 		let order = window_start.order_key().to_order();
 		if let Some(old) = prior {
 			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
+			if self.earliest.is_some_and(|known| known.is_none_or(|earliest| old <= earliest)) {
+				self.earliest = None;
+			}
 		}
 		if let Some(new) = new {
 			let entry = TumblingIndexEntry {
@@ -142,6 +147,8 @@ where
 				slot_key: slot_key.as_bytes().to_vec(),
 			};
 			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
+			self.earliest =
+				self.earliest.map(|known| Some(known.map_or(new, |earliest| earliest.min(new))));
 		}
 		Ok(())
 	}
@@ -341,6 +348,9 @@ where
 			});
 		}
 		self.expiry.settle(store)?;
+		if !out.is_empty() {
+			self.earliest = None;
+		}
 		reifydb_assertions! {
 			for entry in expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
 				assert!(
@@ -356,7 +366,20 @@ where
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.expiry.earliest(store)
+		if let Some(known) = self.earliest {
+			reifydb_assertions! {
+				let grounded = expiry_earliest::<TumblingExpiry>(store)?;
+				assert!(
+					known == grounded,
+					"the earliest expiry held in memory is {known:?} but the index holds {grounded:?}; \
+					 one above the index seals its earliest window late, one below seals early"
+				);
+			}
+			return Ok(known);
+		}
+		let earliest = self.expiry.earliest(store)?;
+		self.earliest = Some(earliest);
+		Ok(earliest)
 	}
 }
 

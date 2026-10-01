@@ -266,6 +266,26 @@ where
 		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
+		self.apply_evicting_with_prior(store, buckets, eviction, row_key, new_accumulator, &combine, &combine)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn apply_evicting_with_prior<K, NA, PB, CB, Output>(
+		&mut self,
+		store: &mut dyn StateStore,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
+		eviction: RollingEviction<S>,
+		row_key: K,
+		new_accumulator: NA,
+		prior: PB,
+		combine: CB,
+	) -> Result<Vec<RollingResult<G, Output>>>
+	where
+		K: Fn(&G) -> (GroupId, EncodedKey),
+		NA: Fn() -> Accumulator,
+		PB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -280,7 +300,7 @@ where
 			&row_key,
 			&eviction,
 			&new_accumulator,
-			&combine,
+			&prior,
 			indexed,
 		)?;
 		let results = self.combine_and_collect(store, group_slots, &meta_loaded, &combine, indexed)?;
@@ -325,7 +345,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn apply_events_into_buffers<K, NA, CB, Output>(
+	fn apply_events_into_buffers<K, NA, PB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
@@ -334,13 +354,13 @@ where
 		row_key: &K,
 		eviction: &RollingEviction<S>,
 		new_accumulator: &NA,
-		combine: &CB,
+		prior: &PB,
 		indexed: Option<IndexedPane>,
 	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, Output>>>
 	where
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
-		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+		PB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Output>> = BTreeMap::new();
 
@@ -363,7 +383,7 @@ where
 					let prior_output = if was_empty_before {
 						None
 					} else {
-						combine(&group, &buffer)
+						prior(&group, &buffer)
 					};
 					let prior_index_key = indexed.and_then(|pane| pane.key(&buffer));
 					group_slots.insert(
@@ -823,8 +843,8 @@ where
 				}
 			};
 
-			let mut accumulator = group_slot.buffer.get(&slot).cloned().unwrap_or_else(&new_accumulator);
-			let before = accumulator.clone();
+			let before = group_slot.buffer.remove(&slot);
+			let mut accumulator = before.clone().unwrap_or_else(&new_accumulator);
 			let mut touched = false;
 			for event in events {
 				match event {
@@ -842,11 +862,14 @@ where
 				}
 			}
 			if !touched {
+				if let Some(before) = before {
+					group_slot.buffer.insert(slot, before);
+				}
 				continue;
 			}
 			if is_merged_coord(slot.order_key(), group_slot.old_frontier) {
-				if !before.is_empty() {
-					group_slot.running.unmerge(&before);
+				if let Some(before) = before.as_ref().filter(|before| !before.is_empty()) {
+					group_slot.running.unmerge(before);
 				}
 				if !accumulator.is_empty() {
 					merge_into(&mut group_slot.running, &accumulator);
@@ -854,8 +877,6 @@ where
 			}
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
-			} else {
-				group_slot.buffer.remove(&slot);
 			}
 			group_slot.buffer_changed = true;
 
