@@ -21,7 +21,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{Emit, NoRolling, WindowedOperator},
@@ -33,7 +32,6 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
 	in_process::harness::{InProcessOperatorHarness, InProcessOperatorHarnessBuilder},
 };
 use reifydb_value::{
@@ -285,15 +283,13 @@ fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
 #[test]
 fn a_dirty_window_publishes_once_more_when_it_closes() {
 	// A window closing with unpublished changes would leave its final value unseen forever.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<Retained>>::new()
-		.with(with(Some(10_000)))
-		.build()
-		.expect("harness");
+	let mut h =
+		InProcessOperatorHarnessBuilder::<Retained>::new().with(with(Some(10_000))).build().expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1, 0, 10)).build()).expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2, 1_000, 5)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
-	assert_eq!(only_update(&out), (10.0, 15.0));
+	assert_eq!(only_update(h.last_change().expect("the close must publish")), (10.0, 15.0));
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
 }
 
 #[test]

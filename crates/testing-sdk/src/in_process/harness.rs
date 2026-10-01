@@ -241,6 +241,18 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			.collect()
 	}
 
+	pub fn group_state(&self) -> HashMap<EncodedKey, EncodedBytes> {
+		self.snapshot_state()
+			.into_iter()
+			.filter(|(key, _)| {
+				OperatorStateKey::decode(key).is_none_or(|decoded| {
+					decoded.keyspace != KeyspaceId::TIMER_WHEEL
+						&& decoded.keyspace != KeyspaceId::TIMER_INDEX
+				})
+			})
+			.collect()
+	}
+
 	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedBytes>) {
 		let pending = self.txn.pending_mut();
 		*pending = Pending::new();

@@ -23,7 +23,6 @@ use reifydb_sdk::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			carry::CarryDriver,
@@ -34,7 +33,6 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
 	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
@@ -185,20 +183,12 @@ macro_rules! feed_windows {
 fn a_carry_window_folds_past_immutable_and_drops_its_accumulator_rows() {
 	// With immutable set, windows more than immutable behind a group's newest fold to the carry scalar and
 	// free their accumulator rows, so the store stays bounded however many windows the group crosses.
-	let short = feed_windows!(
-		ExternCOperatorHarnessBuilder<ExternCOperatorAdapter<CarryDriver<Probe>>>,
-		window_with(Some(120)),
-		20
-	)
-	.snapshot_state()
-	.len();
-	let long = feed_windows!(
-		ExternCOperatorHarnessBuilder<ExternCOperatorAdapter<CarryDriver<Probe>>>,
-		window_with(Some(120)),
-		40
-	)
-	.snapshot_state()
-	.len();
+	let short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(Some(120)), 20)
+		.group_state()
+		.len();
+	let long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(Some(120)), 40)
+		.group_state()
+		.len();
 
 	assert!(
 		long <= short + 2,
@@ -251,16 +241,8 @@ fn the_carry_driver_refuses_a_window_that_is_not_tumbling() {
 fn a_seal_frees_every_window_of_a_stopped_carry_group_that_declared_no_immutable() {
 	// Without immutable nothing folds while the feed runs, so the seal is the only thing that can free the
 	// windows; state left behind must not depend on how many windows the group crossed.
-	let mut short = feed_windows!(
-		ExternCOperatorHarnessBuilder<ExternCOperatorAdapter<CarryDriver<Probe>>>,
-		window_with(None),
-		5
-	);
-	let mut long = feed_windows!(
-		ExternCOperatorHarnessBuilder<ExternCOperatorAdapter<CarryDriver<Probe>>>,
-		window_with(None),
-		40
-	);
+	let mut short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 5);
+	let mut long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 40);
 	let before = long.snapshot_state().len();
 
 	short.advance_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");

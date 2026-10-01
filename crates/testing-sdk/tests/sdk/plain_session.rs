@@ -7,11 +7,8 @@ use reifydb_core::{
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::operator::state::seal::coord::Coord;
-use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
-use reifydb_testing_sdk::{
-	builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder,
-	in_process::harness::InProcessOperatorHarnessBuilder,
-};
+use reifydb_sdk::flow::operator::windowed::plain::PlainDriver;
+use reifydb_testing_sdk::{builders::TestChangeBuilder, in_process::harness::InProcessOperatorHarnessBuilder};
 use reifydb_value::{
 	factory::time::millis,
 	value::{datetime::DateTime, diff_type::DiffType},
@@ -294,7 +291,7 @@ fn an_update_that_changes_the_group_moves_the_row_between_groups() {
 #[test]
 fn a_refilled_session_publishes_an_insert() {
 	// Downstream already dropped the removed session, so an update retracting it corrupts every consumer.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SumTumblingOnly>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SumTumblingOnly>>::new()
 		.with(session(10, None))
 		.build()
 		.expect("harness");

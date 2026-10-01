@@ -23,7 +23,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			carry::CarryDriver,
@@ -34,7 +33,6 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
 	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
@@ -484,7 +482,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 #[test]
 fn a_refilled_carry_window_publishes_an_insert() {
 	// Downstream already dropped the removed row, so an update retracting it corrupts every consumer.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
