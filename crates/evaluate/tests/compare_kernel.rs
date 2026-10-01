@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
-use arrow_array::{Array, ArrayRef};
+use arrow_array::{Array, ArrayRef, BooleanArray, Float32Array, Float64Array};
+use arrow_ord::cmp;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory;
 use reifydb_evaluate::expression::compare::{
@@ -21,7 +22,10 @@ use reifydb_value::{
 		decimal::Decimal,
 		duration::Duration,
 		uuid::parse::parse_uuid7,
-		value_type::ValueType,
+		value_type::{
+			ValueType,
+			field::{FieldType, named},
+		},
 	},
 };
 
@@ -272,4 +276,59 @@ fn an_int_against_a_float_uses_the_float_rules() {
 	// A mixed pair is cast to float8 first, so NaN must still rank above the int.
 	let result = compare::<LessThan>(factory::int4("", [1, 2]), factory::float8("", [f64::NAN, 1.5]));
 	assert_eq!(bools(result), vec![Some(true), Some(false)]);
+}
+
+const NEGATIVE_NAN_F32: f32 = f32::from_bits(0xffc0_0000);
+
+fn raw(ty: ValueType, array: ArrayRef) -> (FieldRef, ArrayRef) {
+	named("", FieldType::from(ty), array)
+}
+
+fn kernel(result: BooleanArray) -> Vec<Option<bool>> {
+	result.iter().collect()
+}
+
+fn assert_matches_kernel(ty: ValueType, left: ArrayRef, right: ArrayRef) {
+	let l = || raw(ty.clone(), left.clone());
+	let r = || raw(ty.clone(), right.clone());
+	assert_eq!(bools(compare::<Equal>(l(), r())), kernel(cmp::eq(&left, &right).unwrap()));
+	assert_eq!(bools(compare::<NotEqual>(l(), r())), kernel(cmp::neq(&left, &right).unwrap()));
+	assert_eq!(bools(compare::<LessThan>(l(), r())), kernel(cmp::lt(&left, &right).unwrap()));
+	assert_eq!(bools(compare::<LessThanEqual>(l(), r())), kernel(cmp::lt_eq(&left, &right).unwrap()));
+	assert_eq!(bools(compare::<GreaterThan>(l(), r())), kernel(cmp::gt(&left, &right).unwrap()));
+	assert_eq!(bools(compare::<GreaterThanEqual>(l(), r())), kernel(cmp::gt_eq(&left, &right).unwrap()));
+}
+
+#[test]
+fn raw_float8_columns_compare_exactly_like_the_arrow_kernel() {
+	// Floats must compare like the arrow kernel DataFusion calls, otherwise the engines split on -0.0 and NaN.
+	let left: ArrayRef =
+		Arc::new(Float64Array::from(vec![-0.0, 0.0, NEGATIVE_NAN, NEGATIVE_NAN, -0.0, NEGATIVE_NAN]));
+	let right: ArrayRef =
+		Arc::new(Float64Array::from(vec![0.0, -0.0, f64::NAN, f64::NEG_INFINITY, -0.0, NEGATIVE_NAN]));
+	assert_matches_kernel(ValueType::Float8, left, right);
+}
+
+#[test]
+fn raw_float4_columns_compare_exactly_like_the_arrow_kernel() {
+	// Two float4 columns skip the float8 cast, so they must match the arrow kernel on their own path too.
+	let left: ArrayRef = Arc::new(Float32Array::from(vec![
+		-0.0,
+		0.0,
+		NEGATIVE_NAN_F32,
+		NEGATIVE_NAN_F32,
+		-0.0,
+		NEGATIVE_NAN_F32,
+	]));
+	let right: ArrayRef =
+		Arc::new(Float32Array::from(vec![0.0, -0.0, f32::NAN, f32::NEG_INFINITY, -0.0, NEGATIVE_NAN_F32]));
+	assert_matches_kernel(ValueType::Float4, left, right);
+}
+
+#[test]
+fn a_raw_float4_negative_nan_equals_a_float8_nan() {
+	// The float4 to float8 widen must canonicalize, otherwise a raw negative NaN ranks below the float8 NaN.
+	let float4 = raw(ValueType::Float4, Arc::new(Float32Array::from(vec![NEGATIVE_NAN_F32])));
+	let result = compare::<Equal>(float4, factory::float8("", [f64::NAN]));
+	assert_eq!(bools(result), vec![Some(true)]);
 }
