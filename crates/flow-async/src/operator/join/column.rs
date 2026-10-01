@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter::repeat_n, sync::Arc};
+use std::{cell::RefCell, iter::repeat_n, sync::Arc};
 
-use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array, new_null_array};
 use arrow_schema::{Field, FieldRef, Schema, SchemaRef};
 use reifydb_core::value::{
 	batch::{batch, take_rows},
@@ -18,12 +18,58 @@ use reifydb_value::{
 		Value,
 		datetime::DateTime,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, is_system_field, system_column, user_columns, with_system_column},
-		value_type::field::from_field,
+		system_columns::{SystemColumn, is_system_field, system_column, user_columns},
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, to_field},
+		},
 	},
 };
 
 use crate::operator::{row_times, time_column};
+
+struct CachedBuilder {
+	left: SchemaRef,
+	right: SchemaRef,
+	builder: Arc<JoinedColumnsBuilder>,
+}
+
+pub(crate) struct JoinedColumnsCache {
+	alias: Option<String>,
+	natural: bool,
+	builders: RefCell<Vec<CachedBuilder>>,
+}
+
+impl JoinedColumnsCache {
+	pub(crate) fn new(alias: Option<String>, natural: bool) -> Self {
+		Self {
+			alias,
+			natural,
+			builders: RefCell::new(Vec::new()),
+		}
+	}
+
+	pub(crate) fn builder(&self, left: &SchemaRef, right: &SchemaRef) -> Arc<JoinedColumnsBuilder> {
+		let mut builders = self.builders.borrow_mut();
+		if let Some(cached) = builders
+			.iter()
+			.find(|cached| same_schema(&cached.left, left) && same_schema(&cached.right, right))
+		{
+			return cached.builder.clone();
+		}
+		let builder = Arc::new(JoinedColumnsBuilder::new(left, right, &self.alias, self.natural));
+		builders.push(CachedBuilder {
+			left: left.clone(),
+			right: right.clone(),
+			builder: builder.clone(),
+		});
+		builder
+	}
+}
+
+fn same_schema(cached: &SchemaRef, schema: &SchemaRef) -> bool {
+	Arc::ptr_eq(cached, schema) || cached == schema
+}
 
 pub(crate) struct JoinedColumnsBuilder {
 	right_column_names: Vec<String>,
@@ -151,12 +197,18 @@ impl JoinedColumnsBuilder {
 			);
 		}
 
+		let right_times = row_times(right)?;
+		if let [right_idx] = right_indices {
+			let left_count = left_indices.len();
+			let time = right_times.get(*right_idx).copied().flatten();
+			let right_columns = self.right_columns(&gather(right, &vec![*right_idx; left_count])?);
+			return Self::assemble(row_numbers, left, left_indices, right_columns, vec![time; left_count]);
+		}
 		let left_rows: Vec<usize> =
 			left_indices.iter().flat_map(|&left_idx| repeat_n(left_idx, right_count)).collect();
 		let right_rows: Vec<usize> = left_indices.iter().flat_map(|_| right_indices.iter().copied()).collect();
-		let right_times = row_times(right)?;
 		let times = right_rows.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
-		let right_columns = self.right_columns(&take_rows(right, &right_rows)?);
+		let right_columns = self.right_columns(&gather(right, &right_rows)?);
 		Self::assemble(row_numbers, left, &left_rows, right_columns, times)
 	}
 
@@ -211,11 +263,10 @@ impl JoinedColumnsBuilder {
 		right_columns: Vec<(FieldRef, ArrayRef)>,
 		right_times: Vec<Option<DateTime>>,
 	) -> Result<RecordBatch> {
-		let gathered = take_rows(left, left_rows)?;
+		let gathered = gather(left, left_rows)?;
 		let mut columns: Vec<(FieldRef, ArrayRef)> =
 			user_columns(&gathered).map(|(field, array)| (field.clone(), array.clone())).collect();
 		columns.extend(right_columns);
-		let mut joined = batch(columns)?;
 		for column in SystemColumn::ALL {
 			let array = match column {
 				SystemColumn::RowNumbers => Some(Arc::new(UInt64Array::from_iter_values(
@@ -225,10 +276,10 @@ impl JoinedColumnsBuilder {
 				other => system_column(&gathered, other).cloned(),
 			};
 			if let Some(array) = array {
-				joined = with_system_column(joined, column, array)?;
+				columns.push((system_field(column, &array), array));
 			}
 		}
-		Ok(joined)
+		batch(columns)
 	}
 
 	fn joined_time(left: &RecordBatch, right_times: &[Option<DateTime>]) -> Result<Option<ArrayRef>> {
@@ -249,9 +300,36 @@ fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, Arr
 	let Some(value_type) = from_field(field)?.value_type else {
 		return Ok(none(name, count));
 	};
-	let mut builder = ColumnBuilder::with_capacity(value_type, count);
-	for _ in 0..count {
+	let mut builder = ColumnBuilder::with_capacity(value_type, count.min(1));
+	if count > 0 {
 		builder.push_value(Value::none());
 	}
-	Ok(builder.finish(name))
+	let (field, array) = builder.finish(name);
+	match count > 1 {
+		true => Ok((field, new_null_array(array.data_type(), count))),
+		false => Ok((field, array)),
+	}
+}
+
+fn system_field(column: SystemColumn, array: &ArrayRef) -> FieldRef {
+	let value_type = match array.logical_null_count() > 0 {
+		true => ValueType::Option(Box::new(column.ty())),
+		false => column.ty(),
+	};
+	Arc::new(to_field(
+		column.name(),
+		&FieldType {
+			value_type: Some(value_type),
+			..FieldType::default()
+		},
+	))
+}
+
+fn gather(columns: &RecordBatch, rows: &[usize]) -> Result<RecordBatch> {
+	let identity =
+		rows.len() == columns.num_rows() && rows.iter().enumerate().all(|(position, &row)| position == row);
+	match identity {
+		true => Ok(columns.clone()),
+		false => take_rows(columns, rows),
+	}
 }

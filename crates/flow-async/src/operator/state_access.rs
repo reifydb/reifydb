@@ -15,13 +15,48 @@ pub fn mint_row_numbers<S>(store: &mut S, count: u64) -> Result<RowNumber>
 where
 	S: StateStore + ?Sized,
 {
-	let key = row_number_counter_key();
-	let seed = match store.state_get(&key)? {
-		Some(row) => decode::<u64>(&row)?,
-		None => 1,
-	};
-	store.state_set(&key, (seed + count).encode_state()?)?;
+	let seed = row_number_seed(store)?;
+	store.state_set(&row_number_counter_key(), (seed + count).encode_state()?)?;
 	Ok(RowNumber(seed))
+}
+
+#[derive(Debug, Default)]
+pub struct RowNumberReserve {
+	next: Option<u64>,
+}
+
+impl RowNumberReserve {
+	pub fn take<S>(&mut self, store: &mut S) -> Result<RowNumber>
+	where
+		S: StateStore + ?Sized,
+	{
+		let next = match self.next {
+			Some(next) => next,
+			None => row_number_seed(store)?,
+		};
+		self.next = Some(next + 1);
+		Ok(RowNumber(next))
+	}
+
+	pub fn commit<S>(self, store: &mut S) -> Result<()>
+	where
+		S: StateStore + ?Sized,
+	{
+		match self.next {
+			Some(next) => store.state_set(&row_number_counter_key(), next.encode_state()?),
+			None => Ok(()),
+		}
+	}
+}
+
+fn row_number_seed<S>(store: &mut S) -> Result<u64>
+where
+	S: StateStore + ?Sized,
+{
+	match store.state_get(&row_number_counter_key())? {
+		Some(row) => Ok(decode::<u64>(&row)?),
+		None => Ok(1),
+	}
 }
 
 pub fn get<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>

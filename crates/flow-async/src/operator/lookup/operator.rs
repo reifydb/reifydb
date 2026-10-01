@@ -4,7 +4,7 @@
 use std::{mem, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::{FieldRef, Schema, SchemaRef};
+use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	common::{CommitVersion, JoinType, SourceVersion},
@@ -45,13 +45,18 @@ use reifydb_value::{
 
 use super::{
 	expiry::LookupExpiry,
-	partition::lookup_partition,
+	partition::{DictionaryMemo, PartitionLookup},
 	store::{oldest_read, store_read, take_read},
 };
 use crate::{
 	operator::{
-		HostOperator, host::HostContext, join::column::JoinedColumnsBuilder, row_times,
-		sink::decode_dictionary_columns, state::seal::ledger::FiredAt, state_access::mint_row_numbers,
+		HostOperator,
+		host::HostContext,
+		join::column::{JoinedColumnsBuilder, JoinedColumnsCache},
+		row_times,
+		sink::decode_dictionary_columns,
+		state::seal::ledger::FiredAt,
+		state_access::{RowNumberReserve, mint_row_numbers},
 	},
 	timer::Timer,
 };
@@ -82,6 +87,18 @@ pub struct LookupOperator {
 	config: LookupConfig,
 	compiled_left: Vec<CompiledExpr>,
 	expiry: LookupExpiry,
+	columns: JoinedColumnsCache,
+}
+
+#[derive(Default)]
+struct ChangeReads {
+	version: Option<CommitVersion>,
+	dictionary: DictionaryMemo,
+}
+
+struct Resolved {
+	version: CommitVersion,
+	right: Option<(RowNumber, EncodedBytes)>,
 }
 
 enum Published {
@@ -166,15 +183,17 @@ impl LookupOperator {
 			.map(|expression| compile_expression(&compile_ctx, expression))
 			.collect::<Result<Vec<_>>>()?;
 		let expiry = LookupExpiry::new(config.left_retention);
+		let columns = JoinedColumnsCache::new(config.alias.clone(), false);
 		Ok(Self {
 			config,
 			compiled_left,
 			expiry,
+			columns,
 		})
 	}
 
-	fn builder(&self, left: &Schema) -> JoinedColumnsBuilder {
-		JoinedColumnsBuilder::new(left, &self.config.right_schema, &self.config.alias, false)
+	fn builder(&self, left: &SchemaRef) -> Arc<JoinedColumnsBuilder> {
+		self.columns.builder(left, &self.config.right_schema)
 	}
 
 	fn key_values(&self, columns: &RecordBatch) -> Result<Vec<Option<Vec<Value>>>> {
@@ -224,27 +243,33 @@ impl LookupOperator {
 		Ok(keys)
 	}
 
-	fn read_version(&self, host: &dyn HostContext, source: SourceVersion) -> CommitVersion {
-		match self.config.right {
+	fn read_version(
+		&self,
+		host: &dyn HostContext,
+		source: SourceVersion,
+		reads: &mut ChangeReads,
+	) -> CommitVersion {
+		*reads.version.get_or_insert_with(|| match self.config.right {
 			LookupObject::View(view) if self.config.deferred => host.lookup_view_version(view, source),
 			LookupObject::Table(_) | LookupObject::View(_) => {
 				let at = CommitVersion(source.0).min(host.version());
 				host.lookup_floor().map_or(at, |floor| at.max(floor))
 			}
-		}
+		})
 	}
 
 	fn read_right(
 		&self,
 		host: &mut dyn HostContext,
+		partitions: &PartitionLookup,
+		dictionary: &mut DictionaryMemo,
 		key: Option<&Vec<Value>>,
 		version: CommitVersion,
 	) -> Result<Option<(RowNumber, EncodedBytes)>> {
 		let Some(values) = key else {
 			return Ok(None);
 		};
-		let Some(partition) = lookup_partition(host, &self.config.columns, &self.config.partition_by, values)?
-		else {
+		let Some(partition) = partitions.partition(host, dictionary, values)? else {
 			return Ok(None);
 		};
 		host.lookup_read(self.config.storage, partition, version)
@@ -253,12 +278,12 @@ impl LookupOperator {
 	fn build(
 		&self,
 		host: &mut dyn HostContext,
+		builder: &JoinedColumnsBuilder,
 		left: &RecordBatch,
 		left_idx: usize,
 		row_number: RowNumber,
 		right: Option<(RowNumber, EncodedBytes)>,
 	) -> Result<Published> {
-		let builder = self.builder(left.schema_ref());
 		match right {
 			Some((right_number, bytes)) => {
 				let mut right = from_encoded_bytes(&self.config.shape, &[right_number], &[bytes])?;
@@ -280,41 +305,56 @@ impl LookupOperator {
 		}
 	}
 
+	fn resolve(
+		&self,
+		host: &mut dyn HostContext,
+		partitions: &PartitionLookup,
+		reads: &mut ChangeReads,
+		key: Option<&Vec<Value>>,
+		source: SourceVersion,
+	) -> Result<Option<Resolved>> {
+		if key.is_none() && self.config.join_type == JoinType::Inner {
+			return Ok(None);
+		}
+		let version = self.read_version(host, source, reads);
+		let right = self.read_right(host, partitions, &mut reads.dictionary, key, version)?;
+		if right.is_none() && self.config.join_type == JoinType::Inner {
+			return Ok(None);
+		}
+		Ok(Some(Resolved {
+			version,
+			right,
+		}))
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	fn publish(
 		&self,
 		host: &mut dyn HostContext,
+		builder: &JoinedColumnsBuilder,
 		post: &RecordBatch,
 		left_idx: usize,
-		key: Option<&Vec<Value>>,
-		source: SourceVersion,
-		reuse: Option<RowNumber>,
+		times: &[Option<DateTime>],
+		row_number: RowNumber,
+		output_id: RowNumber,
+		resolved: Resolved,
 		output: &mut Output,
-	) -> Result<Option<Published>> {
-		if key.is_none() && self.config.join_type == JoinType::Inner {
-			return Ok(None);
-		}
-		let version = self.read_version(host, source);
-		let right = self.read_right(host, key, version)?;
-		if right.is_none() && self.config.join_type == JoinType::Inner {
-			return Ok(None);
-		}
-		let row_number = require_row_numbers(post)?[left_idx];
-		let output_id = match reuse {
-			Some(id) => id,
-			None => mint_row_numbers(host, 1)?,
-		};
-		let published = self.build(host, post, left_idx, output_id, right)?;
-		store_read(host, row_number, version, output_id)?;
-		if let Some(at) = row_times(post)?.get(left_idx).copied().flatten() {
+	) -> Result<Published> {
+		let published = self.build(host, builder, post, left_idx, output_id, resolved.right)?;
+		store_read(host, row_number, resolved.version, output_id)?;
+		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
 		}
-		Ok(Some(published))
+		Ok(published)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn undo(
 		&self,
 		host: &mut dyn HostContext,
+		builder: &JoinedColumnsBuilder,
+		partitions: &PartitionLookup,
+		dictionary: &mut DictionaryMemo,
 		pre: &RecordBatch,
 		left_idx: usize,
 		key: Option<&Vec<Value>>,
@@ -325,7 +365,7 @@ impl LookupOperator {
 			return Ok(None);
 		};
 		output.cleared.push(row_number);
-		let right = self.read_right(host, key, version)?;
+		let right = self.read_right(host, partitions, dictionary, key, version)?;
 		if right.is_none() && self.config.join_type == JoinType::Inner {
 			return internal_err!(
 				"inner lookup published left row {} at version {} but the right row is gone at that version",
@@ -333,7 +373,7 @@ impl LookupOperator {
 				version.0
 			);
 		}
-		Ok(Some((self.build(host, pre, left_idx, output_id, right)?, output_id)))
+		Ok(Some((self.build(host, builder, pre, left_idx, output_id, right)?, output_id)))
 	}
 
 	fn apply_insert(
@@ -341,14 +381,35 @@ impl LookupOperator {
 		host: &mut dyn HostContext,
 		post: &RecordBatch,
 		source: SourceVersion,
+		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let keys = self.key_values(post)?;
-		let mut output = Output::default();
+		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
+		let mut resolved = Vec::with_capacity(keys.len());
 		for (left_idx, key) in keys.iter().enumerate() {
-			if let Some(published) =
-				self.publish(host, post, left_idx, key.as_ref(), source, None, &mut output)?
-			{
+			if let Some(read) = self.resolve(host, &partitions, reads, key.as_ref(), source)? {
+				resolved.push((left_idx, read));
+			}
+		}
+		let mut output = Output::default();
+		if !resolved.is_empty() {
+			let builder = self.builder(post.schema_ref());
+			let times = row_times(post)?;
+			let row_numbers = require_row_numbers(post)?;
+			let first = mint_row_numbers(host, resolved.len() as u64)?;
+			for (minted, (left_idx, read)) in (first.0..).zip(resolved) {
+				let published = self.publish(
+					host,
+					&builder,
+					post,
+					left_idx,
+					&times,
+					row_numbers[left_idx],
+					RowNumber(minted),
+					read,
+					&mut output,
+				)?;
 				output.insert(published);
 			}
 		}
@@ -359,12 +420,24 @@ impl LookupOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		pre: &RecordBatch,
+		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let keys = self.key_values(pre)?;
+		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
+		let builder = self.builder(pre.schema_ref());
 		let mut output = Output::default();
 		for (left_idx, key) in keys.iter().enumerate() {
-			if let Some((published, _)) = self.undo(host, pre, left_idx, key.as_ref(), &mut output)? {
+			if let Some((published, _)) = self.undo(
+				host,
+				&builder,
+				&partitions,
+				&mut reads.dictionary,
+				pre,
+				left_idx,
+				key.as_ref(),
+				&mut output,
+			)? {
 				output.remove(published);
 			}
 		}
@@ -377,28 +450,55 @@ impl LookupOperator {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 		source: SourceVersion,
+		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let pre_keys = self.key_values(pre)?;
 		let post_keys = self.key_values(post)?;
+		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
+		let pre_builder = self.builder(pre.schema_ref());
+		let post_builder = self.builder(post.schema_ref());
+		let times = row_times(post)?;
+		let mut reserve = RowNumberReserve::default();
 		let mut output = Output::default();
 		for left_idx in 0..post.num_rows() {
 			let undone = self.undo(
 				host,
+				&pre_builder,
+				&partitions,
+				&mut reads.dictionary,
 				pre,
 				left_idx,
 				pre_keys.get(left_idx).and_then(Option::as_ref),
 				&mut output,
 			)?;
-			let published = self.publish(
+			let published = match self.resolve(
 				host,
-				post,
-				left_idx,
+				&partitions,
+				reads,
 				post_keys.get(left_idx).and_then(Option::as_ref),
 				source,
-				undone.as_ref().map(|(_, id)| *id),
-				&mut output,
-			)?;
+			)? {
+				Some(read) => {
+					let row_number = require_row_numbers(post)?[left_idx];
+					let output_id = match undone.as_ref() {
+						Some((_, id)) => *id,
+						None => reserve.take(host)?,
+					};
+					Some(self.publish(
+						host,
+						&post_builder,
+						post,
+						left_idx,
+						&times,
+						row_number,
+						output_id,
+						read,
+						&mut output,
+					)?)
+				}
+				None => None,
+			};
 			match (undone.map(|(pre, _)| pre), published) {
 				(Some(pre), Some(post)) => output.update(pre, post),
 				(Some(pre), None) => output.remove(pre),
@@ -406,6 +506,7 @@ impl LookupOperator {
 				(None, None) => {}
 			}
 		}
+		reserve.commit(host)?;
 		self.finish(host, output, result)
 	}
 
@@ -446,6 +547,7 @@ impl HostOperator for LookupOperator {
 		let source = version.source;
 		let parent_origin = change.origin.clone();
 		let mut result = Vec::with_capacity(change.diffs.len());
+		let mut reads = ChangeReads::default();
 		for diff in change.diffs {
 			let origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			if !matches!(origin, ChangeOrigin::Flow(from_node) if from_node == self.config.left_node) {
@@ -458,16 +560,16 @@ impl HostOperator for LookupOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_insert(host, &post, source, &mut result)?,
+				} => self.apply_insert(host, &post, source, &mut reads, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove(host, &pre, &mut result)?,
+				} => self.apply_remove(host, &pre, &mut reads, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_update(host, &pre, &post, source, &mut result)?,
+				} => self.apply_update(host, &pre, &post, source, &mut reads, &mut result)?,
 			}
 		}
 
@@ -731,13 +833,9 @@ mod tests {
 
 		let mut txn = txn_at(&engine, version);
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		let partition = lookup_partition(
-			&mut host,
-			&table.columns,
-			&table.partition_by,
-			&[Value::Utf8("a".to_string())],
-		)
-		.unwrap();
+		let partition = PartitionLookup::new(&table.columns, &table.partition_by)
+			.partition(&mut host, &mut DictionaryMemo::default(), &[Value::Utf8("a".to_string())])
+			.unwrap();
 		assert_eq!(partition, Some(stored[0].0), "the table row must be found under the lookup's partition");
 		assert_ne!(
 			partition,
@@ -826,9 +924,9 @@ mod tests {
 		let later = engine.inner().current_version().unwrap();
 		let mut txn = txn_at(&engine, later);
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		let partition =
-			lookup_partition(&mut host, &view_columns, &["k".to_string()], &[Value::Utf8("a".to_string())])
-				.unwrap();
+		let partition = PartitionLookup::new(&view_columns, &["k".to_string()])
+			.partition(&mut host, &mut DictionaryMemo::default(), &[Value::Utf8("a".to_string())])
+			.unwrap();
 		assert_eq!(partition, Some(stored[0].0), "the view row must be found under the lookup's partition");
 		assert_eq!(
 			read_fingerprint(&stored[0].1),
