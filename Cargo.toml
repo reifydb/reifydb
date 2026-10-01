@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["pkg/rust/tests/fuzz", "scripts/proto-gen"]
+exclude = ["pkg/rust/tests/fuzz", "scripts/proto-gen", "patch/datafusion-common"]
 
 members = [
     # Core crates
@@ -330,6 +330,12 @@ arrow-arith = { version = "59.2" }
 arrow-string = { version = "59.2" }
 arrow-ord = { version = "59.2" }
 arrow-row = { version = "59.2" }
+datafusion-common = { version = "=55.1.0", default-features = false }
+datafusion-expr = { version = "=55.1.0", default-features = false }
+datafusion-expr-common = { version = "=55.1.0", default-features = false }
+datafusion-optimizer = { version = "=55.1.0", default-features = false }
+datafusion-physical-expr = { version = "=55.1.0", default-features = false }
+datafusion-physical-expr-common = { version = "=55.1.0", default-features = false }
 rand = { version = "0.10" }
 argon2 = { version = "0.6.0-rc.8" }
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }

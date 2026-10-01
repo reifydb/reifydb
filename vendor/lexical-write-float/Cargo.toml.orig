@@ -1,0 +1,79 @@
+[package]
+authors = ["Alex Huszagh <ahuszagh@gmail.com>"]
+autobenches = false
+categories = ["value-formatting", "encoding", "no-std"]
+description = "Efficient formatting of floats to strings."
+edition = "2021"
+keywords = ["encoding", "lexical", "no_std"]
+license = "MIT/Apache-2.0"
+name = "lexical-write-float"
+readme = "README.md"
+repository = "https://github.com/Alexhuszagh/rust-lexical"
+version = "1.0.6"
+rust-version = "1.60.0"
+exclude = [
+    "assets/*",
+    "docs/*",
+    "etc/*",
+    "cargo-timing*.html"
+]
+
+[dependencies.lexical-util]
+version = "1.0.7"
+path = "../lexical-util"
+default-features = false
+features = ["write-floats"]
+
+[dependencies.lexical-write-integer]
+version = "1.0.6"
+path = "../lexical-write-integer"
+default-features = false
+features = []
+
+[features]
+default = ["std"]
+# Use the standard library.
+std = [
+    "lexical-util/std",
+    "lexical-write-integer/std"
+]
+# Add support for writing power-of-two float strings.
+power-of-two = [
+    "lexical-util/power-of-two",
+    "lexical-write-integer/power-of-two"
+]
+# Add support for writing non-decimal float strings.
+radix = [
+    "lexical-util/radix",
+    "lexical-write-integer/radix",
+    "power-of-two"
+]
+# Add support for writing custom float formats.
+format = ["lexical-util/format"]
+# Reduce code size at the cost of performance.
+compact = [
+    "lexical-util/compact",
+    "lexical-write-integer/compact"
+]
+# Enable support for 16-bit floats.
+f16 = ["lexical-util/f16"]
+
+# INTERNAL ONLY
+# -------------
+# Internal only features. These are not meant to be used directly.
+# Enable the lint checks.
+lint = [
+    "lexical-util/lint",
+    "lexical-write-integer/lint"
+]
+
+# UNSUPPORTED
+# -----------
+# Currently unsupported features.
+# Enable support for 128-bit floats. Unsupported and unlikely to ever be.
+#   https://github.com/Alexhuszagh/rust-lexical/issues/46
+f128 = ["lexical-util/f128"]
+
+[package.metadata.docs.rs]
+features = ["radix", "format", "f16"]
+rustdoc-args = ["--cfg", "docsrs"]

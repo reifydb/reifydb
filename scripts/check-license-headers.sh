@@ -20,6 +20,7 @@ echo ""
 
 violations=$(git ls-files --cached --others --exclude-standard -- '*.rs' '*.ts' '*.tsx' '*.js' '*.css' '*.sh' '*.mk' '*.py' 'Makefile' '*/Makefile' \
   | grep -v '^vendor/' \
+  | grep -v '^patch/' \
   | while read f; do
       spdx=$(head -2 "$f" | grep -oE 'SPDX-License-Identifier: [A-Za-z0-9.+-]+' | head -1 | sed 's/SPDX-License-Identifier: //')
       if [ -z "$spdx" ]; then

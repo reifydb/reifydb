@@ -1,0 +1,77 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[package]
+name = "arrow-json"
+version = { workspace = true }
+description = "Support for parsing JSON format to and from the Arrow format"
+homepage = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+include = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+
+[lib]
+name = "arrow_json"
+bench = false
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-cast = { workspace = true }
+arrow-ord = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+half = { version = "2.1", default-features = false }
+indexmap = { version = "2.0", default-features = false, features = ["std"] }
+num-traits = { version = "0.2.19", default-features = false, features = ["std"] }
+serde_core = { version = "1.0", default-features = false }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+chrono = { workspace = true }
+lexical-core = { version = "1.0", default-features = false}
+memchr = "2.7.4"
+simdutf8 = { workspace = true }
+ryu = "1.0"
+itoa = "1.0"
+
+[dev-dependencies]
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+futures = "0.3"
+tokio = { version = "1.27", default-features = false, features = ["io-util"] }
+bytes = "1.4"
+criterion = { workspace = true, default-features = false }
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "thread_rng"] }
+arbitrary = { version = "1.4.2", features = ["derive"] }
+
+[[bench]]
+name = "serde"
+harness = false
+
+[[bench]]
+name = "json_reader"
+harness = false
+
+[[bench]]
+name = "json_writer"
+harness = false

@@ -16,3 +16,12 @@ pub mod arrow {
 	pub use arrow_select as select;
 	pub use arrow_string as string;
 }
+
+pub mod datafusion {
+	pub use datafusion_common as common;
+	pub use datafusion_expr as expr;
+	pub use datafusion_expr_common as expr_common;
+	pub use datafusion_optimizer as optimizer;
+	pub use datafusion_physical_expr as physical_expr;
+	pub use datafusion_physical_expr_common as physical_expr_common;
+}
