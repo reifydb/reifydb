@@ -12,6 +12,8 @@ use reifydb_value::value::{
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	number::safe::convert::SafeConvert,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
 	time::Time,
 };
 
@@ -28,12 +30,12 @@ pub trait Push<T> {
 }
 
 macro_rules! impl_native_push {
-	($t:ty, $variant:ident) => {
+	($t:ty, $variant:ident, $canonical:expr) => {
 		impl Push<$t> for ColumnBuilder {
 			fn push(&mut self, value: $t) {
 				match &mut self.inner {
 					TypedBuilder::$variant(builder) => {
-						builder.append_value(value);
+						builder.append_value($canonical(value));
 					}
 					other => panic!(
 						"called `push::<{}>()` on ColumnBuilder::{:?}",
@@ -103,8 +105,8 @@ impl Push<bool> for ColumnBuilder {
 	}
 }
 
-impl_native_push!(f32, Float4);
-impl_native_push!(f64, Float8);
+impl_native_push!(f32, Float4, OrderedF32::canonical);
+impl_native_push!(f64, Float8, OrderedF64::canonical);
 impl_temporal_push!(Date, Date, date_to_native);
 impl_temporal_push!(DateTime, DateTime, datetime_to_native);
 impl_temporal_push!(Time, Time, time_to_native);

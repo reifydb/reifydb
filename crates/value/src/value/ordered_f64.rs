@@ -72,6 +72,16 @@ impl OrderedF64 {
 	pub fn zero() -> OrderedF64 {
 		OrderedF64(0.0f64)
 	}
+
+	pub fn canonical(f: f64) -> f64 {
+		if f.is_nan() {
+			f64::NAN
+		} else if f == 0.0 {
+			0.0
+		} else {
+			f
+		}
+	}
 }
 
 impl Deref for OrderedF64 {
@@ -136,15 +146,10 @@ impl TryFrom<f64> for OrderedF64 {
 	type Error = Error;
 
 	fn try_from(f: f64) -> Result<Self, Self::Error> {
-		let normalized = if f == 0.0 {
-			0.0
-		} else {
-			f
-		};
 		if f.is_nan() {
 			Err(TypeError::NanNotAllowed.into())
 		} else {
-			Ok(OrderedF64(normalized))
+			Ok(OrderedF64(Self::canonical(f)))
 		}
 	}
 }
