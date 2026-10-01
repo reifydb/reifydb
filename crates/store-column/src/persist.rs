@@ -524,7 +524,6 @@ mod tests {
 
 	#[test]
 	fn a_column_read_touches_only_that_columns_byte_ranges() {
-		// Otherwise a column read pulls the whole file and projection saves no disk reads.
 		let schema = Arc::new(vec![
 			("a".to_string(), ValueType::Int4, false),
 			("b".to_string(), ValueType::Utf8, false),

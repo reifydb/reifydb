@@ -218,7 +218,6 @@ mod tests {
 
 	#[test]
 	fn open_fails_on_a_garbage_file() {
-		// Otherwise a damaged file reads as missing and the real cause is lost.
 		let memory = MemoryFs::new();
 		let store = FsColumnStore::new(Fs::Memory(memory.clone()), PathBuf::from("/column")).unwrap();
 		memory.mkdir(Path::new("/column/1")).unwrap();
@@ -235,7 +234,6 @@ mod tests {
 
 	#[test]
 	fn open_fails_on_a_corrupt_read() {
-		// Otherwise a bad disk read decodes as a block instead of failing loudly.
 		let fs = Fs::Testing(TestingFs::new(MemoryFs::new(), Arc::new(CorruptFirstSector)));
 		let store = FsColumnStore::new(fs, PathBuf::from("/column")).unwrap();
 		store.write(&KEY, &block(&[1, 2, 3])).unwrap();
@@ -248,7 +246,6 @@ mod tests {
 
 	#[test]
 	fn open_on_a_missing_key_returns_none() {
-		// Otherwise a missing file surfaces as a raw fs error instead of the scan's own missing-snapshot error.
 		let store = ColumnStore::memory().unwrap();
 		store.write(&KEY, &block(&[1])).unwrap();
 		let missing_file = BlockKey {
@@ -265,7 +262,6 @@ mod tests {
 
 	#[test]
 	fn a_rewrite_of_the_same_key_reads_back_only_the_new_rows() {
-		// Otherwise a re-sealed bucket keeps the old block's tail bytes past its new end.
 		let memory = MemoryFs::new();
 		let store = FsColumnStore::new(Fs::Memory(memory.clone()), PathBuf::from("/column")).unwrap();
 		let first = block(&(0..1000).map(|i| (i * 7919) % 1_000_003).collect::<Vec<_>>());

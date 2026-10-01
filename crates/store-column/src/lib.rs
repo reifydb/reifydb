@@ -24,6 +24,8 @@ pub mod session;
 pub mod snapshot;
 pub mod stats;
 pub mod store;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 pub struct ColumnStoreVersion;
 

@@ -80,6 +80,10 @@ pub trait TestingHooks: Send + Sync {
 		SyncOutcome::Honest
 	}
 
+	fn on_sync_dir(&self, _path: &Path) -> SyncOutcome {
+		SyncOutcome::Honest
+	}
+
 	fn on_open(&self, _path: &Path) -> OpenOutcome {
 		OpenOutcome::Honest
 	}
@@ -366,9 +370,15 @@ impl Unlink for TestingFs {
 impl SyncDir for TestingFs {
 	fn sync_dir(&self, path: &Path) -> Result<()> {
 		self.0.syscall();
-		self.0.inner.sync_dir(path)?;
-		self.0.settle(path);
-		Ok(())
+		match self.0.hooks.on_sync_dir(path) {
+			SyncOutcome::Honest => {
+				self.0.inner.sync_dir(path)?;
+				self.0.settle(path);
+				Ok(())
+			}
+			SyncOutcome::Lying => Ok(()),
+			SyncOutcome::Err(error) => Err(error),
+		}
 	}
 }
 
@@ -504,6 +514,14 @@ mod tests {
 
 	impl TestingHooks for SyncHook {
 		fn on_sync(&self, _file: FileId) -> SyncOutcome {
+			self.0.clone()
+		}
+	}
+
+	struct SyncDirHook(SyncOutcome);
+
+	impl TestingHooks for SyncDirHook {
+		fn on_sync_dir(&self, _path: &Path) -> SyncOutcome {
 			self.0.clone()
 		}
 	}
@@ -712,6 +730,35 @@ mod tests {
 		file.pwrite(0, &[1u8; 512]).unwrap();
 		assert_eq!(file.sync_data().err(), Some(error));
 		assert_eq!(states(&memory, "/a"), vec![SectorState::Dirty]);
+	}
+
+	#[test]
+	fn lying_sync_dir_reports_success_and_a_crash_drops_the_dir() {
+		let (memory, fs) = setup(Arc::new(SyncDirHook(SyncOutcome::Lying)));
+		fs.mkdir(Path::new("/d")).unwrap();
+		fs.create(Path::new("/d/f"), 8).unwrap();
+		assert_eq!(fs.sync_dir(Path::new("/")), Ok(()));
+		fs.crash();
+		assert!(
+			memory.read_dir(Path::new("/")).unwrap().is_empty(),
+			"a dir whose parent sync lied must not survive"
+		);
+	}
+
+	#[test]
+	fn sync_dir_error_reaches_the_caller_and_the_dir_stays_dirty() {
+		let error = FsError::Io {
+			path: PathBuf::from("/"),
+			message: "eio".to_string(),
+		};
+		let (memory, fs) = setup(Arc::new(SyncDirHook(SyncOutcome::Err(error.clone()))));
+		fs.mkdir(Path::new("/d")).unwrap();
+		assert_eq!(fs.sync_dir(Path::new("/")).err(), Some(error));
+		fs.crash();
+		assert!(
+			memory.read_dir(Path::new("/")).unwrap().is_empty(),
+			"a dir whose parent sync failed must not survive"
+		);
 	}
 
 	#[test]
