@@ -23,6 +23,8 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
@@ -70,10 +72,18 @@ pub(crate) fn decode_fixed_plain(
 				}
 				Err(e) => Err(e),
 			},
-			ValueType::Float4 => decode_le_array::<f32>(data, row_count)
-				.map(|values| array_ref(Float32Array::from(values))),
-			ValueType::Float8 => decode_le_array::<f64>(data, row_count)
-				.map(|values| array_ref(Float64Array::from(values))),
+			ValueType::Float4 => decode_le_array::<f32>(data, row_count).map(|mut values| {
+				for v in values.iter_mut() {
+					*v = OrderedF32::canonical(*v);
+				}
+				array_ref(Float32Array::from(values))
+			}),
+			ValueType::Float8 => decode_le_array::<f64>(data, row_count).map(|mut values| {
+				for v in values.iter_mut() {
+					*v = OrderedF64::canonical(*v);
+				}
+				array_ref(Float64Array::from(values))
+			}),
 			ValueType::Int1 => {
 				decode_le_array::<i8>(data, row_count).map(|values| array_ref(Int8Array::from(values)))
 			}
@@ -171,13 +181,20 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 			Ok(array_ref(wide_array(values)))
 		}
 		ValueType::Float4 => {
-			let values = decode_rle(data, row_count, 4, |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
+			let mut values =
+				decode_rle(data, row_count, 4, |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
+			for v in values.iter_mut() {
+				*v = OrderedF32::canonical(*v);
+			}
 			Ok(array_ref(Float32Array::from(values)))
 		}
 		ValueType::Float8 => {
-			let values = decode_rle(data, row_count, 8, |b| {
+			let mut values = decode_rle(data, row_count, 8, |b| {
 				f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 			})?;
+			for v in values.iter_mut() {
+				*v = OrderedF64::canonical(*v);
+			}
 			Ok(array_ref(Float64Array::from(values)))
 		}
 		ValueType::Date => {
@@ -257,11 +274,17 @@ pub(crate) fn decode_delta_column(type_code: u8, row_count: usize, data: &[u8]) 
 			Ok(array_ref(wide_array(values)))
 		}
 		ValueType::Float4 => {
-			let values = decode_delta_f32(data, row_count)?;
+			let mut values = decode_delta_f32(data, row_count)?;
+			for v in values.iter_mut() {
+				*v = OrderedF32::canonical(*v);
+			}
 			Ok(array_ref(Float32Array::from(values)))
 		}
 		ValueType::Float8 => {
-			let values = decode_delta_f64(data, row_count)?;
+			let mut values = decode_delta_f64(data, row_count)?;
+			for v in values.iter_mut() {
+				*v = OrderedF64::canonical(*v);
+			}
 			Ok(array_ref(Float64Array::from(values)))
 		}
 		ValueType::Date => {
@@ -341,11 +364,17 @@ pub(crate) fn decode_delta_rle_column(type_code: u8, row_count: usize, data: &[u
 			Ok(array_ref(wide_array(values)))
 		}
 		ValueType::Float4 => {
-			let values = decode_delta_rle_f32(data, row_count)?;
+			let mut values = decode_delta_rle_f32(data, row_count)?;
+			for v in values.iter_mut() {
+				*v = OrderedF32::canonical(*v);
+			}
 			Ok(array_ref(Float32Array::from(values)))
 		}
 		ValueType::Float8 => {
-			let values = decode_delta_rle_f64(data, row_count)?;
+			let mut values = decode_delta_rle_f64(data, row_count)?;
+			for v in values.iter_mut() {
+				*v = OrderedF64::canonical(*v);
+			}
 			Ok(array_ref(Float64Array::from(values)))
 		}
 		ValueType::Date => {

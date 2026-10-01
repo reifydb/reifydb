@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{result::Result as StdResult, sync::Arc};
 
 use arrow_array::{
 	Array, ArrayRef, BooleanArray, Date32Array, FixedSizeBinaryArray, Float32Array, Float64Array, Int8Array,
 	Int16Array, Int32Array, Int64Array, IntervalMonthDayNanoArray, LargeBinaryArray, LargeStringArray, NullArray,
 	Time64NanosecondArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
-use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::value::column::{
 	data::canonical::{Canonical, encoding_for_type},
@@ -35,10 +35,12 @@ use reifydb_value::{
 			},
 			varlen_array, wide_int_array,
 		},
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
 		value_type::{ValueType, field::FieldType},
 	},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
 	encoding,
@@ -67,8 +69,8 @@ pub enum PersistedArray {
 #[derive(Serialize, Deserialize)]
 pub enum PersistedData {
 	Bool(#[serde(with = "bool_array")] BooleanArray),
-	Float4(#[serde(with = "primitive")] Float32Array),
-	Float8(#[serde(with = "primitive")] Float64Array),
+	Float4(#[serde(serialize_with = "primitive::serialize", deserialize_with = "deserialize_float4")] Float32Array),
+	Float8(#[serde(serialize_with = "primitive::serialize", deserialize_with = "deserialize_float8")] Float64Array),
 	Int1(#[serde(with = "primitive")] Int8Array),
 	Int2(#[serde(with = "primitive")] Int16Array),
 	Int4(#[serde(with = "primitive")] Int32Array),
@@ -281,6 +283,30 @@ fn attached<A: Array + 'static>(
 		}));
 	}
 	Ok(Arc::new(attach(array, nones)))
+}
+
+fn deserialize_float4<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Float32Array, D::Error> {
+	#[derive(Deserialize)]
+	struct Helper {
+		data: Vec<f32>,
+	}
+	let mut h = Helper::deserialize(deserializer)?;
+	for v in h.data.iter_mut() {
+		*v = OrderedF32::canonical(*v);
+	}
+	Ok(Float32Array::new(ScalarBuffer::from(h.data), None))
+}
+
+fn deserialize_float8<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<Float64Array, D::Error> {
+	#[derive(Deserialize)]
+	struct Helper {
+		data: Vec<f64>,
+	}
+	let mut h = Helper::deserialize(deserializer)?;
+	for v in h.data.iter_mut() {
+		*v = OrderedF64::canonical(*v);
+	}
+	Ok(Float64Array::new(ScalarBuffer::from(h.data), None))
 }
 
 #[derive(Serialize, Deserialize)]

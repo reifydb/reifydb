@@ -45,11 +45,11 @@ const PINS: &[Pin] = &[
 	},
 	Pin {
 		name: "float4",
-		chunk_postcard: "0001010000000104ffff7fff000000800000c03fffff7f7f00",
+		chunk_postcard: "0001010000000104ffff7fff000000000000c03fffff7f7f00",
 	},
 	Pin {
 		name: "float8",
-		chunk_postcard: "0001020000000204ffffffffffffefff00000000000000800000000000000240ffffffffffffef7f00",
+		chunk_postcard: "0001020000000204ffffffffffffefff00000000000000000000000000000240ffffffffffffef7f00",
 	},
 	Pin {
 		name: "int1",
