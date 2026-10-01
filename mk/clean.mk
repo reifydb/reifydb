@@ -22,6 +22,7 @@ clean-siblings:
 clean-cargo:
 	@echo "📦 Running cargo clean..."
 	@cargo clean
+	@rm -rf pkg/rust/tests/fuzz/target
 
 # Clean only reifydb workspace member crates (preserves vendored dependency builds)
 clean-workspace:
