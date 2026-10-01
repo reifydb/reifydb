@@ -41,12 +41,10 @@ fn a_lookup_on_a_partitioned_table_is_accepted() {
 fn a_lookup_without_retention_is_accepted() {
 	// Retention is optional like the join's, so a lookup with no with clause must still build its view.
 	let engine = engine();
-	engine.admin(
-		"CREATE DEFERRED VIEW lk::ok { id: int4, usd: float8 } AS { \
+	engine.admin("CREATE DEFERRED VIEW lk::ok { id: int4, usd: float8 } AS { \
 		 FROM lk::level \
 		 INNER LOOKUP { FROM lk::price } AS p USING (mint, p.mint) \
-		 MAP { id: id, usd: p_usd } }",
-	);
+		 MAP { id: id, usd: p_usd } }");
 }
 
 #[test]
@@ -136,10 +134,7 @@ fn a_right_retention_is_ast_005() {
 fn an_empty_retention_is_ast_005() {
 	// An empty block bounds no side, so it must be refused like the join's.
 	let engine = engine();
-	assert_code(
-		&engine.admin_err(&view("v", "{ FROM lk::price }", "(mint, p.mint)", "retention: { }")),
-		"AST_005",
-	);
+	assert_code(&engine.admin_err(&view("v", "{ FROM lk::price }", "(mint, p.mint)", "retention: { }")), "AST_005");
 }
 
 #[test]

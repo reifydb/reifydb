@@ -439,16 +439,7 @@ impl JoinOperator {
 			self.snapshot_ledger().retire(host, group, row_number, &content)?;
 		}
 		let composites: Vec<JoinRowMappingKey> = match self.strategy {
-			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => {
-				if state.right.get_row_in(host, group, row_number)?.is_none() {
-					Vec::new()
-				} else {
-					left_numbers
-						.iter()
-						.map(|left_number| Self::unmatched_left_key(*left_number))
-						.collect()
-				}
-			}
+			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => Vec::new(),
 			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => left_numbers
 				.iter()
 				.map(|left_number| Self::make_composite_key(*left_number, row_number))
