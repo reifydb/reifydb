@@ -6,15 +6,12 @@
 use std::sync::Arc;
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::common::CommitVersion;
 use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
-use reifydb_sub_store::{
-	factory::StorageSubsystemFactory,
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
 	datetime::DateTime,
@@ -80,12 +77,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 		..StorageConfig::default()
 	};
 
-	let mut db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let mut db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
@@ -141,12 +133,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 		..StorageConfig::default()
 	};
 
-	let mut db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let mut db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
@@ -201,12 +188,7 @@ fn table_snapshot_system_columns_match_row_metadata() {
 		..StorageConfig::default()
 	};
 
-	let mut db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let mut db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::t { id: int4, name: utf8 }");

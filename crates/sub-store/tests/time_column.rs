@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::{
@@ -20,7 +20,6 @@ use reifydb_store_column::{
 };
 use reifydb_sub_store::{
 	column::actor::batches::{column_block_from_batches, system_column_schema},
-	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -46,12 +45,7 @@ fn db() -> TestDb {
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 		..StorageConfig::default()
 	};
-	let db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(config)))
-			.build()
-			.expect("build"),
-	);
+	let db = TestDb::from(db_embedded::memory().with_storage_config(config).build().expect("build"));
 	db.admin("CREATE NAMESPACE test");
 	db
 }

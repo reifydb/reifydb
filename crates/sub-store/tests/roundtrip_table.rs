@@ -6,14 +6,11 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
-use reifydb_sub_store::{
-	factory::StorageSubsystemFactory,
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
@@ -47,12 +44,7 @@ fn table_materialization_populates_block_store() {
 		..StorageConfig::default()
 	};
 
-	let mut db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let mut db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");

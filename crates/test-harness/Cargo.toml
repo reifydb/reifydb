@@ -34,6 +34,7 @@ reifydb-store-cdc = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true, optional = true }
 reifydb-store-operator = { workspace = true, optional = true }
 reifydb-store-single = { workspace = true, optional = true }
+reifydb-store-column = { workspace = true, optional = true }
 
 [features]
 default = ["engine", "auth"]
@@ -61,6 +62,12 @@ operator = [
     "dep:reifydb-codec",
     "dep:reifydb-testing-sdk",
     "dep:reifydb-flow-async",
+]
+column = [
+    "dep:reifydb-store-column",
+    "reifydb-store-column/testing",
+    "dep:reifydb-runtime",
+    "reifydb-runtime/testing",
 ]
 
 [dev-dependencies]

@@ -54,5 +54,5 @@ sqlite = [
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { workspace = true, features = ["testing", "column"] }
-reifydb-test-harness = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["column"] }
 tempfile = { workspace = true }

@@ -7,19 +7,22 @@ use std::{
 	env,
 	os::unix::process::ExitStatusExt,
 	process::{Command, Output},
+	sync::Arc,
 };
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::interface::catalog::id::ColumnSnapshotId;
+use reifydb_runtime::io::fs::memory::MemoryFs;
 use reifydb_sqlite::{
-	SqliteConfig, SqliteTempPathGuard,
+	SqliteConfig,
 	connection::{connect, convert_flags, resolve_db_path},
 };
-use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
-use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
+use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, testing::NoFaults};
+use reifydb_sub_store::subsystem::StorageConfig;
+use reifydb_test_harness::fixture::column::{FailWrites, memory_store};
 use reifydb_value::value::duration::Duration;
 
 const CHILD: &str = "REIFYDB_SUB_STORE_FAILURE_CHILD";
@@ -46,9 +49,8 @@ fn execute_on_column_db(config: &SqliteConfig, statement: &str) {
 	conn.execute_batch(statement).expect("run statement on column.db");
 }
 
-fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Duration) -> (TestDb, SqliteTempPathGuard) {
-	// Without the backing table every later block persist must fail, as it would on a lost or corrupt disk.
-	let (column_cfg, guard) = SqliteConfig::in_memory();
+fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Duration) -> TestDb {
+	// Every block write must fail with out of space, as it would on a full disk.
 	let config = StorageConfig {
 		table_tick_interval: table_tick,
 		series_tick_interval: series_tick,
@@ -56,10 +58,9 @@ fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Durat
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 		..StorageConfig::default()
 	};
-	let factory = StorageSubsystemFactory::new(config).with_column_sqlite(Some(column_cfg.clone()));
-	let db = TestDb::from(db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build"));
-	execute_on_column_db(&column_cfg, "DROP TABLE column_blocks");
-	(db, guard)
+	let store =
+		memory_store(MemoryFs::new(), Arc::new(FailWrites), Arc::new(NoFaults)).expect("build column store");
+	TestDb::from(db_embedded::memory().with_storage_config(config).with_column_store(store).build().expect("build"))
 }
 
 fn stay_alive_then_stop(mut db: TestDb) {
@@ -72,7 +73,7 @@ fn stay_alive_then_stop(mut db: TestDb) {
 fn a_failed_table_materialization_stops_the_process_and_names_the_table() {
 	// Without the abort a warn-and-retry keeps the process up while no table block is ever persisted again.
 	if is_child() {
-		let (db, _guard) = db_whose_column_store_cannot_persist(
+		let db = db_whose_column_store_cannot_persist(
 			Duration::from_milliseconds(50).unwrap(),
 			Duration::from_seconds(3600).unwrap(),
 		);
@@ -98,18 +99,14 @@ fn a_failed_table_materialization_stops_the_process_and_names_the_table() {
 		"the report must name the table that failed; stderr:\n{}",
 		stderr
 	);
-	assert!(
-		stderr.contains("Failed to put column block"),
-		"the report must carry the underlying cause; stderr:\n{}",
-		stderr
-	);
+	assert!(stderr.contains("out of space"), "the report must carry the underlying cause; stderr:\n{}", stderr);
 }
 
 #[test]
 fn a_failed_series_materialization_stops_the_process_and_names_the_series() {
 	// Without its own pin the series path can swallow the failure while the table case stays green.
 	if is_child() {
-		let (db, _guard) = db_whose_column_store_cannot_persist(
+		let db = db_whose_column_store_cannot_persist(
 			Duration::from_seconds(3600).unwrap(),
 			Duration::from_milliseconds(50).unwrap(),
 		);
@@ -136,11 +133,7 @@ fn a_failed_series_materialization_stops_the_process_and_names_the_series() {
 		"the report must name series s; stderr:\n{}",
 		stderr
 	);
-	assert!(
-		stderr.contains("Failed to put column block"),
-		"the report must carry the underlying cause; stderr:\n{}",
-		stderr
-	);
+	assert!(stderr.contains("out of space"), "the report must carry the underlying cause; stderr:\n{}", stderr);
 }
 
 #[test]

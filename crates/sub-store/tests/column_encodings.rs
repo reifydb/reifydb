@@ -6,15 +6,12 @@
 use std::sync::Arc;
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::interface::catalog::column_snapshot::ColumnSnapshot;
 use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
-use reifydb_sub_store::{
-	factory::StorageSubsystemFactory,
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
@@ -79,10 +76,14 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			..StorageConfig::default()
 		};
-		let factory = StorageSubsystemFactory::new(storage_config)
-			.with_column_dir(Some(column_dir.path().to_path_buf()));
-		let mut db =
-			TestDb::from(db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build"));
+		let store = ColumnStore::host(column_dir.path().to_path_buf()).expect("open column dir");
+		let mut db = TestDb::from(
+			db_embedded::memory()
+				.with_storage_config(storage_config)
+				.with_column_store(store)
+				.build()
+				.expect("build"),
+		);
 
 		db.admin("CREATE NAMESPACE test");
 		db.admin("CREATE TABLE test::t { id: int4, tag: utf8, note: Option(utf8) }");
