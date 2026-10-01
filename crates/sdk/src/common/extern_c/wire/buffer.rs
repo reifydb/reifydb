@@ -20,14 +20,6 @@ impl ExternCBuffer {
 		}
 	}
 
-	pub fn from_slice(data: &[u8]) -> Self {
-		Self {
-			ptr: data.as_ptr(),
-			len: data.len(),
-			cap: data.len(),
-		}
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.len == 0 || self.ptr.is_null()
 	}

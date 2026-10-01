@@ -16,7 +16,6 @@ serde_bytes = "0.11"
 
 reifydb-rql = { path = "../../../../crates/rql" }
 reifydb-codec = { path = "../../../../crates/codec" }
-reifydb-sdk = { path = "../../../../crates/sdk" }
 reifydb-value = { path = "../../../../crates/value" }
 
 [[bin]]
@@ -27,11 +26,6 @@ doc = false
 [[bin]]
 name = "keycode-roundtrip"
 path = "fuzz_targets/keycode_roundtrip.rs"
-doc = false
-
-[[bin]]
-name = "abi-buffer"
-path = "fuzz_targets/abi_buffer.rs"
 doc = false
 
 [[bin]]

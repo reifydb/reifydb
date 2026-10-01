@@ -56,20 +56,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-arith"
-version = "59.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce2961626677665b2195eb59242af4c7befe7b8737ca2050295389362380104e"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "chrono",
- "num-traits",
-]
-
-[[package]]
 name = "arrow-array"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1071,25 +1057,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-flow-async"
-version = "0.9.3"
-dependencies = [
- "arrow-arith",
- "arrow-array",
- "arrow-schema",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-macro",
- "reifydb-value",
- "rustc-hash",
- "serde",
- "serde_bytes",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "reifydb-fuzz"
 version = "0.0.0"
 dependencies = [
@@ -1098,7 +1065,6 @@ dependencies = [
  "libfuzzer-sys",
  "reifydb-codec",
  "reifydb-rql",
- "reifydb-sdk",
  "reifydb-value",
  "serde",
  "serde_bytes",
@@ -1180,28 +1146,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "xxhash-rust",
-]
-
-[[package]]
-name = "reifydb-sdk"
-version = "0.9.3"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-schema",
- "bumpalo",
- "postcard",
- "rand",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-flow-async",
- "reifydb-macro",
- "reifydb-runtime",
- "reifydb-value",
- "serde",
- "tracing",
- "uuid",
 ]
 
 [[package]]
