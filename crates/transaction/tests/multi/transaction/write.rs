@@ -18,7 +18,7 @@ fn test_write() {
 		tx.set(&key, as_values!("foo1".to_string())).unwrap();
 		let value: String = from_bytes!(String, *tx.get(&key).unwrap().unwrap().bytes());
 		assert_eq!(value.as_str(), "foo1");
-		tx.commit(vec![]).unwrap();
+		tx.commit().unwrap();
 	}
 
 	{
@@ -49,7 +49,7 @@ fn test_multiple_write() {
 
 		assert!(txn.contains(&as_key!(8)).unwrap());
 
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 	}
 
 	let k = 8;
@@ -68,7 +68,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("k"), as_values!("v".to_string())).unwrap();
-	let version = txn.commit(vec![]).unwrap();
+	let version = txn.commit().unwrap();
 
 	// The GC cutoff advances past our own commit version while its post-commit phase is still open.
 	engine.advance_version_to(CommitVersion(version.0 + 1));

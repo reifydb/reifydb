@@ -6,7 +6,6 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, TableId},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -39,7 +38,6 @@ pub fn bootstrap_completeness(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	let ns = ensure_namespace(

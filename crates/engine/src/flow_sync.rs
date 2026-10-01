@@ -150,8 +150,8 @@ impl Changes for FlowTransaction<'_> {
 		self.tx.flow_cursor()
 	}
 
-	fn entries_from(&self, at: usize) -> Vec<(ObjectId, Diff)> {
-		self.tx.flow_entries_from(at).to_vec()
+	fn entries_from(&self, at: usize) -> &[(ObjectId, Diff)] {
+		self.tx.flow_entries_from(at)
 	}
 
 	fn set_cursor(&mut self, at: usize) {

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	sync::Arc,
+};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -102,5 +105,61 @@ impl SubscriptionPositionTracker {
 impl Default for SubscriptionPositionTracker {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[derive(Clone)]
+pub struct SubscribedObjects {
+	inner: Arc<RwLock<SubscribedObjectsInner>>,
+}
+
+#[derive(Default)]
+struct SubscribedObjectsInner {
+	by_subscription: HashMap<SubscriptionId, BTreeSet<ObjectId>>,
+	counts: BTreeMap<ObjectId, usize>,
+}
+
+impl SubscribedObjects {
+	pub fn new() -> Self {
+		Self {
+			inner: Arc::new(RwLock::new(SubscribedObjectsInner::default())),
+		}
+	}
+
+	pub fn register(&self, subscription_id: SubscriptionId, objects: impl IntoIterator<Item = ObjectId>) {
+		let objects: BTreeSet<ObjectId> = objects.into_iter().collect();
+		let mut inner = self.inner.write();
+		for object in &objects {
+			*inner.counts.entry(*object).or_insert(0) += 1;
+		}
+		inner.by_subscription.insert(subscription_id, objects);
+	}
+
+	pub fn unregister(&self, subscription_id: &SubscriptionId) {
+		let mut inner = self.inner.write();
+		if let Some(objects) = inner.by_subscription.remove(subscription_id) {
+			release(&mut inner.counts, objects);
+		}
+	}
+
+	pub fn snapshot(&self) -> BTreeSet<ObjectId> {
+		self.inner.read().counts.keys().copied().collect()
+	}
+}
+
+impl Default for SubscribedObjects {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+fn release(counts: &mut BTreeMap<ObjectId, usize>, objects: BTreeSet<ObjectId>) {
+	for object in objects {
+		if let Some(count) = counts.get_mut(&object) {
+			*count -= 1;
+			if *count == 0 {
+				counts.remove(&object);
+			}
+		}
 	}
 }

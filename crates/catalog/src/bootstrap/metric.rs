@@ -9,7 +9,6 @@ use reifydb_core::{
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -49,7 +48,6 @@ pub fn bootstrap_metric_ringbuffers(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	let ns_id = ensure_namespace(

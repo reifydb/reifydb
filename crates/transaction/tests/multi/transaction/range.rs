@@ -35,7 +35,7 @@ fn test_range() {
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 
 	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
@@ -82,7 +82,7 @@ fn test_range2() {
 		assert_eq!(v.version, 1);
 	}
 
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
@@ -134,7 +134,7 @@ fn test_range3() {
 		assert_eq!(v.version, 1);
 	}
 
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 
 	let five_to_one = TaggedKeyBoundRange::start_end(as_bound!(5), as_bound!(1));
 
@@ -173,7 +173,7 @@ fn test_range_edge() {
 		txn.set(&as_key!(u64::MAX), as_values!(u64::MAX)).unwrap();
 
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -182,7 +182,7 @@ fn test_range_edge() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -191,7 +191,7 @@ fn test_range_edge() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -199,7 +199,7 @@ fn test_range_edge() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(&as_key!(2)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 
@@ -302,7 +302,7 @@ fn test_range_stream_returns_newest_version() {
 	for i in 1..=NUM_VERSIONS {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(i)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 	}
 
 	let txn = engine.begin_query().unwrap();
@@ -329,7 +329,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 			// Value encodes both key and version for verification
 			txn.set(&as_key!(key), as_values!(key * 1000 + version)).unwrap();
 		}
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 	}
 
 	// Query with streaming
@@ -378,7 +378,7 @@ fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
 	txn.set(&as_key!("a3"), as_values!(3u64)).unwrap();
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
@@ -398,7 +398,7 @@ fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
 	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.remove(&as_key!("a1")).unwrap();

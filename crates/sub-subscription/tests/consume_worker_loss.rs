@@ -24,7 +24,7 @@ use reifydb_sub_subscription::{
 	consumer::SubscriptionCdcConsumer,
 	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
-	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
+	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
 	worker::SubscriptionWorkerMessage,
 };
 use reifydb_value::value::duration::Duration;
@@ -98,6 +98,7 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 		SubscriptionPositionTracker::new(),
 		store.clone(),
 		Arc::new(DeliveryBuffer::new(store)),
+		SubscribedObjects::new(),
 	);
 
 	let (tx, rx) = channel();

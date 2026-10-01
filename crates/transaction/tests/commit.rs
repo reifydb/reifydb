@@ -68,7 +68,6 @@ fn harness() -> Harness {
 			bus.clone(),
 			Interceptors::new(),
 			IdentityId::system(),
-			Clock::Real,
 		)
 	});
 

@@ -22,7 +22,6 @@ use reifydb_flow::{
 	backfill::Scan,
 	operator::sink::{encode_row_at_index, shape_field_columns},
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
 #[cfg(feature = "testing")]
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -105,7 +104,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Clock::Mock(MockClock::from_millis(1000)),
 		)
 		.unwrap();
 		txn.set_dictionary_allocators(self.allocators.clone());
@@ -119,7 +117,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Clock::Mock(MockClock::from_millis(1000)),
 		)
 		.unwrap()
 	}

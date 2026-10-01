@@ -435,15 +435,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
-	let mut txn = AdminTransaction::new(
-		multi,
-		single,
-		event_bus,
-		Interceptors::new(),
-		IdentityId::system(),
-		Clock::Mock(MockClock::from_millis(1000)),
-	)
-	.unwrap();
+	let mut txn =
+		AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap();
 	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
@@ -476,7 +469,6 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
-		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
 	result.set_dictionary_allocators(dictionary_allocators);

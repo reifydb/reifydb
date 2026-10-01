@@ -6,13 +6,13 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use reifydb_cdc::{consume::consumer::CdcConsume, lift::lift_changes};
+use reifydb_cdc::{
+	consume::consumer::CdcConsume,
+	lift::{lift_selected_changes, lifted_objects},
+};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		cdc::Cdc,
-		change::{Change, ChangeOrigin},
-	},
+	interface::{cdc::Cdc, change::Change},
 	internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -27,7 +27,7 @@ use tracing::{instrument, warn};
 use crate::{
 	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
-	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
+	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
 	worker::{SubscriptionWorkerMessage, worker_name},
 };
 
@@ -40,6 +40,7 @@ pub struct SubscriptionCdcConsumer {
 	position_tracker: SubscriptionPositionTracker,
 	store: Arc<SubscriptionStore>,
 	delivery: Arc<DeliveryBuffer>,
+	subscribed: SubscribedObjects,
 	in_flight: Mutex<Vec<(usize, Arc<AtomicBool>)>>,
 }
 
@@ -51,6 +52,7 @@ impl SubscriptionCdcConsumer {
 		position_tracker: SubscriptionPositionTracker,
 		store: Arc<SubscriptionStore>,
 		delivery: Arc<DeliveryBuffer>,
+		subscribed: SubscribedObjects,
 	) -> Self {
 		Self {
 			engine,
@@ -59,25 +61,30 @@ impl SubscriptionCdcConsumer {
 			position_tracker,
 			store,
 			delivery,
+			subscribed,
 			in_flight: Mutex::new(Vec::new()),
 		}
 	}
 
-	fn lift_batch(&self, cdcs: &[Cdc]) -> Result<Vec<Change>> {
+	fn lift_batch(&self, cdcs: &[Cdc]) -> Result<(Vec<Change>, bool)> {
 		let catalog = self.engine.catalog();
 		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query);
+		let subscribed = self.subscribed.snapshot();
 
 		let mut out: Vec<Change> = Vec::new();
+		let mut lifted_any = false;
 		for cdc in cdcs {
-			for change in lift_changes(cdc, &catalog, &mut txn)? {
-				if let ChangeOrigin::Object(object_id) = &change.origin {
-					self.source_tracker.update(*object_id, cdc.version.commit);
-				}
-				out.push(change);
+			let lifted = lifted_objects(cdc)?;
+			let changes =
+				lift_selected_changes(cdc, &catalog, &mut txn, |object| subscribed.contains(&object))?;
+			for object in &lifted {
+				self.source_tracker.update(*object, cdc.version.commit);
 			}
+			lifted_any |= !lifted.is_empty();
+			out.extend(changes);
 		}
-		Ok(out)
+		Ok((out, lifted_any))
 	}
 }
 
@@ -171,6 +178,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		);
 		for subscription in &subscriptions {
 			self.store.unregister(subscription);
+			self.subscribed.unregister(subscription);
 		}
 
 		let resume = CommitVersion(truncated_before.0.saturating_sub(1).max(cursor.0));
@@ -215,20 +223,20 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			}
 		}
 
-		let all_changes = match self.lift_batch(&cdcs) {
-			Ok(changes) => changes,
+		let (subscribed_changes, lifted_any) = match self.lift_batch(&cdcs) {
+			Ok(lifted) => lifted,
 			Err(e) => {
 				reply(Err(e));
 				return;
 			}
 		};
 
-		if all_changes.is_empty() {
+		if !lifted_any {
 			reply(Ok(()));
 			return;
 		}
 
-		let changes = Arc::new(all_changes);
+		let changes = Arc::new(subscribed_changes);
 
 		let position_tracker = self.position_tracker.clone();
 		let store = self.store.clone();

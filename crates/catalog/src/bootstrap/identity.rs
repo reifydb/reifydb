@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -34,7 +33,6 @@ pub fn bootstrap_root_identity(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root(), IdentityKind::Root)?;

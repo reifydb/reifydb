@@ -166,7 +166,7 @@ impl Runner for MvccRunner {
 						unreachable!("can not call commit on rx")
 					}
 					TransactionHandle::Write(mut tx) => {
-						tx.commit(vec![])?;
+						tx.commit()?;
 					}
 				}
 			}
@@ -264,7 +264,7 @@ impl Runner for MvccRunner {
 					}
 				}
 				args.reject_rest()?;
-				tx.commit(vec![])?;
+				tx.commit()?;
 			}
 
 			// tx: rollback

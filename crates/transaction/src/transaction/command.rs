@@ -10,8 +10,8 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::{object::ObjectId, storage::StorageId},
-		change::{Change, ChangeOrigin, Diff},
+		catalog::storage::StorageId,
+		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
@@ -20,7 +20,6 @@ use reifydb_core::{
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
@@ -80,7 +79,7 @@ use crate::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
+		transaction::{PostCommitContext, PostCommitInterceptor},
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -93,7 +92,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, write::Write},
+	transaction::{RqlExecutor, Transaction, write::Write},
 };
 
 pub struct CommandTransaction {
@@ -115,8 +114,6 @@ pub struct CommandTransaction {
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
-	pub(crate) clock: Clock,
-
 	poison_cause: Option<Diagnostic>,
 }
 
@@ -136,7 +133,6 @@ impl CommandTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
-		clock: Clock,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		Ok(Self {
@@ -151,7 +147,6 @@ impl CommandTransaction {
 			identity,
 			executor: None,
 			dictionary_allocators: None,
-			clock,
 			poison_cause: None,
 		})
 	}
@@ -210,24 +205,11 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
-		self.finalize_commit(ctx, false)
+		self.finalize_commit(false)
 	}
 
-	#[instrument(name = "transaction::command::pre_commit_context", level = "trace", skip_all)]
-	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
-		let transaction_writes = collect_transaction_writes(self.pending_writes());
-		Ok(PreCommitContext {
-			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
-			pending_writes: Vec::new(),
-			transaction_writes,
-			view_entries: Vec::new(),
-		})
-	}
-
-	fn finalize_commit(&mut self, ctx: PreCommitContext, unchecked: bool) -> Result<CommitVersion> {
-		let Some(mut multi) = self.cmd.take() else {
+	fn finalize_commit(&mut self, unchecked: bool) -> Result<CommitVersion> {
+		let Some(multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
 		reifydb_assertions! {
@@ -238,40 +220,12 @@ impl CommandTransaction {
 				 rolled-back/poisoned transaction"
 			);
 		}
-		let id = self.apply_writes_and_mark_committed(&mut multi, &ctx)?;
-		let row_changes = take(&mut self.row_changes);
-		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
-		let version = self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)?;
-		Ok(version)
-	}
-
-	#[inline]
-	fn apply_writes_and_mark_committed(
-		&mut self,
-		multi: &mut MultiWriteTransaction,
-		ctx: &PreCommitContext,
-	) -> Result<TransactionId> {
-		apply_pre_commit_writes(multi, &ctx.pending_writes)?;
+		self.accumulator.clear();
 		let id = multi.id();
 		self.state = TransactionState::Committed;
-		Ok(id)
-	}
-
-	#[inline]
-	fn merge_view_entries(
-		&self,
-		mut flow_changes: Vec<Change>,
-		view_entries: Vec<(ObjectId, Diff)>,
-	) -> Result<Vec<Change>> {
-		if !view_entries.is_empty() {
-			let mut accumulator = ChangeAccumulator::new();
-			for (object, diff) in view_entries {
-				accumulator.track(object, diff);
-			}
-			let changed_at = self.clock.now();
-			flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
-		}
-		Ok(flow_changes)
+		let row_changes = take(&mut self.row_changes);
+		let version = self.commit_and_post(multi, id, row_changes, unchecked)?;
+		Ok(version)
 	}
 
 	#[inline]
@@ -279,15 +233,14 @@ impl CommandTransaction {
 		&self,
 		mut multi: MultiWriteTransaction,
 		id: TransactionId,
-		flow_changes: Vec<Change>,
 		row_changes: Vec<RowChange>,
 		unchecked: bool,
 	) -> Result<CommitVersion> {
 		let changes = TransactionalCatalogChanges::default();
 		let version = if unchecked {
-			multi.commit_unchecked(flow_changes)?
+			multi.commit_unchecked()?
 		} else {
-			multi.commit(flow_changes)?
+			multi.commit()?
 		};
 		let self_lease = multi.take_self_lease();
 		self.run_post_commit(PostCommitContext::new(id, version, changes, row_changes))?;
@@ -319,14 +272,7 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let mut ctx = self.build_pre_commit_context()?;
-		self.run_pre_commit(&mut ctx)?;
-		self.finalize_commit(ctx, true)
-	}
-
-	#[instrument(name = "transaction::command::pre_commit", level = "trace", skip_all)]
-	fn run_pre_commit(&self, ctx: &mut PreCommitContext) -> Result<()> {
-		self.interceptors.pre_commit.execute(ctx)
+		self.finalize_commit(true)
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
@@ -677,10 +623,6 @@ impl WithInterceptors for CommandTransaction {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_row_post_delete
-	}
-
-	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
-		&mut self.interceptors.pre_commit
 	}
 
 	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync> {

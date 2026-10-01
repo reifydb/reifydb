@@ -30,7 +30,7 @@ fn test_self_cancelling_writer_still_takes_a_commit_version() {
 	txn.set(&key, as_values!(1u64)).unwrap();
 	txn.remove(&key).unwrap();
 
-	let version = txn.commit(vec![]).unwrap();
+	let version = txn.commit().unwrap();
 	assert_ne!(
 		version,
 		CommitVersion(0),
@@ -53,9 +53,9 @@ fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() 
 	canceller.set(&key, as_values!(2u64)).unwrap();
 	canceller.remove(&key).unwrap();
 
-	winner.commit(vec![]).unwrap();
+	winner.commit().unwrap();
 
-	let err = canceller.commit(vec![]).unwrap_err();
+	let err = canceller.commit().unwrap_err();
 	assert!(
 		err.to_string().contains("conflict"),
 		"both transactions wrote the same key while concurrent, so the second must abort. It \
@@ -70,7 +70,7 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 
 	let mut seed = engine.begin_command().unwrap();
 	seed.set(&key, as_values!(0u64)).unwrap();
-	seed.commit(vec![]).unwrap();
+	seed.commit().unwrap();
 
 	let mut txn1 = engine.begin_command().unwrap();
 	let mut txn2 = engine.begin_command().unwrap();
@@ -83,9 +83,9 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 	txn1.set(&key, as_values!(read1 + 1)).unwrap();
 	txn2.set(&key, as_values!(read2 + 1)).unwrap();
 
-	txn1.commit(vec![]).unwrap();
+	txn1.commit().unwrap();
 
-	let err = txn2.commit(vec![]).unwrap_err();
+	let err = txn2.commit().unwrap_err();
 	assert!(
 		err.to_string().contains("conflict"),
 		"txn2 read the counter that txn1 then overwrote, so letting txn2 commit would discard txn1's \
@@ -115,7 +115,7 @@ fn test_lost_update_rejected_when_commits_race() {
 
 		let mut seed = engine.begin_command().unwrap();
 		seed.set(&key, as_values!(0u64)).unwrap();
-		seed.commit(vec![]).unwrap();
+		seed.commit().unwrap();
 
 		let barrier = Arc::new(Barrier::new(THREADS));
 		let committed = Arc::new(AtomicU64::new(0));
@@ -134,7 +134,7 @@ fn test_lost_update_rejected_when_commits_race() {
 					barrier.wait();
 
 					txn.set(&key, as_values!(current + 1)).unwrap();
-					if txn.commit(vec![]).is_ok() {
+					if txn.commit().is_ok() {
 						committed.fetch_add(1, Ordering::SeqCst);
 					}
 				})

@@ -75,7 +75,7 @@ use reifydb_transaction::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitInterceptor, PreCommitInterceptor},
+		transaction::PostCommitInterceptor,
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -467,7 +467,6 @@ impl WithInterceptors for DeferredTransaction {
 		RingBufferRowPostDeleteInterceptor
 	);
 
-	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
 	interceptor_method!(post_commit_interceptors, post_commit, PostCommitInterceptor);
 
 	interceptor_method!(namespace_post_create_interceptors, namespace_post_create, NamespacePostCreateInterceptor);

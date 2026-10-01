@@ -21,7 +21,6 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
-		change::Change,
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 	key::{
@@ -620,15 +619,11 @@ impl MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub fn commit(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
-		self.commit_with(flow_changes, |_| {})
+	pub fn commit(&mut self) -> Result<CommitVersion> {
+		self.commit_with(|_| {})
 	}
 
-	pub fn commit_with(
-		&mut self,
-		flow_changes: Vec<Change>,
-		before_publish: impl FnOnce(CommitVersion),
-	) -> Result<CommitVersion> {
+	pub fn commit_with(&mut self, before_publish: impl FnOnce(CommitVersion)) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
 			before_publish(CommitVersion(0));
@@ -636,18 +631,18 @@ impl MultiWriteTransaction {
 		}
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending(deltas.clone())?;
-		self.finalize_commit(commit_version, deltas, flow_changes, before_publish)
+		self.finalize_commit(commit_version, deltas, before_publish)
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub(crate) fn commit_unchecked(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
+	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
-		self.finalize_commit(commit_version, deltas, flow_changes, |_| {})
+		self.finalize_commit(commit_version, deltas, |_| {})
 	}
 
 	#[inline]
@@ -655,7 +650,6 @@ impl MultiWriteTransaction {
 		&mut self,
 		commit_version: CommitVersion,
 		deltas: CowVec<Delta>,
-		flow_changes: Vec<Change>,
 		before_publish: impl FnOnce(CommitVersion),
 	) -> Result<CommitVersion> {
 		reifydb_assertions! {
@@ -683,18 +677,18 @@ impl MultiWriteTransaction {
 		}
 		self.discard();
 		before_publish(commit_version);
-		self.publish(commit_version, deltas, flow_changes);
+		self.publish(commit_version, deltas);
 		Ok(commit_version)
 	}
 
 	#[inline]
-	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>, flow_changes: Vec<Change>) {
+	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>) {
 		self.oracle.done_commit(commit_version);
 		let version = ChangeVersion {
 			commit: commit_version,
 			source: self.source.unwrap_or(SourceVersion::from(commit_version)),
 		};
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, flow_changes));
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version));
 	}
 }
 
@@ -1136,7 +1130,7 @@ mod tests {
 			racer.0, commit_version.0
 		);
 
-		let result = txn.finalize_commit(commit_version, deltas, vec![], |_| {});
+		let result = txn.finalize_commit(commit_version, deltas, |_| {});
 		assert_eq!(
 			result.unwrap(),
 			commit_version,

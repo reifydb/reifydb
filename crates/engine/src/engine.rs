@@ -126,7 +126,6 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
-			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
@@ -142,7 +141,6 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
-			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());

@@ -14,7 +14,7 @@ fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
 	for i in 0..5u64 {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(i), as_values!(i)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 	}
 
 	let done = engine.query_done_until();
@@ -44,7 +44,7 @@ fn transactions_sharing_a_snapshot_each_hold_the_pin_independently() {
 	for i in 0..5u64 {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(i), as_values!(i)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 	}
 
 	let done = engine.query_done_until();

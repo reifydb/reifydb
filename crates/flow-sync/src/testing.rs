@@ -134,7 +134,7 @@ impl<T: Changes> Changes for TestingTxn<T> {
 		self.txn.cursor()
 	}
 
-	fn entries_from(&self, at: usize) -> Vec<(ObjectId, Diff)> {
+	fn entries_from(&self, at: usize) -> &[(ObjectId, Diff)] {
 		self.txn.entries_from(at)
 	}
 
@@ -277,11 +277,11 @@ impl Changes for TestingTx {
 		self.cursor
 	}
 
-	fn entries_from(&self, at: usize) -> Vec<(ObjectId, Diff)> {
+	fn entries_from(&self, at: usize) -> &[(ObjectId, Diff)] {
 		if at >= self.entries.len() {
-			return Vec::new();
+			return &[];
 		}
-		self.entries[at..].to_vec()
+		&self.entries[at..]
 	}
 
 	fn set_cursor(&mut self, at: usize) {

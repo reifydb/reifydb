@@ -9,7 +9,6 @@ use reifydb_core::{
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	key::config::ConfigStorageKey,
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{store::multi::scan_tiers_latest, tier::persistent::MultiPersistentTier};
 use reifydb_transaction::{
@@ -115,7 +114,6 @@ pub fn apply_bootstrap_configs(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	let catalog_api = Catalog::new(catalog.clone());

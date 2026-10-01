@@ -5,14 +5,13 @@ use std::{mem::take, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	common::CommitVersion,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::{object::ObjectId, storage::StorageId},
-		change::{Change, ChangeOrigin, Diff},
+		catalog::storage::StorageId,
+		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
@@ -21,7 +20,6 @@ use reifydb_core::{
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
@@ -81,10 +79,7 @@ use crate::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{
-			PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor,
-			PrePublishContext,
-		},
+		transaction::{PostCommitContext, PostCommitInterceptor, PrePublishContext},
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -96,7 +91,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, write::Write},
+	transaction::{RqlExecutor, Transaction, write::Write},
 };
 
 pub struct AdminTransaction {
@@ -119,8 +114,6 @@ pub struct AdminTransaction {
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
-	pub(crate) clock: Clock,
-
 	poison_cause: Option<Diagnostic>,
 }
 
@@ -140,7 +133,6 @@ impl AdminTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
-		clock: Clock,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		let txn_id = cmd.id();
@@ -157,7 +149,6 @@ impl AdminTransaction {
 			identity,
 			executor: None,
 			dictionary_allocators: None,
-			clock,
 			poison_cause: None,
 		})
 	}
@@ -221,23 +212,10 @@ impl AdminTransaction {
 	#[instrument(name = "transaction::admin::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
-		self.finalize_commit(ctx)
+		self.finalize_commit()
 	}
 
-	#[inline]
-	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
-		let transaction_writes = collect_transaction_writes(self.pending_writes());
-		Ok(PreCommitContext {
-			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
-			pending_writes: Vec::new(),
-			transaction_writes,
-			view_entries: Vec::new(),
-		})
-	}
-
-	fn finalize_commit(&mut self, ctx: PreCommitContext) -> Result<CommitVersion> {
+	fn finalize_commit(&mut self) -> Result<CommitVersion> {
 		reifydb_assertions! {
 			let state_ok = self.state == TransactionState::Active;
 			assert!(
@@ -253,24 +231,14 @@ impl AdminTransaction {
 				}
 			);
 		}
-		let mut multi = self.apply_writes_and_take_command(&ctx.pending_writes)?;
-		let (changes, row_changes) = self.take_catalog_and_row_changes();
-		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
-		let version = self.commit_and_run_post_commit(&mut multi, flow_changes, changes, row_changes)?;
-		Ok(version)
-	}
-
-	#[inline]
-	fn apply_writes_and_take_command(
-		&mut self,
-		pending_writes: &[(TaggedKey, PendingWrite)],
-	) -> Result<MultiWriteTransaction> {
+		self.accumulator.clear();
 		let Some(mut multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
-		apply_pre_commit_writes(&mut multi, pending_writes)?;
 		self.state = TransactionState::Committed;
-		Ok(multi)
+		let (changes, row_changes) = self.take_catalog_and_row_changes();
+		let version = self.commit_and_run_post_commit(&mut multi, changes, row_changes)?;
+		Ok(version)
 	}
 
 	#[inline]
@@ -279,34 +247,15 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	fn merge_view_entries(
-		&self,
-		mut flow_changes: Vec<Change>,
-		view_entries: Vec<(ObjectId, Diff)>,
-	) -> Result<Vec<Change>> {
-		if view_entries.is_empty() {
-			return Ok(flow_changes);
-		}
-		let mut accumulator = ChangeAccumulator::new();
-		for (object, diff) in view_entries {
-			accumulator.track(object, diff);
-		}
-		let changed_at = self.clock.now();
-		flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
-		Ok(flow_changes)
-	}
-
-	#[inline]
 	fn commit_and_run_post_commit(
 		&mut self,
 		multi: &mut MultiWriteTransaction,
-		flow_changes: Vec<Change>,
 		changes: TransactionalCatalogChanges,
 		row_changes: Vec<RowChange>,
 	) -> Result<CommitVersion> {
 		let id = multi.id();
 		let pre_publish = &self.interceptors.pre_publish;
-		let version = multi.commit_with(flow_changes, |version| {
+		let version = multi.commit_with(|version| {
 			if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
 				panic!("catalog cache fill for committed version {} failed: {}", version.0, err);
 			}
@@ -594,10 +543,6 @@ impl WithInterceptors for AdminTransaction {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_row_post_delete
-	}
-
-	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
-		&mut self.interceptors.pre_commit
 	}
 
 	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync> {

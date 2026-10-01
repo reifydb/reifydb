@@ -26,7 +26,7 @@ use reifydb_core::{
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
 
 pub struct RowTarget {
 	pub object: ObjectId,
@@ -116,6 +116,29 @@ pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
 	})
 }
 
+pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
+	let mut objects = BTreeSet::new();
+	for cdc_change in &cdc.changes {
+		let Some(target) = tracked_target(cdc_change.key()) else {
+			continue;
+		};
+		match cdc_change {
+			CdcChange::Delete {
+				visible: false,
+				..
+			} => continue,
+			CdcChange::Delete {
+				key,
+				pre: None,
+				visible: true,
+			} => return Err(missing_pre_image(key, cdc)),
+			_ => {}
+		}
+		objects.insert(target.object);
+	}
+	Ok(objects)
+}
+
 pub fn lift_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
 	lift_selected_changes(cdc, catalog, txn, |_| true)
 }
@@ -154,13 +177,7 @@ pub fn lift_selected_changes(
 				pre,
 				visible: true,
 			} => {
-				let pre = pre.as_ref().ok_or_else(|| {
-					internal_error!(
-						"CDC delete for key {:?} at version {} carries no pre-image, so its change cannot be lifted",
-						key.as_slice(),
-						cdc.version.commit.0
-					)
-				})?;
+				let pre = pre.as_ref().ok_or_else(|| missing_pre_image(key, cdc))?;
 				(Some(pre.clone()), None)
 			}
 		};
@@ -245,6 +262,14 @@ pub fn lift_selected_changes(
 	}
 
 	Ok(changes)
+}
+
+fn missing_pre_image(key: &EncodedKey, cdc: &Cdc) -> Error {
+	internal_error!(
+		"CDC delete for key {:?} at version {} carries no pre-image, so its change cannot be lifted",
+		key.as_slice(),
+		cdc.version.commit.0
+	)
 }
 
 fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
