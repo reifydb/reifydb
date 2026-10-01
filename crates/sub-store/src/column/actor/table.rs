@@ -9,7 +9,12 @@ use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
 use reifydb_core::{
 	common::CommitVersion,
 	event::{EventListener, transaction::PostCommitEvent},
-	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, storage::StorageId, table::Table},
+	interface::catalog::{
+		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		id::TableId,
+		storage::StorageId,
+		table::Table,
+	},
 	key::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
@@ -236,7 +241,8 @@ impl TableMaterializationActor {
 	) -> Result<()> {
 		let row_count = block_arc.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
-		let column_snapshot = self.engine.catalog().create_column_snapshot(
+		let catalog = self.engine.catalog();
+		let column_snapshot = catalog.create_column_snapshot(
 			&mut admin,
 			ColumnSnapshotToCreate {
 				namespace: table.namespace,
@@ -249,8 +255,19 @@ impl TableMaterializationActor {
 				stats: Vec::new(),
 			},
 		)?;
+		let old: Vec<ColumnSnapshot> = catalog
+			.list_column_snapshots_for_table(&mut Transaction::Admin(&mut admin), table.id)?
+			.into_iter()
+			.filter(|snapshot| snapshot.id != column_snapshot.id)
+			.collect();
+		for snapshot in &old {
+			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
+		}
 		self.block_store.write(&BlockKey::of(&column_snapshot), block_arc.as_ref())?;
 		commit_admin(admin)?;
+		for snapshot in &old {
+			self.block_store.remove(&BlockKey::of(snapshot))?;
+		}
 		Ok(())
 	}
 }

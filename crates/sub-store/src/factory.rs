@@ -30,6 +30,8 @@ pub struct StorageSubsystemFactory {
 	config: StorageConfig,
 	#[cfg(reifydb_target = "host")]
 	column_dir: Option<PathBuf>,
+	#[cfg(feature = "column")]
+	column_store: Option<ColumnStore>,
 }
 
 impl StorageSubsystemFactory {
@@ -38,12 +40,20 @@ impl StorageSubsystemFactory {
 			config,
 			#[cfg(reifydb_target = "host")]
 			column_dir: None,
+			#[cfg(feature = "column")]
+			column_store: None,
 		}
 	}
 
 	#[cfg(reifydb_target = "host")]
 	pub fn with_column_dir(mut self, dir: Option<PathBuf>) -> Self {
 		self.column_dir = dir;
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_column_store(mut self, store: ColumnStore) -> Self {
+		self.column_store = Some(store);
 		self
 	}
 }
@@ -61,13 +71,16 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 
-		#[cfg(reifydb_target = "host")]
-		let block_store = match self.column_dir.clone() {
-			Some(dir) => ColumnStore::host(dir)?,
+		let block_store = match self.column_store.clone() {
+			Some(store) => store,
+			#[cfg(reifydb_target = "host")]
+			None => match self.column_dir.clone() {
+				Some(dir) => ColumnStore::host(dir)?,
+				None => ColumnStore::memory()?,
+			},
+			#[cfg(not(reifydb_target = "host"))]
 			None => ColumnStore::memory()?,
 		};
-		#[cfg(not(reifydb_target = "host"))]
-		let block_store = ColumnStore::memory()?;
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
