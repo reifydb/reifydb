@@ -3,13 +3,17 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, make_array};
+use arrow_array::{Array, ArrayRef, make_array, new_null_array};
 use arrow_buffer::NullBuffer;
-use arrow_schema::FieldRef;
+use arrow_schema::{DataType, FieldRef};
 use reifydb_value::{
 	Result,
 	util::bitmap,
-	value::column_view::{ColumnView, ViewData},
+	value::{
+		column_view::{ColumnView, ViewData},
+		container::{fixed_array, wide_int_array::wide_array},
+		value_type::ValueType,
+	},
 };
 
 use crate::value::batch::frame_error;
@@ -47,6 +51,15 @@ pub fn with_nulls(column: (FieldRef, ArrayRef), nulls: NullBuffer) -> Result<(Fi
 	};
 	let data = array.to_data().into_builder().nulls(Some(nulls)).build().map_err(frame_error)?;
 	Ok((field, make_array(data)))
+}
+
+pub fn none_filler(ty: &ValueType, data_type: &DataType) -> ArrayRef {
+	match ty.inner_type() {
+		ValueType::Int16 => {
+			Arc::new(fixed_array::attach_nulls(wide_array([0i128]), Some(NullBuffer::new_null(1))))
+		}
+		_ => new_null_array(data_type, 1),
+	}
 }
 
 #[cfg(test)]

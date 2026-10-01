@@ -54,6 +54,7 @@ use crate::{
 	value::column::{
 		builder::{ColumnBuilder, TypedBuilder, append_fixed},
 		factory::from_many,
+		nulls::none_filler,
 		view::group_by::{GroupKeyDict, GroupRows, group_rows},
 	},
 };
@@ -339,11 +340,14 @@ pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result
 	let schema = batch.schema_ref();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
-		let filler = new_null_array(array.data_type(), 1);
+		let mut field_type = from_field(field)?;
+		let filler = match &field_type.value_type {
+			Some(ty) => none_filler(ty, array.data_type()),
+			None => new_null_array(array.data_type(), 1),
+		};
 		let taken = kernel::picked(&[array.as_ref(), filler.as_ref()], &pairs);
 		let field = match taken.logical_null_count() > 0 && !field.is_nullable() {
 			true => {
-				let mut field_type = from_field(field)?;
 				field_type.value_type =
 					field_type.value_type.map(|value_type| ValueType::Option(Box::new(value_type)));
 				Arc::new(to_field(field.name(), &field_type))

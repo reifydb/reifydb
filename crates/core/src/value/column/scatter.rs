@@ -3,7 +3,7 @@
 
 use std::{fmt::Debug, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, BooleanArray, make_array, new_null_array};
+use arrow_array::{Array, ArrayRef, BooleanArray, make_array};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
 use arrow_schema::FieldRef;
 use reifydb_value::{
@@ -34,7 +34,7 @@ use crate::value::{
 	column::{
 		builder::ColumnBuilder,
 		factory,
-		nulls::{split_nulls, with_nulls},
+		nulls::{none_filler, split_nulls, with_nulls},
 	},
 };
 
@@ -188,7 +188,7 @@ fn scatter_merge_generic(
 
 	let then_side = normalized(then, total_len);
 	let else_side = normalized(other, total_len);
-	let filler = new_null_array(then_side.data_type(), 1);
+	let filler = none_filler(&then.get_type(), then_side.data_type());
 	let pairs: Vec<(usize, usize)> = (0..total_len)
 		.map(|row| match (then_mask.value(row), else_mask.value(row)) {
 			(true, _) => (0, row),
@@ -254,7 +254,7 @@ fn normalized(source: &ColumnView, len: usize) -> ArrayRef {
 	if source.none_count() == 0 {
 		return make_array(array.to_data());
 	}
-	let filler = new_null_array(array.data_type(), 1);
+	let filler = none_filler(&source.get_type(), array.data_type());
 	let pairs: Vec<(usize, usize)> = (0..len)
 		.map(|row| match source.none_at(row) {
 			true => (1, 0),
