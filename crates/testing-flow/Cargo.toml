@@ -24,7 +24,7 @@ reifydb-engine = { workspace = true }
 reifydb-flow-async = { workspace = true, features = ["runtime"] }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-sdk = { workspace = true }
+reifydb-sdk = { workspace = true, features = ["mount"] }
 reifydb-sub-flow = { workspace = true }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-sdk = { workspace = true }

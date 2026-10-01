@@ -38,9 +38,9 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
+use reifydb_sdk::flow::operator::mount::mount;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sub_flow::operator::mount::mount;
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{

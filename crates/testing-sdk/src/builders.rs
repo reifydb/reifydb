@@ -13,7 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
-	value::batch::from_row,
+	value::batch::{append, from_row},
 };
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
@@ -176,7 +176,17 @@ impl TestChangeBuilder {
 	}
 
 	pub fn insert(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::insert(row_batch(&row)));
+		let post = row_batch(&row);
+		if let Some(Diff::Insert {
+			post: last,
+			..
+		}) = self.diffs.last_mut()
+			&& last.schema_ref() == post.schema_ref()
+		{
+			*last = appended(last, &post);
+			return self;
+		}
+		self.diffs.push(Diff::insert(post));
 		self
 	}
 
@@ -186,7 +196,21 @@ impl TestChangeBuilder {
 	}
 
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(Diff::update(row_batch(&pre), row_batch(&post)));
+		let pre = row_batch(&pre);
+		let post = row_batch(&post);
+		if let Some(Diff::Update {
+			pre: last_pre,
+			post: last_post,
+			..
+		}) = self.diffs.last_mut()
+			&& last_pre.schema_ref() == pre.schema_ref()
+			&& last_post.schema_ref() == post.schema_ref()
+		{
+			*last_pre = appended(last_pre, &pre);
+			*last_post = appended(last_post, &post);
+			return self;
+		}
+		self.diffs.push(Diff::update(pre, post));
 		self
 	}
 
@@ -203,7 +227,17 @@ impl TestChangeBuilder {
 	}
 
 	pub fn remove(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::remove(row_batch(&row)));
+		let pre = row_batch(&row);
+		if let Some(Diff::Remove {
+			pre: last,
+			..
+		}) = self.diffs.last_mut()
+			&& last.schema_ref() == pre.schema_ref()
+		{
+			*last = appended(last, &pre);
+			return self;
+		}
+		self.diffs.push(Diff::remove(pre));
 		self
 	}
 
@@ -226,6 +260,13 @@ fn row_batch(row: &Row) -> RecordBatch {
 	match from_row(row) {
 		Ok(batch) => batch,
 		Err(e) => panic!("test change row {} does not build a batch: {e}", row.number.0),
+	}
+}
+
+fn appended(last: &RecordBatch, next: &RecordBatch) -> RecordBatch {
+	match append(last, next) {
+		Ok(batch) => batch,
+		Err(e) => panic!("test change rows of one shape do not append into one batch: {e}"),
 	}
 }
 

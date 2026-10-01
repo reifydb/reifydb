@@ -30,6 +30,7 @@ host = [
     "dep:tracing",
     "dep:uuid",
 ]
+mount = ["host", "reifydb-flow-async/runtime"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -54,6 +55,7 @@ uuid = { workspace = true, optional = true }
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing-sdk = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["operator"] }
 
 [[test]]
 name = "extern_c"

@@ -13,6 +13,8 @@ use reifydb_core::{
 };
 use reifydb_flow_async::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_sdk::flow::operator::mount::mount;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{
 	ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, UnmanagedMount,
 	UnmanagedOperator,
@@ -22,9 +24,6 @@ use reifydb_sdk::flow::operator::{
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_value::{Result, config::ExtensionParams};
-
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::mount::mount;
 
 pub(crate) type OperatorFactory =
 	Arc<dyn Fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator> + Send + Sync>;

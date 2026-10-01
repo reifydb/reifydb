@@ -12,5 +12,7 @@ pub mod chaos;
 pub mod context;
 pub mod harness;
 pub mod helpers;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+pub mod in_process;
 pub mod registry;
 pub mod state;

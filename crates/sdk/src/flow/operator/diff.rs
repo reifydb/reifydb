@@ -620,7 +620,7 @@ fn value_to_utf8(v: &Value) -> Result<String, SdkError> {
 
 fn value_to_blob(v: &Value) -> Result<Vec<u8>, SdkError> {
 	match v {
-		Value::Blob(b) => Ok(b.as_ref().to_vec()),
+		Value::Blob(b) => Ok(b.to_vec()),
 		Value::None {
 			..
 		} => Ok(Vec::new()),

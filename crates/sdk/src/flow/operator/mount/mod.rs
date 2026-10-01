@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub mod context;
+
 use std::{
 	backtrace::Backtrace,
 	panic::{AssertUnwindSafe, catch_unwind},
@@ -19,15 +21,15 @@ use reifydb_runtime::fatal::{
 	describe_payload, fatal,
 	report::{FatalKind, FatalReport},
 };
-use reifydb_sdk::{
-	error::Result as SdkResult,
-	flow::operator::{
-		MountedOperator, OperatorMetadata, timer::Timer as SdkTimer, view::in_process::InProcessChangeView,
-	},
-};
 use reifydb_value::Result;
 
-use crate::operator::context::in_process::InProcessContext;
+use crate::{
+	error::Result as SdkResult,
+	flow::operator::{
+		MountedOperator, OperatorMetadata, mount::context::InProcessContext, timer::Timer as SdkTimer,
+		view::in_process::InProcessChangeView,
+	},
+};
 
 fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
 	match catch_unwind(AssertUnwindSafe(f)) {
@@ -130,11 +132,11 @@ mod tests {
 		operator::host::{HostContext, TxnHostContext},
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};
-	use reifydb_sdk::flow::operator::context::GuestEmitContext;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::{InProcessContext, OperatorId};
+	use crate::flow::operator::context::GuestEmitContext;
 
 	const NODE: OperatorId = OperatorId(1);
 

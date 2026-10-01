@@ -17,7 +17,17 @@ use reifydb_core::{
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
-use reifydb_sdk::{
+use reifydb_value::{
+	error::Error as ValueError,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		row_number::RowNumber,
+	},
+};
+
+use crate::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
@@ -26,15 +36,6 @@ use reifydb_sdk::{
 			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
 		},
 		state::{decode_payload, encode_payload},
-	},
-};
-use reifydb_value::{
-	error::Error as ValueError,
-	value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		row_number::RowNumber,
 	},
 };
 
@@ -446,10 +447,10 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 #[cfg(test)]
 mod tests {
 	use reifydb_flow_async::operator::host::TxnHostContext;
-	use reifydb_sdk::flow::operator::context::Windowed;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 
 	use super::*;
+	use crate::flow::operator::context::Windowed;
 
 	#[test]
 	fn the_byte_accessors_refuse_a_key_that_frames_no_known_keyspace() {

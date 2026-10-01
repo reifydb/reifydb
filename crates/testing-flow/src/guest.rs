@@ -22,8 +22,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
-use reifydb_sub_flow::operator::mount::mount;
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata, mount::mount};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_sdk::builders::TestChangeBuilder;
 use reifydb_transaction::interceptor::interceptors::Interceptors;

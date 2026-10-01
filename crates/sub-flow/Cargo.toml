@@ -32,7 +32,7 @@ reifydb-store-operator = { workspace = true }
 reifydb-store-cdc = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-sdk = { workspace = true }
+reifydb-sdk = { workspace = true, features = ["mount"] }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }

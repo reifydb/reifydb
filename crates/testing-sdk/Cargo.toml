@@ -18,12 +18,15 @@ reifydb-build = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-schema = { workspace = true }
+reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core.workspace = true
 reifydb-flow-async = { workspace = true }
 reifydb-runtime.workspace = true
-reifydb-sdk = { workspace = true }
+reifydb-sdk = { workspace = true, features = ["mount"] }
+reifydb-store-operator = { workspace = true }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
+reifydb-transaction = { workspace = true }
 reifydb-value.workspace = true
 rand.workspace = true
 

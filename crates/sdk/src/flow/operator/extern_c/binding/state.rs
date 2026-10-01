@@ -95,11 +95,11 @@ pub(crate) fn get(ctx: &ExternCContext, key: &EncodedKey) -> Result<Option<Encod
 #[instrument(name = "flow::operator::state::extern_c:set", level = "trace", skip(ctx, value), fields(
 	operator_id = ctx.operator_id().0,
 	key_len = key.as_bytes().len(),
-	value_len = value.as_ref().len()
+	value_len = value.len()
 ))]
 pub(crate) fn set(ctx: &mut ExternCContext, key: &EncodedKey, value: &EncodedBytes) -> Result<()> {
 	let key_bytes = key.as_bytes();
-	let value_bytes = value.as_ref();
+	let value_bytes: &[u8] = value.as_ref();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_bytes and value_bytes borrow guest allocations that outlive the callback,
