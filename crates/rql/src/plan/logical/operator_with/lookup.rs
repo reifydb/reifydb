@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	error::diagnostic::operation::lookup_retention_left_missing, operator_with::LookupWith, row::OperatorRetention,
-};
-use reifydb_value::{error, fragment::Fragment};
+use reifydb_core::{operator_with::LookupWith, row::OperatorRetention};
 
 use crate::{
 	Result,
@@ -17,19 +14,13 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_lookup_with(
-		with: Option<&AstOperatorWith<'bump>>,
-		fragment: Fragment,
-	) -> Result<LookupWith> {
+	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith> {
 		let mut lookup = LookupWith::default();
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => lookup.retention = Some(compile_lookup_retention(entry)?),
 				_ => return Err(unknown_key(entry, "retention")),
 			}
-		}
-		if lookup.retention.is_none() {
-			return Err(error!(lookup_retention_left_missing(fragment)));
 		}
 		Ok(lookup)
 	}
@@ -54,7 +45,7 @@ fn compile_lookup_retention(entry: &AstOperatorWithEntry<'_>) -> Result<Operator
 			_ => return Err(unknown_key(side, "'left'")),
 		}
 	}
-	left.ok_or_else(|| error!(lookup_retention_left_missing(entry.key.fragment())))
+	left.ok_or_else(|| unknown_key(entry, "'left'"))
 }
 
 #[cfg(test)]
@@ -75,7 +66,7 @@ mod tests {
 		let Some(Ast::Lookup(lookup)) = statements[0].nodes.first() else {
 			panic!("expected a lookup node in: {source}");
 		};
-		Compiler::compile_lookup_with(lookup.with.as_ref(), lookup.token.fragment.to_owned())
+		Compiler::compile_lookup_with(lookup.with.as_ref())
 	}
 
 	fn lookup(with: &str) -> String {
@@ -96,7 +87,7 @@ mod tests {
 
 	#[test]
 	fn left_lookup_takes_the_same_retention() {
-		// Both forms store read versions, so the left form needs the same left retention as the inner one.
+		// Both forms store read versions, so the left form takes the same left retention as the inner one.
 		let with = lookup_with(
 			"left lookup { from orders } as o using (id, o.user_id) with { retention: { left: 1h } }",
 		)
@@ -105,22 +96,16 @@ mod tests {
 	}
 
 	#[test]
-	fn missing_with_is_lookup_006() {
-		// Without a left retention the lease never moves and GC keeps every version, so no with is refused.
-		assert_eq!(code(&lookup("")), "LOOKUP_006");
+	fn missing_with_leaves_retention_unset() {
+		// Retention is optional like the join's, so no with must compile and leave the left side unbounded.
+		let with = lookup_with(&lookup("")).unwrap();
+		assert!(with.retention.is_none());
 	}
 
 	#[test]
-	fn missing_with_points_at_the_lookup() {
-		// Nothing is there to point at, so the error must name the lookup keyword the author has to extend.
-		let err = lookup_with(&lookup("")).unwrap_err();
-		assert_eq!(err.fragment.text(), "inner");
-	}
-
-	#[test]
-	fn empty_retention_block_is_lookup_006() {
-		// An empty block still has no left side, so it must fail the same way as a missing with.
-		assert_eq!(code(&lookup(" with { retention: { } }")), "LOOKUP_006");
+	fn empty_retention_block_is_ast_005() {
+		// An empty block bounds no side, so it must be refused like the join's.
+		assert_eq!(code(&lookup(" with { retention: { } }")), "AST_005");
 	}
 
 	#[test]

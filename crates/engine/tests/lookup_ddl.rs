@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 
 fn engine() -> TestEngine {
-	// The left side runs on event time so the required left retention is valid and only the shape varies.
+	// The left side runs on event time so a left retention is valid and only the shape varies.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE lk");
 	engine.admin(
@@ -35,6 +35,18 @@ fn a_lookup_on_a_partitioned_table_is_accepted() {
 	// Positive control: without it every rejection below could come from a broken base shape.
 	let engine = engine();
 	engine.admin(&view("ok", "{ FROM lk::price }", "(mint, p.mint)", RETENTION));
+}
+
+#[test]
+fn a_lookup_without_retention_is_accepted() {
+	// Retention is optional like the join's, so a lookup with no with clause must still build its view.
+	let engine = engine();
+	engine.admin(
+		"CREATE DEFERRED VIEW lk::ok { id: int4, usd: float8 } AS { \
+		 FROM lk::level \
+		 INNER LOOKUP { FROM lk::price } AS p USING (mint, p.mint) \
+		 MAP { id: id, usd: p_usd } }",
+	);
 }
 
 #[test]
@@ -121,12 +133,12 @@ fn a_right_retention_is_ast_005() {
 }
 
 #[test]
-fn a_missing_left_retention_is_lookup_006() {
-	// IC3: without a left retention the lease never moves and GC keeps every version.
+fn an_empty_retention_is_ast_005() {
+	// An empty block bounds no side, so it must be refused like the join's.
 	let engine = engine();
 	assert_code(
 		&engine.admin_err(&view("v", "{ FROM lk::price }", "(mint, p.mint)", "retention: { }")),
-		"LOOKUP_006",
+		"AST_005",
 	);
 }
 

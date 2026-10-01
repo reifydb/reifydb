@@ -90,17 +90,10 @@ fn an_or_connector_is_lookup_002() {
 }
 
 #[test]
-fn a_missing_with_is_lookup_006() {
-	// Without a left retention the read versions and the lease never move and GC keeps every version.
-	let engine = engine();
-	assert_code(&engine.query_err(&lookup(BLOCK, USING, "")), "LOOKUP_006");
-}
-
-#[test]
-fn a_retention_without_left_is_lookup_006() {
+fn a_retention_without_left_is_ast_005() {
 	// An empty retention block still leaves the left side unbounded.
 	let engine = engine();
-	assert_code(&engine.query_err(&lookup(BLOCK, USING, " WITH { retention: { } }")), "LOOKUP_006");
+	assert_code(&engine.query_err(&lookup(BLOCK, USING, " WITH { retention: { } }")), "AST_005");
 }
 
 #[test]

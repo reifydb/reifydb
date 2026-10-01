@@ -20,7 +20,6 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let AstLookup {
-			token,
 			join_type,
 			subquery,
 			using_clause,
@@ -54,7 +53,7 @@ impl<'bump> Compiler<'bump> {
 			return Err(error!(lookup_using_not_partition(using_clause.token.fragment.to_owned(), &right)));
 		}
 		let on = build_join_expressions(using_clause, &alias)?;
-		let with = Self::compile_lookup_with(with.as_ref(), token.fragment.to_owned())?;
+		let with = Self::compile_lookup_with(with.as_ref())?;
 
 		Ok(LogicalPlan::Lookup(LookupNode {
 			join_type,

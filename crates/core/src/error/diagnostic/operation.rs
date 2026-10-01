@@ -390,21 +390,6 @@ pub fn lookup_block_not_bare_from(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-pub fn lookup_retention_left_missing(fragment: Fragment) -> Diagnostic {
-	Diagnostic {
-		code: "LOOKUP_006".to_string(),
-		rql: None,
-		message: "LOOKUP requires with { retention: { left: <duration> } }".to_string(),
-		column: None,
-		fragment,
-		label: Some("retention left missing".to_string()),
-		help: Some("Add 'with { retention: { left: 10s } }' to the lookup".to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),
