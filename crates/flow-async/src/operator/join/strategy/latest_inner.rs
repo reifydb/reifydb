@@ -193,15 +193,12 @@ impl LatestInnerHashJoin {
 				if held.is_empty() {
 					return Ok(Vec::new());
 				}
-				Ok(match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => ctx
-						.operator
-						.latest_columns(host, pre, &held, Some(&slot), Identity::Consume)?
-						.withdrawn()
-						.into_iter()
-						.collect(),
-					None => Vec::new(),
-				})
+				let slot = read_right_slot(host, &ctx.state.right, key_hash)?;
+				Ok(ctx.operator
+					.latest_columns(host, pre, &held, slot.as_ref(), Identity::Consume)?
+					.withdrawn()
+					.into_iter()
+					.collect())
 			}
 			JoinSide::Right => self.handle_right_remove(host, pre, indices, key_hash, ctx),
 		}
