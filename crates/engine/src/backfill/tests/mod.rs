@@ -20,7 +20,7 @@ use reifydb_core::{
 use reifydb_flow::backfill::testing::{InstalledScanHooks, ScanHooks};
 use reifydb_flow::{
 	backfill::Scan,
-	operator::sink::{encode_row_at_index, shape_field_columns},
+	operator::sink::{SourceRowEncoder, shape_field_columns},
 };
 #[cfg(feature = "testing")]
 use reifydb_runtime::sync::mutex::Mutex;
@@ -205,7 +205,10 @@ impl Db {
 		for batch in &current {
 			let fields = shape_field_columns(batch, &shape);
 			for (index, &number) in require_row_numbers(batch).unwrap().iter().enumerate() {
-				let (_, bytes) = encode_row_at_index(batch, index, &shape, number, &fields).unwrap();
+				let (_, bytes) = SourceRowEncoder::new(batch, &shape, &fields)
+					.unwrap()
+					.encode(index, number)
+					.unwrap();
 				txn.set(&RowKey::new(storage, number), bytes).unwrap();
 				kept.insert(number);
 			}

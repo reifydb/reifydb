@@ -377,7 +377,7 @@ fn test_with_operator_apply() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let diff_count = input.diffs.len() as i64;
+		let diff_count = input.row_count() as i64;
 		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())
@@ -389,7 +389,7 @@ fn test_with_operator_apply() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let diff_count = input2.diffs.len() as i64;
+		let diff_count = input2.row_count() as i64;
 		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())

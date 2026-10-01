@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	collections::HashMap,
 	fmt::{self, Display, Formatter},
 	slice,
 	sync::Arc,
@@ -145,6 +146,31 @@ pub fn commit_versions(batch: &RecordBatch) -> Result<&[u64]> {
 }
 
 pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: ArrayRef) -> Result<RecordBatch> {
+	let schema = batch.schema();
+	let fields: Vec<FieldRef> = schema.fields().iter().cloned().collect();
+	stamped(schema.metadata().clone(), fields, batch.columns().to_vec(), batch.num_rows(), column, array)
+}
+
+pub fn restamp_row_numbers(batch: &RecordBatch, keep: &[SystemColumn], row_numbers: ArrayRef) -> Result<RecordBatch> {
+	let schema = batch.schema_ref();
+	let (fields, columns): (Vec<FieldRef>, Vec<ArrayRef>) = schema
+		.fields()
+		.iter()
+		.zip(batch.columns())
+		.filter(|(field, _)| SystemColumn::from_name(field.name()).is_none_or(|column| keep.contains(&column)))
+		.map(|(field, array)| (field.clone(), array.clone()))
+		.unzip();
+	stamped(schema.metadata().clone(), fields, columns, batch.num_rows(), SystemColumn::RowNumbers, row_numbers)
+}
+
+fn stamped(
+	metadata: HashMap<String, String>,
+	mut fields: Vec<FieldRef>,
+	mut columns: Vec<ArrayRef>,
+	num_rows: usize,
+	column: SystemColumn,
+	array: ArrayRef,
+) -> Result<RecordBatch> {
 	let value_type = match array.logical_null_count() > 0 {
 		true => ValueType::Option(Box::new(column.ty())),
 		false => column.ty(),
@@ -156,14 +182,11 @@ pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: Array
 			..FieldType::default()
 		},
 	));
-	let row_count = match batch.num_columns() == 0 && batch.num_rows() == 0 {
+	let row_count = match fields.is_empty() && num_rows == 0 {
 		true => array.len(),
-		false => batch.num_rows(),
+		false => num_rows,
 	};
-	let schema = batch.schema();
-	let mut fields: Vec<FieldRef> = schema.fields().iter().cloned().collect();
-	let mut columns: Vec<ArrayRef> = batch.columns().to_vec();
-	match position(&batch, column.name()) {
+	match fields.iter().position(|other| other.name() == column.name()) {
 		Some(index) => {
 			fields[index] = field;
 			columns[index] = array;
@@ -181,7 +204,7 @@ pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: Array
 		}
 	}
 	RecordBatch::try_new_with_options(
-		Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
+		Arc::new(Schema::new_with_metadata(fields, metadata)),
 		columns,
 		&RecordBatchOptions::new().with_row_count(Some(row_count)),
 	)

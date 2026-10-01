@@ -25,7 +25,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	error::FlowSinkError,
 	operator::sink::{
-		coerce_columns, encode_row_at_index,
+		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_of},
 		shape_field_columns,
 	},
@@ -37,6 +37,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value,
+		column_view::ColumnView,
 		partition::Partition,
 		system_columns::{SystemColumn, column_view, require_row_numbers},
 	},
@@ -53,6 +54,7 @@ use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
+	shape: RowShape,
 	storage: StorageId,
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
@@ -70,9 +72,11 @@ impl SinkSeriesViewOperator {
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		let storage = view.def().storage_id();
+		let shape = row_shape_from_columns(RowFamily::Series, view.def().columns());
 		Self {
 			operator,
 			view,
+			shape,
 			storage,
 			key,
 			partition_indices,
@@ -86,28 +90,34 @@ impl SinkSeriesViewOperator {
 		!self.partition_indices.is_empty()
 	}
 
+	fn series_key_view<'a>(&self, columns: &'a RecordBatch) -> Result<Option<ColumnView<'a>>> {
+		let key_column = self.key.column();
+		if key_column.is_empty() {
+			return column_view(columns, SystemColumn::Time.name());
+		}
+		reifydb_assertions! {
+			assert!(
+				columns.schema_ref().fields().iter().any(|field| field.name() == key_column),
+				"the series key column '{key_column}' must reach the sink for every row of \
+				 view '{}'; without it every row collapses onto a single key and overwrites \
+				 its predecessor",
+				self.view.def().name()
+			);
+		}
+		column_view(columns, key_column)
+	}
+
 	#[inline]
-	fn series_key_at(&self, columns: &RecordBatch, row_idx: usize) -> Result<u64> {
+	fn series_key_at(&self, key_view: Option<&ColumnView>, row_idx: usize) -> Result<u64> {
 		let key_column = self.key.column();
 
-		let key = if key_column.is_empty() {
-			column_view(columns, SystemColumn::Time.name())?.and_then(|time| {
-				match time.get_value(row_idx) {
-					Value::DateTime(time) => self.key.key_to_u64(Value::DateTime(time)),
-					_ => None,
-				}
-			})
-		} else {
-			reifydb_assertions! {
-				assert!(
-					columns.schema_ref().fields().iter().any(|field| field.name() == key_column),
-					"the series key column '{key_column}' must reach the sink for every row of \
-					 view '{}'; without it every row collapses onto a single key and overwrites \
-					 its predecessor",
-					self.view.def().name()
-				);
-			}
-			self.key.extract_key(columns, row_idx)?
+		let key = match key_view {
+			None => None,
+			Some(time) if key_column.is_empty() => match time.get_value(row_idx) {
+				Value::DateTime(time) => self.key.key_to_u64(Value::DateTime(time)),
+				_ => None,
+			},
+			Some(view) => self.key.key_to_u64(view.get_value(row_idx)),
 		};
 
 		key.ok_or_else(|| {
@@ -134,8 +144,9 @@ impl DurableSink for SinkSeriesViewOperator {
 	}
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
-		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
+		let resolved = self.view.clone();
+		let view = resolved.def();
+		let shape = self.shape.clone();
 		let object_id = self.storage;
 
 		for diff in change.diffs.iter() {
@@ -143,16 +154,16 @@ impl DurableSink for SinkSeriesViewOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_series_view_insert(txn, &view, &shape, object_id, post)?,
+				} => self.apply_series_view_insert(txn, view, &shape, object_id, post)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_series_view_update(txn, &view, &shape, object_id, pre, post)?,
+				} => self.apply_series_view_update(txn, view, &shape, object_id, pre, post)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_series_view_remove(txn, &view, object_id, pre)?,
+				} => self.apply_series_view_remove(txn, view, object_id, pre)?,
 			}
 		}
 
@@ -176,16 +187,17 @@ impl SinkSeriesViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, shape);
+		let encoder = SourceRowEncoder::new(source, shape, &field_columns)?;
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[]
+		let (row_numbers, key_view) = if row_count == 0 {
+			(&[][..], None)
 		} else {
-			require_row_numbers(source)?
+			(require_row_numbers(source)?, self.series_key_view(&coerced)?)
 		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
-			let series_key = self.series_key_at(&coerced, row_idx)?;
+			let (_, encoded) = encoder.encode(row_idx, row_number)?;
+			let series_key = self.series_key_at(key_view.as_ref(), row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(
@@ -234,22 +246,27 @@ impl SinkSeriesViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, shape);
+		let encoder = SourceRowEncoder::new(source_post, shape, &field_columns)?;
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
-			(&[][..], &[][..])
+		let (pre_row_numbers, post_row_numbers, pre_key_view, post_key_view) = if row_count == 0 {
+			(&[][..], &[][..], None, None)
 		} else {
-			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
+			(
+				require_row_numbers(source_pre)?,
+				require_row_numbers(source_post)?,
+				self.series_key_view(&coerced_pre)?,
+				self.series_key_view(&coerced_post)?,
+			)
 		};
 		for row_idx in 0..row_count {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
-			let (_, post_encoded) =
-				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
+			let (_, post_encoded) = encoder.encode(row_idx, post_row_number)?;
 
-			let pre_series_key = self.series_key_at(&coerced_pre, row_idx)?;
-			let post_series_key = self.series_key_at(&coerced_post, row_idx)?;
+			let pre_series_key = self.series_key_at(pre_key_view.as_ref(), row_idx)?;
+			let post_series_key = self.series_key_at(post_key_view.as_ref(), row_idx)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
@@ -326,13 +343,13 @@ impl SinkSeriesViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[]
+		let (row_numbers, key_view) = if row_count == 0 {
+			(&[][..], None)
 		} else {
-			require_row_numbers(&coerced)?
+			(require_row_numbers(&coerced)?, self.series_key_view(&coerced)?)
 		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let series_key = self.series_key_at(&coerced, row_idx)?;
+			let series_key = self.series_key_at(key_view.as_ref(), row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
 					partition_of(view, &self.partition_indices, source, row_idx)?;

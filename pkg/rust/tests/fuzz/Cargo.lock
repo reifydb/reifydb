@@ -56,6 +56,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-arith"
+version = "59.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce2961626677665b2195eb59242af4c7befe7b8737ca2050295389362380104e"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "chrono",
+ "num-traits",
+]
+
+[[package]]
 name = "arrow-array"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1060,6 +1074,7 @@ dependencies = [
 name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
+ "arrow-arith",
  "arrow-array",
  "arrow-schema",
  "reifydb-build",

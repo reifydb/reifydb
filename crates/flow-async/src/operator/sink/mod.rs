@@ -6,6 +6,8 @@ pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;
 
+use std::collections::HashMap;
+
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
@@ -92,6 +94,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut RecordBatch, host: &mut dy
 
 	let mut decoded: Vec<(FieldRef, ArrayRef)> =
 		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
+	let mut resolved: HashMap<(DictionaryId, DictionaryEntryId), Value> = HashMap::new();
 	for (col_pos, dictionary, value_type) in &dict_columns {
 		let (field, array) = &decoded[*col_pos];
 		let column = ColumnView::try_from((array, field.as_ref()))?;
@@ -101,7 +104,16 @@ pub(crate) fn decode_dictionary_columns(columns: &mut RecordBatch, host: &mut dy
 		for row_idx in 0..row_count {
 			let id_value = column.get_value(row_idx);
 			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => host.dictionary_get(*dictionary, entry_id)?.unwrap_or(Value::none()),
+				Some(entry_id) => match resolved.get(&(*dictionary, entry_id)) {
+					Some(value) => value.clone(),
+					None => match host.dictionary_get(*dictionary, entry_id)? {
+						Some(value) => {
+							resolved.insert((*dictionary, entry_id), value.clone());
+							value
+						}
+						None => Value::none(),
+					},
+				},
 				None => Value::none(),
 			};
 			new_data.push_value(value);

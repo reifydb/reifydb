@@ -1310,7 +1310,6 @@ fn a_settle_during_a_parked_sweep_queues_exactly_one_wake() {
 
 #[test]
 fn a_miss_after_a_drop_has_settled_never_waits_on_the_global_lock() {
-	// a drop flag left set after its flush settles sends every later miss through the global lock.
 	let buffer = Resident::new();
 	set(&buffer, OP_A, key("before"), row("v"));
 	buffer.record_drop(DropMarker::OperatorState(OP_A));

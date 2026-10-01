@@ -548,16 +548,17 @@ pub mod tests {
 				};
 				if let Some(columns) = post {
 					let row_numbers = columns.row_numbers();
-					let first_int8 = columns
+					let int8s = columns
 						.columns()
 						.next()
 						// SAFETY: the fixtures that drive this operator only ever
 						// build a leading Int8 column, so the requested element
 						// type matches the buffer's.
-						.and_then(|c| unsafe { c.as_slice::<i64>() })
-						.and_then(|s| s.first().copied());
-					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
-						ctx.state().set::<i64>(&probe_row_key(rn), &v)?;
+						.and_then(|c| unsafe { c.as_slice::<i64>() });
+					if let Some(values) = int8s {
+						for (&rn, v) in row_numbers.iter().zip(values) {
+							ctx.state().set::<i64>(&probe_row_key(rn), v)?;
+						}
 					}
 				}
 			}

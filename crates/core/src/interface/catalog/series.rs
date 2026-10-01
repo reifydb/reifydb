@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, sumtype::SumTypeId, system_columns::column_view, value_type::ValueType},
+	value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,10 +54,6 @@ impl SeriesKey {
 				column,
 			} => column,
 		}
-	}
-
-	pub fn extract_key(&self, columns: &RecordBatch, row_idx: usize) -> Result<Option<u64>> {
-		Ok(column_view(columns, self.column())?.and_then(|view| self.key_to_u64(view.get_value(row_idx))))
 	}
 
 	pub fn key_to_u64(&self, value: Value) -> Option<u64> {

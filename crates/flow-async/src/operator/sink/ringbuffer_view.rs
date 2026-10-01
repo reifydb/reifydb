@@ -57,7 +57,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::operator::sink::{
-	coerce_columns, encode_row_at_index,
+	SourceRowEncoder, coerce_columns,
 	partition::{ensure_partition_unchanged, partition_of},
 	shape_field_columns,
 };
@@ -181,6 +181,7 @@ fn decode_row_entry_key(partition: Option<Partition>, key: &EncodedKey) -> Resul
 pub struct SinkRingBufferViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
+	shape: RowShape,
 	storage: StorageId,
 	capacity: u64,
 	ttl: Option<Duration>,
@@ -201,9 +202,11 @@ impl SinkRingBufferViewOperator {
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		let storage = view.def().storage_id();
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.def().columns());
 		Self {
 			operator,
 			view,
+			shape,
 			storage,
 			capacity,
 			ttl,
@@ -577,8 +580,9 @@ impl DurableSink for SinkRingBufferViewOperator {
 	}
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
-		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
+		let resolved = self.view.clone();
+		let view = resolved.def();
+		let shape = self.shape.clone();
 		let object_id = self.storage;
 		let mut metadata = if self.is_partitioned() {
 			None
@@ -595,7 +599,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					..
 				} => self.apply_ringbuffer_insert(
 					txn,
-					&view,
+					view,
 					&shape,
 					object_id,
 					&mut metadata,
@@ -609,7 +613,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					..
 				} => self.apply_ringbuffer_update(
 					txn,
-					&view,
+					view,
 					&shape,
 					object_id,
 					pre,
@@ -621,7 +625,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					..
 				} => self.apply_ringbuffer_remove(
 					txn,
-					&view,
+					view,
 					object_id,
 					&mut metadata,
 					&mut partition_metadata,
@@ -843,7 +847,13 @@ impl SinkRingBufferViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, shape);
+		let encoder = SourceRowEncoder::new(source, shape, &field_columns)?;
 		let times = row_times(source)?;
+		let row_numbers = if row_count == 0 {
+			&[][..]
+		} else {
+			require_row_numbers(source)?
+		};
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
@@ -881,10 +891,9 @@ impl SinkRingBufferViewOperator {
 					object_id,
 					meta,
 					Some(partition),
-					source,
+					&encoder,
+					row_numbers,
 					&times,
-					shape,
-					&field_columns,
 					&rows,
 					&mut evicted_rns,
 					&mut evicted,
@@ -903,10 +912,9 @@ impl SinkRingBufferViewOperator {
 				object_id,
 				meta,
 				None,
-				source,
+				&encoder,
+				row_numbers,
 				&times,
-				shape,
-				&field_columns,
 				&rows,
 				&mut evicted_rns,
 				&mut evicted,
@@ -931,10 +939,9 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
-		source: &RecordBatch,
+		encoder: &SourceRowEncoder,
+		row_numbers: &[RowNumber],
 		times: &[Option<DateTime>],
-		shape: &RowShape,
-		field_columns: &[usize],
 		rows: &[usize],
 		evicted_rns: &mut Vec<RowNumber>,
 		evicted: &mut Vec<EncodedBytes>,
@@ -960,15 +967,10 @@ impl SinkRingBufferViewOperator {
 		}
 
 		let skip = evict_needed.min(incoming) as usize;
-		let row_numbers = if rows.is_empty() {
-			&[]
-		} else {
-			require_row_numbers(source)?
-		};
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
 			let source_rn = row_numbers[row_idx];
-			let (_, encoded) = encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
+			let (_, encoded) = encoder.encode(row_idx, source_rn)?;
 			evicted_rns.push(source_rn);
 			evicted.push(encoded);
 		}
@@ -976,7 +978,7 @@ impl SinkRingBufferViewOperator {
 		for &row_idx in &rows[skip..] {
 			let source_rn = row_numbers[row_idx];
 			let assigned_rn = RowNumber(meta.tail);
-			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
+			let (_, encoded) = encoder.encode(row_idx, assigned_rn)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
 			self.set_row_entry(
 				txn,
@@ -1044,6 +1046,7 @@ impl SinkRingBufferViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, shape);
+		let encoder = SourceRowEncoder::new(source_post, shape, &field_columns)?;
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		let pre_row_numbers = if row_count == 0 {
 			&[][..]
@@ -1076,8 +1079,7 @@ impl SinkRingBufferViewOperator {
 			};
 			let key = self.rb_key(object_id, storage_rn, partition);
 
-			let (_, post_encoded) =
-				encode_row_at_index(source_post, row_idx, shape, storage_rn, &field_columns)?;
+			let (_, post_encoded) = encoder.encode(row_idx, storage_rn)?;
 			txn.set(&key, post_encoded)?;
 			applied.push(row_idx);
 		}

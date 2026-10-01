@@ -13,13 +13,13 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::system_columns::{SystemColumn, require_row_numbers, with_system_column},
+	value::system_columns::{require_row_numbers, restamp_row_numbers},
 };
 use tracing::instrument;
 
 use crate::{
 	error::FlowGraphError,
-	operator::{append::lane::AppendLanes, forward_system_columns},
+	operator::{FORWARDED_SYSTEM_COLUMNS, append::lane::AppendLanes},
 };
 
 pub mod lane;
@@ -170,5 +170,5 @@ impl AppendOperator {
 }
 
 fn restamped(batch: RecordBatch, row_numbers: ArrayRef) -> Result<RecordBatch> {
-	forward_system_columns(&with_system_column(batch, SystemColumn::RowNumbers, row_numbers)?)
+	restamp_row_numbers(&batch, &FORWARDED_SYSTEM_COLUMNS, row_numbers)
 }
