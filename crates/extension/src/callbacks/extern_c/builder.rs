@@ -880,9 +880,9 @@ mod tests {
 	};
 
 	use super::{
-		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
-		host_builder_data_ptr, host_builder_emit_diff, host_builder_offsets_ptr, numeric_bytes_to_vec,
-		with_registry,
+		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_bitvec_ptr,
+		host_builder_commit, host_builder_data_ptr, host_builder_emit_diff, host_builder_grow,
+		host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
 	};
 
 	fn decimals(texts: &[&str]) -> Vec<Decimal> {
@@ -984,6 +984,53 @@ mod tests {
 		});
 		assert_eq!(code, EXTERN_C_OK);
 		committed_buffer(&registry, handle)
+	}
+
+	fn bitvec_and_offsets_capacity(registry: &BuilderRegistry, id: u64) -> (usize, usize) {
+		let inner = registry.inner.lock();
+		let Some(BuilderSlot::Active(active)) = inner.slots.get(&id) else {
+			panic!("the builder must still be active");
+		};
+		(
+			active.bitvec.as_ref().expect("a requested bitvec").capacity(),
+			active.offsets.as_ref().expect("a var-len builder carries offsets").capacity(),
+		)
+	}
+
+	#[test]
+	fn growing_a_builder_also_grows_its_bitvec_and_offsets_capacity() {
+		// A grow that leaves the bitvec or offsets behind lets the guest write validity bits or offsets past
+		// their end.
+		let registry = BuilderRegistry::new();
+		with_registry(&registry, || {
+			// SAFETY: the registry is installed for this closure and the handle comes from
+			// host_builder_acquire in it.
+			unsafe {
+				let handle = host_builder_acquire(ptr::null_mut(), ValueKind::Utf8, 0, 0, 2);
+				assert!(
+					!host_builder_bitvec_ptr(handle).is_null(),
+					"precondition: the builder hands out a bitvec"
+				);
+				let id = Handle::decode(handle).id;
+				let (bitvec_before, offsets_before) = bitvec_and_offsets_capacity(&registry, id);
+
+				assert_eq!(
+					host_builder_grow(handle, 16),
+					EXTERN_C_OK,
+					"a grow of an active builder must succeed"
+				);
+
+				let (bitvec_after, offsets_after) = bitvec_and_offsets_capacity(&registry, id);
+				assert!(
+					bitvec_after * 8 >= bitvec_before * 8 + 16,
+					"the bitvec must cover the grown rows: before={bitvec_before} after={bitvec_after}"
+				);
+				assert!(
+					offsets_after >= offsets_before + 16,
+					"the offsets must cover the grown rows: before={offsets_before} after={offsets_after}"
+				);
+			}
+		});
 	}
 
 	#[test]
