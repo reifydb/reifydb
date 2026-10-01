@@ -14,8 +14,6 @@ pub mod convert;
 pub mod device;
 pub mod error;
 pub mod persist;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub mod persistent;
 pub mod predicate;
 pub mod reader;
 pub mod scalar;

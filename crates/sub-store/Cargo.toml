@@ -22,7 +22,6 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-evaluate = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true }
-reifydb-sqlite = { workspace = true, optional = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true, optional = true }
@@ -44,11 +43,6 @@ column = [
 	"dep:reifydb-store-column",
 	"dep:reifydb-transaction",
 	"dep:thiserror",
-]
-sqlite = [
-	"column",
-	"dep:reifydb-sqlite",
-	"reifydb-store-column/sqlite",
 ]
 
 [dev-dependencies]

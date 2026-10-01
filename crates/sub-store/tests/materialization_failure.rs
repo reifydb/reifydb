@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+#![cfg(all(feature = "column", reifydb_target = "host"))]
 
 use std::{
 	env,
@@ -14,13 +14,8 @@ use reifydb::{
 	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_core::interface::catalog::id::ColumnSnapshotId;
 use reifydb_runtime::io::fs::memory::MemoryFs;
-use reifydb_sqlite::{
-	SqliteConfig,
-	connection::{connect, convert_flags, resolve_db_path},
-};
-use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, testing::NoFaults};
+use reifydb_store_column::testing::NoFaults;
 use reifydb_sub_store::subsystem::StorageConfig;
 use reifydb_test_harness::fixture::column::{FailWrites, memory_store};
 use reifydb_value::value::duration::Duration;
@@ -40,13 +35,6 @@ fn run_child(test_name: &str) -> Output {
 		.env("REIFYDB_FATAL", "1")
 		.output()
 		.expect("the child test process must start")
-}
-
-fn execute_on_column_db(config: &SqliteConfig, statement: &str) {
-	let conn = connect(&resolve_db_path(config.path.clone(), "column.db"), convert_flags(&config.flags))
-		.expect("open column.db from a second connection");
-	conn.busy_timeout(Duration::from_seconds(5).unwrap().to_std()).expect("set busy timeout");
-	conn.execute_batch(statement).expect("run statement on column.db");
 }
 
 fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Duration) -> TestDb {
@@ -134,17 +122,4 @@ fn a_failed_series_materialization_stops_the_process_and_names_the_series() {
 		stderr
 	);
 	assert!(stderr.contains("out of space"), "the report must carry the underlying cause; stderr:\n{}", stderr);
-}
-
-#[test]
-fn a_malformed_persisted_key_fails_the_load_instead_of_being_skipped() {
-	// Otherwise the store warms up missing a block the catalog still points at.
-	let (config, _guard) = SqliteConfig::in_memory();
-	let store = SqliteColumnStore::new(config.clone());
-	store.put(ColumnSnapshotId(1), &[1]).expect("put a well-formed block");
-	execute_on_column_db(&config, "INSERT INTO column_blocks (snapshot_id, data) VALUES (x'010203', x'00')");
-
-	let err = store.load_all().expect_err("a 3-byte snapshot_id key must fail the load");
-
-	assert!(err.to_string().contains("malformed 3-byte snapshot_id key"), "unexpected error: {err}");
 }

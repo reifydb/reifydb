@@ -12,7 +12,6 @@ doctest = false
 
 [features]
 default = []
-sqlite = ["rusqlite", "reifydb-sqlite"]
 testing = ["reifydb-runtime/testing"]
 
 [build-dependencies]
@@ -21,7 +20,6 @@ reifydb-build = { workspace = true }
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 
 arrow-array = { workspace = true }
@@ -49,9 +47,6 @@ vortex-sequence = { workspace = true }
 vortex-session = { workspace = true }
 vortex-sparse = { workspace = true }
 vortex-zigzag = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
