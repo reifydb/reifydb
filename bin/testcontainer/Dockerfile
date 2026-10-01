@@ -16,6 +16,7 @@ COPY Cargo.toml Cargo.lock ./
 # Copy vendor directory and cargo config for offline builds
 COPY vendor ./vendor
 COPY .cargo ./.cargo
+COPY patch ./patch
 
 # Copy all workspace members
 COPY crates ./crates
