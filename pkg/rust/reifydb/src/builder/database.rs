@@ -52,6 +52,8 @@ use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
 use reifydb_store_cdc::{CdcStoreVersion, store::CdcStore};
+#[cfg(feature = "column")]
+use reifydb_store_column::store::ColumnStore;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -122,7 +124,9 @@ pub struct DatabaseBuilder {
 	fast_shutdown: bool,
 	#[cfg(feature = "column")]
 	storage_config: Option<StorageConfig>,
-	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+	#[cfg(feature = "column")]
+	column_store: Option<ColumnStore>,
+	#[cfg(all(feature = "column", reifydb_target = "host"))]
 	column_dir: Option<PathBuf>,
 }
 
@@ -173,7 +177,9 @@ impl DatabaseBuilder {
 			fast_shutdown: false,
 			#[cfg(feature = "column")]
 			storage_config: None,
-			#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+			#[cfg(feature = "column")]
+			column_store: None,
+			#[cfg(all(feature = "column", reifydb_target = "host"))]
 			column_dir: None,
 		}
 	}
@@ -184,7 +190,13 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+	#[cfg(feature = "column")]
+	pub fn with_column_store(mut self, store: ColumnStore) -> Self {
+		self.column_store = Some(store);
+		self
+	}
+
+	#[cfg(all(feature = "column", reifydb_target = "host"))]
 	pub fn with_column_dir(mut self, dir: Option<PathBuf>) -> Self {
 		self.column_dir = dir;
 		self
@@ -620,8 +632,12 @@ impl DatabaseBuilder {
 				Some(config) => StorageSubsystemFactory::new(config),
 				None => StorageSubsystemFactory::default(),
 			};
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(reifydb_target = "host")]
 			let storage = storage.with_column_dir(self.column_dir.take());
+			let storage = match self.column_store.take() {
+				Some(store) => storage.with_column_store(store),
+				None => storage,
+			};
 			let factory: Box<dyn SubsystemFactory> = Box::new(storage);
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());

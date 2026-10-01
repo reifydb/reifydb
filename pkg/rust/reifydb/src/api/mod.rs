@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "column", reifydb_target = "host"))]
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -155,7 +155,7 @@ pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) 
 	}
 }
 
-#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "column", reifydb_target = "host"))]
 pub(crate) fn column_dir(config: &SqliteConfig) -> PathBuf {
 	match &config.path {
 		DbPath::File(p) | DbPath::Memory(p) | DbPath::Tmpfs(p) => p.with_extension("").join("column"),

@@ -69,6 +69,8 @@ fn pool_config_from_sources(
 }
 
 #[cfg(feature = "column")]
+use reifydb_store_column::store::ColumnStore;
+#[cfg(feature = "column")]
 use reifydb_sub_store::subsystem::StorageConfig;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
@@ -147,6 +149,12 @@ impl EmbeddedBuilder {
 	#[cfg(feature = "column")]
 	pub fn with_storage_config(mut self, config: StorageConfig) -> Self {
 		self.dependencies.push(Box::new(move |builder| builder.with_storage_config(config)));
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_column_store(mut self, store: ColumnStore) -> Self {
+		self.dependencies.push(Box::new(move |builder| builder.with_column_store(store)));
 		self
 	}
 
@@ -236,7 +244,7 @@ impl EmbeddedBuilder {
 			operator_resident,
 			operator_flush_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
-		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		let column_dir = match &self.storage_factory {
 			StorageFactory::Sqlite(config) => Some(api::column_dir(config)),
 			StorageFactory::Memory => None,
@@ -281,7 +289,7 @@ impl EmbeddedBuilder {
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store, operator_store, cdc_store);
 
-		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		{
 			builder = builder.with_column_dir(column_dir);
 		}
