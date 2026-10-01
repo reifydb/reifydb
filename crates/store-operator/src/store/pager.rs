@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			state::{GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey, keyspace_inner_range},
 			traits::{Keyspace, group_scoped},
 		},
 		typed::{BoundedKey, Edge, range::KeyRange},
@@ -36,7 +36,6 @@ use crate::{
 		tiers::RangeTiers,
 		typed::{StandardRangeTier, TypedDomain},
 	},
-	store::occupancy::occupies,
 	types::OperatorBatch,
 };
 
@@ -86,7 +85,7 @@ impl PageSource for PersistentPager<'_> {
 			self.operator,
 			EncodedKeyRange::new(self.lower.clone(), self.end.clone()),
 			limit,
-			u64::MAX,
+			KeyspaceMask::all(),
 		)?;
 		self.exhausted = !batch.has_more || batch.items.is_empty();
 		if let Some((key, _)) = batch.items.last() {
@@ -104,7 +103,7 @@ pub(crate) struct GroupPager<'a> {
 	operator: OperatorId,
 	persistent: &'a PersistentTier,
 	groups: &'a [GroupId],
-	mask: u64,
+	mask: KeyspaceMask,
 	exhausted: bool,
 	ceiling: Option<EncodedKey>,
 	served: usize,
@@ -116,7 +115,7 @@ impl<'a> GroupPager<'a> {
 		operator: OperatorId,
 		persistent: &'a PersistentTier,
 		groups: &'a [GroupId],
-		mask: u64,
+		mask: KeyspaceMask,
 		dropped: bool,
 	) -> Self {
 		Self {
@@ -257,7 +256,7 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					self.operator,
 					self.read_range(&interval),
 					limit,
-					u64::MAX,
+					KeyspaceMask::all(),
 				)?;
 				let complete = !batch.has_more || batch.items.is_empty();
 				let items = decoded(batch);
@@ -379,11 +378,11 @@ fn within(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 	after_start && before_end
 }
 
-pub(crate) fn keyspaces_of(group: GroupId, range: &EncodedKeyRange, occupied: u64) -> Vec<KeyspaceId> {
+pub(crate) fn keyspaces_of(group: GroupId, range: &EncodedKeyRange, occupied: KeyspaceMask) -> Vec<KeyspaceId> {
 	let mut ids: Vec<KeyspaceId> = KEYSPACES
 		.iter()
 		.map(|spec| spec.id)
-		.filter(|id| occupies(occupied, *id))
+		.filter(|id| occupied.holds(*id))
 		.filter(|id| group.is_root() || dispatch(*id, GroupScoped).unwrap_or(false))
 		.filter(|id| match keyspace_inner_range(group, *id).start {
 			Bound::Included(start) | Bound::Excluded(start) => within(range, &start),

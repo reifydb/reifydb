@@ -158,10 +158,6 @@ impl<O: ExternCOperator> OperatorWrapper<O> {
 		}
 	}
 
-	pub fn as_ptr(&mut self) -> *mut c_void {
-		self as *mut _ as *mut c_void
-	}
-
 	pub fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
 		unsafe { &mut *(ptr as *mut Self) }
 	}

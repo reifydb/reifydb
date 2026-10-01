@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicU8, Ordering, fence},
+use std::{
+	mem,
+	sync::{
+		Arc,
+		atomic::{AtomicU8, Ordering, fence},
+	},
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
@@ -25,17 +28,17 @@ const IDLE: u8 = 0;
 const SCHEDULED: u8 = 1;
 const NOTIFIED: u8 = 2;
 
-enum CellState<S> {
-	Uninit,
-	Running(S),
+enum CellState<S, M> {
+	Uninit(Receiver<M>),
+	Running(S, Receiver<M>),
 	Stopped,
 }
 
 struct ActorCell<A: Actor> {
 	actor: A,
 	name: String,
-	state: Mutex<CellState<A::State>>,
-	rx: Receiver<A::Message>,
+	state: Mutex<CellState<A::State, A::Message>>,
+	tx: Sender<A::Message>,
 	ctx: Context<A::Message>,
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
@@ -81,39 +84,47 @@ where
 		None => return,
 	};
 
-	let state = match &mut *guard {
-		CellState::Running(state) => state,
-		CellState::Uninit | CellState::Stopped => {
+	let (state, rx) = match &mut *guard {
+		CellState::Running(state, rx) => (state, rx),
+		CellState::Uninit(_) | CellState::Stopped => {
 			unreachable!("lock_state_or_bail returned a non-running state")
 		}
 	};
-	let flow = process_message_batch(&cell, state);
+	let flow = process_message_batch(&cell, state, rx);
 
 	dispatch_directive(&cell, guard, flow);
 }
 
 #[inline]
-fn lock_state_or_bail<A: Actor>(cell: &Arc<ActorCell<A>>) -> Option<MutexGuard<'_, CellState<A::State>>>
+fn lock_state_or_bail<A: Actor>(cell: &Arc<ActorCell<A>>) -> Option<MutexGuard<'_, CellState<A::State, A::Message>>>
 where
 	A::State: Send,
 {
 	let mut guard = cell.state.lock();
 	match &*guard {
-		CellState::Running(_) => Some(guard),
+		CellState::Running(..) => Some(guard),
 		CellState::Stopped => {
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			None
 		}
-		CellState::Uninit => {
+		CellState::Uninit(_) => {
 			debug!(actor = %cell.name, "Pool actor starting");
-			*guard = CellState::Running(cell.actor.init(&cell.ctx));
+			let state = cell.actor.init(&cell.ctx);
+			let CellState::Uninit(rx) = mem::replace(&mut *guard, CellState::Stopped) else {
+				unreachable!("the cell left Uninit while its state lock was held")
+			};
+			*guard = CellState::Running(state, rx);
 			Some(guard)
 		}
 	}
 }
 
 #[inline]
-fn process_message_batch<A: Actor>(cell: &Arc<ActorCell<A>>, state: &mut A::State) -> Directive
+fn process_message_batch<A: Actor>(
+	cell: &Arc<ActorCell<A>>,
+	state: &mut A::State,
+	rx: &Receiver<A::Message>,
+) -> Directive
 where
 	A::State: Send,
 {
@@ -126,7 +137,7 @@ where
 			break;
 		}
 
-		match cell.rx.try_recv() {
+		match rx.try_recv() {
 			Ok(msg) => {
 				processed += 1;
 				flow = cell.actor.handle(state, msg, &cell.ctx);
@@ -153,7 +164,7 @@ where
 #[inline]
 fn dispatch_directive<A: Actor>(
 	cell: &Arc<ActorCell<A>>,
-	mut guard: MutexGuard<'_, CellState<A::State>>,
+	mut guard: MutexGuard<'_, CellState<A::State, A::Message>>,
 	flow: Directive,
 ) where
 	A::State: Send,
@@ -171,7 +182,7 @@ fn dispatch_directive<A: Actor>(
 			drop(guard);
 			fence(Ordering::SeqCst);
 
-			let has_msgs = !cell.rx.is_empty();
+			let has_msgs = !cell.tx.is_empty();
 			let cancelled = cell.cancel.is_cancelled();
 			if has_msgs || cancelled {
 				notify(cell);
@@ -192,13 +203,13 @@ fn dispatch_directive<A: Actor>(
 					cell.schedule.enqueue(Arc::clone(cell) as Arc<dyn Runnable>);
 				}
 				Err(SCHEDULED) => {
-					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
+					if !cell.tx.is_empty() || cell.cancel.is_cancelled() {
 						cell.schedule.enqueue(Arc::clone(cell) as Arc<dyn Runnable>);
 					} else {
 						cell.schedule_state.store(IDLE, Ordering::Release);
 						fence(Ordering::SeqCst);
 
-						if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
+						if !cell.tx.is_empty() || cell.cancel.is_cancelled() {
 							notify(cell);
 						}
 					}
@@ -247,8 +258,8 @@ where
 	let cell = Arc::new(ActorCell {
 		actor,
 		name: name.to_string(),
-		state: Mutex::new(CellState::Uninit),
-		rx: mailbox.rx,
+		state: Mutex::new(CellState::Uninit(mailbox.rx)),
+		tx: mailbox.tx,
 		ctx,
 		cancel,
 		schedule_state: AtomicU8::new(SCHEDULED),

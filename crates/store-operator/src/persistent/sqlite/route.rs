@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-			state::{GroupId, KeyspaceId, OperatorStateKey},
+			state::{GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey},
 			traits::{Keyspace, group_scoped},
 		},
 		typed::{BoundedKey, layout::KeyLayout, range::KeyRange},
@@ -25,7 +25,6 @@ use rusqlite::{Connection, Transaction};
 use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
-	store::occupancy::occupies,
 	types::OperatorStateCensus,
 };
 
@@ -404,7 +403,8 @@ pub(super) fn bounded_in(
 	range: &EncodedKeyRange,
 	limit: u64,
 	reverse: bool,
-	mask: u64,
+	mask: KeyspaceMask,
+	tables: TableMask,
 ) -> Vec<(EncodedKey, Vec<u8>)> {
 	if groups.is_empty() {
 		return Vec::new();
@@ -413,7 +413,7 @@ pub(super) fn bounded_in(
 	let (end, _, end_at) = split_bound(range.end.as_ref());
 	let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
 	let mut ids = span(start_at, end_at, end_open);
-	ids.retain(|id| occupies(mask, *id));
+	ids.retain(|id| mask.holds(*id) && tables.holds(*id));
 	if reverse {
 		ids.reverse();
 	}
@@ -591,7 +591,7 @@ mod tests {
 					expiry::{Expiry, ExpiryKey},
 					join::{JoinLeft, JoinLeftKey, JoinRight, JoinRightKey},
 				},
-				state::{GroupId, KeyspaceId, group_inner_range},
+				state::{GroupId, KeyspaceId, KeyspaceMask, group_inner_range},
 			},
 			typed::direction::{Asc, Desc},
 		},
@@ -671,7 +671,7 @@ mod tests {
 	}
 
 	fn sweep(store: &SqlitePersistent, groups: &[GroupId]) -> Vec<EncodedKey> {
-		keys(store.group_page(OPERATOR, groups, LIMIT, u64::MAX))
+		keys(store.group_page(OPERATOR, groups, LIMIT, KeyspaceMask::all()))
 	}
 
 	#[test]

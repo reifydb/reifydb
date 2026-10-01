@@ -14,7 +14,7 @@ const CHILD_TEST: &str = "extern_c::error_abort::apply_error_aborts";
 
 #[test]
 fn apply_error_aborts() {
-	// The abort lives in the `extern_c_apply` export, so this must drive the `.so` boundary, not the harness.
+	// The abort lives in the extern_c_apply export, so this must drive the production handle, never a stand-in.
 	if env::var(CHILD_ENV).is_ok() {
 		let mut harness = Harness::<NostateMount<ErroringOperator>>::builder().build().expect("harness build");
 		let _ = harness.apply(trigger());

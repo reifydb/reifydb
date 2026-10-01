@@ -141,10 +141,10 @@ fn float_size_row() -> CoreRow {
 }
 
 const CHILD_ENV: &str = "REIFYDB_WINDOWED_READ_ERROR_CHILD";
-const CHILD_TEST: &str = "windowed_read_error::a_read_error_in_extract_fails_the_apply_instead_of_skipping_the_row";
+const CHILD_TEST: &str = "windowed_read_error::a_read_error_in_extract_aborts_the_apply_instead_of_skipping_the_row";
 
 #[test]
-fn a_read_error_in_extract_fails_the_apply_instead_of_skipping_the_row() {
+fn a_read_error_in_extract_aborts_the_apply_instead_of_skipping_the_row() {
 	// Skipping would drop the row from every window and emit plausible totals built on missing data.
 	if env::var(CHILD_ENV).is_ok() {
 		let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<ReadsSizeAsInt>>::new()

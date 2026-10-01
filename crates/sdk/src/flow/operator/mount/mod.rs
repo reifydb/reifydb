@@ -125,7 +125,9 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, unmanaged_key_in},
+		key::operator::state::{
+			GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey, unmanaged_key_in,
+		},
 		state::timer::{StateStore, TimerKind},
 	};
 	use reifydb_flow_async::{
@@ -158,7 +160,10 @@ mod tests {
 
 		assert!(host.state_get(&absent).unwrap().is_none());
 
-		assert!(host.group_sweep(group, false, None).unwrap().is_empty(), "the probe must leave no row");
+		assert!(
+			host.group_sweep(group, KeyspaceMask::all(), None).unwrap().is_empty(),
+			"the probe must leave no row"
+		);
 	}
 
 	fn stored_key(id: &str) -> GroupStateKey {
@@ -182,8 +187,12 @@ mod tests {
 			host.state_get_many(from_ref(&written)).unwrap().into_iter().map(|(key, _)| key).collect();
 		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
 
-		let from_range: Vec<GroupStateKey> =
-			host.group_sweep(GroupId::ROOT, false, None).unwrap().into_iter().map(|(key, _)| key).collect();
+		let from_range: Vec<GroupStateKey> = host
+			.group_sweep(GroupId::ROOT, KeyspaceMask::all(), None)
+			.unwrap()
+			.into_iter()
+			.map(|(key, _)| key)
+			.collect();
 		assert_eq!(from_range, vec![written.clone()], "a group sweep must return the key that was written");
 
 		let mut visited = Vec::new();

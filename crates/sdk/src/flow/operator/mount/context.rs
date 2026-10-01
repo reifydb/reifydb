@@ -11,8 +11,8 @@ use reifydb_core::{
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_framed_inner,
-		is_guest_framed_inner, keyspace_inner_range_in,
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, is_framed_inner, is_guest_framed_inner,
+		keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
 };
@@ -250,29 +250,34 @@ impl GuestState for InProcessState<'_> {
 	fn sweep_bytes_visit(
 		&self,
 		group: GroupId,
-		data_only: bool,
+		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = match data_only {
-			true => group_data_inner_range(group),
-			false => group_inner_range(group),
-		};
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the
-		// visitor cannot reach the context, so it cannot re-enter the host while this borrow is live.
-		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |key, row| Ok(visit(key, row)?)) }
-			.map_err(to_sdk_err)
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		let rows = unsafe {
+			(*self.host).group_sweep(group, KeyspaceMask::windowed().intersect(keyspaces), limit)
+		}
+		.map_err(to_sdk_err)?;
+		for (key, row) in rows {
+			visit(key, row)?;
+		}
+		Ok(())
 	}
 
 	fn sweep_many_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
+		keyspaces: KeyspaceMask,
 	) -> SdkResult<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let sweep = unsafe { (*self.host).group_sweep_many(groups, limit) }.map_err(to_sdk_err)?;
+		let sweep = unsafe {
+			(*self.host).group_sweep_many(groups, limit, KeyspaceMask::windowed().intersect(keyspaces))
+		}
+		.map_err(to_sdk_err)?;
 		Ok((sweep.rows, sweep.complete))
 	}
 
@@ -441,14 +446,6 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
-	}
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> SdkResult<ReclaimOutcome>
-	where
-		C: WindowClass,
-	{
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
 	}
 }
 

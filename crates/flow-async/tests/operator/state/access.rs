@@ -140,7 +140,7 @@ fn test_set_and_get() {
 }
 
 #[test]
-fn test_set_persists_to_extern_c_on_the_set_itself() {
+fn test_set_persists_to_host_storage_on_the_set_itself() {
 	let mut host = Host::new();
 
 	let key = TestKey::new("persist_key");
@@ -148,7 +148,7 @@ fn test_set_persists_to_extern_c_on_the_set_itself() {
 		count: 100,
 	};
 
-	// Set is the sole point at which state crosses the ABI; a guest that never sets writes nothing.
+	// Set is the sole point at which state reaches host storage; a guest that never sets writes nothing.
 	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");

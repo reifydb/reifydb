@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-		state::{GroupId, KeyspaceId, OperatorStateKey},
+		state::{GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey},
 		traits::Keyspace,
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
@@ -17,10 +17,7 @@ use reifydb_core::{
 use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::{
-	range::{TypedPartition, typed::StandardRangeTier},
-	store::occupancy::occupies,
-};
+use crate::range::{TypedPartition, typed::StandardRangeTier};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RangeKeyspaceMetrics {
@@ -278,9 +275,9 @@ impl RangeTiers {
 		}
 	}
 
-	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64) {
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: KeyspaceMask) {
 		for (keyspace, tier) in self.tiers.iter() {
-			if occupies(occupied, *keyspace) {
+			if occupied.holds(*keyspace) {
 				tier.invalidate_group(operator, group);
 			}
 		}

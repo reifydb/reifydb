@@ -75,6 +75,7 @@ impl<M: Send> ActorRefInner<M> {
 
 pub(crate) struct Mailbox<M> {
 	pub(crate) rx: Receiver<M>,
+	pub(crate) tx: Sender<M>,
 }
 
 pub(crate) fn create_mailbox<M: Send>(capacity: Option<usize>) -> (ActorRef<M>, Mailbox<M>) {
@@ -84,9 +85,10 @@ pub(crate) fn create_mailbox<M: Send>(capacity: Option<usize>) -> (ActorRef<M>, 
 	};
 
 	(
-		ActorRef::from_inner(ActorRefInner::new(tx)),
+		ActorRef::from_inner(ActorRefInner::new(tx.clone())),
 		Mailbox {
 			rx,
+			tx,
 		},
 	)
 }

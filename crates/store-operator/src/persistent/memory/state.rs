@@ -9,14 +9,13 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, group_inner_range},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceMask, group_inner_range},
 };
 use tracing::instrument;
 
 use crate::{
 	error::Result,
 	persistent::{Fetch, Page, memory::MemoryPersistent},
-	store::occupancy::occupies,
 	types::OperatorBatch,
 };
 
@@ -116,7 +115,7 @@ impl Page for MemoryPersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		_occupied: u64,
+		_occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
@@ -137,7 +136,7 @@ impl Page for MemoryPersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		_occupied: u64,
+		_occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
@@ -157,7 +156,13 @@ impl Page for MemoryPersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::group_page", level = "trace", skip_all)]
-	fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch: u64, mask: u64) -> Result<OperatorBatch> {
+	fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch: u64,
+		mask: KeyspaceMask,
+	) -> Result<OperatorBatch> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(OperatorBatch::empty());
@@ -174,7 +179,7 @@ impl Page for MemoryPersistent {
 				let Some(keyspace) = key.keyspace() else {
 					continue;
 				};
-				if !occupies(mask, keyspace) {
+				if !mask.holds(keyspace) {
 					continue;
 				}
 				items.push((key.clone(), row.clone()));

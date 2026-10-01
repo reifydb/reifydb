@@ -287,7 +287,7 @@ fn the_reap_scan_stops_fetching_at_the_budget() {
 }
 
 #[test]
-fn one_merged_scan_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
+fn one_drain_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
 	let mut store = MockStore::default();
 	let accumulator = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
@@ -304,7 +304,7 @@ fn one_merged_scan_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
 }
 
 #[test]
-fn the_merged_scan_partitions_by_keyspace_not_by_scan_order() {
+fn the_drain_partitions_by_keyspace_not_by_scan_order() {
 	let mut store = MockStore::default();
 	let lowest_data = key(doomed_group(), KeyspaceId(0x00), 1);
 	let highest_data = key(doomed_group(), KeyspaceId(KeyspaceId::HIGHEST_DATA), 1);
@@ -324,7 +324,7 @@ fn the_merged_scan_partitions_by_keyspace_not_by_scan_order() {
 }
 
 #[test]
-fn the_merged_scan_leaves_a_neighbouring_group_untouched() {
+fn the_drain_leaves_a_neighbouring_group_untouched() {
 	let mut store = MockStore::default();
 	let doomed_data = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let neighbour_data = key(bystander_group(), KeyspaceId::ACCUMULATOR, 1);
@@ -407,20 +407,20 @@ fn the_reaper_is_handed_the_data_keys_and_never_an_identity_key() {
 }
 
 #[test]
-fn a_drainable_group_is_covered_by_a_single_scan_that_spans_both_phases() {
+fn a_drainable_group_reads_only_its_data_rows_and_still_frees_its_identity() {
 	let mut store = MockStore::default();
-	seed(&mut store, &key(doomed_group(), KeyspaceId::ACCUMULATOR, 1));
-	seed(&mut store, &key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1));
+	let data = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
+	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
+	seed(&mut store, &data);
+	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(doomed_group()));
 	let before = store.rows_visited();
 
-	drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
 
-	assert_eq!(
-		store.rows_visited() - before,
-		2,
-		"one scan must see the data row and the identity row together; a data-only scan sees one"
-	);
+	assert_eq!(store.rows_visited() - before, 1, "the sweep must read the one data row and never the identity row");
+	assert!(!outcome.still_queued, "a group whose rows all fit one budget must not stay queued");
+	assert!(!present(&mut store, &mapping), "the band reclaim must free the identity row the sweep never read");
 }
 
 fn third_group() -> GroupId {

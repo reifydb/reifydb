@@ -7,7 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	state::timer::StateStore,
 };
 use reifydb_flow_async::{operator::host::TxnHostContext, transaction::FlowTransaction};
@@ -72,7 +72,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 	let mut host = TxnHostContext::new(&mut txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut host, OPERATOR);
 
-	let swept = GuestAsHost(&mut ctx).group_sweep(group(), false, None).expect("sweep");
+	let swept = GuestAsHost(&mut ctx).group_sweep(group(), KeyspaceMask::all(), None).expect("sweep");
 	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|_| true));
@@ -86,7 +86,7 @@ fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
 	let mut host = TxnHostContext::new(&mut txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut host, OPERATOR);
 
-	let swept = GuestAsHost(&mut ctx).group_sweep(group(), true, None).expect("sweep");
+	let swept = GuestAsHost(&mut ctx).group_sweep(group(), KeyspaceMask::data(), None).expect("sweep");
 	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|keyspace| keyspace.is_data()));
@@ -107,7 +107,7 @@ fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 
 	for budget in 0..=SEEDED.len() {
 		let mut store = GuestAsHost(&mut ctx);
-		let swept = store.group_sweep(group(), false, Some(budget)).expect("sweep");
+		let swept = store.group_sweep(group(), KeyspaceMask::all(), Some(budget)).expect("sweep");
 		assert_eq!(swept.len(), budget, "a sweep must return exactly the budget it was given");
 
 		let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();

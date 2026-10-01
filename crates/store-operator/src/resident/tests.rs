@@ -17,7 +17,7 @@ use reifydb_core::{
 				columns_width,
 				join::{JoinLeft, JoinRight},
 			},
-			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId},
+			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, KeyspaceMask},
 			traits::Keyspace,
 		},
 		typed::{direction::Asc, layout::KeyLayout},
@@ -1127,7 +1127,7 @@ impl RangeSink for RecordingRange {
 		self.calls.lock().push(RangeCall::Retract(operator, keys.iter().map(|key| (*key).clone()).collect()));
 	}
 
-	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: u64) {}
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: KeyspaceMask) {}
 
 	fn invalidate_operator(&self, _operator: OperatorId) {}
 

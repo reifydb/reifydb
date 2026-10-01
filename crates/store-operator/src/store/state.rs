@@ -21,7 +21,7 @@ use reifydb_core::{
 	key::operator::{
 		keyspace::dispatch,
 		state::{
-			GroupId, GroupStateKey, KeyspaceId, group_inner_range, group_inner_range_split,
+			GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_inner_range, group_inner_range_split,
 			keyspace_inner_range_split,
 		},
 	},
@@ -517,16 +517,22 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::group_page", level = "trace", skip(self, groups), fields(operator = operator.0, group_count = groups.len(), batch_size = batch_size))]
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> Result<OperatorBatch> {
+	pub fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch_size: u64,
+		keyspaces: KeyspaceMask,
+	) -> Result<OperatorBatch> {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut ordered: Vec<GroupId> = groups.to_vec();
 		ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
 		ordered.dedup();
 
-		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
+		let mut buffer = GroupBuffer::new(self, operator, &ordered, target, keyspaces);
 		buffer.peek();
-		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?;
+		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?.intersect(keyspaces);
 		let mut source = GroupPager::new(operator, &self.persistent, &ordered, mask, buffer.dropped);
 
 		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
@@ -791,9 +797,15 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> Result<OperatorBatch> {
+	pub fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch_size: u64,
+		keyspaces: KeyspaceMask,
+	) -> Result<OperatorBatch> {
 		match self {
-			Self::Standard(store) => store.group_page(operator, groups, batch_size),
+			Self::Standard(store) => store.group_page(operator, groups, batch_size, keyspaces),
 		}
 	}
 
@@ -884,10 +896,17 @@ struct GroupBuffer<'a> {
 	drained: bool,
 	dropped: bool,
 	target: usize,
+	keyspaces: KeyspaceMask,
 }
 
 impl<'a> GroupBuffer<'a> {
-	fn new(store: &'a StandardOperatorStore, operator: OperatorId, groups: &'a [GroupId], target: usize) -> Self {
+	fn new(
+		store: &'a StandardOperatorStore,
+		operator: OperatorId,
+		groups: &'a [GroupId],
+		target: usize,
+		keyspaces: KeyspaceMask,
+	) -> Self {
 		Self {
 			store,
 			operator,
@@ -900,6 +919,7 @@ impl<'a> GroupBuffer<'a> {
 			drained: true,
 			dropped: false,
 			target,
+			keyspaces,
 		}
 	}
 
@@ -929,7 +949,12 @@ impl<'a> GroupBuffer<'a> {
 		if let Some((key, _)) = page.items.last() {
 			self.lower = Bound::Excluded(key.as_encoded().clone());
 		}
-		self.items = page.items;
+		let keyspaces = self.keyspaces;
+		self.items = page
+			.items
+			.into_iter()
+			.filter(|(key, _)| key.keyspace().is_some_and(|keyspace| keyspaces.holds(keyspace)))
+			.collect();
 		self.at = 0;
 	}
 
@@ -1003,7 +1028,7 @@ impl Iterator for StateLastIter<'_> {
 					self.operator,
 					EncodedKeyRange::new(self.start.clone(), self.stored_end.clone()),
 					STATE_LAST_PAGE as u64,
-					u64::MAX,
+					KeyspaceMask::all(),
 				) {
 					Ok(batch) => batch,
 					Err(error) => {

@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	metrics::scan::record_page,
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -95,7 +95,7 @@ impl SqlitePersistent {
 		operator: OperatorId,
 		groups: &[GroupId],
 		batch_size: u64,
-		mask: u64,
+		mask: KeyspaceMask,
 	) -> OperatorBatch {
 		if groups.is_empty() || !self.state_written() {
 			return OperatorBatch::empty();
@@ -112,7 +112,8 @@ impl SqlitePersistent {
 			&EncodedKeyRange::all(),
 			batch_size.saturating_add(1),
 			false,
-			mask & tables.bits(),
+			mask,
+			tables,
 		);
 		record_page(rows.len() as u64, 0);
 		let items: Vec<(GroupStateKey, EncodedPodRow)> = rows

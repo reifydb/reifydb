@@ -5,34 +5,30 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::{keyspace::KEYSPACES, state::KeyspaceId},
+	key::operator::{
+		keyspace::KEYSPACES,
+		state::{KeyspaceId, KeyspaceMask},
+	},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use rusqlite::Connection;
 
-use crate::{persistent::sqlite::sql::TABLE_NAMES_SQL, store::occupancy::bit};
+use crate::persistent::sqlite::sql::TABLE_NAMES_SQL;
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct TableMask(u64);
+pub(super) struct TableMask(KeyspaceMask);
 
 impl TableMask {
 	pub(super) fn holds(self, keyspace: KeyspaceId) -> bool {
-		self.0 & holding(keyspace) != 0
+		self.0.holds(keyspace)
 	}
 
 	pub(super) fn held(self) -> Vec<KeyspaceId> {
-		let mut ids: Vec<KeyspaceId> =
-			KEYSPACES.iter().map(|spec| spec.id).filter(|id| self.holds(*id)).collect();
-		ids.sort_unstable();
-		ids
-	}
-
-	pub(super) fn bits(self) -> u64 {
-		self.0
+		self.0.held()
 	}
 
 	fn insert(&mut self, keyspace: KeyspaceId) {
-		self.0 |= holding(keyspace);
+		self.0.insert(keyspace);
 	}
 }
 
@@ -86,10 +82,6 @@ impl TableRegistry {
 	}
 }
 
-fn holding(keyspace: KeyspaceId) -> u64 {
-	bit(keyspace).expect("every catalogue keyspace must have an occupancy bit")
-}
-
 fn parse(rest: &str) -> Option<(OperatorId, KeyspaceId)> {
 	let (keyspace, digits) = rest.rsplit_once('_')?;
 	let operator: u64 = digits.parse().ok()?;
@@ -111,7 +103,7 @@ mod tests {
 					expiry::{Expiry, ExpiryKey},
 					join::{JoinLeft, JoinLeftKey},
 				},
-				state::GroupId,
+				state::{GroupId, KeyspaceMask},
 				traits::Keyspace,
 			},
 			typed::direction::{Asc, Desc},
@@ -145,7 +137,7 @@ mod tests {
 		assert!(scan::<JoinLeft>(&store, STRANGER).is_empty());
 		assert!(keys_after::<JoinLeft>(&store, STRANGER, None, 10).is_empty());
 		assert!(store.get_many(STRANGER, &[encode::<JoinLeft>(&key()).into_encoded()]).is_empty());
-		assert!(store.group_page(STRANGER, &[key().group.0], 10, u64::MAX).items.is_empty());
+		assert!(store.group_page(STRANGER, &[key().group.0], 10, KeyspaceMask::all()).items.is_empty());
 		assert!(store.range_batch(STRANGER, EncodedKeyRange::all(), 10).items.is_empty());
 	}
 

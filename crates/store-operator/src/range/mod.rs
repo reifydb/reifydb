@@ -7,7 +7,11 @@ pub mod tiers;
 pub mod typed;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{default, interface::catalog::flow::OperatorId, key::operator::state::GroupId};
+use reifydb_core::{
+	default,
+	interface::catalog::flow::OperatorId,
+	key::operator::state::{GroupId, KeyspaceMask},
+};
 use reifydb_store::{
 	coverage::plan::DEFAULT_GAP_GUARD,
 	tier::range::{DEFAULT_COVERAGE_INTERVALS, RangeConfig, RangeMetrics},
@@ -62,7 +66,7 @@ pub trait RangeSink: Send + Sync + 'static {
 
 	fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]);
 
-	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64);
+	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: KeyspaceMask);
 
 	fn invalidate_operator(&self, operator: OperatorId);
 
@@ -88,7 +92,7 @@ impl RangeSink for NoRange {
 
 	fn retract_run(&self, _operator: OperatorId, _keys: &[&EncodedKey]) {}
 
-	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: u64) {}
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: KeyspaceMask) {}
 
 	fn invalidate_operator(&self, _operator: OperatorId) {}
 
@@ -155,7 +159,7 @@ impl RangeSink for OperatorRangeTier {
 		}
 	}
 
-	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: u64) {
+	fn invalidate_group(&self, operator: OperatorId, group: GroupId, occupied: KeyspaceMask) {
 		if let Self::Standard(tiers) = self {
 			tiers.invalidate_group(operator, group, occupied);
 		}

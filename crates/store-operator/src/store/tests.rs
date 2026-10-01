@@ -18,7 +18,9 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, group_inner_range, keyspace_inner_range},
+	key::operator::state::{
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_inner_range, keyspace_inner_range,
+	},
 	metrics::scan::PageRequests,
 };
 use reifydb_filter::source::KeyFilterSource;
@@ -176,7 +178,7 @@ fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(Gr
 }
 
 fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(GroupStateKey, String)> {
-	store.group_page(OP, groups, SWEEP_BUDGET)
+	store.group_page(OP, groups, SWEEP_BUDGET, KeyspaceMask::all())
 		.unwrap()
 		.items
 		.into_iter()
@@ -253,7 +255,7 @@ fn a_group_page_reports_more_work_when_the_budget_cuts_the_set_short() {
 	seed_groups(&store, &groups);
 	flush(&store);
 
-	let batch = store.group_page(OP, &groups, 3).unwrap();
+	let batch = store.group_page(OP, &groups, 3, KeyspaceMask::all()).unwrap();
 
 	assert_eq!(batch.items.len(), 3);
 	assert!(batch.has_more);
@@ -502,7 +504,7 @@ fn a_failed_keyspace_enumeration_fails_the_group_page() {
 	let store = faulted_store(fault.clone());
 	fault.armed.store(true, Ordering::SeqCst);
 
-	let page = store.group_page(OP, &[group()], 16);
+	let page = store.group_page(OP, &[group()], 16, KeyspaceMask::all());
 
 	assert!(page.is_err(), "a group page over a failed enumeration must fail, got {page:?}");
 }

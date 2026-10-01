@@ -15,7 +15,7 @@ use reifydb_value::{
 
 use crate::key::operator::{
 	keyspace::{RootSibling, root_sibling_of},
-	state::{GroupId, GroupStateKey, group_data_inner_range, group_inner_range, keyspace_inner_range_split},
+	state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -104,24 +104,34 @@ pub trait StateStore {
 	fn group_sweep(
 		&mut self,
 		group: GroupId,
-		data_only: bool,
+		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let range = match data_only {
-			true => group_data_inner_range(group),
-			false => group_inner_range(group),
-		};
-		self.state_page_inner(range, limit)
+		let mut rows = Vec::new();
+		for keyspace in keyspaces.held().into_iter().rev() {
+			let remaining = match limit {
+				Some(limit) if rows.len() >= limit => break,
+				Some(limit) => Some(limit - rows.len()),
+				None => None,
+			};
+			rows.extend(self.state_page_inner(keyspace_inner_range(group, keyspace), remaining)?);
+		}
+		Ok(rows)
 	}
 
-	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
+	fn group_sweep_many(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep> {
 		let mut rows = Vec::new();
 		for group in sweep_order(groups) {
 			if rows.len() > limit {
 				break;
 			}
 			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
-			rows.extend(self.group_sweep(group, false, Some(remaining))?);
+			rows.extend(self.group_sweep(group, keyspaces, Some(remaining))?);
 		}
 		Ok(GroupSweep::of(rows, limit))
 	}
