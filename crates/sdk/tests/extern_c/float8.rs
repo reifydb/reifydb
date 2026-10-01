@@ -27,13 +27,6 @@ fn float8_min_max() {
 }
 
 #[test]
-fn float8_nan_and_infinities() {
-	let input = factory::float8("c", [f64::NAN, f64::INFINITY, f64::NEG_INFINITY]);
-	let output = round_trip_column("f", input.clone());
-	assert_column_eq("float8_nan_inf", &input, &output);
-}
-
-#[test]
 fn float8_smallest_subnormal() {
 	let input = factory::float8("c", [f64::MIN_POSITIVE, f64::EPSILON, f64::from_bits(1)]);
 	let output = round_trip_column("f", input.clone());

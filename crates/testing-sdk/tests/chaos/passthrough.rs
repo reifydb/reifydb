@@ -7,6 +7,7 @@
 //!
 //! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 use reifydb_testing_sdk::chaos::{ChaosHarness, schema::KeyStrategy, strategy::samplers};
@@ -23,7 +24,7 @@ fn baseline_chaos(steps: u32, supported_ops: SupportedOps) -> Scenario {
 }
 
 chaos_test!(passthrough_matches_under_default_config, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -39,7 +40,7 @@ chaos_test!(passthrough_matches_under_default_config, |seed| {
 });
 
 chaos_test!(passthrough_matches_under_insert_only, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -57,7 +58,7 @@ chaos_test!(passthrough_matches_under_insert_only, |seed| {
 });
 
 chaos_test!(passthrough_matches_under_no_remove, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -75,7 +76,7 @@ chaos_test!(passthrough_matches_under_no_remove, |seed| {
 });
 
 chaos_test!(passthrough_matches_under_no_update, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -95,7 +96,7 @@ chaos_test!(passthrough_matches_under_no_update, |seed| {
 chaos_test!(passthrough_matches_with_chaos_primitives_at_high_probability, |seed| {
 	// Both primitives high enough that most Updates get rewritten or duplicated; both are
 	// equivalent at the materialized-table level, so the oracle must not move.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -119,7 +120,7 @@ chaos_test!(passthrough_matches_with_chaos_primitives_at_high_probability, |seed
 });
 
 chaos_test!(passthrough_matches_at_zero_ops, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

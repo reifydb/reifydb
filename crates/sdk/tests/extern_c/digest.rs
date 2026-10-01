@@ -21,13 +21,10 @@ use reifydb_core::{
 use reifydb_sdk::{
 	common::extern_wasm::marshal::marshal_columns_to_bytes, flow::operator::extern_c::binding::arena::Arena,
 };
-use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
 	error::Diagnostic,
 	value::{Value, column_view::ColumnView, datetime::DateTime, digest::Digest, value_type::ValueType},
 };
-
-use super::common::PassthroughOperator;
 
 fn digest_value() -> Value {
 	let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
@@ -134,21 +131,4 @@ fn marshal_columns_to_bytes_with_a_digest_column_reports_extern_001() {
 	let diagnostic = marshal_columns_to_bytes(&input, 1, &[]).unwrap_err().diagnostic();
 
 	assert_extern_001(&diagnostic, "d");
-}
-
-#[test]
-fn harness_apply_with_a_digest_column_fails_naming_the_digest_type() {
-	// The harness drives the same marshal path as the host, so the error must surface through apply, not abort.
-	let mut harness = ExternCOperatorHarnessBuilder::<PassthroughOperator>::new()
-		.with_node_id(OperatorId(1))
-		.build()
-		.expect("build harness");
-
-	let Err(err) = harness.apply(change(vec![Diff::insert(columns("d", digest_buffer()))])) else {
-		panic!("applying a change that carries a digest column must fail");
-	};
-
-	let message = err.to_string();
-	assert!(message.contains("EXTERN_001"), "the message must carry the code, got: {message}");
-	assert!(message.contains(&digest_type().to_string()), "the message must name the digest type, got: {message}");
 }

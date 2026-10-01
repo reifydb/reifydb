@@ -3,11 +3,10 @@
 
 #![allow(dead_code)]
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use arrow_array::{ArrayRef, UInt64Array};
 use arrow_schema::FieldRef;
-use reifydb_codec::tag::ValueKind;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -19,151 +18,121 @@ use reifydb_core::{
 	value::{batch::batch, column::factory::rename},
 };
 use reifydb_sdk::{
-	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{
-		OperatorMetadata,
-		change::{BorrowedChange, BorrowedColumns},
-		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+		NostateMount, NostateOperator, OperatorMetadata,
+		column::{cell::Cell, operator::OperatorColumn},
+		context::{GuestContext, Nostate},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
+	row,
 };
-use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
+use reifydb_testing_sdk::in_process::harness::InProcessOperatorHarness;
 use reifydb_value::{
 	config::ExtensionParams,
 	value::{
 		Value,
 		column_view::ColumnView,
 		container::temporal_array::datetime_array,
+		date::Date,
 		datetime::DateTime,
-		diff_type::DiffType,
-		row_number::RowNumber,
+		duration::Duration,
 		system_columns::{SystemColumn, user_columns, with_system_column},
+		time::Time,
+		value_type::ValueType,
 	},
 };
 
-/// Echoing every diff back drives both the input borrow path and the output builder path in a single apply, which
-/// is what makes a round trip through this operator a test of the whole extern-C column ABI.
-pub struct PassthroughOperator;
+const COLUMN: &str = "column";
 
-impl OperatorMetadata for PassthroughOperator {
-	const NAME: &'static str = "extern_c_round_trip_passthrough";
+pub struct Cells<T> {
+	v: T,
+}
+
+row!(impl (<T: Cell>) for Cells<T> {
+	v: T
+});
+
+pub struct EchoOperator<T> {
+	column: String,
+	_cell: PhantomData<T>,
+}
+
+impl<T> OperatorMetadata for EchoOperator<T> {
+	const NAME: &'static str = "in_process_round_trip_echo";
 	const VERSION: &'static str = "1.0.0";
-	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
+	const DESCRIPTION: &'static str = "echoes every row of one column through the typed reader and sink";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl ExternCOperator for PassthroughOperator {
-	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
-		Ok(Self)
+impl<T: Cell + Send + Sync + 'static> NostateOperator for EchoOperator<T> {
+	fn create(_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		let column = match params.get(COLUMN) {
+			Some(Value::Utf8(column)) => column.clone(),
+			other => {
+				return Err(SdkError::InvalidInput(format!(
+					"the echo needs a column name, got {other:?}"
+				)));
+			}
+		};
+		Ok(Self {
+			column,
+			_cell: PhantomData,
+		})
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
-		let mut builder = ctx.builder();
-		for diff in input.diffs() {
-			match diff.kind() {
-				DiffType::Insert => {
-					let post = diff.post();
-					let (cols, names) = byte_clone_columns(&mut builder, &post)?;
-					let names_ref: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-					let row_numbers: Vec<RowNumber> =
-						post.row_numbers().iter().copied().map(RowNumber).collect();
-					builder.emit_insert(&cols, &names_ref, &row_numbers)?;
-				}
-				DiffType::Update => {
-					let pre = diff.pre();
-					let post = diff.post();
-					let (pre_cols, pre_names) = byte_clone_columns(&mut builder, &pre)?;
-					let (post_cols, post_names) = byte_clone_columns(&mut builder, &post)?;
-					let pre_names_ref: Vec<&str> = pre_names.iter().map(|s| s.as_str()).collect();
-					let post_names_ref: Vec<&str> = post_names.iter().map(|s| s.as_str()).collect();
-					let pre_row_numbers: Vec<RowNumber> =
-						pre.row_numbers().iter().copied().map(RowNumber).collect();
-					let post_row_numbers: Vec<RowNumber> =
-						post.row_numbers().iter().copied().map(RowNumber).collect();
-					builder.emit_update(
-						&pre_cols,
-						&pre_names_ref,
-						pre.row_count(),
-						&pre_row_numbers,
-						&post_cols,
-						&post_names_ref,
-						post.row_count(),
-						&post_row_numbers,
-					)?;
-				}
-				DiffType::Remove => {
-					let pre = diff.pre();
-					let (cols, names) = byte_clone_columns(&mut builder, &pre)?;
-					let names_ref: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-					let row_numbers: Vec<RowNumber> =
-						pre.row_numbers().iter().copied().map(RowNumber).collect();
-					builder.emit_remove(&cols, &names_ref, &row_numbers)?;
-				}
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+		for index in 0..change.diff_count() {
+			let diff = change.diff(index).expect("every counted diff resolves");
+			let post = diff.post().expect("a round trip only inserts");
+			let mut rows = Vec::with_capacity(post.row_count());
+			let mut numbers = Vec::with_capacity(post.row_count());
+			for position in 0..post.row_count() {
+				let row = post.row(position).expect("every counted row resolves");
+				let v = T::decode(&row, &self.column)?.expect("an optional cell always decodes");
+				rows.push(Cells {
+					v,
+				});
+				numbers.push(row.row_number().expect("every round trip row is numbered"));
 			}
+			ctx.emit_insert(&rows, &numbers)?;
 		}
 		Ok(())
 	}
 }
 
-/// Copies at the byte level rather than value level, so a defect in the marshal encoding survives the copy and is
-/// visible in the round-tripped output instead of being normalised away.
-fn byte_clone_columns(
-	builder: &mut ColumnsBuilder<'_>,
-	cols: &BorrowedColumns<'_>,
-) -> Result<(Vec<CommittedColumn>, Vec<String>)> {
-	let row_count = cols.row_count();
-	let mut committed: Vec<CommittedColumn> = Vec::new();
-	let mut names: Vec<String> = Vec::new();
-	for col in cols.columns() {
-		let type_code = col.type_code();
-		let data_bytes = col.data_bytes();
-		let active = builder.acquire_with_params(type_code, col.precision(), col.scale(), row_count.max(1))?;
-		active.grow(data_bytes.len().max(row_count))?;
-		let dst = active.data_ptr();
-		if !dst.is_null() && !data_bytes.is_empty() {
-			// SAFETY: dst is non-null and the preceding grow() sized the data region to at least
-			// data_bytes.len(); source and destination are distinct allocations.
-			unsafe {
-				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
-			}
-		}
-		if matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId) {
-			let off = col.offsets();
-			let dst_off = active.offsets_ptr();
-			if !dst_off.is_null() && !off.is_empty() {
-				// SAFETY: dst_off is non-null and the builder sized the offsets region from the
-				// same row count off was read at; the buffers do not alias.
-				unsafe {
-					core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
-				}
-			}
-		}
-		let bitvec = col.defined_bitvec();
-		if !bitvec.is_empty() {
-			let dst_bv = active.bitvec_ptr();
-			if !dst_bv.is_null() {
-				// SAFETY: dst_bv is non-null and the builder allocates the bitvec at
-				// row_count.div_ceil(8) bytes, which is bitvec.len(); the buffers do not alias.
-				unsafe {
-					core::ptr::copy_nonoverlapping(bitvec.as_ptr(), dst_bv, bitvec.len());
-				}
-			}
-		}
-		let c = active.commit(row_count)?;
-		committed.push(c);
-		names.push(col.name().to_string());
-	}
-	Ok((committed, names))
-}
-
 pub fn round_trip_column(name: &str, input: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
-	round_trip_column_through::<PassthroughOperator>(name, input)
+	let inner = match ColumnView::try_from(&input).unwrap().get_type() {
+		ValueType::Option(inner) => *inner,
+		other => other,
+	};
+	match inner {
+		ValueType::Boolean => round_trip_as::<bool>(name, input),
+		ValueType::Float4 => round_trip_as::<f32>(name, input),
+		ValueType::Float8 => round_trip_as::<f64>(name, input),
+		ValueType::Int1 => round_trip_as::<i8>(name, input),
+		ValueType::Int2 => round_trip_as::<i16>(name, input),
+		ValueType::Int4 => round_trip_as::<i32>(name, input),
+		ValueType::Int8 => round_trip_as::<i64>(name, input),
+		ValueType::Int16 => round_trip_as::<i128>(name, input),
+		ValueType::Uint1 => round_trip_as::<u8>(name, input),
+		ValueType::Uint2 => round_trip_as::<u16>(name, input),
+		ValueType::Uint4 => round_trip_as::<u32>(name, input),
+		ValueType::Uint8 => round_trip_as::<u64>(name, input),
+		ValueType::Uint16 => round_trip_as::<u128>(name, input),
+		ValueType::Utf8 => round_trip_as::<String>(name, input),
+		ValueType::Blob => round_trip_as::<Vec<u8>>(name, input),
+		ValueType::Date => round_trip_as::<Date>(name, input),
+		ValueType::DateTime => round_trip_as::<DateTime>(name, input),
+		ValueType::Time => round_trip_as::<Time>(name, input),
+		ValueType::Duration => round_trip_as::<Duration>(name, input),
+		other => panic!("the in-process round trip has no typed cell for {other:?}"),
+	}
 }
 
-pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
+fn round_trip_as<T: Cell + Send + Sync + 'static>(name: &str, input: (FieldRef, ArrayRef)) -> (FieldRef, ArrayRef) {
 	let n = input.1.len();
 	let row_numbers: Vec<u64> = (1..=(n as u64).max(1)).take(n).collect();
 	let now = DateTime::default();
@@ -178,8 +147,11 @@ pub fn round_trip_column_through<O: ExternCOperator>(name: &str, input: (FieldRe
 	diffs.push(Diff::insert(columns));
 	let change = Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, now);
 
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<O>::new().with_node_id(OperatorId(1)).build().expect("build harness");
+	let mut harness = InProcessOperatorHarness::<NostateMount<EchoOperator<Option<T>>>>::builder()
+		.with_node_id(OperatorId(1))
+		.add_param(COLUMN, Value::Utf8(name.to_string()))
+		.build()
+		.expect("build harness");
 	let output = harness.apply(change).expect("apply");
 
 	assert_eq!(output.diffs.len(), 1, "expected exactly one output diff");

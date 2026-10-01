@@ -3,10 +3,10 @@
 
 use std::{env, process::Command};
 
-use reifydb_sdk::flow::operator::{NostateMount, extern_c::binding::operator::ExternCOperatorAdapter};
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_test_harness::operator::change::trigger;
-use reifydb_testing_sdk::harness::drive_extern_c_apply;
 
+use super::Harness;
 use crate::common::ErroringOperator;
 
 const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_EXTERN_C_CHILD";
@@ -16,7 +16,8 @@ const CHILD_TEST: &str = "extern_c::error_abort::apply_error_aborts";
 fn apply_error_aborts() {
 	// The abort lives in the `extern_c_apply` export, so this must drive the `.so` boundary, not the harness.
 	if env::var(CHILD_ENV).is_ok() {
-		let _ = drive_extern_c_apply::<ExternCOperatorAdapter<NostateMount<ErroringOperator>>>(&trigger());
+		let mut harness = Harness::<NostateMount<ErroringOperator>>::builder().build().expect("harness build");
+		let _ = harness.apply(trigger());
 		eprintln!("extern_c_apply returned instead of aborting");
 		return;
 	}

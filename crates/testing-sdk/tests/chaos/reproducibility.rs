@@ -5,13 +5,14 @@
 //! mismatch means non-determinism somewhere, typically a HashMap iteration-order leak; a
 //! different-seed match means the seed is not reaching the RNG stream.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{ChaosHarness, runner::ChaosOutcome, schema::KeyStrategy, strategy::samplers};
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
 fn build_and_run(seed: u64) -> ChaosOutcome {
-	ChaosHarness::<PassthroughOperator>::builder()
+	ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

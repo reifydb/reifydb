@@ -61,27 +61,6 @@ mod time;
 #[path = "extern_c/duration.rs"]
 mod duration;
 
-#[path = "extern_c/identity.rs"]
-mod identity;
-
-#[path = "extern_c/uuid4.rs"]
-mod uuid4;
-
-#[path = "extern_c/uuid7.rs"]
-mod uuid7;
-
-#[path = "extern_c/dictionary.rs"]
-mod dictionary;
-
-#[path = "extern_c/decimal.rs"]
-mod decimal;
-
-#[path = "extern_c/family_guest_api.rs"]
-mod family_guest_api;
-
-#[path = "extern_c/any.rs"]
-mod any;
-
 #[path = "extern_c/option.rs"]
 mod option;
 

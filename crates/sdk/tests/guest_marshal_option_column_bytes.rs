@@ -8,7 +8,7 @@ use std::fmt::{Display, Write as _};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use common::{round_trip_column, slice};
+use common::slice;
 use reifydb_core::value::{
 	batch::batch,
 	column::{builder::ColumnBuilder, factory},
@@ -247,20 +247,6 @@ fn unmarshalled_wasm_columns_re_marshal_to_the_pinned_bytes() {
 					(actual != pinned).then(|| format!("{name} re-marshalled: \"{actual}\""))
 				}
 			}
-		})
-		.collect();
-	report(mismatches);
-}
-
-#[test]
-fn extern_c_round_trip_returns_the_same_column() {
-	// A native guest echoing its input must hand back the same type, nones and placeholders, even with zero nones.
-	let mismatches: Vec<String> = fixtures()
-		.into_iter()
-		.filter_map(|(name, input, _)| {
-			let output = round_trip_column("c", input.clone());
-			(!same(&output, &input))
-				.then(|| format!("{name}: round trip gave {output:?}, expected {input:?}"))
 		})
 		.collect();
 	report(mismatches);

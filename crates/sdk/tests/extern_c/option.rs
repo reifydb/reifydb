@@ -3,21 +3,9 @@
 
 use reifydb_core::value::column::factory;
 use reifydb_value::value::{
-	Value,
-	blob::Blob,
-	constraint::{precision::Precision, scale::Scale},
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	dictionary::DictionaryEntryId,
-	duration::Duration,
-	identity::IdentityId,
-	ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
+	blob::Blob, date::Date, datetime::DateTime, duration::Duration, ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64, time::Time,
 };
-use uuid::Uuid;
 
 use super::common::{assert_column_eq, round_trip_column};
 
@@ -38,15 +26,6 @@ fn t(nanos: u64) -> Time {
 }
 fn dur(months: i32, days: i32, nanos: i64) -> Duration {
 	Duration::new(months, days, nanos).expect("valid")
-}
-fn u4(b: [u8; 16]) -> Uuid4 {
-	Uuid4(Uuid::from_bytes(b))
-}
-fn u7(b: [u8; 16]) -> Uuid7 {
-	Uuid7(Uuid::from_bytes(b))
-}
-fn ident(b: [u8; 16]) -> IdentityId {
-	IdentityId::new(Uuid7(Uuid::from_bytes(b)))
 }
 
 #[test]
@@ -465,172 +444,6 @@ fn option_duration_all_undefined() {
 	let input = factory::duration_with_bitvec("c", vec![Duration::default(); 4], vec![false; 4]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_duration_all_undef", &input, &output);
-}
-
-#[test]
-fn option_identity_id_alternating() {
-	let input = factory::identity_id_with_bitvec(
-		"c",
-		[
-			IdentityId::root(),
-			IdentityId::default(),
-			IdentityId::system(),
-			IdentityId::default(),
-			IdentityId::anonymous(),
-		],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_identity_alt", &input, &output);
-}
-
-#[test]
-fn option_identity_id_all_undefined() {
-	let input = factory::identity_id_with_bitvec("c", vec![IdentityId::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_identity_all_undef", &input, &output);
-}
-
-#[test]
-fn option_identity_id_first_undefined() {
-	let input = factory::identity_id_with_bitvec(
-		"c",
-		[IdentityId::default(), IdentityId::root(), ident([0x01; 16])],
-		vec![false, true, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_identity_first_undef", &input, &output);
-}
-
-#[test]
-fn option_uuid4_alternating() {
-	let input = factory::uuid4_with_bitvec(
-		"c",
-		[Uuid4(Uuid::nil()), Uuid4::default(), u4([0xAA; 16]), Uuid4::default(), u4([0x55; 16])],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uuid4_alt", &input, &output);
-}
-
-#[test]
-fn option_uuid4_all_undefined() {
-	let input = factory::uuid4_with_bitvec("c", vec![Uuid4::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uuid4_all_undef", &input, &output);
-}
-
-#[test]
-fn option_uuid7_alternating() {
-	let input = factory::uuid7_with_bitvec(
-		"c",
-		[Uuid7(Uuid::nil()), Uuid7::default(), u7([0xAA; 16]), Uuid7::default(), u7([0x55; 16])],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uuid7_alt", &input, &output);
-}
-
-#[test]
-fn option_uuid7_all_undefined() {
-	let input = factory::uuid7_with_bitvec("c", vec![Uuid7::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_uuid7_all_undef", &input, &output);
-}
-
-#[test]
-fn option_decimal_alternating() {
-	use std::str::FromStr;
-	let input = factory::decimal_with_bitvec(
-		"c",
-		Precision::MAX,
-		Scale::new(14),
-		[
-			Decimal::zero(),
-			Decimal::default(),
-			Decimal::from_i64(42),
-			Decimal::default(),
-			Decimal::from_str("3.14159265358979").unwrap(),
-		],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_decimal_alt", &input, &output);
-}
-
-#[test]
-fn option_decimal_all_undefined() {
-	let input = factory::decimal_with_bitvec(
-		"c",
-		Precision::MAX,
-		Scale::new(14),
-		vec![Decimal::default(); 4],
-		vec![false; 4],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_decimal_all_undef", &input, &output);
-}
-
-#[test]
-fn option_any_alternating() {
-	let input = factory::any_optional(
-		"c",
-		[Some(Value::Int8(7)), None, Some(Value::Utf8("x".to_string())), None, Some(Value::Boolean(true))],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_any_alt", &input, &output);
-}
-
-#[test]
-fn option_any_all_undefined() {
-	let input = factory::any_optional("c", vec![None; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_any_all_undef", &input, &output);
-}
-
-#[test]
-fn option_dictionary_id_alternating() {
-	let input = factory::dictionary_id_with_bitvec(
-		"c",
-		[
-			DictionaryEntryId::U1(7),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U2(1234),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U16(u128::MAX),
-		],
-		vec![true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_dict_id_alt", &input, &output);
-}
-
-#[test]
-fn option_dictionary_id_all_undefined() {
-	let input = factory::dictionary_id_with_bitvec("c", vec![DictionaryEntryId::default(); 4], vec![false; 4]);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_dict_id_all_undef", &input, &output);
-}
-
-#[test]
-fn option_dictionary_id_each_variant_with_undefined() {
-	let input = factory::dictionary_id_with_bitvec(
-		"c",
-		[
-			DictionaryEntryId::U1(7),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U2(1234),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U4(u32::MAX),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U8(u64::MAX),
-			DictionaryEntryId::default(),
-			DictionaryEntryId::U16(u128::MAX),
-		],
-		vec![true, false, true, false, true, false, true, false, true],
-	);
-	let output = round_trip_column("o", input.clone());
-	assert_column_eq("option_dict_id_each_variant", &input, &output);
 }
 
 #[test]

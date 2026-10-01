@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use arrow_array::{RecordBatch, UInt64Array};
 use reifydb_codec::tag::ValueKind;
@@ -10,9 +10,7 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
-		flow::OperatorCapability,
 	},
-	operator_with::ApplyWith,
 	value::{
 		batch::batch,
 		column::factory::{self, rename},
@@ -23,34 +21,24 @@ use reifydb_sdk::{
 		buffer::ExternCBuffer,
 		columns::{ExternCColumn, ExternCColumnData, ExternCColumns},
 	},
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
-		OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
-		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+		extern_c::binding::arena::Arena,
 		view::{ColumnsView, RowView, in_process::InProcessColumnsView},
 	},
 };
-use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
-use reifydb_value::{
-	config::ExtensionParams,
-	value::{
-		blob::Blob,
-		constraint::{precision::Precision, scale::Scale},
-		container::temporal_array::datetime_array,
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		duration::Duration,
-		system_columns::{SystemColumn, user_columns, with_system_column},
-		time::Time,
-	},
+use reifydb_value::value::{
+	blob::Blob,
+	constraint::{precision::Precision, scale::Scale},
+	container::temporal_array::datetime_array,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	system_columns::{SystemColumn, user_columns, with_system_column},
+	time::Time,
 };
-
-thread_local! {
-	static EXTERN_C_READS: RefCell<Vec<(String, Vec<String>)>> = const { RefCell::new(Vec::new()) };
-}
 
 fn outcome<T: Debug>(read: std::result::Result<Option<T>, SdkError>) -> String {
 	match read {
@@ -86,35 +74,6 @@ fn read_all(row: &impl RowView, name: &str) -> Vec<String> {
 		outcome(row.time(name)),
 		outcome(row.duration(name)),
 	]
-}
-
-pub struct ReadEveryWayOperator;
-
-impl OperatorMetadata for ReadEveryWayOperator {
-	const NAME: &'static str = "extern_c_read_every_way";
-	const VERSION: &'static str = "1.0.0";
-	const DESCRIPTION: &'static str = "reads every column through every typed row reader";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-}
-
-impl ExternCOperator for ReadEveryWayOperator {
-	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
-		Ok(Self)
-	}
-
-	fn apply(&mut self, _ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
-		for diff in input.diffs() {
-			let post = diff.post();
-			let row = post.row(0).expect("one row");
-			for col in post.columns() {
-				let reads = read_all(&row, col.name());
-				EXTERN_C_READS.with(|all| all.borrow_mut().push((col.name().to_string(), reads)));
-			}
-		}
-		Ok(())
-	}
 }
 
 fn one_row_of_every_type() -> RecordBatch {
@@ -159,13 +118,19 @@ fn read_through_extern_c(columns: RecordBatch) -> Vec<(String, Vec<String>)> {
 	diffs.push(Diff::insert(columns));
 	let change =
 		Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default());
-	let mut harness = ExternCOperatorHarnessBuilder::<ReadEveryWayOperator>::new()
-		.with_node_id(OperatorId(1))
-		.build()
-		.expect("build harness");
-	EXTERN_C_READS.with(|all| all.borrow_mut().clear());
-	harness.apply(change).expect("apply");
-	EXTERN_C_READS.with(|all| all.take())
+	let mut arena = Arena::new();
+	let marshalled = arena.marshal_change(&change).expect("the change marshals");
+	// SAFETY: `marshalled` points into `arena` and `change`, and both outlive every read below.
+	let borrowed = unsafe { BorrowedChange::from_raw(&marshalled) };
+	let mut reads = Vec::new();
+	for diff in borrowed.diffs() {
+		let post = diff.post();
+		let row = post.row(0).expect("one row");
+		for col in post.columns() {
+			reads.push((col.name().to_string(), read_all(&row, col.name())));
+		}
+	}
+	reads
 }
 
 #[test]

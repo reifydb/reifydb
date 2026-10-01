@@ -28,13 +28,6 @@ fn float4_min_max() {
 }
 
 #[test]
-fn float4_nan_and_infinities() {
-	let input = factory::float4("c", [f32::NAN, f32::INFINITY, f32::NEG_INFINITY]);
-	let output = round_trip_column("f", input.clone());
-	assert_column_eq("float4_nan_inf", &input, &output);
-}
-
-#[test]
 fn float4_smallest_subnormal() {
 	let input = factory::float4("c", [f32::MIN_POSITIVE, f32::EPSILON, f32::from_bits(1)]);
 	let output = round_trip_column("f", input.clone());

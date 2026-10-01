@@ -5,6 +5,7 @@
 //! panic. The `#[should_panic(expected = "...")]` annotations are the assertion: no panic,
 //! or a panic without the seed, fails the test.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 use reifydb_testing_sdk::chaos::{ChaosHarness, schema::KeyStrategy, strategy::samplers};
@@ -14,7 +15,7 @@ use super::common::{DoubleInsertOperator, SwallowsRemoveOperator, passthrough_or
 #[test]
 #[should_panic(expected = "seed: 42")]
 fn swallows_remove_operator_panics_with_seed() {
-	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<SwallowsRemoveOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -42,7 +43,7 @@ fn swallows_remove_operator_panics_with_seed() {
 fn swallows_remove_operator_panic_message_mentions_divergence() {
 	// Authors grep for the literal "chaos divergence" header when triaging, so it has to stay
 	// in the panic message.
-	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<SwallowsRemoveOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -68,7 +69,7 @@ fn swallows_remove_operator_panic_message_mentions_divergence() {
 chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 	// With the buggy path unreachable the run must stay green, or divergence reporting is
 	// firing on runs that never exercised the defect.
-	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<SwallowsRemoveOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -96,7 +97,7 @@ chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 fn a_row_published_twice_is_caught_even_though_every_value_matches() {
 	// Two identical inserts under one row number leave the materialized table indistinguishable
 	// from the oracle's, so only the coherence fold can see the row inserted over itself.
-	let outcome = ChaosHarness::<DoubleInsertOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<DoubleInsertOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

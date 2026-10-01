@@ -9,10 +9,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{dictionary::Dictionary, flow::OperatorId},
-		change::Change,
+		change::{Change, Diffs},
 	},
 	key::operator::{
 		keyspace::timer::TimerWheelKey,
@@ -35,16 +35,28 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{MountedOperator, OperatorMetadata, mount::mount, state::decode_payload},
 };
+use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_value::{
+	Result as ValueResult,
 	config::ExtensionParams,
 	count::Count,
 	value::{Value, datetime::DateTime},
 };
 
-use crate::{
-	builders::TestChangeBuilder, context::ArmedTimer, harness::ReclaimedGroups,
-	in_process::transaction::TestFlowTransaction,
-};
+use crate::{builders::TestChangeBuilder, in_process::transaction::TestFlowTransaction};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReclaimedGroups {
+	pub groups: Count,
+	pub keys: Count,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArmedTimer {
+	pub due: DateTime,
+	pub kind: TimerKind,
+	pub key: Vec<u8>,
+}
 
 pub struct InProcessOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
 	operator: BoxedHostOperator,
@@ -279,6 +291,26 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 	}
 }
 
+impl<C: MountedOperator + OperatorMetadata + 'static> Subject for InProcessOperatorHarness<C> {
+	fn apply(&mut self, change: Change) -> ValueResult<Change> {
+		InProcessOperatorHarness::apply(self, change).map_err(Into::into)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
+		let at = DateTime::from_epoch_millis(
+			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
+		)?;
+		let fired_from = self.history.len();
+		self.advance_watermark(at)?;
+		let diffs: Diffs =
+			self.history[fired_from..].iter().flat_map(|change| change.diffs.iter().cloned()).collect();
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		Ok(Some(Change::from_flow(self.operator_id, ChangeVersion::from(self.version()), diffs, at)))
+	}
+}
+
 impl<C: MountedOperator + OperatorMetadata + 'static> Index<usize> for InProcessOperatorHarness<C> {
 	type Output = Change;
 
@@ -374,5 +406,115 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarnessBu
 			history: Vec::new(),
 			_phantom: PhantomData,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::{
+		key::encoded::IntoEncodedKey,
+		row::{operator::state::decode, pod::EncodedPodRow},
+	};
+	use reifydb_core::{
+		common::{WindowRequirements, WindowSizeDomain},
+		interface::flow::OperatorCapability,
+		key::operator::state::{UnmanagedKey, unmanaged_key},
+	};
+	use reifydb_sdk::flow::operator::{
+		UnmanagedMount, UnmanagedOperator,
+		column::operator::OperatorColumn,
+		context::{ClassState, GuestContext, Unmanaged},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+	};
+	use reifydb_value::value::row_number::RowNumber;
+
+	use super::*;
+
+	struct StatefulTestOperator;
+
+	impl OperatorMetadata for StatefulTestOperator {
+		const NAME: &'static str = "stateful_test_operator";
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl UnmanagedOperator for StatefulTestOperator {
+		const UNMANAGED_BECAUSE: &'static str = "test operator";
+		const WINDOW: WindowRequirements = WindowRequirements {
+			takes_window: false,
+			kinds: &[],
+			domain: WindowSizeDomain::Time,
+			needs_pane: false,
+			throttles: false,
+		};
+
+		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()> {
+			for index in 0..change.diff_count() {
+				let Some(diff) = change.diff(index) else {
+					continue;
+				};
+				let Some(post) = diff.post() else {
+					continue;
+				};
+				for position in 0..post.row_count() {
+					let row = post.row(position).expect("every counted row resolves");
+					let (Some(row_number), Some(value)) = (row.row_number(), row.i64("field0")?)
+					else {
+						continue;
+					};
+					ctx.state().set(&probe_row_key(row_number), &value)?;
+				}
+			}
+			Ok(())
+		}
+	}
+
+	fn probe_row_key(row_number: RowNumber) -> UnmanagedKey {
+		unmanaged_key(format!("row_{}", row_number.0).into_encoded_key().as_ref())
+			.expect("a probe row key must fit the keyspace's id width")
+	}
+
+	fn stored_value(harness: &InProcessOperatorHarness<UnmanagedMount<StatefulTestOperator>>, row: u64) -> i64 {
+		let inner = probe_row_key(RowNumber(row));
+		let (group, keyspace, suffix) =
+			OperatorStateKey::decode_inner(inner.as_ref().as_slice()).expect("a probe key decodes");
+		let key = OperatorStateKey::encoded(harness.operator_id(), group, keyspace, suffix);
+		let bytes =
+			harness.snapshot_state().remove(&key).unwrap_or_else(|| panic!("row {row} not found in state"));
+		decode(&EncodedPodRow::from(bytes)).expect("a stored probe value decodes")
+	}
+
+	#[test]
+	fn test_harness_multiple_operations() {
+		// Both inserts fold into one diff, so a fixture reading only its first row never stores row 2.
+		let mut harness = InProcessOperatorHarnessBuilder::<UnmanagedMount<StatefulTestOperator>>::new()
+			.build()
+			.expect("Failed to build harness");
+
+		let input1 = TestChangeBuilder::new()
+			.insert_row(1, vec![Value::Int8(10i64)])
+			.insert_row(2, vec![Value::Int8(20i64)])
+			.build();
+
+		harness.apply(input1).expect("First apply failed");
+
+		assert_eq!(harness.snapshot_state().len(), 2);
+
+		let input2 = TestChangeBuilder::new().insert_row(RowNumber(3), vec![Value::Int8(30i64)]).build();
+
+		harness.apply(input2).expect("Second apply failed");
+
+		assert_eq!(stored_value(&harness, 1), 10i64);
+		assert_eq!(stored_value(&harness, 2), 20i64);
+		assert_eq!(stored_value(&harness, 3), 30i64);
+
+		assert_eq!(harness.snapshot_state().len(), 3);
 	}
 }

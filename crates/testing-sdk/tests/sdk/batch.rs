@@ -2,29 +2,38 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
+	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		OperatorMetadata,
-		change::BorrowedChange,
+		MountedOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 		},
-		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+		context::{GuestContext, Windowed},
+		view::ChangeView,
 	},
 	row,
 };
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
+use reifydb_testing_sdk::{builders::TestChangeBuilder, in_process::harness::InProcessOperatorHarnessBuilder};
 use reifydb_value::{
 	config::ExtensionParams,
 	value::{Value, blob::Blob, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
 use crate::{read, read_value};
+
+const NO_WINDOW: WindowRequirements = WindowRequirements {
+	takes_window: false,
+	kinds: &[],
+	domain: WindowSizeDomain::Time,
+	needs_pane: false,
+	throttles: false,
+};
 
 struct Bar {
 	mint: String,
@@ -51,11 +60,14 @@ impl OperatorMetadata for EmitOpInsert {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpInsert {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpInsert {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = InsertBatch::<Bar, _>::new(ctx, 3)?;
 		batch.push(
 			RowNumber(1),
@@ -93,7 +105,7 @@ impl ExternCOperator for EmitOpInsert {
 
 #[test]
 fn insert_batch_emits_typed_columns_in_one_diff() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpInsert>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpInsert>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
@@ -129,18 +141,21 @@ impl OperatorMetadata for EmitOpEmpty {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpEmpty {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpEmpty {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		InsertBatch::<Bar, _>::new(ctx, 0)?.finish()
 	}
 }
 
 #[test]
 fn empty_batch_emits_no_diff() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpEmpty>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpEmpty>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	assert_eq!(out.diffs.len(), 0);
 }
@@ -154,11 +169,14 @@ impl OperatorMetadata for EmitOpUpdate {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpUpdate {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpUpdate {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = UpdateBatch::<Bar, _>::new(ctx, 1)?;
 		batch.push(
 			RowNumber(1),
@@ -183,7 +201,7 @@ impl ExternCOperator for EmitOpUpdate {
 
 #[test]
 fn update_batch_roundtrips_all_fields() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpUpdate>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpUpdate>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
@@ -213,11 +231,14 @@ impl OperatorMetadata for EmitOpRemove {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpRemove {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpRemove {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = RemoveBatch::<Bar, _>::new(ctx, 2)?;
 		batch.push(
 			RowNumber(1),
@@ -245,7 +266,7 @@ impl ExternCOperator for EmitOpRemove {
 
 #[test]
 fn remove_batch_emits_one_diff_with_n_rows() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpRemove>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpRemove>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
 	let diff = &out.diffs[0];
@@ -262,11 +283,14 @@ impl OperatorMetadata for EmitOpBig {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpBig {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpBig {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = InsertBatch::<Bar, _>::new(ctx, 100)?;
 		for i in 0..100u64 {
 			batch.push(
@@ -286,7 +310,7 @@ impl ExternCOperator for EmitOpBig {
 
 #[test]
 fn round_trip_100_rows_decodes_correctly() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpBig>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpBig>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.num_rows(), 100);
@@ -314,11 +338,14 @@ impl OperatorMetadata for EmitOpOptU64 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpOptU64 {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpOptU64 {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = InsertBatch::<OptU64Row, _>::new(ctx, 4)?;
 		batch.push(
 			RowNumber(1),
@@ -350,7 +377,7 @@ impl ExternCOperator for EmitOpOptU64 {
 
 #[test]
 fn optional_scalar_some_and_none() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptU64>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpOptU64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.num_rows(), 4);
@@ -382,11 +409,14 @@ impl OperatorMetadata for EmitOpOptStr {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpOptStr {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpOptStr {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = InsertBatch::<OptStrRow, _>::new(ctx, 4)?;
 		batch.push(
 			RowNumber(1),
@@ -418,7 +448,7 @@ impl ExternCOperator for EmitOpOptStr {
 
 #[test]
 fn optional_string_some_and_none() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptStr>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpOptStr>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.num_rows(), 4);
@@ -450,11 +480,14 @@ impl OperatorMetadata for EmitOpOptBlob {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl ExternCOperator for EmitOpOptBlob {
-	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+impl MountedOperator for EmitOpOptBlob {
+	type Class = Windowed;
+	const WINDOW: WindowRequirements = NO_WINDOW;
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let mut batch = InsertBatch::<OptBlobRow, _>::new(ctx, 3)?;
 		batch.push(
 			RowNumber(1),
@@ -480,7 +513,7 @@ impl ExternCOperator for EmitOpOptBlob {
 
 #[test]
 fn optional_blob_some_and_none() {
-	let mut h = ExternCOperatorHarnessBuilder::<EmitOpOptBlob>::new().build().expect("harness");
+	let mut h = InProcessOperatorHarnessBuilder::<EmitOpOptBlob>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.num_rows(), 3);

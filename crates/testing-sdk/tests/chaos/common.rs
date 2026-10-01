@@ -3,23 +3,20 @@
 
 #![allow(dead_code)]
 
-use reifydb_codec::{
-	row::shape::{RowFamily, RowShape, RowShapeField},
-	tag::ValueKind,
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
 	error::Result,
 	flow::operator::{
-		OperatorMetadata,
-		change::{BorrowedChange, BorrowedColumns},
-		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+		NostateOperator, OperatorMetadata,
+		column::{operator::OperatorColumn, row::Row},
+		context::{GuestContext, GuestEmitContext, Nostate},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
+	row,
 };
 use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
 use reifydb_testing_sdk::chaos::{context::ChaosContext, materialize::materialize_batches};
@@ -28,29 +25,39 @@ use reifydb_value::{
 	value::{diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
+pub struct KvRow {
+	k: Option<u64>,
+	v: Option<f64>,
+}
+
+row!(KvRow {
+	k: Option<u64>,
+	v: Option<f64>
+});
+
 pub struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "chaos_passthrough";
 	const VERSION: &'static str = "1.0.0";
-	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
+	const DESCRIPTION: &'static str = "echoes every row of every input diff back";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl ExternCOperator for PassthroughOperator {
-	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+impl NostateOperator for PassthroughOperator {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
-		let mut builder = ctx.builder();
-		for diff in input.diffs() {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+		for index in 0..change.diff_count() {
+			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
-				DiffType::Insert => emit_insert(&mut builder, &diff.post())?,
-				DiffType::Update => emit_update(&mut builder, &diff.pre(), &diff.post())?,
-				DiffType::Remove => emit_remove(&mut builder, &diff.pre())?,
+				DiffType::Insert => emit_insert(ctx, &diff)?,
+				DiffType::Update => emit_update(ctx, &diff)?,
+				DiffType::Remove => emit_remove(ctx, &diff)?,
 			}
 		}
 		Ok(())
@@ -71,21 +78,21 @@ impl OperatorMetadata for DoubleInsertOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl ExternCOperator for DoubleInsertOperator {
-	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+impl NostateOperator for DoubleInsertOperator {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
-		let mut builder = ctx.builder();
-		for diff in input.diffs() {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+		for index in 0..change.diff_count() {
+			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
 				DiffType::Insert => {
-					emit_insert(&mut builder, &diff.post())?;
-					emit_insert(&mut builder, &diff.post())?;
+					emit_insert(ctx, &diff)?;
+					emit_insert(ctx, &diff)?;
 				}
-				DiffType::Update => emit_update(&mut builder, &diff.pre(), &diff.post())?,
-				DiffType::Remove => emit_remove(&mut builder, &diff.pre())?,
+				DiffType::Update => emit_update(ctx, &diff)?,
+				DiffType::Remove => emit_remove(ctx, &diff)?,
 			}
 		}
 		Ok(())
@@ -105,17 +112,17 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl ExternCOperator for SwallowsRemoveOperator {
-	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+impl NostateOperator for SwallowsRemoveOperator {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
-		let mut builder = ctx.builder();
-		for diff in input.diffs() {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+		for index in 0..change.diff_count() {
+			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
-				DiffType::Insert => emit_insert(&mut builder, &diff.post())?,
-				DiffType::Update => emit_update(&mut builder, &diff.pre(), &diff.post())?,
+				DiffType::Insert => emit_insert(ctx, &diff)?,
+				DiffType::Update => emit_update(ctx, &diff)?,
 				DiffType::Remove => {} // intentional bug: drop Removes
 			}
 		}
@@ -123,89 +130,31 @@ impl ExternCOperator for SwallowsRemoveOperator {
 	}
 }
 
-fn emit_insert(builder: &mut ColumnsBuilder<'_>, post: &BorrowedColumns<'_>) -> Result<()> {
-	let (cols, names) = byte_clone_columns(builder, post)?;
-	let names_ref: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-	let row_numbers: Vec<RowNumber> = post.row_numbers().iter().copied().map(RowNumber).collect();
-	builder.emit_insert(&cols, &names_ref, &row_numbers)?;
-	Ok(())
-}
-
-fn emit_update(builder: &mut ColumnsBuilder<'_>, pre: &BorrowedColumns<'_>, post: &BorrowedColumns<'_>) -> Result<()> {
-	let (pre_cols, pre_names) = byte_clone_columns(builder, pre)?;
-	let (post_cols, post_names) = byte_clone_columns(builder, post)?;
-	let pre_names_ref: Vec<&str> = pre_names.iter().map(|s| s.as_str()).collect();
-	let post_names_ref: Vec<&str> = post_names.iter().map(|s| s.as_str()).collect();
-	let pre_row_numbers: Vec<RowNumber> = pre.row_numbers().iter().copied().map(RowNumber).collect();
-	let post_row_numbers: Vec<RowNumber> = post.row_numbers().iter().copied().map(RowNumber).collect();
-	builder.emit_update(
-		&pre_cols,
-		&pre_names_ref,
-		pre.row_count(),
-		&pre_row_numbers,
-		&post_cols,
-		&post_names_ref,
-		post.row_count(),
-		&post_row_numbers,
-	)?;
-	Ok(())
-}
-
-fn emit_remove(builder: &mut ColumnsBuilder<'_>, pre: &BorrowedColumns<'_>) -> Result<()> {
-	let (cols, names) = byte_clone_columns(builder, pre)?;
-	let names_ref: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-	let row_numbers: Vec<RowNumber> = pre.row_numbers().iter().copied().map(RowNumber).collect();
-	builder.emit_remove(&cols, &names_ref, &row_numbers)?;
-	Ok(())
-}
-
-fn byte_clone_columns(
-	builder: &mut ColumnsBuilder<'_>,
-	cols: &BorrowedColumns<'_>,
-) -> Result<(Vec<CommittedColumn>, Vec<String>)> {
-	let row_count = cols.row_count();
-	let mut committed: Vec<CommittedColumn> = Vec::new();
-	let mut names: Vec<String> = Vec::new();
-	for col in cols.columns() {
-		let type_code = col.type_code();
-		let data_bytes = col.data_bytes();
-		let active = builder.acquire_with_params(type_code, col.precision(), col.scale(), row_count.max(1))?;
-		active.grow(data_bytes.len().max(row_count))?;
-		let dst = active.data_ptr();
-		if !dst.is_null() && !data_bytes.is_empty() {
-			// SAFETY: dst is non-null and the preceding grow() sized it to at least
-			// data_bytes.len(); source and destination are distinct allocations.
-			unsafe {
-				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
-			}
-		}
-		if matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId) {
-			let off = col.offsets();
-			let dst_off = active.offsets_ptr();
-			if !dst_off.is_null() && !off.is_empty() {
-				// SAFETY: dst_off is non-null and the builder sizes the offsets region
-				// from the same row count off was read at; the buffers do not alias.
-				unsafe {
-					core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
-				}
-			}
-		}
-		let bitvec = col.defined_bitvec();
-		if !bitvec.is_empty() {
-			let dst_bv = active.bitvec_ptr();
-			if !dst_bv.is_null() {
-				// SAFETY: dst_bv is non-null and the builder sizes the bitvec from the
-				// same row count bitvec was read at; the buffers do not alias.
-				unsafe {
-					core::ptr::copy_nonoverlapping(bitvec.as_ptr(), dst_bv, bitvec.len());
-				}
-			}
-		}
-		let c = active.commit(row_count)?;
-		committed.push(c);
-		names.push(col.name().to_string());
+fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>)> {
+	let mut rows = Vec::with_capacity(columns.row_count());
+	let mut numbers = Vec::with_capacity(columns.row_count());
+	for position in 0..columns.row_count() {
+		let row = columns.row(position).expect("every counted row resolves");
+		rows.push(KvRow::decode_from(&row)?.expect("a row of optional cells always decodes"));
+		numbers.push(row.row_number().expect("every chaos row is numbered"));
 	}
-	Ok((committed, names))
+	Ok((rows, numbers))
+}
+
+fn emit_insert(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+	let (rows, numbers) = rows_of(&diff.post().expect("an insert carries a post batch"))?;
+	ctx.emit_insert(&rows, &numbers)
+}
+
+fn emit_update(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+	let (pre, _) = rows_of(&diff.pre().expect("an update carries a pre batch"))?;
+	let (post, numbers) = rows_of(&diff.post().expect("an update carries a post batch"))?;
+	ctx.emit_update(&pre, &post, &numbers)
+}
+
+fn emit_remove(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+	let (rows, numbers) = rows_of(&diff.pre().expect("a remove carries a pre batch"))?;
+	ctx.emit_remove(&rows, &numbers)
 }
 
 pub fn simple_kv_shape() -> RowShape {

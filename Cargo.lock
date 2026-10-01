@@ -4358,8 +4358,6 @@ name = "reifydb-testing-sdk"
 version = "0.9.3"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
- "arrow-schema",
  "rand 0.10.1",
  "reifydb-build",
  "reifydb-catalog",

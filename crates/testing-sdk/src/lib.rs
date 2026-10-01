@@ -7,12 +7,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod builders;
-pub mod callbacks;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod chaos;
-pub mod context;
-pub mod harness;
-pub mod helpers;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod in_process;
-pub mod registry;
-pub mod state;

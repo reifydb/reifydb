@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	ffi::c_void,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -17,16 +14,20 @@ use reifydb_core::{
 	value::batch::from_row,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain},
+	operator::{
+		host::TxnHostContext,
+		state::seal::{coord::Coord, domain::SealDomain},
+	},
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
+use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::in_process::InProcessRowSink},
-	extern_c::{binding::context::ExternCContext, wire::context::ExternCContextRaw},
+	mount::context::InProcessContext,
 	view::{ColumnsView, in_process::InProcessColumnsView},
 	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
 };
@@ -37,18 +38,13 @@ use reifydb_testing_chaos::operator::{
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{context::ChaosContext, materialize::materialize_history};
-use crate::{callbacks::create_test_callbacks, context::TestContext};
+use crate::in_process::transaction::TestFlowTransaction;
 
-fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCContext) -> R) -> R {
-	let test_ctx = TestContext::new(CommitVersion(1));
-	let mut extern_c_context = ExternCContextRaw {
-		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
-		written_at_nanos: 0,
-		operator_id: 1,
-		callbacks: create_test_callbacks(),
-	};
-	let mut op_ctx = ExternCContext::new(&mut extern_c_context as *mut ExternCContextRaw);
-	f(&mut op_ctx)
+fn with_oracle_ctx<R>(f: impl FnOnce(&mut InProcessContext<'_>) -> R) -> R {
+	let mut txn = TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0)));
+	let mut host = TxnHostContext::new(&mut txn, OperatorId(1));
+	let mut ctx = InProcessContext::new(&mut host, OperatorId(1));
+	f(&mut ctx)
 }
 
 type TumblingCoord<A> = <A as WindowedOperator>::Coord;

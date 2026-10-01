@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
+use reifydb_sdk::flow::operator::windowed::plain::PlainDriver;
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -59,7 +59,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<RollingSum>>>::builder()
+	ChaosHarness::<PlainDriver<RollingSum>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -81,7 +81,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 }
 
 fn run_reaping(seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<RollingSum>>>::builder()
+	ChaosHarness::<PlainDriver<RollingSum>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

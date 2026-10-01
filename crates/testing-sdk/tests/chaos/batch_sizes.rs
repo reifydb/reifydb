@@ -7,6 +7,7 @@
 //!
 //! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 use reifydb_testing_sdk::chaos::{ChaosHarness, schema::KeyStrategy, strategy::samplers};
@@ -23,7 +24,7 @@ fn cfg(batch: BatchSize) -> Scenario {
 }
 
 chaos_test!(constant_batch_size_one_drives_passthrough, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -40,7 +41,7 @@ chaos_test!(constant_batch_size_one_drives_passthrough, |seed| {
 });
 
 chaos_test!(uniform_batch_size_range_drives_passthrough, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -60,7 +61,7 @@ chaos_test!(uniform_batch_size_range_drives_passthrough, |seed| {
 });
 
 chaos_test!(geometric_batch_size_drives_passthrough, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
