@@ -12,7 +12,6 @@ pub mod mount;
 pub mod state;
 pub mod timer;
 pub mod view;
-pub mod view_column;
 pub mod windowed;
 
 use reifydb_core::{

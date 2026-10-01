@@ -134,10 +134,8 @@ impl Arena {
 		let type_code = column_data_to_type_code(view);
 
 		let defined_bitvec = match view.logical_nulls() {
-			Some(nulls) => self.marshal_bitvec(nulls.inner(), row_count),
-			None if view.is_nullable() => {
-				self.marshal_bitvec(&BooleanBuffer::new_set(row_count), row_count)
-			}
+			Some(nulls) => self.marshal_bitvec(nulls.inner()),
+			None if view.is_nullable() => self.marshal_bitvec(&BooleanBuffer::new_set(row_count)),
 			None => ExternCBuffer::empty(),
 		};
 
@@ -387,29 +385,13 @@ impl Arena {
 		)
 	}
 
-	#[instrument(name = "flow::marshal::bitvec", level = "trace", skip_all, fields(len = len))]
-	pub(super) fn marshal_bitvec(&mut self, bitvec: &BooleanBuffer, len: usize) -> ExternCBuffer {
-		let byte_count = len.div_ceil(8);
-		let ptr = self.alloc(byte_count);
-		if !ptr.is_null() {
-			// SAFETY: the arena returned a non-null block of `byte_count` writable bytes.
-			unsafe {
-				ptr::write_bytes(ptr, 0, byte_count);
-			}
-			for i in 0..len {
-				if bitvec.value(i) {
-					// SAFETY: `i < len` implies `i / 8 < len.div_ceil(8) == byte_count`, and
-					// the write_bytes above initialised every one of those bytes.
-					unsafe {
-						*ptr.add(i / 8) |= 1 << (i % 8);
-					}
-				}
-			}
-		}
+	#[instrument(name = "flow::marshal::bitvec", level = "trace", skip_all, fields(len = bitvec.len()))]
+	pub(super) fn marshal_bitvec(&mut self, bitvec: &BooleanBuffer) -> ExternCBuffer {
+		let packed = packed_bytes(bitvec);
 		ExternCBuffer {
-			ptr,
-			len: byte_count,
-			cap: byte_count,
+			ptr: self.copy_bytes(&packed),
+			len: packed.len(),
+			cap: packed.len(),
 		}
 	}
 }
@@ -483,7 +465,7 @@ mod tests {
 		let parent = frozen(utf8("c", ["aa", "bb", "cc", "dd"]));
 		let got = read_back(slice(parent, 2, 4), |column, row| {
 			assert!(column.type_code() == ValueKind::Utf8 && column.is_defined_at(row));
-			column.iter_str().nth(row).map(str::to_string)
+			column.str_at(row).map(str::to_string)
 		});
 		assert_eq!(got, vec!["cc".to_string(), "dd".to_string()]);
 	}

@@ -59,15 +59,19 @@ impl<'a> BorrowedChange<'a> {
 	}
 
 	pub fn diffs(&self) -> impl Iterator<Item = BorrowedDiff<'a>> + 'a {
-		let count = self.extern_c.diff_count;
-		let base = self.extern_c.diffs;
-		(0..count).map(move |i| {
-			// SAFETY: `base` is the `diff_count`-element `ExternCDiff` array `marshal_change` wrote and
-			// fully initialized; `i < count` keeps the offset inside it.
-			let diff: &'a ExternCDiff = unsafe { &*base.add(i) };
-			BorrowedDiff {
-				extern_c: diff,
-			}
+		let change = *self;
+		(0..self.extern_c.diff_count).filter_map(move |i| change.diff_at(i))
+	}
+
+	pub(crate) fn diff_at(&self, index: usize) -> Option<BorrowedDiff<'a>> {
+		if index >= self.extern_c.diff_count {
+			return None;
+		}
+		// SAFETY: `diffs` is the `diff_count`-element `ExternCDiff` array `marshal_change` wrote and fully
+		// initialized; `index < diff_count` keeps the offset inside it.
+		let diff: &'a ExternCDiff = unsafe { &*self.extern_c.diffs.add(index) };
+		Some(BorrowedDiff {
+			extern_c: diff,
 		})
 	}
 }
@@ -239,40 +243,12 @@ impl<'a> BorrowedColumn<'a> {
 		Some(unsafe { slice::from_raw_parts(bytes.as_ptr() as *const T, count) })
 	}
 
-	pub fn iter_str(&self) -> impl Iterator<Item = &'a str> + 'a {
-		let data = self.data_bytes();
-		let offsets = self.offsets();
-		let row_count = self.row_count();
-		let offsets_len = offsets.len();
-		(0..row_count).map(move |i| {
-			if i + 1 >= offsets_len {
-				return "";
-			}
-			let start = offsets[i] as usize;
-			let end = offsets[i + 1] as usize;
-			if end > data.len() {
-				return "";
-			}
-			str::from_utf8(&data[start..end]).unwrap_or("")
-		})
+	pub(crate) fn str_at(&self, index: usize) -> Option<&'a str> {
+		self.bytes_at(index).map(|bytes| str::from_utf8(bytes).unwrap_or(""))
 	}
 
-	pub fn iter_bytes(&self) -> impl Iterator<Item = &'a [u8]> + 'a {
-		let data = self.data_bytes();
-		let offsets = self.offsets();
-		let row_count = self.row_count();
-		let offsets_len = offsets.len();
-		(0..row_count).map(move |i| {
-			if i + 1 >= offsets_len {
-				return &[][..];
-			}
-			let start = offsets[i] as usize;
-			let end = offsets[i + 1] as usize;
-			if end > data.len() {
-				return &[][..];
-			}
-			&data[start..end]
-		})
+	pub(crate) fn bytes_at(&self, index: usize) -> Option<&'a [u8]> {
+		(index < self.row_count()).then(|| varlen_cell(self.data_bytes(), self.offsets(), index))
 	}
 
 	#[inline]
@@ -331,6 +307,18 @@ impl<'a> BorrowedColumn<'a> {
 		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<Time>()?.get(index).copied() }
 	}
+}
+
+fn varlen_cell<'a>(data: &'a [u8], offsets: &[u64], index: usize) -> &'a [u8] {
+	if index + 1 >= offsets.len() {
+		return &[];
+	}
+	let start = offsets[index] as usize;
+	let end = offsets[index + 1] as usize;
+	if end > data.len() {
+		return &[];
+	}
+	&data[start..end]
 }
 
 /// # Safety

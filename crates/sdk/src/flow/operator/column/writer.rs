@@ -26,6 +26,7 @@ use crate::{
 
 pub struct ScalarWriter<'a, T: Copy> {
 	inner: ColumnBuilder<'a>,
+	data: *mut T,
 	cursor: usize,
 	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	capacity: usize,
@@ -35,8 +36,10 @@ pub struct ScalarWriter<'a, T: Copy> {
 
 impl<'a, T: Copy> ScalarWriter<'a, T> {
 	fn new(inner: ColumnBuilder<'a>, capacity: usize) -> Self {
+		let data = inner.data_ptr() as *mut T;
 		Self {
 			inner,
+			data,
 			cursor: 0,
 			capacity,
 			defined: None,
@@ -49,12 +52,12 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
 		}
-		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` elements of `T`, so the store at `self.cursor` is in bounds while callers
-		// keep the cursor below that capacity; `write_unaligned` needs no alignment for `T`.
+		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` elements of `T`, and a scalar writer never grows, so it stays valid; the store at
+		// `self.cursor` is in bounds while callers keep the cursor below that capacity; `write_unaligned`
+		// needs no alignment for `T`.
 		unsafe {
-			let data = self.inner.data_ptr() as *mut T;
-			core::ptr::write_unaligned(data.add(self.cursor), v);
+			core::ptr::write_unaligned(self.data.add(self.cursor), v);
 		}
 		if let Some(d) = self.defined.as_mut() {
 			d.push(true);
@@ -70,12 +73,12 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
 		}
-		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` elements of `T`, so the store at `self.cursor` is in bounds while callers
-		// keep the cursor below that capacity; `write_unaligned` needs no alignment for `T`.
+		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` elements of `T`, and a scalar writer never grows, so it stays valid; the store at
+		// `self.cursor` is in bounds while callers keep the cursor below that capacity; `write_unaligned`
+		// needs no alignment for `T`.
 		unsafe {
-			let data = self.inner.data_ptr() as *mut T;
-			core::ptr::write_unaligned(data.add(self.cursor), T::default());
+			core::ptr::write_unaligned(self.data.add(self.cursor), T::default());
 		}
 		let d = self.defined.get_or_insert_with(|| vec![true; self.cursor]);
 		d.push(false);
@@ -150,6 +153,7 @@ impl<'a> BoolWriter<'a> {
 
 pub struct FamilyWriter<'a, T: FamilyValue> {
 	inner: ColumnBuilder<'a>,
+	data: *mut u8,
 	precision: Precision,
 	scale: Scale,
 	width: usize,
@@ -163,8 +167,10 @@ pub struct FamilyWriter<'a, T: FamilyValue> {
 impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 	fn new(inner: ColumnBuilder<'a>, capacity: usize, precision: Precision, scale: Scale) -> Self {
 		let width = cell_width(precision);
+		let data = inner.data_ptr();
 		Self {
 			inner,
+			data,
 			precision,
 			scale,
 			width,
@@ -214,14 +220,14 @@ impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 				self.width
 			)));
 		}
-		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` cells of `self.width` bytes, the check above keeps `self.cursor` below that
-		// capacity, and `self.cell` is a distinct live allocation of exactly `self.width` bytes.
+		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` cells of `self.width` bytes, and a family writer never grows, so it stays valid;
+		// the check above keeps `self.cursor` below that capacity, and `self.cell` is a distinct live
+		// allocation of exactly `self.width` bytes.
 		unsafe {
-			let data = self.inner.data_ptr();
 			core::ptr::copy_nonoverlapping(
 				self.cell.as_ptr(),
-				data.add(self.cursor * self.width),
+				self.data.add(self.cursor * self.width),
 				self.width,
 			);
 		}
@@ -249,6 +255,8 @@ impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 
 pub struct VarLenWriter<'a> {
 	inner: ColumnBuilder<'a>,
+	data: *mut u8,
+	offsets: *mut u64,
 	item_cursor: usize,
 	byte_cursor: usize,
 	data_capacity: usize,
@@ -275,13 +283,17 @@ impl<'a> VarLenWriter<'a> {
 		if initial > 0 {
 			inner.grow(initial)?;
 		}
-		// SAFETY: Utf8 and Blob are both var-len type codes, so `offsets_ptr` is non-null and
-		// the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
+		let data = inner.data_ptr();
+		let offsets = inner.offsets_ptr();
+		// SAFETY: Utf8 and Blob are both var-len type codes, so `offsets` is non-null, fetched after the
+		// last grow, and the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
 		unsafe {
-			core::ptr::write(inner.offsets_ptr(), 0u64);
+			core::ptr::write(offsets, 0u64);
 		}
 		Ok(Self {
 			inner,
+			data,
+			offsets,
 			item_cursor: 0,
 			byte_cursor: 0,
 			data_capacity: initial,
@@ -298,6 +310,8 @@ impl<'a> VarLenWriter<'a> {
 		}
 		let extra = (self.byte_cursor + need - self.data_capacity).max(self.data_capacity.max(64));
 		self.inner.grow(extra)?;
+		self.data = self.inner.data_ptr();
+		self.offsets = self.inner.offsets_ptr();
 		self.data_capacity += extra;
 		Ok(())
 	}
@@ -308,17 +322,20 @@ impl<'a> VarLenWriter<'a> {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
 		}
 		self.ensure_capacity(bytes.len())?;
-		// SAFETY: `ensure_capacity` kept `byte_cursor + bytes.len()` within the data bytes `grow`
-		// reserved, so the copy is in bounds and `bytes` is a distinct live slice; the offsets slot
-		// at `item_cursor + 1` is in bounds while callers keep `item_cursor` below `self.capacity`.
+		// SAFETY: `self.data` and `self.offsets` were fetched after the last grow, and `ensure_capacity`
+		// kept `byte_cursor + bytes.len()` within the data bytes `grow` reserved, so the copy is in bounds
+		// and `bytes` is a distinct live slice; the offsets slot at `item_cursor + 1` is in bounds while
+		// callers keep `item_cursor` below `self.capacity`.
 		unsafe {
-			let data = self.inner.data_ptr();
-			let offsets = self.inner.offsets_ptr();
 			if !bytes.is_empty() {
-				core::ptr::copy_nonoverlapping(bytes.as_ptr(), data.add(self.byte_cursor), bytes.len());
+				core::ptr::copy_nonoverlapping(
+					bytes.as_ptr(),
+					self.data.add(self.byte_cursor),
+					bytes.len(),
+				);
 			}
 			self.byte_cursor += bytes.len();
-			core::ptr::write(offsets.add(self.item_cursor + 1), self.byte_cursor as u64);
+			core::ptr::write(self.offsets.add(self.item_cursor + 1), self.byte_cursor as u64);
 		}
 		if let Some(d) = self.defined.as_mut() {
 			d.push(true);
@@ -345,12 +362,11 @@ impl<'a> VarLenWriter<'a> {
 		reifydb_assertions! {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
 		}
-		// SAFETY: `offsets_ptr` is non-null for this var-len builder, and the slot at
-		// `item_cursor + 1` is inside the slots the acquire and `grow` reserved while callers keep
-		// `item_cursor` below `self.capacity`.
+		// SAFETY: `self.offsets` is non-null for this var-len builder and was fetched after the last grow,
+		// and the slot at `item_cursor + 1` is inside the slots the acquire and `grow` reserved while
+		// callers keep `item_cursor` below `self.capacity`.
 		unsafe {
-			let offsets = self.inner.offsets_ptr();
-			core::ptr::write(offsets.add(self.item_cursor + 1), self.byte_cursor as u64);
+			core::ptr::write(self.offsets.add(self.item_cursor + 1), self.byte_cursor as u64);
 		}
 		let d = self.defined.get_or_insert_with(|| vec![true; self.item_cursor]);
 		d.push(false);

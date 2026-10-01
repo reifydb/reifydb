@@ -90,7 +90,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 		if col.type_code() != ValueKind::Utf8 {
 			return Err(read_error::<&str>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.iter_str().nth(self.index))
+		Ok(col.str_at(self.index))
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
@@ -100,7 +100,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 		if col.type_code() != ValueKind::Blob {
 			return Err(read_error::<&[u8]>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.iter_bytes().nth(self.index))
+		Ok(col.bytes_at(self.index))
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
@@ -300,7 +300,7 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 		ValueKind::Uint8 => fixed_at::<u64>(col, index).map(Value::Uint8).unwrap_or_else(|| none_value(col)),
 		ValueKind::Uint16 => fixed_at::<u128>(col, index).map(Value::Uint16).unwrap_or_else(|| none_value(col)),
 		ValueKind::Utf8 => {
-			col.iter_str().nth(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
+			col.str_at(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
 		}
 		ValueKind::Decimal => {
 			col.expect_family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col))
@@ -370,6 +370,6 @@ impl<'a> ChangeView for BorrowedChange<'a> {
 	}
 
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
-		self.diffs().nth(index)
+		self.diff_at(index)
 	}
 }

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Debug;
-
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_codec::tag::ValueKind;
@@ -19,7 +17,6 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 		view::RowView,
-		view_column::ColumnView,
 	},
 };
 use reifydb_value::{
@@ -45,18 +42,6 @@ impl OperatorMetadata for FamilyEchoOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-fn read_both_ways<T: Clone + PartialEq + Debug>(
-	view: &ColumnView<'_>,
-	by_column: impl Iterator<Item = Option<T>>,
-	by_row: Vec<Option<T>>,
-) -> Vec<Option<T>> {
-	// The column reader and the row reader decode the same cells, so any disagreement is a decode defect.
-	let by_column: Vec<Option<T>> =
-		by_column.enumerate().map(|(row, value)| value.filter(|_| view.is_defined(row))).collect();
-	assert_eq!(by_column, by_row, "column {} reads differently by column and by row", view.name());
-	by_row
-}
-
 impl ExternCOperator for FamilyEchoOperator {
 	fn new(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
@@ -69,18 +54,15 @@ impl ExternCOperator for FamilyEchoOperator {
 			let rows = post.row_count();
 			let mut committed = Vec::new();
 			let mut names = Vec::new();
-			for view in post.column_views() {
-				let name = view.name();
-				let precision = Precision::try_new(view.raw().precision()).expect("a valid precision");
-				let scale = Scale::try_new_with_precision(view.raw().scale(), precision)
+			for source in post.columns() {
+				let name = source.name();
+				let precision = Precision::try_new(source.precision()).expect("a valid precision");
+				let scale = Scale::try_new_with_precision(source.scale(), precision)
 					.expect("a valid scale");
-				let column = match view.type_code() {
+				let column = match source.type_code() {
 					ValueKind::Decimal => {
-						let values = read_both_ways(
-							&view,
-							view.decimal_iter().expect("a decimal column"),
-							post.rows().map(|row| row.decimal(name).unwrap()).collect(),
-						);
+						let values: Vec<Option<Decimal>> =
+							post.rows().map(|row| row.decimal(name).unwrap()).collect();
 						let mut writer =
 							builder.decimal_writer(rows.max(1), precision, scale)?;
 						for value in &values {

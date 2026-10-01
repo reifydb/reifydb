@@ -95,6 +95,8 @@ where
 }
 
 type MetaLoaded<G, S, Carry, Output> = HashMap<G, CarryMeta<S, Carry, Output>>;
+type MetaStored<G> = HashMap<G, EncodedPodRow>;
+type MetaRead<G, S, Carry, Output> = (MetaLoaded<G, S, Carry, Output>, MetaStored<G>);
 type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
 struct PendingCarry<S, Output> {
@@ -210,7 +212,7 @@ where
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
-		let mut meta_loaded = self.load_meta(store, &buckets)?;
+		let (mut meta_loaded, meta_stored) = self.load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, S> = HashMap::new();
@@ -379,7 +381,7 @@ where
 			}
 		}
 
-		self.persist_meta(store, meta_loaded)?;
+		self.persist_meta(store, meta_loaded, meta_stored)?;
 		Ok(results)
 	}
 
@@ -387,8 +389,9 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, S, Carry, Output>> {
+	) -> Result<MetaRead<G, S, Carry, Output>> {
 		let mut meta_loaded: MetaLoaded<G, S, Carry, Output> = HashMap::new();
+		let mut meta_stored: MetaStored<G> = HashMap::new();
 		let mut by_key: HashMap<GroupStateKey, G> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if meta_loaded.contains_key(group) {
@@ -401,10 +404,11 @@ where
 		store.state_get_many_visit(&keys, &mut |key, bytes| {
 			if let Some(group) = by_key.get(&key) {
 				meta_loaded.insert(group.clone(), decode::<CarryMeta<S, Carry, Output>>(&bytes)?);
+				meta_stored.insert(group.clone(), bytes);
 			}
 			Ok(())
 		})?;
-		Ok(meta_loaded)
+		Ok((meta_loaded, meta_stored))
 	}
 
 	fn resolve_survivor_rows<K>(
@@ -444,9 +448,14 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		meta_loaded: MetaLoaded<G, S, Carry, Output>,
+		meta_stored: MetaStored<G>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			put(store, &meta_key_for(group_hash(&group)?), meta)?;
+			let encoded = meta.encode_state()?;
+			if meta_stored.get(&group) == Some(&encoded) {
+				continue;
+			}
+			store.state_set(&(&meta_key_for(group_hash(&group)?)).into_group_state_key(), encoded)?;
 		}
 		Ok(())
 	}
