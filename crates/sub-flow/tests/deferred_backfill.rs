@@ -21,7 +21,7 @@ use reifydb::{
 	},
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
-use reifydb_cdc::{consume::checkpoint::CdcCheckpoint, rebuild::changed_objects};
+use reifydb_cdc::{consume::checkpoint::CdcCheckpoint, lift::changed_objects};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},

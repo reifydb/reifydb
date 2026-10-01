@@ -9,8 +9,8 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod consume;
+pub mod lift;
 pub mod produce;
-pub mod rebuild;
 pub mod testing;
 
 pub struct CdcVersion;

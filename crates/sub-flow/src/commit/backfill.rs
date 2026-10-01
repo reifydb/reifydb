@@ -7,7 +7,7 @@ use std::{
 };
 
 use arrow_array::{Array, RecordBatch, TimestampNanosecondArray};
-use reifydb_cdc::rebuild::changed_objects;
+use reifydb_cdc::lift::changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::Pending,

@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use reifydb_cdc::{consume::consumer::CdcConsume, rebuild::rebuild_changes};
+use reifydb_cdc::{consume::consumer::CdcConsume, lift::lift_changes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -63,14 +63,14 @@ impl SubscriptionCdcConsumer {
 		}
 	}
 
-	fn rebuild_batch(&self, cdcs: &[Cdc]) -> Result<Vec<Change>> {
+	fn lift_batch(&self, cdcs: &[Cdc]) -> Result<Vec<Change>> {
 		let catalog = self.engine.catalog();
 		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query);
 
 		let mut out: Vec<Change> = Vec::new();
 		for cdc in cdcs {
-			for change in rebuild_changes(cdc, &catalog, &mut txn)? {
+			for change in lift_changes(cdc, &catalog, &mut txn)? {
 				if let ChangeOrigin::Object(object_id) = &change.origin {
 					self.source_tracker.update(*object_id, cdc.version.commit);
 				}
@@ -215,7 +215,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			}
 		}
 
-		let all_changes = match self.rebuild_batch(&cdcs) {
+		let all_changes = match self.lift_batch(&cdcs) {
 			Ok(changes) => changes,
 			Err(e) => {
 				reply(Err(e));

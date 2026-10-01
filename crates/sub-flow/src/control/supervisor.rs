@@ -11,7 +11,7 @@ use reifydb_cdc::{
 		backlog::{BacklogPull, FlowBacklog},
 		watermark::CdcConsumerWatermark,
 	},
-	rebuild::changed_objects,
+	lift::changed_objects,
 };
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},

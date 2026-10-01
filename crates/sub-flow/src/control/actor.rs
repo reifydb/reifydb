@@ -1186,8 +1186,8 @@ mod pull_protocol {
 
 	use reifydb_cdc::{
 		consume::watermark::CdcConsumerWatermark,
+		lift::{changed_objects, lift_changes, row_target},
 		produce::watermark::CdcProducerWatermark,
-		rebuild::{changed_objects, rebuild_changes, row_target},
 	};
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -1552,7 +1552,7 @@ mod pull_protocol {
 			self.cdc_records()
 				.into_iter()
 				.filter(|cdc| cdc.version.commit > floor)
-				.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
+				.flat_map(|cdc| lift_changes(&cdc, &catalog, &mut txn).expect("lift changes"))
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
 
@@ -2159,7 +2159,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn only_the_capacity_eviction_of_the_two_survives_the_rebuild() {
+	fn only_the_capacity_eviction_of_the_two_survives_the_lift() {
 		let h = capacity_ring_harness();
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
@@ -2238,11 +2238,11 @@ mod pull_protocol {
 		let catalog = h.engine.catalog();
 		let mut query = h.engine.begin_query(IdentityId::system()).expect("query transaction");
 		let mut txn = Transaction::Query(&mut query);
-		let mut rebuilt: Vec<RowNumber> = h
+		let mut lifted: Vec<RowNumber> = h
 			.cdc_records()
 			.into_iter()
 			.filter(|cdc| cdc.version.commit > stable)
-			.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
+			.flat_map(|cdc| lift_changes(&cdc, &catalog, &mut txn).expect("lift changes"))
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.flat_map(|change| change.diffs)
 			.filter_map(|diff| match diff {
@@ -2254,11 +2254,11 @@ mod pull_protocol {
 			})
 			.flatten()
 			.collect();
-		rebuilt.sort();
+		lifted.sort();
 
 		assert_eq!(
-			rebuilt, expected,
-			"the rebuild must carry exactly the capacity evict through and drop both ttl expiries"
+			lifted, expected,
+			"the lift must carry exactly the capacity evict through and drop both ttl expiries"
 		);
 		drop(actor);
 	}

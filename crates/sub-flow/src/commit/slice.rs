@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use arrow_array::{Array, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::rebuild::{changed_objects, rebuild_selected_changes};
+use reifydb_cdc::lift::{changed_objects, lift_selected_changes};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
@@ -334,9 +334,8 @@ pub(crate) fn collect_flow_changes(
 
 	let mut out = Vec::new();
 	for cdc in relevant {
-		let rebuilt =
-			rebuild_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
-		out.extend(retain_relevant(rebuilt, source_objects, completeness_objects));
+		let lifted = lift_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
+		out.extend(retain_relevant(lifted, source_objects, completeness_objects));
 	}
 	Ok(out)
 }
@@ -405,13 +404,13 @@ mod tests {
 	#[test]
 	fn object_changes_match_source_objects() {
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let rebuilt = vec![
+		let lifted = vec![
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
 			change(ChangeOrigin::Object(ObjectId::View(ViewId(9))), 5),
 		];
 
-		let out = retain_relevant(rebuilt, &sources, None);
+		let out = retain_relevant(lifted, &sources, None);
 
 		assert_eq!(out.len(), 1);
 		assert!(matches!(out[0].origin, ChangeOrigin::Object(ObjectId::Table(TableId(1)))));
@@ -419,7 +418,7 @@ mod tests {
 
 	#[test]
 	fn flow_origin_changes_always_included() {
-		// The rebuild emits object origins only, so a flow origin must never be dropped by the filter.
+		// The lift emits object origins only, so a flow origin must never be dropped by the filter.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 
 		let out = retain_relevant(vec![change(ChangeOrigin::Flow(OperatorId(42)), 5)], &sources, None);
@@ -431,12 +430,12 @@ mod tests {
 	#[test]
 	fn unrelated_object_changes_excluded() {
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let rebuilt = vec![
+		let lifted = vec![
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
 			change(ChangeOrigin::Object(ObjectId::View(ViewId(3))), 6),
 		];
 
-		let out = retain_relevant(rebuilt, &sources, None);
+		let out = retain_relevant(lifted, &sources, None);
 
 		assert!(out.is_empty());
 	}
@@ -449,12 +448,12 @@ mod tests {
 			!sources.contains(&COMPLETENESS_OBJECT),
 			"the fixture must exclude the completeness table or nothing is proven"
 		);
-		let rebuilt = vec![
+		let lifted = vec![
 			change(ChangeOrigin::Object(COMPLETENESS_OBJECT), 5),
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
 		];
 
-		let out = retain_relevant(rebuilt, &sources, None);
+		let out = retain_relevant(lifted, &sources, None);
 
 		assert!(
 			out.iter().any(|c| matches!(c.origin, ChangeOrigin::Object(o) if o == COMPLETENESS_OBJECT)),
@@ -467,12 +466,12 @@ mod tests {
 	fn changes_gathered_across_multiple_cdc_entries_in_order() {
 		// collect_flow_changes concatenates per-record output, so the filter must preserve order.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let rebuilt = vec![
+		let lifted = vec![
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
 			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 7),
 		];
 
-		let out = retain_relevant(rebuilt, &sources, None);
+		let out = retain_relevant(lifted, &sources, None);
 
 		assert_eq!(out.len(), 2);
 		assert_eq!(out[0].version, ChangeVersion::from(CommitVersion(5)));

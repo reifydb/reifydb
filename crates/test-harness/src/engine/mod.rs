@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(not(reifydb_dst))]
+use std::thread::sleep;
+#[cfg(not(reifydb_dst))]
 #[allow(clippy::disallowed_types)]
 use std::time::Duration as StdDuration;
-use std::{ops::Deref, sync::Arc, thread::sleep};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
@@ -179,6 +182,7 @@ impl TestEngine {
 		self.mock_clock.clone()
 	}
 
+	#[cfg(not(reifydb_dst))]
 	#[allow(clippy::disallowed_types)]
 	pub fn await_cdc(&self) -> CommitVersion {
 		let target = self.engine.current_version().expect("current version");
@@ -194,6 +198,20 @@ impl TestEngine {
 			producer.get(),
 			self.engine.done_until()
 		)
+	}
+
+	#[cfg(reifydb_dst)]
+	pub fn await_cdc(&self) -> CommitVersion {
+		let target = self.engine.current_version().expect("current version");
+		self.engine.spawner().system().run_until_idle();
+		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
+		assert!(
+			producer.get() >= target && self.engine.done_until() >= target,
+			"CDC did not reach {target:?} once the actors went idle: producer={:?}, done_until={:?}",
+			producer.get(),
+			self.engine.done_until()
+		);
+		target
 	}
 }
 

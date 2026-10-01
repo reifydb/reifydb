@@ -12,12 +12,12 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	error::diagnostic::internal::internal,
 	interface::{
 		catalog::object::ObjectId,
 		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
+	internal_error,
 	key::{
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
@@ -26,7 +26,7 @@ use reifydb_core::{
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 pub struct RowTarget {
 	pub object: ObjectId,
@@ -34,7 +34,7 @@ pub struct RowTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum RebuiltKind {
+enum LiftedKind {
 	Insert,
 	Update,
 	Remove,
@@ -42,12 +42,12 @@ enum RebuiltKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct BucketKey {
-	kind: RebuiltKind,
+	kind: LiftedKind,
 	post_shape: RowShapeFingerprint,
 	pre_shape: RowShapeFingerprint,
 }
 
-struct RebuiltRow {
+struct LiftedRow {
 	target: RowTarget,
 	pre: Option<EncodedBytes>,
 	post: Option<EncodedBytes>,
@@ -116,17 +116,17 @@ pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
 	})
 }
 
-pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
-	rebuild_selected_changes(cdc, catalog, txn, |_| true)
+pub fn lift_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
+	lift_selected_changes(cdc, catalog, txn, |_| true)
 }
 
-pub fn rebuild_selected_changes(
+pub fn lift_selected_changes(
 	cdc: &Cdc,
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	accept: impl Fn(ObjectId) -> bool,
 ) -> Result<Vec<Change>> {
-	let mut rows: Vec<RebuiltRow> = Vec::with_capacity(cdc.changes.len());
+	let mut rows: Vec<LiftedRow> = Vec::with_capacity(cdc.changes.len());
 
 	for cdc_change in &cdc.changes {
 		let Some(target) = tracked_target(cdc_change.key()) else {
@@ -155,17 +155,16 @@ pub fn rebuild_selected_changes(
 				visible: true,
 			} => {
 				let pre = pre.as_ref().ok_or_else(|| {
-					Error(Box::new(internal(format!(
-						"CDC delete for key {:?} at version {} carries no pre-image, so its \
-						 change cannot be rebuilt",
+					internal_error!(
+						"CDC delete for key {:?} at version {} carries no pre-image, so its change cannot be lifted",
 						key.as_slice(),
 						cdc.version.commit.0
-					))))
+					)
 				})?;
 				(Some(pre.clone()), None)
 			}
 		};
-		rows.push(RebuiltRow {
+		rows.push(LiftedRow {
 			target,
 			pre,
 			post,
@@ -180,20 +179,20 @@ pub fn rebuild_selected_changes(
 			(None, Some(post)) => {
 				let fingerprint = read_fingerprint(post);
 				BucketKey {
-					kind: RebuiltKind::Insert,
+					kind: LiftedKind::Insert,
 					post_shape: fingerprint,
 					pre_shape: fingerprint,
 				}
 			}
 			(Some(pre), Some(post)) => BucketKey {
-				kind: RebuiltKind::Update,
+				kind: LiftedKind::Update,
 				post_shape: read_fingerprint(post),
 				pre_shape: read_fingerprint(pre),
 			},
 			(Some(pre), None) => {
 				let fingerprint = read_fingerprint(pre);
 				BucketKey {
-					kind: RebuiltKind::Remove,
+					kind: LiftedKind::Remove,
 					post_shape: fingerprint,
 					pre_shape: fingerprint,
 				}
@@ -218,11 +217,11 @@ pub fn rebuild_selected_changes(
 		let mut diffs: Diffs = Diffs::new();
 		for (key, bucket) in buckets {
 			let diff = match key.kind {
-				RebuiltKind::Insert => {
+				LiftedKind::Insert => {
 					let shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
 					Diff::insert(from_encoded_bytes(&shape, &bucket.ids, &bucket.post)?)
 				}
-				RebuiltKind::Update => {
+				LiftedKind::Update => {
 					let pre_shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
 					let post_shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
 					Diff::update(
@@ -230,7 +229,7 @@ pub fn rebuild_selected_changes(
 						from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post)?,
 					)
 				}
-				RebuiltKind::Remove => {
+				LiftedKind::Remove => {
 					let shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
 					Diff::remove(from_encoded_bytes(&shape, &bucket.ids, &bucket.pre)?)
 				}
@@ -248,7 +247,7 @@ pub fn rebuild_selected_changes(
 	Ok(changes)
 }
 
-fn pair_moved_rows(rows: &mut Vec<RebuiltRow>) {
+fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 	let mut inserts: BTreeMap<(ObjectId, RowNumber), usize> = BTreeMap::new();
 	for (index, row) in rows.iter().enumerate() {
 		if row.pre.is_none() {
@@ -276,10 +275,7 @@ fn load_shape(
 		return Ok(shape.clone());
 	}
 	let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
-		Error(Box::new(internal(format!(
-			"RowShape with fingerprint {:?} not found while rebuilding CDC changes",
-			fingerprint
-		))))
+		internal_error!("RowShape with fingerprint {:?} not found while lifting CDC changes", fingerprint)
 	})?;
 	cache.insert(fingerprint, shape.clone());
 	Ok(shape)
@@ -356,7 +352,7 @@ mod tests {
 	#[test]
 	fn test_series_row_key_on_a_view_storage_maps_to_the_view_never_to_a_series() {
 		// A series-backed view writes series keys under a View storage id; reading the object id back as a
-		// series would attribute every rebuilt change of that view to a series that does not exist.
+		// series would attribute every lifted change of that view to a series that does not exist.
 		let key = SeriesRowKey {
 			storage: StorageId::view(8),
 			variant_tag: None,
