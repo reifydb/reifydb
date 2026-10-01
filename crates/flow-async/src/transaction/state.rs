@@ -256,7 +256,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		let prefix = node_prefix(id);
-		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
+		let prefixed_range = range.with_prefix(EncodedKey::new(&prefix));
 
 		let version = self.version();
 		let store = self.operator_store();

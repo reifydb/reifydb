@@ -518,7 +518,7 @@ impl OperatorStateKey {
 			return None;
 		}
 		let operator = de.read_u64().ok()?;
-		let inner = de.read_raw(de.remaining()).ok()?.to_vec();
+		let inner = de.read_raw(de.remaining()).ok()?;
 		Some((OperatorId(operator), EncodedKey::new(inner)))
 	}
 }

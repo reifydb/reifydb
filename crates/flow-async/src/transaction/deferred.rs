@@ -177,7 +177,7 @@ pub(crate) fn deferred_storage_get(
 		ReadFrom::OperatorState => unreachable!(),
 	};
 	let key = TaggedKey::decode(key).expect(UNDECODABLE_KEY);
-	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|multi| multi.bytes().clone()))
+	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|value| value.into_multi_version_row().bytes))
 }
 
 pub(crate) fn deferred_storage_contains(
