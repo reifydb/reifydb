@@ -10,7 +10,9 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_value::Result;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::canonical::assert_canonical_floats;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -148,9 +150,130 @@ impl FlowEngineInner {
 				txn.run_durable_sink(&mut **sink, change)?
 			}
 		};
+		reifydb_assertions! {
+			for diff in &result.diffs {
+				for batch in diff.pre().into_iter().chain(diff.post()) {
+					assert_canonical_floats(batch, "flow apply");
+				}
+			}
+		}
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Span::current().record("output_rows", result.row_count());
 		Ok(result)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
+	use reifydb_core::{
+		common::{ChangeVersion, CommitVersion},
+		flow::operator::{FlowNode, OperatorDef},
+		interface::{
+			catalog::{
+				flow::{FlowId, OperatorId},
+				id::ViewId,
+			},
+			change::{Change, Diff},
+			flow::OperatorCapability,
+		},
+	};
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{Result, value::datetime::DateTime};
+
+	use crate::{
+		engine::FlowEngineInner,
+		operator::{
+			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
+			provider::EmptyOperatorProvider,
+		},
+		transaction::{mock::FlowTxn, substrate::FlowSubstrate},
+	};
+
+	const FLOW: FlowId = FlowId(1);
+	const OPERATOR: OperatorId = OperatorId(1);
+
+	struct NegativeZeroOperator(fn(RecordBatch) -> Diff);
+
+	impl HostOperator for NegativeZeroOperator {
+		fn id(&self) -> OperatorId {
+			OPERATOR
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
+			let batch = RecordBatch::try_from_iter([("c", column)]).unwrap();
+			Ok(Change::from_flow(OPERATOR, change.version, vec![(self.0)(batch)], change.changed_at))
+		}
+	}
+
+	fn engine_inner(engine: &TestEngine) -> FlowEngineInner {
+		FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::with_dictionary(
+				engine.inner().dictionary_allocators(),
+				engine.inner().operator_state(),
+			),
+			OperatorSampleRegistry::new(),
+		)
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn an_operator_output_holding_negative_zero_panics() {
+		// Every operator's output passes through apply, so a raw -0.0 must stop here or a compare splits zero.
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroOperator(Diff::insert)));
+		let node = FlowNode::new(
+			OPERATOR,
+			OperatorDef::SourceView {
+				view: ViewId(1),
+			},
+		);
+		let input = Change::from_flow(
+			OPERATOR,
+			ChangeVersion::from(CommitVersion(1)),
+			Vec::<Diff>::new(),
+			DateTime::default(),
+		);
+		let mut txn = engine.flow_txn().deferred();
+		let _ = inner.apply(&mut txn, FLOW, &node, input);
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn an_operator_removal_holding_negative_zero_panics() {
+		// A removal carries its batch in pre only, so a check on post alone must never let its -0.0 through.
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroOperator(Diff::remove)));
+		let node = FlowNode::new(
+			OPERATOR,
+			OperatorDef::SourceView {
+				view: ViewId(1),
+			},
+		);
+		let input = Change::from_flow(
+			OPERATOR,
+			ChangeVersion::from(CommitVersion(1)),
+			Vec::<Diff>::new(),
+			DateTime::default(),
+		);
+		let mut txn = engine.flow_txn().deferred();
+		let _ = inner.apply(&mut txn, FLOW, &node, input);
 	}
 }
