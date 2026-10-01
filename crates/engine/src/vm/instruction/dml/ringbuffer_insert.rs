@@ -30,6 +30,8 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -149,6 +151,9 @@ fn drive_ringbuffer_insert(
 
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		reifydb_assertions! {
+			assert_canonical_floats(&columns, "ringbuffer insert");
+		}
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace.name(),
@@ -357,4 +362,112 @@ fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) ->
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("inserted", Value::Uint8(inserted)),
 	])
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{collections::HashMap, sync::Arc};
+
+	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
+	use reifydb_codec::row::shape::{RowFamily, RowShape};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::{NamespaceId, RingBufferId},
+			namespace::Namespace,
+			ringbuffer::RingBuffer,
+		},
+		value::column::headers::ColumnHeaders,
+	};
+	use reifydb_evaluate::stack::SymbolTable;
+	use reifydb_rql::{nodes::InlineDataNode, query::QueryPlan};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::{
+		params::Params,
+		value::{identity::IdentityId, value_type::ValueType},
+	};
+
+	use super::{InputFragments, RingBufferTarget, build_insert_ringbuffer_query_context, drive_ringbuffer_insert};
+	use crate::{
+		Result,
+		vm::{
+			services::Services,
+			volcano::query::{QueryContext, QueryNode},
+		},
+	};
+
+	struct NegativeZeroNode;
+
+	impl QueryNode for NegativeZeroNode {
+		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+			Ok(())
+		}
+
+		fn next<'a>(
+			&mut self,
+			_rx: &mut Transaction<'a>,
+			_ctx: &mut QueryContext,
+		) -> Result<Option<RecordBatch>> {
+			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
+			Ok(Some(RecordBatch::try_from_iter([("c", column)]).unwrap()))
+		}
+
+		fn headers(&self) -> Option<ColumnHeaders> {
+			None
+		}
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn test_drive_with_negative_zero_panics() {
+		// The insert root skips the Box check, so the loop must check or a raw -0.0 is stored.
+		let services = Services::testing();
+		let mut txn = create_test_admin_transaction();
+		let namespace = Namespace::Local {
+			id: NamespaceId(1),
+			name: "app".to_string(),
+			local_name: "app".to_string(),
+			parent_id: NamespaceId(0),
+		};
+		let ringbuffer = RingBuffer {
+			id: RingBufferId(1),
+			namespace: NamespaceId(1),
+			name: "rb".to_string(),
+			columns: vec![],
+			capacity: 1,
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::None,
+		};
+		let target = RingBufferTarget {
+			namespace: &namespace,
+			ringbuffer: &ringbuffer,
+		};
+		let shape = RowShape::testing(RowFamily::RingBuffer, &[ValueType::Float8]);
+		let symbols = SymbolTable::new();
+		let context = build_insert_ringbuffer_query_context(
+			&services,
+			&target,
+			&Params::default(),
+			&symbols,
+			IdentityId::system(),
+		);
+		let fragments = InputFragments::of(&QueryPlan::InlineData(InlineDataNode {
+			rows: vec![],
+		}));
+		let _ = drive_ringbuffer_insert(
+			&services,
+			&mut Transaction::Admin(&mut txn),
+			&symbols,
+			&target,
+			&shape,
+			&context,
+			&mut NegativeZeroNode,
+			&fragments,
+			false,
+			&mut HashMap::new(),
+		);
+	}
 }
