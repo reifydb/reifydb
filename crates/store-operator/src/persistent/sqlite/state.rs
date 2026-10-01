@@ -112,8 +112,7 @@ impl SqlitePersistent {
 			&EncodedKeyRange::all(),
 			batch_size.saturating_add(1),
 			false,
-			mask,
-			tables,
+			mask.intersect(tables.keyspaces()),
 		);
 		record_page(rows.len() as u64, 0);
 		let items: Vec<(GroupStateKey, EncodedPodRow)> = rows

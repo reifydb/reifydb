@@ -404,7 +404,6 @@ pub(super) fn bounded_in(
 	limit: u64,
 	reverse: bool,
 	mask: KeyspaceMask,
-	tables: TableMask,
 ) -> Vec<(EncodedKey, Vec<u8>)> {
 	if groups.is_empty() {
 		return Vec::new();
@@ -413,7 +412,7 @@ pub(super) fn bounded_in(
 	let (end, _, end_at) = split_bound(range.end.as_ref());
 	let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
 	let mut ids = span(start_at, end_at, end_open);
-	ids.retain(|id| mask.holds(*id) && tables.holds(*id));
+	ids.retain(|id| mask.holds(*id));
 	if reverse {
 		ids.reverse();
 	}

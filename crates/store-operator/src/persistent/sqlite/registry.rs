@@ -27,6 +27,10 @@ impl TableMask {
 		self.0.held()
 	}
 
+	pub(super) fn keyspaces(self) -> KeyspaceMask {
+		self.0
+	}
+
 	fn insert(&mut self, keyspace: KeyspaceId) {
 		self.0.insert(keyspace);
 	}
