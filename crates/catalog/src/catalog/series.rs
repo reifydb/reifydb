@@ -38,7 +38,6 @@ pub struct SeriesColumnToCreate {
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub properties: Vec<ColumnPropertyKind>,
-	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
@@ -60,7 +59,6 @@ impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
 			fragment: col.fragment,
 			constraint: col.constraint,
 			properties: col.properties,
-			auto_increment: col.auto_increment,
 			dictionary_id: col.dictionary_id,
 		}
 	}

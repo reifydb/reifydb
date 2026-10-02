@@ -248,11 +248,7 @@ impl GateOperator {
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		if row_numbers(&post)?.is_empty() {
-			result.push(Diff::Update {
-				pre,
-				post,
-				origin: None,
-			});
+			result.push(Diff::update(pre, post));
 			return Ok(());
 		}
 

@@ -121,7 +121,6 @@ fn runtime_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
 		fragment: Fragment::internal(name),
 		constraint: TypeConstraint::unconstrained(ty),
 		properties: vec![],
-		auto_increment: false,
 		dictionary_id: None,
 	}
 }

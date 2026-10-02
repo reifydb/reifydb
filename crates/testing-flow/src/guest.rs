@@ -8,7 +8,10 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{
+		catalog::{dictionary::Dictionary, flow::OperatorId},
+		change::Change,
+	},
 	key::tag::KeyTag,
 	operator_with::ApplyWith,
 };
@@ -40,6 +43,7 @@ pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static>
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
+	catalog: Catalog,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
 }
@@ -57,7 +61,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			pending: mem::take(&mut self.pending),
 			query: Some(query),
 			state_query: Some(state_query),
-			catalog: Catalog::testing(),
+			catalog: self.catalog.clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
 			substrate: self.substrate.clone(),
@@ -155,6 +159,7 @@ pub struct GuestOperatorHarnessBuilder<C> {
 	with: ApplyWith,
 	operator_id: OperatorId,
 	version: CommitVersion,
+	dictionaries: Vec<(Dictionary, Vec<Value>)>,
 	_phantom: PhantomData<C>,
 }
 
@@ -171,6 +176,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			with: ApplyWith::default(),
 			operator_id: OperatorId(1),
 			version: CommitVersion(1),
+			dictionaries: Vec::new(),
 			_phantom: PhantomData,
 		}
 	}
@@ -204,6 +210,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 		self
 	}
 
+	pub fn with_dictionary(mut self, dictionary: Dictionary, values: Vec<Value>) -> Self {
+		self.dictionaries.push((dictionary, values));
+		self
+	}
+
 	pub fn build(self) -> Result<GuestOperatorHarness<C>> {
 		let engine = TestEngine::new();
 		let core = C::create(
@@ -214,10 +225,14 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
 		let operator = mount(core, self.operator_id, capabilities);
 
-		let substrate = FlowSubstrate::with_dictionary(
-			engine.inner().dictionary_allocators(),
-			engine.inner().operator_state(),
-		);
+		let allocators = engine.inner().dictionary_allocators();
+		let catalog = Catalog::testing();
+		for (dictionary, values) in &self.dictionaries {
+			catalog.cache().set_dictionary(dictionary.id, CommitVersion(1), Some(dictionary.clone()));
+			allocators.intern_batch(dictionary, values)?;
+		}
+
+		let substrate = FlowSubstrate::with_dictionary(allocators, engine.inner().operator_state());
 		Ok(GuestOperatorHarness {
 			engine,
 			operator,
@@ -226,6 +241,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
+			catalog,
 			history: Vec::new(),
 			_phantom: PhantomData,
 		})

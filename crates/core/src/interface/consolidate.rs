@@ -171,11 +171,7 @@ fn merge_run(run: Vec<Diff>) -> Result<Diff> {
 		Diff::Update {
 			origin,
 			..
-		} => Diff::Update {
-			pre: concat(&pres)?,
-			post: concat(&posts)?,
-			origin,
-		},
+		} => Diff::update_with_origin(concat(&pres)?, concat(&posts)?, origin),
 		Diff::Remove {
 			origin,
 			..
@@ -352,11 +348,11 @@ fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 						post: gathered(Diff::post, &group_post[at])?,
 						origin,
 					},
-					DiffType::Update => Diff::Update {
-						pre: gathered(Diff::pre, &group_pre[at])?,
-						post: gathered(Diff::post, &group_post[at])?,
+					DiffType::Update => Diff::update_with_origin(
+						gathered(Diff::pre, &group_pre[at])?,
+						gathered(Diff::post, &group_post[at])?,
 						origin,
-					},
+					),
 					DiffType::Remove => Diff::Remove {
 						pre: gathered(Diff::pre, &group_pre[at])?,
 						origin,

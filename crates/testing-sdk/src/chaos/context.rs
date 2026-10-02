@@ -3,14 +3,16 @@
 
 use std::fmt::{self, Debug, Formatter};
 
+use reifydb_core::interface::catalog::dictionary::Dictionary;
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{Value, datetime::DateTime};
 
 #[derive(Clone)]
 pub struct ChaosContext {
 	pub seed: u64,
 	pub clock: Clock,
 	pub drain_at_ms: u64,
+	pub dictionaries: Vec<(Dictionary, Vec<Value>)>,
 }
 
 impl ChaosContext {
@@ -19,6 +21,7 @@ impl ChaosContext {
 			seed,
 			clock: Clock::Mock(MockClock::new(seed & i64::MAX as u64)),
 			drain_at_ms: 0,
+			dictionaries: Vec::new(),
 		}
 	}
 

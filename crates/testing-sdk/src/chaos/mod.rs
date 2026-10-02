@@ -11,7 +11,11 @@ use std::{
 };
 
 use reifydb_codec::row::shape::RowShape;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, operator_with::ApplyWith};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{dictionary::Dictionary, flow::OperatorId},
+	operator_with::ApplyWith,
+};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
@@ -93,6 +97,7 @@ pub struct ChaosHarnessBuilder<C: MountedOperator + OperatorMetadata + 'static> 
 	version: CommitVersion,
 	operator_params: Vec<(String, Value)>,
 	operator_with: ApplyWith,
+	dictionaries: Vec<(Dictionary, Vec<Value>)>,
 	input_shape: Option<RowShape>,
 	output_shape: Option<RowShape>,
 	key_strategy: Option<KeyStrategy>,
@@ -120,6 +125,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 			version: CommitVersion(1),
 			operator_params: Vec::new(),
 			operator_with: ApplyWith::default(),
+			dictionaries: Vec::new(),
 			input_shape: None,
 			output_shape: None,
 			key_strategy: None,
@@ -169,6 +175,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 
 	pub fn with(mut self, with: ApplyWith) -> Self {
 		self.operator_with = with;
+		self
+	}
+
+	pub fn with_dictionary(mut self, dictionary: Dictionary, values: Vec<Value>) -> Self {
+		self.dictionaries.push((dictionary, values));
 		self
 	}
 
@@ -245,7 +256,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 		self.registry.validate(&schema.input_shape).map_err(ChaosError::InputColumnsMissingSampler)?;
 		let schema = Arc::new(schema);
 
-		let context = ChaosContext::new(self.seed);
+		let mut context = ChaosContext::new(self.seed);
+		context.dictionaries = self.dictionaries;
 
 		let mut builder = InProcessOperatorHarness::<C>::builder()
 			.with_node_id(self.operator_id)
@@ -254,6 +266,9 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 			.with(self.operator_with);
 		for (k, v) in self.operator_params {
 			builder = builder.add_param(k, v);
+		}
+		for (dictionary, values) in &context.dictionaries {
+			builder = builder.with_dictionary(dictionary.clone(), values.clone());
 		}
 		let harness = builder.build().map_err(|e| ChaosError::HarnessBuild(format!("{e:?}")))?;
 

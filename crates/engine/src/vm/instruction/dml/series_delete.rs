@@ -303,9 +303,7 @@ fn series_delete_keys(series: &Series, columns: &RecordBatch) -> Result<Vec<u64>
 		.keys_to_u64(&view)
 		.into_iter()
 		.map(|key| {
-			key.ok_or_else(|| {
-				internal_error!("delete of series {} reads a row without a key", series.name)
-			})
+			key.ok_or_else(|| internal_error!("delete of series {} reads a row without a key", series.name))
 		})
 		.collect()
 }

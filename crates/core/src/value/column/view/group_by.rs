@@ -322,12 +322,16 @@ pub fn common_key_type(left: &ValueType, right: &ValueType) -> Option<ValueType>
 			let precision = (digits + scale).min(unscaled::MAX_DIGITS);
 			Some(ValueType::decimal(Precision::new(precision), Scale::new(scale)))
 		}
+		(ValueType::Option(_), _) | (_, ValueType::Option(_)) => {
+			common_key_type(left.inner_type(), right.inner_type())
+				.map(|merged| ValueType::Option(Box::new(merged)))
+		}
 		_ => None,
 	}
 }
 
 pub fn cast_key(array: &ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
-	let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
+	let (Some(precision), Some(scale)) = (target.inner_type().precision(), target.inner_type().scale()) else {
 		return (array.clone(), 0);
 	};
 	if *array.data_type() == data_type(precision, scale) {
@@ -337,7 +341,7 @@ pub fn cast_key(array: &ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
 }
 
 fn cast_key_array(array: ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
-	let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
+	let (Some(precision), Some(scale)) = (target.inner_type().precision(), target.inner_type().scale()) else {
 		return (array, 0);
 	};
 	let decimal = if let Some(array) = array.as_any().downcast_ref::<Decimal128Array>() {

@@ -20,6 +20,7 @@ use reifydb_flow_async::{
 		host::TxnHostContext,
 		state::seal::{coord::Coord, domain::SealDomain},
 	},
+	transaction::FlowTransaction,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
 		settings::WindowSettings,
@@ -42,8 +43,14 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use super::{context::ChaosContext, materialize::materialize_history};
 use crate::in_process::transaction::TestFlowTransaction;
 
-fn with_oracle_ctx<R>(f: impl FnOnce(&mut InProcessContext<'_>) -> R) -> R {
+fn with_oracle_ctx<R>(chaos: &ChaosContext, f: impl FnOnce(&mut InProcessContext<'_>) -> R) -> R {
 	let mut txn = TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0)));
+	for (dictionary, values) in &chaos.dictionaries {
+		txn.catalog().cache().set_dictionary(dictionary.id, CommitVersion(1), Some(dictionary.clone()));
+		txn.dictionary_allocators()
+			.intern_batch(dictionary, values)
+			.unwrap_or_else(|err| panic!("oracle dictionary seed failed: {err}"));
+	}
 	let mut host = TxnHostContext::new(&mut txn, OperatorId(1));
 	let mut ctx = InProcessContext::new(&mut host, OperatorId(1));
 	f(&mut ctx)
@@ -76,6 +83,7 @@ where
 		fan_out(batch, |row, is_add| {
 			apply_leg(
 				aggregate,
+				ctx,
 				settings,
 				row,
 				is_add,
@@ -109,6 +117,7 @@ where
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn apply_leg<A>(
 	aggregate: &A,
+	chaos: &ChaosContext,
 	settings: &WindowSettings<A::Coord>,
 	row: &CoreRow,
 	is_add: bool,
@@ -119,7 +128,7 @@ fn apply_leg<A>(
 ) where
 	A: WindowedOperator,
 {
-	let Some((group, coord, contribution)) = extract_one(aggregate, row) else {
+	let Some((group, coord, contribution)) = extract_one(aggregate, chaos, row) else {
 		return;
 	};
 	let span = WindowSpan::for_coord(coord, settings.fixed_size());
@@ -148,7 +157,11 @@ fn apply_leg<A>(
 }
 
 #[allow(clippy::type_complexity)]
-fn extract_one<A>(aggregate: &A, row: &CoreRow) -> Option<(Group<A>, TumblingCoord<A>, Contribution<A>)>
+fn extract_one<A>(
+	aggregate: &A,
+	chaos: &ChaosContext,
+	row: &CoreRow,
+) -> Option<(Group<A>, TumblingCoord<A>, Contribution<A>)>
 where
 	A: WindowedOperator,
 {
@@ -157,7 +170,7 @@ where
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord, contribution))
 }
@@ -222,17 +235,23 @@ fn fan_out(batch: &ChaosBatch, mut leg: impl FnMut(&CoreRow, bool)) {
 	}
 }
 
-fn bucket_rolling<A>(aggregate: &A, pane: <RollingCoord<A> as Coord>::Span, batch: &ChaosBatch) -> RollingBuckets<A>
+fn bucket_rolling<A>(
+	aggregate: &A,
+	chaos: &ChaosContext,
+	pane: <RollingCoord<A> as Coord>::Span,
+	batch: &ChaosBatch,
+) -> RollingBuckets<A>
 where
 	A: WindowedOperator,
 {
 	let mut buckets: RollingBuckets<A> = BTreeMap::new();
-	fan_out(batch, |row, is_add| push_rolling(aggregate, pane, row, is_add, &mut buckets));
+	fan_out(batch, |row, is_add| push_rolling(aggregate, chaos, pane, row, is_add, &mut buckets));
 	buckets
 }
 
 fn push_rolling<A>(
 	aggregate: &A,
+	chaos: &ChaosContext,
 	pane: <RollingCoord<A> as Coord>::Span,
 	row: &CoreRow,
 	is_add: bool,
@@ -240,7 +259,7 @@ fn push_rolling<A>(
 ) where
 	A: WindowedOperator,
 {
-	if let Some((group, coord, contribution)) = extract_rolling(aggregate, pane, row) {
+	if let Some((group, coord, contribution)) = extract_rolling(aggregate, chaos, pane, row) {
 		let leg = if is_add {
 			Leg::Add(contribution)
 		} else {
@@ -370,7 +389,7 @@ where
 
 	for batch in batches {
 		let snapshot = HashMap::new();
-		let buckets = bucket_rolling(aggregate, pane, batch);
+		let buckets = bucket_rolling(aggregate, ctx, pane, batch);
 		let touched = apply_rolling_buckets::<A>(
 			settings.fixed_size(),
 			&snapshot,
@@ -410,6 +429,7 @@ where
 #[allow(clippy::type_complexity)]
 fn extract_rolling<A>(
 	aggregate: &A,
+	chaos: &ChaosContext,
 	pane: <RollingCoord<A> as Coord>::Span,
 	row: &CoreRow,
 ) -> Option<(RollingGroup<A>, RollingCoord<A>, RollingContribution<A>)>
@@ -421,7 +441,7 @@ where
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord.floor_to(pane), contribution))
 }
@@ -451,17 +471,23 @@ impl<C, Carry> Default for CarryGroupState<C, Carry> {
 	}
 }
 
-fn bucket_carry<A>(aggregate: &A, settings: &WindowSettings<A::Coord>, batch: &ChaosBatch) -> CarryBuckets<A>
+fn bucket_carry<A>(
+	aggregate: &A,
+	chaos: &ChaosContext,
+	settings: &WindowSettings<A::Coord>,
+	batch: &ChaosBatch,
+) -> CarryBuckets<A>
 where
 	A: WindowedOperator,
 {
 	let mut buckets: CarryBuckets<A> = BTreeMap::new();
-	fan_out(batch, |row, is_add| push_carry(aggregate, settings, row, is_add, &mut buckets));
+	fan_out(batch, |row, is_add| push_carry(aggregate, chaos, settings, row, is_add, &mut buckets));
 	buckets
 }
 
 fn push_carry<A>(
 	aggregate: &A,
+	chaos: &ChaosContext,
 	settings: &WindowSettings<A::Coord>,
 	row: &CoreRow,
 	is_add: bool,
@@ -469,7 +495,7 @@ fn push_carry<A>(
 ) where
 	A: WindowedOperator,
 {
-	if let Some((group, coord, contribution)) = extract_carry(aggregate, row) {
+	if let Some((group, coord, contribution)) = extract_carry(aggregate, chaos, row) {
 		let span = WindowSpan::for_coord(coord, settings.fixed_size());
 		let leg = if is_add {
 			Leg::Add(contribution)
@@ -498,7 +524,7 @@ where
 
 	for batch in batches {
 		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
-		let buckets = bucket_carry(aggregate, settings, batch);
+		let buckets = bucket_carry(aggregate, ctx, settings, batch);
 
 		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
 		for ((group, start), (span, legs)) in buckets {
@@ -624,7 +650,7 @@ where
 
 	for batch in batches {
 		let snapshot = HashMap::new();
-		let buckets = bucket_rolling(aggregate, pane, batch);
+		let buckets = bucket_rolling(aggregate, ctx, pane, batch);
 		let touched = apply_rolling_buckets::<A>(
 			settings.fixed_size(),
 			&snapshot,
@@ -646,7 +672,11 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn extract_carry<A>(aggregate: &A, row: &CoreRow) -> Option<(CarryGroup<A>, CarryCoord<A>, CarryContribution<A>)>
+fn extract_carry<A>(
+	aggregate: &A,
+	chaos: &ChaosContext,
+	row: &CoreRow,
+) -> Option<(CarryGroup<A>, CarryCoord<A>, CarryContribution<A>)>
 where
 	A: WindowedOperator,
 {
@@ -655,7 +685,7 @@ where
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
 	Some((group, coord, contribution))
 }

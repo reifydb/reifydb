@@ -55,10 +55,20 @@ impl Diff {
 	}
 
 	pub fn update(pre: RecordBatch, post: RecordBatch) -> Self {
+		Self::update_with_origin(pre, post, None)
+	}
+
+	pub fn update_with_origin(pre: RecordBatch, post: RecordBatch, origin: Option<ChangeOrigin>) -> Self {
+		assert!(
+			pre.num_rows() == post.num_rows(),
+			"an update change needs as many pre rows as post rows, got {} pre and {} post",
+			pre.num_rows(),
+			post.num_rows()
+		);
 		Self::Update {
 			pre,
 			post,
-			origin: None,
+			origin,
 		}
 	}
 

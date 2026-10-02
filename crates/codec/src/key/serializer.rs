@@ -60,6 +60,9 @@ pub(super) fn keycode_type_descending(ty: &ValueType) -> bool {
 			| ValueType::IdentityId
 			| ValueType::Decimal { .. }
 			| ValueType::DictionaryId
+			| ValueType::List(_)
+			| ValueType::Record(_)
+			| ValueType::Tuple(_)
 	)
 }
 
@@ -269,18 +272,12 @@ impl KeySerializer {
 				..
 			} => {
 				self.buffer.push(ValueKind::None.byte());
-				match ValueKind::of_type(inner) {
-					ValueKind::List | ValueKind::Record | ValueKind::Tuple => unreachable!(
-						"List/Record/Tuple types cannot be encoded as none inner type in keys"
-					),
-					ValueKind::Digest => {
-						return Err(Error::from(TypeError::SerdeKeycode {
-							message: format!(
-								"a none of type {inner} cannot be serialized in a key"
-							),
-						}));
-					}
-					_ => {}
+				if ValueKind::of_type(inner) == ValueKind::Digest {
+					return Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"a none of type {inner} cannot be serialized in a key"
+						),
+					}));
 				}
 				let tag = TypeTag::of_type(inner)
 					.expect("option nesting in a key none inner exceeds the supported depth");

@@ -82,6 +82,13 @@ impl Counter {
 		}
 	}
 
+	fn current(&self) -> u128 {
+		match self {
+			Counter::Narrow(counter) => counter.load(Ordering::SeqCst) as u128,
+			Counter::Wide(counter) => *counter.lock(),
+		}
+	}
+
 	fn raise_to(&self, seed: u128) {
 		match self {
 			Counter::Narrow(counter) => {
@@ -205,6 +212,16 @@ impl DictionaryAllocatorRegistry {
 				dictionary: dictionary.id,
 			}
 			.into());
+		}
+
+		let fresh = missing.iter().map(|&index| hashes[index]).collect::<HashSet<_>>().len() as u128;
+		let current = slot.counter.current();
+		if let Some(last) = current.checked_add(fresh)
+			&& DictionaryEntryId::from_u128(last, dictionary.id_type.clone()).is_err()
+		{
+			for planned in 1..=fresh {
+				DictionaryEntryId::from_u128(current + planned, dictionary.id_type.clone())?;
+			}
 		}
 
 		let mut allocated: HashMap<[u8; 16], u128> = HashMap::new();

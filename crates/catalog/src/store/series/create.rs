@@ -36,7 +36,6 @@ pub struct SeriesColumnToCreate {
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub properties: Vec<ColumnPropertyKind>,
-	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
@@ -165,7 +164,7 @@ impl CatalogStore {
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),
 					index: ColumnIndex(idx as u8),
-					auto_increment: col.auto_increment,
+					auto_increment: false,
 					dictionary_id: col.dictionary_id,
 				},
 			)?;
@@ -214,7 +213,7 @@ impl CatalogStore {
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),
 					index: ColumnIndex(idx as u8),
-					auto_increment: col.auto_increment,
+					auto_increment: false,
 					dictionary_id: col.dictionary_id,
 				},
 			)?;
