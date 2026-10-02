@@ -211,7 +211,7 @@ mod tests {
 		let entry_id = {
 			let registry =
 				DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
-			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().id
+			registry.intern_batch(&dictionary, &[Value::Utf8("sol".to_string())]).unwrap().remove(0).id
 		};
 
 		let decode_store = Arc::new(SingleDictionaryStore::new(single));

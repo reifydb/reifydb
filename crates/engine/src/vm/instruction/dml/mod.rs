@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod coerce;
+pub(crate) mod columns;
 pub(crate) mod context;
 pub mod dictionary_insert;
 pub mod dispatch;

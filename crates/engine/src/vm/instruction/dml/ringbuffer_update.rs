@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	ringbuffer::EncodedRingBufferRow,
+	ringbuffer::{EncodedRingBufferRow, EncodedRingBufferRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -23,9 +23,8 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{PartitionedMetadata, RingBuffer},
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	internal_error,
 	key::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
@@ -42,7 +41,6 @@ use reifydb_value::{
 	return_error,
 	value::{
 		Value,
-		column_view::ColumnView,
 		identity::IdentityId,
 		row_number::RowNumber,
 		system_columns::{self, row_numbers, user_columns},
@@ -50,7 +48,8 @@ use reifydb_value::{
 };
 
 use super::{
-	coerce::{InputFragments, coerce_value_to_column_type},
+	coerce::InputFragments,
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -58,7 +57,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
+	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
 		instruction::dml::time::resolve_time_for_update,
 		services::Services,
@@ -98,6 +97,12 @@ pub(crate) fn update_ringbuffer(
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let has_returning = returning.is_some();
+	let pipeline = ColumnPipeline {
+		columns: &ringbuffer.columns,
+		sequences: None,
+		fragments: &fragments,
+		context: &context,
+	};
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -123,32 +128,17 @@ pub(crate) fn update_ringbuffer(
 		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, &columns)?;
 		let row_numbers = row_numbers(&columns)?;
 		let sidecar_partitions = system_columns::partitions(&columns)?;
-		let views: Vec<ColumnView<'_>> = user_columns(&columns)
-			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-			.collect::<Result<_>>()?;
-		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, view) in views.iter().enumerate() {
-			column_map.insert(view.field.name().as_str(), idx);
-		}
-		let view = InputColumns {
-			columns: &views,
-			column_map: &column_map,
-		};
+		let inputs = input_views(&columns, &ringbuffer.columns)?;
+		let mut batches = [pipeline.cast_target_columns(&inputs, columns.num_rows(), None)?];
+		intern_dictionary_columns(services, txn, &ringbuffer.columns, &mut batches)?;
+		let mut built: Vec<EncodedRingBufferRowBuilder> =
+			(0..columns.num_rows()).map(|_| shape.allocate_ringbuffer()).collect();
+		batches[0].write(&shape, &mut built)?;
 
 		let mut ids = Vec::with_capacity(row_numbers.len());
 		let mut update_partitions = Vec::new();
 		let mut rows = Vec::with_capacity(row_numbers.len());
-		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
-			let row = build_updated_ringbuffer_row(
-				services,
-				txn,
-				&target_data,
-				&shape,
-				&view,
-				&fragments,
-				&context,
-				row_idx,
-			)?;
+		for (row_idx, (mut builder, &row_number)) in built.into_iter().zip(row_numbers.iter()).enumerate() {
 			let partition = if sidecar_partitions.is_empty() {
 				None
 			} else {
@@ -164,7 +154,6 @@ pub(crate) fn update_ringbuffer(
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = services.runtime_context.clock.now();
-			let mut builder = EncodedRingBufferRow::from(row).thaw();
 			builder.set_timestamps(old_created_at, now);
 			if let Some(time) = resolve_time_for_update(
 				&ringbuffer.name,
@@ -221,11 +210,6 @@ pub(crate) fn update_ringbuffer(
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count)
-}
-
-struct InputColumns<'a> {
-	columns: &'a [ColumnView<'a>],
-	column_map: &'a HashMap<&'a str, usize>,
 }
 
 #[inline]
@@ -302,55 +286,6 @@ fn enforce_old_row_policies(
 		&old_columns,
 		PolicyTargetType::RingBuffer,
 	)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn build_updated_ringbuffer_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &RingBufferTarget<'_>,
-	shape: &RowShape,
-	view: &InputColumns<'_>,
-	fragments: &InputFragments,
-	context: &QueryContext,
-	row_idx: usize,
-) -> Result<EncodedBytes> {
-	let mut row = shape.allocate_ringbuffer();
-	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
-		let mut value = if let Some(&input_idx) = view.column_map.get(rb_column.name.as_str()) {
-			view.columns[input_idx].get_value(row_idx)
-		} else {
-			Value::none()
-		};
-
-		let column_ident = fragments.column(&rb_column.name);
-		let resolved_column =
-			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
-
-		value = coerce_value_to_column_type(value, rb_column.constraint.get_type(), resolved_column, context)?;
-		if let Err(mut e) = rb_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-
-		let value = if let Some(dict_id) = rb_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, rb_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-
-		shape.set_value(&mut row, rb_idx, &value);
-	}
-	Ok(row.freeze_bytes())
 }
 
 #[inline]

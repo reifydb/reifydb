@@ -166,6 +166,47 @@ pub(crate) fn declared_return_column(
 	name: &str,
 	fragment: &Fragment,
 ) -> Result<(FieldRef, ArrayRef)> {
+	let results = results_column(&values, name)?;
+	match cast_to_declared_return_type(ctx, &ColumnView::try_from(&results)?, declared, name, fragment) {
+		Ok(casted) => {
+			let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
+			data.extend(&ColumnView::try_from(&casted)?)?;
+			Ok(data.finish(name))
+		}
+		Err(_) => declared_return_column_per_value(ctx, values, declared, name, fragment),
+	}
+}
+
+fn results_column(values: &[Value], name: &str) -> Result<(FieldRef, ArrayRef)> {
+	let wrapped = |value: &Value| {
+		matches!(value, Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) | Value::Type(_))
+	};
+	let mut types = values.iter().filter(|value| !matches!(value, Value::None { .. })).map(Value::get_type);
+	let uniform = match types.next() {
+		Some(first) if !values.iter().any(wrapped) && types.all(|ty| ty == first) => Some(first),
+		_ => None,
+	};
+	let any = uniform.is_none();
+	let mut data = ColumnBuilder::with_capacity(uniform.unwrap_or(ValueType::Any), values.len());
+	for value in values {
+		match value {
+			Value::None {
+				..
+			} => data.push_none(),
+			value if any && !wrapped(value) => data.push_value(Value::Any(Box::new(value.clone()))),
+			value => data.push_value(value.clone()),
+		}
+	}
+	Ok(data.finish(name))
+}
+
+fn declared_return_column_per_value(
+	ctx: impl Convert + Copy,
+	values: Vec<Value>,
+	declared: &TypeConstraint,
+	name: &str,
+	fragment: &Fragment,
+) -> Result<(FieldRef, ArrayRef)> {
 	let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
 	for value in values {
 		let single = factory::from_one(name, value);

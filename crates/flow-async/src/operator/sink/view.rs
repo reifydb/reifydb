@@ -636,7 +636,11 @@ mod tests {
 			let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
 				engine.single().clone(),
 			)));
-			registry.intern(&dictionary, &Value::Utf8(value.to_string())).unwrap().id.to_u128()
+			registry.intern_batch(&dictionary, &[Value::Utf8(value.to_string())])
+				.unwrap()
+				.remove(0)
+				.id
+				.to_u128()
 		};
 
 		let sol_id = intern("sol");

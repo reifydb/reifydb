@@ -60,7 +60,7 @@ use crate::{
 	},
 	vm::instruction::dml::{
 		coerce::series_key,
-		primary_key,
+		primary_key::{self, PrimaryKeyEncoder},
 		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
 		time::resolve_time,
 	},
@@ -266,9 +266,12 @@ fn write_table_rows(
 	let mut owned_rows = encoded_bytes_list;
 	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;
 
-	if let Some(ref pk_def) = pk_def {
+	if let Some(ref pk_def) = pk_def
+		&& !owned_rows.is_empty()
+	{
+		let encoder = PrimaryKeyEncoder::new(pk_def, table)?;
 		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
-			write_primary_key_index(txn, table, shape, pk_def, row, row_number)?;
+			write_primary_key_index(txn, table, shape, pk_def, &encoder, row, row_number)?;
 		}
 	}
 
@@ -396,10 +399,11 @@ fn write_primary_key_index(
 	table: &Table,
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
+	encoder: &PrimaryKeyEncoder,
 	row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
-	let index_key = primary_key::encode_primary_key(pk_def, row, table, shape)?;
+	let index_key = encoder.encode(shape, row);
 	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
 
 	if txn.contains(&index_entry_key)? {

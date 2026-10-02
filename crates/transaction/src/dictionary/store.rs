@@ -127,7 +127,7 @@ impl DictionaryStore for SingleDictionaryStore {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::{slice, sync::Arc};
 
 	use postcard::to_stdvec;
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
@@ -155,11 +155,11 @@ mod tests {
 		let value = Value::Utf8("GvUCjmWSXA5hrTh9smmNA1AU55YCtP9mDLQcrKA1pump".to_string());
 
 		let warm = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
-		let first = warm.intern(&dictionary, &value).unwrap();
+		let first = warm.intern_batch(&dictionary, slice::from_ref(&value)).unwrap().remove(0);
 		assert!(first.created, "first intern must create a new entry");
 
 		let cold = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
-		let second = cold.intern(&dictionary, &value).unwrap();
+		let second = cold.intern_batch(&dictionary, slice::from_ref(&value)).unwrap().remove(0);
 
 		assert_eq!(
 			second.id, first.id,

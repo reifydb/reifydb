@@ -35,6 +35,7 @@ use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_rql::expression::variant::for_each_is_variant;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	reifydb_assertions, return_error,
 	value::{Value, column_view::ColumnView, constraint::Constraint, sumtype::SumTypeId, value_type::ValueType},
@@ -792,28 +793,19 @@ impl InlineDataNode {
 				None => none(name, all_values.len()),
 			}
 		} else {
-			let mut data = ColumnBuilder::with_capacity(wide_type.clone().unwrap(), 0);
+			let wide = wide_type.clone().unwrap();
+			let mut casts = Self::cast_value_groups(session, all_values, &wide, name)?;
+			let mut data = ColumnBuilder::with_capacity(wide.clone(), 0);
 
-			for (value, value_type, fragment) in all_values {
+			for (row, (value, value_type, _)) in all_values.iter().enumerate() {
 				if matches!(value, Value::None { .. }) {
 					data.push_none();
-				} else if wide_type.as_ref().is_some_and(|wt| value_type == wt) {
+				} else if *value_type == wide {
 					data.push_value(value.clone());
+				} else if let Some(casted_value) = casts[row].take() {
+					data.push_value(casted_value);
 				} else {
-					let temp_data = from_one(name, value.clone());
-					let eval_ctx = session.with_eval_empty();
-
-					let casted = cast_column_data(
-						&eval_ctx,
-						&ColumnView::try_from(&temp_data)?,
-						wide_type.clone().unwrap(),
-						fragment,
-					)?;
-					if let Some(casted_value) = ColumnView::try_from(&casted)?.iter().next() {
-						data.push_value(casted_value);
-					} else {
-						data.push_none();
-					}
+					data.push_none();
 				}
 			}
 
@@ -835,6 +827,106 @@ impl InlineDataNode {
 		}
 
 		Ok(column_data)
+	}
+
+	fn cast_value_groups(
+		session: &EvalContext<'_>,
+		all_values: &[(Value, ValueType, Fragment)],
+		wide: &ValueType,
+		name: &str,
+	) -> Result<Vec<Option<Value>>> {
+		let mut groups: Vec<(ValueType, Vec<usize>)> = Vec::new();
+		let mut singles: Vec<usize> = Vec::new();
+		for (row, (value, value_type, _)) in all_values.iter().enumerate() {
+			if matches!(value, Value::None { .. }) || value_type == wide {
+				continue;
+			}
+			if !Self::groups_by_type(value_type) {
+				singles.push(row);
+				continue;
+			}
+			match groups.iter_mut().find(|(ty, _)| ty == value_type) {
+				Some((_, rows)) => rows.push(row),
+				None => groups.push((value_type.clone(), vec![row])),
+			}
+		}
+
+		let mut casts: Vec<Option<Value>> = vec![None; all_values.len()];
+		let mut first_error: Option<(usize, Error)> = None;
+		for (value_type, rows) in groups {
+			let mut data = ColumnBuilder::with_capacity(value_type, rows.len());
+			for &row in &rows {
+				data.push_value(all_values[row].0.clone());
+			}
+			let data = data.finish(name);
+			let eval_ctx = session.with_eval_empty();
+			let fragment = all_values[rows[0]].2.clone();
+			match cast_column_data(&eval_ctx, &ColumnView::try_from(&data)?, wide.clone(), fragment) {
+				Ok(casted) => {
+					let casted = ColumnView::try_from(&casted)?;
+					for (position, &row) in rows.iter().enumerate() {
+						casts[row] = Some(casted.get_value(position));
+					}
+				}
+				Err(_) => Self::cast_each(
+					session,
+					all_values,
+					&rows,
+					wide,
+					name,
+					&mut casts,
+					&mut first_error,
+				)?,
+			}
+		}
+		Self::cast_each(session, all_values, &singles, wide, name, &mut casts, &mut first_error)?;
+
+		match first_error {
+			Some((_, error)) => Err(error),
+			None => Ok(casts),
+		}
+	}
+
+	fn groups_by_type(value_type: &ValueType) -> bool {
+		value_type.is_number()
+			|| value_type.is_bool()
+			|| value_type.is_utf8()
+			|| value_type.is_blob()
+			|| value_type.is_temporal()
+			|| value_type.is_uuid()
+			|| *value_type == ValueType::IdentityId
+	}
+
+	fn cast_each(
+		session: &EvalContext<'_>,
+		all_values: &[(Value, ValueType, Fragment)],
+		rows: &[usize],
+		wide: &ValueType,
+		name: &str,
+		casts: &mut [Option<Value>],
+		first_error: &mut Option<(usize, Error)>,
+	) -> Result<()> {
+		for &row in rows {
+			if first_error.as_ref().is_some_and(|(failed, _)| *failed < row) {
+				break;
+			}
+			let (value, _, fragment) = &all_values[row];
+			let temp_data = from_one(name, value.clone());
+			let eval_ctx = session.with_eval_empty();
+			match cast_column_data(
+				&eval_ctx,
+				&ColumnView::try_from(&temp_data)?,
+				wide.clone(),
+				fragment.clone(),
+			) {
+				Ok(casted) => casts[row] = ColumnView::try_from(&casted)?.iter().next(),
+				Err(error) => {
+					*first_error = Some((row, error));
+					break;
+				}
+			}
+		}
+		Ok(())
 	}
 
 	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>> {

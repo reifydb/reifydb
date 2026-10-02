@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{
+	collections::{HashMap, hash_map::Entry},
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::row::bytes::{EncodedBytes, read_fingerprint};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	shape::{RowShape, fingerprint::RowShapeFingerprint},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -43,7 +49,7 @@ use reifydb_value::{
 
 use super::{
 	context::{TableTarget, WriteExecCtx},
-	primary_key,
+	primary_key::{self, PrimaryKeyEncoder},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
 };
@@ -181,6 +187,7 @@ fn run_table_delete_with_input(
 	}
 
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
+	let mut pk_index = pk_def.as_ref().map(PrimaryKeyIndex::new);
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(row_numbers_to_delete.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(partitions_to_delete.len());
@@ -191,8 +198,8 @@ fn run_table_delete_with_input(
 			Some(v) => v.bytes,
 			None => continue,
 		};
-		if let Some(ref pk_def) = pk_def {
-			remove_table_pk_index_for(exec.services, txn, target.table, pk_def, &bytes)?;
+		if let Some(pk_index) = &mut pk_index {
+			pk_index.remove(exec.services, txn, target.table, &bytes)?;
 		}
 		filtered_ids.push(row_number);
 		if let Some(p) = partition {
@@ -260,13 +267,14 @@ fn run_table_delete_all(
 		RowKeyRange::storage_scan(table.id.into())
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
+	let mut pk_index = pk_def.as_ref().map(PrimaryKeyIndex::new);
 	let rows: Vec<_> = txn.range(range, RangeScope::All, 32)?.collect::<Result<Vec<_>>>()?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(rows.len());
 	for multi in rows {
-		if let Some(ref pk_def) = pk_def {
-			remove_table_pk_index_for(services, txn, table, pk_def, &multi.bytes)?;
+		if let Some(pk_index) = &mut pk_index {
+			pk_index.remove(services, txn, table, &multi.bytes)?;
 		}
 		if partitioned {
 			let TaggedKey::PartitionedRow(key) = multi.key else {
@@ -292,21 +300,51 @@ fn run_table_delete_all(
 	Ok((deleted_count, returned_rows))
 }
 
-#[inline]
-fn remove_table_pk_index_for(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	table: &Table,
-	pk_def: &PrimaryKey,
-	values: &EncodedBytes,
-) -> Result<()> {
-	let fingerprint = read_fingerprint(values);
-	let shape = services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
-		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
-	})?;
-	let index_key = primary_key::encode_primary_key(pk_def, values, table, &shape)?;
-	txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key))?;
-	Ok(())
+struct PrimaryKeyIndex<'a> {
+	pk_def: &'a PrimaryKey,
+	encoder: Option<PrimaryKeyEncoder>,
+	shapes: HashMap<RowShapeFingerprint, RowShape>,
+}
+
+impl<'a> PrimaryKeyIndex<'a> {
+	fn new(pk_def: &'a PrimaryKey) -> Self {
+		Self {
+			pk_def,
+			encoder: None,
+			shapes: HashMap::new(),
+		}
+	}
+
+	fn remove(
+		&mut self,
+		services: &Arc<Services>,
+		txn: &mut Transaction<'_>,
+		table: &Table,
+		values: &EncodedBytes,
+	) -> Result<()> {
+		let fingerprint = read_fingerprint(values);
+		let shape = match self.shapes.entry(fingerprint) {
+			Entry::Occupied(entry) => entry.into_mut(),
+			Entry::Vacant(entry) => {
+				let shape =
+					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+						internal_error!(
+							"Row shape with fingerprint {:?} not found for table {}",
+							fingerprint,
+							table.name
+						)
+					})?;
+				entry.insert(shape)
+			}
+		};
+		let encoder = match &mut self.encoder {
+			Some(encoder) => encoder,
+			None => self.encoder.insert(PrimaryKeyEncoder::new(self.pk_def, table)?),
+		};
+		let index_key = encoder.encode(shape, values);
+		txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(self.pk_def.id), index_key))?;
+		Ok(())
+	}
 }
 
 #[inline]

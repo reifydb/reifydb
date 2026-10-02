@@ -679,7 +679,10 @@ mod source {
 				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
 			let registry = harness.dictionary_registry();
 			let intern = |symbol: &str| {
-				registry.intern(&dictionary, &Value::Utf8(symbol.to_string())).expect("intern").id
+				registry.intern_batch(&dictionary, &[Value::Utf8(symbol.to_string())])
+					.expect("intern")
+					.remove(0)
+					.id
 			};
 
 			let out = harness
@@ -728,8 +731,9 @@ mod source {
 				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
 			let entry = harness
 				.dictionary_registry()
-				.intern(&dictionary, &Value::Utf8(BEFORE.to_string()))
+				.intern_batch(&dictionary, &[Value::Utf8(BEFORE.to_string())])
 				.expect("intern")
+				.remove(0)
 				.id;
 
 			let out = harness

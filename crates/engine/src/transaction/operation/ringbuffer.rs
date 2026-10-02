@@ -25,7 +25,7 @@ use reifydb_core::{
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::{
-	interceptor::ringbuffer_row::RingBufferRowInterceptor,
+	interceptor::{WithInterceptors, ringbuffer_row::RingBufferRowInterceptor},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_value::{
@@ -147,36 +147,55 @@ impl RingBufferOperations for CommandTransaction {
 		let mut replaced_ids = Vec::new();
 		let mut replaced_pres = Vec::new();
 		let mut replaced_posts = Vec::new();
+		if ids.is_empty() {
+			return Ok(stored);
+		}
 
-		for (idx, (&row_number, bytes)) in ids.iter().zip(rows).enumerate() {
-			let key = ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number);
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &row_number)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number))
+			.collect();
+		let mut pres = Vec::with_capacity(keys.len());
+		for key in &keys {
+			pres.push(self.get(key)?.map(|v| v.bytes));
+		}
 
-			let pre = self.get(&key)?.map(|v| v.bytes);
-
-			if let Some(ref existing) = pre {
-				let ids = [row_number];
-				let existing_rows = [existing.clone()];
-				RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
-				RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
+		for (&row_number, pre) in ids.iter().zip(&pres) {
+			if let Some(pre) = pre {
+				replaced_ids.push(row_number);
+				replaced_pres.push(pre.clone());
 			}
+		}
+		if !replaced_ids.is_empty() {
+			if !self.ringbuffer_row_pre_delete_interceptors().is_empty() {
+				RingBufferRowInterceptor::pre_delete(self, ringbuffer, &replaced_ids)?;
+			}
+			if !self.ringbuffer_row_post_delete_interceptors().is_empty() {
+				RingBufferRowInterceptor::post_delete(self, ringbuffer, &replaced_ids, &replaced_pres)?;
+			}
+		}
 
-			let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
-			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
-			let [bytes] = rows_buf;
-			let bytes = bytes.freeze_bytes();
+		let written: Vec<EncodedBytes> = if self.ringbuffer_row_pre_insert_interceptors().is_empty() {
+			rows.to_vec()
+		} else {
+			let mut builders: Vec<_> =
+				rows.iter().map(|bytes| EncodedRingBufferRow::from(bytes.clone()).thaw()).collect();
+			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut builders)?;
+			builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
+		};
 
-			self.set(&key, bytes.clone())?;
+		for (key, bytes) in keys.iter().zip(&written) {
+			self.set(key, bytes.clone())?;
+		}
 
-			let row_ids = [row_number];
-			let post_rows = [bytes.clone()];
-			RingBufferRowInterceptor::post_insert(self, ringbuffer, &row_ids, &post_rows)?;
+		if !self.ringbuffer_row_post_insert_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_insert(self, ringbuffer, ids, &written)?;
+		}
 
+		for ((&row_number, pre), bytes) in ids.iter().zip(&pres).zip(written) {
 			match pre {
-				Some(pre) => {
-					replaced_ids.push(row_number);
-					replaced_pres.push(pre);
-					replaced_posts.push(bytes.clone());
-				}
+				Some(_) => replaced_posts.push(bytes.clone()),
 				None => {
 					inserted_ids.push(row_number);
 					inserted.push(bytes.clone());
@@ -217,34 +236,41 @@ impl RingBufferOperations for CommandTransaction {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 		let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-		let mut stored = Vec::with_capacity(rows.len());
 		let mut updated_ids = Vec::new();
 		let mut pres = Vec::new();
-		let mut posts = Vec::new();
+		let mut matched = Vec::new();
 
-		for (idx, (&id, bytes)) in ids.iter().zip(rows).enumerate() {
-			let partition = partitions.get(idx).copied();
-			let key = ringbuffer_key(ringbuffer, partition, id);
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &id)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id))
+			.collect();
+		for (idx, key) in keys.iter().enumerate() {
+			if let Some(pre) = self.get(key)? {
+				matched.push(idx);
+				updated_ids.push(ids[idx]);
+				pres.push(pre.bytes);
+			}
+		}
 
-			let pre = match self.get(&key)? {
-				Some(v) => v.bytes,
-				None => {
-					stored.push(bytes.clone());
-					continue;
-				}
+		let posts: Vec<EncodedBytes> =
+			if matched.is_empty() || self.ringbuffer_row_pre_update_interceptors().is_empty() {
+				matched.iter().map(|&idx| rows[idx].clone()).collect()
+			} else {
+				let mut builders: Vec<_> = matched
+					.iter()
+					.map(|&idx| EncodedRingBufferRow::from(rows[idx].clone()).thaw())
+					.collect();
+				RingBufferRowInterceptor::pre_update(self, ringbuffer, &updated_ids, &mut builders)?;
+				builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
 			};
 
-			let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
-			let row_ids = [id];
-			RingBufferRowInterceptor::pre_update(self, ringbuffer, &row_ids, &mut rows_buf)?;
-			let [bytes] = rows_buf;
-			let bytes = bytes.freeze_bytes();
-
-			if let Some(expected) = partition
+		for (&idx, bytes) in matched.iter().zip(&posts) {
+			if let Some(expected) = partitions.get(idx).copied()
 				&& partition_of(
 					&ringbuffer.columns,
 					&ringbuffer.partition_by,
-					&partition_values(&shape, &bytes, &indices),
+					&partition_values(&shape, bytes, &indices),
 				) != expected
 			{
 				return Err(PartitionError::ImmutablePartitionColumn {
@@ -253,19 +279,20 @@ impl RingBufferOperations for CommandTransaction {
 				.into());
 			}
 
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+			let key = &keys[idx];
+			if self.get_committed(key)?.is_some() {
+				self.mark_preexisting(key)?;
 			}
-			self.set(&key, bytes.clone())?;
+			self.set(key, bytes.clone())?;
+		}
 
-			let post_rows = [bytes.clone()];
-			let pre_rows = [pre.clone()];
-			RingBufferRowInterceptor::post_update(self, ringbuffer, &row_ids, &post_rows, &pre_rows)?;
+		if !matched.is_empty() && !self.ringbuffer_row_post_update_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_update(self, ringbuffer, &updated_ids, &posts, &pres)?;
+		}
 
-			updated_ids.push(id);
-			pres.push(pre);
-			posts.push(bytes.clone());
-			stored.push(bytes);
+		let mut stored: Vec<EncodedBytes> = rows.to_vec();
+		for (&idx, bytes) in matched.iter().zip(&posts) {
+			stored[idx] = bytes.clone();
 		}
 
 		if !updated_ids.is_empty() {
@@ -290,6 +317,7 @@ impl RingBufferOperations for CommandTransaction {
 		let mut displayed_rows = Vec::with_capacity(ids.len());
 		let mut removed_ids = Vec::new();
 		let mut removed = Vec::new();
+		let mut matched = Vec::new();
 
 		for (idx, &id) in ids.iter().enumerate() {
 			let key = ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id);
@@ -303,22 +331,25 @@ impl RingBufferOperations for CommandTransaction {
 			};
 			let committed = self.get_committed(&key)?.map(|v| v.bytes);
 
-			let row_ids = [id];
-			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &row_ids)?;
-
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
-
-			if committed.is_some() {
-				self.mark_preexisting(&key)?;
-			}
-			self.remove_with_pre(&key, pre_for_cdc.clone())?;
-
-			let pre_rows = [pre_for_cdc.clone()];
-			RingBufferRowInterceptor::post_delete(self, ringbuffer, &row_ids, &pre_rows)?;
-
 			removed_ids.push(id);
-			removed.push(pre_for_cdc);
+			removed.push(committed.clone().unwrap_or_else(|| displayed.clone()));
+			matched.push((key, committed.is_some()));
 			displayed_rows.push(displayed);
+		}
+
+		if !removed_ids.is_empty() && !self.ringbuffer_row_pre_delete_interceptors().is_empty() {
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &removed_ids)?;
+		}
+
+		for ((key, committed), pre_for_cdc) in matched.iter().zip(&removed) {
+			if *committed {
+				self.mark_preexisting(key)?;
+			}
+			self.remove_with_pre(key, pre_for_cdc.clone())?;
+		}
+
+		if !removed_ids.is_empty() && !self.ringbuffer_row_post_delete_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, &removed_ids, &removed)?;
 		}
 
 		if !removed_ids.is_empty() {
@@ -351,36 +382,55 @@ impl RingBufferOperations for AdminTransaction {
 		let mut replaced_ids = Vec::new();
 		let mut replaced_pres = Vec::new();
 		let mut replaced_posts = Vec::new();
+		if ids.is_empty() {
+			return Ok(stored);
+		}
 
-		for (idx, (&row_number, bytes)) in ids.iter().zip(rows).enumerate() {
-			let key = ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number);
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &row_number)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number))
+			.collect();
+		let mut pres = Vec::with_capacity(keys.len());
+		for key in &keys {
+			pres.push(self.get(key)?.map(|v| v.bytes));
+		}
 
-			let pre = self.get(&key)?.map(|v| v.bytes);
-
-			if let Some(ref existing) = pre {
-				let ids = [row_number];
-				let existing_rows = [existing.clone()];
-				RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
-				RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
+		for (&row_number, pre) in ids.iter().zip(&pres) {
+			if let Some(pre) = pre {
+				replaced_ids.push(row_number);
+				replaced_pres.push(pre.clone());
 			}
+		}
+		if !replaced_ids.is_empty() {
+			if !self.ringbuffer_row_pre_delete_interceptors().is_empty() {
+				RingBufferRowInterceptor::pre_delete(self, ringbuffer, &replaced_ids)?;
+			}
+			if !self.ringbuffer_row_post_delete_interceptors().is_empty() {
+				RingBufferRowInterceptor::post_delete(self, ringbuffer, &replaced_ids, &replaced_pres)?;
+			}
+		}
 
-			let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
-			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
-			let [bytes] = rows_buf;
-			let bytes = bytes.freeze_bytes();
+		let written: Vec<EncodedBytes> = if self.ringbuffer_row_pre_insert_interceptors().is_empty() {
+			rows.to_vec()
+		} else {
+			let mut builders: Vec<_> =
+				rows.iter().map(|bytes| EncodedRingBufferRow::from(bytes.clone()).thaw()).collect();
+			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut builders)?;
+			builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
+		};
 
-			self.set(&key, bytes.clone())?;
+		for (key, bytes) in keys.iter().zip(&written) {
+			self.set(key, bytes.clone())?;
+		}
 
-			let row_ids = [row_number];
-			let post_rows = [bytes.clone()];
-			RingBufferRowInterceptor::post_insert(self, ringbuffer, &row_ids, &post_rows)?;
+		if !self.ringbuffer_row_post_insert_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_insert(self, ringbuffer, ids, &written)?;
+		}
 
+		for ((&row_number, pre), bytes) in ids.iter().zip(&pres).zip(written) {
 			match pre {
-				Some(pre) => {
-					replaced_ids.push(row_number);
-					replaced_pres.push(pre);
-					replaced_posts.push(bytes.clone());
-				}
+				Some(_) => replaced_posts.push(bytes.clone()),
 				None => {
 					inserted_ids.push(row_number);
 					inserted.push(bytes.clone());
@@ -421,34 +471,41 @@ impl RingBufferOperations for AdminTransaction {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 		let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-		let mut stored = Vec::with_capacity(rows.len());
 		let mut updated_ids = Vec::new();
 		let mut pres = Vec::new();
-		let mut posts = Vec::new();
+		let mut matched = Vec::new();
 
-		for (idx, (&id, bytes)) in ids.iter().zip(rows).enumerate() {
-			let partition = partitions.get(idx).copied();
-			let key = ringbuffer_key(ringbuffer, partition, id);
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &id)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id))
+			.collect();
+		for (idx, key) in keys.iter().enumerate() {
+			if let Some(pre) = self.get(key)? {
+				matched.push(idx);
+				updated_ids.push(ids[idx]);
+				pres.push(pre.bytes);
+			}
+		}
 
-			let pre = match self.get(&key)? {
-				Some(v) => v.bytes,
-				None => {
-					stored.push(bytes.clone());
-					continue;
-				}
+		let posts: Vec<EncodedBytes> =
+			if matched.is_empty() || self.ringbuffer_row_pre_update_interceptors().is_empty() {
+				matched.iter().map(|&idx| rows[idx].clone()).collect()
+			} else {
+				let mut builders: Vec<_> = matched
+					.iter()
+					.map(|&idx| EncodedRingBufferRow::from(rows[idx].clone()).thaw())
+					.collect();
+				RingBufferRowInterceptor::pre_update(self, ringbuffer, &updated_ids, &mut builders)?;
+				builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
 			};
 
-			let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
-			let row_ids = [id];
-			RingBufferRowInterceptor::pre_update(self, ringbuffer, &row_ids, &mut rows_buf)?;
-			let [bytes] = rows_buf;
-			let bytes = bytes.freeze_bytes();
-
-			if let Some(expected) = partition
+		for (&idx, bytes) in matched.iter().zip(&posts) {
+			if let Some(expected) = partitions.get(idx).copied()
 				&& partition_of(
 					&ringbuffer.columns,
 					&ringbuffer.partition_by,
-					&partition_values(&shape, &bytes, &indices),
+					&partition_values(&shape, bytes, &indices),
 				) != expected
 			{
 				return Err(PartitionError::ImmutablePartitionColumn {
@@ -457,19 +514,20 @@ impl RingBufferOperations for AdminTransaction {
 				.into());
 			}
 
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+			let key = &keys[idx];
+			if self.get_committed(key)?.is_some() {
+				self.mark_preexisting(key)?;
 			}
-			self.set(&key, bytes.clone())?;
+			self.set(key, bytes.clone())?;
+		}
 
-			let post_rows = [bytes.clone()];
-			let pre_rows = [pre.clone()];
-			RingBufferRowInterceptor::post_update(self, ringbuffer, &row_ids, &post_rows, &pre_rows)?;
+		if !matched.is_empty() && !self.ringbuffer_row_post_update_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_update(self, ringbuffer, &updated_ids, &posts, &pres)?;
+		}
 
-			updated_ids.push(id);
-			pres.push(pre);
-			posts.push(bytes.clone());
-			stored.push(bytes);
+		let mut stored: Vec<EncodedBytes> = rows.to_vec();
+		for (&idx, bytes) in matched.iter().zip(&posts) {
+			stored[idx] = bytes.clone();
 		}
 
 		if !updated_ids.is_empty() {
@@ -494,6 +552,7 @@ impl RingBufferOperations for AdminTransaction {
 		let mut displayed_rows = Vec::with_capacity(ids.len());
 		let mut removed_ids = Vec::new();
 		let mut removed = Vec::new();
+		let mut matched = Vec::new();
 
 		for (idx, &id) in ids.iter().enumerate() {
 			let key = ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id);
@@ -507,22 +566,25 @@ impl RingBufferOperations for AdminTransaction {
 			};
 			let committed = self.get_committed(&key)?.map(|v| v.bytes);
 
-			let row_ids = [id];
-			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &row_ids)?;
-
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
-
-			if committed.is_some() {
-				self.mark_preexisting(&key)?;
-			}
-			self.remove_with_pre(&key, pre_for_cdc.clone())?;
-
-			let pre_rows = [pre_for_cdc.clone()];
-			RingBufferRowInterceptor::post_delete(self, ringbuffer, &row_ids, &pre_rows)?;
-
 			removed_ids.push(id);
-			removed.push(pre_for_cdc);
+			removed.push(committed.clone().unwrap_or_else(|| displayed.clone()));
+			matched.push((key, committed.is_some()));
 			displayed_rows.push(displayed);
+		}
+
+		if !removed_ids.is_empty() && !self.ringbuffer_row_pre_delete_interceptors().is_empty() {
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &removed_ids)?;
+		}
+
+		for ((key, committed), pre_for_cdc) in matched.iter().zip(&removed) {
+			if *committed {
+				self.mark_preexisting(key)?;
+			}
+			self.remove_with_pre(key, pre_for_cdc.clone())?;
+		}
+
+		if !removed_ids.is_empty() && !self.ringbuffer_row_post_delete_interceptors().is_empty() {
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, &removed_ids, &removed)?;
 		}
 
 		if !removed_ids.is_empty() {

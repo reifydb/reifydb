@@ -6,11 +6,14 @@ use std::{collections::HashMap, sync::Arc};
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use postcard::to_stdvec;
-use reifydb_codec::row::{
-	bytes::{EncodedBytes, RowBuilder},
-	queue::EncodedQueueRow,
-	queue_deduplication::EncodedQueueDeduplicationRow,
-	shape::RowShape,
+use reifydb_codec::{
+	key::serializer::KeySerializer,
+	row::{
+		bytes::{EncodedBytes, RowBuilder},
+		queue::{EncodedQueueRow, EncodedQueueRowBuilder},
+		queue_deduplication::EncodedQueueDeduplicationRow,
+		shape::RowShape,
+	},
 };
 use reifydb_core::{
 	error::diagnostic::{
@@ -28,14 +31,14 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			queue::{Queue, decode_queue_deduplication, encode_queue_deduplication},
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedQueue},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
 	internal_error,
 	key::{queue::QueueDeduplicationKey, row::RowKey},
 	return_internal_error,
 	value::{
-		batch::{batch, single_row},
-		column::builder::ColumnBuilder,
+		batch::{batch, decode_cells, single_row},
+		column::{builder::ColumnBuilder, key::extend_keys},
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -44,12 +47,13 @@ use reifydb_rql::nodes::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	return_error,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		duration::Duration,
 		identity::IdentityId,
@@ -61,6 +65,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
+	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_queue_shape,
 };
@@ -68,15 +73,9 @@ use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	queue::partition::{ordered_by_index, placement_of},
-	transaction::operation::{
-		dictionary::DictionaryOperations,
-		queue::{QueueInsertRow, QueueOperations},
-	},
+	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
-		instruction::dml::{
-			coerce::{InputFragments, coerce_value_to_column_type},
-			time::resolve_time,
-		},
+		instruction::dml::{coerce::InputFragments, time::resolve_time},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -135,7 +134,7 @@ pub(crate) fn insert_queue(
 	}
 
 	let now = services.runtime_context.clock.now();
-	let outcomes = resolve_duplicates(txn, &queue, &shape, &pending, now)?;
+	let outcomes = resolve_duplicates(txn, &queue, &pending, now)?;
 
 	let fresh_count = outcomes.iter().filter(|outcome| matches!(outcome, Outcome::Fresh)).count();
 	let duplicates = outcomes.len() - fresh_count;
@@ -248,15 +247,14 @@ fn write_deduplication_record(
 fn resolve_duplicates(
 	txn: &mut Transaction<'_>,
 	queue: &Queue,
-	shape: &RowShape,
 	pending: &[PendingItem],
 	now: DateTime,
 ) -> Result<Vec<Outcome>> {
 	let mut outcomes = Vec::with_capacity(pending.len());
-	let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
+	let mut seen: HashMap<&[u8], usize> = HashMap::new();
 
 	for (index, item) in pending.iter().enumerate() {
-		let Some(key) = &item.deduplication_key else {
+		let Some(key) = item.deduplication_key.as_deref() else {
 			outcomes.push(Outcome::Fresh);
 			continue;
 		};
@@ -268,7 +266,7 @@ fn resolve_duplicates(
 			continue;
 		}
 
-		let stored = txn.get(&QueueDeduplicationKey::new(queue.id, key.clone()))?;
+		let stored = txn.get(&QueueDeduplicationKey::new(queue.id, key))?;
 		if let Some(stored) = stored {
 			let Some((row_number, expires_at)) =
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
@@ -289,11 +287,10 @@ fn resolve_duplicates(
 			}
 		}
 
-		seen.insert(key.clone(), index);
+		seen.insert(key, index);
 		outcomes.push(Outcome::Fresh);
 	}
 
-	let _ = shape;
 	Ok(outcomes)
 }
 
@@ -339,9 +336,33 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 	Ok(Some(indices))
 }
 
-fn declared_key_bytes(shape: &RowShape, bytes: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
-	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(bytes, index)).collect();
-	to_stdvec(&values).expect("postcard serialization of a Value list is total")
+fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> Result<Vec<Vec<u8>>> {
+	let mut keys: Vec<KeySerializer> = rows.iter().map(|_| KeySerializer::new()).collect();
+	for &index in indices {
+		let field = &shape.fields()[index];
+		let field_type = field.constraint.get_type();
+		if matches!(
+			field_type.inner_type(),
+			ValueType::Digest { .. }
+				| ValueType::Any
+				| ValueType::List(_)
+				| ValueType::Record(_)
+				| ValueType::Tuple(_)
+		) {
+			for (key, row) in keys.iter_mut().zip(rows) {
+				let value = shape.get_value(row, index);
+				key.extend_bytes(
+					to_stdvec(&value).expect("postcard serialization of a Value is total"),
+				);
+			}
+		} else {
+			let mut builder = ColumnBuilder::with_capacity(field_type, rows.len());
+			decode_cells(&mut builder, &field.name, shape, index, rows)?;
+			let column = builder.finish(&field.name);
+			extend_keys(&ColumnView::try_from(&column)?, &mut keys)?;
+		}
+	}
+	Ok(keys.into_iter().map(|key| key.finish().to_vec()).collect())
 }
 
 #[inline]
@@ -413,9 +434,17 @@ fn validate_and_encode_input_rows(
 	has_deduplication: bool,
 	has_not_before: bool,
 ) -> Result<Vec<PendingItem>> {
-	let mut pending: Vec<PendingItem> = Vec::new();
 	let mut mutable_context = (**context).clone();
 	let declared_key_indices = declared_key_indices(target.queue)?;
+	let pipeline = ColumnPipeline {
+		columns: &target.queue.columns,
+		sequences: Some(target.queue.id.into()),
+		fragments,
+		context,
+	};
+	let mut casts: Vec<CastColumns> = Vec::new();
+	let mut not_befores: Vec<Vec<Option<DateTime>>> = Vec::new();
+	let mut statement_keys: Vec<Option<Vec<Vec<u8>>>> = Vec::new();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -434,43 +463,59 @@ fn validate_and_encode_input_rows(
 			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
 
-		let views: Vec<ColumnView<'_>> = user_columns(&columns)
-			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-			.collect::<Result<_>>()?;
-		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, view) in views.iter().enumerate() {
-			column_map.insert(view.field.name().as_str(), idx);
+		let rows = columns.num_rows();
+		let not_before_view = match has_not_before {
+			true => named_view(&columns, QUEUE_NOT_BEFORE_FIELD)?,
+			false => None,
+		};
+		let (not_before, not_before_failure) = read_not_before(target, not_before_view.as_ref(), rows);
+		let key_view = match declared_key_indices.is_none() && has_deduplication {
+			true => named_view(&columns, QUEUE_DEDUPLICATION_KEY_FIELD)?,
+			false => None,
+		};
+		let key_failure = key_view.as_ref().and_then(|view| statement_key_failure(target, &pipeline, view));
+
+		let inputs = input_views(&columns, &target.queue.columns)?;
+		let earliest = Failure::earliest([not_before_failure, key_failure]);
+		let mut cast = pipeline.cast_target_columns(&inputs, rows, earliest)?;
+		pipeline.fill_sequences(services, txn, &mut cast)?;
+
+		statement_keys.push(key_view.as_ref().map(statement_key_bytes).transpose()?);
+		not_befores.push(not_before);
+		casts.push(cast);
+	}
+	intern_dictionary_columns(services, txn, &target.queue.columns, &mut casts)?;
+
+	let mut pending: Vec<PendingItem> = Vec::new();
+	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {
+		let mut rows: Vec<EncodedQueueRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_queue()).collect();
+		cast.write(shape, &mut rows)?;
+		let mut encoded = Vec::with_capacity(rows.len());
+		for (mut row, not_before) in rows.into_iter().zip(&not_before) {
+			if let Some(instant) = not_before {
+				row.set_not_before(*instant);
+			}
+			let now = services.runtime_context.clock.now();
+			row.set_timestamps(now, now);
+			if let Some(time) = resolve_time(
+				&target.queue.name,
+				&target.queue.columns,
+				&target.queue.time,
+				shape,
+				&row,
+				now,
+			)? {
+				row.set_time(time);
+			}
+			encoded.push(row.freeze_bytes());
 		}
 
-		for row_idx in 0..columns.num_rows() {
-			let declared_key_indices = declared_key_indices.as_deref();
-			let not_before = if has_not_before {
-				read_not_before(target, &views, &column_map, row_idx)?
-			} else {
-				None
-			};
-
-			let encoded = build_insert_queue_row(
-				services,
-				txn,
-				target,
-				shape,
-				&views,
-				&column_map,
-				fragments,
-				context,
-				row_idx,
-				not_before,
-			)?;
-
-			let deduplication_key = match declared_key_indices {
-				Some(indices) => Some(declared_key_bytes(shape, &encoded, indices)),
-				None if has_deduplication => {
-					read_deduplication_key(target, &views, &column_map, row_idx)?
-				}
-				None => None,
-			};
-
+		let keys: Vec<Option<Vec<u8>>> = match (&declared_key_indices, statement_keys) {
+			(Some(indices), _) => declared_keys(shape, &encoded, indices)?.into_iter().map(Some).collect(),
+			(None, Some(keys)) => keys.into_iter().map(Some).collect(),
+			(None, None) => vec![None; encoded.len()],
+		};
+		for ((encoded, deduplication_key), not_before) in encoded.into_iter().zip(keys).zip(not_before) {
 			pending.push(PendingItem {
 				encoded,
 				deduplication_key,
@@ -482,132 +527,81 @@ fn validate_and_encode_input_rows(
 	Ok(pending)
 }
 
-#[inline]
-fn read_deduplication_key(
+fn named_view<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+	user_columns(columns)
+		.filter(|(field, _)| field.name() == name)
+		.last()
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
+		.transpose()
+}
+
+fn statement_key_failure(
 	target: &QueueTarget<'_>,
-	columns: &[ColumnView<'_>],
-	column_map: &HashMap<&str, usize>,
-	row_idx: usize,
-) -> Result<Option<Vec<u8>>> {
-	let Some(&idx) = column_map.get(QUEUE_DEDUPLICATION_KEY_FIELD) else {
-		return Ok(None);
-	};
-	let value = columns[idx].get_value(row_idx);
-	match value {
+	pipeline: &ColumnPipeline<'_>,
+	view: &ColumnView<'_>,
+) -> Option<Failure> {
+	if matches!(view.data, ViewData::Utf8 { .. } | ViewData::None { .. }) {
+		return None;
+	}
+	(0..view.len()).find_map(|row| match view.get_value(row) {
 		Value::None {
 			..
 		}
-		| Value::Utf8(_) => Ok(Some(statement_key_bytes(&value))),
-		other => return_error!(queue_deduplication_key_not_utf8(
-			Fragment::internal(target.queue.name.clone()),
-			other.get_type().to_string().as_str()
+		| Value::Utf8(_) => None,
+		other => Some(Failure::after_columns(
+			pipeline,
+			row,
+			Error(Box::new(queue_deduplication_key_not_utf8(
+				Fragment::internal(target.queue.name.clone()),
+				other.get_type().to_string().as_str(),
+			))),
 		)),
+	})
+}
+
+fn statement_key_bytes(view: &ColumnView<'_>) -> Result<Vec<Vec<u8>>> {
+	let mut keys: Vec<KeySerializer> = (0..view.len()).map(|_| KeySerializer::new()).collect();
+	if matches!(
+		view.base_type(),
+		ValueType::Digest { .. } | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_)
+	) {
+		for (row, key) in keys.iter_mut().enumerate() {
+			key.extend_bytes(
+				to_stdvec(&view.get_value(row)).expect("postcard serialization of a Value is total"),
+			);
+		}
+	} else {
+		extend_keys(view, &mut keys)?;
 	}
+	Ok(keys.into_iter().map(|key| key.finish().to_vec()).collect())
 }
 
-fn statement_key_bytes(value: &Value) -> Vec<u8> {
-	to_stdvec(value).expect("postcard serialization of a Value is total")
-}
-
-#[inline]
 fn read_not_before(
 	target: &QueueTarget<'_>,
-	columns: &[ColumnView<'_>],
-	column_map: &HashMap<&str, usize>,
-	row_idx: usize,
-) -> Result<Option<DateTime>> {
-	let Some(&idx) = column_map.get(QUEUE_NOT_BEFORE_FIELD) else {
-		return Ok(None);
+	view: Option<&ColumnView<'_>>,
+	rows: usize,
+) -> (Vec<Option<DateTime>>, Option<Failure>) {
+	let Some(view) = view else {
+		return (vec![None; rows], None);
 	};
-	match columns[idx].get_value(row_idx) {
-		Value::None {
-			..
-		} => Ok(None),
-		Value::DateTime(instant) => Ok(Some(instant)),
-		other => return_error!(queue_not_before_not_datetime(
-			Fragment::internal(target.queue.name.clone()),
-			other.get_type().to_string().as_str()
-		)),
-	}
-}
-
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn build_insert_queue_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &QueueTarget<'_>,
-	shape: &RowShape,
-	columns: &[ColumnView<'_>],
-	column_map: &HashMap<&str, usize>,
-	fragments: &InputFragments,
-	context: &Arc<QueryContext>,
-	row_idx: usize,
-	not_before: Option<DateTime>,
-) -> Result<EncodedBytes> {
-	let mut row = shape.allocate_queue();
-
-	for (queue_idx, queue_column) in target.queue.columns.iter().enumerate() {
-		let mut value = if let Some(&input_idx) = column_map.get(queue_column.name.as_str()) {
-			columns[input_idx].get_value(row_idx)
-		} else {
-			Value::none()
-		};
-
-		if queue_column.auto_increment && matches!(value, Value::None { .. }) {
-			value = services.catalog.column_sequence_next_value(txn, target.queue.id, queue_column.id)?;
+	let mut values = Vec::with_capacity(rows);
+	for row in 0..rows {
+		match view.get_value(row) {
+			Value::None {
+				..
+			} => values.push(None),
+			Value::DateTime(instant) => values.push(Some(instant)),
+			other => {
+				let error = Error(Box::new(queue_not_before_not_datetime(
+					Fragment::internal(target.queue.name.clone()),
+					other.get_type().to_string().as_str(),
+				)));
+				values.resize(rows, None);
+				return (values, Some(Failure::before_columns(row, error)));
+			}
 		}
-
-		let column_ident = fragments.column(&queue_column.name);
-
-		let resolved_column = ResolvedColumn::new(
-			column_ident.clone(),
-			context.source.clone().unwrap(),
-			queue_column.clone(),
-		);
-
-		value = coerce_value_to_column_type(
-			value,
-			queue_column.constraint.get_type(),
-			resolved_column,
-			context,
-		)?;
-
-		if let Err(mut e) = queue_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-
-		let value = if let Some(dict_id) = queue_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, queue_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-
-		shape.set_value(&mut row, queue_idx, &value);
 	}
-
-	if let Some(instant) = not_before {
-		row.set_not_before(instant);
-	}
-
-	let now = services.runtime_context.clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) =
-		resolve_time(&target.queue.name, &target.queue.columns, &target.queue.time, shape, &row, now)?
-	{
-		row.set_time(time);
-	}
-
-	Ok(row.freeze_bytes())
+	(values, None)
 }
 
 #[inline]

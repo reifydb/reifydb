@@ -9,6 +9,7 @@ use std::{
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
+	ringbuffer::EncodedRingBufferRowBuilder,
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -24,9 +25,8 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	internal_error,
 	partition::partition_of,
 	value::batch::single_row,
 };
@@ -40,16 +40,15 @@ use reifydb_value::{
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value,
-		identity::IdentityId,
-		row_number::RowNumber,
-		system_columns::{column_view, user_columns},
+		Value, column_view::ColumnView, identity::IdentityId, row_number::RowNumber,
+		system_columns::user_columns,
 	},
 };
 use tracing::instrument;
 
 use super::{
-	coerce::{InputFragments, coerce_value_to_column_type},
+	coerce::InputFragments,
+	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	partition::{
 		compute_partition_col_indices, ensure_partition_metadata, save_all_partition_metadata,
@@ -61,7 +60,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
+	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
 		instruction::dml::time::resolve_time,
 		services::Services,
@@ -151,6 +150,12 @@ fn drive_ringbuffer_insert(
 	let partition_col_indices = compute_partition_col_indices(ringbuffer);
 	let mut inserted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let pipeline = ColumnPipeline {
+		columns: &ringbuffer.columns,
+		sequences: None,
+		fragments,
+		context,
+	};
 
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -172,26 +177,29 @@ fn drive_ringbuffer_insert(
 		}
 
 		let row_count = columns.num_rows();
+		let inputs = input_views(&columns, &ringbuffer.columns)?;
+		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
+		intern_dictionary_columns(services, txn, &ringbuffer.columns, &mut batches)?;
+		let mut built: Vec<EncodedRingBufferRowBuilder> =
+			(0..row_count).map(|_| shape.allocate_ringbuffer()).collect();
+		batches[0].write(shape, &mut built)?;
+		let partition_keys = partition_keys(&batches[0], &inputs, &partition_col_indices)?;
+
 		let mut rows = Vec::with_capacity(row_count);
-		for row_idx in 0..row_count {
-			let (row, row_values) = build_insert_ringbuffer_row(
-				services,
-				txn,
-				target_data,
-				shape,
-				&columns,
-				fragments,
-				context,
-				row_idx,
-			)?;
-			let partition_key: Vec<Value> =
-				partition_col_indices.iter().map(|&idx| row_values[idx].clone()).collect();
+		for (mut row, partition_key) in built.into_iter().zip(partition_keys) {
+			let now = services.runtime_context.clock.now();
+			row.set_timestamps(now, now);
+			if let Some(time) =
+				resolve_time(&ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape, &row, now)?
+			{
+				row.set_time(time);
+			}
 			let partition = if partition_col_indices.is_empty() {
 				None
 			} else {
 				Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 			};
-			rows.push((row, partition_key, partition));
+			rows.push((row.freeze_bytes(), partition_key, partition));
 		}
 
 		let mut start = 0;
@@ -339,68 +347,23 @@ fn build_insert_ringbuffer_query_context(
 	})
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_insert_ringbuffer_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &RingBufferTarget<'_>,
-	shape: &RowShape,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	context: &Arc<QueryContext>,
-	row_idx: usize,
-) -> Result<(EncodedBytes, Vec<Value>)> {
-	let mut row = shape.allocate_ringbuffer();
-	let mut row_values: Vec<Value> = Vec::with_capacity(target.ringbuffer.columns.len());
-
-	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
-		let mut value = if let Some(input_column) = column_view(columns, &rb_column.name)? {
-			input_column.get_value(row_idx)
-		} else {
-			Value::none()
-		};
-
-		let column_ident = fragments.column(&rb_column.name);
-		let resolved_column =
-			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
-
-		value = coerce_value_to_column_type(value, rb_column.constraint.get_type(), resolved_column, context)?;
-		if let Err(mut e) = rb_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-
-		let value = if let Some(dict_id) = rb_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, rb_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-
-		row_values.push(value.clone());
-		shape.set_value(&mut row, rb_idx, &value);
-	}
-
-	let now = services.runtime_context.clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) = resolve_time(
-		&target.ringbuffer.name,
-		&target.ringbuffer.columns,
-		&target.ringbuffer.time,
-		shape,
-		&row,
-		now,
-	)? {
-		row.set_time(time);
-	}
-	Ok((row.freeze_bytes(), row_values))
+fn partition_keys(cast: &CastColumns, inputs: &[Option<ColumnView<'_>>], indices: &[usize]) -> Result<Vec<Vec<Value>>> {
+	let views = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	Ok((0..cast.rows())
+		.map(|row| {
+			indices.iter()
+				.zip(&views)
+				.map(|(&index, view)| {
+					let input = inputs[index].as_ref();
+					if view.none_at(row) && input.is_none_or(|input| input.none_at(row)) {
+						input.map(|input| input.get_value(row)).unwrap_or_else(Value::none)
+					} else {
+						view.get_value(row)
+					}
+				})
+				.collect()
+		})
+		.collect())
 }
 
 #[inline]
