@@ -62,7 +62,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
-		instruction::dml::time::resolve_time,
+		instruction::dml::time::{EventColumn, populator_index, resolve_time},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -157,6 +157,7 @@ fn drive_ringbuffer_insert(
 		fragments,
 		context,
 	};
+	let populator = populator_index(&ringbuffer.time, shape);
 
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -186,13 +187,15 @@ fn drive_ringbuffer_insert(
 		batches[0].write(shape, &mut built)?;
 		let partition_keys = partition_values(&batches[0], &inputs, &partition_col_indices)?;
 
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 		let mut rows = Vec::with_capacity(row_count);
-		for (mut row, partition_key) in built.into_iter().zip(partition_keys) {
-			let now = services.runtime_context.clock.now();
+		for (index, (mut row, partition_key)) in built.into_iter().zip(partition_keys).enumerate() {
 			row.set_timestamps(now, now);
-			if let Some(time) =
-				resolve_time(&ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape, &row, now)?
-			{
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&ringbuffer.name, &ringbuffer.time, shape, &row, now),
+				|time| Ok(Some(time)),
+			)? {
 				row.set_time(time);
 			}
 			let partition = if partition_col_indices.is_empty() {

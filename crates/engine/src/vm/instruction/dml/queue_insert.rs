@@ -75,7 +75,10 @@ use crate::{
 	queue::partition::{ordered_by_index, placement_of},
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
-		instruction::dml::{coerce::InputFragments, time::resolve_time},
+		instruction::dml::{
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time},
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -487,24 +490,22 @@ fn validate_and_encode_input_rows(
 	}
 	intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut casts)?;
 
+	let populator = populator_index(&target.queue.time, shape);
 	let mut pending: Vec<PendingItem> = Vec::new();
 	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {
 		let mut rows: Vec<EncodedQueueRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_queue()).collect();
 		cast.write(shape, &mut rows)?;
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| cast.view(index)).transpose()?);
 		let mut encoded = Vec::with_capacity(rows.len());
-		for (mut row, not_before) in rows.into_iter().zip(&not_before) {
+		for (index, (mut row, not_before)) in rows.into_iter().zip(&not_before).enumerate() {
 			if let Some(instant) = not_before {
 				row.set_not_before(*instant);
 			}
-			let now = services.runtime_context.clock.now();
 			row.set_timestamps(now, now);
-			if let Some(time) = resolve_time(
-				&target.queue.name,
-				&target.queue.columns,
-				&target.queue.time,
-				shape,
-				&row,
-				now,
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&target.queue.name, &target.queue.time, shape, &row, now),
+				|time| Ok(Some(time)),
 			)? {
 				row.set_time(time);
 			}

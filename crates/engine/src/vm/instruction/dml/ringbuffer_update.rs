@@ -59,7 +59,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
-		instruction::dml::time::resolve_time_for_update,
+		instruction::dml::time::{EventColumn, populator_index, resolve_time_for_update},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -104,6 +104,7 @@ pub(crate) fn update_ringbuffer(
 		fragments: &fragments,
 		context: &context,
 	};
+	let populator = populator_index(&ringbuffer.time, &shape);
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -135,6 +136,8 @@ pub(crate) fn update_ringbuffer(
 		let mut built: Vec<EncodedRingBufferRowBuilder> =
 			(0..columns.num_rows()).map(|_| shape.allocate_ringbuffer()).collect();
 		batches[0].write(&shape, &mut built)?;
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 
 		let mut ids = Vec::with_capacity(row_numbers.len());
 		let mut update_partitions = Vec::new();
@@ -154,15 +157,18 @@ pub(crate) fn update_ringbuffer(
 			let old_row = EncodedRingBufferRow::view(&old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
-			let now = services.runtime_context.clock.now();
 			builder.set_timestamps(old_created_at, now);
-			if let Some(time) = resolve_time_for_update(
-				&ringbuffer.name,
-				&ringbuffer.columns,
-				&ringbuffer.time,
-				&shape,
-				builder.as_slice(),
-				old_time,
+			if let Some(time) = event.at(row_idx).map_or_else(
+				|| {
+					resolve_time_for_update(
+						&ringbuffer.name,
+						&ringbuffer.time,
+						&shape,
+						builder.as_slice(),
+						old_time,
+					)
+				},
+				|time| Ok(Some(time)),
 			)? {
 				builder.set_time(time);
 			}

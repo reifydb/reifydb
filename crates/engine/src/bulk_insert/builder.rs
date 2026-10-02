@@ -54,8 +54,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	value::{
-		Value, column_view::ColumnView, constraint::Constraint, identity::IdentityId, partition::Partition,
-		row_number::RowNumber, value_type::ValueType,
+		Value, column_view::ColumnView, constraint::Constraint, datetime::DateTime, identity::IdentityId,
+		partition::Partition, row_number::RowNumber, value_type::ValueType,
 	},
 };
 
@@ -86,7 +86,7 @@ use crate::{
 			shape::{
 				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
 			},
-			time::resolve_time,
+			time::{EventColumn, populator_index, resolve_time},
 		},
 		services::Services,
 	},
@@ -348,7 +348,7 @@ fn check_rows<V: ValidationMode>(
 	if let TimeSource::Event {
 		ts,
 	} = checks.time
-		&& let Some(index) = time_read_index(checks, ts)?
+		&& let Some(index) = checks.columns.iter().position(|column| &column.name == ts)
 		&& checks.columns[index].dictionary_id.is_none()
 	{
 		let view = &views[index];
@@ -401,26 +401,6 @@ fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -
 	with_row_note(error, name, row)
 }
 
-fn time_read_index(checks: &Checks<'_>, ts: &str) -> Result<Option<usize>> {
-	let Some(index) = checks.columns.iter().position(|column| column.name == ts) else {
-		return Ok(None);
-	};
-	let Some(series) = checks.series else {
-		return Ok(Some(index));
-	};
-	if index == 0 {
-		return key_column_index(series).map(Some);
-	}
-	let key_column = series.key.column();
-	Ok(checks
-		.columns
-		.iter()
-		.enumerate()
-		.filter(|(_, column)| column.name != key_column)
-		.nth(index - 1)
-		.map(|(i, _)| i))
-}
-
 fn key_column_index(series: &Series) -> Result<usize> {
 	let key_col_name = series.key.column();
 	series.columns
@@ -449,16 +429,17 @@ fn enforce_write_policies(
 }
 
 fn stamp<B: SourceRowBuilder>(
-	writer: &Writer<'_>,
 	row: &mut B,
 	name: &str,
-	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
+	now: DateTime,
+	event: Option<DateTime>,
 ) -> Result<()> {
-	let now = writer.clock.now();
 	row.set_timestamps(now, now);
-	if let Some(time) = resolve_time(name, columns, time, shape, row.as_slice(), now)? {
+	if let Some(time) =
+		event.map_or_else(|| resolve_time(name, time, shape, row.as_slice(), now), |time| Ok(Some(time)))?
+	{
 		row.set_time(time);
 	}
 	Ok(())
@@ -500,8 +481,11 @@ fn execute_table_insert<V: ValidationMode>(
 	intern_dictionary_columns(catalog, &mut Transaction::Command(txn), &table.columns, None, &mut cast)?;
 	let mut built: Vec<EncodedTableRowBuilder> = (0..rows).map(|_| shape.allocate_table()).collect();
 	cast[0].write(&shape, &mut built)?;
-	for row in built.iter_mut() {
-		stamp(writer, row, &table.name, &table.columns, &table.time, &shape)?;
+	let now = writer.clock.now();
+	let event =
+		EventColumn::new(populator_index(&table.time, &shape).map(|index| cast[0].view(index)).transpose()?);
+	for (index, row) in built.iter_mut().enumerate() {
+		stamp(row, &table.name, &table.time, &shape, now, event.at(index))?;
 	}
 	write_table_rows(catalog, txn, &table, &shape, pending, built)
 }
@@ -727,6 +711,10 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	let partition_col_indices = compute_partition_col_indices(ringbuffer);
 	let partition_views =
 		partition_col_indices.iter().map(|&index| cast[0].view(index)).collect::<Result<Vec<_>>>()?;
+	let now = writer.clock.now();
+	let event = EventColumn::new(
+		populator_index(&ringbuffer.time, shape).map(|index| cast[0].view(index)).transpose()?,
+	);
 	let mut entries = Vec::with_capacity(rows);
 	for (row, mut builder) in built.into_iter().enumerate() {
 		let partition_key: Vec<Value> = partition_views.iter().map(|view| view.get_value(row)).collect();
@@ -735,7 +723,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		} else {
 			Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 		};
-		stamp(writer, &mut builder, &ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape)?;
+		stamp(&mut builder, &ringbuffer.name, &ringbuffer.time, shape, now, event.at(row))?;
 		entries.push((builder.freeze_bytes(), partition_key, partition));
 	}
 
@@ -848,16 +836,16 @@ fn insert_series_rows(
 
 	let key_column = series.key_column_data(checked.keys.clone());
 	let mut built: Vec<_> = (0..rows).map(|_| shape.allocate_series()).collect();
-	{
-		let mut views = Vec::with_capacity(series.columns.len());
-		views.push(ColumnView::try_from(&key_column)?);
-		for index in 0..series.columns.len() {
-			if index != key_index {
-				views.push(cast.view(index)?);
-			}
+	let mut views = Vec::with_capacity(series.columns.len());
+	views.push(ColumnView::try_from(&key_column)?);
+	for index in 0..series.columns.len() {
+		if index != key_index {
+			views.push(cast.view(index)?);
 		}
-		shape.write_columns(&mut built, &views)?;
 	}
+	shape.write_columns(&mut built, &views)?;
+	let now = writer.clock.now();
+	let event = EventColumn::new(populator_index(&series.time, shape).map(|index| views[index].clone()));
 
 	let partition_views = series_partition_col_indices(series)?
 		.into_iter()
@@ -905,7 +893,7 @@ fn insert_series_rows(
 			)?;
 			PartitionedSeriesRowKey::new(storage, partition, variant_tag, key_value, sequence).into()
 		};
-		stamp(writer, builder, &series.name, &series.columns, &series.time, shape)?;
+		stamp(builder, &series.name, &series.time, shape, now, event.at(row))?;
 		update_series_metadata_for_insert(metadata, key_value);
 		storage_keys.push(key);
 	}

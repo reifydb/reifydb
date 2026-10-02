@@ -86,7 +86,10 @@ use crate::{
 	partition::resolve_partition,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::{coerce::InputFragments, time::resolve_time},
+		instruction::dml::{
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time},
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -145,6 +148,7 @@ pub(crate) fn insert_series(
 	};
 	let key_index = series.columns.iter().position(|column| column.name == key_column_name);
 	let partition_indices = series_partition_indices(&series)?;
+	let populator = populator_index(&series.time, &shape);
 
 	let mut mutable_context = (*context).clone();
 	let mut verified: HashSet<Partition> = HashSet::new();
@@ -194,7 +198,6 @@ pub(crate) fn insert_series(
 		let mut keys = Vec::with_capacity(rows);
 		let mut storage_keys: Vec<TaggedKey> = Vec::with_capacity(rows);
 		let mut row_numbers = Vec::with_capacity(rows);
-		let mut stamps = Vec::with_capacity(rows);
 		for ((given, variant_tag), partition_values) in given_keys.into_iter().zip(tags).zip(&partition_rows) {
 			let partition = if partition_values.is_empty() {
 				Partition::default()
@@ -243,7 +246,6 @@ pub(crate) fn insert_series(
 				)
 				.into()
 			};
-			stamps.push(services.runtime_context.clock.now());
 			keys.push(key_value);
 			storage_keys.push(storage_key);
 			row_numbers.push(RowNumber::from(sequence));
@@ -251,21 +253,22 @@ pub(crate) fn insert_series(
 
 		let key_column = series.key_column_data(keys);
 		let mut builders: Vec<EncodedSeriesRowBuilder> = (0..rows).map(|_| shape.allocate_series()).collect();
-		{
-			let mut views = Vec::with_capacity(series.columns.len());
-			views.push(ColumnView::try_from(&key_column)?);
-			for index in 0..series.columns.len() {
-				if Some(index) != key_index {
-					views.push(cast.view(index)?);
-				}
+		let mut views = Vec::with_capacity(series.columns.len());
+		views.push(ColumnView::try_from(&key_column)?);
+		for index in 0..series.columns.len() {
+			if Some(index) != key_index {
+				views.push(cast.view(index)?);
 			}
-			shape.write_columns(&mut builders, &views)?;
 		}
-		for (builder, now) in builders.iter_mut().zip(&stamps) {
-			builder.set_timestamps(*now, *now);
-			if let Some(time) =
-				resolve_time(&series.name, &series.columns, &series.time, &shape, builder, *now)?
-			{
+		shape.write_columns(&mut builders, &views)?;
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| views[index].clone()));
+		for (index, builder) in builders.iter_mut().enumerate() {
+			builder.set_timestamps(now, now);
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&series.name, &series.time, &shape, builder, now),
+				|time| Ok(Some(time)),
+			)? {
 				builder.set_time(time);
 			}
 		}

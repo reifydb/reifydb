@@ -56,7 +56,10 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
 	vm::{
-		instruction::dml::{coerce::InputFragments, time::resolve_time},
+		instruction::dml::{
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time},
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -219,20 +222,18 @@ fn validate_and_encode_input_rows(
 	}
 	intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
 
+	let populator = populator_index(&target.table.time, shape);
 	let mut validated: Vec<EncodedTableRowBuilder> = Vec::new();
 	for cast in &batches {
 		let mut rows: Vec<EncodedTableRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_table()).collect();
 		cast.write(shape, &mut rows)?;
-		for mut row in rows {
-			let now = services.runtime_context.clock.now();
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| cast.view(index)).transpose()?);
+		for (index, mut row) in rows.into_iter().enumerate() {
 			row.set_timestamps(now, now);
-			if let Some(time) = resolve_time(
-				&target.table.name,
-				&target.table.columns,
-				&target.table.time,
-				shape,
-				&row,
-				now,
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&target.table.name, &target.table.time, shape, &row, now),
+				|time| Ok(Some(time)),
 			)? {
 				row.set_time(time);
 			}

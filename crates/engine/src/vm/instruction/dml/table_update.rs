@@ -63,7 +63,10 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
 	vm::{
-		instruction::dml::{coerce::InputFragments, time::resolve_time_for_update},
+		instruction::dml::{
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time_for_update},
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -190,6 +193,7 @@ fn run_table_update(
 	};
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
 	let mut encoder: Option<PrimaryKeyEncoder> = None;
+	let populator = populator_index(&target.table.time, shape);
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		if columns.num_rows() == 0 {
@@ -247,6 +251,8 @@ fn run_table_update(
 		)?;
 		let mut rows: Vec<EncodedTableRowBuilder> = (0..row_count).map(|_| shape.allocate_table()).collect();
 		batches[0].write(shape, &mut rows)?;
+		let now = exec.services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
@@ -279,15 +285,18 @@ fn run_table_update(
 			let old_row = EncodedTableRow::view(old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
-			let now = exec.services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
-			if let Some(time) = resolve_time_for_update(
-				&target.table.name,
-				&target.table.columns,
-				&target.table.time,
-				shape,
-				&row,
-				old_time,
+			if let Some(time) = event.at(row_idx).map_or_else(
+				|| {
+					resolve_time_for_update(
+						&target.table.name,
+						&target.table.time,
+						shape,
+						&row,
+						old_time,
+					)
+				},
+				|time| Ok(Some(time)),
 			)? {
 				row.set_time(time);
 			}

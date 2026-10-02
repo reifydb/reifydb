@@ -78,7 +78,7 @@ use crate::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
 			shape::get_or_create_series_shape,
-			time::resolve_time_for_update,
+			time::{EventColumn, populator_index, resolve_time_for_update},
 		},
 		services::Services,
 		volcano::{
@@ -201,18 +201,18 @@ pub(crate) fn update_series(
 			.collect();
 		let mut builders: Vec<EncodedSeriesRowBuilder> =
 			(0..row_count).map(|_| shape.allocate_series()).collect();
-		{
-			let key_column = series.key_column_data(keys.clone());
-			let mut views = Vec::with_capacity(series.columns.len());
-			views.push(ColumnView::try_from(&key_column)?);
-			for (index, column) in series.columns.iter().enumerate() {
-				if column.name != series.key.column() {
-					views.push(cast.view(index)?);
-				}
+		let key_column = series.key_column_data(keys.clone());
+		let mut views = Vec::with_capacity(series.columns.len());
+		views.push(ColumnView::try_from(&key_column)?);
+		for (index, column) in series.columns.iter().enumerate() {
+			if column.name != series.key.column() {
+				views.push(cast.view(index)?);
 			}
-			shape.write_columns(&mut builders, &views)?;
 		}
+		shape.write_columns(&mut builders, &views)?;
 		enforce_old_row_policies(services, symbols, txn, &target_data, &storage_keys, row_numbers, &shape)?;
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator_index(&series.time, &shape).map(|index| views[index].clone()));
 
 		let mut found = Vec::with_capacity(row_count);
 		let mut found_builders = Vec::with_capacity(row_count);
@@ -224,15 +224,18 @@ pub(crate) fn update_series(
 			let pre = pre.bytes;
 			let old_created_at = EncodedSeriesRow::view(&pre).created_at();
 			let old_time = EncodedSeriesRow::view(&pre).time();
-			let now = services.runtime_context.clock.now();
 			builder.set_timestamps(old_created_at, now);
-			if let Some(time) = resolve_time_for_update(
-				&series.name,
-				&series.columns,
-				&series.time,
-				&shape,
-				builder.as_slice(),
-				old_time,
+			if let Some(time) = event.at(row).map_or_else(
+				|| {
+					resolve_time_for_update(
+						&series.name,
+						&series.time,
+						&shape,
+						builder.as_slice(),
+						old_time,
+					)
+				},
+				|time| Ok(Some(time)),
 			)? {
 				builder.set_time(time);
 			}
