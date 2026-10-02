@@ -22,18 +22,34 @@ impl RowShape {
 			);
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
 		}
+		let id_type = match field.constraint.constraint() {
+			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
+			_ => ValueType::Uint4,
+		};
+		let raw = entry.to_u128();
 		self.set_valid(row, index, true);
 		// SAFETY: row.len() >= total_static_size() puts the slot at field.offset inside the uniquely-owned
-		// buffer and it is at least as wide as the widest arm; write_unaligned needs no alignment.
-		unsafe {
+		// buffer; each arm writes the slot's read width, which the shape allocated;
+		// write_unaligned needs no alignment.
+		let written = unsafe {
 			let ptr = row.as_mut_slice().as_mut_ptr().add(field.offset as usize);
-			match entry {
-				DictionaryEntryId::U1(v) => ptr.write_unaligned(*v),
-				DictionaryEntryId::U2(v) => ptr::write_unaligned(ptr as *mut u16, *v),
-				DictionaryEntryId::U4(v) => ptr::write_unaligned(ptr as *mut u32, *v),
-				DictionaryEntryId::U8(v) => ptr::write_unaligned(ptr as *mut u64, *v),
-				DictionaryEntryId::U16(v) => ptr::write_unaligned(ptr as *mut u128, *v),
+			match id_type {
+				ValueType::Uint1 => u8::try_from(raw).map(|v| ptr.write_unaligned(v)),
+				ValueType::Uint2 => {
+					u16::try_from(raw).map(|v| ptr::write_unaligned(ptr as *mut u16, v))
+				}
+				ValueType::Uint8 => {
+					u64::try_from(raw).map(|v| ptr::write_unaligned(ptr as *mut u64, v))
+				}
+				ValueType::Uint16 => {
+					ptr::write_unaligned(ptr as *mut u128, raw);
+					Ok(())
+				}
+				_ => u32::try_from(raw).map(|v| ptr::write_unaligned(ptr as *mut u32, v)),
 			}
+		};
+		if written.is_err() {
+			panic!("dictionary id {raw} does not fit the {id_type} id slot of field {index}");
 		}
 	}
 

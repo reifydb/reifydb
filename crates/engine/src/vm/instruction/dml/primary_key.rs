@@ -121,12 +121,6 @@ impl PrimaryKeyEncoder {
 					let val = shape.get::<f64>(row, *table_idx);
 					self.shape.set_f64(&mut index_key, pk_idx, val);
 				}
-				ValueType::Utf8 => {
-					panic!("UTF8 columns in primary keys not yet supported");
-				}
-				ValueType::Blob => {
-					panic!("Blob columns cannot be used in primary keys");
-				}
 				ValueType::Date => {
 					let val = shape.get::<Date>(row, *table_idx);
 					self.shape.set_date(&mut index_key, pk_idx, val);
@@ -155,28 +149,20 @@ impl PrimaryKeyEncoder {
 					let val = shape.get::<IdentityId>(row, *table_idx);
 					self.shape.set_identity_id(&mut index_key, pk_idx, val);
 				}
-				ValueType::Decimal {
-					..
-				} => {
-					panic!("Decimal columns in primary keys not yet supported");
-				}
 				ValueType::Option(_) => {
 					self.shape.set_none(&mut index_key, pk_idx);
 				}
-				ValueType::DictionaryId => {
-					panic!("DictionaryId columns cannot be used in primary keys");
+				ValueType::Utf8
+				| ValueType::Blob
+				| ValueType::Decimal {
+					..
 				}
-				ValueType::Any => {
-					panic!("Any type cannot be used in primary keys");
-				}
-				ValueType::List(_) => {
-					panic!("List type cannot be used in primary keys");
-				}
-				ValueType::Record(_) => {
-					panic!("Record type cannot be used in primary keys");
-				}
-				ValueType::Tuple(_) => {
-					panic!("Tuple type cannot be used in primary keys");
+				| ValueType::DictionaryId
+				| ValueType::Any
+				| ValueType::List(_)
+				| ValueType::Record(_)
+				| ValueType::Tuple(_) => {
+					unreachable!("CREATE PRIMARY KEY refuses a {column_type} key column");
 				}
 				ValueType::Digest {
 					..

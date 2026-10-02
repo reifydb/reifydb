@@ -14,6 +14,7 @@ use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
+		index::primary_key_violation,
 		query::column_not_found,
 	},
 	interface::{
@@ -262,16 +263,7 @@ fn run_table_update(
 					Some(encoder) => encoder,
 					None => encoder.insert(PrimaryKeyEncoder::new(pk_def, target.table)?),
 				};
-				rotate_table_pk_index(
-					txn,
-					target.table,
-					shape,
-					pk_def,
-					encoder,
-					old_row,
-					&row,
-					row_number,
-				)?;
+				rotate_table_pk_index(txn, target, shape, pk_def, encoder, old_row, &row, row_number)?;
 			}
 
 			if has_returning {
@@ -342,7 +334,7 @@ fn enforce_old_row_policies(
 #[inline]
 fn rotate_table_pk_index(
 	txn: &mut Transaction<'_>,
-	table: &Table,
+	target: &TableTarget<'_>,
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
 	encoder: &PrimaryKeyEncoder,
@@ -351,13 +343,15 @@ fn rotate_table_pk_index(
 	row_number: RowNumber,
 ) -> Result<()> {
 	let pre_key = encoder.encode(shape, pre_row);
-	txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), pre_key))?;
+	txn.remove(&IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), pre_key))?;
 
 	let post_key = encoder.encode(shape, new_row);
-	txn.set(
-		&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key),
-		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
-	)?;
+	let post_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), post_key);
+	if txn.contains(&post_entry_key)? {
+		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns));
+	}
+	txn.set(&post_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
 	Ok(())
 }
 

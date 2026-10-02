@@ -3,8 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::execution::ExecutionResult;
+use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
+use reifydb_core::{execution::ExecutionResult, interface::catalog::object::ObjectId};
 use reifydb_test_harness::engine::TestEngine;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
@@ -380,9 +382,29 @@ fn a_table_keyed_by_a_digest_or_optional_digest_column_refuses_rows_naming_the_c
 	// A digest has no key encoding; an optional digest key would give every row the same none key.
 	let t = engine();
 	t.admin("CREATE TABLE test::pk { k: int4, d: digest(float8, 0.01) }");
-	t.admin("CREATE PRIMARY KEY ON test::pk { d }");
 	t.admin("CREATE TABLE test::opk { k: int4, d: Option(digest(float8, 0.01)) }");
-	t.admin("CREATE PRIMARY KEY ON test::opk { k, d }");
+	for rql in ["CREATE PRIMARY KEY ON test::pk { d }", "CREATE PRIMARY KEY ON test::opk { k, d }"] {
+		let err = run(t.inner().admin_as(TestEngine::identity(), rql, Params::None)).expect_err(rql);
+		assert_eq!(err.code, "CA_104", "{rql}: {err:?}");
+		assert_eq!(err.fragment.text(), "d", "{rql}: the refusal must name the digest key column");
+	}
+	let catalog = t.catalog();
+	let mut admin = t.begin_admin(TestEngine::identity()).unwrap();
+	let namespace = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut admin), "test").unwrap().unwrap();
+	for (table, key) in [("pk", &["d"][..]), ("opk", &["k", "d"][..])] {
+		let table = catalog
+			.find_table_by_name(&mut Transaction::Admin(&mut admin), namespace.id(), table)
+			.unwrap()
+			.unwrap();
+		let columns = catalog.list_columns(&mut Transaction::Admin(&mut admin), table.id).unwrap();
+		let column_ids = key.iter().map(|name| columns.iter().find(|c| c.name == *name).unwrap().id).collect();
+		let to_create = PrimaryKeyToCreate {
+			object: ObjectId::Table(table.id),
+			column_ids,
+		};
+		catalog.create_primary_key(&mut admin, to_create).unwrap();
+	}
+	admin.commit().unwrap();
 	for (rql, ty) in [
 		("INSERT test::pk [{ k: 1, d: $right }]", COLUMN),
 		("INSERT test::opk [{ k: 1, d: $right }]", "Option(Digest(Float8, 0.01))"),
