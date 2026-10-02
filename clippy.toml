@@ -47,6 +47,17 @@ disallowed-methods = [
     { path = "reifydb_test_harness::operator::change::window_change", reason = "Test-only row builder; allowed only in test roots and #[cfg(test)] modules" },
     { path = "reifydb_test_harness::operator::change::trigger", reason = "Test-only row builder; allowed only in test roots and #[cfg(test)] modules" },
     { path = "reifydb_test_harness::operator::change::row_ints", reason = "Test-only row builder; allowed only in test roots and #[cfg(test)] modules" },
+    { path = "reifydb_codec::key::serializer::KeySerializer::extend_value", reason = "Encodes one Value into a key; encode whole columns with reifydb_core::value::column::key::extend_keys or reifydb_codec::key::column::extend_column_with_direction" },
+    { path = "reifydb_codec::key::serializer::KeySerializer::try_extend_value", reason = "Encodes one Value into a key; encode whole columns with reifydb_core::value::column::key::extend_keys or reifydb_codec::key::column::extend_column_with_direction" },
+    { path = "reifydb_codec::key::deserializer::KeyDeserializer::read_value", reason = "Decodes one key cell into a Value; read typed key fields with the typed read_* methods" },
+    { path = "reifydb_codec::row::shape::RowShape::set_any", reason = "Writes one Value into an Any field; write rows column by column with RowShape::write_columns" },
+    { path = "reifydb_codec::row::shape::RowShape::get_any", reason = "Reads one Any field as a Value; decode rows column by column with reifydb_core::value::batch::decode_cells or from_encoded_bytes" },
+    { path = "reifydb_codec::value::encode_value", reason = "Serializes one Value; encode columns with reifydb_codec::frame::encode::encode_frames or rows with RowShape::write_columns" },
+    { path = "reifydb_codec::value::decode_value", reason = "Deserializes one Value; decode columns with reifydb_codec::frame::decode::decode_frames or rows with reifydb_core::value::batch::decode_cells" },
+    { path = "reifydb_core::interface::catalog::series::SeriesKey::key_to_u64", reason = "Converts one series key Value; convert the key column once with SeriesKey::keys_to_u64" },
+    { path = "reifydb_core::interface::catalog::series::SeriesKey::key_from_u64", reason = "Builds one series key Value; build the key column once with Series::key_column_data" },
+    { path = "reifydb_core::interface::catalog::series::Series::key_to_u64", reason = "Converts one series key Value; convert the key column once with SeriesKey::keys_to_u64" },
+    { path = "reifydb_core::interface::catalog::series::Series::key_from_u64", reason = "Builds one series key Value; build the key column once with Series::key_column_data" },
 ]
 
 disallowed-types = [
