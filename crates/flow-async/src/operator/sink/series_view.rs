@@ -195,8 +195,8 @@ impl SinkSeriesViewOperator {
 		} else {
 			(require_row_numbers(source)?, self.series_key_view(&coerced)?)
 		};
-		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let (_, encoded) = encoder.encode(row_idx, row_number)?;
+		let encoded = encoder.encode_all()?;
+		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
 			let series_key = self.series_key_at(key_view.as_ref(), row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
@@ -260,10 +260,10 @@ impl SinkSeriesViewOperator {
 				self.series_key_view(&coerced_post)?,
 			)
 		};
-		for row_idx in 0..row_count {
+		let encoded = encoder.encode_all()?;
+		for (row_idx, post_encoded) in (0..row_count).zip(encoded) {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
-			let (_, post_encoded) = encoder.encode(row_idx, post_row_number)?;
 
 			let pre_series_key = self.series_key_at(pre_key_view.as_ref(), row_idx)?;
 			let post_series_key = self.series_key_at(post_key_view.as_ref(), row_idx)?;

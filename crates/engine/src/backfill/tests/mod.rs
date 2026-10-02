@@ -204,11 +204,8 @@ impl Db {
 		let mut kept = BTreeSet::new();
 		for batch in &current {
 			let fields = shape_field_columns(batch, &shape);
-			for (index, &number) in require_row_numbers(batch).unwrap().iter().enumerate() {
-				let (_, bytes) = SourceRowEncoder::new(batch, &shape, &fields)
-					.unwrap()
-					.encode(index, number)
-					.unwrap();
+			let encoded = SourceRowEncoder::new(batch, &shape, &fields).unwrap().encode_all().unwrap();
+			for (&number, bytes) in require_row_numbers(batch).unwrap().iter().zip(encoded) {
 				txn.set(&RowKey::new(storage, number), bytes).unwrap();
 				kept.insert(number);
 			}

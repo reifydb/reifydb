@@ -29,6 +29,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
+	internal_err,
 	key::{
 		operator::{
 			keyspace::ringbuffer::{
@@ -854,6 +855,7 @@ impl SinkRingBufferViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
+		let encoded = encoder.encode_all()?;
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
@@ -891,7 +893,7 @@ impl SinkRingBufferViewOperator {
 					object_id,
 					meta,
 					Some(partition),
-					&encoder,
+					&encoded,
 					row_numbers,
 					&times,
 					&rows,
@@ -912,7 +914,7 @@ impl SinkRingBufferViewOperator {
 				object_id,
 				meta,
 				None,
-				&encoder,
+				&encoded,
 				row_numbers,
 				&times,
 				&rows,
@@ -939,7 +941,7 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
-		encoder: &SourceRowEncoder,
+		encoded: &[EncodedBytes],
 		row_numbers: &[RowNumber],
 		times: &[Option<DateTime>],
 		rows: &[usize],
@@ -970,15 +972,13 @@ impl SinkRingBufferViewOperator {
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
 			let source_rn = row_numbers[row_idx];
-			let (_, encoded) = encoder.encode(row_idx, source_rn)?;
 			evicted_rns.push(source_rn);
-			evicted.push(encoded);
+			evicted.push(encoded[row_idx].clone());
 		}
 
 		for &row_idx in &rows[skip..] {
 			let source_rn = row_numbers[row_idx];
 			let assigned_rn = RowNumber(meta.tail);
-			let (_, encoded) = encoder.encode(row_idx, assigned_rn)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
 			self.set_row_entry(
 				txn,
@@ -988,7 +988,7 @@ impl SinkRingBufferViewOperator {
 				times.get(row_idx).copied().flatten(),
 			)?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
-			values.push(encoded);
+			values.push(encoded[row_idx].clone());
 			if meta.is_empty() {
 				meta.head = assigned_rn.0;
 			}
@@ -1038,6 +1038,13 @@ impl SinkRingBufferViewOperator {
 		post: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
+		if pre.num_rows() != post.num_rows() {
+			return internal_err!(
+				"ringbuffer update has {} pre rows but {} post rows",
+				pre.num_rows(),
+				post.num_rows()
+			);
+		}
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
@@ -1053,6 +1060,7 @@ impl SinkRingBufferViewOperator {
 		} else {
 			require_row_numbers(source_pre)?
 		};
+		let encoded = encoder.encode_all()?;
 		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
 			let partition = if self.is_partitioned() {
 				let (pre_partition, _) =
@@ -1079,8 +1087,7 @@ impl SinkRingBufferViewOperator {
 			};
 			let key = self.rb_key(object_id, storage_rn, partition);
 
-			let (_, post_encoded) = encoder.encode(row_idx, storage_rn)?;
-			txn.set(&key, post_encoded)?;
+			txn.set(&key, encoded[row_idx].clone())?;
 			applied.push(row_idx);
 		}
 		if !applied.is_empty() {

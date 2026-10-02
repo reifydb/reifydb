@@ -129,9 +129,9 @@ impl TableSink {
 			require_row_numbers(source)?
 		};
 		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
+		let encoded = encoder.encode_all()?;
 
-		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let (_, encoded) = encoder.encode(row_idx, row_number)?;
+		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
 			let key = if self.is_partitioned() {
 				let (partition, values) =
 					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
@@ -176,10 +176,10 @@ impl TableSink {
 		};
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
 		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
-		for row_idx in 0..row_count {
+		let encoded = encoder.encode_all()?;
+		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
-			let (_, mut post_encoded) = encoder.encode(row_idx, post_row_number)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =

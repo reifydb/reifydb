@@ -38,7 +38,6 @@ use reifydb_value::{
 		column_view::ColumnView,
 		datetime::DateTime,
 		identity::IdentityId,
-		row_number::RowNumber,
 		system_columns::{column_view, created_at, time, updated_at, user_columns},
 	},
 };
@@ -139,6 +138,7 @@ pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize
 pub struct SourceRowEncoder<'a> {
 	shape: &'a RowShape,
 	views: Vec<ColumnView<'a>>,
+	row_count: usize,
 	created_at: &'a [DateTime],
 	updated_at: &'a [DateTime],
 	time: &'a [DateTime],
@@ -153,51 +153,56 @@ impl<'a> SourceRowEncoder<'a> {
 		Ok(Self {
 			shape,
 			views,
+			row_count: columns.num_rows(),
 			created_at: created_at(columns)?,
 			updated_at: updated_at(columns)?,
 			time: time(columns)?,
 		})
 	}
 
-	pub fn encode(&self, row_idx: usize, row_number: RowNumber) -> Result<(RowNumber, EncodedBytes)> {
+	pub fn encode_all(&self) -> Result<Vec<EncodedBytes>> {
 		match self.shape.family() {
-			RowFamily::Table => self.stamp(self.shape.allocate_table(), row_idx, row_number),
-			RowFamily::Series => self.stamp(self.shape.allocate_series(), row_idx, row_number),
-			RowFamily::RingBuffer => self.stamp(self.shape.allocate_ringbuffer(), row_idx, row_number),
+			RowFamily::Table => {
+				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_table()).collect())
+			}
+			RowFamily::Series => {
+				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_series()).collect())
+			}
+			RowFamily::RingBuffer => {
+				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_ringbuffer()).collect())
+			}
 			other => Err(Error::from(FlowSinkError::NotASourceFamily {
 				family: format!("{:?}", other),
 			})),
 		}
 	}
 
-	fn stamp<B: SourceRowBuilder>(
-		&self,
-		mut encoded: B,
-		row_idx: usize,
-		row_number: RowNumber,
-	) -> Result<(RowNumber, EncodedBytes)> {
-		let values: Vec<Value> = self.views.iter().map(|view| view.get_value(row_idx)).collect();
+	fn stamp_rows<B: SourceRowBuilder>(&self, mut rows: Vec<B>) -> Result<Vec<EncodedBytes>> {
+		self.shape.write_columns(&mut rows, &self.views)?;
 
-		self.shape.set_values(&mut encoded, &values);
+		rows.into_iter()
+			.enumerate()
+			.map(|(row_idx, mut encoded)| {
+				let created_at = self.created_at.get(row_idx).copied().ok_or_else(|| {
+					Error::from(FlowSinkError::MissingSystemColumn {
+						column: "created_at",
+						row_idx,
+					})
+				})?;
+				let updated_at = self.updated_at.get(row_idx).copied().ok_or_else(|| {
+					Error::from(FlowSinkError::MissingSystemColumn {
+						column: "updated_at",
+						row_idx,
+					})
+				})?;
+				encoded.set_timestamps(created_at, updated_at);
+				if let Some(time) = self.time.get(row_idx).copied() {
+					encoded.set_time(time);
+				}
 
-		let created_at = self.created_at.get(row_idx).copied().ok_or_else(|| {
-			Error::from(FlowSinkError::MissingSystemColumn {
-				column: "created_at",
-				row_idx,
+				Ok(encoded.freeze_bytes())
 			})
-		})?;
-		let updated_at = self.updated_at.get(row_idx).copied().ok_or_else(|| {
-			Error::from(FlowSinkError::MissingSystemColumn {
-				column: "updated_at",
-				row_idx,
-			})
-		})?;
-		encoded.set_timestamps(created_at, updated_at);
-		if let Some(time) = self.time.get(row_idx).copied() {
-			encoded.set_time(time);
-		}
-
-		Ok((row_number, encoded.freeze_bytes()))
+			.collect()
 	}
 }
 
@@ -248,10 +253,10 @@ mod tests {
 		let columns = columns_with_stamps(100, 200, 300);
 		let field_columns = shape_field_columns(&columns, &shape);
 
-		let (_, encoded) = SourceRowEncoder::new(&columns, &shape, &field_columns)
-			.unwrap()
-			.encode(0, RowNumber(1))
-			.unwrap();
+		let [encoded] = <[_; 1]>::try_from(
+			SourceRowEncoder::new(&columns, &shape, &field_columns).unwrap().encode_all().unwrap(),
+		)
+		.unwrap();
 		let encoded = EncodedTableRow::view(&encoded);
 
 		assert_eq!(
@@ -276,10 +281,10 @@ mod tests {
 		.unwrap();
 		let field_columns = shape_field_columns(&columns, &shape);
 
-		let (_, encoded) = SourceRowEncoder::new(&columns, &shape, &field_columns)
-			.unwrap()
-			.encode(0, RowNumber(1))
-			.unwrap();
+		let [encoded] = <[_; 1]>::try_from(
+			SourceRowEncoder::new(&columns, &shape, &field_columns).unwrap().encode_all().unwrap(),
+		)
+		.unwrap();
 		let encoded = EncodedTableRow::view(&encoded);
 
 		assert_eq!(encoded.time(), None, "the sink row must carry no #time");
