@@ -330,7 +330,7 @@ where
 			let mut store = GuestAsHost(ctx);
 			let order: WindowOrder<A> = buckets.keys().cloned().collect();
 			engine.apply(&mut store, buckets, &order, |group, window_start| {
-				(group_of(&groups, group, window_start), Self::row_key(group, window_start))
+				group_of(&groups, group, window_start)
 			})?
 		};
 
@@ -338,12 +338,13 @@ where
 			let mut store = GuestAsHost(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {
+					let (_, key) = group_of(&groups, &r.group, r.span.start);
 					engine.reindex_window(
 						&mut store,
 						&r.group,
 						r.span.start,
 						r.group_id,
-						&Self::row_key(&r.group, r.span.start),
+						&key,
 						None,
 						Some(r.span.start.to_order()),
 					)?;
@@ -354,7 +355,10 @@ where
 		let mut store = GuestAsHost(ctx);
 		let keys: Vec<PublishKey> = results
 			.iter()
-			.map(|r| PublishKey::new(r.group_id, Self::row_key(&r.group, r.span.start)))
+			.map(|r| {
+				let (_, key) = group_of(&groups, &r.group, r.span.start);
+				PublishKey::new(r.group_id, key)
+			})
 			.collect();
 		let mut states = load_publish_states(&mut store, &keys)?;
 		for (r, key) in results.into_iter().zip(keys) {

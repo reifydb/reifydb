@@ -59,7 +59,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			group_of,
+			WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator},
@@ -76,7 +76,7 @@ type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as Windo
 type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
 type Trackers<A> = BTreeMap<
 	<A as WindowedOperator>::GroupKey,
-	(GuestSession<<A as WindowedOperator>::Coord>, GuestSession<<A as WindowedOperator>::Coord>),
+	(GroupId, GuestSession<<A as WindowedOperator>::Coord>, GuestSession<<A as WindowedOperator>::Coord>),
 >;
 
 struct RollingMode<A: Emit> {
@@ -97,6 +97,7 @@ struct BatchSession<S> {
 	before: Option<(S, S)>,
 	start: S,
 	last: S,
+	group: GroupId,
 }
 
 struct SessionBatch<A: Emit> {
@@ -444,7 +445,7 @@ where
 				&mut store,
 				buckets,
 				RollingEviction::Span(settings.fixed_size()),
-				|group| (group_of(&groups, group, ()), group.into_encoded_key()),
+				|group| group_of(&groups, group, ()),
 				|| aggregator.new_accumulator(settings),
 				|group, buffer| Self::combine_panes(aggregator, settings, pane, group, buffer),
 			)?
@@ -536,9 +537,7 @@ where
 				&mut store,
 				buckets,
 				&order,
-				|group, window_start| {
-					(group_of(&groups, group, window_start), Self::row_key(group, window_start))
-				},
+				|group, window_start| group_of(&groups, group, window_start),
 				|| aggregator.new_accumulator(settings),
 			)?
 		};
@@ -547,13 +546,13 @@ where
 			let mut store = GuestAsHost(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {
-					let group = group_of(&groups, &r.group, r.span.start);
+					let (group, key) = group_of(&groups, &r.group, r.span.start);
 					engine.reindex_window(
 						&mut store,
 						&r.group,
 						r.span.start,
 						group,
-						&Self::row_key(&r.group, r.span.start),
+						&key,
 						None,
 						Some(r.span.start.to_order()),
 					)?;
@@ -565,10 +564,8 @@ where
 		let keys: Vec<PublishKey> = results
 			.iter()
 			.map(|r| {
-				PublishKey::new(
-					group_of(&groups, &r.group, r.span.start),
-					Self::row_key(&r.group, r.span.start),
-				)
+				let (group, key) = group_of(&groups, &r.group, r.span.start);
+				PublishKey::new(group, key)
 			})
 			.collect();
 		let mut states = load_publish_states(&mut store, &keys)?;
@@ -603,11 +600,12 @@ where
 		ctx: &mut C,
 		group: &A::GroupKey,
 	) -> Result<GuestSession<A::Coord>> {
-		if let Some((_, now)) = batch.trackers.get(group) {
+		if let Some((_, _, now)) = batch.trackers.get(group) {
 			return Ok(*now);
 		}
-		let loaded = engine.load_tracker(&mut GuestAsHost(ctx), Self::partition_of(group))?;
-		batch.trackers.insert(group.clone(), (loaded, loaded));
+		let partition = Self::partition_of(group);
+		let loaded = engine.load_tracker(&mut GuestAsHost(ctx), partition)?;
+		batch.trackers.insert(group.clone(), (partition, loaded, loaded));
 		Ok(loaded)
 	}
 
@@ -617,22 +615,23 @@ where
 		ctx: &mut C,
 		group: &A::GroupKey,
 		id: u64,
-	) -> Result<Option<BatchSession<A::Coord>>> {
+	) -> Result<(GroupId, Option<BatchSession<A::Coord>>)> {
 		let key = (group.clone(), id);
 		if let Some(session) = batch.sessions.get(&key) {
-			return Ok(Some(*session));
+			return Ok((session.group, Some(*session)));
 		}
-		let Some((start, last)) = engine.load_record(&mut GuestAsHost(ctx), Self::session_group(group, id))?
-		else {
-			return Ok(None);
+		let session_group = Self::session_group(group, id);
+		let Some((start, last)) = engine.load_record(&mut GuestAsHost(ctx), session_group)? else {
+			return Ok((session_group, None));
 		};
 		let session = BatchSession {
 			before: Some((start, last)),
 			start,
 			last,
+			group: session_group,
 		};
 		batch.sessions.insert(key, session);
-		Ok(Some(session))
+		Ok((session_group, Some(session)))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -665,7 +664,7 @@ where
 					.sessions
 					.get(&(group.clone(), id))
 					.is_some_and(|session| session.before.is_none());
-				let (before, _) = batch.trackers[&group];
+				let (_, before, _) = batch.trackers[&group];
 				if !fresh && is_sealed(before.last, horizon) {
 					batch.dropped += 1;
 					return Ok(());
@@ -673,7 +672,8 @@ where
 				id
 			}
 		};
-		let before = match Self::batch_session(engine, batch, ctx, &group, id)? {
+		let (session_group, session) = Self::batch_session(engine, batch, ctx, &group, id)?;
+		let before = match session {
 			Some(session) => session.before,
 			None => None,
 		};
@@ -683,12 +683,13 @@ where
 				before,
 				start: tracker.start,
 				last: tracker.last,
+				group: session_group,
 			},
 		);
-		if let Some((_, now)) = batch.trackers.get_mut(&group) {
+		if let Some((_, _, now)) = batch.trackers.get_mut(&group) {
 			*now = tracker;
 		}
-		engine.index_row(&mut GuestAsHost(ctx), id, Self::session_group(&group, id), row)?;
+		engine.index_row(&mut GuestAsHost(ctx), id, session_group, row)?;
 		batch.buckets
 			.entry((group, Self::session_span(id)))
 			.or_default()
@@ -703,16 +704,16 @@ where
 		group: &A::GroupKey,
 		row: RowNumber,
 		horizon: A::Coord,
-	) -> Result<Option<u64>> {
+	) -> Result<Option<(u64, GroupId)>> {
 		let mut id = Self::batch_tracker(engine, batch, ctx, group)?.session_id;
-		while let Some(session) = Self::batch_session(engine, batch, ctx, group, id)? {
-			if engine.holds_row(&mut GuestAsHost(ctx), Self::session_group(group, id), row)? {
+		while let (_, Some(session)) = Self::batch_session(engine, batch, ctx, group, id)? {
+			if engine.holds_row(&mut GuestAsHost(ctx), session.group, row)? {
 				let anchor = session.before.map_or(session.last, |(_, last)| last);
 				if is_sealed(anchor, horizon) {
 					batch.dropped += 1;
 					return Ok(None);
 				}
-				return Ok(Some(id));
+				return Ok(Some((id, session.group)));
 			}
 			let Some(lower) = id.checked_sub(1) else {
 				break;
@@ -732,10 +733,10 @@ where
 		contribution: Contribution<A>,
 		horizon: A::Coord,
 	) -> Result<()> {
-		let Some(id) = Self::holding_session(engine, batch, ctx, &group, row, horizon)? else {
+		let Some((id, session_group)) = Self::holding_session(engine, batch, ctx, &group, row, horizon)? else {
 			return Ok(());
 		};
-		engine.unindex_row(&mut GuestAsHost(ctx), Self::session_group(&group, id), row)?;
+		engine.unindex_row(&mut GuestAsHost(ctx), session_group, row)?;
 		batch.buckets
 			.entry((group, Self::session_span(id)))
 			.or_default()
@@ -851,7 +852,7 @@ where
 							match Self::holding_session(
 								engine, &mut batch, ctx, pre_group, number, horizon,
 							)? {
-								Some(id) => {
+								Some((id, _)) => {
 									let events = batch
 										.buckets
 										.entry((
@@ -960,18 +961,21 @@ where
 			return Ok(emitted);
 		}
 
-		let groups = intern_window_groups(
-			buckets.keys()
-				.map(|(group, span)| ((group.clone(), span.start), Self::row_key(group, span.start))),
-		);
+		let groups: WindowGroups<A::GroupKey, A::Coord> = buckets
+			.keys()
+			.map(|(group, span)| {
+				(
+					(group.clone(), span.start),
+					(session_of(group, span).group, Self::row_key(group, span.start)),
+				)
+			})
+			.collect();
 		let order: WindowOrder<A> = buckets.keys().cloned().collect();
 		let results = mode.engine.tumbling_mut().apply(
 			&mut store,
 			buckets,
 			&order,
-			|group, window_start| {
-				(group_of(&groups, group, window_start), Self::row_key(group, window_start))
-			},
+			|group, window_start| group_of(&groups, group, window_start),
 			|| aggregator.new_accumulator(settings),
 		)?;
 
@@ -979,21 +983,21 @@ where
 			if session.before == Some((session.start, session.last)) {
 				continue;
 			}
-			let session_group = Self::session_group(group, *id);
+			let (session_group, key) = group_of(&groups, group, <A::Coord as Coord>::from_order(*id));
 			mode.engine.save_record(&mut store, session_group, session.start, session.last)?;
 			mode.engine.reindex_session(
 				&mut store,
 				group,
 				*id,
 				session_group,
-				&Self::row_key(group, <A::Coord as Coord>::from_order(*id)),
+				&key,
 				session.before.map(|(_, last)| last),
 				session.last,
 			)?;
 		}
-		for (group, (before, now)) in &trackers {
+		for (partition, before, now) in trackers.values() {
 			if before != now {
-				mode.engine.save_tracker(&mut store, Self::partition_of(group), now)?;
+				mode.engine.save_tracker(&mut store, *partition, now)?;
 			}
 		}
 

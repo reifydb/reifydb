@@ -101,7 +101,6 @@ type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
 struct PendingCarry<S, Output> {
 	group_id: GroupId,
-	key: EncodedKey,
 	span: WindowSpan<S>,
 	value: Output,
 	withdraw: bool,
@@ -215,7 +214,8 @@ where
 		let (mut meta_loaded, meta_stored) = self.load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
 
-		let mut earliest_affected: HashMap<G, S> = HashMap::new();
+		let mut earliest_affected: BTreeMap<G, S> = BTreeMap::new();
+		let mut batch_slots: HashMap<(G, S), (GroupId, EncodedKey)> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			if entry.group.is_none() {
@@ -224,14 +224,10 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
-			let slot_key = row_key(&group, span.start);
-			let group_id = match &slot_pre {
-				Some((gid, _)) => *gid,
-				None => GroupId::of(&slot_key),
-			};
-			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
+			let Some((group_id, slot_key)) = slot_pre else {
 				continue;
-			}
+			};
+			batch_slots.insert((group.clone(), span.start), (group_id, slot_key.clone()));
 
 			let mut accumulator: Accumulator =
 				get_classified(store, &WindowStateKey::new(self.family, group_id, slot_key.clone()))?
@@ -282,15 +278,23 @@ where
 			};
 
 			let slots: Vec<S> = meta.windows.range(start..).map(|(c, _)| *c).collect();
-			let slot_keys: Vec<EncodedKey> = slots.iter().map(|slot| row_key(&group, *slot)).collect();
+			let slot_keys: Vec<(GroupId, EncodedKey)> = slots
+				.iter()
+				.map(|slot| match batch_slots.get(&(group.clone(), *slot)) {
+					Some(found) => found.clone(),
+					None => {
+						let key = row_key(&group, *slot);
+						(GroupId::of(&key), key)
+					}
+				})
+				.collect();
 			let mut emptied: Vec<S> = Vec::new();
 			let mut pending: Vec<PendingCarry<S, Output>> = Vec::new();
-			for (slot, slot_key) in slots.into_iter().zip(slot_keys) {
+			for (slot, (slot_group, slot_key)) in slots.into_iter().zip(slot_keys) {
 				let span = meta.windows.get(&slot).expect("window entry present").span;
-				let slot_group = GroupId::of(&slot_key);
 				let finalized = get::<_, Accumulator>(
 					store,
-					&WindowStateKey::new(self.family, slot_group, slot_key.clone()),
+					&WindowStateKey::new(self.family, slot_group, slot_key),
 				)?
 				.and_then(|a| a.finalize())
 				.map(|value| (slot_group, value));
@@ -309,7 +313,6 @@ where
 						}
 						pending.push(PendingCarry {
 							group_id: slot_group,
-							key: slot_key,
 							span,
 							value: out,
 							withdraw: false,
@@ -321,7 +324,6 @@ where
 						{
 							pending.push(PendingCarry {
 								group_id: slot_group,
-								key: slot_key,
 								span,
 								value: prev,
 								withdraw: true,
@@ -332,13 +334,10 @@ where
 				}
 			}
 
-			let pairs: Vec<(GroupId, EncodedKey)> =
-				pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
-			let rows = store.get_or_create_row_numbers_for_groups(
-				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-			)?;
+			let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
+			let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 			reifydb_assertions! {
-				let requested = pairs.len();
+				let requested = groups.len();
 				let returned = rows.len();
 				assert!(
 					returned == requested,
