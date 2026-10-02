@@ -11,8 +11,8 @@ use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
 	internal_err,
 	value::{
-		batch::{batch, empty_batch},
-		column::{builder::ColumnBuilder, factory},
+		batch::{batch, empty_batch, from_encoded_bytes},
+		column::factory,
 	},
 };
 use reifydb_evaluate::{
@@ -40,47 +40,8 @@ use crate::{
 };
 
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
-	let fields = shape.fields();
-
-	let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
-	for field in fields.iter() {
-		builders.push(ColumnBuilder::with_capacity(field.constraint.get_type(), rows.len()));
-	}
-
-	let mut row_numbers = Vec::with_capacity(rows.len());
-	let mut created_at = Vec::with_capacity(rows.len());
-	let mut updated_at = Vec::with_capacity(rows.len());
-	let mut time = Vec::with_capacity(rows.len());
-	for (row_number, encoded) in rows {
-		row_numbers.push(*row_number);
-		created_at.push(shape.created_at(encoded));
-		updated_at.push(shape.updated_at(encoded));
-		if let Some(t) = shape.time(encoded) {
-			time.push(t);
-		}
-		for (i, _) in fields.iter().enumerate() {
-			builders[i].push_value(shape.get_value(encoded, i));
-		}
-	}
-
-	let columns_vec: Vec<(FieldRef, ArrayRef)> =
-		fields.iter().zip(builders).map(|(field, data)| data.finish(&field.name)).collect();
-
-	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
-	if !row_numbers.is_empty() {
-		let array: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|rn| rn.0)));
-		stamps.push((SystemColumn::RowNumbers, array));
-	}
-	for (column, values) in [
-		(SystemColumn::CreatedAt, created_at),
-		(SystemColumn::UpdatedAt, updated_at),
-		(SystemColumn::Time, time),
-	] {
-		if !values.is_empty() {
-			stamps.push((column, factory::datetime(column.name(), values).1));
-		}
-	}
-	stamp_system_columns(batch(columns_vec)?, stamps)
+	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
+	from_encoded_bytes(shape, &ids, &encoded)
 }
 
 pub(crate) fn with_series_stamps(

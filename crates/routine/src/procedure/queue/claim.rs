@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::{
+	slice,
+	sync::{Arc, LazyLock},
+};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
@@ -19,7 +22,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	value::{
-		batch::batch,
+		batch::{batch, decode_cells},
 		column::{builder::ColumnBuilder, factory},
 	},
 };
@@ -416,8 +419,8 @@ fn push_payload(
 		});
 	};
 
-	for (index, buffer) in payloads.iter_mut().enumerate() {
-		buffer.push_value(shape.get_value(row.as_slice(), index));
+	for (index, (column, buffer)) in queue.columns.iter().zip(payloads.iter_mut()).enumerate() {
+		decode_cells(buffer, &column.name, &shape, index, slice::from_ref(&stored.bytes))?;
 	}
 
 	Ok(())

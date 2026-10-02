@@ -31,9 +31,10 @@ use reifydb_value::{
 		},
 		date::Date,
 		datetime::DateTime,
-		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		system_columns::{
 			SystemColumn, column_view, is_system_field, stamp_system_columns, system_column, system_field,
@@ -149,9 +150,7 @@ pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBy
 		if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
 			builder.set_dictionary_id(*dict_id);
 		}
-		for row in rows {
-			builder.push_value(shape.get_value(row, index));
-		}
+		decode_cells(&mut builder, &field.name, shape, index, rows)?;
 		columns.push(builder.finish(&field.name));
 	}
 
@@ -285,11 +284,8 @@ pub fn append_rows(
 		builders.push(retyped(&view, field, rows.len()));
 	}
 
-	for row in &rows {
-		match (0..shape.field_count()).all(|index| shape.is_defined(row, index)) {
-			true => append_all_defined(&names, &mut builders, shape, row)?,
-			false => append_fallback(&names, &mut builders, shape, row)?,
-		}
+	for (index, (builder, name)) in builders.iter_mut().zip(&names).enumerate() {
+		decode_cells(builder, name, shape, index, &rows)?;
 	}
 
 	let columns = names.iter().zip(builders).map(|(name, builder)| builder.finish(name)).collect();
@@ -620,54 +616,26 @@ fn retyped(view: &ColumnView, field: &RowShapeField, appended: usize) -> ColumnB
 	builder
 }
 
-fn append_all_defined(
-	names: &[&str],
-	builders: &mut [ColumnBuilder],
+pub fn decode_cells(
+	builder: &mut ColumnBuilder,
+	name: &str,
 	shape: &RowShape,
-	bytes: &EncodedBytes,
+	index: usize,
+	rows: &[EncodedBytes],
 ) -> Result<()> {
-	for (index, (builder, field)) in builders.iter_mut().zip(shape.fields()).enumerate() {
-		if builder.optional {
-			builder.push_value(shape.get_value(bytes, index));
-			continue;
-		}
-		let column_type = builder.get_type();
-		let value_type = field.constraint.get_type();
-		if !append_encoded(&mut builder.inner, &value_type, shape, bytes, index) {
-			return Err(CoreError::FrameError {
-				message: format!(
-					"type mismatch for column '{}'({}): incompatible with value {}",
-					names[index], column_type, value_type
-				),
-			}
-			.into());
-		}
-	}
-	Ok(())
-}
-
-fn append_fallback(
-	names: &[&str],
-	builders: &mut [ColumnBuilder],
-	shape: &RowShape,
-	bytes: &EncodedBytes,
-) -> Result<()> {
-	for (index, (builder, field)) in builders.iter_mut().zip(shape.fields()).enumerate() {
-		if !shape.is_defined(bytes, index) {
+	let value_type = shape.fields()[index].constraint.get_type();
+	for row in rows {
+		if !shape.is_defined(row, index) {
 			builder.push_none();
 			continue;
 		}
-		if builder.optional {
-			builder.push_value(shape.get_value(bytes, index));
-			continue;
-		}
-		let column_type = builder.get_type();
-		let value_type = field.constraint.get_type();
-		if !append_encoded(&mut builder.inner, &value_type, shape, bytes, index) {
+		if !append_encoded(builder, value_type.inner_type(), shape, row, index) {
 			return Err(CoreError::FrameError {
 				message: format!(
 					"type mismatch for column '{}'({}): incompatible with value {}",
-					names[index], column_type, value_type
+					name,
+					builder.get_type(),
+					value_type
 				),
 			}
 			.into());
@@ -677,22 +645,24 @@ fn append_fallback(
 }
 
 fn append_encoded(
-	builder: &mut TypedBuilder,
+	column: &mut ColumnBuilder,
 	value_type: &ValueType,
 	shape: &RowShape,
 	bytes: &EncodedBytes,
 	index: usize,
 ) -> bool {
-	match (builder, value_type) {
+	match (&mut column.inner, value_type) {
 		(TypedBuilder::Bool(builder), ValueType::Boolean) => {
 			builder.append_value(shape.get::<bool>(bytes, index));
 		}
-		(TypedBuilder::Float4(builder), ValueType::Float4) => {
-			builder.append_value(shape.get::<f32>(bytes, index));
-		}
-		(TypedBuilder::Float8(builder), ValueType::Float8) => {
-			builder.append_value(shape.get::<f64>(bytes, index));
-		}
+		(TypedBuilder::Float4(builder), ValueType::Float4) => match shape.get::<f32>(bytes, index) {
+			value if value.is_nan() => column.push_none(),
+			value => builder.append_value(OrderedF32::canonical(value)),
+		},
+		(TypedBuilder::Float8(builder), ValueType::Float8) => match shape.get::<f64>(bytes, index) {
+			value if value.is_nan() => column.push_none(),
+			value => builder.append_value(OrderedF64::canonical(value)),
+		},
 		(TypedBuilder::Int1(builder), ValueType::Int1) => {
 			builder.append_value(shape.get::<i8>(bytes, index));
 		}
@@ -776,10 +746,9 @@ fn append_encoded(
 				..
 			},
 			ValueType::DictionaryId,
-		) => match shape.get_value(bytes, index) {
-			Value::DictionaryId(id) => append_fixed(builder, &dictionary_array::encode(id)),
-			_ => append_fixed(builder, &dictionary_array::encode(DictionaryEntryId::default())),
-		},
+		) => {
+			append_fixed(builder, &dictionary_array::encode(shape.get_dictionary_id(bytes, index)));
+		}
 		(
 			TypedBuilder::Digest {
 				builder,
@@ -793,6 +762,12 @@ fn append_encoded(
 		) if *inner == **field_inner && *accuracy == *field_accuracy => {
 			push_digest(builder, &shape.get_digest(bytes, index));
 		}
+		(
+			TypedBuilder::Any {
+				..
+			},
+			ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_),
+		) => column.push_value(shape.get_value(bytes, index)),
 		_ => return false,
 	}
 	true

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, SchemaRef};
-use reifydb_codec::row::{series::EncodedSeriesRow, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
@@ -15,7 +15,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::{
-		batch::{batch, batch_with},
+		batch::{batch, batch_with, decode_cells},
 		column::{
 			builder::ColumnBuilder,
 			factory::{datetime, none_typed, uint1},
@@ -27,9 +27,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
-		Value,
 		datetime::DateTime,
-		dictionary::DictionaryEntryId,
 		partition::Partition,
 		system_columns::{SystemColumn, system_field},
 		value_type::ValueType,
@@ -44,10 +42,12 @@ use super::{
 };
 use crate::{
 	Result,
-	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
-		volcano::query::{QueryContext, QueryNode},
+		volcano::{
+			decode_dictionary_column,
+			query::{QueryContext, QueryNode},
+		},
 	},
 };
 
@@ -132,8 +132,6 @@ impl SeriesScanNode {
 		batch_size: u64,
 		partitioned: bool,
 		has_tag: bool,
-		data_column_count: usize,
-		read_shape: &RowShape,
 	) -> Result<SeriesBatch> {
 		let mut batch = SeriesBatch::default();
 		let mut count = 0;
@@ -171,11 +169,7 @@ impl SeriesScanNode {
 					batch.tags.push(variant_tag.unwrap_or(0));
 				}
 
-				let mut values = Vec::with_capacity(data_column_count);
-				for i in 0..data_column_count {
-					values.push(read_shape.get_value(&entry.bytes, i + 1));
-				}
-				batch.data_rows.push(values);
+				batch.rows.push(entry.bytes);
 
 				batch.last_key = Some(entry.key.clone());
 				count += 1;
@@ -214,6 +208,7 @@ impl SeriesScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
+		read_shape: &RowShape,
 		scanned: SeriesBatch,
 		has_tag: bool,
 		partitioned: bool,
@@ -229,25 +224,32 @@ impl SeriesScanNode {
 
 		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
-			let mut col_values: Vec<Value> = scanned
-				.data_rows
-				.iter()
-				.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
-				.collect();
-
-			if let Some(dict_id) = col_def.dictionary_id
-				&& let Some(dictionary) = stored_ctx.services.catalog.find_dictionary(rx, dict_id)?
-			{
-				for value in col_values.iter_mut() {
-					if let Some(entry_id) = DictionaryEntryId::from_value(value) {
-						*value = rx
-							.get_from_dictionary(&dictionary, entry_id)?
-							.unwrap_or_else(Value::none);
-					}
+			let dictionary = match col_def.dictionary_id {
+				Some(dict_id) => stored_ctx.services.catalog.find_dictionary(rx, dict_id)?,
+				None => None,
+			};
+			match dictionary {
+				Some(dictionary) => {
+					let mut ids = ColumnBuilder::with_capacity(
+						ValueType::DictionaryId,
+						scanned.rows.len(),
+					);
+					decode_cells(&mut ids, &col_def.name, read_shape, col_idx + 1, &scanned.rows)?;
+					let (field, array) = ids.finish(&col_def.name);
+					result_columns.push(decode_dictionary_column(
+						&field,
+						&array,
+						&dictionary,
+						col_type,
+						rx,
+					)?);
+				}
+				None => {
+					let mut data = ColumnBuilder::with_capacity(col_type, scanned.rows.len());
+					decode_cells(&mut data, &col_def.name, read_shape, col_idx + 1, &scanned.rows)?;
+					result_columns.push(data.finish(&col_def.name));
 				}
 			}
-
-			result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
 		}
 
 		let mut stamps: Vec<(SystemColumn, ArrayRef)> =
@@ -288,7 +290,7 @@ struct SeriesBatch {
 	created_at_values: Vec<DateTime>,
 	time_values: Vec<DateTime>,
 	updated_at_values: Vec<DateTime>,
-	data_rows: Vec<Vec<Value>>,
+	rows: Vec<EncodedBytes>,
 	last_key: Option<TaggedKey>,
 }
 
@@ -354,31 +356,16 @@ impl QueryNode for SeriesScanNode {
 
 		let scope = RangeScope::All;
 
-		let data_column_count = series.data_columns().count();
 		let batch = if self.oldest_first && partitioned {
 			let fixed = self.partition.map(|_| range);
 			let merge = self
 				.merge
 				.get_or_insert_with(|| PartitionMerge::new(MergeLayout::Series, storage, fixed));
 			let rows = merge.next(rx, batch_size)?;
-			Self::drain_batch(
-				&mut rows.into_iter().map(Ok),
-				batch_size,
-				partitioned,
-				has_tag,
-				data_column_count,
-				&read_shape,
-			)?
+			Self::drain_batch(&mut rows.into_iter().map(Ok), batch_size, partitioned, has_tag)?
 		} else {
 			let mut stream = Self::open_range(rx, range, scope, batch_size, self.oldest_first)?;
-			Self::drain_batch(
-				&mut stream,
-				batch_size,
-				partitioned,
-				has_tag,
-				data_column_count,
-				&read_shape,
-			)?
+			Self::drain_batch(&mut stream, batch_size, partitioned, has_tag)?
 		};
 
 		if batch.key_values.is_empty() {
@@ -391,18 +378,10 @@ impl QueryNode for SeriesScanNode {
 
 		self.last_key = batch.last_key.clone();
 
-		self.assemble(rx, &stored_ctx, batch, has_tag, partitioned)
+		self.assemble(rx, &stored_ctx, &read_shape, batch, has_tag, partitioned)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
-}
-
-pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
-	let mut data = ColumnBuilder::with_capacity(col_type, values.len());
-	for value in values {
-		data.push_value(value.clone());
-	}
-	Ok(data.finish(name))
 }
