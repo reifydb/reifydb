@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::{
 		batch::{batch, concat, heap_size, take_rows, take_rows_or_none},
 		column::{
-			factory::{datetime, from_many, rename, typed_none},
+			factory::{datetime, from_one, rename, typed_none},
 			view::group_by::common_key_type,
 		},
 	},
@@ -25,7 +25,7 @@ use reifydb_value::{
 		column_view::ColumnView,
 		datetime::DateTime,
 		system_columns::{
-			SystemColumn, is_system_field, system_column, time, user_columns, with_system_column,
+			SystemColumn, is_system_field, stamp_system_columns, system_column, time, user_columns,
 		},
 		value_type::ValueType,
 	},
@@ -103,10 +103,10 @@ pub(crate) fn materialize_join(
 		}
 	}
 
-	let mut columns = batch(picked)?;
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if system_column(&left, SystemColumn::RowNumbers).is_some() {
 		let row_numbers = UInt64Array::from_iter_values((1..=right_picks.len() as u64).map(|i| emitted + i));
-		columns = with_system_column(columns, SystemColumn::RowNumbers, Arc::new(row_numbers))?;
+		stamps.push((SystemColumn::RowNumbers, Arc::new(row_numbers)));
 	}
 	let left_time = time(&left)?;
 	let right_time = time(right_columns)?;
@@ -120,9 +120,9 @@ pub(crate) fn materialize_join(
 			})
 			.collect();
 		let (_, array) = datetime(SystemColumn::Time.name(), merged);
-		columns = with_system_column(columns, SystemColumn::Time, array)?;
+		stamps.push((SystemColumn::Time, array));
 	}
-	Ok(columns)
+	stamp_system_columns(batch(picked)?, stamps)
 }
 
 pub struct ResolvedColumnNames {
@@ -189,7 +189,7 @@ pub fn build_eval_columns(
 			Value::None {
 				..
 			} => typed_none(name, &col.get_type()),
-			value => from_many(name, value.clone(), 1),
+			value => from_one(name, value.clone()),
 		};
 		eval_columns.push(data);
 	}
@@ -203,7 +203,7 @@ pub fn build_eval_columns(
 			Value::None {
 				..
 			} => typed_none(&name, &col.get_type()),
-			value => from_many(&name, value.clone(), 1),
+			value => from_one(&name, value.clone()),
 		};
 		eval_columns.push(data);
 	}

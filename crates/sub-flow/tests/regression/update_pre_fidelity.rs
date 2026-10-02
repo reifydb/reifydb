@@ -60,7 +60,7 @@ fn source() -> Option<SchemaRef> {
 	Some(Arc::new(Schema::empty()))
 }
 
-fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
+fn row(number: u64, group: i32, value: i64) -> reifydb_testing_chaos::operator::event::Row {
 	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
 		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), group, value, at)

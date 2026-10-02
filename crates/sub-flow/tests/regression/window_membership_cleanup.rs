@@ -63,7 +63,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 	})
 }
 
-fn row(number: u64) -> reifydb_core::row::Row {
+fn row(number: u64) -> reifydb_testing_chaos::operator::event::Row {
 	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
 		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), GROUP, 1, at)
@@ -148,7 +148,7 @@ fn a_session_window_keeps_no_state_per_removed_row() {
 // (12750666829617941778) is not a durable handle: it names a position in a generated corpus, so any
 // change to the workload or its parameters points it somewhere else entirely.
 
-fn valued(number: u64, value: i64, ms: i64) -> reifydb_core::row::Row {
+fn valued(number: u64, value: i64, ms: i64) -> reifydb_testing_chaos::operator::event::Row {
 	generator::row(RowNumber(number), GROUP, value, at_millis(ms))
 }
 

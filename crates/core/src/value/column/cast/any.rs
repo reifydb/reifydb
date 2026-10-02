@@ -23,7 +23,7 @@ use reifydb_value::{
 };
 
 use super::{cast_column_data, convert::Convert};
-use crate::value::column::{builder::ColumnBuilder, factory::from_many};
+use crate::value::column::{builder::ColumnBuilder, factory::from_one};
 
 pub fn from_any(
 	ctx: impl Convert + Copy,
@@ -61,7 +61,7 @@ pub fn from_any(
 
 		let value = row.unwrap_any();
 
-		let single_column = from_many(name, value.clone(), 1);
+		let single_column = from_one(name, value.clone());
 		let single_view = ColumnView::try_from(&single_column)?;
 		if let ViewData::Any {
 			..

@@ -9,6 +9,7 @@ use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::R
 use reifydb_core::{
 	expression::Expression,
 	interface::catalog::{column::Column, dictionary::Dictionary},
+	internal_err,
 	value::{
 		batch::{batch, empty_batch},
 		column::{builder::ColumnBuilder, factory},
@@ -26,9 +27,10 @@ use reifydb_value::{
 	params::Params,
 	value::{
 		column_view::ColumnView,
+		datetime::DateTime,
 		identity::IdentityId,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns, system_column, user_columns, with_system_column},
 	},
 };
 
@@ -64,10 +66,10 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	let columns_vec: Vec<(FieldRef, ArrayRef)> =
 		fields.iter().zip(builders).map(|(field, data)| data.finish(&field.name)).collect();
 
-	let mut out = batch(columns_vec)?;
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if !row_numbers.is_empty() {
 		let array: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|rn| rn.0)));
-		out = with_system_column(out, SystemColumn::RowNumbers, array)?;
+		stamps.push((SystemColumn::RowNumbers, array));
 	}
 	for (column, values) in [
 		(SystemColumn::CreatedAt, created_at),
@@ -75,38 +77,46 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		(SystemColumn::Time, time),
 	] {
 		if !values.is_empty() {
-			out = with_system_column(out, column, factory::datetime(column.name(), values).1)?;
+			stamps.push((column, factory::datetime(column.name(), values).1));
 		}
 	}
-	Ok(out)
+	stamp_system_columns(batch(columns_vec)?, stamps)
 }
 
 pub(crate) fn with_series_stamps(
 	columns: Vec<(FieldRef, ArrayRef)>,
-	row_number: RowNumber,
-	encoded: &EncodedBytes,
+	row_numbers: &[RowNumber],
+	encoded: &[EncodedBytes],
 ) -> Result<RecordBatch> {
-	let row = EncodedSeriesRow::view(encoded);
-	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values([row_number.0]));
-	let out = with_system_column(batch(columns)?, SystemColumn::RowNumbers, rn)?;
-	let out = with_system_column(
-		out,
-		SystemColumn::CreatedAt,
-		factory::datetime(SystemColumn::CreatedAt.name(), [row.created_at()]).1,
-	)?;
-	let out = with_system_column(
-		out,
-		SystemColumn::UpdatedAt,
-		factory::datetime(SystemColumn::UpdatedAt.name(), [row.updated_at()]).1,
-	)?;
-	match row.time() {
-		Some(time) => with_system_column(
-			out,
-			SystemColumn::Time,
-			factory::datetime(SystemColumn::Time.name(), [time]).1,
+	let rows: Vec<&EncodedSeriesRow> = encoded.iter().map(EncodedSeriesRow::view).collect();
+	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|row_number| row_number.0)));
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = vec![
+		(SystemColumn::RowNumbers, rn),
+		(
+			SystemColumn::CreatedAt,
+			factory::datetime(SystemColumn::CreatedAt.name(), rows.iter().map(|row| row.created_at())).1,
 		),
-		None => Ok(out),
+		(
+			SystemColumn::UpdatedAt,
+			factory::datetime(SystemColumn::UpdatedAt.name(), rows.iter().map(|row| row.updated_at())).1,
+		),
+	];
+	let times: Vec<DateTime> = rows.iter().filter_map(|row| row.time()).collect();
+	match times.len() {
+		0 => {}
+		stamped if stamped == rows.len() => {
+			stamps.push((SystemColumn::Time, factory::datetime(SystemColumn::Time.name(), times).1));
+		}
+		stamped => {
+			return internal_err!(
+				"{} of {} series rows carry a {} stamp",
+				stamped,
+				rows.len(),
+				SystemColumn::Time
+			);
+		}
 	}
+	stamp_system_columns(batch(columns)?, stamps)
 }
 
 pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<RecordBatch> {
@@ -115,16 +125,12 @@ pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<Rec
 	for (field, array) in user_columns(pre) {
 		merged.push(factory::rename((field.clone(), array.clone()), &format!("pre_{}", field.name())));
 	}
-	let mut out = batch(merged)?;
-	for column in SystemColumn::ALL {
-		if column == SystemColumn::CommitVersion {
-			continue;
-		}
-		if let Some(array) = system_column(&post, column) {
-			out = with_system_column(out, column, array.clone())?;
-		}
-	}
-	Ok(out)
+	let stamps: Vec<(SystemColumn, ArrayRef)> = SystemColumn::ALL
+		.into_iter()
+		.filter(|column| *column != SystemColumn::CommitVersion)
+		.filter_map(|column| system_column(&post, column).map(|array| (column, array.clone())))
+		.collect();
+	stamp_system_columns(batch(merged)?, stamps)
 }
 
 pub(crate) fn with_absent_pre_image(post: RecordBatch) -> Result<RecordBatch> {

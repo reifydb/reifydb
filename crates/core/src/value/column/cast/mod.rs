@@ -35,7 +35,7 @@ use self::{
 use crate::value::{
 	batch::frame_error,
 	column::{
-		factory::{from_many, none_typed},
+		factory::{from_one, none_typed},
 		nulls::{split_nulls, with_nulls},
 	},
 };
@@ -45,7 +45,7 @@ pub fn cast_value(value: Value, target: &ValueType) -> Result<Value> {
 		return Ok(value);
 	}
 	let display = value.to_string();
-	let data = from_many("", value, 1);
+	let data = from_one("", value);
 	let cast = cast_column_data(
 		TargetConvert {
 			target: None,

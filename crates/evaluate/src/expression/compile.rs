@@ -966,8 +966,8 @@ fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> 
 
 fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
 	items.iter().any(|item| {
-		let item_col = factory::from_many(fragment.text(), item.clone(), 1);
-		let elem_col = factory::from_many(fragment.text(), element.clone(), 1);
+		let item_col = factory::from_one(fragment.text(), item.clone());
+		let elem_col = factory::from_one(fragment.text(), element.clone());
 		compare_columns::<Equal>(&item_col, &elem_col, fragment.clone(), |f, l, r| {
 			TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Equal,

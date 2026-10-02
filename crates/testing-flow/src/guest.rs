@@ -11,7 +11,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::tag::KeyTag,
 	operator_with::ApplyWith,
-	row::Row,
 };
 use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
@@ -24,6 +23,7 @@ use reifydb_flow_async::{
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata, mount::mount};
 use reifydb_test_harness::engine::TestEngine;
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_sdk::builders::TestChangeBuilder;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{

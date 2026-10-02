@@ -53,7 +53,9 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{SeriesDeleteTally, apply_series_metadata_after_delete, remove_series_row},
+	transaction::operation::series::{
+		SeriesDeleteTally, apply_series_metadata_after_delete, emit_series_remove_change, remove_series_row,
+	},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -227,6 +229,7 @@ fn drive_series_delete_input(
 			}
 			.into());
 		}
+		let mut removed = SeriesRemovedRows::default();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx)?;
@@ -264,19 +267,19 @@ fn drive_series_delete_input(
 			let committed = txn.get_committed(&key)?.map(|v| v.bytes);
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
-			let pre = build_series_delete_pre_columns_from_input(
-				series,
-				&columns,
-				&pre_for_cdc,
-				key_value,
-				row_number,
-				row_idx,
-			)?;
-			remove_series_row(txn, series, &key, pre_for_cdc, committed.is_some(), Some(pre))?;
+			remove_series_row(txn, series, &key, pre_for_cdc.clone(), committed.is_some())?;
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
 			}
 			deleted_by_partition.entry(partition).or_default().record(key_value);
+			removed.key_values.push(key_value);
+			removed.row_numbers.push(row_number);
+			removed.pres.push(pre_for_cdc);
+			removed.row_indices.push(row_idx);
+		}
+		if !removed.pres.is_empty() {
+			let pre = build_series_delete_pre_columns_from_input(series, &columns, removed)?;
+			emit_series_remove_change(txn, series, pre);
 		}
 	}
 
@@ -301,25 +304,32 @@ fn extract_series_delete_variant_tag(columns: &RecordBatch, has_tag: bool, row_i
 	}))
 }
 
+#[derive(Default)]
+struct SeriesRemovedRows {
+	key_values: Vec<u64>,
+	row_numbers: Vec<RowNumber>,
+	pres: Vec<EncodedBytes>,
+	row_indices: Vec<usize>,
+}
+
 fn build_series_delete_pre_columns_from_input(
 	series: &Series,
 	columns: &RecordBatch,
-	encoded_bytes: &EncodedBytes,
-	key_value: u64,
-	row_number: RowNumber,
-	row_idx: usize,
+	removed: SeriesRemovedRows,
 ) -> Result<RecordBatch> {
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(series.key_column_data(vec![key_value]));
+	pre_col_vec.push(series.key_column_data(removed.key_values));
 	for (field, array) in user_columns(columns) {
 		if field.name() != series.key.column() && field.name() != "tag" {
 			let col = ColumnView::try_from((array, field.as_ref()))?;
-			let mut data = ColumnBuilder::with_capacity(col.get_type(), 1);
-			data.push_value(col.get_value(row_idx));
+			let mut data = ColumnBuilder::with_capacity(col.get_type(), removed.row_indices.len());
+			for &row_idx in &removed.row_indices {
+				data.push_value(col.get_value(row_idx));
+			}
 			pre_col_vec.push(data.finish(field.name()));
 		}
 	}
-	with_series_stamps(pre_col_vec, row_number, encoded_bytes)
+	with_series_stamps(pre_col_vec, &removed.row_numbers, &removed.pres)
 }
 
 #[inline]

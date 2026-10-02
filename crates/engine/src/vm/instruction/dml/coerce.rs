@@ -7,7 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	expression::Expression,
 	interface::{catalog::series::Series, evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{cast::cast_column_data, factory::from_many, write::check_digest_write},
+	value::column::{cast::cast_column_data, factory::from_one, write::check_digest_write},
 };
 use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_rql::query::QueryPlan;
@@ -94,7 +94,7 @@ pub(crate) fn coerce_value_to_column_type(
 		};
 	}
 
-	let temp_column = from_many("value", value.clone(), 1);
+	let temp_column = from_one("value", value.clone());
 	let temp_column_data = ColumnView::try_from(&temp_column)?;
 	let value_str = value.to_string();
 

@@ -1,17 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{result::Result as StdResult, slice};
+use std::{
+	result::Result as StdResult,
+	slice,
+	sync::{Arc, LazyLock},
+};
 
 use arrow_array::{
 	Date32Array, IntervalMonthDayNanoArray, PrimitiveArray, Time64NanosecondArray, TimestampNanosecondArray,
 };
 use arrow_buffer::{IntervalMonthDayNano, ScalarBuffer};
+use arrow_schema::{DataType, TimeUnit};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time};
 
 pub const DATETIME_TIMEZONE: &str = "+00:00";
+
+static TIMEZONE: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(DATETIME_TIMEZONE));
+
+static DATETIME_DATA_TYPE: LazyLock<DataType> =
+	LazyLock::new(|| DataType::Timestamp(TimeUnit::Nanosecond, Some(datetime_timezone())));
+
+pub fn datetime_timezone() -> Arc<str> {
+	TIMEZONE.clone()
+}
+
+pub fn datetime_data_type() -> DataType {
+	DATETIME_DATA_TYPE.clone()
+}
 
 pub fn dates(array: &Date32Array) -> &[Date] {
 	let values: &[i32] = array.values();
@@ -60,7 +78,7 @@ pub fn date_array(values: impl IntoIterator<Item = Date>) -> Date32Array {
 
 pub fn datetime_array(values: impl IntoIterator<Item = DateTime>) -> TimestampNanosecondArray {
 	let natives: Vec<i64> = values.into_iter().map(datetime_to_native).collect();
-	PrimitiveArray::new(ScalarBuffer::from(natives), None).with_timezone(DATETIME_TIMEZONE)
+	PrimitiveArray::new(ScalarBuffer::from(natives), None).with_timezone(datetime_timezone())
 }
 
 pub fn time_array(values: impl IntoIterator<Item = Time>) -> Time64NanosecondArray {

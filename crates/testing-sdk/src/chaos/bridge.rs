@@ -4,7 +4,9 @@
 use std::{mem, sync::Arc};
 
 use rand::rngs::StdRng;
-use reifydb_core::{interface::change::Change, row::Row};
+use reifydb_core::interface::change::Change;
+use reifydb_testing_chaos::operator::event::Row;
+#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	event::{ChaosBatch, ChaosEvent},
@@ -138,6 +140,7 @@ pub struct OracleClaim {
 	pub tolerances: Tolerances,
 }
 
+#[allow(clippy::disallowed_types)]
 pub struct ReplayModel {
 	batches: Vec<ChaosBatch>,
 	pending: Vec<ChaosEvent>,

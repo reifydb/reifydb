@@ -19,7 +19,6 @@ use reifydb_core::{
 		state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 	operator_with::ApplyWith,
-	row::Row,
 	state::{timer::TimerKind, typed::SuffixBytes},
 };
 use reifydb_flow_async::{
@@ -35,7 +34,7 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{MountedOperator, OperatorMetadata, mount::mount, state::decode_payload},
 };
-use reifydb_testing_chaos::operator::subject::Subject;
+use reifydb_testing_chaos::operator::{event::Row, subject::Subject};
 use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,

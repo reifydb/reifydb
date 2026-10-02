@@ -11,7 +11,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	metrics::heap::HeapSize,
-	value::batch::from_row,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -26,6 +25,7 @@ use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
+			core::EmitRow,
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
@@ -500,8 +500,9 @@ fn finish_rolling_results(
 	groups: &WindowGroups,
 	priors: &mut RollingPriors,
 ) -> Result<Vec<Diff>> {
-	let ts = change.changed_at;
-	let mut diffs = Vec::new();
+	let mut inserts = Vec::new();
+	let mut updates = Vec::new();
+	let mut removes = Vec::new();
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
 		let prior = match priors.remove(&r.group) {
@@ -510,33 +511,27 @@ fn finish_rolling_results(
 		};
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
-				let pre = operator.core.build_engine_row(
-					&m.group_values,
-					&m.last_value,
-					RowNumber(m.row_number),
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::remove(from_row(&pre)?));
+				removes.push(EmitRow {
+					group_values: m.group_values,
+					slot_values: m.last_value,
+					row_number: RowNumber(m.row_number),
+					span: None,
+				});
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 			continue;
 		}
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
-		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, None)?;
+		let emit = |slot_values: Vec<Value>| EmitRow {
+			group_values: gvals.clone(),
+			slot_values,
+			row_number: r.row_number,
+			span: None,
+		};
 		match (r.kind, prior) {
-			(EmitKind::Insert, _) => diffs.push(Diff::insert(from_row(&post)?)),
-			(_, Some(m)) => {
-				let pre = operator.core.build_engine_row(
-					&gvals,
-					&m.last_value,
-					r.row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
-			}
-			(_, None) => diffs.push(Diff::update(from_row(&post)?, from_row(&post)?)),
+			(EmitKind::Insert, _) => inserts.push(emit(r.value.clone())),
+			(_, Some(m)) => updates.push((emit(m.last_value), emit(r.value.clone()))),
+			(_, None) => updates.push((emit(r.value.clone()), emit(r.value.clone()))),
 		}
 		operator.meta_slot().put_rolling_meta(
 			host,
@@ -549,7 +544,7 @@ fn finish_rolling_results(
 			},
 		)?;
 	}
-	Ok(diffs)
+	operator.core.emit_diffs(inserts, updates, removes, change.changed_at)
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
@@ -593,7 +588,8 @@ pub fn seal_rolling_engine(
 	Span::current().record("expired", expiries.len());
 	rearm_rolling_seal::<DateTime>(operator, host, armed_before, runnable, lag)?;
 
-	let mut diffs = Vec::new();
+	let mut updates = Vec::new();
+	let mut removes = Vec::new();
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -605,21 +601,13 @@ pub fn seal_rolling_engine(
 				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
+				let emit = |slot_values: Vec<Value>| EmitRow {
+					group_values: meta.group_values.clone(),
+					slot_values,
 					row_number,
-					ts,
-					None,
-				)?;
-				let post = operator.core.build_engine_row(
-					&meta.group_values,
-					&value,
-					row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
+					span: None,
+				};
+				updates.push((emit(meta.last_value.clone()), emit(value.clone())));
 				operator.meta_slot().put_rolling_meta(
 					host,
 					group_id,
@@ -639,19 +627,17 @@ pub fn seal_rolling_engine(
 				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
+				removes.push(EmitRow {
+					group_values: meta.group_values,
+					slot_values: meta.last_value,
 					row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::remove(from_row(&pre)?));
+					span: None,
+				});
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 		}
 	}
-	Ok(diffs)
+	operator.core.emit_diffs(Vec::new(), updates, removes, ts)
 }
 
 #[cfg(test)]

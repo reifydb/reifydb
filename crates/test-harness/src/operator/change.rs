@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::RowShapeField;
-use reifydb_core::{interface::change::Change, row::Row};
+use reifydb_core::interface::change::Change;
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestOperatorRowBuilder};
 use reifydb_value::value::{
 	Value, column_view::ColumnView, diff_type::DiffType, row_number::RowNumber, system_columns::user_columns,

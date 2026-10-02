@@ -18,11 +18,8 @@ use reifydb_value::{
 		Value,
 		datetime::DateTime,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, is_system_field, system_column, user_columns},
-		value_type::{
-			ValueType,
-			field::{FieldType, from_field, to_field},
-		},
+		system_columns::{SystemColumn, is_system_field, system_column, system_field, user_columns},
+		value_type::field::from_field,
 	},
 };
 
@@ -276,7 +273,7 @@ impl JoinedColumnsBuilder {
 				other => system_column(&gathered, other).cloned(),
 			};
 			if let Some(array) = array {
-				columns.push((system_field(column, &array), array));
+				columns.push((system_field(column, array.logical_null_count() > 0), array));
 			}
 		}
 		batch(columns)
@@ -309,20 +306,6 @@ fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, Arr
 		true => Ok((field, new_null_array(array.data_type(), count))),
 		false => Ok((field, array)),
 	}
-}
-
-fn system_field(column: SystemColumn, array: &ArrayRef) -> FieldRef {
-	let value_type = match array.logical_null_count() > 0 {
-		true => ValueType::Option(Box::new(column.ty())),
-		false => column.ty(),
-	};
-	Arc::new(to_field(
-		column.name(),
-		&FieldType {
-			value_type: Some(value_type),
-			..FieldType::default()
-		},
-	))
 }
 
 fn gather(columns: &RecordBatch, rows: &[usize]) -> Result<RecordBatch> {

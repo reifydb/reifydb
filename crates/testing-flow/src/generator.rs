@@ -6,7 +6,8 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape, RowShapeField},
 	table::EncodedTableRow,
 };
-use reifydb_core::{interface::change::Change, row::Row};
+use reifydb_core::interface::change::Change;
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestRowBuilder};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 

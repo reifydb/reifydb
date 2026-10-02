@@ -21,7 +21,6 @@ use reifydb_core::{
 	expression::Expression,
 	interface::{
 		catalog::{
-			column::Column,
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			object::ObjectId,
@@ -147,6 +146,7 @@ pub(crate) fn insert_series(
 				})?;
 			}
 		}
+		let mut inserted = SeriesInsertedRows::default();
 		for row_idx in 0..columns.num_rows() {
 			insert_series_row(
 				services,
@@ -163,9 +163,11 @@ pub(crate) fn insert_series(
 				has_returning,
 				&mut returned_rows,
 				&mut verified,
+				&mut inserted,
 			)?;
 			inserted_count += 1;
 		}
+		track_series_insert_flow_change(txn, &series, key_column_name, inserted)?;
 	}
 
 	reifydb_assertions! {
@@ -226,6 +228,7 @@ fn insert_series_row(
 	has_returning: bool,
 	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
+	inserted: &mut SeriesInsertedRows,
 ) -> Result<()> {
 	let values = coerce_series_row(series, columns, fragments, context, row_idx)?;
 	let mut encoded = values.clone();
@@ -288,7 +291,6 @@ fn insert_series_row(
 			.into()
 	};
 
-	let data_columns: Vec<_> = series.data_columns().collect();
 	let data_values: Vec<Value> = series
 		.columns
 		.iter()
@@ -317,15 +319,10 @@ fn insert_series_row(
 		returned_rows.push((RowNumber::from(sequence), row.clone()));
 	}
 
-	let snapshot = SeriesRowSnapshot {
-		key_column_name,
-		key_value,
-		data_columns: &data_columns,
-		data_values: &data_values,
-		sequence,
-		row: &row,
-	};
-	track_series_insert_flow_change(txn, series, &snapshot)?;
+	inserted.key_values.push(key_value);
+	inserted.data_values.push(data_values);
+	inserted.row_numbers.push(RowNumber::from(sequence));
+	inserted.rows.push(row);
 
 	update_series_metadata_for_insert(metadata, key_value);
 	Ok(())
@@ -360,13 +357,12 @@ fn finalize_series_insert(
 	insert_series_result(namespace.name(), &series.name, inserted_count)
 }
 
-struct SeriesRowSnapshot<'a> {
-	key_column_name: &'a str,
-	key_value: u64,
-	data_columns: &'a [&'a Column],
-	data_values: &'a [Value],
-	sequence: u64,
-	row: &'a EncodedBytes,
+#[derive(Default)]
+struct SeriesInsertedRows {
+	key_values: Vec<u64>,
+	data_values: Vec<Vec<Value>>,
+	row_numbers: Vec<RowNumber>,
+	rows: Vec<EncodedBytes>,
 }
 
 #[inline]
@@ -484,17 +480,23 @@ fn build_encoded_series_row(
 fn track_series_insert_flow_change(
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	snapshot: &SeriesRowSnapshot<'_>,
+	key_column_name: &str,
+	inserted: SeriesInsertedRows,
 ) -> Result<()> {
-	let row_number = RowNumber::from(snapshot.sequence);
-	let mut cols = Vec::with_capacity(1 + snapshot.data_columns.len());
-	cols.push(rename(series.key_column_data(vec![snapshot.key_value]), snapshot.key_column_name));
-	for (i, col_def) in snapshot.data_columns.iter().enumerate() {
-		let mut data = ColumnBuilder::with_capacity(col_def.constraint.get_type(), 1);
-		data.push_value(snapshot.data_values[i].clone());
+	if inserted.rows.is_empty() {
+		return Ok(());
+	}
+	let data_columns: Vec<_> = series.data_columns().collect();
+	let mut cols = Vec::with_capacity(1 + data_columns.len());
+	cols.push(rename(series.key_column_data(inserted.key_values), key_column_name));
+	for (i, col_def) in data_columns.iter().enumerate() {
+		let mut data = ColumnBuilder::with_capacity(col_def.constraint.get_type(), inserted.data_values.len());
+		for values in &inserted.data_values {
+			data.push_value(values[i].clone());
+		}
 		cols.push(data.finish(&col_def.name));
 	}
-	let post = with_series_stamps(cols, row_number, snapshot.row)?;
+	let post = with_series_stamps(cols, &inserted.row_numbers, &inserted.rows)?;
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),

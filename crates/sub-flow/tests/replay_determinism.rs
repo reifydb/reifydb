@@ -17,7 +17,7 @@
 //! Both comparators live in `reifydb_testing_flow::state` so the catch-up suites hold flows to
 //! the same contract this one does.
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use arrow_array::RecordBatch;
 use arrow_schema::{Schema, SchemaRef};
@@ -103,20 +103,28 @@ fn chunks<'a, T>(events: &'a [T], slices: &[usize]) -> Vec<&'a [T]> {
 
 #[derive(Clone)]
 enum Event {
-	Insert(reifydb_core::row::Row),
-	Remove(reifydb_core::row::Row),
-	Update(reifydb_core::row::Row, reifydb_core::row::Row),
+	Insert(reifydb_testing_chaos::operator::event::Row),
+	Remove(reifydb_testing_chaos::operator::event::Row),
+	Update(reifydb_testing_chaos::operator::event::Row, reifydb_testing_chaos::operator::event::Row),
 }
 
 fn change_of(events: &[Event]) -> Change {
 	let mut diffs = Vec::with_capacity(events.len());
 	for event in events {
 		diffs.push(match event {
-			Event::Insert(row) => Diff::insert(batch::from_row(row).expect("a row converts")),
-			Event::Remove(row) => Diff::remove(batch::from_row(row).expect("a row converts")),
+			Event::Insert(row) => Diff::insert(
+				batch::from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+					.expect("a row converts"),
+			),
+			Event::Remove(row) => Diff::remove(
+				batch::from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+					.expect("a row converts"),
+			),
 			Event::Update(pre, post) => Diff::update(
-				batch::from_row(pre).expect("a row converts"),
-				batch::from_row(post).expect("a row converts"),
+				batch::from_encoded_bytes(&pre.shape, &[pre.number], slice::from_ref(&pre.encoded))
+					.expect("a row converts"),
+				batch::from_encoded_bytes(&post.shape, &[post.number], slice::from_ref(&post.encoded))
+					.expect("a row converts"),
 			),
 		});
 	}

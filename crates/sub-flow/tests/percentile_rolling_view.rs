@@ -16,7 +16,6 @@ use reifydb::{
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
-	row::Row,
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
@@ -25,6 +24,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_test_harness::assert::rows;
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::value::{
 	Value, datetime::DateTime, digest::Digest, duration::Duration, row_number::RowNumber,

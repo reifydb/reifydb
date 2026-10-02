@@ -13,7 +13,6 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
-	row::Row as CoreRow,
 };
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
@@ -37,6 +36,7 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
 	in_process::harness::InProcessOperatorHarnessBuilder,

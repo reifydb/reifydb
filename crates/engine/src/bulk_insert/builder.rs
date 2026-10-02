@@ -198,9 +198,9 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 	#[inline]
 	fn total_pending_rows(&self) -> usize {
-		self.pending_tables.iter().map(|p| p.rows.len()).sum::<usize>()
-			+ self.pending_ringbuffers.iter().map(|p| p.rows.len()).sum::<usize>()
-			+ self.pending_series.iter().map(|p| p.rows.len()).sum::<usize>()
+		self.pending_tables.iter().map(|p| p.row_count()).sum::<usize>()
+			+ self.pending_ringbuffers.iter().map(|p| p.row_count()).sum::<usize>()
+			+ self.pending_series.iter().map(|p| p.row_count()).sum::<usize>()
 	}
 }
 
@@ -308,7 +308,7 @@ fn encode_table_rows<V: ValidationMode>(
 	shape: &RowShape,
 	clock: &Clock,
 ) -> Result<Vec<EncodedTableRowBuilder>> {
-	let coerced_rows = coerce_rows(&pending.rows, &table.columns, &table.name, txn.identity)?;
+	let coerced_rows = coerce_rows(&pending.rows, &pending.batches, &table.columns, &table.name, txn.identity)?;
 	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
 	for values in coerced_rows {
 		encoded_bytes_list.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
@@ -424,7 +424,8 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 ) -> Result<RingBufferInsertResult> {
 	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_rows(&pending.rows, &ringbuffer.columns, &ringbuffer.name, txn.identity)?;
+	let coerced_rows =
+		coerce_rows(&pending.rows, &pending.batches, &ringbuffer.columns, &ringbuffer.name, txn.identity)?;
 	let inserted = insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, clock)?;
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),
@@ -508,7 +509,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		}
 
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-		txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row.freeze_bytes())?;
+		txn.insert_ringbuffer(ringbuffer, shape, partition.as_slice(), &[row_number], &[row.freeze_bytes()])?;
 
 		if metadata.is_empty() {
 			metadata.head = row_number.0;
@@ -573,7 +574,7 @@ fn evict_oldest_for_partition(
 		if let Some(entry) = oldest
 			&& let TaggedKey::PartitionedRow(pk) = &entry.key
 		{
-			txn.remove_from_ringbuffer(ringbuffer, Some(partition), pk.row)?;
+			txn.remove_from_ringbuffer(ringbuffer, &[partition], &[pk.row])?;
 		}
 		metadata.count -= 1;
 		return Ok(());
@@ -583,7 +584,7 @@ fn evict_oldest_for_partition(
 	loop {
 		let key = RowKey::new(ringbuffer.id, RowNumber(evict_pos));
 		if txn.get(&key)?.is_some() {
-			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
+			txn.remove_from_ringbuffer(ringbuffer, &[], &[RowNumber(evict_pos)])?;
 			break;
 		}
 		evict_pos += 1;
@@ -660,7 +661,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let series = resolve_series(catalog, txn, pending)?;
 	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_rows(&pending.rows, &series.columns, &series.name, txn.identity)?;
+	let coerced_rows = coerce_rows(&pending.rows, &pending.batches, &series.columns, &series.name, txn.identity)?;
 	let inserted = insert_series_rows::<V>(
 		catalog,
 		txn,

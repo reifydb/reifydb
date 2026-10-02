@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::{
-	bytes::EncodedBytes,
-	shape::{RowFamily, RowShape, RowShapeField},
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, TypeConstraint},
 		datetime::TIME_COLUMN_NAME,
 		duration::Duration,
-		row_number::RowNumber,
 	},
 };
 use serde::{Deserialize, Serialize};
@@ -20,13 +16,6 @@ use crate::{
 	interface::catalog::column::Column,
 	sort::{SortDirection, SortKey},
 };
-
-#[derive(Debug, Clone)]
-pub struct Row {
-	pub number: RowNumber,
-	pub encoded: EncodedBytes,
-	pub shape: RowShape,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ttl {

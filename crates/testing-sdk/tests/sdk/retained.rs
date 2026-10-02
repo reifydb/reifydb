@@ -9,7 +9,6 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	operator_with::ApplyWith,
-	row::Row as CoreRow,
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::window::{
@@ -30,6 +29,7 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
 	in_process::harness::{InProcessOperatorHarness, InProcessOperatorHarnessBuilder},

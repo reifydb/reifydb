@@ -46,7 +46,7 @@ fn session_harness(lateness: Option<Duration>) -> Harness<WindowOperator> {
 	})
 }
 
-fn valued(number: u64, group: i32, value: i64, ms: u64) -> reifydb_core::row::Row {
+fn valued(number: u64, group: i32, value: i64, ms: u64) -> reifydb_testing_chaos::operator::event::Row {
 	generator::row(RowNumber(number), group, value, at_millis(ms as i64))
 }
 

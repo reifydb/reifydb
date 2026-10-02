@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use reifydb_core::{
 	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
@@ -14,7 +17,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 use super::context::RingBufferTarget;
-use crate::{Result, transaction::operation::ringbuffer::RingBufferOperations, vm::services::Services};
+use crate::{Result, vm::services::Services};
 
 #[inline]
 pub(super) fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
@@ -41,31 +44,43 @@ pub(super) fn ensure_partition_metadata(
 	Ok(())
 }
 
-pub(super) fn evict_oldest_for_partition(
+pub(super) fn select_oldest_for_partition(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	partition: Option<Partition>,
 	metadata: &mut RingBufferMetadata,
-) -> Result<()> {
+	chosen: &HashSet<RowNumber>,
+	pending: &HashSet<RowNumber>,
+) -> Result<Option<RowNumber>> {
 	let ringbuffer = target.ringbuffer;
 
 	if let Some(partition) = partition {
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
-		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
-		if let Some(entry) = oldest
-			&& let TaggedKey::PartitionedRow(pk) = &entry.key
-		{
-			txn.remove_from_ringbuffer(ringbuffer, Some(partition), pk.row)?;
+		let mut oldest = None;
+		for entry in txn.range_rev(range, RangeScope::All, chosen.len() + 1)? {
+			if let TaggedKey::PartitionedRow(pk) = &entry?.key
+				&& !chosen.contains(&pk.row)
+			{
+				oldest = Some(pk.row);
+				break;
+			}
 		}
 		metadata.count -= 1;
-		return Ok(());
+		return Ok(oldest);
 	}
 
+	let live = |txn: &mut Transaction<'_>, position: u64| -> Result<bool> {
+		let row_number = RowNumber(position);
+		if pending.contains(&row_number) {
+			return Ok(true);
+		}
+		Ok(!chosen.contains(&row_number) && txn.get(&RowKey::new(ringbuffer.id, row_number))?.is_some())
+	};
 	let mut evict_pos = metadata.head;
+	let mut oldest = None;
 	loop {
-		let key = RowKey::new(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get(&key)?.is_some() {
-			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
+		if live(txn, evict_pos)? {
+			oldest = Some(RowNumber(evict_pos));
 			break;
 		}
 		evict_pos += 1;
@@ -75,14 +90,13 @@ pub(super) fn evict_oldest_for_partition(
 	}
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
-		let key = RowKey::new(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get(&key)?.is_some() {
+		if live(txn, metadata.head)? {
 			break;
 		}
 		metadata.head += 1;
 	}
 	metadata.count -= 1;
-	Ok(())
+	Ok(oldest)
 }
 
 #[inline]

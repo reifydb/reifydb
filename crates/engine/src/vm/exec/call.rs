@@ -168,7 +168,7 @@ pub(crate) fn declared_return_column(
 ) -> Result<(FieldRef, ArrayRef)> {
 	let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
 	for value in values {
-		let single = factory::from_many(name, value, 1);
+		let single = factory::from_one(name, value);
 		let casted =
 			cast_to_declared_return_type(ctx, &ColumnView::try_from(&single)?, declared, name, fragment)?;
 		data.extend(&ColumnView::try_from(&casted)?)?;
@@ -656,7 +656,7 @@ impl<'a> Vm<'a> {
 		let ctx = self.eval_ctx();
 		let mut arguments = Vec::with_capacity(args.len());
 		for (param, arg) in callable.parameters.iter().zip(args) {
-			let argument = factory::from_many(strip_dollar_prefix(param.name.text()), arg, 1);
+			let argument = factory::from_one(strip_dollar_prefix(param.name.text()), arg);
 			let cast = cast_to_parameter_type(&ctx, param, argument)?;
 			arguments.push(ColumnView::try_from(&cast)?.get_value(0));
 		}

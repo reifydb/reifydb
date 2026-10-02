@@ -14,7 +14,7 @@ use std::{
 
 use reifydb_value::{
 	reifydb_assertions,
-	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
+	value::{constraint::TypeConstraint, datetime::DateTime, system_columns::SystemColumn, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -68,16 +68,24 @@ impl RowFamily {
 		}
 	}
 
-	#[inline]
-	pub fn updated_at(self, row: &[u8]) -> DateTime {
+	pub const fn system_columns(self) -> &'static [SystemColumn] {
 		match self {
 			Self::Table
 			| Self::Series
 			| Self::RingBuffer
 			| Self::Queue
 			| Self::QueueAttempt
-			| Self::QueueDeduplication => read_updated_at(row),
-			_ => panic!("{self:?} rows carry no updated_at"),
+			| Self::QueueDeduplication => &[SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time],
+			Self::Operator => &[SystemColumn::Time],
+			Self::Pod | Self::Catalog => &[],
+		}
+	}
+
+	#[inline]
+	pub fn updated_at(self, row: &[u8]) -> DateTime {
+		match self.system_columns().contains(&SystemColumn::UpdatedAt) {
+			true => read_updated_at(row),
+			false => panic!("{self:?} rows carry no updated_at"),
 		}
 	}
 
@@ -269,28 +277,26 @@ impl RowShape {
 
 	#[inline]
 	pub fn time(&self, row: &[u8]) -> Option<DateTime> {
-		match self.family {
-			RowFamily::Pod => None,
-			RowFamily::Operator => read_operator_time(row),
-			_ => read_storage_time(row),
+		match (self.family.system_columns().contains(&SystemColumn::Time), self.family) {
+			(false, _) => None,
+			(true, RowFamily::Operator) => read_operator_time(row),
+			(true, _) => read_storage_time(row),
 		}
 	}
 
 	#[inline]
 	pub fn created_at(&self, row: &[u8]) -> DateTime {
-		match self.family {
-			RowFamily::Pod => panic!("pod rows carry no created_at"),
-			RowFamily::Operator => panic!("operator rows carry no created_at"),
-			_ => read_created_at(row),
+		match self.family.system_columns().contains(&SystemColumn::CreatedAt) {
+			true => read_created_at(row),
+			false => panic!("{} rows carry no created_at", format!("{:?}", self.family).to_lowercase()),
 		}
 	}
 
 	#[inline]
 	pub fn updated_at(&self, row: &[u8]) -> DateTime {
-		match self.family {
-			RowFamily::Pod => panic!("pod rows carry no updated_at"),
-			RowFamily::Operator => panic!("operator rows carry no updated_at"),
-			_ => read_updated_at(row),
+		match self.family.system_columns().contains(&SystemColumn::UpdatedAt) {
+			true => read_updated_at(row),
+			false => panic!("{} rows carry no updated_at", format!("{:?}", self.family).to_lowercase()),
 		}
 	}
 

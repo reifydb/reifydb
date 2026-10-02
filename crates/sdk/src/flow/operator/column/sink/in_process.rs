@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{RecordBatch, UInt64Array};
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
 use reifydb_value::value::{
@@ -18,7 +18,7 @@ use reifydb_value::value::{
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	row_number::RowNumber,
-	system_columns::{SystemColumn, with_system_column},
+	system_columns::{SystemColumn, stamp_system_columns},
 	time::Time,
 	value_type::ValueType,
 };
@@ -51,16 +51,17 @@ impl InProcessRowSink {
 
 	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<RecordBatch, SdkError> {
 		let out = self.names.into_iter().zip(self.cols).map(|(name, data)| data.finish(name)).collect();
-		let mut out = batch(out)?;
+		let out = batch(out)?;
 		let row_count = out.num_rows();
+		let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 		if !row_numbers.is_empty() {
 			let row_numbers = UInt64Array::from(row_numbers.into_iter().map(|rn| rn.0).collect::<Vec<_>>());
-			out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(row_numbers))?;
+			stamps.push((SystemColumn::RowNumbers, Arc::new(row_numbers)));
 		}
 		for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
-			out = with_system_column(out, column, Arc::new(datetime_array(vec![now; row_count])))?;
+			stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 		}
-		Ok(out)
+		Ok(stamp_system_columns(out, stamps)?)
 	}
 
 	#[inline]

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
@@ -49,8 +52,8 @@ use super::{
 	coerce::{InputFragments, coerce_value_to_column_type},
 	context::RingBufferTarget,
 	partition::{
-		compute_partition_col_indices, ensure_partition_metadata, evict_oldest_for_partition,
-		save_all_partition_metadata, update_metadata_after_insert,
+		compute_partition_col_indices, ensure_partition_metadata, save_all_partition_metadata,
+		select_oldest_for_partition, update_metadata_after_insert,
 	},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -169,6 +172,7 @@ fn drive_ringbuffer_insert(
 		}
 
 		let row_count = columns.num_rows();
+		let mut rows = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let (row, row_values) = build_insert_ringbuffer_row(
 				services,
@@ -187,26 +191,70 @@ fn drive_ringbuffer_insert(
 			} else {
 				Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 			};
-			ensure_partition_metadata(
-				services,
-				txn,
-				target_data,
-				&partition_key,
-				partition_metadata_cache,
-			)?;
-			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
+			rows.push((row, partition_key, partition));
+		}
 
-			if current_metadata.is_full(ringbuffer.capacity) {
-				evict_oldest_for_partition(txn, target_data, partition, current_metadata)?;
+		let mut start = 0;
+		while start < rows.len() {
+			let mut held: HashMap<&[Value], u64> = HashMap::new();
+			let mut end = start;
+			while end < rows.len() {
+				let count = held.entry(rows[end].1.as_slice()).or_default();
+				if *count >= ringbuffer.capacity && end > start {
+					break;
+				}
+				*count += 1;
+				end += 1;
 			}
 
-			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-			let stored_row = txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)?;
+			let mut chosen = HashSet::new();
+			let mut pending = HashSet::new();
+			let mut victims = Vec::new();
+			let mut victim_partitions = Vec::new();
+			let mut ids = Vec::with_capacity(end - start);
+			let mut partitions = Vec::with_capacity(end - start);
+			let mut encoded = Vec::with_capacity(end - start);
+			for (row, partition_key, partition) in &rows[start..end] {
+				ensure_partition_metadata(
+					services,
+					txn,
+					target_data,
+					partition_key,
+					partition_metadata_cache,
+				)?;
+				let current_metadata = partition_metadata_cache.get_mut(partition_key).unwrap();
+
+				if current_metadata.is_full(ringbuffer.capacity)
+					&& let Some(victim) = select_oldest_for_partition(
+						txn,
+						target_data,
+						*partition,
+						current_metadata,
+						&chosen,
+						&pending,
+					)? {
+					chosen.insert(victim);
+					victims.push(victim);
+					victim_partitions.extend(*partition);
+				}
+
+				let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
+				pending.insert(row_number);
+				update_metadata_after_insert(current_metadata, row_number);
+				ids.push(row_number);
+				partitions.extend(*partition);
+				encoded.push(row.clone());
+			}
+
+			if !victims.is_empty() {
+				txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
+			}
+			let stored = txn.insert_ringbuffer(ringbuffer, shape, &partitions, &ids, &encoded)?;
 			if has_returning {
-				returned_rows.push((row_number, stored_row));
+				returned_rows.extend(ids.iter().copied().zip(stored));
 			}
-			update_metadata_after_insert(current_metadata, row_number);
-			inserted_count += 1;
+			inserted_count += (end - start) as u64;
+			start = end;
 		}
 	}
 

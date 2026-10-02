@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_codec::row::shape::RowShape;
-use reifydb_core::row::Row;
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
 	value_type::ValueType,

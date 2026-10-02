@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 	metrics::heap::HeapSize,
 	state::typed::typed_key,
-	value::batch::{from_encoded_bytes, take_rows},
+	value::batch::{from_encoded_bytes, take_row, take_rows},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -46,7 +46,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		row_number::RowNumber,
 		system_columns::{
-			SystemColumn, created_at, require_row_numbers, updated_at, user_columns, with_system_column,
+			SystemColumn, created_at, require_row_numbers, stamp_system_columns, updated_at, user_columns,
 		},
 	},
 };
@@ -152,7 +152,7 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 	if let Some(time) = envelope.time() {
 		stamps.push((SystemColumn::Time, Arc::new(datetime_array([time]))));
 	}
-	stamps.into_iter().try_fold(decoded, |decoded, (column, array)| with_system_column(decoded, column, array))
+	stamp_system_columns(decoded, stamps)
 }
 
 impl TakeOperator {
@@ -342,7 +342,7 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = take_rows(&post, &[row_idx])?;
+			let single = take_row(&post, row_idx)?;
 			self.admit_new_row(
 				state,
 				row_number,
@@ -386,7 +386,7 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = take_rows(&post, &[row_idx])?;
+			let single = take_row(&post, row_idx)?;
 			self.admit_new_row(
 				state,
 				row_number,
@@ -431,7 +431,7 @@ impl TakePlan {
 				state.by_row.remove(&row_number);
 				state.by_age.remove(&age);
 				state.row_data.remove(&row_number);
-				output_diffs.push(Diff::remove(take_rows(&pre, &[row_idx])?));
+				output_diffs.push(Diff::remove(take_row(&pre, row_idx)?));
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
 					self.promote_one_candidate(state, &schema, output_diffs)?;
@@ -517,7 +517,7 @@ mod tests {
 		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::system_columns::{row_numbers, system_column, time};
+	use reifydb_value::value::system_columns::{row_numbers, system_column, time, with_system_column};
 
 	use super::*;
 	use crate::{

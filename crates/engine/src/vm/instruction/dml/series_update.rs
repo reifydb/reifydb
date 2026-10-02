@@ -147,6 +147,7 @@ pub(crate) fn update_series(
 		enforce_old_row_policies(services, symbols, txn, &target_data, &updates_to_apply, row_numbers)?;
 		let sidecar_partitions = partitions(&columns)?;
 
+		let mut updated = SeriesUpdatedRows::default();
 		for (key, row, row_idx) in updates_to_apply {
 			let pre_values = match txn.get(&key)? {
 				Some(v) => v.bytes,
@@ -195,22 +196,18 @@ pub(crate) fn update_series(
 			let pres = [pre_values.clone()];
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
 
-			let event = SeriesUpdateEvent {
-				columns: &columns,
-				pre: &pre_values,
-				post: &row,
-				key_value,
-				row_number,
-				row_idx,
-			};
-			track_series_update_flow_change(services, txn, &series, &event)?;
-
 			if has_returning {
 				returned_rows.push((row_number, row.clone()));
 				pre_rows.push((row_number, pre_values.clone()));
 			}
+			updated.key_values.push(key_value);
+			updated.row_numbers.push(row_number);
+			updated.pres.push(pre_values);
+			updated.posts.push(row);
+			updated.row_indices.push(row_idx);
 			updated_count += 1;
 		}
+		track_series_update_flow_change(services, txn, &series, &columns, updated)?;
 	}
 
 	if let Some(returning_exprs) = &returning {
@@ -223,15 +220,6 @@ pub(crate) fn update_series(
 		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
 	}
 	update_series_result(namespace.name(), &series.name, updated_count)
-}
-
-struct SeriesUpdateEvent<'a> {
-	columns: &'a RecordBatch,
-	pre: &'a EncodedBytes,
-	post: &'a EncodedBytes,
-	key_value: u64,
-	row_number: RowNumber,
-	row_idx: usize,
 }
 
 #[inline]
@@ -476,36 +464,53 @@ fn build_series_update_bytes(
 	Ok(row.freeze_bytes())
 }
 
+#[derive(Default)]
+struct SeriesUpdatedRows {
+	key_values: Vec<u64>,
+	row_numbers: Vec<RowNumber>,
+	pres: Vec<EncodedBytes>,
+	posts: Vec<EncodedBytes>,
+	row_indices: Vec<usize>,
+}
+
 fn track_series_update_flow_change(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	event: &SeriesUpdateEvent<'_>,
+	columns: &RecordBatch,
+	updated: SeriesUpdatedRows,
 ) -> Result<()> {
+	if updated.posts.is_empty() {
+		return Ok(());
+	}
 	let read_shape = get_or_create_series_shape(&services.catalog, series, txn)?;
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(series.key_column_data(vec![event.key_value]));
+	pre_col_vec.push(series.key_column_data(updated.key_values.clone()));
 	let read_fields = read_shape.fields();
 	for (i, col_def) in series.data_columns().enumerate() {
-		let val = read_shape.get_value(event.pre, i + 1);
-		let mut data = ColumnBuilder::with_capacity(read_fields[i + 1].constraint.get_type(), 1);
-		data.push_value(val);
+		let mut data =
+			ColumnBuilder::with_capacity(read_fields[i + 1].constraint.get_type(), updated.pres.len());
+		for pre in &updated.pres {
+			data.push_value(read_shape.get_value(pre, i + 1));
+		}
 		pre_col_vec.push(data.finish(&col_def.name));
 	}
 
 	let mut post_col_vec = Vec::with_capacity(1 + series.columns.len());
-	post_col_vec.push(series.key_column_data(vec![event.key_value]));
-	for (field, array) in user_columns(event.columns) {
+	post_col_vec.push(series.key_column_data(updated.key_values));
+	for (field, array) in user_columns(columns) {
 		if field.name() != series.key.column() && field.name() != "tag" {
 			let col = ColumnView::try_from((array, field.as_ref()))?;
-			let mut data = ColumnBuilder::with_capacity(col.get_type(), 1);
-			data.push_value(col.get_value(event.row_idx));
+			let mut data = ColumnBuilder::with_capacity(col.get_type(), updated.row_indices.len());
+			for &row_idx in &updated.row_indices {
+				data.push_value(col.get_value(row_idx));
+			}
 			post_col_vec.push(data.finish(field.name()));
 		}
 	}
 
-	let pre = with_series_stamps(pre_col_vec, event.row_number, event.pre)?;
-	let post = with_series_stamps(post_col_vec, event.row_number, event.post)?;
+	let pre = with_series_stamps(pre_col_vec, &updated.row_numbers, &updated.pres)?;
+	let post = with_series_stamps(post_col_vec, &updated.row_numbers, &updated.posts)?;
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),

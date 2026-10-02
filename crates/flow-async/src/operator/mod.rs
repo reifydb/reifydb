@@ -20,7 +20,7 @@ use reifydb_value::{
 	Result,
 	value::{
 		column_view::ViewData,
-		container::temporal_array::{DATETIME_TIMEZONE, datetime_to_native},
+		container::temporal_array::{datetime_timezone, datetime_to_native},
 		datetime::DateTime,
 		system_columns::{SystemColumn, column_view, with_system_column},
 	},
@@ -150,7 +150,7 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 			};
 			let stamped = times
 				.unary::<_, TimestampNanosecondType>(|own| own.min(inherited))
-				.with_timezone(DATETIME_TIMEZONE);
+				.with_timezone(datetime_timezone());
 			*columns = with_system_column(columns.clone(), SystemColumn::Time, Arc::new(stamped))?;
 		}
 	}
@@ -191,7 +191,7 @@ pub(crate) fn time_at(columns: &RecordBatch, row_idx: usize) -> Result<Option<Da
 pub(crate) fn time_column(times: impl IntoIterator<Item = Option<DateTime>>) -> ArrayRef {
 	Arc::new(
 		TimestampNanosecondArray::from_iter(times.into_iter().map(|time| time.map(datetime_to_native)))
-			.with_timezone(DATETIME_TIMEZONE),
+			.with_timezone(datetime_timezone()),
 	)
 }
 

@@ -4715,6 +4715,7 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
+ "reifydb-testing-chaos",
  "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
@@ -4739,6 +4740,7 @@ version = "0.9.3"
 dependencies = [
  "arrow-array",
  "rand 0.10.1",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing-macro",

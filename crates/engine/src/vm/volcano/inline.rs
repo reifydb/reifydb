@@ -25,7 +25,7 @@ use reifydb_core::{
 		column::{
 			builder::ColumnBuilder,
 			cast::cast_column_data,
-			factory::{from_many, none, none_typed},
+			factory::{from_one, none, none_typed},
 			headers::ColumnHeaders,
 			view::group_by::common_key_type,
 		},
@@ -800,7 +800,7 @@ impl InlineDataNode {
 				} else if wide_type.as_ref().is_some_and(|wt| value_type == wt) {
 					data.push_value(value.clone());
 				} else {
-					let temp_data = from_many(name, value.clone(), 1);
+					let temp_data = from_one(name, value.clone());
 					let eval_ctx = session.with_eval_empty();
 
 					let casted = cast_column_data(

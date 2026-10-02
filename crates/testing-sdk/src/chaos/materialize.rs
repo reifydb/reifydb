@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::change::Change, row::Row};
+use reifydb_core::interface::change::Change;
+use reifydb_testing_chaos::operator::event::Row;
+#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
 	view::{MaterializedRow, MaterializedView, OutputKey, RowKey},
@@ -157,6 +159,9 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 
 #[cfg(test)]
 mod tests {
+	use std::slice;
+
+	use arrow_array::RecordBatch;
 	use reifydb_codec::row::shape::RowShapeField;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
@@ -164,8 +169,7 @@ mod tests {
 			catalog::object::ObjectId,
 			change::{Change, ChangeOrigin, Diff, Diffs},
 		},
-		row::Row,
-		value::batch::from_row,
+		value::batch::from_encoded_bytes,
 	};
 	use reifydb_value::value::{
 		Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
@@ -189,6 +193,10 @@ mod tests {
 			.build()
 	}
 
+	fn decoded(row: &Row) -> RecordBatch {
+		from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded)).unwrap()
+	}
+
 	fn change(diffs: Vec<Diff>) -> Change {
 		Change {
 			origin: ChangeOrigin::Object(ObjectId::table(1)),
@@ -201,11 +209,8 @@ mod tests {
 	#[test]
 	fn insert_then_update_yields_post_state() {
 		let history = vec![
-			change(vec![Diff::insert(from_row(&build_row(1, 7, 1.0)).unwrap())]),
-			change(vec![Diff::update(
-				from_row(&build_row(1, 7, 1.0)).unwrap(),
-				from_row(&build_row(1, 7, 2.5)).unwrap(),
-			)]),
+			change(vec![Diff::insert(decoded(&build_row(1, 7, 1.0)))]),
+			change(vec![Diff::update(decoded(&build_row(1, 7, 1.0)), decoded(&build_row(1, 7, 2.5)))]),
 		];
 		let table = materialize_history(&history, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
@@ -216,9 +221,9 @@ mod tests {
 	#[test]
 	fn remove_drops_row_by_output_key() {
 		let history = vec![
-			change(vec![Diff::insert(from_row(&build_row(1, 7, 1.0)).unwrap())]),
-			change(vec![Diff::insert(from_row(&build_row(2, 8, 9.0)).unwrap())]),
-			change(vec![Diff::remove(from_row(&build_row(1, 7, 1.0)).unwrap())]),
+			change(vec![Diff::insert(decoded(&build_row(1, 7, 1.0)))]),
+			change(vec![Diff::insert(decoded(&build_row(2, 8, 9.0)))]),
+			change(vec![Diff::remove(decoded(&build_row(1, 7, 1.0)))]),
 		];
 		let table = materialize_history(&history, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
@@ -231,9 +236,9 @@ mod tests {
 		// Colliding output keys are legal here because the operator may have remapped row
 		// numbers, so the last write has to win.
 		let history = vec![change(vec![
-			Diff::insert(from_row(&build_row(1, 5, 10.0)).unwrap()),
-			Diff::insert(from_row(&build_row(2, 5, 20.0)).unwrap()),
-			Diff::insert(from_row(&build_row(3, 5, 30.0)).unwrap()),
+			Diff::insert(decoded(&build_row(1, 5, 10.0))),
+			Diff::insert(decoded(&build_row(2, 5, 20.0))),
+			Diff::insert(decoded(&build_row(3, 5, 30.0))),
 		])];
 		let table = materialize_history(&history, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
@@ -261,9 +266,9 @@ mod tests {
 				.build()
 		}
 		let history = vec![change(vec![
-			Diff::insert(from_row(&r(&s, 1, 1, 100, 1.0)).unwrap()),
-			Diff::insert(from_row(&r(&s, 2, 1, 200, 2.0)).unwrap()),
-			Diff::insert(from_row(&r(&s, 3, 2, 100, 3.0)).unwrap()),
+			Diff::insert(decoded(&r(&s, 1, 1, 100, 1.0))),
+			Diff::insert(decoded(&r(&s, 2, 1, 200, 2.0))),
+			Diff::insert(decoded(&r(&s, 3, 2, 100, 3.0))),
 		])];
 		let table = materialize_history(&history, &["base".to_string(), "quote".to_string()]);
 		assert_eq!(table.len(), 3);

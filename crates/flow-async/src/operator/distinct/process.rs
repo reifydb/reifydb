@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::change::Diff,
 	key::operator::state::GroupId,
 	value::{
-		batch::{empty_batch, take_rows},
+		batch::{empty_batch, take_row, take_rows},
 		column::key::extend_key,
 	},
 };
@@ -197,7 +197,7 @@ impl DistinctPlan {
 			for ((old_serialized, new_idx, _), (stable_rn, _)) in swap_pairs.into_iter().zip(stable_rns) {
 				let pre_cols =
 					Self::with_stable_rn(old_serialized.to_columns(&state.layout)?, stable_rn)?;
-				let post_cols = Self::with_stable_rn(take_rows(columns, &[new_idx])?, stable_rn)?;
+				let post_cols = Self::with_stable_rn(take_row(columns, new_idx)?, stable_rn)?;
 				result.push(Diff::update(pre_cols, post_cols));
 			}
 		}
@@ -249,10 +249,9 @@ impl DistinctPlan {
 						.into_iter()
 						.next()
 						.unwrap();
-					let pre_out =
-						Self::with_stable_rn(take_rows(pre_columns, &[row_idx])?, stable_rn)?;
+					let pre_out = Self::with_stable_rn(take_row(pre_columns, row_idx)?, stable_rn)?;
 					let post_out =
-						Self::with_stable_rn(take_rows(post_columns, &[row_idx])?, stable_rn)?;
+						Self::with_stable_rn(take_row(post_columns, row_idx)?, stable_rn)?;
 					result.push(Diff::update(pre_out, post_out));
 				}
 				continue;
@@ -322,12 +321,12 @@ impl DistinctPlan {
 				if pre_is_empty {
 					host.remove_row_number_for_group(groups[&pre_hash])?;
 					result.push(Diff::remove(Self::with_stable_rn(
-						take_rows(pre_columns, &[row_idx])?,
+						take_row(pre_columns, row_idx)?,
 						stable_rn,
 					)?));
 				} else if let Some(new_visible) = pre_new_visible_opt {
 					result.push(Diff::update(
-						Self::with_stable_rn(take_rows(pre_columns, &[row_idx])?, stable_rn)?,
+						Self::with_stable_rn(take_row(pre_columns, row_idx)?, stable_rn)?,
 						Self::with_stable_rn(
 							new_visible.to_columns(&state.layout)?,
 							stable_rn,
@@ -343,7 +342,7 @@ impl DistinctPlan {
 					.into_iter()
 					.next()
 					.unwrap();
-				let post_out = Self::with_stable_rn(take_rows(post_columns, &[row_idx])?, stable_rn)?;
+				let post_out = Self::with_stable_rn(take_row(post_columns, row_idx)?, stable_rn)?;
 				match post_displaced_opt {
 					Some(old_visible) => result.push(Diff::update(
 						Self::with_stable_rn(
@@ -430,16 +429,13 @@ impl DistinctPlan {
 					None => {
 						host.remove_row_number_for_group(groups[&hash])?;
 						result.push(Diff::remove(Self::with_stable_rn(
-							take_rows(columns, &[row_idx])?,
+							take_row(columns, row_idx)?,
 							stable_rn,
 						)?));
 					}
 					Some(new_visible) => {
 						result.push(Diff::update(
-							Self::with_stable_rn(
-								take_rows(columns, &[row_idx])?,
-								stable_rn,
-							)?,
+							Self::with_stable_rn(take_row(columns, row_idx)?, stable_rn)?,
 							Self::with_stable_rn(
 								new_visible.to_columns(&state.layout)?,
 								stable_rn,

@@ -8,9 +8,13 @@
 //! whatever the source stamped. Every assertion here is about the substrate, not about any
 //! particular operator.
 
+use std::slice;
+
+use arrow_array::RecordBatch;
 use reifydb_codec::row::shape::RowShapeField;
-use reifydb_core::value::batch::{append, from_row};
+use reifydb_core::value::batch::{append, from_encoded_bytes};
 use reifydb_sdk::flow::operator::view::{ColumnsView, RowView, in_process::InProcessColumnsView};
+use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_sdk::builders::TestOperatorRowBuilder;
 use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 
@@ -19,6 +23,10 @@ fn fields() -> Vec<RowShapeField> {
 		RowShapeField::unconstrained("group", ValueType::Utf8),
 		RowShapeField::unconstrained("price", ValueType::Float8),
 	]
+}
+
+fn decoded(row: &Row) -> RecordBatch {
+	from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded)).unwrap()
 }
 
 fn row(rn: u64, group: &str, price: f64) -> TestOperatorRowBuilder {
@@ -35,7 +43,7 @@ fn a_stamped_row_reports_its_stamp_as_row_time() {
 	let at = DateTime::from_millis(1_753_020_833_000);
 	let built = row(1, "BTC", 10.0).with_time(at).build();
 
-	let columns = from_row(&built).unwrap();
+	let columns = decoded(&built);
 	let view = InProcessColumnsView::new(&columns);
 	let seen = view.row(0).expect("row 0").row_time();
 
@@ -50,7 +58,7 @@ fn an_unstamped_row_reads_as_absent_not_as_the_epoch() {
 	// makes the driver skip the row.
 	let built = row(1, "BTC", 10.0).build();
 
-	let columns = from_row(&built).unwrap();
+	let columns = decoded(&built);
 	let view = InProcessColumnsView::new(&columns);
 
 	assert_eq!(view.row(0).expect("row 0").row_time(), None, "an unstamped row must report no #time at all");
@@ -62,7 +70,7 @@ fn a_row_stamped_at_the_epoch_is_present_not_absent() {
 	// dated 1970 silently stops reaching any window.
 	let built = row(1, "BTC", 10.0).with_time(DateTime::default()).build();
 
-	let columns = from_row(&built).unwrap();
+	let columns = decoded(&built);
 	let view = InProcessColumnsView::new(&columns);
 	let seen = view.row(0).expect("row 0").row_time();
 
@@ -78,8 +86,8 @@ fn distinct_stamps_survive_independently_across_rows_in_one_batch() {
 	let first = DateTime::from_millis(1_753_020_833_000);
 	let second = DateTime::from_millis(1_753_020_953_000);
 
-	let columns = from_row(&row(1, "BTC", 10.0).with_time(first).build()).unwrap();
-	let later = from_row(&row(2, "BTC", 20.0).with_time(second).build()).unwrap();
+	let columns = decoded(&row(1, "BTC", 10.0).with_time(first).build());
+	let later = decoded(&row(2, "BTC", 20.0).with_time(second).build());
 	let columns = append(&columns, &later).expect("append");
 
 	let view = InProcessColumnsView::new(&columns);

@@ -35,11 +35,7 @@ pub fn remove_series_row(
 	key: &TaggedKey,
 	pre_for_cdc: EncodedBytes,
 	was_committed: bool,
-	pre: Option<RecordBatch>,
 ) -> Result<()> {
-	if let Some(pre) = pre {
-		emit_series_remove_change(txn, series, pre);
-	}
 	SeriesRowInterceptor::pre_delete(txn, series)?;
 	if was_committed {
 		txn.mark_preexisting(key)?;

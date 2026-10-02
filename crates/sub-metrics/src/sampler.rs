@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use arrow_array::RecordBatch;
 use reifydb_core::{
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
-	value::batch::views,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -32,10 +30,8 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
-	params::Params,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::error;
 
 use crate::{
 	domains::{
@@ -130,15 +126,15 @@ impl MetricsSamplerActor {
 		let Some(path) = published.domain.snapshots_path() else {
 			return Ok(());
 		};
-		let rows = snapshot_rows(&published.columns)?;
-		if rows.is_empty() {
+		if published.columns.num_rows() == 0 {
 			return Ok(());
 		}
 		let mut builder = self.collectors.engine.bulk_insert_unchecked(IdentityId::system());
-		builder.series(path).rows(rows).done();
-		if let Err(e) = builder.execute() {
-			error!("Failed to append {} snapshot: {}", path, e);
-		}
+		builder.series(path).batch(published.columns.clone()).done();
+		builder.execute().map_err(|mut e| {
+			e.0.notes.push(format!("appending the {path} snapshot"));
+			e
+		})?;
 		Ok(())
 	}
 
@@ -236,22 +232,6 @@ impl MetricsSamplerActor {
 		}
 		Ok(())
 	}
-}
-
-fn snapshot_rows(columns: &RecordBatch) -> Result<Vec<Params>> {
-	let views = views(columns)?;
-	Ok((0..columns.num_rows())
-		.map(|index| {
-			let mut row = HashMap::new();
-			for view in &views {
-				let value = view.get_value(index);
-				if !matches!(value, Value::None { .. }) {
-					row.insert(view.field.name().to_string(), value);
-				}
-			}
-			Params::Named(Arc::new(row))
-		})
-		.collect())
 }
 
 impl Actor for MetricsSamplerActor {

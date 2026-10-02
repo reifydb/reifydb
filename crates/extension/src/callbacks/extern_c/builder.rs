@@ -42,7 +42,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		system_columns::{SystemColumn, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::{
@@ -599,18 +599,17 @@ fn assemble_columns(
 		cols.push(rename(committed.buffer, name_bytes));
 	}
 
-	let mut out = batch(cols).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let out = batch(cols).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if row_count > 0 {
 		// SAFETY: row_count > 0 passed the null check and row_numbers_len was verified equal to it.
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
-		out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec())))
-			.map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+		stamps.push((SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec()))));
 	}
 	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
-		out = with_system_column(out, column, Arc::new(datetime_array(vec![now; row_count])))
-			.map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+		stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 	}
-	Ok(out)
+	stamp_system_columns(out, stamps).map_err(|_| EXTERN_C_ERROR_INTERNAL)
 }
 
 fn elem_size_for(type_code: ValueKind) -> usize {

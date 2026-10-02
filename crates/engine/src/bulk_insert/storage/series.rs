@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_value::params::Params;
 
 use crate::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};
@@ -10,6 +11,7 @@ pub struct PendingSeriesInsert {
 	pub namespace: String,
 	pub series: String,
 	pub rows: Vec<Params>,
+	pub batches: Vec<(usize, RecordBatch)>,
 }
 
 impl PendingSeriesInsert {
@@ -18,6 +20,7 @@ impl PendingSeriesInsert {
 			namespace,
 			series,
 			rows: Vec::new(),
+			batches: Vec::new(),
 		}
 	}
 
@@ -27,6 +30,14 @@ impl PendingSeriesInsert {
 
 	pub fn add_rows<I: IntoIterator<Item = Params>>(&mut self, iter: I) {
 		self.rows.extend(iter);
+	}
+
+	pub fn add_batch(&mut self, batch: RecordBatch) {
+		self.batches.push((self.rows.len(), batch));
+	}
+
+	pub(crate) fn row_count(&self) -> usize {
+		self.rows.len() + self.batches.iter().map(|(_, batch)| batch.num_rows()).sum::<usize>()
 	}
 }
 
@@ -53,6 +64,11 @@ impl<'a, 'e, V: ValidationMode> SeriesInsertBuilder<'a, 'e, V> {
 		I: IntoIterator<Item = Params>,
 	{
 		self.pending.add_rows(iter);
+		self
+	}
+
+	pub fn batch(mut self, batch: RecordBatch) -> Self {
+		self.pending.add_batch(batch);
 		self
 	}
 

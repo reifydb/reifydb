@@ -321,6 +321,10 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 	(Arc::new(field.as_ref().clone().with_nullable(true)), array)
 }
 
+pub fn from_one(name: &str, value: Value) -> (FieldRef, ArrayRef) {
+	from_many(name, value, 1)
+}
+
 pub fn from_many(name: &str, value: Value, row_count: usize) -> (FieldRef, ArrayRef) {
 	match value {
 		Value::Boolean(v) => bool(name, vec![v; row_count]),

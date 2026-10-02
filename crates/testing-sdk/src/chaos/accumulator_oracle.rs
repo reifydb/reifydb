@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	slice,
+};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -10,8 +13,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	operator_with::ApplyWith,
-	row::Row as CoreRow,
-	value::batch::from_row,
+	value::batch::from_encoded_bytes,
 };
 use reifydb_flow_async::{
 	operator::{
@@ -31,6 +33,8 @@ use reifydb_sdk::flow::operator::{
 	view::{ColumnsView, in_process::InProcessColumnsView},
 	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
+#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
 	view::MaterializedView,
@@ -150,7 +154,8 @@ fn extract_one<A>(aggregate: &A, row: &CoreRow) -> Option<(Group<A>, TumblingCoo
 where
 	A: WindowedOperator,
 {
-	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
+	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
@@ -413,7 +418,8 @@ fn extract_rolling<A>(
 where
 	A: WindowedOperator,
 {
-	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
+	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
@@ -646,7 +652,8 @@ fn extract_carry<A>(aggregate: &A, row: &CoreRow) -> Option<(CarryGroup<A>, Carr
 where
 	A: WindowedOperator,
 {
-	let columns = from_row(row).unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
+	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;

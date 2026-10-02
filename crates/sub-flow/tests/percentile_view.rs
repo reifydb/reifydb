@@ -19,7 +19,7 @@ use reifydb_flow::{
 	context::FlowContext,
 };
 use reifydb_flow_async::operator::{
-	aggregation::core::{Aggregation, SlotInput},
+	aggregation::core::{Aggregation, EmitRow, SlotInput},
 	window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_rql::expression::parse_expression;
@@ -27,8 +27,8 @@ use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::{assert::rows, engine::TestEngine};
 use reifydb_value::value::{
-	Value, datetime::DateTime, digest::Digest, duration::Duration, system_columns::user_columns,
-	value_type::ValueType,
+	Value, column_view::ColumnView, datetime::DateTime, digest::Digest, duration::Duration, row_number::RowNumber,
+	system_columns::user_columns, value_type::ValueType,
 };
 
 const TIMEOUT: Duration = Duration::from_seconds_const(60);
@@ -172,6 +172,22 @@ fn read(digest: &Digest, p: f64) -> Value {
 	digest.percentile_value(p).unwrap()
 }
 
+fn outputs(core: &mut Aggregation, slot_values: Vec<Value>) -> Vec<Value> {
+	// Reads the published row, so an output wired to the wrong slot shows up exactly as a view would see it.
+	let row = EmitRow {
+		group_values: Vec::new(),
+		slot_values,
+		row_number: RowNumber(1),
+		span: None,
+	};
+	let diffs = core.emit_diffs(vec![row], Vec::new(), Vec::new(), DateTime::default()).unwrap();
+	assert_eq!(diffs.len(), 1, "one emitted row must publish exactly one insert");
+	let post = diffs[0].post().expect("an insert carries a post batch");
+	user_columns(post)
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())).unwrap().get_value(0))
+		.collect()
+}
+
 fn float(value: &Value) -> f64 {
 	match value {
 		Value::Float8(v) => v.value(),
@@ -182,10 +198,10 @@ fn float(value: &Value) -> f64 {
 #[test]
 fn p50_and_p99_on_one_column_share_one_digest_slot_in_every_flow_operator() {
 	// A slot per percentile doubles the stored state of every group and changes no answer.
-	for (operator, core) in cores(&PERCENTILE_CALLS[..2]) {
+	for (operator, mut core) in cores(&PERCENTILE_CALLS[..2]) {
 		assert_eq!(layout(&core), vec![digest_slot(Some(10_000), "latency")], "{operator}");
 		let slot = single(10_000, 42.0);
-		let outputs = core.compute_outputs(&[Value::Digest(Box::new(slot.clone()))]).unwrap();
+		let outputs = outputs(&mut core, vec![Value::Digest(Box::new(slot.clone()))]);
 		assert_eq!(outputs, vec![read(&slot, 0.5), read(&slot, 0.99)], "{operator}: both outputs read slot 0");
 	}
 }
@@ -227,7 +243,7 @@ fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_ever
 		single(10_000, 6_000_000.0),
 		single(10_000, 70_000_000.0),
 	];
-	for (operator, core) in cores(&FROZEN_CALLS) {
+	for (operator, mut core) in cores(&FROZEN_CALLS) {
 		assert_eq!(
 			layout(&core),
 			vec![
@@ -244,7 +260,7 @@ fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_ever
 		);
 		let mut values: Vec<Value> = slots.iter().map(|slot| Value::Digest(Box::new(slot.clone()))).collect();
 		values[1] = Value::float8(7.0);
-		let outputs = core.compute_outputs(&values).unwrap();
+		let outputs = outputs(&mut core, values);
 		assert_eq!(
 			outputs,
 			vec![

@@ -135,6 +135,9 @@ pub(crate) fn update_ringbuffer(
 			column_map: &column_map,
 		};
 
+		let mut ids = Vec::with_capacity(row_numbers.len());
+		let mut update_partitions = Vec::new();
+		let mut rows = Vec::with_capacity(row_numbers.len());
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let row = build_updated_ringbuffer_row(
 				services,
@@ -194,13 +197,19 @@ pub(crate) fn update_ringbuffer(
 				}
 			}
 
-			let stored_row = txn.update_ringbuffer(ringbuffer.clone(), partition, row_number, row)?;
 			if has_returning {
-				returned_rows.push((row_number, stored_row));
 				pre_rows.push((row_number, pre_row));
 			}
-			updated_count += 1;
+			ids.push(row_number);
+			update_partitions.extend(partition);
+			rows.push(row);
 		}
+
+		let stored = txn.update_ringbuffer(&ringbuffer, &update_partitions, &ids, &rows)?;
+		if has_returning {
+			returned_rows.extend(ids.iter().copied().zip(stored));
+		}
+		updated_count += ids.len() as u64;
 	}
 
 	if let Some(returning_exprs) = &returning {

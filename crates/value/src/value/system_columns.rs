@@ -5,7 +5,7 @@ use std::{
 	collections::HashMap,
 	fmt::{self, Display, Formatter},
 	slice,
-	sync::Arc,
+	sync::{Arc, LazyLock},
 };
 
 use arrow_array::{
@@ -80,6 +80,28 @@ impl SystemColumn {
 	}
 }
 
+static SYSTEM_FIELDS: LazyLock<[[FieldRef; 2]; 6]> = LazyLock::new(|| {
+	SystemColumn::ALL.map(|column| {
+		[false, true].map(|holds_nones| {
+			let value_type = match holds_nones {
+				true => ValueType::Option(Box::new(column.ty())),
+				false => column.ty(),
+			};
+			Arc::new(to_field(
+				column.name(),
+				&FieldType {
+					value_type: Some(value_type),
+					..FieldType::default()
+				},
+			))
+		})
+	})
+});
+
+pub fn system_field(column: SystemColumn, holds_nones: bool) -> FieldRef {
+	SYSTEM_FIELDS[column.rank()][usize::from(holds_nones)].clone()
+}
+
 impl Display for SystemColumn {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str(self.name())
@@ -146,9 +168,13 @@ pub fn commit_versions(batch: &RecordBatch) -> Result<&[u64]> {
 }
 
 pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: ArrayRef) -> Result<RecordBatch> {
+	stamp_system_columns(batch, vec![(column, array)])
+}
+
+pub fn stamp_system_columns(batch: RecordBatch, stamps: Vec<(SystemColumn, ArrayRef)>) -> Result<RecordBatch> {
 	let schema = batch.schema();
 	let fields: Vec<FieldRef> = schema.fields().iter().cloned().collect();
-	stamped(schema.metadata().clone(), fields, batch.columns().to_vec(), batch.num_rows(), column, array)
+	stamped(schema.metadata().clone(), fields, batch.columns().to_vec(), batch.num_rows(), stamps)
 }
 
 pub fn restamp_row_numbers(batch: &RecordBatch, keep: &[SystemColumn], row_numbers: ArrayRef) -> Result<RecordBatch> {
@@ -160,7 +186,13 @@ pub fn restamp_row_numbers(batch: &RecordBatch, keep: &[SystemColumn], row_numbe
 		.filter(|(field, _)| SystemColumn::from_name(field.name()).is_none_or(|column| keep.contains(&column)))
 		.map(|(field, array)| (field.clone(), array.clone()))
 		.unzip();
-	stamped(schema.metadata().clone(), fields, columns, batch.num_rows(), SystemColumn::RowNumbers, row_numbers)
+	stamped(
+		schema.metadata().clone(),
+		fields,
+		columns,
+		batch.num_rows(),
+		vec![(SystemColumn::RowNumbers, row_numbers)],
+	)
 }
 
 fn stamped(
@@ -168,39 +200,30 @@ fn stamped(
 	mut fields: Vec<FieldRef>,
 	mut columns: Vec<ArrayRef>,
 	num_rows: usize,
-	column: SystemColumn,
-	array: ArrayRef,
+	stamps: Vec<(SystemColumn, ArrayRef)>,
 ) -> Result<RecordBatch> {
-	let value_type = match array.logical_null_count() > 0 {
-		true => ValueType::Option(Box::new(column.ty())),
-		false => column.ty(),
-	};
-	let field: FieldRef = Arc::new(to_field(
-		column.name(),
-		&FieldType {
-			value_type: Some(value_type),
-			..FieldType::default()
-		},
-	));
-	let row_count = match fields.is_empty() && num_rows == 0 {
-		true => array.len(),
-		false => num_rows,
-	};
-	match fields.iter().position(|other| other.name() == column.name()) {
-		Some(index) => {
-			fields[index] = field;
-			columns[index] = array;
+	let mut row_count = num_rows;
+	for (column, array) in stamps {
+		let field = system_field(column, array.logical_null_count() > 0);
+		if fields.is_empty() && row_count == 0 {
+			row_count = array.len();
 		}
-		None => {
-			let index = fields
-				.iter()
-				.position(|other| {
-					SystemColumn::from_name(other.name())
-						.is_some_and(|other| other.rank() > column.rank())
-				})
-				.unwrap_or(fields.len());
-			fields.insert(index, field);
-			columns.insert(index, array);
+		match fields.iter().position(|other| other.name() == column.name()) {
+			Some(index) => {
+				fields[index] = field;
+				columns[index] = array;
+			}
+			None => {
+				let index = fields
+					.iter()
+					.position(|other| {
+						SystemColumn::from_name(other.name())
+							.is_some_and(|other| other.rank() > column.rank())
+					})
+					.unwrap_or(fields.len());
+				fields.insert(index, field);
+				columns.insert(index, array);
+			}
 		}
 	}
 	RecordBatch::try_new_with_options(

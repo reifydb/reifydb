@@ -5,14 +5,14 @@ use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array, new_null_array};
 use arrow_buffer::BooleanBuffer;
-use arrow_schema::{ArrowError, FieldRef, Schema};
+use arrow_schema::{ArrowError, FieldRef, Schema, SchemaRef};
 use arrow_select::{
 	concat::{concat as concat_arrays, concat_batches},
 	take::take,
 };
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowFamily, RowShape, RowShapeField},
+	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::{
 	Result,
@@ -35,7 +35,9 @@ use reifydb_value::{
 		duration::Duration,
 		identity::IdentityId,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, column_view, is_system_field, system_column, with_system_column},
+		system_columns::{
+			SystemColumn, column_view, is_system_field, stamp_system_columns, system_column, system_field,
+		},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::{
@@ -50,10 +52,9 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	internal_err,
 	metrics::heap::HeapSize,
-	row::Row,
 	value::column::{
 		builder::{ColumnBuilder, TypedBuilder, append_fixed},
-		factory::from_many,
+		factory::from_one,
 		nulls::none_filler,
 		view::group_by::{GroupKeyDict, GroupRows, group_rows},
 	},
@@ -64,12 +65,30 @@ pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
 	assemble(columns, HashMap::new(), row_count)
 }
 
+pub fn batch_with(schema: &SchemaRef, columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch> {
+	let reusable = schema.fields().len() == columns.len()
+		&& schema
+			.fields()
+			.iter()
+			.zip(&columns)
+			.all(|(cached, (field, _))| Arc::ptr_eq(cached, field) || cached == field);
+	if !reusable {
+		return assemble(columns, schema.metadata().clone(), row_count);
+	}
+	RecordBatch::try_new_with_options(
+		schema.clone(),
+		columns.into_iter().map(|(_, array)| array).collect(),
+		&RecordBatchOptions::new().with_row_count(Some(row_count)),
+	)
+	.map_err(frame_error)
+}
+
 pub fn empty_batch() -> RecordBatch {
 	RecordBatch::new_empty(Arc::new(Schema::empty()))
 }
 
 pub fn single_row<'a>(values: impl IntoIterator<Item = (&'a str, Value)>) -> Result<RecordBatch> {
-	batch(values.into_iter().map(|(name, value)| from_many(name, value, 1)).collect())
+	batch(values.into_iter().map(|(name, value)| from_one(name, value)).collect())
 }
 
 pub fn from_rows(names: &[&str], rows: &[Vec<Value>]) -> Result<RecordBatch> {
@@ -121,45 +140,6 @@ pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch> {
 	from_rows(&name_refs, &rows)
 }
 
-pub fn from_row(row: &Row) -> Result<RecordBatch> {
-	let shape = &row.shape;
-	let mut columns = Vec::with_capacity(shape.fields().len());
-	for (idx, field) in shape.fields().iter().enumerate() {
-		let value = shape.get_value(&row.encoded, idx);
-
-		let column_type = match value {
-			Value::None {
-				..
-			} => field.constraint.get_type(),
-			Value::Decimal(_) => field.constraint.get_type().inner_type().clone(),
-			_ => value.get_type(),
-		};
-
-		let mut builder = ColumnBuilder::with_capacity(column_type, 1);
-		builder.push_value(value);
-
-		if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
-			builder.set_dictionary_id(*dict_id);
-		}
-
-		let name = shape.get_field_name(idx).expect("RowShape missing name for field");
-		columns.push(builder.finish(name));
-	}
-
-	let mut out = assemble(columns, HashMap::new(), 1)?;
-	out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![row.number.0])))?;
-	if !matches!(shape.family(), RowFamily::Pod | RowFamily::Operator) {
-		let created_at = datetime_array([shape.created_at(&row.encoded)]);
-		let updated_at = datetime_array([shape.updated_at(&row.encoded)]);
-		out = with_system_column(out, SystemColumn::CreatedAt, Arc::new(created_at))?;
-		out = with_system_column(out, SystemColumn::UpdatedAt, Arc::new(updated_at))?;
-	}
-	if let Some(time) = shape.time(&row.encoded) {
-		out = with_system_column(out, SystemColumn::Time, Arc::new(datetime_array([time])))?;
-	}
-	Ok(out)
-}
-
 pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Result<RecordBatch> {
 	assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
 
@@ -175,10 +155,10 @@ pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBy
 		columns.push(builder.finish(&field.name));
 	}
 
-	let out = assemble(columns, HashMap::new(), rows.len())?;
-	stamps(shape, rows, ids)?
-		.into_iter()
-		.try_fold(out, |out, (column, array)| with_system_column(out, column, array))
+	for (column, array) in stamps(shape, rows, ids)? {
+		columns.push((system_field(column, array.logical_null_count() > 0), array));
+	}
+	assemble(columns, HashMap::new(), rows.len())
 }
 
 pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch> {
@@ -315,6 +295,10 @@ pub fn append_rows(
 	let columns = names.iter().zip(builders).map(|(name, builder)| builder.finish(name)).collect();
 	let out = assemble(columns, schema.metadata().clone(), batch.num_rows() + rows.len())?;
 	merge_system_columns(out, &batch, stamps(shape, &rows, &row_numbers)?, rows.len())
+}
+
+pub fn take_row(batch: &RecordBatch, index: usize) -> Result<RecordBatch> {
+	take_rows(batch, &[index])
 }
 
 pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
@@ -552,11 +536,18 @@ fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) ->
 	if rows.is_empty() {
 		return Ok(columns);
 	}
-	if !matches!(shape.family(), RowFamily::Pod) {
-		let created_at = datetime_array(rows.iter().map(|row| shape.created_at(row)));
-		let updated_at = datetime_array(rows.iter().map(|row| shape.updated_at(row)));
-		columns.push((SystemColumn::CreatedAt, Arc::new(created_at)));
-		columns.push((SystemColumn::UpdatedAt, Arc::new(updated_at)));
+	let carried = shape.family().system_columns();
+	if carried.contains(&SystemColumn::CreatedAt) {
+		columns.push((
+			SystemColumn::CreatedAt,
+			Arc::new(datetime_array(rows.iter().map(|row| shape.created_at(row)))),
+		));
+	}
+	if carried.contains(&SystemColumn::UpdatedAt) {
+		columns.push((
+			SystemColumn::UpdatedAt,
+			Arc::new(datetime_array(rows.iter().map(|row| shape.updated_at(row)))),
+		));
 	}
 	let time: Vec<DateTime> = rows.iter().filter_map(|row| shape.time(row)).collect();
 	match time.len() {
@@ -575,7 +566,7 @@ fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) ->
 }
 
 fn merge_system_columns(
-	mut out: RecordBatch,
+	out: RecordBatch,
 	batch: &RecordBatch,
 	fresh: Vec<(SystemColumn, ArrayRef)>,
 	appended: usize,
@@ -588,6 +579,7 @@ fn merge_system_columns(
 	{
 		return internal_err!("unknown system column {}", field.name());
 	}
+	let mut merged_columns: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	for column in SystemColumn::ALL {
 		let new = fresh.iter().find(|(fresh_column, _)| *fresh_column == column).map(|(_, array)| array);
 		let merged = match (system_column(batch, column), new) {
@@ -603,9 +595,9 @@ fn merge_system_columns(
 				.into());
 			}
 		};
-		out = with_system_column(out, column, merged)?;
+		merged_columns.push((column, merged));
 	}
-	Ok(out)
+	stamp_system_columns(out, merged_columns)
 }
 
 fn retyped(view: &ColumnView, field: &RowShapeField, appended: usize) -> ColumnBuilder {

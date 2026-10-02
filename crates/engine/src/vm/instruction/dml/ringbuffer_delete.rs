@@ -227,23 +227,29 @@ fn delete_ringbuffer_partitions(
 			Some(Partition::of(&partition_key))
 		};
 
+		let mut doomed = Vec::new();
 		for row_num in collect_partition_row_numbers(txn, ringbuffer, partition_hash, &partition)? {
 			let should_delete = match row_numbers_filter {
 				Some(filter) => filter.contains(&row_num),
 				None => true,
 			};
 			if should_delete {
-				let deleted_values = txn.remove_from_ringbuffer(ringbuffer, partition_hash, row_num)?;
-				if has_returning {
-					returned_rows.push((row_num, deleted_values));
-				}
-				partition_deleted += 1;
-				deleted_count += 1;
+				doomed.push(row_num);
 			} else {
 				min_remaining_row =
 					Some(min_remaining_row.map_or(row_num.0, |m: u64| m.min(row_num.0)));
 			}
 		}
+		let doomed_partitions = match partition_hash {
+			Some(partition) => vec![partition; doomed.len()],
+			None => Vec::new(),
+		};
+		let deleted_values = txn.remove_from_ringbuffer(ringbuffer, &doomed_partitions, &doomed)?;
+		if has_returning {
+			returned_rows.extend(doomed.iter().copied().zip(deleted_values));
+		}
+		partition_deleted += doomed.len() as u64;
+		deleted_count += doomed.len() as u64;
 
 		if row_numbers_filter.is_some() {
 			apply_ringbuffer_partition_metadata_after_delete(

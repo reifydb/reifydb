@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::column::Column,
 	value::{
 		batch::empty_batch,
-		column::{cast::cast_column_data, factory::from_many, write::check_digest_write_type},
+		column::{cast::cast_column_data, factory::from_one, write::check_digest_write_type},
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
@@ -66,7 +66,7 @@ impl RowCoercer {
 			target: None,
 			take: None,
 		};
-		let column = from_many("value", value, 1);
+		let column = from_one("value", value);
 		let casted = cast_column_data(&ctx, &ColumnView::try_from(&column)?, cast_target, fragment)?;
 		Ok(ColumnView::try_from(&casted)?.get_value(0))
 	}

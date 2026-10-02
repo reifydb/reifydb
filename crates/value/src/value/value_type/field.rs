@@ -14,7 +14,9 @@ use crate::{
 	value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			decimal_array, dictionary_array::DICTIONARY_ENTRY_WIDTH, temporal_array::DATETIME_TIMEZONE,
+			decimal_array,
+			dictionary_array::DICTIONARY_ENTRY_WIDTH,
+			temporal_array::{DATETIME_TIMEZONE, datetime_data_type},
 		},
 		dictionary::DictionaryId,
 		value_type::ValueType,
@@ -67,7 +69,7 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 			scale,
 		} => field(decimal_array::data_type(*precision, *scale)),
 		ValueType::Date => field(DataType::Date32),
-		ValueType::DateTime => field(DataType::Timestamp(TimeUnit::Nanosecond, Some(DATETIME_TIMEZONE.into()))),
+		ValueType::DateTime => field(datetime_data_type()),
 		ValueType::Time => field(DataType::Time64(TimeUnit::Nanosecond)),
 		ValueType::Duration => field(DataType::Interval(IntervalUnit::MonthDayNano)),
 		ValueType::Int16 => field(wide).with_extension_type(Int16Tag(())),

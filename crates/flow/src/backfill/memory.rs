@@ -34,6 +34,7 @@ use reifydb_value::{
 
 use crate::backfill::Scan;
 
+#[allow(clippy::disallowed_types)]
 #[derive(Clone, Default)]
 pub struct MemorySources(Arc<Mutex<Store>>);
 
@@ -79,6 +80,7 @@ struct Visible<'a> {
 	row: &'a StoredRow,
 }
 
+#[allow(clippy::disallowed_types)]
 impl MemorySources {
 	pub fn define(&self, source: ObjectId, columns: &[(&str, ValueType)], time: TimeSource) {
 		let mut store = self.0.lock();
@@ -319,6 +321,7 @@ impl Source {
 	}
 }
 
+#[allow(clippy::disallowed_types)]
 pub struct MemoryScan {
 	sources: MemorySources,
 	version: CommitVersion,

@@ -29,7 +29,7 @@ use reifydb_value::{
 	value::{
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns},
 		value_type::ValueType,
 	},
 };
@@ -66,6 +66,8 @@ pub struct TableScanNode {
 	oldest_first: bool,
 
 	merge: Option<PartitionMerge>,
+
+	storage_batch: Option<RecordBatch>,
 }
 
 impl TableScanNode {
@@ -119,6 +121,7 @@ impl TableScanNode {
 			system_columns,
 			oldest_first: false,
 			merge: None,
+			storage_batch: None,
 		})
 	}
 
@@ -370,21 +373,22 @@ impl QueryNode for TableScanNode {
 
 		self.resume = next_resume;
 
-		let columns = batch(self.storage_columns())?;
-		let mut columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
+		let columns = match &self.storage_batch {
+			Some(storage) => storage.clone(),
+			None => {
+				let storage = batch(self.storage_columns())?;
+				self.storage_batch = Some(storage.clone());
+				storage
+			}
+		};
+		let columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
 
+		let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 		if !scanned.partitions.is_empty() {
-			columns = with_system_column(
-				columns,
-				SystemColumn::Partitions,
-				partition_array(&scanned.partitions),
-			)?;
+			stamps.push((SystemColumn::Partitions, partition_array(&scanned.partitions)));
 		}
-		columns = with_system_column(
-			columns,
-			SystemColumn::CommitVersion,
-			Arc::new(UInt64Array::from(scanned.commit_versions)),
-		)?;
+		stamps.push((SystemColumn::CommitVersion, Arc::new(UInt64Array::from(scanned.commit_versions))));
+		let columns = stamp_system_columns(columns, stamps)?;
 
 		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
