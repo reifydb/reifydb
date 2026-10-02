@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 
-use arrow_array::RecordBatch;
 use reifydb_core::{
 	expression::Expression,
 	interface::{catalog::series::Series, evaluate::TargetColumn, resolved::ResolvedColumn},
@@ -13,7 +12,7 @@ use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_rql::query::QueryPlan;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, column_view::ColumnView, system_columns::column_view, value_type::ValueType},
+	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 
 use crate::{
@@ -105,35 +104,6 @@ pub(crate) fn coerce_value_to_column_type(
 	let coerced_column = cast_column_data(&eval_ctx, &temp_column_data, target, || Fragment::internal(&value_str))?;
 
 	Ok(ColumnView::try_from(&coerced_column)?.get_value(0))
-}
-
-pub(crate) fn coerce_series_row(
-	series: &Series,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	context: &QueryContext,
-	row_idx: usize,
-) -> Result<Vec<Value>> {
-	let key_column = series.key.column();
-	let mut values = Vec::with_capacity(series.columns.len());
-	for column in &series.columns {
-		let input = column_view(columns, &column.name)?;
-		let value = input.map(|c| c.get_value(row_idx)).unwrap_or_else(Value::none);
-		if column.name == key_column && matches!(value, Value::None { .. }) {
-			values.push(value);
-			continue;
-		}
-		let ident = fragments.column(&column.name);
-		let source = context.source.clone().expect("series write context must carry its series as source");
-		let resolved = ResolvedColumn::new(ident.clone(), source, column.clone());
-		let mut value = coerce_value_to_column_type(value, column.constraint.get_type(), resolved, context)?;
-		if let Err(mut e) = column.constraint.coerce(&mut value) {
-			e.0.fragment = ident;
-			return Err(e);
-		}
-		values.push(value);
-	}
-	Ok(values)
 }
 
 pub(crate) fn series_key(series: &Series, value: &Value) -> Result<Option<u64>> {

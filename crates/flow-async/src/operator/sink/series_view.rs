@@ -40,6 +40,7 @@ use reifydb_value::{
 		column_view::ColumnView,
 		partition::Partition,
 		system_columns::{SystemColumn, column_view, require_row_numbers},
+		value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -107,20 +108,21 @@ impl SinkSeriesViewOperator {
 		column_view(columns, key_column)
 	}
 
-	#[inline]
-	fn series_key_at(&self, key_view: Option<&ColumnView>, row_idx: usize) -> Result<u64> {
-		let key_column = self.key.column();
-
-		let key = match key_view {
-			None => None,
-			Some(time) if key_column.is_empty() => match time.get_value(row_idx) {
-				Value::DateTime(time) => self.key.key_to_u64(Value::DateTime(time)),
-				_ => None,
+	fn series_keys(&self, columns: &RecordBatch) -> Result<Vec<Option<u64>>> {
+		Ok(match self.series_key_view(columns)? {
+			None => vec![None; columns.num_rows()],
+			Some(time) if self.key.column().is_empty() => match time.base_type() {
+				ValueType::DateTime => self.key.keys_to_u64(&time),
+				_ => vec![None; time.len()],
 			},
-			Some(view) => self.key.key_to_u64(view.get_value(row_idx)),
-		};
+			Some(view) => self.key.keys_to_u64(&view),
+		})
+	}
 
-		key.ok_or_else(|| {
+	#[inline]
+	fn series_key_at(&self, keys: &[Option<u64>], row_idx: usize) -> Result<u64> {
+		let key_column = self.key.column();
+		keys[row_idx].ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSeriesKey {
 				view: self.view.def().name().to_string(),
 				column: if key_column.is_empty() {
@@ -190,14 +192,14 @@ impl SinkSeriesViewOperator {
 		let encoder = SourceRowEncoder::new(source, shape, &field_columns)?;
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let (row_numbers, key_view) = if row_count == 0 {
-			(&[][..], None)
+		let (row_numbers, series_keys) = if row_count == 0 {
+			(&[][..], Vec::new())
 		} else {
-			(require_row_numbers(source)?, self.series_key_view(&coerced)?)
+			(require_row_numbers(source)?, self.series_keys(&coerced)?)
 		};
 		let encoded = encoder.encode_all()?;
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let series_key = self.series_key_at(key_view.as_ref(), row_idx)?;
+			let series_key = self.series_key_at(&series_keys, row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(
@@ -250,14 +252,14 @@ impl SinkSeriesViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let (pre_row_numbers, post_row_numbers, pre_key_view, post_key_view) = if row_count == 0 {
-			(&[][..], &[][..], None, None)
+		let (pre_row_numbers, post_row_numbers, pre_series_keys, post_series_keys) = if row_count == 0 {
+			(&[][..], &[][..], Vec::new(), Vec::new())
 		} else {
 			(
 				require_row_numbers(source_pre)?,
 				require_row_numbers(source_post)?,
-				self.series_key_view(&coerced_pre)?,
-				self.series_key_view(&coerced_post)?,
+				self.series_keys(&coerced_pre)?,
+				self.series_keys(&coerced_post)?,
 			)
 		};
 		let encoded = encoder.encode_all()?;
@@ -265,8 +267,8 @@ impl SinkSeriesViewOperator {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
 
-			let pre_series_key = self.series_key_at(pre_key_view.as_ref(), row_idx)?;
-			let post_series_key = self.series_key_at(post_key_view.as_ref(), row_idx)?;
+			let pre_series_key = self.series_key_at(&pre_series_keys, row_idx)?;
+			let post_series_key = self.series_key_at(&post_series_keys, row_idx)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
@@ -343,13 +345,13 @@ impl SinkSeriesViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let (row_numbers, key_view) = if row_count == 0 {
-			(&[][..], None)
+		let (row_numbers, series_keys) = if row_count == 0 {
+			(&[][..], Vec::new())
 		} else {
-			(require_row_numbers(&coerced)?, self.series_key_view(&coerced)?)
+			(require_row_numbers(&coerced)?, self.series_keys(&coerced)?)
 		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let series_key = self.series_key_at(key_view.as_ref(), row_idx)?;
+			let series_key = self.series_key_at(&series_keys, row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
 					partition_of(view, &self.partition_indices, source, row_idx)?;

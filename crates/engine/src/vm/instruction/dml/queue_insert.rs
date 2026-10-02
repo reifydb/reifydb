@@ -439,6 +439,7 @@ fn validate_and_encode_input_rows(
 	let pipeline = ColumnPipeline {
 		columns: &target.queue.columns,
 		sequences: Some(target.queue.id.into()),
+		series_key: None,
 		fragments,
 		context,
 	};
@@ -484,7 +485,7 @@ fn validate_and_encode_input_rows(
 		not_befores.push(not_before);
 		casts.push(cast);
 	}
-	intern_dictionary_columns(services, txn, &target.queue.columns, &mut casts)?;
+	intern_dictionary_columns(services, txn, &pipeline, &mut casts)?;
 
 	let mut pending: Vec<PendingItem> = Vec::new();
 	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {

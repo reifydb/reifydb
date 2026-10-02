@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRowBuilder};
 use reifydb_core::interface::catalog::series::Series;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
@@ -305,12 +305,14 @@ where
 
 pub struct SeriesRowPreDeleteContext<'a> {
 	pub series: &'a Series,
+	pub ids: &'a [RowNumber],
 }
 
 impl<'a> SeriesRowPreDeleteContext<'a> {
-	pub fn new(series: &'a Series) -> Self {
+	pub fn new(series: &'a Series, ids: &'a [RowNumber]) -> Self {
 		Self {
 			series,
+			ids,
 		}
 	}
 }
@@ -485,8 +487,8 @@ impl SeriesRowInterceptor {
 		txn.series_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, series: &Series) -> Result<()> {
-		let ctx = SeriesRowPreDeleteContext::new(series);
+	pub fn pre_delete(txn: &mut impl WithInterceptors, series: &Series, ids: &[RowNumber]) -> Result<()> {
+		let ctx = SeriesRowPreDeleteContext::new(series, ids);
 		txn.series_row_pre_delete_interceptors().execute(ctx)
 	}
 

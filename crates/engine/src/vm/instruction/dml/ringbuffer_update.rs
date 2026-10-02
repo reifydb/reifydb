@@ -100,6 +100,7 @@ pub(crate) fn update_ringbuffer(
 	let pipeline = ColumnPipeline {
 		columns: &ringbuffer.columns,
 		sequences: None,
+		series_key: None,
 		fragments: &fragments,
 		context: &context,
 	};
@@ -130,7 +131,7 @@ pub(crate) fn update_ringbuffer(
 		let sidecar_partitions = system_columns::partitions(&columns)?;
 		let inputs = input_views(&columns, &ringbuffer.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, columns.num_rows(), None)?];
-		intern_dictionary_columns(services, txn, &ringbuffer.columns, &mut batches)?;
+		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
 		let mut built: Vec<EncodedRingBufferRowBuilder> =
 			(0..columns.num_rows()).map(|_| shape.allocate_ringbuffer()).collect();
 		batches[0].write(&shape, &mut built)?;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	series::EncodedSeriesRow,
+	series::{EncodedSeriesRow, EncodedSeriesRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -34,18 +34,24 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::{PartitionError, partition_of, partition_values},
-	value::{batch::single_row, column::builder::ColumnBuilder},
+	value::{
+		batch::{decode_cells, single_row, take_rows},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
-use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
+use reifydb_transaction::{
+	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
+	transaction::Transaction,
+};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
 		partition::Partition,
@@ -57,6 +63,7 @@ use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
+	columns::{ColumnPipeline, Failure, input_views, intern_dictionary_columns},
 	context::SeriesTarget,
 	returning::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image,
@@ -67,10 +74,9 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::{
-			coerce::{InputFragments, coerce_series_row, series_key},
+			coerce::{InputFragments, series_key},
 			shape::get_or_create_series_shape,
 			time::resolve_time_for_update,
 		},
@@ -111,6 +117,14 @@ pub(crate) fn update_series(
 	let has_returning = returning.is_some();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let pipeline = ColumnPipeline {
+		columns: &series.columns,
+		sequences: None,
+		series_key: Some(&series.key),
+		fragments: &fragments,
+		context: &context,
+	};
+	let mut statement_shape: Option<RowShape> = None;
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -134,84 +148,148 @@ pub(crate) fn update_series(
 		}
 
 		let row_numbers = row_numbers(&columns)?;
-		let updates_to_apply = build_series_updates_to_apply(
-			services,
-			txn,
-			&series,
-			&columns,
-			&fragments,
-			&context,
-			row_numbers,
-			has_tag,
-		)?;
-		enforce_old_row_policies(services, symbols, txn, &target_data, &updates_to_apply, row_numbers)?;
+		let partitioned = !series.partition_by.is_empty();
 		let sidecar_partitions = partitions(&columns)?;
+		if partitioned && sidecar_partitions.len() != row_count {
+			return Err(EngineError::MissingPartitionAddress {
+				object: ObjectId::series(series.id),
+				operation: "UPDATE",
+			}
+			.into());
+		}
+		let (converted, key_failure) = series_update_keys(&series, &columns)?;
+		let tags = series_update_tags(&columns, has_tag, row_count)?;
+		let inputs = input_views(&columns, &series.columns)?;
+		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, key_failure)?];
+		let keys: Vec<u64> = converted
+			.into_iter()
+			.map(|key| key.expect("the pipeline fails on the first key that does not convert"))
+			.collect();
+		let shape = match &statement_shape {
+			Some(shape) => shape.clone(),
+			None => {
+				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+				statement_shape = Some(shape.clone());
+				shape
+			}
+		};
+		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
+		let [cast] = batches;
 
-		let mut updated = SeriesUpdatedRows::default();
-		for (key, row, row_idx) in updates_to_apply {
-			let pre_values = match txn.get(&key)? {
-				Some(v) => v.bytes,
-				None => continue,
+		let storage_keys: Vec<TaggedKey> = (0..row_count)
+			.map(|row| {
+				let sequence = u64::from(row_numbers[row]);
+				if partitioned {
+					PartitionedSeriesRowKey::new(
+						StorageId::series(series.id),
+						sidecar_partitions[row],
+						tags[row],
+						keys[row],
+						sequence,
+					)
+					.into()
+				} else {
+					SeriesRowKey {
+						storage: StorageId::series(series.id),
+						variant_tag: tags[row],
+						key: keys[row],
+						sequence,
+					}
+					.into()
+				}
+			})
+			.collect();
+		let mut builders: Vec<EncodedSeriesRowBuilder> =
+			(0..row_count).map(|_| shape.allocate_series()).collect();
+		{
+			let key_column = series.key_column_data(keys.clone());
+			let mut views = Vec::with_capacity(series.columns.len());
+			views.push(ColumnView::try_from(&key_column)?);
+			for (index, column) in series.columns.iter().enumerate() {
+				if column.name != series.key.column() {
+					views.push(cast.view(index)?);
+				}
+			}
+			shape.write_columns(&mut builders, &views)?;
+		}
+		enforce_old_row_policies(services, symbols, txn, &target_data, &storage_keys, row_numbers, &shape)?;
+
+		let mut found = Vec::with_capacity(row_count);
+		let mut found_builders = Vec::with_capacity(row_count);
+		let mut pres = Vec::with_capacity(row_count);
+		for (row, mut builder) in builders.into_iter().enumerate() {
+			let Some(pre) = txn.get(&storage_keys[row])? else {
+				continue;
 			};
-
-			let old_created_at = EncodedSeriesRow::view(&pre_values).created_at();
-			let old_time = EncodedSeriesRow::view(&pre_values).time();
+			let pre = pre.bytes;
+			let old_created_at = EncodedSeriesRow::view(&pre).created_at();
+			let old_time = EncodedSeriesRow::view(&pre).time();
 			let now = services.runtime_context.clock.now();
-			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-			let mut builder = EncodedSeriesRow::from(row).thaw();
 			builder.set_timestamps(old_created_at, now);
 			if let Some(time) = resolve_time_for_update(
 				&series.name,
 				&series.columns,
 				&series.time,
-				&update_shape,
+				&shape,
 				builder.as_slice(),
 				old_time,
 			)? {
 				builder.set_time(time);
 			}
-
-			let key_value = extract_series_update_key_value(&columns, &series, row_idx)?;
-			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
-
-			let mut rows_buf = [builder];
-			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
-			let [row] = rows_buf;
-			let row = row.freeze_bytes();
-			if !series.partition_by.is_empty() {
-				let expected = sidecar_partitions[row_idx];
-				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-				if series_partition_of_bytes(&series, &shape, &row) != expected {
-					return Err(PartitionError::ImmutablePartitionColumn {
-						object: ObjectId::series(series.id),
-					}
-					.into());
-				}
-			}
-			if txn.get_committed(&key)?.is_some() {
-				txn.mark_preexisting(&key)?;
-			}
-			txn.set(&key, row.clone())?;
-			let posts = [row.clone()];
-			let pres = [pre_values.clone()];
-			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
-
-			if has_returning {
-				returned_rows.push((row_number, row.clone()));
-				pre_rows.push((row_number, pre_values.clone()));
-			}
-			updated.key_values.push(key_value);
-			updated.row_numbers.push(row_number);
-			updated.pres.push(pre_values);
-			updated.posts.push(row);
-			updated.row_indices.push(row_idx);
-			updated_count += 1;
+			found.push(row);
+			found_builders.push(builder);
+			pres.push(pre);
 		}
-		track_series_update_flow_change(services, txn, &series, &columns, updated)?;
+
+		if !found_builders.is_empty() && !txn.series_row_pre_update_interceptors().is_empty() {
+			SeriesRowInterceptor::pre_update(txn, &series, &mut found_builders)?;
+		}
+		let posts: Vec<EncodedBytes> =
+			found_builders.into_iter().map(|builder| builder.freeze_bytes()).collect();
+		for (&row, post) in found.iter().zip(&posts) {
+			let storage_key = &storage_keys[row];
+			if partitioned && series_partition_of_bytes(&series, &shape, post) != sidecar_partitions[row] {
+				return Err(PartitionError::ImmutablePartitionColumn {
+					object: ObjectId::series(series.id),
+				}
+				.into());
+			}
+			if txn.get_committed(storage_key)?.is_some() {
+				txn.mark_preexisting(storage_key)?;
+			}
+			txn.set(storage_key, post.clone())?;
+		}
+		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {
+			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
+		}
+
+		let found_numbers: Vec<RowNumber> = found.iter().map(|&row| row_numbers[row]).collect();
+		if has_returning {
+			returned_rows.extend(found_numbers.iter().copied().zip(posts.iter().cloned()));
+			pre_rows.extend(found_numbers.iter().copied().zip(pres.iter().cloned()));
+		}
+		updated_count += posts.len() as u64;
+		let found_keys: Vec<u64> = found.iter().map(|&row| keys[row]).collect();
+		track_series_update_flow_change(
+			txn,
+			&series,
+			&shape,
+			&columns,
+			SeriesUpdatedRows {
+				keys: found_keys,
+				row_numbers: found_numbers,
+				row_indices: found,
+				pres,
+				posts,
+			},
+		)?;
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+		let shape = match statement_shape {
+			Some(shape) => shape,
+			None => get_or_create_series_shape(&services.catalog, &series, txn)?,
+		};
 		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
 		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;
 		let pre_cols = decode_rows_to_columns(&shape, &pre_rows)?;
@@ -292,81 +370,26 @@ fn build_update_series_query_context(
 	}
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_series_updates_to_apply(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	series: &Series,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	context: &QueryContext,
-	row_numbers: &[RowNumber],
-	has_tag: bool,
-) -> Result<Vec<(TaggedKey, EncodedBytes, usize)>> {
-	let row_count = columns.num_rows();
-	let partitioned = !series.partition_by.is_empty();
-	let sidecar_partitions = partitions(columns)?;
-	if partitioned && sidecar_partitions.len() != row_count {
-		return Err(EngineError::MissingPartitionAddress {
-			object: ObjectId::series(series.id),
-			operation: "UPDATE",
-		}
-		.into());
-	}
-	let mut updates_to_apply: Vec<(TaggedKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
-	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
-		let sequence = u64::from(*row_number);
-		let key_value = extract_series_update_key_value(columns, series, row_idx)?;
-		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx)?;
-
-		let key: TaggedKey = if partitioned {
-			let old_partition = sidecar_partitions[row_idx];
-			PartitionedSeriesRowKey::new(
-				StorageId::series(series.id),
-				old_partition,
-				variant_tag,
-				key_value,
-				sequence,
-			)
-			.into()
-		} else {
-			SeriesRowKey {
-				storage: StorageId::series(series.id),
-				variant_tag,
-				key: key_value,
-				sequence,
-			}
-			.into()
-		};
-
-		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-		let row =
-			build_series_update_bytes(services, txn, series, columns, fragments, &shape, context, row_idx)?;
-		updates_to_apply.push((key, row, row_idx));
-	}
-	Ok(updates_to_apply)
-}
-
 fn enforce_old_row_policies(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,
 	txn: &mut Transaction<'_>,
 	target: &SeriesTarget<'_>,
-	updates: &[(TaggedKey, EncodedBytes, usize)],
+	keys: &[TaggedKey],
 	row_numbers: &[RowNumber],
+	shape: &RowShape,
 ) -> Result<()> {
 	if txn.identity().is_privileged() {
 		return Ok(());
 	}
 	let series = target.series;
-	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(updates.len());
-	for (key, _, row_idx) in updates {
+	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(keys.len());
+	for (key, &row_number) in keys.iter().zip(row_numbers) {
 		if let Some(old) = txn.get(key)? {
-			old_rows.push((row_numbers[*row_idx], old.bytes));
+			old_rows.push((row_number, old.bytes));
 		}
 	}
-	let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-	let old_columns = decode_rows_to_columns(&shape, &old_rows)?;
+	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &series.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
 		txn,
@@ -398,119 +421,78 @@ fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedB
 	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
 }
 
-#[inline]
-fn extract_series_update_key_value(columns: &RecordBatch, series: &Series, row_idx: usize) -> Result<u64> {
+fn series_update_keys(series: &Series, columns: &RecordBatch) -> Result<(Vec<Option<u64>>, Option<Failure>)> {
 	let key_column = series.key.column();
-	let column = column_view(columns, key_column)?.ok_or_else(|| {
+	let view = column_view(columns, key_column)?.ok_or_else(|| {
 		internal_error!("update of series {} has no key column {} in its input", series.name, key_column)
 	})?;
-	series_key(series, &column.get_value(row_idx))?
-		.ok_or_else(|| internal_error!("update of series {} reads a row without a key", series.name))
-}
-
-#[inline]
-fn extract_series_update_variant_tag(columns: &RecordBatch, has_tag: bool, row_idx: usize) -> Result<Option<u8>> {
-	if !has_tag {
-		return Ok(None);
-	}
-	Ok(column_view(columns, "tag")?.and_then(|c| match c.get_value(row_idx) {
-		Value::Uint1(v) => Some(v),
-		_ => None,
-	}))
-}
-
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn build_series_update_bytes(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	series: &Series,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	shape: &RowShape,
-	context: &QueryContext,
-	row_idx: usize,
-) -> Result<EncodedBytes> {
-	let mut row = shape.allocate_series();
-	let key_column = series.key.column();
-	let values = coerce_series_row(series, columns, fragments, context, row_idx)?;
-	let mut data_idx = 0;
-	for (col_def, value) in series.columns.iter().zip(values) {
-		if col_def.name == key_column {
-			shape.set_value(&mut row, 0, &value);
-			continue;
-		}
-		data_idx += 1;
-		let value = match col_def.dictionary_id {
-			Some(dict_id) => {
-				let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-					internal_error!(
-						"Dictionary {:?} not found for column {}",
-						dict_id,
-						col_def.name
-					)
-				})?;
-				let entry_id = if matches!(value, Value::None { .. }) {
-					dictionary.id_type.none()
-				} else {
-					txn.insert_into_dictionary(&dictionary, &value)?
-				};
-				entry_id.to_value()
-			}
-			None => value,
+	let keys = series.key.keys_to_u64(&view);
+	let failure = keys.iter().position(Option::is_none).map(|row| {
+		let error = match series_key(series, &view.get_value(row)) {
+			Err(error) => error,
+			Ok(_) => internal_error!("update of series {} reads a row without a key", series.name),
 		};
-		shape.set_value(&mut row, data_idx, &value);
-	}
-	Ok(row.freeze_bytes())
+		Failure::before_columns(row, error)
+	});
+	Ok((keys, failure))
 }
 
-#[derive(Default)]
+fn series_update_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>> {
+	if !has_tag {
+		return Ok(vec![None; rows]);
+	}
+	Ok(match column_view(columns, "tag")? {
+		Some(view) => match &view.data {
+			ViewData::Uint1(array) => {
+				(0..rows).map(|row| (!view.none_at(row)).then(|| array.value(row))).collect()
+			}
+			_ => vec![None; rows],
+		},
+		None => vec![None; rows],
+	})
+}
+
 struct SeriesUpdatedRows {
-	key_values: Vec<u64>,
+	keys: Vec<u64>,
 	row_numbers: Vec<RowNumber>,
+	row_indices: Vec<usize>,
 	pres: Vec<EncodedBytes>,
 	posts: Vec<EncodedBytes>,
-	row_indices: Vec<usize>,
 }
 
 fn track_series_update_flow_change(
-	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	series: &Series,
+	shape: &RowShape,
 	columns: &RecordBatch,
 	updated: SeriesUpdatedRows,
 ) -> Result<()> {
 	if updated.posts.is_empty() {
 		return Ok(());
 	}
-	let read_shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(series.key_column_data(updated.key_values.clone()));
-	let read_fields = read_shape.fields();
-	for (i, col_def) in series.data_columns().enumerate() {
-		let mut data =
-			ColumnBuilder::with_capacity(read_fields[i + 1].constraint.get_type(), updated.pres.len());
-		for pre in &updated.pres {
-			data.push_value(read_shape.get_value(pre, i + 1));
-		}
-		pre_col_vec.push(data.finish(&col_def.name));
+	let mut pre_columns = Vec::with_capacity(1 + series.columns.len());
+	pre_columns.push(series.key_column_data(updated.keys.clone()));
+	let fields = shape.fields();
+	for (i, column) in series.data_columns().enumerate() {
+		let mut builder = ColumnBuilder::with_capacity(fields[i + 1].constraint.get_type(), updated.pres.len());
+		decode_cells(&mut builder, &column.name, shape, i + 1, &updated.pres)?;
+		pre_columns.push(builder.finish(&column.name));
 	}
 
-	let mut post_col_vec = Vec::with_capacity(1 + series.columns.len());
-	post_col_vec.push(series.key_column_data(updated.key_values));
-	for (field, array) in user_columns(columns) {
+	let mut post_columns = Vec::with_capacity(1 + series.columns.len());
+	post_columns.push(series.key_column_data(updated.keys));
+	let taken = take_rows(columns, &updated.row_indices)?;
+	for (field, array) in user_columns(&taken) {
 		if field.name() != series.key.column() && field.name() != "tag" {
-			let col = ColumnView::try_from((array, field.as_ref()))?;
-			let mut data = ColumnBuilder::with_capacity(col.get_type(), updated.row_indices.len());
-			for &row_idx in &updated.row_indices {
-				data.push_value(col.get_value(row_idx));
-			}
-			post_col_vec.push(data.finish(field.name()));
+			let view = ColumnView::try_from((array, field.as_ref()))?;
+			let mut builder = ColumnBuilder::with_capacity(view.get_type(), updated.row_indices.len());
+			builder.append_values(&view)?;
+			post_columns.push(builder.finish(field.name()));
 		}
 	}
 
-	let pre = with_series_stamps(pre_col_vec, &updated.row_numbers, &updated.pres)?;
-	let post = with_series_stamps(post_col_vec, &updated.row_numbers, &updated.posts)?;
+	let pre = with_series_stamps(pre_columns, &updated.row_numbers, &updated.pres)?;
+	let post = with_series_stamps(post_columns, &updated.row_numbers, &updated.posts)?;
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: ChangeVersion::from(CommitVersion(0)),

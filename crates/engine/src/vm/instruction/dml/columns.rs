@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_codec::row::{bytes::RowBuilder, shape::RowShape};
 use reifydb_core::{
 	interface::{
-		catalog::{column::Column, object::ObjectId},
+		catalog::{column::Column, object::ObjectId, series::SeriesKey},
 		evaluate::TargetColumn,
 		resolved::ResolvedColumn,
 	},
@@ -21,6 +21,7 @@ use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
+	fragment::Fragment,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -34,6 +35,7 @@ use reifydb_value::{
 use super::coerce::{InputFragments, coerce_value_to_column_type};
 use crate::{
 	Result,
+	error::EngineError,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
@@ -44,6 +46,7 @@ use crate::{
 pub(crate) struct ColumnPipeline<'a> {
 	pub(crate) columns: &'a [Column],
 	pub(crate) sequences: Option<ObjectId>,
+	pub(crate) series_key: Option<&'a SeriesKey>,
 	pub(crate) fragments: &'a InputFragments,
 	pub(crate) context: &'a QueryContext,
 }
@@ -67,6 +70,14 @@ impl Failure {
 		Self {
 			row,
 			rank: pipeline.columns.len() + 1,
+			error,
+		}
+	}
+
+	pub(crate) fn after_key(pipeline: &ColumnPipeline<'_>, row: usize, error: Error) -> Self {
+		Self {
+			row,
+			rank: pipeline.columns.len() + 2,
 			error,
 		}
 	}
@@ -118,27 +129,46 @@ impl ColumnPipeline<'_> {
 		let mut best = earliest;
 		let mut columns = Vec::with_capacity(self.columns.len());
 		let mut fills = Vec::new();
+		let key_rank = self.columns.len() + 1;
 		for (index, (column, input)) in self.columns.iter().zip(inputs).enumerate() {
 			let rank = index + 1;
+			let key = self.series_key.filter(|key| key.column() == column.name);
 			let filled = self.filled_rows(column, input.as_ref(), rows);
 			match self.cast_column(column, input.as_ref(), rows, &filled)? {
-				Some(cast) => columns.push(cast),
+				Some(cast) => {
+					if let Some(key) = key
+						&& let Some(failure) = key_failure(
+							key,
+							&ColumnView::try_from(&cast)?,
+							limit(&best, key_rank, rows),
+							key_rank,
+						) {
+						best = Some(failure);
+					}
+					columns.push(cast);
+				}
 				None => {
 					columns.push(none_typed(
 						&column.name,
 						column.constraint.get_type().inner_type().clone(),
 						rows,
 					));
-					let limit = match &best {
-						None => rows,
-						Some(failure) if rank < failure.rank => failure.row + 1,
-						Some(failure) => failure.row,
+					let checks = Checks {
+						column,
+						input: input.as_ref(),
+						filled: &filled,
+						limit: limit(&best, rank, rows),
+						key: key.map(|key| (key, limit(&best, key_rank, rows))),
 					};
-					match self.first_error(column, input.as_ref(), &filled, limit) {
-						Some((row, error)) => {
+					match self.first_error(&checks) {
+						Some((row, is_key, error)) => {
 							best = Some(Failure {
 								row,
-								rank,
+								rank: if is_key {
+									key_rank
+								} else {
+									rank
+								},
 								error,
 							})
 						}
@@ -198,7 +228,8 @@ impl ColumnPipeline<'_> {
 	}
 
 	fn filled_rows(&self, column: &Column, input: Option<&ColumnView<'_>>, rows: usize) -> Vec<usize> {
-		if self.sequences.is_none() || !column.auto_increment {
+		let generated = self.series_key.is_some_and(|key| key.column() == column.name);
+		if !generated && (self.sequences.is_none() || !column.auto_increment) {
 			return Vec::new();
 		}
 		match input {
@@ -273,19 +304,14 @@ impl ColumnPipeline<'_> {
 		Ok(Some(cast))
 	}
 
-	fn first_error(
-		&self,
-		column: &Column,
-		input: Option<&ColumnView<'_>>,
-		filled: &[usize],
-		limit: usize,
-	) -> Option<(usize, Error)> {
+	fn first_error(&self, checks: &Checks<'_, '_>) -> Option<(usize, bool, Error)> {
+		let column = checks.column;
 		let ident = self.fragments.column(&column.name);
-		for row in 0..limit {
-			if filled.binary_search(&row).is_ok() {
+		for row in 0..checks.limit {
+			if checks.filled.binary_search(&row).is_ok() {
 				continue;
 			}
-			let value = input.map(|view| view.get_value(row)).unwrap_or_else(Value::none);
+			let value = checks.input.map(|view| view.get_value(row)).unwrap_or_else(Value::none);
 			let resolved = ResolvedColumn::new(
 				ident.clone(),
 				self.context.source.clone().unwrap(),
@@ -298,31 +324,76 @@ impl ColumnPipeline<'_> {
 				self.context,
 			) {
 				Ok(value) => value,
-				Err(error) => return Some((row, error)),
+				Err(error) => return Some((row, false, error)),
 			};
 			if let Err(mut error) = column.constraint.coerce(&mut value) {
 				error.0.fragment = ident;
-				return Some((row, error));
+				return Some((row, false, error));
+			}
+			if let Some((key, key_limit)) = checks.key
+				&& row < key_limit
+				&& !matches!(value, Value::None { .. })
+				&& key.key_to_u64(value.clone()).is_none()
+			{
+				return Some((row, true, key_out_of_range(key, &value)));
 			}
 		}
 		None
 	}
 }
 
+struct Checks<'a, 'v> {
+	column: &'a Column,
+	input: Option<&'a ColumnView<'v>>,
+	filled: &'a [usize],
+	limit: usize,
+	key: Option<(&'a SeriesKey, usize)>,
+}
+
+fn limit(best: &Option<Failure>, rank: usize, rows: usize) -> usize {
+	match best {
+		None => rows,
+		Some(failure) if rank < failure.rank => failure.row + 1,
+		Some(failure) => failure.row,
+	}
+}
+
+fn key_failure(key: &SeriesKey, view: &ColumnView<'_>, limit: usize, rank: usize) -> Option<Failure> {
+	let keys = key.keys_to_u64(view);
+	(0..limit).find(|&row| keys[row].is_none() && !view.none_at(row)).map(|row| Failure {
+		row,
+		rank,
+		error: key_out_of_range(key, &view.get_value(row)),
+	})
+}
+
+fn key_out_of_range(key: &SeriesKey, value: &Value) -> Error {
+	EngineError::SeriesKeyOutOfRange {
+		column: key.column().to_string(),
+		value: value.to_string(),
+		fragment: Fragment::internal(value.to_string()),
+	}
+	.into()
+}
+
 pub(crate) fn intern_dictionary_columns(
 	services: &Services,
 	txn: &mut Transaction<'_>,
-	columns: &[Column],
+	pipeline: &ColumnPipeline<'_>,
 	batches: &mut [CastColumns],
 ) -> Result<()> {
 	if batches.iter().all(|batch| batch.rows == 0) {
 		return Ok(());
 	}
+	let columns = pipeline.columns;
 	let mut dictionaries: Vec<(DictionaryId, Vec<usize>)> = Vec::new();
 	for (index, column) in columns.iter().enumerate() {
 		let Some(dictionary_id) = column.dictionary_id else {
 			continue;
 		};
+		if pipeline.series_key.is_some_and(|key| key.column() == column.name) {
+			continue;
+		}
 		match dictionaries.iter_mut().find(|(id, _)| *id == dictionary_id) {
 			Some((_, indices)) => indices.push(index),
 			None => dictionaries.push((dictionary_id, vec![index])),
@@ -874,6 +945,7 @@ mod tests {
 		let pipeline = ColumnPipeline {
 			columns: &fixture.table.columns,
 			sequences: Some(fixture.table.id.into()),
+			series_key: None,
 			fragments: &fragments,
 			context: &fixture.context,
 		};
@@ -882,7 +954,7 @@ mod tests {
 		let mut cast = pipeline.cast_target_columns(&inputs, input.num_rows(), None).unwrap();
 		pipeline.fill_sequences(&fixture.services, &mut txn, &mut cast).unwrap();
 		let mut batches = [cast];
-		intern_dictionary_columns(&fixture.services, &mut txn, &fixture.table.columns, &mut batches).unwrap();
+		intern_dictionary_columns(&fixture.services, &mut txn, &pipeline, &mut batches).unwrap();
 		let mut rows: Vec<_> = (0..input.num_rows()).map(|_| fixture.shape.allocate_table()).collect();
 		batches[0].write(&fixture.shape, &mut rows).unwrap();
 		rows.iter().map(|row| row.as_slice().to_vec()).collect()

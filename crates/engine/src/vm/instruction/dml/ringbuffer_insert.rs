@@ -153,6 +153,7 @@ fn drive_ringbuffer_insert(
 	let pipeline = ColumnPipeline {
 		columns: &ringbuffer.columns,
 		sequences: None,
+		series_key: None,
 		fragments,
 		context,
 	};
@@ -179,7 +180,7 @@ fn drive_ringbuffer_insert(
 		let row_count = columns.num_rows();
 		let inputs = input_views(&columns, &ringbuffer.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
-		intern_dictionary_columns(services, txn, &ringbuffer.columns, &mut batches)?;
+		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
 		let mut built: Vec<EncodedRingBufferRowBuilder> =
 			(0..row_count).map(|_| shape.allocate_ringbuffer()).collect();
 		batches[0].write(shape, &mut built)?;

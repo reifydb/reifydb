@@ -6,7 +6,14 @@ use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		container::wide_int_array::wide_at,
+		datetime::DateTime,
+		sumtype::SumTypeId,
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 
@@ -68,24 +75,57 @@ impl SeriesKey {
 			Value::Uint4(v) => Some(v as u64),
 			Value::Uint8(v) => Some(v),
 			Value::Uint16(v) => u64::try_from(v).ok(),
-			Value::DateTime(dt) => {
-				let nanos = dt.to_nanos();
-				match self {
-					SeriesKey::DateTime {
-						precision,
-						..
-					} => u64::try_from(match precision {
-						TimestampPrecision::Second => nanos.div_euclid(1_000_000_000),
-						TimestampPrecision::Millisecond => nanos.div_euclid(1_000_000),
-						TimestampPrecision::Microsecond => nanos.div_euclid(1_000),
-						TimestampPrecision::Nanosecond => nanos,
-					})
-					.ok(),
-					_ => u64::try_from(nanos).ok(),
-				}
-			}
+			Value::DateTime(dt) => self.datetime_key(dt),
 			_ => None,
 		}
+	}
+
+	fn datetime_key(&self, datetime: DateTime) -> Option<u64> {
+		let nanos = datetime.to_nanos();
+		match self {
+			SeriesKey::DateTime {
+				precision,
+				..
+			} => u64::try_from(match precision {
+				TimestampPrecision::Second => nanos.div_euclid(1_000_000_000),
+				TimestampPrecision::Millisecond => nanos.div_euclid(1_000_000),
+				TimestampPrecision::Microsecond => nanos.div_euclid(1_000),
+				TimestampPrecision::Nanosecond => nanos,
+			})
+			.ok(),
+			_ => u64::try_from(nanos).ok(),
+		}
+	}
+
+	pub fn keys_to_u64(&self, view: &ColumnView<'_>) -> Vec<Option<u64>> {
+		let nulls = view.logical_nulls();
+		(0..view.len())
+			.map(|row| {
+				if nulls.as_ref().is_some_and(|nulls| nulls.is_null(row)) {
+					return None;
+				}
+				match &view.data {
+					ViewData::Int1(array) => u64::try_from(array.value(row)).ok(),
+					ViewData::Int2(array) => u64::try_from(array.value(row)).ok(),
+					ViewData::Int4(array) => u64::try_from(array.value(row)).ok(),
+					ViewData::Int8(array) => u64::try_from(array.value(row)).ok(),
+					ViewData::Int16(array) => {
+						wide_at::<i128>(array, row).and_then(|v| u64::try_from(v).ok())
+					}
+					ViewData::Uint1(array) => Some(array.value(row) as u64),
+					ViewData::Uint2(array) => Some(array.value(row) as u64),
+					ViewData::Uint4(array) => Some(array.value(row) as u64),
+					ViewData::Uint8(array) => Some(array.value(row)),
+					ViewData::Uint16(array) => {
+						wide_at::<u128>(array, row).and_then(|v| u64::try_from(v).ok())
+					}
+					ViewData::DateTime(array) => {
+						self.datetime_key(DateTime::from_nanos(array.value(row)))
+					}
+					_ => None,
+				}
+			})
+			.collect()
 	}
 
 	pub fn key_from_u64(&self, v: u64, key_type: Option<ValueType>) -> Value {
@@ -174,12 +214,11 @@ impl Series {
 	}
 
 	pub fn key_column_data(&self, keys: Vec<u64>) -> (FieldRef, ArrayRef) {
-		let key_type = self.key_column_type();
-		match &key_type {
+		match self.key_column_type() {
 			Some(ty) => {
 				let mut builder = ColumnBuilder::with_capacity(ty.clone(), keys.len());
 				for k in keys {
-					builder.push_value(self.key_from_u64(k));
+					builder.push_value(self.key.key_from_u64(k, Some(ty.clone())));
 				}
 				builder.finish(self.key.column())
 			}

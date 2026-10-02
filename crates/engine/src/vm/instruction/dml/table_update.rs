@@ -184,6 +184,7 @@ fn run_table_update(
 	let pipeline = ColumnPipeline {
 		columns: &target.table.columns,
 		sequences: None,
+		series_key: None,
 		fragments,
 		context,
 	};
@@ -237,7 +238,7 @@ fn run_table_update(
 
 		let inputs = input_views(&columns, &target.table.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
-		intern_dictionary_columns(exec.services, txn, &target.table.columns, &mut batches)?;
+		intern_dictionary_columns(exec.services, txn, &pipeline, &mut batches)?;
 		let mut rows: Vec<EncodedTableRowBuilder> = (0..row_count).map(|_| shape.allocate_table()).collect();
 		batches[0].write(shape, &mut rows)?;
 
