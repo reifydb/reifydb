@@ -5,14 +5,12 @@ use std::sync::Arc;
 
 use reifydb_routine::{
 	function::default_in_process_functions,
-	monoid::{default_in_process_monoids, math::sum::Sum},
 	procedure::{clock::set::ClockSetProcedure, default_in_process_procedures},
 };
-use reifydb_routine_abi::{Procedure, monoid::Monoid, registry::Routines};
+use reifydb_routine_abi::{Procedure, registry::Routines};
 
 fn registry() -> Routines {
-	default_in_process_monoids(default_in_process_procedures(default_in_process_functions(Routines::builder())))
-		.configure()
+	default_in_process_procedures(default_in_process_functions(Routines::builder())).configure()
 }
 
 #[test]
@@ -40,19 +38,10 @@ fn procedure_multi_segment_fallback() {
 }
 
 #[test]
-fn monoid_fallback_returns_same_arc_as_canonical() {
-	let r = registry();
-	let direct = r.get_monoid("math::sum").unwrap();
-	let canonical = r.get_monoid("system::builtin::monoids::math::sum").unwrap();
-	assert!(Arc::ptr_eq(&direct, &canonical));
-}
-
-#[test]
 fn unknown_namespace_returns_none() {
 	let r = registry();
 	assert!(r.get_function("nonexistent::foo").is_none());
 	assert!(r.get_procedure("nonexistent::bar").is_none());
-	assert!(r.get_monoid("nonexistent::baz").is_none());
 }
 
 #[test]
@@ -60,7 +49,6 @@ fn unqualified_name_returns_none() {
 	let r = registry();
 	assert!(r.get_function("abs").is_none());
 	assert!(r.get_procedure("set").is_none());
-	assert!(r.get_monoid("sum").is_none());
 }
 
 #[test]
@@ -77,22 +65,6 @@ fn raw_registration_shadows_builtin() {
 	let r = default_in_process_procedures(Routines::builder()).register_procedure(user_proc.clone()).configure();
 	let resolved = r.get_procedure("clock::set").unwrap();
 	assert!(Arc::ptr_eq(&resolved, &user_proc));
-}
-
-#[test]
-fn monoid_registration_shadows_builtin() {
-	let user_monoid: Arc<dyn Monoid> = Arc::new(Sum::new());
-	let r = default_in_process_monoids(Routines::builder()).register_monoid(user_monoid.clone()).configure();
-	let resolved = r.get_monoid("math::sum").unwrap();
-	assert!(Arc::ptr_eq(&resolved, &user_monoid));
-}
-
-#[test]
-fn monoid_and_function_of_same_name_coexist() {
-	let r = registry();
-	let function = r.get_function("math::sum").unwrap();
-	let monoid = r.get_monoid("math::sum").unwrap();
-	assert_eq!(function.info().name, monoid.info().name);
 }
 
 #[test]

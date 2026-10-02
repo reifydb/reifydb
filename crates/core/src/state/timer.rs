@@ -160,13 +160,6 @@ pub trait StateStore {
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
 
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		for key in keys {
-			self.remove_row_number(group, key)?;
-		}
-		Ok(())
-	}
-
 	fn written_at(&self) -> DateTime;
 }
 

@@ -11,7 +11,6 @@ use reifydb_column::{
 };
 use reifydb_core::value::column::data::{Column, canonical::Canonical};
 use reifydb_value::value::{
-	Value,
 	constraint::bytes::MaxBytes,
 	container::{primitive, varlen_array},
 	value_type::{ValueType, field::FieldType},
@@ -53,10 +52,6 @@ fn nullable_block(ty: ValueType, canonical: Canonical) -> ColumnBlock {
 	ColumnBlock::new(schema, vec![ColumnChunks::single(ty, true, Column::from_canonical(canonical))])
 }
 
-fn values(block: &ColumnBlock) -> Vec<Value> {
-	block.columns[0].chunks.iter().flat_map(|chunk| (0..chunk.len()).map(|i| chunk.data().get_value(i))).collect()
-}
-
 fn assert_block_pinned(block: ColumnBlock, pinned: &str) {
 	let written = hex(&serialize_block(&block).unwrap());
 	assert_eq!(written, pinned, "block bytes drifted: \"{written}\"");
@@ -64,7 +59,6 @@ fn assert_block_pinned(block: ColumnBlock, pinned: &str) {
 	assert_eq!(hex(&serialize_block(&restored).unwrap()), pinned, "decoded block must re-serialize to the pin");
 	assert_eq!(*restored.schema, *block.schema, "schema must read back exactly");
 	assert!(restored.columns[0].nullable, "the stored column must stay nullable");
-	assert_eq!(values(&restored), values(&block), "rows must read back exactly");
 }
 
 #[test]

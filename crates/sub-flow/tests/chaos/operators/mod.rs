@@ -14,10 +14,7 @@ pub mod source;
 pub mod take;
 pub mod window;
 
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 
 /// The registry every operator that evaluates an expression is built against. Shared so two suites
@@ -27,5 +24,5 @@ pub fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_in_process_functions(b);
 	let b = default_in_process_procedures(b);
-	default_in_process_monoids(b).configure()
+	b.configure()
 }

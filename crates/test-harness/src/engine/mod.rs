@@ -33,10 +33,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
@@ -333,7 +330,7 @@ impl TestEngineBuilder {
 					let b = Routines::builder();
 					let b = default_in_process_functions(b);
 					let b = default_in_process_procedures(b);
-					default_in_process_monoids(b).configure()
+					b.configure()
 				},
 				transforms: Transforms::empty(),
 				ioc,

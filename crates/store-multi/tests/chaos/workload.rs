@@ -3,7 +3,7 @@
 
 //! Seeded operation generator + the per-read differential checks against the oracle.
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{
@@ -16,6 +16,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
 	key::{any::TaggedKey, row::RowKey},
 };
+use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_value::util::cowvec::CowVec;
@@ -86,7 +87,18 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 		}
 	}
 	for (name, store) in configs {
-		let found = store.get_many(&keys, CommitVersion(read)).unwrap();
+		let found: HashMap<EncodedKey, (Vec<u8>, u64)> = store
+			.get_many_versioned(&keys, CommitVersion(read))
+			.unwrap()
+			.into_iter()
+			.filter_map(|(key, result)| match result {
+				VersionedGetResult::Value {
+					value,
+					version,
+				} => Some((key, (value.to_vec(), version.0))),
+				VersionedGetResult::Tombstone | VersionedGetResult::NotFound => None,
+			})
+			.collect();
 		assert_eq!(
 			found.len(),
 			distinct_present.len(),
@@ -102,7 +114,7 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 					read,
 				},
 			);
-			let got = found.get(&key).map(|r| (r.bytes.to_vec(), r.version.0));
+			let got = found.get(&key).cloned();
 			assert_eq!(
 				got, expected,
 				"GET_MANY mismatch: config={name} step={step} row={row} read={read} store={got:?} oracle={expected:?}"

@@ -12,7 +12,6 @@ use reifydb_core::interface::change::{Change, Diff};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
-		Value,
 		column_view::{ColumnView, FromColumnView, ViewData},
 		date::Date,
 		datetime::DateTime,
@@ -198,10 +197,6 @@ impl<'a> RowView for InProcessRowView<'a> {
 
 	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError> {
 		self.typed(name)
-	}
-
-	fn value(&self, name: &str) -> Option<Value> {
-		self.readable(name).map(|view| view.get_value(self.index))
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {

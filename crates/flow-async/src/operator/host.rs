@@ -352,13 +352,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.remove_row_number_for_group(self.operator, group)
 	}
 
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		for key in keys {
-			self.txn.remove_row_number(self.operator, group, key)?;
-		}
-		Ok(())
-	}
-
 	fn written_at(&self) -> DateTime {
 		self.now
 	}

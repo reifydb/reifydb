@@ -444,8 +444,9 @@ mod tests {
 			.map(|column| {
 				let mut out = Vec::new();
 				for chunk in &column.chunks {
+					let canonical = chunk.to_canonical().unwrap();
 					for i in 0..chunk.len() {
-						out.push(chunk.data().get_value(i));
+						out.push(canonical.view().get_value(i));
 					}
 				}
 				out

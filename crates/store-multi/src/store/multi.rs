@@ -305,28 +305,6 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 }
 
 impl StandardMultiStore {
-	pub fn get_many(
-		&self,
-		keys: &[EncodedKey],
-		version: CommitVersion,
-	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
-		let mut by_table: HashMap<EntryKind, Vec<ClassifiedKey<'_>>> = HashMap::new();
-		for key in keys {
-			let (table, storage_key) = storage_key(key);
-			by_table.entry(table).or_default().push(ClassifiedKey {
-				key,
-				storage_key,
-			});
-		}
-
-		let mut out: HashMap<EncodedKey, MultiVersionRow> = HashMap::new();
-		for (table, table_keys) in by_table {
-			self.get_many_for_table(table, &table_keys, version, &mut out)?;
-		}
-
-		Ok(out)
-	}
-
 	pub fn get_many_versioned(
 		&self,
 		keys: &[EncodedKey],
@@ -379,33 +357,6 @@ impl StandardMultiStore {
 		)?;
 
 		Ok((commit_results, read_aligned, persistent_aligned))
-	}
-
-	#[inline]
-	fn get_many_for_table(
-		&self,
-		table: EntryKind,
-		table_keys: &[ClassifiedKey<'_>],
-		version: CommitVersion,
-		out: &mut HashMap<EncodedKey, MultiVersionRow>,
-	) -> Result<()> {
-		let (commit_results, read_aligned, persistent_aligned) =
-			self.probe_tiers(table, table_keys, version)?;
-
-		reifydb_assertions! {
-			let n = table_keys.len();
-			assert!(
-				commit_results.len() == n && read_aligned.len() == n && persistent_aligned.len() == n,
-				"per-tier result vectors must stay index-aligned with the table's keys, otherwise collect_resolved_rows \
-				 reads a tier result for the wrong key and returns mismatched rows (keys={n}, commit={}, read={}, persistent={})",
-				commit_results.len(),
-				read_aligned.len(),
-				persistent_aligned.len()
-			);
-		}
-
-		self.collect_resolved_rows(table_keys, &commit_results, &read_aligned, &persistent_aligned, out);
-		Ok(())
 	}
 
 	#[inline]
@@ -496,51 +447,6 @@ impl StandardMultiStore {
 		}
 
 		Ok((read_aligned, persistent_aligned))
-	}
-
-	#[inline]
-	fn collect_resolved_rows(
-		&self,
-		table_keys: &[ClassifiedKey<'_>],
-		commit_results: &[VersionedGetResult],
-		read_aligned: &[VersionedGetResult],
-		persistent_aligned: &[VersionedGetResult],
-		out: &mut HashMap<EncodedKey, MultiVersionRow>,
-	) {
-		for (i, routed) in table_keys.iter().enumerate() {
-			let resolved = match &commit_results[i] {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => Some((value.clone(), *v)),
-				VersionedGetResult::Tombstone => None,
-				VersionedGetResult::NotFound => match &read_aligned[i] {
-					VersionedGetResult::Value {
-						value,
-						version: v,
-					} => Some((value.clone(), *v)),
-					VersionedGetResult::Tombstone => None,
-					VersionedGetResult::NotFound => match &persistent_aligned[i] {
-						VersionedGetResult::Value {
-							value,
-							version: v,
-						} => Some((value.clone(), *v)),
-						_ => None,
-					},
-				},
-			};
-
-			if let Some((value, v)) = resolved {
-				out.insert(
-					routed.key.clone(),
-					MultiVersionRow {
-						key: routed.key.clone(),
-						bytes: EncodedBytes(value),
-						version: v,
-					},
-				);
-			}
-		}
 	}
 
 	#[inline]
@@ -2508,7 +2414,7 @@ mod probe_tests {
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-	use reifydb_store_commit::{MultiVersionScope, TierBatch, store::CommitStore};
+	use reifydb_store_commit::{MultiVersionScope, TierBatch, VersionedGetResult, store::CommitStore};
 	use reifydb_value::{
 		cow_vec,
 		util::cowvec::CowVec,
@@ -2692,7 +2598,7 @@ mod probe_tests {
 
 		let before = probes(&store);
 		let found = store
-			.get_many(
+			.get_many_versioned(
 				&[
 					resident.encode(),
 					deleted.encode(),
@@ -2703,7 +2609,11 @@ mod probe_tests {
 				CommitVersion(9),
 			)
 			.unwrap();
-		assert_eq!(found.len(), 2, "only the resident and the buffered key carry a row");
+		assert_eq!(
+			found.values().filter(|result| matches!(result, VersionedGetResult::Value { .. })).count(),
+			2,
+			"only the resident and the buffered key carry a row"
+		);
 
 		assert_eq!(
 			probes(&store),

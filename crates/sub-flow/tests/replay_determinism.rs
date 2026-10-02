@@ -41,10 +41,7 @@ use reifydb_flow_async::operator::{
 	join::operator::{JoinOperator, JoinSideConfig},
 	window::operator::{WindowConfig, WindowOperator},
 };
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{
@@ -76,7 +73,7 @@ fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_in_process_functions(b);
 	let b = default_in_process_procedures(b);
-	default_in_process_monoids(b).configure()
+	b.configure()
 }
 
 fn count_keyspace(state: &State, keyspace: KeyspaceId) -> usize {

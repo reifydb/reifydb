@@ -7,7 +7,7 @@ use std::{any::Any, sync::Arc};
 
 use arrow_buffer::NullBuffer;
 use canonical::Canonical;
-use reifydb_value::{Result, value::Value};
+use reifydb_value::Result;
 
 use crate::value::column::encoding::EncodingId;
 
@@ -22,7 +22,6 @@ pub trait ColumnData: Send + Sync + 'static {
 
 	fn nones(&self) -> Option<NullBuffer>;
 
-	fn get_value(&self, idx: usize) -> Value;
 	fn as_string(&self, idx: usize) -> String;
 
 	fn as_any(&self) -> &dyn Any;

@@ -65,18 +65,6 @@ impl ColumnData for ConstantData {
 		None
 	}
 
-	fn get_value(&self, idx: usize) -> Value {
-		reifydb_assertions! {
-			let len = self.len;
-			assert!(
-				idx < len,
-				"constant column has no row {idx}, so an out-of-bounds read would return the \
-				 constant instead of panicking the way every other encoding does (len={len})"
-			);
-		}
-		self.value.clone()
-	}
-
 	fn as_string(&self, idx: usize) -> String {
 		reifydb_assertions! {
 			let len = self.len;

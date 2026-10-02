@@ -110,12 +110,6 @@ impl StandardOperatorStore {
 		Ok(())
 	}
 
-	#[instrument(name = "store::operator::state_write", level = "trace", skip(self, write))]
-	pub fn state_write(&self, write: OperatorWrite) -> Result<()> {
-		self.apply_batch(&[write]);
-		Ok(())
-	}
-
 	#[cfg(reifydb_assertions)]
 	fn verify_classification(&self, writes: &[OperatorWrite]) {
 		let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
@@ -742,12 +736,6 @@ impl OperatorStore {
 	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<()> {
 		match self {
 			Self::Standard(store) => store.invalidate_group(operator, group),
-		}
-	}
-
-	pub fn state_write(&self, write: OperatorWrite) -> Result<()> {
-		match self {
-			Self::Standard(store) => store.state_write(write),
 		}
 	}
 

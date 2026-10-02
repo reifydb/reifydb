@@ -115,8 +115,6 @@ pub fn apply_ringbuffer_partition_metadata_after_delete(
 }
 
 pub trait RingBufferOperations {
-	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, bytes: EncodedBytes) -> Result<RowNumber>;
-
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
@@ -143,12 +141,6 @@ pub trait RingBufferOperations {
 }
 
 impl RingBufferOperations for CommandTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
-		unimplemented!(
-			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
-		)
-	}
-
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
@@ -274,12 +266,6 @@ impl RingBufferOperations for CommandTransaction {
 }
 
 impl RingBufferOperations for AdminTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
-		unimplemented!(
-			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
-		)
-	}
-
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
@@ -405,12 +391,6 @@ impl RingBufferOperations for AdminTransaction {
 }
 
 impl RingBufferOperations for Transaction<'_> {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
-		unimplemented!(
-			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
-		)
-	}
-
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,

@@ -489,19 +489,4 @@ impl Accumulator for SumAccumulator {
 			}),
 		}
 	}
-
-	fn peek(&self, group: GroupId) -> Option<Value> {
-		self.sums.get(group).cloned()
-	}
-
-	fn seed(&mut self, group: GroupId, value: Value) -> Result<(), RoutineError> {
-		if matches!(value, Value::None { .. }) {
-			return Ok(());
-		}
-		if self.input_type.is_none() {
-			self.input_type = Some(value.get_type());
-		}
-		self.sums.insert(group, value);
-		Ok(())
-	}
 }

@@ -4,10 +4,7 @@
 use core::{slice, str};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{
-	reifydb_assertions,
-	value::{decimal::Decimal, diff_type::DiffType, time::Time},
-};
+use reifydb_value::{reifydb_assertions, value::diff_type::DiffType};
 
 use crate::{
 	common::{
@@ -263,14 +260,6 @@ impl<'a> BorrowedColumn<'a> {
 		}
 	}
 
-	#[inline]
-	pub fn decimal_at(&self, index: usize) -> Option<Decimal> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		self.expect_family_cell_at(index)
-	}
-
 	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Result<Option<T>, SdkError> {
 		if self.type_code() != T::KIND {
 			return Ok(None);
@@ -291,21 +280,6 @@ impl<'a> BorrowedColumn<'a> {
 			return Ok(None);
 		};
 		T::decode_cell(cell, scale).map(Some)
-	}
-
-	pub(crate) fn expect_family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
-		self.family_cell_at(index)
-			.unwrap_or_else(|err| panic!("decoding column {} at row {index} failed: {err}", self.name()))
-	}
-
-	#[inline]
-	pub fn time_at(&self, index: usize) -> Option<Time> {
-		if self.type_code() != ValueKind::Time || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Time check above means the buffer is a marshalled &[Time]; `Time` is
-		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
-		unsafe { self.as_slice::<Time>()?.get(index).copied() }
 	}
 }
 

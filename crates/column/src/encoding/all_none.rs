@@ -10,10 +10,7 @@ use reifydb_core::value::column::{
 	data::{Column, ColumnData, canonical::Canonical},
 	encoding::EncodingId,
 };
-use reifydb_value::{
-	Result, reifydb_assertions,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
 use crate::{
 	compress::CompressConfig,
@@ -54,18 +51,6 @@ impl ColumnData for AllNoneData {
 
 	fn nones(&self) -> Option<NullBuffer> {
 		Some(self.nones.clone())
-	}
-
-	fn get_value(&self, idx: usize) -> Value {
-		reifydb_assertions! {
-			let len = self.len;
-			assert!(
-				idx < len,
-				"all-none column has no row {idx}, so an out-of-bounds read would return none \
-				 instead of panicking the way every other encoding does (len={len})"
-			);
-		}
-		Value::none_of(self.ty.clone())
 	}
 
 	fn as_string(&self, idx: usize) -> String {

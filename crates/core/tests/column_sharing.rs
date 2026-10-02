@@ -104,7 +104,11 @@ fn column_from_canonical_and_slice_share_the_rows() {
 	assert_eq!(int8_values(&out.1).as_ptr(), base.wrapping_add(100));
 	assert_eq!(int8_values(&out.1), &ints(ROWS)[100..350]);
 	for row in 0..slice.len() {
-		assert_eq!(slice.data().get_value(row), Value::Int8(ints(ROWS)[100 + row]), "row {row}");
+		assert_eq!(
+			slice.to_canonical().unwrap().view().get_value(row),
+			Value::Int8(ints(ROWS)[100 + row]),
+			"row {row}"
+		);
 	}
 }
 
@@ -121,8 +125,8 @@ fn column_slice_of_an_option_column_keeps_nones_aligned() {
 		for row in 0..slice.len() {
 			assert_eq!(nones.is_null(row), !defined(ROWS)[start + row], "slice {start}..{end} row {row}");
 			assert_eq!(
-				slice.data().get_value(row),
-				column.data().get_value(start + row),
+				slice.to_canonical().unwrap().view().get_value(row),
+				column.to_canonical().unwrap().view().get_value(start + row),
 				"slice {start}..{end} row {row}"
 			);
 		}

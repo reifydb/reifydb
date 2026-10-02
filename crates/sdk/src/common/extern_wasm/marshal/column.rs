@@ -590,7 +590,11 @@ mod tests {
 			Time::new(14, 30, 45, 123_456_789).unwrap(),
 			Time::new(23, 59, 59, 999_999_999).unwrap(),
 		];
-		let got = read_back(time("c", values.clone()), |column, row| column.time_at(row));
+		let got = read_back(time("c", values.clone()), |column, row| {
+			assert!(column.type_code() == ValueKind::Time && column.is_defined_at(row));
+			// SAFETY: Time cells marshal as aligned raw u64, and `Time` is transparent over u64.
+			unsafe { column.as_slice::<Time>() }?.get(row).copied()
+		});
 		assert_eq!(got, values);
 	}
 

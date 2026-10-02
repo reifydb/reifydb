@@ -142,9 +142,13 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let stored: Vec<EncodedKey> = keys.iter().map(|key| script_key(key).encode()).collect();
-				let found = self.store.get_many(&stored, version)?;
+				let found = self.store.get_many_versioned(&stored, version)?;
 				for (key, stored) in keys.iter().zip(&stored) {
-					let value = found.get(stored).map(|bytes| bytes.bytes.to_vec());
+					let value = found
+						.get(stored)
+						.cloned()
+						.and_then(VersionedGetResult::value)
+						.map(|bytes| bytes.to_vec());
 					writeln!(output, "{}", Raw::key_maybe_value(key, value))?;
 				}
 			}

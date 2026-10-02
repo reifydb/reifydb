@@ -374,10 +374,6 @@ pub fn is_scalar(batch: &RecordBatch) -> bool {
 	batch.schema_ref().fields().iter().filter(|field| !is_system_field(field)).count() == 1 && batch.num_rows() == 1
 }
 
-pub fn row_values(batch: &RecordBatch, index: usize) -> Result<Vec<Value>> {
-	Ok(views(batch)?.iter().map(|view| view.get_value(index)).collect())
-}
-
 pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> Result<GroupRows> {
 	let schema = batch.schema_ref();
 	let mut key_views = Vec::with_capacity(keys.len());

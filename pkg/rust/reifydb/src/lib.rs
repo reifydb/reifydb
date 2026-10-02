@@ -66,7 +66,7 @@ pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;
 pub mod routine {
-	pub use reifydb_routine::{function, monoid, procedure};
+	pub use reifydb_routine::{function, procedure};
 	pub use reifydb_routine_abi as abi;
 }
 pub use reifydb_routine::{function, procedure};

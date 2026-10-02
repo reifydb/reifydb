@@ -9,7 +9,6 @@ use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	value::{
-		Value,
 		column_view::ColumnView,
 		value_type::{
 			ValueType,
@@ -93,10 +92,6 @@ impl ColumnData for Canonical {
 		self.buffer.logical_nulls()
 	}
 
-	fn get_value(&self, idx: usize) -> Value {
-		self.view().get_value(idx)
-	}
-
 	fn as_string(&self, idx: usize) -> String {
 		self.view().as_string(idx)
 	}
@@ -126,10 +121,7 @@ mod tests {
 	};
 
 	use super::Canonical;
-	use crate::value::column::{
-		data::{Column, ColumnData},
-		factory,
-	};
+	use crate::value::column::{data::Column, factory};
 
 	#[test]
 	fn a_slice_keeps_the_max_bytes_and_dictionary_id() {
@@ -148,7 +140,7 @@ mod tests {
 		let tagged = Canonical::new(field_type, array).unwrap();
 		let sliced = Column::from_canonical(tagged).slice(1, 2).unwrap().to_canonical().unwrap();
 		assert_eq!(sliced.field_type().dictionary_id, Some(DictionaryId(9)));
-		assert_eq!(sliced.get_value(0), Value::DictionaryId(DictionaryEntryId::U2(2)));
+		assert_eq!(sliced.view().get_value(0), Value::DictionaryId(DictionaryEntryId::U2(2)));
 	}
 
 	#[test]

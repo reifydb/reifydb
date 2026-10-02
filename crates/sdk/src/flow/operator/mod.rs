@@ -5,7 +5,6 @@ pub mod change;
 pub mod column;
 pub mod context;
 pub mod dictionary;
-pub mod diff;
 pub mod extern_c;
 #[cfg(all(feature = "mount", reifydb_target = "host", not(reifydb_dst)))]
 pub mod mount;

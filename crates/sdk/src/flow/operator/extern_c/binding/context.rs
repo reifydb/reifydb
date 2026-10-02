@@ -30,7 +30,6 @@ use crate::{
 			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
 		},
 		dictionary::Dictionary,
-		diff::DiffStart,
 		extern_c::{
 			binding::{
 				sink::ExternCRowSink,
@@ -178,10 +177,6 @@ impl ExternCContext {
 		ColumnsBuilder::new(self.ctx as *mut c_void, unsafe { (*self.ctx).callbacks.builder }, unsafe {
 			(*self.ctx).written_at_nanos
 		})
-	}
-
-	pub fn diff(&mut self) -> DiffStart<'_> {
-		DiffStart::new(self)
 	}
 }
 

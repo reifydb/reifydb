@@ -201,7 +201,7 @@ mod tests {
 		fn chunks_value_at(&self, mut idx: usize) -> Value {
 			for chunk in &self.chunks {
 				if idx < chunk.len() {
-					return chunk.data().get_value(idx);
+					return chunk.to_canonical().unwrap().view().get_value(idx);
 				}
 				idx -= chunk.len();
 			}
