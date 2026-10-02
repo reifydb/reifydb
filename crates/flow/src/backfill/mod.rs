@@ -18,12 +18,7 @@ use reifydb_value::{
 };
 
 #[cfg(any(test, feature = "testing"))]
-pub mod memory;
-#[cfg(any(test, feature = "testing"))]
 pub mod testing;
-#[cfg(test)]
-#[allow(clippy::disallowed_types)]
-mod tests;
 
 const LIVE_SYSTEM_COLUMNS: [SystemColumn; 4] =
 	[SystemColumn::RowNumbers, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
