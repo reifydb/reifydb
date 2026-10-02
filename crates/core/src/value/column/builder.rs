@@ -520,6 +520,17 @@ impl ColumnBuilder {
 		Ok(())
 	}
 
+	pub fn append_values(&mut self, other: &ColumnView) -> Result<()> {
+		let nones = other.none_count();
+		if nones == other.len() {
+			self.append_nones(other.len());
+			return Ok(());
+		}
+		self.append_view(other)?;
+		self.optional |= nones > 0;
+		Ok(())
+	}
+
 	fn append_nones(&mut self, count: usize) {
 		for _ in 0..count {
 			self.push_none();

@@ -15,8 +15,7 @@ use reifydb_core::{
 	value::{
 		batch::{batch, group_by, take_rows},
 		column::{
-			builder::ColumnBuilder,
-			factory::{none, rename},
+			factory::rename,
 			headers::ColumnHeaders,
 			view::group_by::{GroupId, GroupKeyDict, GroupRows},
 		},
@@ -38,9 +37,7 @@ use reifydb_value::{
 	error::{Error, FunctionErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{
-		Value, column_view::ColumnView, digest::DigestError, system_columns::column_view, value_type::ValueType,
-	},
+	value::{digest::DigestError, system_columns::column_view, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -230,25 +227,11 @@ impl AggregateNode {
 					..
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
-
-					let first_key_type = dict
-						.iter()
-						.map(|(_, key)| &key[col_idx])
-						.find(|value| !matches!(value, Value::None { .. }))
-						.map(Value::get_type);
-					let mut data = match first_key_type
-						.or_else(|| key_types.get(col_idx).cloned().flatten())
-					{
-						Some(key_type) => ColumnBuilder::with_capacity(key_type, dict.len()),
-						None => ColumnBuilder::from_view(&ColumnView::try_from(&none(
-							alias.fragment(),
-							0,
-						))?),
-					};
-					for (_, key) in dict.iter() {
-						data.push_value(key[col_idx].clone());
-					}
-					result_columns.push(data.finish(alias.fragment()));
+					result_columns.push(dict.key_column(
+						col_idx,
+						key_types.get(col_idx).cloned().flatten(),
+						alias.fragment(),
+					)?);
 				}
 				Projection::Computed {
 					alias,
@@ -605,7 +588,7 @@ fn align_column_data(
 				CoreError::FrameError {
 					message: format!(
 						"Group key {:?} missing in aggregate output",
-						dict.values(GroupId(index as u32))
+						dict.key_values(GroupId(index as u32))
 					),
 				}
 				.into()
