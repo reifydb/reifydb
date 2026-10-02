@@ -247,6 +247,12 @@ pub enum RqlError {
 	RowTtlWithoutTimeDomain {
 		fragment: Fragment,
 	},
+
+	#[error("event-time column `{column}` cannot use a dictionary")]
+	TimePopulatorDictionary {
+		column: String,
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for RqlError {
@@ -1050,6 +1056,21 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"an undeclared object is `time: none`, which carries no #time at all".to_string(),
 				],
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::TimePopulatorDictionary { column, fragment } => Diagnostic {
+				code: "TIME_006".to_string(),
+				rql: None,
+				message: format!("event-time column `{}` cannot use a dictionary", column),
+				column: None,
+				fragment,
+				label: Some("populator uses a dictionary".to_string()),
+				help: Some(
+					"#time is read from the stored value, so its column must hold the DateTime itself, not a dictionary id"
+						.to_string(),
+				),
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

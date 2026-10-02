@@ -35,7 +35,7 @@ impl From<&AstTimeDeclaration<'_>> for TimeDeclaration {
 
 pub fn resolve_declared_source_time<'a>(
 	declaration: &TimeDeclaration,
-	columns: impl IntoIterator<Item = (&'a str, ValueType)>,
+	columns: impl IntoIterator<Item = (&'a str, ValueType, bool)>,
 	row_ttl: Option<Fragment>,
 ) -> Result<TimeSource> {
 	match declaration {
@@ -55,17 +55,24 @@ pub fn resolve_declared_source_time<'a>(
 
 fn resolve_event_column<'a>(
 	column: &Fragment,
-	columns: impl IntoIterator<Item = (&'a str, ValueType)>,
+	columns: impl IntoIterator<Item = (&'a str, ValueType, bool)>,
 ) -> Result<TimeSource> {
 	let name = column.text();
 	let mut available = Vec::new();
 
-	for (candidate, value_type) in columns {
+	for (candidate, value_type, has_dictionary) in columns {
 		if candidate == name {
 			if value_type != ValueType::DateTime {
 				return Err(RqlError::TimePopulatorNotDateTime {
 					column: name.to_string(),
 					found: value_type,
+					fragment: column.clone(),
+				}
+				.into());
+			}
+			if has_dictionary {
+				return Err(RqlError::TimePopulatorDictionary {
+					column: name.to_string(),
 					fragment: column.clone(),
 				}
 				.into());
@@ -95,8 +102,8 @@ mod tests {
 		}
 	}
 
-	fn columns() -> Vec<(&'static str, ValueType)> {
-		vec![("id", ValueType::Int4), ("block_time", ValueType::DateTime)]
+	fn columns() -> Vec<(&'static str, ValueType, bool)> {
+		vec![("id", ValueType::Int4, false), ("block_time", ValueType::DateTime, false)]
 	}
 
 	fn resolve(declaration: &TimeDeclaration) -> Result<TimeSource> {

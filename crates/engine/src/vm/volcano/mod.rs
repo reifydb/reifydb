@@ -30,7 +30,7 @@ use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 #[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(
 	input: RecordBatch,
-	dictionaries: &[Option<Dictionary>],
+	dictionaries: &[Option<(Dictionary, ValueType)>],
 	rx: &mut Transaction,
 ) -> Result<RecordBatch> {
 	if dictionaries.iter().all(Option::is_none) {
@@ -46,11 +46,11 @@ pub(crate) fn decode_dictionary_columns(
 		}
 		let dictionary = dictionaries.get(user_index).and_then(Option::as_ref);
 		user_index += 1;
-		let Some(dictionary) = dictionary else {
+		let Some((dictionary, declared)) = dictionary else {
 			columns.push((field.clone(), array.clone()));
 			continue;
 		};
-		columns.push(decode_dictionary_column(field, array, dictionary, dictionary.value_type.clone(), rx)?);
+		columns.push(decode_dictionary_column(field, array, dictionary, declared.clone(), rx)?);
 	}
 	batch(columns)
 }

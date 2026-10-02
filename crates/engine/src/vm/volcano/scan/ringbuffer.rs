@@ -53,7 +53,7 @@ pub struct RingBufferScan {
 
 	storage_types: Vec<ValueType>,
 
-	dictionaries: Vec<Option<Dictionary>>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 
 	partition_col_indices: Vec<usize>,
 	current_partition_rows: Vec<(RowNumber, EncodedBytes)>,
@@ -79,7 +79,7 @@ impl RingBufferScan {
 			if let Some(dict_id) = col.dictionary_id {
 				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
 					storage_types.push(ValueType::DictionaryId);
-					dictionaries.push(Some(dict));
+					dictionaries.push(Some((dict, col.constraint.get_type())));
 				} else {
 					storage_types.push(col.constraint.get_type());
 					dictionaries.push(None);

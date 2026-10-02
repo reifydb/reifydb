@@ -31,6 +31,7 @@ use reifydb_value::{
 		identity::IdentityId,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, stamp_system_columns, system_column, user_columns, with_system_column},
+		value_type::ValueType,
 	},
 };
 
@@ -111,11 +112,14 @@ pub(crate) fn decode_returning_dictionaries(
 	object_columns: &[Column],
 	columns: RecordBatch,
 ) -> Result<RecordBatch> {
-	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(columns.num_columns());
+	let mut dictionaries: Vec<Option<(Dictionary, ValueType)>> = Vec::with_capacity(columns.num_columns());
 	for (field, _) in user_columns(&columns) {
-		let dict_id = object_columns.iter().find(|c| c.name == *field.name()).and_then(|c| c.dictionary_id);
-		match dict_id {
-			Some(id) => dictionaries.push(services.catalog.find_dictionary(txn, id)?),
+		let column = object_columns.iter().find(|c| c.name == *field.name());
+		match column.and_then(|c| c.dictionary_id.map(|id| (id, c.constraint.get_type()))) {
+			Some((id, declared)) => dictionaries.push(services
+				.catalog
+				.find_dictionary(txn, id)?
+				.map(|dictionary| (dictionary, declared))),
 			None => dictionaries.push(None),
 		}
 	}

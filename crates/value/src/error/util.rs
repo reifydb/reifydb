@@ -11,6 +11,7 @@ pub fn value_max(value: ValueType) -> Cow<'static, str> {
 			precision,
 			scale,
 		} => Cow::Owned(nines(precision.value(), scale.value())),
+		ValueType::Option(inner) => value_max(*inner),
 		other => Cow::Borrowed(fixed_max(other)),
 	}
 }
@@ -24,6 +25,7 @@ pub fn value_range(value: ValueType) -> Cow<'static, str> {
 			let max = nines(precision.value(), scale.value());
 			Cow::Owned(format!("-{max} to {max}"))
 		}
+		ValueType::Option(inner) => value_range(*inner),
 		other => Cow::Borrowed(fixed_range(other)),
 	}
 }
