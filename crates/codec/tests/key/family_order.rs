@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_buffer::i256;
-use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer, sort::SortOrder};
+use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
 use reifydb_value::value::{
-	Value,
 	constraint::{precision::Precision, scale::Scale},
 	decimal::Decimal,
 };
@@ -73,29 +72,6 @@ fn decimal_keys_sort_descending_across_the_sign_at_both_widths() {
 			assert_eq!(&read, value);
 			assert_eq!(read.scale(), 2);
 			assert!(d.is_empty());
-		}
-	}
-}
-
-#[test]
-fn value_keys_reverse_under_asc_across_the_sign() {
-	// The value path writes the widest layout, so values past i128 must still flip cleanly under ASC.
-	let decimals: Vec<Value> =
-		signed_ladder(76).into_iter().map(|v| Value::Decimal(Decimal::from_parts(v, 3).unwrap())).collect();
-	for values in [decimals] {
-		for pair in values.windows(2) {
-			let asc = |value: &Value| {
-				let mut s = KeySerializer::new();
-				s.extend_value_with_direction(value, SortOrder::Asc).unwrap();
-				s.finish().to_vec()
-			};
-			let desc = |value: &Value| {
-				let mut s = KeySerializer::new();
-				s.extend_value_with_direction(value, SortOrder::Desc).unwrap();
-				s.finish().to_vec()
-			};
-			assert!(asc(&pair[0]) < asc(&pair[1]), "ASC {:?} vs {:?}", pair[0], pair[1]);
-			assert!(desc(&pair[1]) < desc(&pair[0]), "DESC {:?} vs {:?}", pair[0], pair[1]);
 		}
 	}
 }

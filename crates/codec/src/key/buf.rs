@@ -37,6 +37,16 @@ impl KeyBuf {
 		}
 	}
 
+	pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
+		match self {
+			KeyBuf::Inline {
+				len,
+				buf,
+			} => &mut buf[..*len as usize],
+			KeyBuf::Spill(v) => v.as_mut_slice(),
+		}
+	}
+
 	pub fn len(&self) -> usize {
 		match self {
 			KeyBuf::Inline {

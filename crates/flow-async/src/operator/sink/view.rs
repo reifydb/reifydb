@@ -36,7 +36,7 @@ use reifydb_flow::{
 		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_of},
 		shape_field_columns,
-		view::{partitioned_key, sorted_view_key},
+		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -148,6 +148,7 @@ impl SinkTableViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let (_, encoded) = encoder.encode(row_idx, row_number)?;
@@ -161,9 +162,9 @@ impl SinkTableViewOperator {
 					&values,
 					&mut self.verified_partitions,
 				)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -201,6 +202,8 @@ impl SinkTableViewOperator {
 		} else {
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
 		};
+		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
+		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
 		for row_idx in 0..row_count {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
@@ -224,33 +227,18 @@ impl SinkTableViewOperator {
 					&mut self.verified_partitions,
 				)?;
 				(
+					partitioned_key(self.storage, pre_runs.next(), pre_partition, pre_row_number),
 					partitioned_key(
 						self.storage,
-						&self.sort,
-						source_pre,
-						row_idx,
-						pre_partition,
-						pre_row_number,
-					)?,
-					partitioned_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
+						post_runs.next(),
 						post_partition,
 						post_row_number,
-					)?,
+					),
 				)
 			} else {
 				(
-					sorted_view_key(self.storage, &self.sort, source_pre, row_idx, pre_row_number)?,
-					sorted_view_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
-						post_row_number,
-					)?,
+					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
+					sorted_view_key(self.storage, post_runs.next(), post_row_number),
 				)
 			};
 
@@ -318,14 +306,15 @@ impl SinkTableViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
 					partition_of(self.view.def(), &self.partition_indices, source, row_idx)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			keys.push(key);
 		}

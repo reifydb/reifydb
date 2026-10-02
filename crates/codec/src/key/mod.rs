@@ -12,6 +12,7 @@
 use arrow_buffer::i256;
 
 pub mod buf;
+pub mod column;
 pub mod deserializer;
 pub mod encoded;
 #[cfg(test)]

@@ -36,7 +36,7 @@ use reifydb_flow::{
 		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_of},
 		shape_field_columns,
-		view::{partitioned_key, sorted_view_key},
+		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -128,6 +128,7 @@ impl TableSink {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let (_, encoded) = encoder.encode(row_idx, row_number)?;
@@ -135,9 +136,9 @@ impl TableSink {
 				let (partition, values) =
 					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
 				resolve_partition_flow(txn, ObjectId::from(self.storage), partition, &values)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
@@ -173,6 +174,8 @@ impl TableSink {
 		} else {
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
 		};
+		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
+		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
 		for row_idx in 0..row_count {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
@@ -195,33 +198,18 @@ impl TableSink {
 					&post_values,
 				)?;
 				(
+					partitioned_key(self.storage, pre_runs.next(), pre_partition, pre_row_number),
 					partitioned_key(
 						self.storage,
-						&self.sort,
-						source_pre,
-						row_idx,
-						pre_partition,
-						pre_row_number,
-					)?,
-					partitioned_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
+						post_runs.next(),
 						post_partition,
 						post_row_number,
-					)?,
+					),
 				)
 			} else {
 				(
-					sorted_view_key(self.storage, &self.sort, source_pre, row_idx, pre_row_number)?,
-					sorted_view_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
-						post_row_number,
-					)?,
+					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
+					sorted_view_key(self.storage, post_runs.next(), post_row_number),
 				)
 			};
 
@@ -278,13 +266,14 @@ impl TableSink {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
 					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			keys.push(key);
 		}
@@ -431,7 +420,7 @@ mod tests {
 	};
 	use reifydb_flow::operator::sink::{
 		partition::ensure_partition_unchanged,
-		view::{partitioned_key, row_key, sorted_view_key},
+		view::{partitioned_key, row_key, sort_runs, sorted_view_key},
 	};
 	use reifydb_runtime::context::{
 		RuntimeContext,
@@ -595,8 +584,10 @@ mod tests {
 		let mut sink = sink(&view);
 		let pre = inserted(&[(1, "sol", 10)]);
 		let post = positions(&[(1, "sol", 30)], at_millis(77), at_millis(88));
-		let pre_key = sorted_view_key(storage, &by_qty(), &pre, 0, RowNumber(1)).unwrap();
-		let post_key = sorted_view_key(storage, &by_qty(), &post, 0, RowNumber(1)).unwrap();
+		let pre_key =
+			sorted_view_key(storage, sort_runs(&by_qty(), &pre).unwrap().into_iter().next(), RowNumber(1));
+		let post_key =
+			sorted_view_key(storage, sort_runs(&by_qty(), &post).unwrap().into_iter().next(), RowNumber(1));
 		sink.apply(&mut txn, change(vec![Diff::insert(pre.clone())])).unwrap();
 
 		sink.apply(&mut txn, change(vec![Diff::update(pre, post)])).unwrap();
@@ -664,7 +655,11 @@ mod tests {
 
 		assert_eq!(txn.rows.len(), 3);
 		for (row_idx, row_number) in [RowNumber(1), RowNumber(2), RowNumber(3)].into_iter().enumerate() {
-			let key = sorted_view_key(storage, &by_qty(), &rows, row_idx, row_number).unwrap();
+			let key = sorted_view_key(
+				storage,
+				sort_runs(&by_qty(), &rows).unwrap().into_iter().nth(row_idx),
+				row_number,
+			);
 			assert!(txn.rows.contains_key(&key), "row {} must be stored under its sort key", row_number.0);
 		}
 		let shape = row_shape_from_columns(RowFamily::Table, view.columns());
@@ -685,8 +680,8 @@ mod tests {
 
 		sink(&view).apply(&mut txn, change(vec![Diff::insert(rows.clone())])).unwrap();
 
-		let sol_key = partitioned_key(storage, &[], &rows, 0, sol, RowNumber(1)).unwrap();
-		let eth_key = partitioned_key(storage, &[], &rows, 1, eth, RowNumber(2)).unwrap();
+		let sol_key = partitioned_key(storage, None, sol, RowNumber(1));
+		let eth_key = partitioned_key(storage, None, eth, RowNumber(2));
 		assert_eq!(stored(&txn, &view, &sol_key), vec![utf8("sol"), Value::Int8(10)]);
 		assert_eq!(stored(&txn, &view, &eth_key), vec![utf8("eth"), Value::Int8(20)]);
 		assert!(!txn.rows.contains_key(&row_key(storage, RowNumber(1))));

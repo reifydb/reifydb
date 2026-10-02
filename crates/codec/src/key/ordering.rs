@@ -1,16 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
-use reifydb_value::value::Value;
+use arrow_array::{ArrayRef, UInt64Array};
+use reifydb_value::value::{
+	Value,
+	column_view::ColumnView,
+	value_type::{
+		ValueType,
+		field::{FieldType, to_field},
+	},
+};
 
 use crate::key::{
-	decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32, decode_i64, decode_i128,
-	decode_u8, decode_u16, decode_u32, decode_u64, decode_u64_asc, decode_u128, decode_u128_asc,
-	decode_u128_varint, encode_bool, encode_bytes, encode_f32, encode_f64, encode_fixed, encode_i8, encode_i16,
-	encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u64_asc,
-	encode_u128, encode_u128_asc, encode_u128_varint, serializer::KeySerializer, sort::SortOrder,
+	column::extend_column_with_direction, decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16,
+	decode_i32, decode_i64, decode_i128, decode_u8, decode_u16, decode_u32, decode_u64, decode_u64_asc,
+	decode_u128, decode_u128_asc, decode_u128_varint, encode_bool, encode_bytes, encode_f32, encode_f64,
+	encode_fixed, encode_i8, encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32,
+	encode_u64, encode_u64_asc, encode_u128, encode_u128_asc, encode_u128_varint, serializer::KeySerializer,
+	sort::SortOrder,
 };
 
 fn assert_descending<T, F>(label: &str, ascending: &[T], encode: F)
@@ -437,13 +446,20 @@ fn varint_rejects_a_truncated_encoding() {
 }
 
 #[test]
-fn extend_value_with_direction_flips_the_encoded_order() {
+fn a_directed_column_flips_the_encoded_order() {
 	let values = [Value::Uint8(1), Value::Uint8(2), Value::Uint8(3)];
 
 	let encode = |value: &Value, direction: SortOrder| {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_value_with_direction(value, direction).unwrap();
-		serializer.finish().to_vec()
+		let Value::Uint8(raw) = value else {
+			panic!("the samples must stay Uint8");
+		};
+		let array: ArrayRef = Arc::new(UInt64Array::from(vec![*raw]));
+		let field = to_field("value", &FieldType::from(ValueType::Uint8));
+		let view = ColumnView::try_from((&array, &field)).unwrap();
+		let mut rows = [KeySerializer::new()];
+		extend_column_with_direction(&view, direction, &mut rows).unwrap();
+		let [row] = rows;
+		row.finish().to_vec()
 	};
 
 	for window in values.windows(2) {
