@@ -173,7 +173,7 @@ pub(crate) fn update_series(
 				shape
 			}
 		};
-		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
+		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
 		let [cast] = batches;
 
 		let storage_keys: Vec<TaggedKey> = (0..row_count)

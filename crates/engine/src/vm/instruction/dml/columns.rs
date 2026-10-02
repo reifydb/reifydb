@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{bytes::RowBuilder, shape::RowShape};
 use reifydb_core::{
 	interface::{
@@ -21,7 +22,6 @@ use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
-	fragment::Fragment,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -32,10 +32,9 @@ use reifydb_value::{
 	},
 };
 
-use super::coerce::{InputFragments, coerce_value_to_column_type};
+use super::coerce::{InputFragments, coerce_value_to_column_type, key_out_of_range};
 use crate::{
 	Result,
-	error::EngineError,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
@@ -94,6 +93,14 @@ pub(crate) struct CastColumns {
 }
 
 impl CastColumns {
+	pub(crate) fn new(columns: Vec<(FieldRef, ArrayRef)>, rows: usize) -> Self {
+		Self {
+			columns,
+			fills: Vec::new(),
+			rows,
+		}
+	}
+
 	pub(crate) fn rows(&self) -> usize {
 		self.rows
 	}
@@ -367,31 +374,22 @@ fn key_failure(key: &SeriesKey, view: &ColumnView<'_>, limit: usize, rank: usize
 	})
 }
 
-fn key_out_of_range(key: &SeriesKey, value: &Value) -> Error {
-	EngineError::SeriesKeyOutOfRange {
-		column: key.column().to_string(),
-		value: value.to_string(),
-		fragment: Fragment::internal(value.to_string()),
-	}
-	.into()
-}
-
 pub(crate) fn intern_dictionary_columns(
-	services: &Services,
+	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-	pipeline: &ColumnPipeline<'_>,
+	columns: &[Column],
+	series_key: Option<&SeriesKey>,
 	batches: &mut [CastColumns],
 ) -> Result<()> {
 	if batches.iter().all(|batch| batch.rows == 0) {
 		return Ok(());
 	}
-	let columns = pipeline.columns;
 	let mut dictionaries: Vec<(DictionaryId, Vec<usize>)> = Vec::new();
 	for (index, column) in columns.iter().enumerate() {
 		let Some(dictionary_id) = column.dictionary_id else {
 			continue;
 		};
-		if pipeline.series_key.is_some_and(|key| key.column() == column.name) {
+		if series_key.is_some_and(|key| key.column() == column.name) {
 			continue;
 		}
 		match dictionaries.iter_mut().find(|(id, _)| *id == dictionary_id) {
@@ -401,7 +399,7 @@ pub(crate) fn intern_dictionary_columns(
 	}
 
 	for (dictionary_id, indices) in dictionaries {
-		let dictionary = services.catalog.find_dictionary(txn, dictionary_id)?.ok_or_else(|| {
+		let dictionary = catalog.find_dictionary(txn, dictionary_id)?.ok_or_else(|| {
 			internal_error!(
 				"Dictionary {:?} not found for column {}",
 				dictionary_id,
@@ -954,7 +952,14 @@ mod tests {
 		let mut cast = pipeline.cast_target_columns(&inputs, input.num_rows(), None).unwrap();
 		pipeline.fill_sequences(&fixture.services, &mut txn, &mut cast).unwrap();
 		let mut batches = [cast];
-		intern_dictionary_columns(&fixture.services, &mut txn, &pipeline, &mut batches).unwrap();
+		intern_dictionary_columns(
+			&fixture.services.catalog,
+			&mut txn,
+			pipeline.columns,
+			pipeline.series_key,
+			&mut batches,
+		)
+		.unwrap();
 		let mut rows: Vec<_> = (0..input.num_rows()).map(|_| fixture.shape.allocate_table()).collect();
 		batches[0].write(&fixture.shape, &mut rows).unwrap();
 		rows.iter().map(|row| row.as_slice().to_vec()).collect()

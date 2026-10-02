@@ -37,6 +37,7 @@ use reifydb_value::{
 
 use super::{
 	context::{RingBufferTarget, WriteExecCtx},
+	partition::compute_partition_col_indices,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
@@ -134,15 +135,6 @@ fn build_delete_ringbuffer_resolved_source(namespace: &Namespace, ringbuffer: &R
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
 	Some(ResolvedObject::RingBuffer(resolved_rb))
-}
-
-#[inline]
-fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
-	ringbuffer
-		.partition_by
-		.iter()
-		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
-		.collect()
 }
 
 fn collect_row_numbers_for_ringbuffer_delete(

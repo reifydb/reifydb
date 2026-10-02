@@ -72,8 +72,9 @@ use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, Failure, input_views, intern_dictionary_columns},
 	context::SeriesTarget,
+	partition::partition_values,
 	returning::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image,
 		with_series_stamps,
@@ -186,9 +187,9 @@ pub(crate) fn insert_series(
 				emitted.push(builder.finish(&column.name));
 			}
 		}
-		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
+		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
 		let [cast] = batches;
-		let partition_rows = series_partition_rows(&cast, &inputs, &partition_indices)?;
+		let partition_rows = partition_values(&cast, &inputs, &partition_indices)?;
 
 		let mut keys = Vec::with_capacity(rows);
 		let mut storage_keys: Vec<TaggedKey> = Vec::with_capacity(rows);
@@ -388,29 +389,6 @@ fn series_partition_indices(series: &Series) -> Result<Vec<usize>> {
 			})
 		})
 		.collect()
-}
-
-fn series_partition_rows(
-	cast: &CastColumns,
-	inputs: &[Option<ColumnView<'_>>],
-	indices: &[usize],
-) -> Result<Vec<Vec<Value>>> {
-	let views = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-	Ok((0..cast.rows())
-		.map(|row| {
-			indices.iter()
-				.zip(&views)
-				.map(|(&index, view)| {
-					let input = inputs[index].as_ref();
-					if view.none_at(row) && input.is_none_or(|input| input.none_at(row)) {
-						input.map(|input| input.get_value(row)).unwrap_or_else(Value::none)
-					} else {
-						view.get_value(row)
-					}
-				})
-				.collect()
-		})
-		.collect())
 }
 
 #[inline]

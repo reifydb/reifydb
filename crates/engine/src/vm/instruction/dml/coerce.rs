@@ -5,12 +5,17 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	expression::Expression,
-	interface::{catalog::series::Series, evaluate::TargetColumn, resolved::ResolvedColumn},
+	interface::{
+		catalog::series::{Series, SeriesKey},
+		evaluate::TargetColumn,
+		resolved::ResolvedColumn,
+	},
 	value::column::{cast::cast_column_data, factory::from_one, write::check_digest_write},
 };
 use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_rql::query::QueryPlan;
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
@@ -112,11 +117,15 @@ pub(crate) fn series_key(series: &Series, value: &Value) -> Result<Option<u64>> 
 	}
 	match series.key_to_u64(value.clone()) {
 		Some(key) => Ok(Some(key)),
-		None => Err(EngineError::SeriesKeyOutOfRange {
-			column: series.key.column().to_string(),
-			value: value.to_string(),
-			fragment: Fragment::internal(value.to_string()),
-		}
-		.into()),
+		None => Err(key_out_of_range(&series.key, value)),
 	}
+}
+
+pub(crate) fn key_out_of_range(key: &SeriesKey, value: &Value) -> Error {
+	EngineError::SeriesKeyOutOfRange {
+		column: key.column().to_string(),
+		value: value.to_string(),
+		fragment: Fragment::internal(value.to_string()),
+	}
+	.into()
 }

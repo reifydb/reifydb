@@ -217,7 +217,7 @@ fn validate_and_encode_input_rows(
 		pipeline.fill_sequences(services, txn, &mut cast)?;
 		batches.push(cast);
 	}
-	intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
+	intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
 
 	let mut validated: Vec<EncodedTableRowBuilder> = Vec::new();
 	for cast in &batches {

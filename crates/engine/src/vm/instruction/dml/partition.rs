@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
 	key::{
@@ -14,13 +12,13 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
+use reifydb_value::value::{Value, column_view::ColumnView, partition::Partition, row_number::RowNumber};
 
-use super::context::RingBufferTarget;
-use crate::{Result, vm::services::Services};
+use super::columns::CastColumns;
+use crate::Result;
 
 #[inline]
-pub(super) fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
+pub(crate) fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
 	ringbuffer
 		.partition_by
 		.iter()
@@ -30,14 +28,14 @@ pub(super) fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usiz
 
 #[inline]
 pub(super) fn ensure_partition_metadata(
-	services: &Arc<Services>,
+	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-	target: &RingBufferTarget<'_>,
+	ringbuffer: &RingBuffer,
 	partition_key: &[Value],
 	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 ) -> Result<()> {
 	if !cache.contains_key(partition_key) {
-		let existing = services.catalog.find_partition_metadata(txn, target.ringbuffer, partition_key)?;
+		let existing = catalog.find_partition_metadata(txn, ringbuffer, partition_key)?;
 		let m = existing.unwrap_or_else(RingBufferMetadata::new);
 		cache.insert(partition_key.to_vec(), m);
 	}
@@ -46,14 +44,12 @@ pub(super) fn ensure_partition_metadata(
 
 pub(super) fn select_oldest_for_partition(
 	txn: &mut Transaction<'_>,
-	target: &RingBufferTarget<'_>,
+	ringbuffer: &RingBuffer,
 	partition: Option<Partition>,
 	metadata: &mut RingBufferMetadata,
 	chosen: &HashSet<RowNumber>,
 	pending: &HashSet<RowNumber>,
 ) -> Result<Option<RowNumber>> {
-	let ringbuffer = target.ringbuffer;
-
 	if let Some(partition) = partition {
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let mut oldest = None;
@@ -109,18 +105,41 @@ pub(super) fn update_metadata_after_insert(metadata: &mut RingBufferMetadata, ro
 }
 
 #[inline]
-pub(super) fn save_all_partition_metadata(
-	services: &Arc<Services>,
+pub(crate) fn save_all_partition_metadata(
+	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	cache: &HashMap<Vec<Value>, RingBufferMetadata>,
 ) -> Result<()> {
 	for (partition_key, m) in cache {
 		if m.is_empty() {
-			services.catalog.remove_partition_metadata(txn, ringbuffer, partition_key)?;
+			catalog.remove_partition_metadata(txn, ringbuffer, partition_key)?;
 		} else {
-			services.catalog.save_partition_metadata(txn, ringbuffer, partition_key, m)?;
+			catalog.save_partition_metadata(txn, ringbuffer, partition_key, m)?;
 		}
 	}
 	Ok(())
+}
+
+pub(super) fn partition_values(
+	cast: &CastColumns,
+	inputs: &[Option<ColumnView<'_>>],
+	indices: &[usize],
+) -> Result<Vec<Vec<Value>>> {
+	let views = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	Ok((0..cast.rows())
+		.map(|row| {
+			indices.iter()
+				.zip(&views)
+				.map(|(&index, view)| {
+					let input = inputs[index].as_ref();
+					if view.none_at(row) && input.is_none_or(|input| input.none_at(row)) {
+						input.map(|input| input.get_value(row)).unwrap_or_else(Value::none)
+					} else {
+						view.get_value(row)
+					}
+				})
+				.collect()
+		})
+		.collect())
 }

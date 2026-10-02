@@ -4,48 +4,65 @@
 use std::{
 	collections::{HashMap, HashSet, hash_map::Entry},
 	marker::PhantomData,
+	sync::Arc,
 };
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_codec::row::{
-	bytes::RowBuilder, pod::EncodedPodRow, series::EncodedSeriesRowBuilder, shape::RowShape,
+	bytes::{EncodedBytes, RowBuilder, SourceRowBuilder},
+	pod::EncodedPodRow,
+	shape::RowShape,
 	table::EncodedTableRowBuilder,
 };
 use reifydb_core::{
+	common::TimeSource,
 	error::CoreError,
 	interface::catalog::{
+		column::Column,
 		id::IndexId,
 		key::PrimaryKey,
+		namespace::Namespace,
 		object::ObjectId,
-		ringbuffer::{RingBuffer, RingBufferMetadata},
+		policy::{DataOp, PolicyTargetType},
+		ringbuffer::RingBuffer,
 		series::{Series, SeriesPartitionMetadata},
 		storage::StorageId,
+		sumtype::SumType,
 		table::Table,
 	},
 	internal_error,
 	key::{
 		any::TaggedKey,
 		catalog::IndexEntryKey,
-		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::partition_of,
+	value::{batch::batch, column::builder::ColumnBuilder},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
-	interceptor::series_row::SeriesRowInterceptor,
-	multi::RangeScope,
+	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
 	transaction::{Transaction, command::CommandTransaction},
 };
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{
+		Value, column_view::ColumnView, constraint::Constraint, identity::IdentityId, partition::Partition,
+		row_number::RowNumber, value_type::ValueType,
+	},
 };
 
-use super::{BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult, validation::coerce_rows};
+use super::{
+	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult, coerce::with_row_note,
+	validation::coerce_columns,
+};
 use crate::{
 	Result,
 	bulk_insert::storage::{
@@ -54,15 +71,24 @@ use crate::{
 		table::{PendingTableInsert, TableInsertBuilder},
 	},
 	engine::StandardEngine,
+	error::EngineError,
 	partition::resolve_partition,
-	transaction::operation::{
-		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
-	},
-	vm::instruction::dml::{
-		coerce::series_key,
-		primary_key::{self, PrimaryKeyEncoder},
-		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
-		time::resolve_time,
+	policy::PolicyEvaluator,
+	transaction::operation::table::TableOperations,
+	vm::{
+		instruction::dml::{
+			coerce::key_out_of_range,
+			columns::{CastColumns, intern_dictionary_columns},
+			partition::{compute_partition_col_indices, save_all_partition_metadata},
+			primary_key::{self, PrimaryKeyEncoder},
+			ringbuffer_insert::insert_ringbuffer_chunks,
+			series_insert::resolve_variant_tag,
+			shape::{
+				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
+			},
+			time::resolve_time,
+		},
+		services::Services,
 	},
 };
 
@@ -185,6 +211,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
+		let services = self.engine.services();
 		let clock = self.engine.clock();
 		let total_rows = self.total_pending_rows();
 		let pending_tables = self.pending_tables;
@@ -192,7 +219,12 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_series = self.pending_series;
 
 		V::run(&mut txn, total_rows, move |txn| {
-			run_all_pending::<V>(catalog, clock, txn, pending_tables, pending_ringbuffers, pending_series)
+			let writer = Writer {
+				catalog: &catalog,
+				services: &services,
+				clock,
+			};
+			run_all_pending::<V>(&writer, txn, pending_tables, pending_ringbuffers, pending_series)
 		})
 	}
 
@@ -204,10 +236,15 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 }
 
+struct Writer<'a> {
+	catalog: &'a Catalog,
+	services: &'a Arc<Services>,
+	clock: &'a Clock,
+}
+
 #[inline]
 fn run_all_pending<V: ValidationMode>(
-	catalog: Catalog,
-	clock: &Clock,
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
@@ -215,30 +252,297 @@ fn run_all_pending<V: ValidationMode>(
 ) -> Result<BulkInsertResult> {
 	let mut result = BulkInsertResult::default();
 	for pending in pending_tables {
-		result.tables.push(execute_table_insert::<V>(&catalog, txn, &pending, clock)?);
+		result.tables.push(execute_table_insert::<V>(writer, txn, &pending)?);
 	}
 	for pending in pending_ringbuffers {
-		result.ringbuffers.push(execute_ringbuffer_insert::<V>(&catalog, txn, &pending, clock)?);
+		result.ringbuffers.push(execute_ringbuffer_insert::<V>(writer, txn, &pending)?);
 	}
 	for pending in pending_series {
-		result.series.push(execute_series_insert::<V>(&catalog, txn, &pending, clock)?);
+		result.series.push(execute_series_insert::<V>(writer, txn, &pending)?);
 	}
 	Ok(result)
 }
 
+struct Checks<'a> {
+	name: &'a str,
+	columns: &'a [Column],
+	filled: &'a [Vec<usize>],
+	series: Option<&'a Series>,
+	sumtype: Option<&'a SumType>,
+	time: &'a TimeSource,
+}
+
+struct Checked {
+	keys: Vec<u64>,
+	tags: Vec<Option<u8>>,
+}
+
+fn check_rows<V: ValidationMode>(
+	checks: &Checks<'_>,
+	columns: &[(FieldRef, ArrayRef)],
+	tags: Option<&(FieldRef, ArrayRef)>,
+	rows: usize,
+) -> Result<Checked> {
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+	let mut failure: Option<(usize, Error)> = None;
+	let limit = |failure: &Option<(usize, Error)>| failure.as_ref().map_or(rows, |(row, _)| *row);
+
+	if V::VALIDATED {
+		for ((column, view), filled) in checks.columns.iter().zip(&views).zip(checks.filled) {
+			if let Some(row) = first_constraint_failure(column, view, filled, limit(&failure)) {
+				failure = Some((row, constraint_error(column, view.get_value(row), checks.name, row)));
+			}
+		}
+	}
+
+	let mut keys = Vec::new();
+	if let Some(series) = checks.series {
+		let index = key_column_index(series)?;
+		let (column, view) = (&checks.columns[index], &views[index]);
+		let given = series.key.keys_to_u64(view);
+		let dictionary_key = column.dictionary_id.is_some();
+		for (row, key) in given.iter().enumerate().take(limit(&failure)) {
+			if view.none_at(row) {
+				failure = Some((row, constraint_error(column, view.get_value(row), checks.name, row)));
+				break;
+			}
+			if dictionary_key || key.is_none() {
+				failure = Some((row, key_out_of_range(&series.key, &view.get_value(row))));
+				break;
+			}
+		}
+		if failure.is_none() {
+			keys = given.into_iter().collect::<Option<Vec<u64>>>().ok_or_else(|| {
+				internal_error!("bulk insert into series {} kept a row without a key", series.name)
+			})?;
+		}
+	}
+
+	let mut variant_tags = vec![None; rows];
+	if let (Some(sumtype), Some(tags)) = (checks.sumtype, tags) {
+		let view = ColumnView::try_from(tags)?;
+		for (row, variant_tag) in variant_tags.iter_mut().enumerate().take(limit(&failure)) {
+			let value = match view.get_value(row) {
+				Value::Any(value) => *value,
+				value => value,
+			};
+			*variant_tag = match value {
+				Value::None {
+					..
+				} => Some(0),
+				value => match resolve_variant_tag(
+					sumtype,
+					&value,
+					Fragment::internal(value.to_string()),
+				) {
+					Ok(tag) => Some(tag),
+					Err(error) => {
+						failure = Some((row, error));
+						break;
+					}
+				},
+			};
+		}
+	}
+
+	if let TimeSource::Event {
+		ts,
+	} = checks.time
+		&& let Some(index) = time_read_index(checks, ts)?
+		&& checks.columns[index].dictionary_id.is_none()
+	{
+		let view = &views[index];
+		if let Some(row) = (0..limit(&failure)).find(|&row| view.none_at(row)) {
+			failure = Some((
+				row,
+				EngineError::TimePopulatorNotDateTime {
+					object: checks.name.to_string(),
+					column: ts.to_string(),
+					found: format!("{:?}", Value::none()),
+				}
+				.into(),
+			));
+		}
+	}
+
+	if let Some((_, error)) = failure {
+		return Err(error);
+	}
+	Ok(Checked {
+		keys,
+		tags: variant_tags,
+	})
+}
+
+fn first_constraint_failure(column: &Column, view: &ColumnView<'_>, filled: &[usize], limit: usize) -> Option<usize> {
+	let target = column.constraint.get_type();
+	let max_bytes = match column.constraint.constraint() {
+		Some(Constraint::MaxBytes(max)) => Some(usize::from(*max)),
+		_ => None,
+	};
+	(0..limit).find(|&row| {
+		if view.none_at(row) {
+			return !target.is_option() && filled.binary_search(&row).is_err();
+		}
+		match (target.inner_type(), max_bytes) {
+			(ValueType::Utf8, Some(max)) => view.get_str(row).is_some_and(|text| text.len() > max),
+			(ValueType::Blob, Some(max)) => view.get_bytes(row).is_some_and(|bytes| bytes.len() > max),
+			_ => false,
+		}
+	})
+}
+
+fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -> Error {
+	let mut error = match column.constraint.coerce(&mut value) {
+		Err(error) => error,
+		Ok(()) => internal_error!("bulk column {} passed the constraint its scan refused", column.name),
+	};
+	error.0.fragment = Fragment::internal(&column.name);
+	with_row_note(error, name, row)
+}
+
+fn time_read_index(checks: &Checks<'_>, ts: &str) -> Result<Option<usize>> {
+	let Some(index) = checks.columns.iter().position(|column| column.name == ts) else {
+		return Ok(None);
+	};
+	let Some(series) = checks.series else {
+		return Ok(Some(index));
+	};
+	if index == 0 {
+		return key_column_index(series).map(Some);
+	}
+	let key_column = series.key.column();
+	Ok(checks
+		.columns
+		.iter()
+		.enumerate()
+		.filter(|(_, column)| column.name != key_column)
+		.nth(index - 1)
+		.map(|(i, _)| i))
+}
+
+fn key_column_index(series: &Series) -> Result<usize> {
+	let key_col_name = series.key.column();
+	series.columns
+		.iter()
+		.position(|c| c.name == key_col_name)
+		.ok_or_else(|| internal_error!("series {} key column {} not found", series.name, key_col_name))
+}
+
+fn enforce_write_policies(
+	writer: &Writer<'_>,
+	txn: &mut CommandTransaction,
+	namespace: &Namespace,
+	object: &str,
+	target: PolicyTargetType,
+	columns: &[(FieldRef, ArrayRef)],
+) -> Result<()> {
+	let symbols = SymbolTable::new();
+	PolicyEvaluator::new(writer.services, &symbols).enforce_write_policies(
+		&mut Transaction::Command(txn),
+		namespace.name(),
+		object,
+		DataOp::Insert,
+		&batch(columns.to_vec())?,
+		target,
+	)
+}
+
+fn stamp<B: SourceRowBuilder>(
+	writer: &Writer<'_>,
+	row: &mut B,
+	name: &str,
+	columns: &[Column],
+	time: &TimeSource,
+	shape: &RowShape,
+) -> Result<()> {
+	let now = writer.clock.now();
+	row.set_timestamps(now, now);
+	if let Some(time) = resolve_time(name, columns, time, shape, row.as_slice(), now)? {
+		row.set_time(time);
+	}
+	Ok(())
+}
+
 fn execute_table_insert<V: ValidationMode>(
-	catalog: &Catalog,
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-	clock: &Clock,
 ) -> Result<TableInsertResult> {
-	let table = resolve_table(catalog, txn, pending)?;
+	let catalog = writer.catalog;
+	let (namespace, table) = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
-	let encoded_bytes_list = encode_table_rows::<V>(catalog, txn, pending, &table, &shape, clock)?;
-	if encoded_bytes_list.is_empty() {
+	let (mut columns, _) =
+		coerce_columns(&pending.rows, &pending.batches, &table.columns, false, &table.name, txn.identity)?;
+	let rows = pending.row_count();
+	if rows == 0 {
 		return Ok(empty_table_result(pending));
 	}
-	write_table_rows(catalog, txn, &table, &shape, pending, encoded_bytes_list)
+	enforce_write_policies(writer, txn, &namespace, &table.name, PolicyTargetType::Table, &columns)?;
+
+	let filled = auto_increment_rows(&table.columns, &columns)?;
+	check_rows::<V>(
+		&Checks {
+			name: &table.name,
+			columns: &table.columns,
+			filled: &filled,
+			series: None,
+			sumtype: None,
+			time: &table.time,
+		},
+		&columns,
+		None,
+		rows,
+	)?;
+	fill_auto_increment(catalog, txn, &table, &filled, &mut columns)?;
+
+	let mut cast = [CastColumns::new(columns, rows)];
+	intern_dictionary_columns(catalog, &mut Transaction::Command(txn), &table.columns, None, &mut cast)?;
+	let mut built: Vec<EncodedTableRowBuilder> = (0..rows).map(|_| shape.allocate_table()).collect();
+	cast[0].write(&shape, &mut built)?;
+	for row in built.iter_mut() {
+		stamp(writer, row, &table.name, &table.columns, &table.time, &shape)?;
+	}
+	write_table_rows(catalog, txn, &table, &shape, pending, built)
+}
+
+fn auto_increment_rows(columns: &[Column], cast: &[(FieldRef, ArrayRef)]) -> Result<Vec<Vec<usize>>> {
+	columns.iter()
+		.zip(cast)
+		.map(|(column, cast)| {
+			if !column.auto_increment {
+				return Ok(Vec::new());
+			}
+			let view = ColumnView::try_from(cast)?;
+			Ok((0..view.len()).filter(|&row| view.none_at(row)).collect())
+		})
+		.collect()
+}
+
+fn fill_auto_increment(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	table: &Table,
+	filled: &[Vec<usize>],
+	columns: &mut [(FieldRef, ArrayRef)],
+) -> Result<()> {
+	for ((column, rows), cast) in table.columns.iter().zip(filled).zip(columns.iter_mut()) {
+		if rows.is_empty() {
+			continue;
+		}
+		let current = ColumnView::try_from(&*cast)?;
+		let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), current.len());
+		let mut next = rows.iter().peekable();
+		for row in 0..current.len() {
+			if next.next_if_eq(&&row).is_some() {
+				builder.push_value(catalog.column_sequence_next_value(txn, table.id, column.id)?);
+			} else {
+				builder.push_value(current.get_value(row));
+			}
+		}
+		*cast = builder.finish(&column.name);
+	}
+	Ok(())
 }
 
 #[inline]
@@ -282,116 +586,36 @@ fn write_table_rows(
 	})
 }
 
-fn resolve_table(catalog: &Catalog, txn: &mut CommandTransaction, pending: &PendingTableInsert) -> Result<Table> {
-	let namespace = catalog
-		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
-		.ok_or_else(|| CatalogError::NotFound {
-			kind: CatalogObjectKind::Namespace,
-			namespace: pending.namespace.to_string(),
-			name: String::new(),
-			fragment: Fragment::None,
-		})?;
-
-	catalog.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?.ok_or_else(|| {
+fn resolve_namespace(catalog: &Catalog, txn: &mut CommandTransaction, name: &str) -> Result<Namespace> {
+	catalog.find_namespace_by_name(&mut Transaction::Command(txn), name)?.ok_or_else(|| {
 		CatalogError::NotFound {
-			kind: CatalogObjectKind::Table,
-			namespace: pending.namespace.to_string(),
-			name: pending.table.to_string(),
+			kind: CatalogObjectKind::Namespace,
+			namespace: name.to_string(),
+			name: String::new(),
 			fragment: Fragment::None,
 		}
 		.into()
 	})
 }
 
-fn encode_table_rows<V: ValidationMode>(
+fn resolve_table(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-	table: &Table,
-	shape: &RowShape,
-	clock: &Clock,
-) -> Result<Vec<EncodedTableRowBuilder>> {
-	let coerced_rows = coerce_rows(&pending.rows, &pending.batches, &table.columns, &table.name, txn.identity)?;
-	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
-	for values in coerced_rows {
-		encoded_bytes_list.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
-	}
-	Ok(encoded_bytes_list)
-}
-
-#[inline]
-fn prepare_table_row<V: ValidationMode>(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	table: &Table,
-	shape: &RowShape,
-	clock: &Clock,
-	mut values: Vec<Value>,
-) -> Result<EncodedTableRowBuilder> {
-	fill_auto_increment_table(catalog, txn, table, &mut values)?;
-	if V::VALIDATED {
-		coerce_table_constraints(table, &mut values)?;
-	}
-	dictionary_encode_table(catalog, txn, table, &mut values)?;
-	encode_row(table, shape, &values, clock)
-}
-
-#[inline]
-fn coerce_table_constraints(table: &Table, values: &mut [Value]) -> Result<()> {
-	for (idx, col) in table.columns.iter().enumerate() {
-		col.constraint.coerce(&mut values[idx])?;
-	}
-	Ok(())
-}
-
-fn fill_auto_increment_table(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	table: &Table,
-	values: &mut [Value],
-) -> Result<()> {
-	for (idx, col) in table.columns.iter().enumerate() {
-		if col.auto_increment && matches!(values[idx], Value::None { .. }) {
-			values[idx] = catalog.column_sequence_next_value(txn, table.id, col.id)?;
-		}
-	}
-	Ok(())
-}
-
-fn dictionary_encode_table(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	table: &Table,
-	values: &mut [Value],
-) -> Result<()> {
-	for (idx, col) in table.columns.iter().enumerate() {
-		if let Some(dict_id) = col.dictionary_id {
-			let dictionary =
-				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
-					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
-				})?;
-			let entry_id = if matches!(values[idx], Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &values[idx])?
-			};
-			values[idx] = entry_id.to_value();
-		}
-	}
-	Ok(())
-}
-
-fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> Result<EncodedTableRowBuilder> {
-	let mut row = shape.allocate_table();
-	for (idx, value) in values.iter().enumerate() {
-		shape.set_value(&mut row, idx, value);
-	}
-	let now = clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) = resolve_time(&table.name, &table.columns, &table.time, shape, &row, now)? {
-		row.set_time(time);
-	}
-	Ok(row)
+) -> Result<(Namespace, Table)> {
+	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
+	let table = catalog
+		.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?
+		.ok_or_else(|| -> Error {
+			CatalogError::NotFound {
+				kind: CatalogObjectKind::Table,
+				namespace: pending.namespace.to_string(),
+				name: pending.table.to_string(),
+				fragment: Fragment::None,
+			}
+			.into()
+		})?;
+	Ok((namespace, table))
 }
 
 fn write_primary_key_index(
@@ -421,16 +645,27 @@ fn write_primary_key_index(
 }
 
 fn execute_ringbuffer_insert<V: ValidationMode>(
-	catalog: &Catalog,
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-	clock: &Clock,
 ) -> Result<RingBufferInsertResult> {
-	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
+	let catalog = writer.catalog;
+	let (namespace, ringbuffer) = resolve_ringbuffer(catalog, txn, pending)?;
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
-	let coerced_rows =
-		coerce_rows(&pending.rows, &pending.batches, &ringbuffer.columns, &ringbuffer.name, txn.identity)?;
-	let inserted = insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, clock)?;
+	let (columns, _) = coerce_columns(
+		&pending.rows,
+		&pending.batches,
+		&ringbuffer.columns,
+		false,
+		&ringbuffer.name,
+		txn.identity,
+	)?;
+	let rows = pending.row_count();
+	let inserted = if rows == 0 {
+		0
+	} else {
+		insert_ringbuffer_rows::<V>(writer, txn, &namespace, &ringbuffer, &shape, columns, rows)?
+	};
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),
 		ringbuffer: pending.ringbuffer.clone(),
@@ -443,18 +678,11 @@ fn resolve_ringbuffer(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-) -> Result<RingBuffer> {
-	let namespace = catalog
-		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
-		.ok_or_else(|| CatalogError::NotFound {
-			kind: CatalogObjectKind::Namespace,
-			namespace: pending.namespace.to_string(),
-			name: String::new(),
-			fragment: Fragment::None,
-		})?;
-
-	catalog.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
-		.ok_or_else(|| {
+) -> Result<(Namespace, RingBuffer)> {
+	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
+	let ringbuffer = catalog
+		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
+		.ok_or_else(|| -> Error {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::RingBuffer,
 				namespace: pending.namespace.to_string(),
@@ -462,220 +690,108 @@ fn resolve_ringbuffer(
 				fragment: Fragment::None,
 			}
 			.into()
-		})
+		})?;
+	Ok((namespace, ringbuffer))
 }
 
 fn insert_ringbuffer_rows<V: ValidationMode>(
-	catalog: &Catalog,
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
+	namespace: &Namespace,
 	ringbuffer: &RingBuffer,
 	shape: &RowShape,
-	coerced_rows: Vec<Vec<Value>>,
-	clock: &Clock,
+	columns: Vec<(FieldRef, ArrayRef)>,
+	rows: usize,
 ) -> Result<u64> {
-	let partition_col_indices = compute_ringbuffer_partition_col_indices(ringbuffer);
-	let mut cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
-	let mut inserted_count = 0u64;
+	let catalog = writer.catalog;
+	enforce_write_policies(writer, txn, namespace, &ringbuffer.name, PolicyTargetType::RingBuffer, &columns)?;
+	check_rows::<V>(
+		&Checks {
+			name: &ringbuffer.name,
+			columns: &ringbuffer.columns,
+			filled: &vec![Vec::new(); ringbuffer.columns.len()],
+			series: None,
+			sumtype: None,
+			time: &ringbuffer.time,
+		},
+		&columns,
+		None,
+		rows,
+	)?;
 
-	for mut values in coerced_rows {
-		if V::VALIDATED {
-			for (idx, col) in ringbuffer.columns.iter().enumerate() {
-				col.constraint.coerce(&mut values[idx])?;
-			}
-		}
+	let mut cast = [CastColumns::new(columns, rows)];
+	intern_dictionary_columns(catalog, &mut Transaction::Command(txn), &ringbuffer.columns, None, &mut cast)?;
+	let mut built: Vec<_> = (0..rows).map(|_| shape.allocate_ringbuffer()).collect();
+	cast[0].write(shape, &mut built)?;
 
-		dict_encode_ringbuffer_row(catalog, txn, ringbuffer, &mut values)?;
-
-		let partition_key: Vec<Value> = partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+	let partition_col_indices = compute_partition_col_indices(ringbuffer);
+	let partition_views =
+		partition_col_indices.iter().map(|&index| cast[0].view(index)).collect::<Result<Vec<_>>>()?;
+	let mut entries = Vec::with_capacity(rows);
+	for (row, mut builder) in built.into_iter().enumerate() {
+		let partition_key: Vec<Value> = partition_views.iter().map(|view| view.get_value(row)).collect();
 		let partition = if partition_col_indices.is_empty() {
 			None
 		} else {
 			Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 		};
-
-		let mut row = shape.allocate_ringbuffer();
-		for (idx, value) in values.iter().enumerate() {
-			shape.set_value(&mut row, idx, value);
-		}
-		let now = clock.now();
-		row.set_timestamps(now, now);
-		if let Some(time) =
-			resolve_time(&ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape, &row, now)?
-		{
-			row.set_time(time);
-		}
-
-		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
-		let metadata = cache.get_mut(&partition_key).unwrap();
-
-		if metadata.is_full(ringbuffer.capacity) {
-			evict_oldest_for_partition(txn, ringbuffer, partition, metadata)?;
-		}
-
-		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-		txn.insert_ringbuffer(ringbuffer, shape, partition.as_slice(), &[row_number], &[row.freeze_bytes()])?;
-
-		if metadata.is_empty() {
-			metadata.head = row_number.0;
-		}
-		metadata.count += 1;
-		metadata.tail = row_number.0 + 1;
-
-		inserted_count += 1;
+		stamp(writer, &mut builder, &ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape)?;
+		entries.push((builder.freeze_bytes(), partition_key, partition));
 	}
 
-	for (partition_key, metadata) in &cache {
-		if metadata.is_empty() {
-			catalog.remove_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
-		} else {
-			catalog.save_partition_metadata(
-				&mut Transaction::Command(txn),
-				ringbuffer,
-				partition_key,
-				metadata,
-			)?;
-		}
-	}
-
-	Ok(inserted_count)
-}
-
-#[inline]
-fn compute_ringbuffer_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
-	ringbuffer
-		.partition_by
-		.iter()
-		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
-		.collect()
-}
-
-#[inline]
-fn ensure_ringbuffer_partition_metadata(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	ringbuffer: &RingBuffer,
-	partition_key: &[Value],
-	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
-) -> Result<()> {
-	if !cache.contains_key(partition_key) {
-		let existing =
-			catalog.find_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
-		let m = existing.unwrap_or_else(RingBufferMetadata::new);
-		cache.insert(partition_key.to_vec(), m);
-	}
-	Ok(())
-}
-
-fn evict_oldest_for_partition(
-	txn: &mut CommandTransaction,
-	ringbuffer: &RingBuffer,
-	partition: Option<Partition>,
-	metadata: &mut RingBufferMetadata,
-) -> Result<()> {
-	if let Some(partition) = partition {
-		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
-		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
-		if let Some(entry) = oldest
-			&& let TaggedKey::PartitionedRow(pk) = &entry.key
-		{
-			txn.remove_from_ringbuffer(ringbuffer, &[partition], &[pk.row])?;
-		}
-		metadata.count -= 1;
-		return Ok(());
-	}
-
-	let mut evict_pos = metadata.head;
-	loop {
-		let key = RowKey::new(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get(&key)?.is_some() {
-			txn.remove_from_ringbuffer(ringbuffer, &[], &[RowNumber(evict_pos)])?;
-			break;
-		}
-		evict_pos += 1;
-		if evict_pos >= metadata.tail {
-			break;
-		}
-	}
-	metadata.head = evict_pos + 1;
-	while metadata.head < metadata.tail {
-		let key = RowKey::new(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get(&key)?.is_some() {
-			break;
-		}
-		metadata.head += 1;
-	}
-	metadata.count -= 1;
-	Ok(())
-}
-
-#[inline]
-fn dict_encode_ringbuffer_row(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	ringbuffer: &RingBuffer,
-	values: &mut [Value],
-) -> Result<()> {
-	for (idx, col) in ringbuffer.columns.iter().enumerate() {
-		if let Some(dict_id) = col.dictionary_id {
-			let dictionary =
-				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
-					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
-				})?;
-			let entry_id = if matches!(values[idx], Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &values[idx])?
-			};
-			values[idx] = entry_id.to_value();
-		}
-	}
-	Ok(())
-}
-
-#[inline]
-fn dict_encode_series_row(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	series: &Series,
-	values: &mut [Value],
-) -> Result<()> {
-	for (idx, col) in series.columns.iter().enumerate() {
-		if let Some(dict_id) = col.dictionary_id {
-			let dictionary =
-				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
-					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
-				})?;
-			let entry_id = if matches!(values[idx], Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &values[idx])?
-			};
-			values[idx] = entry_id.to_value();
-		}
-	}
-	Ok(())
+	let mut cache = HashMap::new();
+	let inserted = insert_ringbuffer_chunks(
+		catalog,
+		&mut Transaction::Command(txn),
+		ringbuffer,
+		shape,
+		&entries,
+		&mut cache,
+		None,
+	)?;
+	save_all_partition_metadata(catalog, &mut Transaction::Command(txn), ringbuffer, &cache)?;
+	Ok(inserted)
 }
 
 fn execute_series_insert<V: ValidationMode>(
-	catalog: &Catalog,
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingSeriesInsert,
-	clock: &Clock,
 ) -> Result<SeriesInsertResult> {
-	let series = resolve_series(catalog, txn, pending)?;
+	let catalog = writer.catalog;
+	let (namespace, series) = resolve_series(catalog, txn, pending)?;
 	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_rows(&pending.rows, &pending.batches, &series.columns, &series.name, txn.identity)?;
-	let inserted = insert_series_rows::<V>(
-		catalog,
-		txn,
-		&series,
-		&shape,
-		coerced_rows,
-		&mut metadata_by_partition,
-		clock,
+	let sumtype = series.tag.map(|id| catalog.get_sumtype(&mut Transaction::Command(txn), id)).transpose()?;
+	let (columns, tags) = coerce_columns(
+		&pending.rows,
+		&pending.batches,
+		&series.columns,
+		sumtype.is_some(),
+		&series.name,
+		txn.identity,
 	)?;
-	let now = clock.now();
+	let rows = pending.row_count();
+	let inserted = if rows == 0 {
+		0
+	} else {
+		enforce_write_policies(writer, txn, &namespace, &series.name, PolicyTargetType::Series, &columns)?;
+		let checked = check_rows::<V>(
+			&Checks {
+				name: &series.name,
+				columns: &series.columns,
+				filled: &vec![Vec::new(); series.columns.len()],
+				series: Some(&series),
+				sumtype: sumtype.as_ref(),
+				time: &series.time,
+			},
+			&columns,
+			tags.as_ref(),
+			rows,
+		)?;
+		insert_series_rows(writer, txn, &series, &shape, columns, checked, &mut metadata_by_partition)?
+	};
+	let now = writer.clock.now();
 	for (partition, mut metadata) in metadata_by_partition {
 		metadata.last_write_at = now;
 		catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, partition, metadata)?;
@@ -688,57 +804,72 @@ fn execute_series_insert<V: ValidationMode>(
 }
 
 #[inline]
-fn resolve_series(catalog: &Catalog, txn: &mut CommandTransaction, pending: &PendingSeriesInsert) -> Result<Series> {
-	let namespace = catalog
-		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
-		.ok_or_else(|| CatalogError::NotFound {
-			kind: CatalogObjectKind::Namespace,
-			namespace: pending.namespace.to_string(),
-			name: String::new(),
-			fragment: Fragment::None,
+fn resolve_series(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingSeriesInsert,
+) -> Result<(Namespace, Series)> {
+	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
+	let series = catalog
+		.find_series_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.series)?
+		.ok_or_else(|| -> Error {
+			CatalogError::NotFound {
+				kind: CatalogObjectKind::Series,
+				namespace: pending.namespace.to_string(),
+				name: pending.series.to_string(),
+				fragment: Fragment::None,
+			}
+			.into()
 		})?;
-
-	catalog.find_series_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.series)?.ok_or_else(|| {
-		CatalogError::NotFound {
-			kind: CatalogObjectKind::Series,
-			namespace: pending.namespace.to_string(),
-			name: pending.series.to_string(),
-			fragment: Fragment::None,
-		}
-		.into()
-	})
+	Ok((namespace, series))
 }
 
-fn insert_series_rows<V: ValidationMode>(
-	catalog: &Catalog,
+fn insert_series_rows(
+	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	series: &Series,
 	shape: &RowShape,
-	coerced_rows: Vec<Vec<Value>>,
+	columns: Vec<(FieldRef, ArrayRef)>,
+	checked: Checked,
 	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
-	clock: &Clock,
 ) -> Result<u64> {
-	let key_col_name = series.key.column();
-	let key_col_idx =
-		series.columns.iter().position(|c| c.name == key_col_name).ok_or_else(|| {
-			internal_error!("series {} key column {} not found", series.name, key_col_name)
-		})?;
-	let partition_col_indices = series_partition_col_indices(series)?;
-	let storage = StorageId::series(series.id);
-	let mut verified: HashSet<Partition> = HashSet::new();
+	let catalog = writer.catalog;
+	let rows = checked.keys.len();
+	let key_index = key_column_index(series)?;
+	let mut cast = [CastColumns::new(columns, rows)];
+	intern_dictionary_columns(
+		catalog,
+		&mut Transaction::Command(txn),
+		&series.columns,
+		Some(&series.key),
+		&mut cast,
+	)?;
+	let [cast] = cast;
 
-	let mut inserted_count = 0u64;
-	for mut values in coerced_rows {
-		if V::VALIDATED {
-			for (idx, col) in series.columns.iter().enumerate() {
-				col.constraint.coerce(&mut values[idx])?;
+	let key_column = series.key_column_data(checked.keys.clone());
+	let mut built: Vec<_> = (0..rows).map(|_| shape.allocate_series()).collect();
+	{
+		let mut views = Vec::with_capacity(series.columns.len());
+		views.push(ColumnView::try_from(&key_column)?);
+		for index in 0..series.columns.len() {
+			if index != key_index {
+				views.push(cast.view(index)?);
 			}
 		}
+		shape.write_columns(&mut built, &views)?;
+	}
 
-		dict_encode_series_row(catalog, txn, series, &mut values)?;
-
-		let partition_values: Vec<Value> =
-			partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+	let partition_views = series_partition_col_indices(series)?
+		.into_iter()
+		.map(|index| cast.view(index))
+		.collect::<Result<Vec<_>>>()?;
+	let storage = StorageId::series(series.id);
+	let mut verified: HashSet<Partition> = HashSet::new();
+	let mut storage_keys: Vec<TaggedKey> = Vec::with_capacity(rows);
+	for (row, ((builder, &key_value), &variant_tag)) in
+		built.iter_mut().zip(&checked.keys).zip(&checked.tags).enumerate()
+	{
+		let partition_values: Vec<Value> = partition_views.iter().map(|view| view.get_value(row)).collect();
 		let partition = if partition_values.is_empty() {
 			Partition::default()
 		} else {
@@ -754,14 +885,12 @@ fn insert_series_rows<V: ValidationMode>(
 			}
 		};
 
-		let key_value = series_key(series, &values[key_col_idx])?.unwrap_or(0);
-
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
 		let key: TaggedKey = if partition_values.is_empty() {
 			SeriesRowKey {
 				storage,
-				variant_tag: None,
+				variant_tag,
 				key: key_value,
 				sequence,
 			}
@@ -774,23 +903,24 @@ fn insert_series_rows<V: ValidationMode>(
 				&partition_values,
 				&mut verified,
 			)?;
-			PartitionedSeriesRowKey::new(storage, partition, None, key_value, sequence).into()
+			PartitionedSeriesRowKey::new(storage, partition, variant_tag, key_value, sequence).into()
 		};
-
-		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock)?;
-
-		let mut rows_buf = [row];
-		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
-		let [row] = rows_buf;
-		let row = row.freeze_bytes();
-		txn.set(&key, row.clone())?;
-		let rows = [row.clone()];
-		SeriesRowInterceptor::post_insert(txn, series, &rows)?;
-
+		stamp(writer, builder, &series.name, &series.columns, &series.time, shape)?;
 		update_series_metadata_for_insert(metadata, key_value);
-		inserted_count += 1;
+		storage_keys.push(key);
 	}
-	Ok(inserted_count)
+
+	if !txn.series_row_pre_insert_interceptors().is_empty() {
+		SeriesRowInterceptor::pre_insert(txn, series, &mut built)?;
+	}
+	let written: Vec<EncodedBytes> = built.into_iter().map(|row| row.freeze_bytes()).collect();
+	for (key, row) in storage_keys.iter().zip(&written) {
+		txn.set(key, row.clone())?;
+	}
+	if !txn.series_row_post_insert_interceptors().is_empty() {
+		SeriesRowInterceptor::post_insert(txn, series, &written)?;
+	}
+	Ok(rows as u64)
 }
 
 #[inline]
@@ -803,34 +933,6 @@ fn series_partition_col_indices(series: &Series) -> Result<Vec<usize>> {
 			})
 		})
 		.collect()
-}
-
-#[inline]
-fn encode_series_row(
-	series: &Series,
-	shape: &RowShape,
-	key_value: u64,
-	values: &[Value],
-	key_col_idx: usize,
-	clock: &Clock,
-) -> Result<EncodedSeriesRowBuilder> {
-	let key_value_encoded = series.key_from_u64(key_value);
-	let mut row = shape.allocate_series();
-	shape.set_value(&mut row, 0, &key_value_encoded);
-	let mut shape_idx = 1;
-	for (col_idx, value) in values.iter().enumerate() {
-		if col_idx == key_col_idx {
-			continue;
-		}
-		shape.set_value(&mut row, shape_idx, value);
-		shape_idx += 1;
-	}
-	let now = clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) = resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)? {
-		row.set_time(time);
-	}
-	Ok(row)
 }
 
 #[inline]

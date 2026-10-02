@@ -7,6 +7,7 @@ use std::{
 };
 
 use arrow_array::RecordBatch;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	ringbuffer::EncodedRingBufferRowBuilder,
@@ -40,19 +41,18 @@ use reifydb_value::{
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value, column_view::ColumnView, identity::IdentityId, row_number::RowNumber,
-		system_columns::user_columns,
+		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::user_columns,
 	},
 };
 use tracing::instrument;
 
 use super::{
 	coerce::InputFragments,
-	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	partition::{
-		compute_partition_col_indices, ensure_partition_metadata, save_all_partition_metadata,
-		select_oldest_for_partition, update_metadata_after_insert,
+		compute_partition_col_indices, ensure_partition_metadata, partition_values,
+		save_all_partition_metadata, select_oldest_for_partition, update_metadata_after_insert,
 	},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -180,11 +180,11 @@ fn drive_ringbuffer_insert(
 		let row_count = columns.num_rows();
 		let inputs = input_views(&columns, &ringbuffer.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
-		intern_dictionary_columns(services, txn, &pipeline, &mut batches)?;
+		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
 		let mut built: Vec<EncodedRingBufferRowBuilder> =
 			(0..row_count).map(|_| shape.allocate_ringbuffer()).collect();
 		batches[0].write(shape, &mut built)?;
-		let partition_keys = partition_keys(&batches[0], &inputs, &partition_col_indices)?;
+		let partition_keys = partition_values(&batches[0], &inputs, &partition_col_indices)?;
 
 		let mut rows = Vec::with_capacity(row_count);
 		for (mut row, partition_key) in built.into_iter().zip(partition_keys) {
@@ -203,71 +203,87 @@ fn drive_ringbuffer_insert(
 			rows.push((row.freeze_bytes(), partition_key, partition));
 		}
 
-		let mut start = 0;
-		while start < rows.len() {
-			let mut held: HashMap<&[Value], u64> = HashMap::new();
-			let mut end = start;
-			while end < rows.len() {
-				let count = held.entry(rows[end].1.as_slice()).or_default();
-				if *count >= ringbuffer.capacity && end > start {
-					break;
-				}
-				*count += 1;
-				end += 1;
-			}
-
-			let mut chosen = HashSet::new();
-			let mut pending = HashSet::new();
-			let mut victims = Vec::new();
-			let mut victim_partitions = Vec::new();
-			let mut ids = Vec::with_capacity(end - start);
-			let mut partitions = Vec::with_capacity(end - start);
-			let mut encoded = Vec::with_capacity(end - start);
-			for (row, partition_key, partition) in &rows[start..end] {
-				ensure_partition_metadata(
-					services,
-					txn,
-					target_data,
-					partition_key,
-					partition_metadata_cache,
-				)?;
-				let current_metadata = partition_metadata_cache.get_mut(partition_key).unwrap();
-
-				if current_metadata.is_full(ringbuffer.capacity)
-					&& let Some(victim) = select_oldest_for_partition(
-						txn,
-						target_data,
-						*partition,
-						current_metadata,
-						&chosen,
-						&pending,
-					)? {
-					chosen.insert(victim);
-					victims.push(victim);
-					victim_partitions.extend(*partition);
-				}
-
-				let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-				pending.insert(row_number);
-				update_metadata_after_insert(current_metadata, row_number);
-				ids.push(row_number);
-				partitions.extend(*partition);
-				encoded.push(row.clone());
-			}
-
-			if !victims.is_empty() {
-				txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
-			}
-			let stored = txn.insert_ringbuffer(ringbuffer, shape, &partitions, &ids, &encoded)?;
-			if has_returning {
-				returned_rows.extend(ids.iter().copied().zip(stored));
-			}
-			inserted_count += (end - start) as u64;
-			start = end;
-		}
+		inserted_count += insert_ringbuffer_chunks(
+			&services.catalog,
+			txn,
+			ringbuffer,
+			shape,
+			&rows,
+			partition_metadata_cache,
+			has_returning.then_some(&mut returned_rows),
+		)?;
 	}
 
 	Ok((inserted_count, returned_rows))
+}
+
+pub(crate) fn insert_ringbuffer_chunks(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	shape: &RowShape,
+	rows: &[(EncodedBytes, Vec<Value>, Option<Partition>)],
+	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+	mut returned: Option<&mut Vec<(RowNumber, EncodedBytes)>>,
+) -> Result<u64> {
+	let mut inserted_count = 0u64;
+	let mut start = 0;
+	while start < rows.len() {
+		let mut held: HashMap<&[Value], u64> = HashMap::new();
+		let mut end = start;
+		while end < rows.len() {
+			let count = held.entry(rows[end].1.as_slice()).or_default();
+			if *count >= ringbuffer.capacity && end > start {
+				break;
+			}
+			*count += 1;
+			end += 1;
+		}
+
+		let mut chosen = HashSet::new();
+		let mut pending = HashSet::new();
+		let mut victims = Vec::new();
+		let mut victim_partitions = Vec::new();
+		let mut ids = Vec::with_capacity(end - start);
+		let mut partitions = Vec::with_capacity(end - start);
+		let mut encoded = Vec::with_capacity(end - start);
+		for (row, partition_key, partition) in &rows[start..end] {
+			ensure_partition_metadata(catalog, txn, ringbuffer, partition_key, cache)?;
+			let current_metadata = cache.get_mut(partition_key).unwrap();
+
+			if current_metadata.is_full(ringbuffer.capacity)
+				&& let Some(victim) = select_oldest_for_partition(
+					txn,
+					ringbuffer,
+					*partition,
+					current_metadata,
+					&chosen,
+					&pending,
+				)? {
+				chosen.insert(victim);
+				victims.push(victim);
+				victim_partitions.extend(*partition);
+			}
+
+			let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
+			pending.insert(row_number);
+			update_metadata_after_insert(current_metadata, row_number);
+			ids.push(row_number);
+			partitions.extend(*partition);
+			encoded.push(row.clone());
+		}
+
+		if !victims.is_empty() {
+			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
+		}
+		let stored = txn.insert_ringbuffer(ringbuffer, shape, &partitions, &ids, &encoded)?;
+		if let Some(returned) = returned.as_mut() {
+			returned.extend(ids.iter().copied().zip(stored));
+		}
+		inserted_count += (end - start) as u64;
+		start = end;
+	}
+	Ok(inserted_count)
 }
 
 #[inline]
@@ -284,7 +300,7 @@ fn finalize_ringbuffer_insert(
 	inserted_count: u64,
 ) -> Result<RecordBatch> {
 	let ringbuffer = target_data.ringbuffer;
-	save_all_partition_metadata(services, txn, ringbuffer, partition_metadata_cache)?;
+	save_all_partition_metadata(&services.catalog, txn, ringbuffer, partition_metadata_cache)?;
 
 	reifydb_assertions! {
 		let returning_rows_match = returning.is_none() || returned_rows.len() as u64 == inserted_count;
@@ -346,25 +362,6 @@ fn build_insert_ringbuffer_query_context(
 		identity,
 		memory: query_budget(services),
 	})
-}
-
-fn partition_keys(cast: &CastColumns, inputs: &[Option<ColumnView<'_>>], indices: &[usize]) -> Result<Vec<Vec<Value>>> {
-	let views = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-	Ok((0..cast.rows())
-		.map(|row| {
-			indices.iter()
-				.zip(&views)
-				.map(|(&index, view)| {
-					let input = inputs[index].as_ref();
-					if view.none_at(row) && input.is_none_or(|input| input.none_at(row)) {
-						input.map(|input| input.get_value(row)).unwrap_or_else(Value::none)
-					} else {
-						view.get_value(row)
-					}
-				})
-				.collect()
-		})
-		.collect())
 }
 
 #[inline]
