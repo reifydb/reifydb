@@ -5,7 +5,7 @@ pub mod context;
 
 use std::{
 	backtrace::Backtrace,
-	panic::{AssertUnwindSafe, catch_unwind},
+	panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
 use reifydb_core::{
@@ -18,7 +18,7 @@ use reifydb_flow_async::{
 	timer::Timer,
 };
 use reifydb_runtime::fatal::{
-	describe_payload, fatal,
+	describe_payload, fatal, is_armed,
 	report::{FatalKind, FatalReport},
 };
 use reifydb_value::Result;
@@ -41,6 +41,7 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 				.with("stage", stage)
 				.backtrace(Backtrace::force_capture().to_string()))
 		}
+		Err(payload) if !is_armed() => resume_unwind(payload),
 		Err(payload) => fatal(FatalReport::new(FatalKind::Panic, describe_payload(&payload))
 			.component("flow operator")
 			.with("operator", operator.0.to_string())
