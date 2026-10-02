@@ -334,6 +334,47 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> 
 	.map_err(frame_error)
 }
 
+pub(crate) fn gather(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> Result<RecordBatch> {
+	let Some(lead) = sources.first() else {
+		return Ok(empty_batch());
+	};
+	let schema = lead.schema_ref();
+	if sources.iter().all(|source| source.schema_ref() == schema) {
+		let columns = (0..lead.num_columns())
+			.map(|index| {
+				let arrays: Vec<&dyn Array> =
+					sources.iter().map(|source| source.column(index).as_ref()).collect();
+				kernel::picked(&arrays, picks)
+			})
+			.collect();
+		return RecordBatch::try_new_with_options(
+			schema.clone(),
+			columns,
+			&RecordBatchOptions::new().with_row_count(Some(picks.len())),
+		)
+		.map_err(frame_error);
+	}
+	let mut rows_of: Vec<Vec<usize>> = vec![Vec::new(); sources.len()];
+	let mut slot_of: Vec<(usize, usize)> = Vec::with_capacity(picks.len());
+	for &(source, row) in picks {
+		slot_of.push((source, rows_of[source].len()));
+		rows_of[source].push(row);
+	}
+	let mut offsets: Vec<usize> = Vec::with_capacity(sources.len());
+	let mut parts: Vec<RecordBatch> = Vec::with_capacity(sources.len());
+	let mut next = 0;
+	for (source, rows) in sources.iter().zip(&rows_of) {
+		offsets.push(next);
+		next += rows.len();
+		if !rows.is_empty() {
+			parts.push(take_rows(source, rows)?);
+		}
+	}
+	let glued = concat(&parts)?;
+	let order: Vec<usize> = slot_of.iter().map(|&(source, at)| offsets[source] + at).collect();
+	take_rows(&glued, &order)
+}
+
 pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch> {
 	kernel::rows_in_range(&picks.iter().flatten().copied().collect::<Vec<_>>(), batch.num_rows())?;
 	let pairs: Vec<(usize, usize)> = picks.iter().map(|pick| pick.map_or((1, 0), |index| (0, index))).collect();
@@ -794,8 +835,110 @@ pub mod tests {
 	};
 	use uuid::{Timestamp, Uuid};
 
-	use super::{batch, heap_size, single_row, take_rows};
+	use super::{append, batch, gather, heap_size, single_row, take_rows};
 	use crate::value::column::{builder::ColumnBuilder, factory};
+
+	fn one_row_append_chain(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> RecordBatch {
+		// Must mirror consolidation before gather: one 1-row take per pick, appended in pick order.
+		let mut parts = picks.iter().map(|&(source, row)| take_rows(sources[source], &[row]).unwrap());
+		let first = parts.next().unwrap();
+		parts.fold(first, |merged, part| append(&merged, &part).unwrap())
+	}
+
+	fn cells(batch: &RecordBatch) -> Vec<Vec<Value>> {
+		// Reads every cell through its own field, so a wrong type or row shows up as a different value.
+		(0..batch.num_rows())
+			.map(|row| {
+				(0..batch.num_columns())
+					.map(|index| {
+						ColumnView::try_from((
+							batch.column(index),
+							batch.schema_ref().field(index),
+						))
+						.unwrap()
+						.get_value(row)
+					})
+					.collect()
+			})
+			.collect()
+	}
+
+	fn field_types(batch: &RecordBatch) -> Vec<FieldType> {
+		batch.schema_ref().fields().iter().map(|field| from_field(field).unwrap()).collect()
+	}
+
+	#[test]
+	fn gather_keeps_pick_order_across_sources_of_one_schema() {
+		// A pick must land on its own source and row, otherwise consolidation emits a neighbour's row.
+		let first = batch(vec![factory::int4("v", [1, 2, 3])]).unwrap();
+		let second = batch(vec![factory::int4("v", [4, 5])]).unwrap();
+		let third = batch(vec![factory::int4("v", [6])]).unwrap();
+		let gathered = gather(&[&first, &second, &third], &[(1, 1), (0, 2), (2, 0), (0, 0)]).unwrap();
+		assert_eq!(
+			cells(&gathered),
+			vec![vec![Value::Int4(5)], vec![Value::Int4(3)], vec![Value::Int4(6)], vec![Value::Int4(1)]]
+		);
+		assert!(
+			Arc::ptr_eq(gathered.schema_ref(), first.schema_ref()),
+			"one shared schema must be reused, never rebuilt"
+		);
+	}
+
+	#[test]
+	fn gather_over_mixed_nullability_equals_the_one_row_append_chain() {
+		// Sources that differ only in nullability must come out typed and ordered exactly as the 1-row chain
+		// did.
+		let optional = batch(vec![factory::int4_optional("v", [Some(4), None, Some(6)])]).unwrap();
+		let plain = batch(vec![factory::int4("v", [1, 2, 3])]).unwrap();
+		let sources = [&optional, &plain];
+		let picks = [(0, 1), (1, 2), (0, 0), (1, 0)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
+
+	#[test]
+	fn gather_over_mixed_decimals_widens_only_for_picked_rows() {
+		// A row that is not picked must never widen the type, or a cancelled row would change the output
+		// schema.
+		let decimal = |text: &str| Decimal::from_str(text).unwrap();
+		let narrow = batch(vec![factory::decimal(
+			"d",
+			Precision::new(5),
+			Scale::new(2),
+			[decimal("1.25"), decimal("2.50")],
+		)])
+		.unwrap();
+		let wide = batch(vec![factory::decimal(
+			"d",
+			Precision::new(20),
+			Scale::new(4),
+			[decimal("3.1250"), decimal("1234567890123456.0001")],
+		)])
+		.unwrap();
+		let sources = [&narrow, &wide];
+		let picks = [(0, 1), (1, 0), (0, 0)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
+
+	#[test]
+	fn gather_over_any_columns_with_nones_equals_the_one_row_append_chain() {
+		// An Any column's none typing depends on the rows it holds, so gather must see the same rows as the
+		// chain.
+		let first = batch(vec![factory::any_optional("x", [Some(Value::Int4(5)), None])]).unwrap();
+		let second =
+			batch(vec![factory::any_optional("x", [None, Some(Value::Utf8("w".to_string()))])]).unwrap();
+		let sources = [&first, &second];
+		let picks = [(0, 1), (1, 0), (1, 1)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
 
 	pub(super) fn column(batch: &RecordBatch, index: usize) -> (FieldRef, ArrayRef) {
 		(batch.schema_ref().fields()[index].clone(), batch.column(index).clone())
