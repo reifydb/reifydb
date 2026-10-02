@@ -58,7 +58,7 @@ use reifydb_value::{
 	count::Count,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::{error, trace};
+use tracing::trace;
 
 use crate::{
 	accumulator::StatementMetricsAccumulator,
@@ -151,8 +151,9 @@ impl MetricsFlushActor {
 			deletes.len(),
 		);
 
-		self.record_writes(state, writes, version);
-		self.record_deletes(state, deletes, version);
+		self.record_writes(state, writes, version).expect("metrics must read prior versions for write sizes");
+		self.record_deletes(state, deletes, version)
+			.expect("metrics must read prior versions for delete sizes");
 		advance_max_version(&mut state.max_version, version);
 	}
 
@@ -173,52 +174,57 @@ impl MetricsFlushActor {
 	}
 
 	#[inline]
-	fn record_writes(&self, state: &mut MetricsFlushActorState, writes: &[MultiWrite], version: CommitVersion) {
+	fn record_writes(
+		&self,
+		state: &mut MetricsFlushActorState,
+		writes: &[MultiWrite],
+		version: CommitVersion,
+	) -> Result<()> {
 		let keys: Vec<EncodedKey> = writes.iter().map(|write| write.key.clone()).collect();
-		let pre_sizes = self.read_prior_sizes(&keys, version);
+		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		record_each_write(state, writes, &pre_sizes);
+		Ok(())
 	}
 
 	#[inline]
-	fn record_deletes(&self, state: &mut MetricsFlushActorState, deletes: &[MultiDelete], version: CommitVersion) {
+	fn record_deletes(
+		&self,
+		state: &mut MetricsFlushActorState,
+		deletes: &[MultiDelete],
+		version: CommitVersion,
+	) -> Result<()> {
 		let keys: Vec<EncodedKey> = deletes.iter().map(|delete| delete.key.clone()).collect();
-		let pre_sizes = self.read_prior_sizes(&keys, version);
+		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		for delete in deletes {
-			if let Err(e) = state.storage_writer.record_delete(
+			state.storage_writer.record_delete(
 				Tier::Buffer,
 				delete.key.as_ref(),
 				pre_sizes.get(&delete.key).copied(),
-			) {
-				error!("Failed to record delete: {}", e);
-			}
+			);
 		}
+		Ok(())
 	}
 
 	#[inline]
-	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> HashMap<EncodedKey, u64> {
+	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<HashMap<EncodedKey, u64>> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 && !keys.is_empty() {
-			match self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1)) {
-				Ok(rows) => {
-					for (key, result) in rows {
-						match result {
-							VersionedGetResult::Value {
-								value,
-								..
-							} => {
-								pre_sizes.insert(key, value.len() as u64);
-							}
-							VersionedGetResult::Tombstone => {
-								pre_sizes.insert(key, 0);
-							}
-							VersionedGetResult::NotFound => {}
-						}
+			for (key, result) in self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1))? {
+				match result {
+					VersionedGetResult::Value {
+						value,
+						..
+					} => {
+						pre_sizes.insert(key, value.len() as u64);
 					}
+					VersionedGetResult::Tombstone => {
+						pre_sizes.insert(key, 0);
+					}
+					VersionedGetResult::NotFound => {}
 				}
-				Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 			}
 		}
-		pre_sizes
+		Ok(pre_sizes)
 	}
 
 	fn process_cdc_written(&self, state: &mut MetricsFlushActorState, event: CdcWrittenEvent) {
@@ -226,9 +232,7 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) = state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes) {
-				error!("Failed to record cdc: {}", e);
-			}
+			state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes);
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
@@ -238,14 +242,7 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) = state.cdc_writer.record_compaction(
-				entry.id,
-				entry.key_bytes,
-				entry.value_bytes,
-				entry.count,
-			) {
-				error!("Failed to record cdc drop: {}", e);
-			}
+			state.cdc_writer.record_compaction(entry.id, entry.key_bytes, entry.value_bytes, entry.count);
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
@@ -254,42 +251,31 @@ impl MetricsFlushActor {
 fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
 	for write in writes {
 		let pre_value_bytes = pre_sizes.get(&write.key).copied();
-		if let Err(e) = state.storage_writer.record_write(
-			Tier::Buffer,
-			write.key.as_ref(),
-			write.value_bytes,
-			pre_value_bytes,
-		) {
-			error!("Failed to record write: {}", e);
-		}
+		state.storage_writer.record_write(Tier::Buffer, write.key.as_ref(), write.value_bytes, pre_value_bytes);
 	}
 }
 
 #[inline]
 fn record_evictions(state: &mut MetricsFlushActorState, evictions: &[MultiEviction]) {
 	for eviction in evictions {
-		if let Err(e) = state.storage_writer.record_eviction(
+		state.storage_writer.record_eviction(
 			Tier::Buffer,
 			eviction.key.as_ref(),
 			eviction.value_bytes.as_bytes(),
 			eviction.current,
-		) {
-			error!("Failed to record eviction: {}", e);
-		}
+		);
 	}
 }
 
 #[inline]
 fn record_persists(state: &mut MetricsFlushActorState, persists: &[MultiPersist]) {
 	for persist in persists {
-		if let Err(e) = state.storage_writer.record_write(
+		state.storage_writer.record_write(
 			Tier::Persistent,
 			persist.key.as_ref(),
 			persist.value_bytes.as_bytes(),
 			None,
-		) {
-			error!("Failed to record persist: {}", e);
-		}
+		);
 	}
 }
 

@@ -2,10 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::change::Change;
-use reifydb_testing_chaos::operator::event::Row;
-#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::operator::{
-	event::{ChaosBatch, ChaosEvent},
+	event::{ChaosBatch, ChaosEvent, Row},
 	view::{MaterializedRow, MaterializedView, OutputKey, RowKey},
 };
 use reifydb_value::value::{

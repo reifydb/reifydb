@@ -13,7 +13,6 @@ pub struct Row {
 	pub shape: RowShape,
 }
 
-#[allow(clippy::disallowed_types)]
 #[derive(Debug, Clone)]
 pub enum ChaosEvent {
 	Insert {
@@ -31,7 +30,6 @@ pub enum ChaosEvent {
 	},
 }
 
-#[allow(clippy::disallowed_types)]
 impl ChaosEvent {
 	pub fn row_number(&self) -> RowNumber {
 		match self {
@@ -80,21 +78,18 @@ impl ChaosEvent {
 	}
 }
 
-#[allow(clippy::disallowed_types)]
 #[derive(Debug, Clone)]
 pub struct ChaosBatch {
 	pub events: Vec<ChaosEvent>,
 }
 
 impl ChaosBatch {
-	#[allow(clippy::disallowed_types)]
 	pub fn new(events: Vec<ChaosEvent>) -> Self {
 		Self {
 			events,
 		}
 	}
 
-	#[allow(clippy::disallowed_types)]
 	pub fn iter(&self) -> Iter<'_, ChaosEvent> {
 		self.events.iter()
 	}
@@ -108,7 +103,6 @@ impl ChaosBatch {
 	}
 }
 
-#[allow(clippy::disallowed_types)]
 impl<'a> IntoIterator for &'a ChaosBatch {
 	type Item = &'a ChaosEvent;
 	type IntoIter = std::slice::Iter<'a, ChaosEvent>;

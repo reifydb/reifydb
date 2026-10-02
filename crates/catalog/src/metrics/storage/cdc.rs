@@ -86,24 +86,16 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		}
 	}
 
-	pub fn record_cdc(&mut self, key: &[u8], value_bytes: ByteSize) -> Result<()> {
+	pub fn record_cdc(&mut self, key: &[u8], value_bytes: ByteSize) {
 		let id = parse_id(key);
 		let key_bytes = ByteSize::from_bytes(key.len() as u64);
 		self.stats.entry(id).or_default().record(key_bytes, value_bytes);
 		self.dirty.insert(id);
-		Ok(())
 	}
 
-	pub fn record_compaction(
-		&mut self,
-		id: MetricsId,
-		key_bytes: ByteSize,
-		value_bytes: ByteSize,
-		count: Count,
-	) -> Result<()> {
+	pub fn record_compaction(&mut self, id: MetricsId, key_bytes: ByteSize, value_bytes: ByteSize, count: Count) {
 		self.stats.entry(id).or_default().record_compaction(key_bytes, value_bytes, count);
 		self.dirty.insert(id);
-		Ok(())
 	}
 
 	pub fn flush(&mut self) -> Result<()> {

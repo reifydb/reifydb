@@ -33,10 +33,8 @@ use reifydb_sdk::flow::operator::{
 	view::{ColumnsView, in_process::InProcessColumnsView},
 	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
 };
-use reifydb_testing_chaos::operator::event::Row as CoreRow;
-#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::operator::{
-	event::{ChaosBatch, ChaosEvent},
+	event::{ChaosBatch, ChaosEvent, Row as CoreRow},
 	view::MaterializedView,
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};

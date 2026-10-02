@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
-#[allow(clippy::disallowed_types)]
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	operator::{
@@ -57,7 +56,6 @@ impl ChaosOutcome {
 		self.batches.iter().map(|b| b.len()).sum()
 	}
 
-	#[allow(clippy::disallowed_types)]
 	pub fn events(&self) -> impl Iterator<Item = &ChaosEvent> {
 		self.batches.iter().flat_map(|b| b.iter())
 	}
