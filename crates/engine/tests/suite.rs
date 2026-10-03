@@ -134,6 +134,8 @@ mod list_param_insert;
 mod lookup_ddl;
 #[path = "lower_filter.rs"]
 mod lower_filter;
+#[path = "lower_map.rs"]
+mod lower_map;
 #[path = "map_ends_in_a_comment.rs"]
 mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]

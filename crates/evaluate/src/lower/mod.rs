@@ -46,7 +46,7 @@ use crate::{
 		logic::execute_logical_op,
 		prefix::prefix_apply,
 	},
-	lower::{error::from_datafusion, schema::positional_schema},
+	lower::{cast::lower_cast, error::from_datafusion, schema::positional_schema},
 };
 
 pub const CLAIMED: &[&str] = &[
@@ -449,7 +449,7 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 				field: Arc::new(inner.field.as_ref().clone().with_name(alias.alias.name())),
 			})
 		}
-		Expression::Cast(cast) => cast::lower_cast(ctx, operator, expression, cast),
+		Expression::Cast(cast) => lower_cast(ctx, operator, expression, cast),
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

@@ -17,7 +17,7 @@ use reifydb_routine_abi::{
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::value::value_type::{ValueType, field::from_field};
 
-use crate::common::{Env, batch, call, column, none, number, registry, rows, strings};
+use crate::common::{Env, and, batch, between, call, column, none, number, registry, rows, strings};
 
 struct WrongReturnType {
 	info: RoutineInfo,
@@ -210,4 +210,21 @@ fn an_all_none_call_into_a_non_propagating_routine_falls_back_with_the_old_type(
 
 	assert_eq!(lowered, old);
 	assert_eq!(from_field(&lowered.0).unwrap().value_type, None);
+}
+
+#[test]
+fn a_fixed_type_routine_lowers_with_the_rest_of_its_expression() {
+	// An exempt routine must not force a fallback, or the lowered between beside it errors as the old path does.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let input = batch(vec![factory::int4("a", [1, 2, 3]), factory::int4_optional("v", [Some(1), Some(5), None])]);
+	let expression = and(
+		call("is::type", vec![column("a"), column("int4")]),
+		between(column("v"), number("2"), number("10")),
+	);
+
+	let lowered = env.lowered(&expression, input.clone()).unwrap();
+	let old = env.old(&expression, input).unwrap_err();
+
+	assert_eq!(strings(&lowered), vec!["false", "true", "none"]);
+	assert_eq!(old.code, "OPERATOR_028");
 }
