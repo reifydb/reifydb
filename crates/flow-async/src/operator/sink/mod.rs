@@ -6,8 +6,6 @@ pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;
 
-use std::collections::HashMap;
-
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
@@ -17,6 +15,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
+	internal_err,
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_flow::error::FlowSinkError;
@@ -94,26 +93,32 @@ pub(crate) fn decode_dictionary_columns(columns: &mut RecordBatch, host: &mut dy
 
 	let mut decoded: Vec<(FieldRef, ArrayRef)> =
 		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
-	let mut resolved: HashMap<(DictionaryId, DictionaryEntryId), Value> = HashMap::new();
 	for (col_pos, dictionary, value_type) in &dict_columns {
 		let (field, array) = &decoded[*col_pos];
 		let column = ColumnView::try_from((array, field.as_ref()))?;
 		let row_count = column.len();
+		let entry_ids: Vec<Option<DictionaryEntryId>> = (0..row_count)
+			.map(|row_idx| DictionaryEntryId::from_value(&column.get_value(row_idx)))
+			.collect();
+		let present: Vec<DictionaryEntryId> = entry_ids.iter().flatten().copied().collect();
+		let values = if present.is_empty() {
+			Vec::new()
+		} else {
+			host.dictionary_get_many(*dictionary, &present)?
+		};
+		if values.len() != present.len() {
+			return internal_err!(
+				"a dictionary batch get answered {} values for {} ids",
+				values.len(),
+				present.len()
+			);
+		}
+		let mut answers = values.into_iter();
 		let mut new_data = ColumnBuilder::with_capacity(value_type.clone(), row_count);
 
-		for row_idx in 0..row_count {
-			let id_value = column.get_value(row_idx);
-			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => match resolved.get(&(*dictionary, entry_id)) {
-					Some(value) => value.clone(),
-					None => match host.dictionary_get(*dictionary, entry_id)? {
-						Some(value) => {
-							resolved.insert((*dictionary, entry_id), value.clone());
-							value
-						}
-						None => Value::none(),
-					},
-				},
+		for entry_id in &entry_ids {
+			let value = match entry_id {
+				Some(_) => answers.next().flatten().unwrap_or_else(Value::none),
 				None => Value::none(),
 			};
 			new_data.push_value(value);

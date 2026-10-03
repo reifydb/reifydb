@@ -218,11 +218,13 @@ impl<T: Intern> Intern for TestingTxn<T> {
 		}
 	}
 
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		match self.hooks.on_find(dictionary.id) {
-			Outcome::Land => self.txn.find(dictionary, value),
-			Outcome::Err(error) => Err(error),
+	fn find_many(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		for _ in values {
+			if let Outcome::Err(error) = self.hooks.on_find(dictionary.id) {
+				return Err(error);
+			}
 		}
+		self.txn.find_many(dictionary, values)
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
@@ -363,15 +365,19 @@ impl Intern for TestingTx {
 		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())
 	}
 
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let Some(position) = self
-			.dictionary_values
-			.get(&dictionary.id)
-			.and_then(|values| values.iter().position(|existing| existing == value))
-		else {
-			return Ok(None);
-		};
-		DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
+	fn find_many(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		values.iter()
+			.map(|value| {
+				let Some(position) = self
+					.dictionary_values
+					.get(&dictionary.id)
+					.and_then(|stored| stored.iter().position(|existing| existing == value))
+				else {
+					return Ok(None);
+				};
+				DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
+			})
+			.collect()
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {

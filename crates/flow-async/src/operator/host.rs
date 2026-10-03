@@ -130,6 +130,22 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		values.iter().map(|value| self.dictionary_find(dictionary, value)).collect()
+	}
+
+	fn dictionary_get_many(
+		&mut self,
+		dictionary: DictionaryId,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		ids.iter().map(|&id| self.dictionary_get(dictionary, id)).collect()
+	}
+
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
@@ -542,6 +558,28 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		match self.txn.find_dictionary(dictionary) {
 			Some(dict) => self.txn.get_from_dictionary(&dict, id),
 			None => Ok(None),
+		}
+	}
+
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.find_many_in_dictionary(&dict, values),
+			None => Ok(vec![None; values.len()]),
+		}
+	}
+
+	fn dictionary_get_many(
+		&mut self,
+		dictionary: DictionaryId,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.get_many_from_dictionary(&dict, ids),
+			None => Ok(vec![None; ids.len()]),
 		}
 	}
 }

@@ -79,7 +79,7 @@ pub trait Lookup {
 pub trait Intern {
 	fn intern(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId>;
 
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
+	fn find_many(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>>;
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 }

@@ -215,8 +215,8 @@ impl Intern for FlowTransaction<'_> {
 		self.tx.insert_into_dictionary(dictionary, value)
 	}
 
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		self.tx.find_in_dictionary(dictionary, value)
+	fn find_many(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.tx.find_many_in_dictionary(dictionary, values)
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {

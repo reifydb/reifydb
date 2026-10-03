@@ -26,6 +26,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
+	internal_err,
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::{batch::batch, column::builder::ColumnBuilder},
@@ -421,10 +422,22 @@ pub(crate) fn dictionary_lookup_view_columns(
 		let (field, array) = &encoded[*col_pos];
 		let column = ColumnView::try_from((array, field.as_ref()))?;
 		let row_count = column.len();
+		let values: Vec<Value> = (0..row_count).map(|row_idx| column.get_value(row_idx)).collect();
+		let ids = if values.is_empty() {
+			Vec::new()
+		} else {
+			txn.find_many_in_dictionary(dictionary, &values)?
+		};
+		if ids.len() != values.len() {
+			return internal_err!(
+				"a dictionary batch find answered {} ids for {} values",
+				ids.len(),
+				values.len()
+			);
+		}
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for row_idx in 0..row_count {
-			let value = column.get_value(row_idx);
-			let id = txn.find_in_dictionary(dictionary, &value)?.ok_or_else(|| {
+		for id in ids {
+			let id = id.ok_or_else(|| {
 				Error::from(FlowSinkError::DictionaryEntryNotFound {
 					dictionary_id: format!("{:?}", dictionary.id),
 					column: view.columns()[*col_pos].name.to_string(),
