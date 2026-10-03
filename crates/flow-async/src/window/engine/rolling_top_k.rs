@@ -161,9 +161,7 @@ where
 				for ((_, value), (row_number, _)) in snapshot.into_iter().zip(rows) {
 					out.push((row_number, value));
 				}
-				for key in &keys {
-					store.remove_row_number(entry.group_id, key)?;
-				}
+				store.remove_row_numbers(entry.group_id, &keys)?;
 			}
 			remove(store, &buffer_key)?;
 			remove(store, &emit_key)?;
@@ -502,9 +500,7 @@ where
 					value: (*prior_out).clone(),
 				});
 			}
-			for key in &removed_keys {
-				store.remove_row_number(group_slot.group_id, key)?;
-			}
+			store.remove_row_numbers(group_slot.group_id, &removed_keys)?;
 
 			if group_slot.buffer.is_empty() {
 				remove(
