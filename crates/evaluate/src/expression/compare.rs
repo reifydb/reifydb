@@ -160,7 +160,7 @@ pub(crate) fn is_family(ty: &ValueType) -> bool {
 	matches!(ty, ValueType::Decimal { .. })
 }
 
-fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
+pub(crate) fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
 	if is_family(left) || is_family(right) {
 		if left.is_floating_point() || right.is_floating_point() {
 			return (left.is_number() && right.is_number()).then_some(ValueType::Float8);
@@ -230,7 +230,7 @@ macro_rules! widen {
 	};
 }
 
-fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Result<ArrayRef> {
+pub(crate) fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Result<ArrayRef> {
 	let view = ColumnView::try_from(column)?;
 	if view.get_type().inner_type() == target {
 		return Ok(column.1.clone());

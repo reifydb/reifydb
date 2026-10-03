@@ -115,7 +115,7 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::Filter(node) => transform::compile_filter(node, rx, context),
 		RqlQueryPlan::Gate(node) => {
 			let input_node = compile(*node.input, rx, context);
-			Box::new(FilterNode::new(input_node, node.conditions))
+			Box::new(FilterNode::new(input_node, node.conditions, "gate"))
 		}
 		RqlQueryPlan::Map(node) => transform::compile_map(node, rx, context),
 		RqlQueryPlan::Extend(node) => transform::compile_extend(node, rx, context),
