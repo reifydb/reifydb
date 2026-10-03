@@ -5,15 +5,19 @@ use std::sync::Arc;
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::factory;
+use reifydb_core::value::{batch::empty_batch, column::factory};
+use reifydb_evaluate::{
+	expression::{compile::compile_expression, context::CompileContext},
+	lower::LoweredExpr,
+};
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 	registry::Routines,
 };
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::value_type::{ValueType, field::from_field};
 
-use crate::common::{Env, batch, call, column, registry, rows, strings};
+use crate::common::{Env, batch, call, column, none, number, registry, rows, strings};
 
 struct WrongReturnType {
 	info: RoutineInfo,
@@ -170,4 +174,42 @@ fn wrong_return_type_trips_the_output_check() {
 	let env = Env::with_routines(routines, RuntimeContext::testing(0, 0));
 
 	let _ = env.lowered(&call("test::wrong_type", vec![]), rows(2));
+}
+
+#[test]
+fn a_row_changing_routine_falls_back_and_keeps_its_rows() {
+	// DataFusion refuses a routine whose output length differs from its input, so such a routine must run on the
+	// old path.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let expression = call("gen::series", vec![number("1"), number("3")]);
+	let mut ctx = env.ctx(empty_batch());
+	ctx.row_count = 1;
+
+	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
+	let old = compile_expression(
+		&CompileContext {
+			symbols: &env.symbols,
+		},
+		&expression,
+	)
+	.unwrap()
+	.execute(&ctx)
+	.unwrap();
+
+	assert_eq!(lowered, old);
+	assert_eq!(strings(&lowered), vec!["1", "2", "3"]);
+}
+
+#[test]
+fn an_all_none_call_into_a_non_propagating_routine_falls_back_with_the_old_type() {
+	// clamp declares float8 for untyped nones but answers an untyped none, so the plan must never declare its
+	// field.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let expression = call("math::clamp", vec![none(), none(), none()]);
+
+	let lowered = env.lowered(&expression, rows(2)).unwrap();
+	let old = env.old(&expression, rows(2)).unwrap();
+
+	assert_eq!(lowered, old);
+	assert_eq!(from_field(&lowered.0).unwrap().value_type, None);
 }
