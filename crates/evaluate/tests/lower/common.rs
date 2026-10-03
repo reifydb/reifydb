@@ -7,11 +7,11 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
-		AccessObjectExpression, AddExpression, AndExpression, BetweenExpression, CallExpression,
-		ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, FieldAccessExpression,
-		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression,
-		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
-		RemExpression, SubExpression, VariableExpression, XorExpression,
+		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		CallExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
+		FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
+		LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression, OrExpression,
+		PrefixExpression, PrefixOperator, RemExpression, SubExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -304,6 +304,14 @@ pub fn field_access(object: Expression, field: &str) -> Expression {
 		object: Box::new(object),
 		field: frag(field),
 		fragment: frag("."),
+	})
+}
+
+pub fn alias(name: &str, inner: Expression) -> Expression {
+	Expression::Alias(AliasExpression {
+		alias: IdentExpression(frag(name)),
+		expression: Box::new(inner),
+		fragment: frag(":"),
 	})
 }
 

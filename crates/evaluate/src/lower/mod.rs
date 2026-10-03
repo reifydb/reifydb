@@ -10,7 +10,7 @@ mod schema;
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, new_empty_array};
+use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions, new_empty_array};
 use arrow_schema::{FieldRef, SchemaRef};
 use datafusion_expr::{
 	BinaryExpr, Expr, Operator, ScalarUDF, ScalarUDFImpl, Signature, Volatility, execution_props::ExecutionProps,
@@ -70,6 +70,7 @@ pub const CLAIMED: &[&str] = &[
 	"Call",
 	"Variable",
 	"FieldAccess(Variable)",
+	"Alias",
 ];
 
 pub fn kind(expression: &Expression) -> &'static str {
@@ -146,6 +147,8 @@ struct Node {
 
 enum Stop<'e> {
 	Unsupported(&'e Expression),
+	RowChanging,
+	AllNone,
 	Error(Error),
 }
 
@@ -173,11 +176,29 @@ impl LoweredExpr {
 				expr,
 				field,
 			} => {
-				let value =
-					expr.evaluate(&ctx.batch).map_err(|err| from_datafusion(self.operator, err))?;
+				let sized;
+				let batch = if ctx.batch.num_columns() == 0 && ctx.batch.num_rows() != ctx.row_count {
+					sized = RecordBatch::try_new_with_options(
+						ctx.batch.schema(),
+						vec![],
+						&RecordBatchOptions::new().with_row_count(Some(ctx.row_count)),
+					)
+					.map_err(|err| from_datafusion(self.operator, err.into()))?;
+					&sized
+				} else {
+					&ctx.batch
+				};
+				let value = expr.evaluate(batch).map_err(|err| from_datafusion(self.operator, err))?;
 				let array = value
 					.into_array(ctx.row_count)
 					.map_err(|err| from_datafusion(self.operator, err))?;
+				if !field.is_nullable() && array.logical_null_count() > 0 {
+					let mut field_type = from_field(field)?;
+					field_type.value_type = field_type
+						.value_type
+						.map(|value_type| ValueType::Option(Box::new(value_type)));
+					return Ok((Arc::new(to_field(field.name(), &field_type)), array));
+				}
 				Ok((field.clone(), array))
 			}
 			Plan::Old(compiled) => compiled.execute(ctx),
@@ -216,6 +237,7 @@ impl LoweredExpr {
 				assert_not_claimed(self.operator, node);
 				self.old_plan(ctx)
 			}
+			Err(Stop::RowChanging) | Err(Stop::AllNone) => self.old_plan(ctx),
 		}
 	}
 
@@ -240,6 +262,7 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		| Expression::Constant(_)
 		| Expression::Variable(_)
 		| Expression::FieldAccess(_) => None,
+		Expression::Alias(e) => first_unclaimed(&e.expression),
 		Expression::Prefix(e) => first_unclaimed(&e.expression),
 		Expression::And(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::Or(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
@@ -416,6 +439,13 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			}
 			_ => Err(Stop::Unsupported(expression)),
 		},
+		Expression::Alias(alias) => {
+			let inner = lower_node(ctx, operator, &alias.expression)?;
+			Ok(Node {
+				expr: inner.expr,
+				field: Arc::new(inner.field.as_ref().clone().with_name(alias.alias.name())),
+			})
+		}
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "lower/alias.rs"]
+mod alias;
 #[path = "lower/arith.rs"]
 mod arith;
 #[path = "lower/common.rs"]

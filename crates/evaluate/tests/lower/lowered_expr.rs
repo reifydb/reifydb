@@ -7,8 +7,8 @@ use reifydb_core::{expression::PrefixOperator, interface::identifier::ColumnObje
 use reifydb_evaluate::lower::{CLAIMED, LoweredExpr, kind};
 
 use crate::common::{
-	ARITH_OPS, COMPARE_OPS, Env, access, and, arith, batch, between, boolean, call, column, compare, field_access,
-	frag, not, number, or, prefix, rows, strings, variable, xor,
+	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, column, compare,
+	field_access, frag, not, number, or, prefix, rows, strings, variable, xor,
 };
 
 #[test]
@@ -37,6 +37,7 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Call",
 		"Variable",
 		"FieldAccess(Variable)",
+		"Alias",
 	]
 	.into_iter()
 	.collect();
@@ -62,6 +63,7 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.push(call("math::abs", vec![number("1")]));
 	samples.push(variable("$x"));
 	samples.push(field_access(variable("$x"), "a"));
+	samples.push(alias("x", number("1")));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();

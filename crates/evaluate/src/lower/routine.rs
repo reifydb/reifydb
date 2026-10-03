@@ -29,7 +29,10 @@ use crate::{
 	Result,
 	error::EvaluateError,
 	expression::{compile::type_column, context::EvalContext},
-	lower::{Lowered, Node, empty_of, error::into_external, literal, lower_node, typed_field, udf, volatile},
+	lower::{
+		Lowered, Node, Stop, empty_of, error::into_external, is_untyped_none, literal, lower_node, typed_field,
+		udf, volatile,
+	},
 };
 
 type DfResult<T> = std::result::Result<T, DataFusionError>;
@@ -49,6 +52,9 @@ pub(super) fn lower_call<'e>(
 		}
 		.into()
 	})?;
+	if function.changes_row_count() {
+		return Err(Stop::RowChanging);
+	}
 	function.arity().check(&call.func.0, call.args.len()).map_err(Error::from)?;
 	let type_positions = function.type_argument_positions();
 	let args = call
@@ -69,6 +75,15 @@ pub(super) fn lower_call<'e>(
 		})
 		.collect::<Lowered<'e, Vec<Node>>>()?;
 	let fields: Vec<FieldRef> = args.iter().map(|node| node.field.clone()).collect();
+	if !function.propagates_options() && !fields.is_empty() {
+		let mut all_none = true;
+		for field in &fields {
+			all_none &= is_untyped_none(field)?;
+		}
+		if all_none {
+			return Err(Stop::AllNone);
+		}
+	}
 	let field = routine_field(display_label(expression).text(), function.as_ref(), &fields)?;
 	Ok(Node {
 		expr: udf(
