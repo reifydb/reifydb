@@ -132,7 +132,7 @@ mod tests {
 		state::timer::{StateStore, TimerKind},
 	};
 	use reifydb_flow_async::{
-		operator::host::{HostContext, TxnHostContext},
+		operator::host::TxnHostContext,
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -140,7 +140,7 @@ mod tests {
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::{InProcessContext, OperatorId};
-	use crate::flow::operator::context::GuestEmitContext;
+	use crate::flow::operator::context::{GuestContext, GuestEmitContext, GuestState, Windowed};
 
 	const NODE: OperatorId = OperatorId(1);
 
@@ -184,9 +184,11 @@ mod tests {
 		let written = stored_key("entry");
 		host.state_set(&written, EncodedPodRow::new(&[7])).unwrap();
 
-		let from_get_many: Vec<GroupStateKey> =
-			host.state_get_many(from_ref(&written)).unwrap().into_iter().map(|(key, _)| key).collect();
-		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
+		assert_eq!(
+			host.state_get_many(from_ref(&written)).unwrap(),
+			vec![Some(EncodedPodRow::new(&[7]))],
+			"state_get_many must answer the key that was written"
+		);
 
 		let from_range: Vec<GroupStateKey> = host
 			.group_sweep(GroupId::ROOT, KeyspaceMask::all(), None)
@@ -197,12 +199,14 @@ mod tests {
 		assert_eq!(from_range, vec![written.clone()], "a group sweep must return the key that was written");
 
 		let mut visited = Vec::new();
-		host.state_get_many_visit(from_ref(&written), &mut |key, _| {
-			visited.push(key);
-			Ok(())
-		})
-		.unwrap();
-		assert_eq!(visited, vec![written], "state_get_many_visit must visit the key that was written");
+		let mut guest = InProcessContext::new(&mut host, NODE);
+		GuestContext::<Windowed>::window_state(&mut guest)
+			.get_many_bytes_visit(from_ref(&written), &mut |key, _| {
+				visited.push(key);
+				Ok(())
+			})
+			.unwrap();
+		assert_eq!(visited, vec![written], "a guest batch read must visit the key that was written");
 	}
 
 	#[test]

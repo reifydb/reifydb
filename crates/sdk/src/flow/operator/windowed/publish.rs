@@ -13,8 +13,11 @@ use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::engine::{PublishKey, publish::PublishState},
 };
-use reifydb_value::value::{
-	Value, column_view::ColumnView, datetime::DateTime, row_number::RowNumber, system_columns::user_columns,
+use reifydb_value::{
+	error::Error as ValueError,
+	value::{
+		Value, column_view::ColumnView, datetime::DateTime, row_number::RowNumber, system_columns::user_columns,
+	},
 };
 
 use crate::{
@@ -99,13 +102,15 @@ pub(super) fn load_publish_states<C: GuestContext>(
 	let encoded: Vec<GroupStateKey> = by_key.keys().cloned().collect();
 	let mut states: HashMap<GroupId, PublishState> = HashMap::with_capacity(keys.len());
 	let mut sizes = HashMap::new();
-	store.state_get_many_visit(&encoded, &mut |key, bytes| {
-		if let Some(group) = by_key.get(&key) {
-			sizes.insert(key, bytes.byte_size());
-			states.insert(*group, decode::<PublishState>(&bytes)?);
+	for (key, bytes) in encoded.iter().zip(store.state_get_many(&encoded)?) {
+		let Some(bytes) = bytes else {
+			continue;
+		};
+		if let Some(group) = by_key.get(key) {
+			sizes.insert(key.clone(), bytes.byte_size());
+			states.insert(*group, decode::<PublishState>(&bytes).map_err(ValueError::from)?);
 		}
-		Ok(())
-	})?;
+	}
 	for key in &encoded {
 		store.state_classify(key, sizes.get(key).copied());
 	}

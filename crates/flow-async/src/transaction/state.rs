@@ -93,30 +93,29 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch<TaggedKey>> {
-		let version = self.version();
-		let mut items: Vec<MultiVersionRow<TaggedKey>> = Vec::with_capacity(keys.len());
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
-
-		for key in keys {
-			let encoded_key = scoped_key(id, key);
-			match self.lookup_overlays(&encoded_key) {
-				Some(None) => continue,
-				Some(Some(bytes)) => items.push(MultiVersionRow {
-					key: TaggedKey::decode(&encoded_key).expect(UNDECODABLE_STATE_KEY),
-					bytes,
-					version,
-				}),
-				None => to_batch.push(encoded_key),
+	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		let mut answers: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
+		let mut missed: Vec<usize> = Vec::new();
+		for (slot, key) in keys.iter().enumerate() {
+			match self.lookup_overlays(&scoped_key(id, key)) {
+				Some(overlay) => answers.push(overlay.map(EncodedPodRow::from)),
+				None => {
+					answers.push(None);
+					missed.push(slot);
+				}
 			}
 		}
 
-		self.fetch_state_external(to_batch, &mut items)?;
-
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
+		let fetched = if missed.len() == keys.len() {
+			self.fetch_state(id, keys)?
+		} else {
+			let misses: Vec<GroupStateKey> = missed.iter().map(|slot| keys[*slot].clone()).collect();
+			self.fetch_state(id, &misses)?
+		};
+		for (slot, row) in missed.into_iter().zip(fetched) {
+			answers[slot] = row.map(EncodedPodRow::from);
+		}
+		Ok(answers)
 	}
 
 	fn state_classify(&mut self, id: OperatorId, key: &GroupStateKey, pre: Option<ByteSize>) {

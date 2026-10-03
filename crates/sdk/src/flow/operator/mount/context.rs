@@ -224,10 +224,18 @@ impl GuestState for InProcessState<'_> {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		for key in keys {
+			framed(key)?;
+		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
-		unsafe { (*self.host).state_get_many_visit(keys, &mut |k, row| Ok(visit(k, row)?)) }.map_err(to_sdk_err)
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		let answers = unsafe { (*self.host).state_get_many(keys) }.map_err(to_sdk_err)?;
+		for (key, row) in keys.iter().zip(answers) {
+			if let Some(row) = row {
+				visit(key.clone(), row)?;
+			}
+		}
+		Ok(())
 	}
 
 	fn range_bytes_visit(

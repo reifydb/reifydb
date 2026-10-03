@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
@@ -154,11 +154,7 @@ impl FlowTransaction for TestFlowTransaction {
 		Box::new(iter::empty())
 	}
 
-	fn fetch_state_external(
-		&mut self,
-		_keys: Vec<EncodedKey>,
-		_items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()> {
-		Ok(())
+	fn fetch_state(&mut self, _id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		Ok(vec![None; keys.len()])
 	}
 }

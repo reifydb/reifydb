@@ -71,11 +71,7 @@ pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
 pub trait StateStore {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>>;
 
 	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 

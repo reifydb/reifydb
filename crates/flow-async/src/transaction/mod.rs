@@ -20,7 +20,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -157,11 +157,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>;
 
-	fn fetch_state_external(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()>;
+	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>>;
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {
 		None

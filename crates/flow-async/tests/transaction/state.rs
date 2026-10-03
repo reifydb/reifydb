@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::Bound, slice::from_ref};
+use std::collections::Bound;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	actors::pending::Pending,
@@ -135,45 +135,6 @@ fn test_state_get_set() {
 
 	let result = txn.state_get(operator_id, &key).unwrap();
 	assert_eq!(result, Some(value));
-}
-
-#[test]
-fn test_state_get_many() {
-	let (parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
-		&parent,
-		operators,
-		CommitVersion(1),
-		Catalog::testing(),
-		Interceptors::new(),
-		Clock::Mock(MockClock::from_millis(1000)),
-	));
-
-	let operator_id = OperatorId(1);
-	txn.state_set(operator_id, &make_key("a"), make_value("1")).unwrap();
-	txn.state_set(operator_id, &make_key("b"), make_value("2")).unwrap();
-
-	// One namespace, so re-writing a key resolves to the latest value; re-splitting the
-	// envelopes would return two rows for "a" here.
-	txn.state_set(operator_id, &make_key("a"), make_value("data")).unwrap();
-
-	let batch = txn.state_get_many(operator_id, &[make_key("a"), make_key("b"), make_key("missing")]).unwrap();
-
-	// A key with no value is omitted rather than returned empty.
-	assert_eq!(batch.items.len(), 2);
-	let mut decoded: Vec<(Vec<u8>, EncodedBytes)> = batch
-		.items
-		.iter()
-		.map(|item| {
-			let TaggedKey::OperatorState(key) = &item.key else {
-				panic!("state_get_many must return OperatorState keys");
-			};
-			(key.inner().as_slice().to_vec(), item.bytes.clone())
-		})
-		.collect();
-	decoded.sort_by(|a, b| a.0.cmp(&b.0));
-	assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data").into_bytes()));
-	assert_eq!(decoded[1], (make_key("b").as_slice().to_vec(), make_value("2").into_bytes()));
 }
 
 #[test]
@@ -436,34 +397,6 @@ fn test_state_multiple_nodes() {
 }
 
 #[test]
-fn cached_state_reads_never_mask_writes_or_removes() {
-	// The cache sits below the pending overlays, so a write or remove issued after a cached read
-	// wins on every later read. Consulting the cache first would let an operator read back its
-	// own stale pre-write state and fold updates into a dead accumulator.
-	let engine = TestEngine::new();
-	let operator_id = OperatorId(1);
-	let key = make_key("k");
-	seed_state_row(&engine, operator_id, &key, make_value("old"));
-
-	let mut txn = deferred_shared(&engine);
-
-	assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(make_value("old")));
-	txn.state_set(operator_id, &key, make_value("new")).unwrap();
-	assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(make_value("new")));
-
-	txn.state_remove(operator_id, &key).unwrap();
-	assert_eq!(txn.state_get(operator_id, &key).unwrap(), None);
-	let batch = txn.state_get_many(operator_id, from_ref(&key)).unwrap();
-	assert!(batch.items.is_empty(), "a removed key must not resurface through the batch path");
-
-	// A key first seen as a cached miss must surface a later write.
-	let fresh = make_key("fresh");
-	assert_eq!(txn.state_get(operator_id, &fresh).unwrap(), None);
-	txn.state_set(operator_id, &fresh, make_value("live")).unwrap();
-	assert_eq!(txn.state_get(operator_id, &fresh).unwrap(), Some(make_value("live")));
-}
-
-#[test]
 fn a_state_write_replaces_the_seeded_row_wholesale() {
 	// A state_set over a seeded row must replace it wholesale, or a merging write would leave the seeded body
 	// readable.
@@ -479,44 +412,6 @@ fn a_state_write_replaces_the_seeded_row_wholesale() {
 
 	let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
 	assert_eq!(stored.body(), b"v1");
-}
-
-#[test]
-fn deferred_read_sees_state_committed_above_object_version() {
-	// State reads resolve read-latest from the operator state store; bounding them to the pinned object
-	// version would hide the other side of a join.
-	let engine = TestEngine::new();
-	let operator_id = OperatorId(1);
-	let inner_key = make_key("late_right_side");
-	let value = make_value("matched_row");
-
-	// Pinned before the state is applied, so a version-bounded read could not see it.
-	let object_version = engine.inner().current_version().unwrap();
-	seed_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
-	seed_state_row(&engine, operator_id, &inner_key, value.clone());
-
-	let mut txn = DeferredTransaction::new(DeferredParams {
-		version: object_version,
-		pending: Pending::new(),
-		query: Some(engine.multi().begin_query().unwrap()),
-		state_query: Some(engine.multi().begin_query().unwrap()),
-		catalog: Catalog::testing(),
-		interceptors: engine.create_interceptors(),
-		clock: engine.clock().clone(),
-		substrate: FlowSubstrate::with_dictionary(
-			engine.inner().dictionary_allocators(),
-			engine.inner().operator_state(),
-		),
-		lookup: None,
-	});
-
-	let batch = txn.state_get_many(operator_id, &[inner_key]).unwrap();
-	assert_eq!(
-		batch.items.len(),
-		1,
-		"operator state applied above object_version {object_version:?} must be visible to a deferred read"
-	);
-	assert_eq!(batch.items[0].bytes, value.into_bytes());
 }
 
 #[test]

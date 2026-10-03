@@ -80,8 +80,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
-
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
@@ -238,22 +236,8 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_get(self.operator, key)
 	}
 
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		let batch = self.txn.state_get_many(self.operator, keys)?;
-		for r in batch.items {
-			let TaggedKey::OperatorState(decoded) = &r.key else {
-				continue;
-			};
-			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
-				continue;
-			};
-			visit(inner, EncodedPodRow::from(r.bytes))?;
-		}
-		Ok(())
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		self.txn.state_get_many(self.operator, keys)
 	}
 
 	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
@@ -456,18 +440,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {
 		self.txn.catalog().get_config_uint8(key)
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self.txn.state_get_many(self.operator, keys)?;
-		let mut out = Vec::with_capacity(batch.items.len());
-		for r in batch.items {
-			let Some(key) = unscope(&r.key) else {
-				continue;
-			};
-			out.push((key, EncodedPodRow::from(r.bytes)));
-		}
-		Ok(out)
 	}
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {

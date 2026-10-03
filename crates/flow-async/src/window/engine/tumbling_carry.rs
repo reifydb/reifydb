@@ -400,13 +400,15 @@ where
 			by_key.insert((&meta_key_for(group_hash(group)?)).into_group_state_key(), group.clone());
 		}
 		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
-		store.state_get_many_visit(&keys, &mut |key, bytes| {
-			if let Some(group) = by_key.get(&key) {
+		for (key, bytes) in keys.iter().zip(store.state_get_many(&keys)?) {
+			let Some(bytes) = bytes else {
+				continue;
+			};
+			if let Some(group) = by_key.get(key) {
 				meta_loaded.insert(group.clone(), decode::<CarryMeta<S, Carry, Output>>(&bytes)?);
 				meta_stored.insert(group.clone(), bytes);
 			}
-			Ok(())
-		})?;
+		}
 		Ok((meta_loaded, meta_stored))
 	}
 
@@ -569,17 +571,8 @@ mod tests {
 		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
-		fn state_get_many_visit(
-			&mut self,
-			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
-			for key in keys {
-				if let Some(b) = self.data.get(key.as_slice()) {
-					visit(key.clone(), b.clone())?;
-				}
-			}
-			Ok(())
+		fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+			Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 		}
 		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);

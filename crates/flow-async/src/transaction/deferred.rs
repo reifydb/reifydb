@@ -152,7 +152,6 @@ impl DeferredTransaction {
 const NO_OPERATOR_STORE: &str = "flow transaction was built without an operator store";
 const NO_READ_TRANSACTION: &str = "flow transaction was built without a read transaction";
 const UNDECODABLE_KEY: &str = "a key routed to the multi store must decode";
-const EXTERNAL_STATE_FETCH: &str = "external operator state fetch must not fail";
 
 pub(crate) fn deferred_storage_get(
 	operators: Option<&OperatorStore>,
@@ -248,45 +247,20 @@ fn deferred_range_target<'a>(
 	.expect(NO_READ_TRANSACTION)
 }
 
-pub(crate) fn deferred_fetch_state_external(
+pub(crate) fn deferred_fetch_state(
 	operators: Option<&OperatorStore>,
-	version: CommitVersion,
-	keys: Vec<EncodedKey>,
-	items: &mut Vec<MultiVersionRow<TaggedKey>>,
-) {
+	id: OperatorId,
+	keys: &[GroupStateKey],
+) -> Result<Vec<Option<EncodedBytes>>> {
 	if keys.is_empty() {
-		return;
+		return Ok(Vec::new());
 	}
-	let store = operators.expect(NO_OPERATOR_STORE);
-
-	let mut grouped: HashMap<OperatorId, Vec<(usize, EncodedKey)>> = HashMap::new();
-	for (index, encoded_key) in keys.iter().enumerate() {
-		let OperatorScope {
-			operator,
-			inner,
-		} = operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
-		grouped.entry(operator).or_default().push((index, inner));
-	}
-
-	let mut resolved: Vec<Option<EncodedPodRow>> = vec![None; keys.len()];
-	for (operator, entries) in grouped {
-		let inners: Vec<GroupStateKey> =
-			entries.iter().map(|(_, inner)| GroupStateKey::bound_unchecked(inner.clone())).collect();
-		let answers = store.state_get_many(operator, &inners).expect(EXTERNAL_STATE_FETCH);
-		for ((index, _), row) in entries.into_iter().zip(answers) {
-			resolved[index] = row;
-		}
-	}
-
-	for (encoded_key, row) in keys.into_iter().zip(resolved) {
-		if let Some(row) = row {
-			items.push(MultiVersionRow {
-				key: TaggedKey::decode(&encoded_key).expect(UNDECODABLE_KEY),
-				bytes: row.into_bytes(),
-				version,
-			});
-		}
-	}
+	Ok(operators
+		.expect(NO_OPERATOR_STORE)
+		.state_get_many(id, keys)?
+		.into_iter()
+		.map(|row| row.map(EncodedPodRow::into_bytes))
+		.collect())
 }
 
 impl FlowTransaction for DeferredTransaction {
@@ -405,13 +379,8 @@ impl FlowTransaction for DeferredTransaction {
 		)
 	}
 
-	fn fetch_state_external(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()> {
-		deferred_fetch_state_external(self.substrate.operators.as_ref(), self.version, keys, items);
-		Ok(())
+	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		deferred_fetch_state(self.substrate.operators.as_ref(), id, keys)
 	}
 }
 

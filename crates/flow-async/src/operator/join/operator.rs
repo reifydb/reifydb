@@ -1156,7 +1156,7 @@ mod seal_tests {
 			any::TaggedKey,
 			operator::{
 				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
-				state::{KeyspaceId, keyspace_inner_range, node_prefix},
+				state::{GroupStateKey, KeyspaceId, keyspace_inner_range, node_prefix},
 				traits::Keyspace,
 			},
 		},
@@ -1520,12 +1520,8 @@ mod seal_tests {
 			self.inner.storage_range(range, scope, batch_size)
 		}
 
-		fn fetch_state_external(
-			&mut self,
-			keys: Vec<EncodedKey>,
-			items: &mut Vec<MultiVersionRow<TaggedKey>>,
-		) -> Result<()> {
-			self.inner.fetch_state_external(keys, items)
+		fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.inner.fetch_state(id, keys)
 		}
 	}
 

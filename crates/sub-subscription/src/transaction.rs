@@ -20,7 +20,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_flow::error::FlowGraphError;
 use reifydb_flow_async::{
@@ -29,6 +29,7 @@ use reifydb_flow_async::{
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		read::{ReadFrom, read_from},
+		scope::scoped_key,
 		substrate::FlowSubstrate,
 	},
 };
@@ -181,21 +182,12 @@ fn ephemeral_storage_range<'a>(
 	Box::new(query.range_encoded(range, scope, batch_size))
 }
 
-fn ephemeral_fetch_state_external(
+fn ephemeral_fetch_state(
 	state: &HashMap<EncodedKey, EncodedBytes>,
-	version: CommitVersion,
-	keys: Vec<EncodedKey>,
-	items: &mut Vec<MultiVersionRow<TaggedKey>>,
-) {
-	for key in keys {
-		if let Some(bytes) = state.get(&key) {
-			items.push(MultiVersionRow {
-				bytes: bytes.clone(),
-				key: decoded(&key),
-				version,
-			});
-		}
-	}
+	id: OperatorId,
+	keys: &[GroupStateKey],
+) -> Vec<Option<EncodedBytes>> {
+	keys.iter().map(|key| state.get(&scoped_key(id, key)).cloned()).collect()
 }
 
 impl FlowTransaction for EphemeralTransaction {
@@ -288,12 +280,7 @@ impl FlowTransaction for EphemeralTransaction {
 		ephemeral_storage_range(&self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
-	fn fetch_state_external(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()> {
-		ephemeral_fetch_state_external(&self.state, self.version, keys, items);
-		Ok(())
+	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		Ok(ephemeral_fetch_state(&self.state, id, keys))
 	}
 }

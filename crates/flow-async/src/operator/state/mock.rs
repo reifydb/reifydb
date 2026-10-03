@@ -235,17 +235,8 @@ impl StateStore for MockStore {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		Ok(self.data.get(key.as_slice()).cloned())
 	}
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		for key in keys {
-			if let Some(b) = self.data.get(key.as_slice()) {
-				visit(key.clone(), b.clone())?;
-			}
-		}
-		Ok(())
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 	}
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		self.data.insert(key.as_slice().to_vec(), payload);

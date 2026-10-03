@@ -269,7 +269,12 @@ pub(super) extern "C" fn host_state_get_many(
 		}
 
 		match host.state_get_many(&encoded_keys) {
-			Ok(entries) => {
+			Ok(answers) => {
+				let entries = encoded_keys
+					.into_iter()
+					.zip(answers)
+					.filter_map(|(key, row)| row.map(|row| (key, row)))
+					.collect();
 				let handle = state_iterator::create_iterator(iterator_entries(entries));
 
 				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
@@ -779,12 +784,8 @@ mod join_row_expiry_guard_tests {
 			Ok(None)
 		}
 
-		fn state_get_many_visit(
-			&mut self,
-			_keys: &[GroupStateKey],
-			_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
-			Ok(())
+		fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+			Ok(vec![None; keys.len()])
 		}
 
 		fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedPodRow) -> Result<()> {
@@ -894,10 +895,6 @@ mod join_row_expiry_guard_tests {
 
 		fn config_uint8(&self, _key: ConfigKey) -> u64 {
 			0
-		}
-
-		fn state_get_many(&mut self, _keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-			Ok(Vec::new())
 		}
 
 		fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {

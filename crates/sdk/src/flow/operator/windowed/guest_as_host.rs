@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -61,13 +61,13 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.window_state().get_bytes(key)?)
 	}
 
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		self.0.window_state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
-		Ok(())
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
+		self.0.window_state().get_many_bytes_visit(keys, &mut |key, row| {
+			found.insert(key, row);
+			Ok(())
+		})?;
+		Ok(keys.iter().map(|key| found.get(key).cloned()).collect())
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {

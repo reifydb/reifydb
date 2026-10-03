@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -37,7 +37,6 @@ use crate::{
 	timer::{Timer, TimerDue},
 	transaction::{
 		FlowTransaction,
-		scope::scoped_key,
 		state::{StateExtension, StateRange, decode_payload, encode_payload},
 	},
 };
@@ -196,20 +195,22 @@ impl TimerWheel {
 			.filter(|timer| timer.kind.is_maintenance())
 			.map(|timer| index_key(timer.kind, &timer.key))
 			.collect();
-		let mut armed: HashMap<EncodedKey, DateTime> = HashMap::with_capacity(maintenance_indices.len());
-		if !maintenance_indices.is_empty() {
-			for row in txn.state_get_many(operator, &maintenance_indices)?.items {
-				let payload = decode_payload::<DateTime>(&EncodedPodRow::from(row.bytes))?;
-				armed.insert(row.key.encode(), payload);
-			}
-		}
+		let armed: Vec<Option<DateTime>> = if maintenance_indices.is_empty() {
+			Vec::new()
+		} else {
+			txn.state_get_many(operator, &maintenance_indices)?
+				.iter()
+				.map(|row| row.as_ref().map(decode_payload::<DateTime>).transpose())
+				.collect::<Result<_>>()?
+		};
+		let mut armed = armed.into_iter();
 
 		for timer in &due {
 			txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
 			if timer.kind.is_maintenance() {
-				let index = index_key(timer.kind, &timer.key);
-				if armed.get(&scoped_key(operator, &index)) == Some(&timer.due) {
-					txn.state_remove(operator, &index)?;
+				let named = armed.next().flatten();
+				if named == Some(timer.due) {
+					txn.state_remove(operator, &index_key(timer.kind, &timer.key))?;
 				}
 			}
 		}
