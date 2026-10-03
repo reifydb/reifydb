@@ -417,7 +417,6 @@ quote = { version = "=1.0.47" }
 hdrhistogram = { version = "=7.6.0" }
 
 # streaming quantile estimator
-tdigest = { version = "=0.2.3", features = ["use_serde"] }
 
 # WASM runtime
 wasmtime = "=49.0.2"

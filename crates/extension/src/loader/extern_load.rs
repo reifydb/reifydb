@@ -9,7 +9,10 @@ use std::{
 };
 
 use libloading::{Library, Symbol};
-use object::{File as ObjectFile, Object, read::{NameOrOrdinal, ReadCache}};
+use object::{
+	File as ObjectFile, Object,
+	read::{NameOrOrdinal, ReadCache},
+};
 
 use crate::error::ExtensionError;
 
