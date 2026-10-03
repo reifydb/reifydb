@@ -1,0 +1,1494 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+//! Comparison kernels for `Array`s.
+//!
+//! These kernels can leverage SIMD if available on your system.  Currently no runtime
+//! detection is provided, you should enable the specific SIMD intrinsics using
+//! `RUSTFLAGS="-C target-feature=+avx2"` for example.  See the documentation
+//! [here](https://doc.rust-lang.org/stable/core/arch/) for more information.
+//!
+
+use arrow_array::cast::AsArray;
+use arrow_array::types::{ByteArrayType, ByteViewType};
+use arrow_array::{
+    AnyDictionaryArray, Array, ArrowNativeTypeOp, BooleanArray, Datum, FixedSizeBinaryArray,
+    GenericByteArray, GenericByteViewArray, downcast_primitive_array, downcast_run_array,
+};
+use arrow_buffer::bit_util::ceil;
+use arrow_buffer::{ArrowNativeType, BooleanBuffer, BooleanBufferBuilder, NullBuffer};
+use arrow_schema::{ArrowError, DataType};
+use arrow_select::take::take;
+use std::cmp::Ordering;
+use std::ops::Not;
+
+#[derive(Debug, Copy, Clone)]
+enum Op {
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Distinct,
+    NotDistinct,
+}
+
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::Equal => write!(f, "=="),
+            Op::NotEqual => write!(f, "!="),
+            Op::Less => write!(f, "<"),
+            Op::LessEqual => write!(f, "<="),
+            Op::Greater => write!(f, ">"),
+            Op::GreaterEqual => write!(f, ">="),
+            Op::Distinct => write!(f, "IS DISTINCT FROM"),
+            Op::NotDistinct => write!(f, "IS NOT DISTINCT FROM"),
+        }
+    }
+}
+
+/// Perform `left == right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn eq(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::Equal, lhs, rhs)
+}
+
+/// Perform `left != right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn neq(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::NotEqual, lhs, rhs)
+}
+
+/// Perform `left < right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn lt(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::Less, lhs, rhs)
+}
+
+/// Perform `left <= right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn lt_eq(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::LessEqual, lhs, rhs)
+}
+
+/// Perform `left > right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn gt(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::Greater, lhs, rhs)
+}
+
+/// Perform `left >= right` operation on two [`Datum`].
+///
+/// Comparing null values on either side will yield a null in the corresponding
+/// slot of the resulting [`BooleanArray`].
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn gt_eq(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::GreaterEqual, lhs, rhs)
+}
+
+/// Perform `left IS DISTINCT FROM right` operation on two [`Datum`]
+///
+/// [`distinct`] is similar to [`neq`], only differing in null handling. In particular, two
+/// operands are considered DISTINCT if they have a different value or if one of them is NULL
+/// and the other isn't. The result of [`distinct`] is never NULL.
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn distinct(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::Distinct, lhs, rhs)
+}
+
+/// Perform `left IS NOT DISTINCT FROM right` operation on two [`Datum`]
+///
+/// [`not_distinct`] is similar to [`eq`], only differing in null handling. In particular, two
+/// operands are considered `NOT DISTINCT` if they have the same value or if both of them
+/// is NULL. The result of [`not_distinct`] is never NULL.
+///
+/// For floating values like f32 and f64, this comparison produces an ordering in accordance to
+/// the totalOrder predicate as defined in the IEEE 754 (2008 revision) floating point standard.
+/// Note that totalOrder treats positive and negative zeros as different. If it is necessary
+/// to treat them as equal, please normalize zeros before calling this kernel. See
+/// [`f32::total_cmp`] and [`f64::total_cmp`].
+///
+/// Nested types, such as lists, are not supported as the null semantics are not well-defined.
+/// For comparisons involving nested types see [`crate::ord::make_comparator`]
+pub fn not_distinct(lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    compare_op(Op::NotDistinct, lhs, rhs)
+}
+
+/// Returns true if `distinct` (via `compare_op`) can handle this data type.
+///
+/// `compare_op` unwraps at most one level of dictionary, then dispatches on
+/// the leaf type. Anything else (REE, nested dictionary, nested/complex types)
+/// must go through `make_comparator` instead.
+pub(crate) fn supports_distinct(dt: &DataType) -> bool {
+    use arrow_schema::DataType::*;
+    let leaf = match dt {
+        Dictionary(_, v) => v.as_ref(),
+        dt => dt,
+    };
+    !leaf.is_nested() && !matches!(leaf, Dictionary(_, _) | RunEndEncoded(_, _))
+}
+
+/// Perform `op` on the provided `Datum`
+#[inline(never)]
+fn compare_op(op: Op, lhs: &dyn Datum, rhs: &dyn Datum) -> Result<BooleanArray, ArrowError> {
+    use arrow_schema::DataType::*;
+    let (l, l_s) = lhs.get();
+    let (r, r_s) = rhs.get();
+
+    let l_len = l.len();
+    let r_len = r.len();
+
+    if l_len != r_len && !l_s && !r_s {
+        return Err(ArrowError::InvalidArgumentError(format!(
+            "Cannot compare arrays of different lengths, got {l_len} vs {r_len}"
+        )));
+    }
+
+    let len = match l_s {
+        true => r_len,
+        false => l_len,
+    };
+
+    let l_nulls = l.logical_nulls();
+    let r_nulls = r.logical_nulls();
+
+    let l_ree_info = ree_info_opt(l);
+    let l = l_ree_info.as_ref().map(|(vals, _)| *vals).unwrap_or(l);
+
+    let r_ree_info = ree_info_opt(r);
+    let r = r_ree_info.as_ref().map(|(vals, _)| *vals).unwrap_or(r);
+
+    let l_v = l.as_any_dictionary_opt();
+    let l = l_v.map(|x| x.values().as_ref()).unwrap_or(l);
+    let l_t = l.data_type();
+
+    let r_v = r.as_any_dictionary_opt();
+    let r = r_v.map(|x| x.values().as_ref()).unwrap_or(r);
+    let r_t = r.data_type();
+
+    if r_t.is_nested() || l_t.is_nested() {
+        return Err(ArrowError::InvalidArgumentError(format!(
+            "Nested comparison: {l_t} {op} {r_t} (hint: use make_comparator instead)"
+        )));
+    } else if l_t != r_t {
+        return Err(ArrowError::InvalidArgumentError(format!(
+            "Invalid comparison operation: {l_t} {op} {r_t}"
+        )));
+    }
+
+    let l_side = SideInfo {
+        is_scalar: l_s,
+        dict: l_v,
+        ree: l_ree_info.as_ref().map(|(_, info)| info),
+    };
+    let r_side = SideInfo {
+        is_scalar: r_s,
+        dict: r_v,
+        ree: r_ree_info.as_ref().map(|(_, info)| info),
+    };
+
+    // Defer computation as may not be necessary
+    let values = || -> BooleanBuffer {
+        let d = downcast_primitive_array! {
+            (l, r) => apply(op, l.values().as_ref(), &l_side, r.values().as_ref(), &r_side),
+            (Boolean, Boolean) => apply(op, l.as_boolean(), &l_side, r.as_boolean(), &r_side),
+            (Utf8, Utf8) => apply(op, l.as_string::<i32>(), &l_side, r.as_string::<i32>(), &r_side),
+            (Utf8View, Utf8View) => apply(op, l.as_string_view(), &l_side, r.as_string_view(), &r_side),
+            (LargeUtf8, LargeUtf8) => apply(op, l.as_string::<i64>(), &l_side, r.as_string::<i64>(), &r_side),
+            (Binary, Binary) => apply(op, l.as_binary::<i32>(), &l_side, r.as_binary::<i32>(), &r_side),
+            (BinaryView, BinaryView) => apply(op, l.as_binary_view(), &l_side, r.as_binary_view(), &r_side),
+            (LargeBinary, LargeBinary) => apply(op, l.as_binary::<i64>(), &l_side, r.as_binary::<i64>(), &r_side),
+            (FixedSizeBinary(_), FixedSizeBinary(_)) => apply(op, l.as_fixed_size_binary(), &l_side, r.as_fixed_size_binary(), &r_side),
+            (Null, Null) => None,
+            _ => unreachable!(),
+        };
+        d.unwrap_or_else(|| BooleanBuffer::new_unset(len))
+    };
+
+    let l_nulls = l_nulls.filter(|n| n.null_count() > 0);
+    let r_nulls = r_nulls.filter(|n| n.null_count() > 0);
+    Ok(match (l_nulls, l_s, r_nulls, r_s) {
+        (Some(l), true, Some(r), true) | (Some(l), false, Some(r), false) => {
+            // Either both sides are scalar or neither side is scalar
+            match op {
+                Op::Distinct => {
+                    let values = values();
+                    let l = l.inner().bit_chunks().iter_padded();
+                    let r = r.inner().bit_chunks().iter_padded();
+                    let ne = values.bit_chunks().iter_padded();
+
+                    let c = |((l, r), n)| (l ^ r) | (l & r & n);
+                    let buffer = l.zip(r).zip(ne).map(c).collect();
+                    BooleanBuffer::new(buffer, 0, len).into()
+                }
+                Op::NotDistinct => {
+                    let values = values();
+                    let l = l.inner().bit_chunks().iter_padded();
+                    let r = r.inner().bit_chunks().iter_padded();
+                    let e = values.bit_chunks().iter_padded();
+
+                    let c = |((l, r), e)| u64::not(l | r) | (l & r & e);
+                    let buffer = l.zip(r).zip(e).map(c).collect();
+                    BooleanBuffer::new(buffer, 0, len).into()
+                }
+                _ => BooleanArray::new(values(), NullBuffer::union(Some(&l), Some(&r))),
+            }
+        }
+        (Some(_), true, Some(a), false) | (Some(a), false, Some(_), true) => {
+            // Scalar is null, other side is non-scalar and nullable
+            match op {
+                Op::Distinct => a.into_inner().into(),
+                Op::NotDistinct => a.into_inner().not().into(),
+                _ => BooleanArray::new_null(len),
+            }
+        }
+        (Some(nulls), is_scalar, None, _) | (None, _, Some(nulls), is_scalar) => {
+            // Only one side is nullable
+            match is_scalar {
+                true => match op {
+                    // Scalar is null, other side is not nullable
+                    Op::Distinct => BooleanBuffer::new_set(len).into(),
+                    Op::NotDistinct => BooleanBuffer::new_unset(len).into(),
+                    _ => BooleanArray::new_null(len),
+                },
+                false => match op {
+                    Op::Distinct => {
+                        let values = values();
+                        let l = nulls.inner().bit_chunks().iter_padded();
+                        let ne = values.bit_chunks().iter_padded();
+                        let c = |(l, n)| u64::not(l) | n;
+                        let buffer = l.zip(ne).map(c).collect();
+                        BooleanBuffer::new(buffer, 0, len).into()
+                    }
+                    Op::NotDistinct => (nulls.inner() & &values()).into(),
+                    _ => BooleanArray::new(values(), Some(nulls)),
+                },
+            }
+        }
+        // Neither side is nullable
+        (None, _, None, _) => BooleanArray::new(values(), None),
+    })
+}
+
+/// Per-side metadata for a comparison operand.
+struct SideInfo<'a> {
+    is_scalar: bool,
+    dict: Option<&'a dyn AnyDictionaryArray>,
+    ree: Option<&'a ReeInfo<'a>>,
+}
+
+impl SideInfo<'_> {
+    fn has_indirection(&self) -> bool {
+        self.dict.is_some() || self.ree.is_some()
+    }
+}
+
+/// Perform a potentially vectored `op` on the provided `ArrayOrd`
+fn apply<T: ArrayOrd>(
+    op: Op,
+    l: T,
+    l_info: &SideInfo,
+    r: T,
+    r_info: &SideInfo,
+) -> Option<BooleanBuffer> {
+    if l.len() == 0 || r.len() == 0 {
+        return None; // Handle empty dictionaries
+    }
+
+    if !l_info.is_scalar
+        && !r_info.is_scalar
+        && (l_info.has_indirection() || r_info.has_indirection())
+    {
+        // Both non-scalar with indirection. Pure REE-vs-REE uses segment-based
+        // bulk comparison; other combinations fall back to index vectors.
+        if let (Some(li), None, Some(ri), None) = (l_info.ree, l_info.dict, r_info.ree, r_info.dict)
+        {
+            return Some(apply_ree(op, l, li, r, ri));
+        }
+
+        let l_v = logical_indices(l.len(), l_info.dict, l_info.ree);
+        let r_v = logical_indices(r.len(), r_info.dict, r_info.ree);
+
+        assert_eq!(l_v.len(), r_v.len()); // Sanity check
+
+        Some(match op {
+            Op::Equal | Op::NotDistinct => apply_op_vectored(l, &l_v, r, &r_v, false, T::is_eq),
+            Op::NotEqual | Op::Distinct => apply_op_vectored(l, &l_v, r, &r_v, true, T::is_eq),
+            Op::Less => apply_op_vectored(l, &l_v, r, &r_v, false, T::is_lt),
+            Op::LessEqual => apply_op_vectored(r, &r_v, l, &l_v, true, T::is_lt),
+            Op::Greater => apply_op_vectored(r, &r_v, l, &l_v, false, T::is_lt),
+            Op::GreaterEqual => apply_op_vectored(l, &l_v, r, &r_v, true, T::is_lt),
+        })
+    } else {
+        let l_s = l_info
+            .is_scalar
+            .then(|| scalar_index(l_info.dict, l_info.ree));
+        let r_s = r_info
+            .is_scalar
+            .then(|| scalar_index(r_info.dict, r_info.ree));
+
+        let buffer = match op {
+            Op::Equal | Op::NotDistinct => apply_op(l, l_s, r, r_s, false, T::is_eq),
+            Op::NotEqual | Op::Distinct => apply_op(l, l_s, r, r_s, true, T::is_eq),
+            Op::Less => apply_op(l, l_s, r, r_s, false, T::is_lt),
+            Op::LessEqual => apply_op(r, r_s, l, l_s, true, T::is_lt),
+            Op::Greater => apply_op(r, r_s, l, l_s, false, T::is_lt),
+            Op::GreaterEqual => apply_op(l, l_s, r, r_s, true, T::is_lt),
+        };
+
+        // Expand the physical-length result back to logical length.
+        // Find the non-scalar side that needs expansion (at most one).
+        let side = if l_s.is_none() { l_info } else { r_info };
+        let buffer = match side.dict {
+            Some(d) => take_bits(d, buffer),
+            None => buffer,
+        };
+        Some(match side.ree {
+            Some(info) => expand_from_runs(info, buffer),
+            None => buffer,
+        })
+    }
+}
+
+/// Build a logical→physical index vector for one side of a non-scalar comparison.
+fn logical_indices(
+    len: usize,
+    dict: Option<&dyn AnyDictionaryArray>,
+    ree: Option<&ReeInfo>,
+) -> Vec<usize> {
+    match (dict, ree) {
+        (Some(d), Some(info)) => {
+            let keys = d.normalized_keys();
+            ree_physical_indices(info)
+                .iter()
+                .map(|&i| keys[i])
+                .collect()
+        }
+        (Some(d), None) => d.normalized_keys(),
+        (None, Some(info)) => ree_physical_indices(info),
+        (None, None) => (0..len).collect(),
+    }
+}
+
+fn ree_physical_indices(info: &ReeInfo) -> Vec<usize> {
+    let run_ends = info.run_ends_as_usize();
+    let end = info.offset + info.len;
+    let mut indices = Vec::with_capacity(info.len);
+    let mut pos = info.offset;
+    for (physical, &run_end) in run_ends.iter().enumerate().skip(info.start_physical) {
+        let run_end = run_end.min(end);
+        indices.extend(std::iter::repeat_n(physical, run_end - pos));
+        pos = run_end;
+        if pos >= end {
+            break;
+        }
+    }
+    indices
+}
+
+fn scalar_index(dict: Option<&dyn AnyDictionaryArray>, ree: Option<&ReeInfo>) -> usize {
+    let idx = ree.map(|r| r.start_physical).unwrap_or_default();
+    dict.map(|d| d.normalized_keys()[idx]).unwrap_or(idx)
+}
+
+/// Expand a physical-length BooleanBuffer to logical length by bulk-appending
+/// each run's result. Zero allocation — downcasts internally to access typed
+/// run_ends directly.
+fn expand_from_runs(info: &ReeInfo, buffer: BooleanBuffer) -> BooleanBuffer {
+    let array = info.array;
+    downcast_run_array!(
+        array => {
+            let run_ends = array.run_ends().values();
+            let end = info.offset + info.len;
+            let mut builder = BooleanBufferBuilder::new(info.len);
+            let mut pos = info.offset;
+            for (physical, re) in run_ends.iter().enumerate().skip(info.start_physical) {
+                let run_end = re.as_usize().min(end);
+                // SAFETY: physical < buffer.len() (one entry per run in the values array)
+                builder.append_n(run_end - pos, unsafe { buffer.value_unchecked(physical) });
+                pos = run_end;
+                if pos >= end {
+                    break;
+                }
+            }
+            builder.finish()
+        },
+        _ => unreachable!()
+    )
+}
+
+fn take_bits(v: &dyn AnyDictionaryArray, buffer: BooleanBuffer) -> BooleanBuffer {
+    let array = take(&BooleanArray::new(buffer, None), v.keys(), None).unwrap();
+    array.as_boolean().values().clone()
+}
+
+/// Invokes `f` with values `0..len` collecting the boolean results into a new `BooleanBuffer`
+///
+/// This is similar to [`arrow_buffer::MutableBuffer::collect_bool`] but with
+/// the option to efficiently negate the result
+fn collect_bool(len: usize, neg: bool, f: impl Fn(usize) -> bool) -> BooleanBuffer {
+    let mut buffer = Vec::with_capacity(ceil(len, 64));
+
+    let chunks = len / 64;
+    let remainder = len % 64;
+    buffer.extend((0..chunks).map(|chunk| {
+        let mut packed = 0;
+        for bit_idx in 0..64 {
+            let i = bit_idx + chunk * 64;
+            packed |= (f(i) as u64) << bit_idx;
+        }
+        if neg {
+            packed = !packed
+        }
+
+        packed
+    }));
+
+    if remainder != 0 {
+        let mut packed = 0;
+        for bit_idx in 0..remainder {
+            let i = bit_idx + chunks * 64;
+            packed |= (f(i) as u64) << bit_idx;
+        }
+        if neg {
+            packed = !packed
+        }
+
+        buffer.push(packed);
+    }
+    BooleanBuffer::new(buffer.into(), 0, len)
+}
+
+/// Applies `op` to possibly scalar `ArrayOrd`
+///
+/// If l is scalar `l_s` will be `Some(idx)` where `idx` is the index of the scalar value in `l`
+/// If r is scalar `r_s` will be `Some(idx)` where `idx` is the index of the scalar value in `r`
+///
+/// If `neg` is true the result of `op` will be negated
+fn apply_op<T: ArrayOrd>(
+    l: T,
+    l_s: Option<usize>,
+    r: T,
+    r_s: Option<usize>,
+    neg: bool,
+    op: impl Fn(T::Item, T::Item) -> bool,
+) -> BooleanBuffer {
+    match (l_s, r_s) {
+        (None, None) => {
+            assert_eq!(l.len(), r.len());
+            collect_bool(l.len(), neg, |idx| unsafe {
+                op(l.value_unchecked(idx), r.value_unchecked(idx))
+            })
+        }
+        (Some(l_s), Some(r_s)) => {
+            let a = l.value(l_s);
+            let b = r.value(r_s);
+            std::iter::once(op(a, b) ^ neg).collect()
+        }
+        (Some(l_s), None) => {
+            let v = l.value(l_s);
+            collect_bool(r.len(), neg, |idx| op(v, unsafe { r.value_unchecked(idx) }))
+        }
+        (None, Some(r_s)) => {
+            let v = r.value(r_s);
+            collect_bool(l.len(), neg, |idx| op(unsafe { l.value_unchecked(idx) }, v))
+        }
+    }
+}
+
+/// Applies `op` to possibly scalar `ArrayOrd` with the given indices
+fn apply_op_vectored<T: ArrayOrd>(
+    l: T,
+    l_v: &[usize],
+    r: T,
+    r_v: &[usize],
+    neg: bool,
+    op: impl Fn(T::Item, T::Item) -> bool,
+) -> BooleanBuffer {
+    assert_eq!(l_v.len(), r_v.len());
+    collect_bool(l_v.len(), neg, |idx| unsafe {
+        let l_idx = *l_v.get_unchecked(idx);
+        let r_idx = *r_v.get_unchecked(idx);
+        op(l.value_unchecked(l_idx), r.value_unchecked(r_idx))
+    })
+}
+
+/// Dispatch `op` for a REE-vs-REE comparison (no dictionary on either side)
+/// using segment-based bulk comparison.
+fn apply_ree<T: ArrayOrd>(op: Op, l: T, l_info: &ReeInfo, r: T, r_info: &ReeInfo) -> BooleanBuffer {
+    match op {
+        Op::Equal | Op::NotDistinct => apply_op_ree_segments(l, l_info, r, r_info, false, T::is_eq),
+        Op::NotEqual | Op::Distinct => apply_op_ree_segments(l, l_info, r, r_info, true, T::is_eq),
+        Op::Less => apply_op_ree_segments(l, l_info, r, r_info, false, T::is_lt),
+        Op::LessEqual => apply_op_ree_segments(r, r_info, l, l_info, true, T::is_lt),
+        Op::Greater => apply_op_ree_segments(r, r_info, l, l_info, false, T::is_lt),
+        Op::GreaterEqual => apply_op_ree_segments(l, l_info, r, r_info, true, T::is_lt),
+    }
+}
+
+/// Compare two REE arrays by walking both run_ends simultaneously, comparing
+/// once per aligned segment and bulk-filling the result.
+fn apply_op_ree_segments<T: ArrayOrd>(
+    l: T,
+    l_info: &ReeInfo,
+    r: T,
+    r_info: &ReeInfo,
+    neg: bool,
+    op: fn(T::Item, T::Item) -> bool,
+) -> BooleanBuffer {
+    let l_re = l_info.run_ends_as_usize();
+    let r_re = r_info.run_ends_as_usize();
+    let end = l_info.len;
+    let mut builder = BooleanBufferBuilder::new(l_info.len);
+    let mut l_phys = l_info.start_physical;
+    let mut r_phys = r_info.start_physical;
+    let mut pos = 0usize;
+
+    while pos < end {
+        // SAFETY: l_phys/r_phys are bounded by their respective run counts —
+        // they advance only when pos reaches a run boundary, and pos < end
+        // guarantees we haven't exhausted all runs.
+        // Subtract each side's offset to convert absolute run-ends to logical
+        // coordinates so that arrays with different offsets align correctly.
+        let l_end = (unsafe { *l_re.get_unchecked(l_phys) } - l_info.offset).min(end);
+        let r_end = (unsafe { *r_re.get_unchecked(r_phys) } - r_info.offset).min(end);
+        let seg_end = l_end.min(r_end);
+
+        let result = unsafe { op(l.value_unchecked(l_phys), r.value_unchecked(r_phys)) } ^ neg;
+        builder.append_n(seg_end - pos, result);
+
+        pos = seg_end;
+        if pos >= l_end {
+            l_phys += 1;
+        }
+        if pos >= r_end {
+            r_phys += 1;
+        }
+    }
+
+    builder.finish()
+}
+
+trait ArrayOrd {
+    type Item: Copy;
+
+    fn len(&self) -> usize;
+
+    fn value(&self, idx: usize) -> Self::Item {
+        assert!(idx < self.len());
+        unsafe { self.value_unchecked(idx) }
+    }
+
+    /// # Safety
+    ///
+    /// Safe if `idx < self.len()`
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item;
+
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool;
+
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool;
+}
+
+impl ArrayOrd for &BooleanArray {
+    type Item = bool;
+
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item {
+        unsafe { BooleanArray::value_unchecked(self, idx) }
+    }
+
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool {
+        l == r
+    }
+
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool {
+        !l & r
+    }
+}
+
+impl<T: ArrowNativeTypeOp> ArrayOrd for &[T] {
+    type Item = T;
+
+    fn len(&self) -> usize {
+        (*self).len()
+    }
+
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item {
+        unsafe { *self.get_unchecked(idx) }
+    }
+
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool {
+        l.is_eq(r)
+    }
+
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool {
+        l.is_lt(r)
+    }
+}
+
+impl<'a, T: ByteArrayType> ArrayOrd for &'a GenericByteArray<T> {
+    type Item = &'a [u8];
+
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item {
+        unsafe { GenericByteArray::value_unchecked(self, idx).as_ref() }
+    }
+
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool {
+        l == r
+    }
+
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool {
+        l < r
+    }
+}
+
+impl<'a, T: ByteViewType> ArrayOrd for &'a GenericByteViewArray<T> {
+    /// This is the item type for the GenericByteViewArray::compare
+    /// Item.0 is the array, Item.1 is the index
+    type Item = (&'a GenericByteViewArray<T>, usize);
+
+    #[inline(always)]
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool {
+        let l_view = unsafe { l.0.views().get_unchecked(l.1) };
+        let r_view = unsafe { r.0.views().get_unchecked(r.1) };
+        if l.0.data_buffers().is_empty() && r.0.data_buffers().is_empty() {
+            // For eq case, we can directly compare the inlined bytes
+            return l_view == r_view;
+        }
+
+        // Fast path for same view (and both inlined)
+        if l_view == r_view && *l_view as u32 <= 12 {
+            return true;
+        }
+
+        let l_len = *l_view as u32;
+        let r_len = *r_view as u32;
+        // Lengths differ
+        if l_len != r_len {
+            return false;
+        }
+
+        // Both are empty
+        if l_len == 0 {
+            return true;
+        }
+
+        // Check prefix
+        if (*l_view >> 32) as u32 != (*r_view >> 32) as u32 {
+            return false;
+        }
+
+        // Both are inlined, and prefixes are equal (so they differ in rest of inlined bytes)
+        if l_len <= 12 {
+            return false;
+        }
+
+        // # Safety
+        // The index is within bounds as it is checked in value()
+        unsafe {
+            let l_buffer_idx = (*l_view >> 64) as u32;
+            let l_offset = (*l_view >> 96) as u32;
+            let r_buffer_idx = (*r_view >> 64) as u32;
+            let r_offset = (*r_view >> 96) as u32;
+
+            let l_data = l.0.data_buffers().get_unchecked(l_buffer_idx as usize);
+            let r_data = r.0.data_buffers().get_unchecked(r_buffer_idx as usize);
+
+            let l_slice = l_data
+                .as_slice()
+                .get_unchecked(l_offset as usize..(l_offset + l_len) as usize);
+            let r_slice = r_data
+                .as_slice()
+                .get_unchecked(r_offset as usize..(r_offset + r_len) as usize);
+            l_slice == r_slice
+        }
+    }
+
+    #[inline(always)]
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool {
+        let l_view = unsafe { l.0.views().get_unchecked(l.1) };
+        let r_view = unsafe { r.0.views().get_unchecked(r.1) };
+
+        if l.0.data_buffers().is_empty() && r.0.data_buffers().is_empty() {
+            // For lt case, we can directly compare the inlined bytes
+            return GenericByteViewArray::<T>::inline_key_fast(*l_view)
+                < GenericByteViewArray::<T>::inline_key_fast(*r_view);
+        }
+
+        if (*l_view as u32) <= 12 && (*r_view as u32) <= 12 {
+            return GenericByteViewArray::<T>::inline_key_fast(*l_view)
+                < GenericByteViewArray::<T>::inline_key_fast(*r_view);
+        }
+
+        let l_prefix = (*l_view >> 32) as u32;
+        let r_prefix = (*r_view >> 32) as u32;
+        if l_prefix != r_prefix {
+            return l_prefix.swap_bytes() < r_prefix.swap_bytes();
+        }
+
+        // Fallback to the generic, unchecked comparison for mixed cases
+        // # Safety
+        // The index is within bounds as it is checked in value()
+        unsafe {
+            let l_data: &[u8] = l.0.value_unchecked(l.1).as_ref();
+            let r_data: &[u8] = r.0.value_unchecked(r.1).as_ref();
+            l_data < r_data
+        }
+    }
+
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item {
+        (self, idx)
+    }
+}
+
+impl<'a> ArrayOrd for &'a FixedSizeBinaryArray {
+    type Item = &'a [u8];
+
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+
+    unsafe fn value_unchecked(&self, idx: usize) -> Self::Item {
+        unsafe { FixedSizeBinaryArray::value_unchecked(self, idx) }
+    }
+
+    fn is_eq(l: Self::Item, r: Self::Item) -> bool {
+        l == r
+    }
+
+    fn is_lt(l: Self::Item, r: Self::Item) -> bool {
+        l < r
+    }
+}
+
+/// Compares two [`GenericByteViewArray`] at index `left_idx` and `right_idx`
+#[inline(always)]
+pub fn compare_byte_view<T: ByteViewType>(
+    left: &GenericByteViewArray<T>,
+    left_idx: usize,
+    right: &GenericByteViewArray<T>,
+    right_idx: usize,
+) -> Ordering {
+    assert!(left_idx < left.len());
+    assert!(right_idx < right.len());
+    if left.data_buffers().is_empty() && right.data_buffers().is_empty() {
+        let l_view = unsafe { left.views().get_unchecked(left_idx) };
+        let r_view = unsafe { right.views().get_unchecked(right_idx) };
+        return GenericByteViewArray::<T>::inline_key_fast(*l_view)
+            .cmp(&GenericByteViewArray::<T>::inline_key_fast(*r_view));
+    }
+    unsafe { GenericByteViewArray::compare_unchecked(left, left_idx, right, right_idx) }
+}
+
+/// Run-end encoding metadata for one side of a comparison. Holds a reference
+/// to the original REE array for deferred typed access to run_ends.
+struct ReeInfo<'a> {
+    array: &'a dyn Array,
+    offset: usize,
+    start_physical: usize,
+    len: usize,
+}
+
+impl ReeInfo<'_> {
+    /// Materialize run_ends as `Vec<usize>`.
+    fn run_ends_as_usize(&self) -> Vec<usize> {
+        let array = self.array;
+        downcast_run_array!(
+            array => array.run_ends().values().iter().map(|v| v.as_usize()).collect(),
+            _ => unreachable!()
+        )
+    }
+}
+
+/// If `array` is RunEndEncoded, return its physical values array and run metadata.
+fn ree_info_opt(array: &dyn Array) -> Option<(&dyn Array, ReeInfo<'_>)> {
+    downcast_run_array!(
+        array => {
+            let run_ends = array.run_ends();
+            let info = ReeInfo {
+                array,
+                offset: run_ends.offset(),
+                start_physical: run_ends.get_start_physical_index(),
+                len: run_ends.len(),
+            };
+            Some((array.values().as_ref(), info))
+        },
+        _ => None
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow_array::types::Int32Type;
+    use arrow_array::{DictionaryArray, Int32Array, Scalar, StringArray};
+    use arrow_buffer::{Buffer, ScalarBuffer};
+
+    use super::*;
+
+    #[test]
+    fn test_null_dict() {
+        let a = DictionaryArray::new(Int32Array::new_null(10), Arc::new(Int32Array::new_null(0)));
+        let r = eq(&a, &a).unwrap();
+        assert_eq!(r.null_count(), 10);
+
+        let a = DictionaryArray::new(
+            Int32Array::from(vec![1, 2, 3, 4, 5, 6]),
+            Arc::new(Int32Array::new_null(10)),
+        );
+        let r = eq(&a, &a).unwrap();
+        assert_eq!(r.null_count(), 6);
+
+        let scalar =
+            DictionaryArray::new(Int32Array::new_null(1), Arc::new(Int32Array::new_null(0)));
+        let r = eq(&a, &Scalar::new(&scalar)).unwrap();
+        assert_eq!(r.null_count(), 6);
+
+        let scalar =
+            DictionaryArray::new(Int32Array::new_null(1), Arc::new(Int32Array::new_null(0)));
+        let r = eq(&Scalar::new(&scalar), &Scalar::new(&scalar)).unwrap();
+        assert_eq!(r.null_count(), 1);
+
+        let a = DictionaryArray::new(
+            Int32Array::from(vec![0, 1, 2]),
+            Arc::new(Int32Array::from(vec![3, 2, 1])),
+        );
+        let r = eq(&a, &Scalar::new(&scalar)).unwrap();
+        assert_eq!(r.null_count(), 3);
+    }
+
+    #[test]
+    fn is_distinct_from_non_nulls() {
+        let left_int_array = Int32Array::from(vec![0, 1, 2, 3, 4]);
+        let right_int_array = Int32Array::from(vec![4, 3, 2, 1, 0]);
+
+        assert_eq!(
+            BooleanArray::from(vec![true, true, false, true, true,]),
+            distinct(&left_int_array, &right_int_array).unwrap()
+        );
+        assert_eq!(
+            BooleanArray::from(vec![false, false, true, false, false,]),
+            not_distinct(&left_int_array, &right_int_array).unwrap()
+        );
+    }
+
+    #[test]
+    fn is_distinct_from_nulls() {
+        // [0, 0, NULL, 0, 0, 0]
+        let left_int_array = Int32Array::new(
+            vec![0, 0, 1, 3, 0, 0].into(),
+            Some(NullBuffer::from(vec![true, true, false, true, true, true])),
+        );
+        // [0, NULL, NULL, NULL, 0, NULL]
+        let right_int_array = Int32Array::new(
+            vec![0; 6].into(),
+            Some(NullBuffer::from(vec![
+                true, false, false, false, true, false,
+            ])),
+        );
+
+        assert_eq!(
+            BooleanArray::from(vec![false, true, false, true, false, true,]),
+            distinct(&left_int_array, &right_int_array).unwrap()
+        );
+
+        assert_eq!(
+            BooleanArray::from(vec![true, false, true, false, true, false,]),
+            not_distinct(&left_int_array, &right_int_array).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_distinct_scalar() {
+        let a = Int32Array::new_scalar(12);
+        let b = Int32Array::new_scalar(12);
+        assert!(!distinct(&a, &b).unwrap().value(0));
+        assert!(not_distinct(&a, &b).unwrap().value(0));
+
+        let a = Int32Array::new_scalar(12);
+        let b = Int32Array::new_null(1);
+        assert!(distinct(&a, &b).unwrap().value(0));
+        assert!(!not_distinct(&a, &b).unwrap().value(0));
+        assert!(distinct(&b, &a).unwrap().value(0));
+        assert!(!not_distinct(&b, &a).unwrap().value(0));
+
+        let b = Scalar::new(b);
+        assert!(distinct(&a, &b).unwrap().value(0));
+        assert!(!not_distinct(&a, &b).unwrap().value(0));
+
+        assert!(!distinct(&b, &b).unwrap().value(0));
+        assert!(not_distinct(&b, &b).unwrap().value(0));
+
+        let a = Int32Array::new(
+            vec![0, 1, 2, 3].into(),
+            Some(vec![false, false, true, true].into()),
+        );
+        let expected = BooleanArray::from(vec![false, false, true, true]);
+        assert_eq!(distinct(&a, &b).unwrap(), expected);
+        assert_eq!(distinct(&b, &a).unwrap(), expected);
+
+        let expected = BooleanArray::from(vec![true, true, false, false]);
+        assert_eq!(not_distinct(&a, &b).unwrap(), expected);
+        assert_eq!(not_distinct(&b, &a).unwrap(), expected);
+
+        let b = Int32Array::new_scalar(1);
+        let expected = BooleanArray::from(vec![true; 4]);
+        assert_eq!(distinct(&a, &b).unwrap(), expected);
+        assert_eq!(distinct(&b, &a).unwrap(), expected);
+        let expected = BooleanArray::from(vec![false; 4]);
+        assert_eq!(not_distinct(&a, &b).unwrap(), expected);
+        assert_eq!(not_distinct(&b, &a).unwrap(), expected);
+
+        let b = Int32Array::new_scalar(3);
+        let expected = BooleanArray::from(vec![true, true, true, false]);
+        assert_eq!(distinct(&a, &b).unwrap(), expected);
+        assert_eq!(distinct(&b, &a).unwrap(), expected);
+        let expected = BooleanArray::from(vec![false, false, false, true]);
+        assert_eq!(not_distinct(&a, &b).unwrap(), expected);
+        assert_eq!(not_distinct(&b, &a).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_supports_distinct() {
+        use arrow_schema::{DataType::*, Field};
+
+        assert!(supports_distinct(&Int32));
+        assert!(supports_distinct(&Float64));
+        assert!(supports_distinct(&Utf8));
+        assert!(supports_distinct(&Boolean));
+
+        // One level of dictionary unwrap is supported.
+        assert!(supports_distinct(&Dictionary(
+            Box::new(Int16),
+            Box::new(Utf8),
+        )));
+
+        // REE, nested dictionary, and complex types are not supported.
+        assert!(!supports_distinct(&RunEndEncoded(
+            Arc::new(Field::new("run_ends", Int32, false)),
+            Arc::new(Field::new("values", Int32, true)),
+        )));
+        assert!(!supports_distinct(&Dictionary(
+            Box::new(Int16),
+            Box::new(Dictionary(Box::new(Int8), Box::new(Utf8))),
+        )));
+        assert!(!supports_distinct(&List(Arc::new(Field::new(
+            "item", Int32, true,
+        )))));
+        assert!(!supports_distinct(&Struct(
+            vec![Field::new("a", Int32, true)].into()
+        )));
+    }
+
+    #[test]
+    fn test_scalar_negation() {
+        let a = Int32Array::new_scalar(54);
+        let b = Int32Array::new_scalar(54);
+        let r = eq(&a, &b).unwrap();
+        assert!(r.value(0));
+
+        let r = neq(&a, &b).unwrap();
+        assert!(!r.value(0))
+    }
+
+    #[test]
+    fn test_scalar_empty() {
+        let a = Int32Array::new_null(0);
+        let b = Int32Array::new_scalar(23);
+        let r = eq(&a, &b).unwrap();
+        assert_eq!(r.len(), 0);
+        let r = eq(&b, &a).unwrap();
+        assert_eq!(r.len(), 0);
+    }
+
+    #[test]
+    fn test_dictionary_nulls() {
+        let values = StringArray::from(vec![Some("us-west"), Some("us-east")]);
+        let nulls = NullBuffer::from(vec![false, true, true]);
+
+        let key_values = vec![100i32, 1i32, 0i32].into();
+        let keys = Int32Array::new(key_values, Some(nulls));
+        let col = DictionaryArray::try_new(keys, Arc::new(values)).unwrap();
+
+        neq(&col.slice(0, col.len() - 1), &col.slice(1, col.len() - 1)).unwrap();
+    }
+
+    #[test]
+    fn test_string_view_mixed_lt() {
+        let a = arrow_array::StringViewArray::from(vec![
+            Some("apple"),
+            Some("apple"),
+            Some("apple_long_string"),
+        ]);
+        let b = arrow_array::StringViewArray::from(vec![
+            Some("apple_long_string"),
+            Some("appl"),
+            Some("apple"),
+        ]);
+        // "apple" < "apple_long_string" -> true
+        // "apple" < "appl" -> false
+        // "apple_long_string" < "apple" -> false
+        assert_eq!(
+            lt(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, false, false])
+        );
+    }
+
+    #[test]
+    fn test_string_view_eq() {
+        let a = arrow_array::StringViewArray::from(vec![
+            Some("hello"),
+            Some("world"),
+            None,
+            Some("very long string exceeding 12 bytes"),
+        ]);
+        let b = arrow_array::StringViewArray::from(vec![
+            Some("hello"),
+            Some("world"),
+            None,
+            Some("very long string exceeding 12 bytes"),
+        ]);
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![Some(true), Some(true), None, Some(true)])
+        );
+
+        let c = arrow_array::StringViewArray::from(vec![
+            Some("hello"),
+            Some("world!"),
+            None,
+            Some("very long string exceeding 12 bytes!"),
+        ]);
+        assert_eq!(
+            eq(&a, &c).unwrap(),
+            BooleanArray::from(vec![Some(true), Some(false), None, Some(false)])
+        );
+    }
+
+    #[test]
+    fn test_string_view_lt() {
+        let a = arrow_array::StringViewArray::from(vec![
+            Some("apple"),
+            Some("banana"),
+            Some("very long apple exceeding 12 bytes"),
+            Some("very long banana exceeding 12 bytes"),
+        ]);
+        let b = arrow_array::StringViewArray::from(vec![
+            Some("banana"),
+            Some("apple"),
+            Some("very long banana exceeding 12 bytes"),
+            Some("very long apple exceeding 12 bytes"),
+        ]);
+        assert_eq!(
+            lt(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, false, true, false])
+        );
+    }
+
+    #[test]
+    fn test_string_view_eq_prefix_mismatch() {
+        // Prefix mismatch should short-circuit equality for long values.
+        let a =
+            arrow_array::StringViewArray::from(vec![Some("very long apple exceeding 12 bytes")]);
+        let b =
+            arrow_array::StringViewArray::from(vec![Some("very long banana exceeding 12 bytes")]);
+        assert_eq!(eq(&a, &b).unwrap(), BooleanArray::from(vec![Some(false)]));
+    }
+
+    #[test]
+    fn test_string_view_lt_prefix_mismatch() {
+        // Prefix mismatch should decide ordering without full compare for long values.
+        let a =
+            arrow_array::StringViewArray::from(vec![Some("apple long string exceeding 12 bytes")]);
+        let b =
+            arrow_array::StringViewArray::from(vec![Some("banana long string exceeding 12 bytes")]);
+        assert_eq!(lt(&a, &b).unwrap(), BooleanArray::from(vec![true]));
+    }
+
+    #[test]
+    fn test_string_view_eq_inline_fast_path() {
+        // Inline-only arrays should compare by view equality fast path.
+        let a = arrow_array::StringViewArray::from(vec![Some("ab")]);
+        let b = arrow_array::StringViewArray::from(vec![Some("ab")]);
+        assert!(!has_buffers(&a));
+        assert!(!has_buffers(&b));
+        assert_eq!(eq(&a, &b).unwrap(), BooleanArray::from(vec![Some(true)]));
+    }
+
+    #[test]
+    fn test_string_view_eq_inline_prefix_mismatch_with_buffers() {
+        // Non-empty buffers force the prefix mismatch branch for inline values.
+        let a = arrow_array::StringViewArray::from(vec![
+            Some("ab"),
+            Some("long string to allocate buffers"),
+        ]);
+        let b = arrow_array::StringViewArray::from(vec![
+            Some("ac"),
+            Some("long string to allocate buffers"),
+        ]);
+        assert!(has_buffers(&a));
+        assert!(has_buffers(&b));
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![Some(false), Some(true)])
+        );
+    }
+
+    #[test]
+    fn test_string_view_eq_empty_len_branch() {
+        // Reach the zero-length branch by bypassing the inline fast path with a dummy buffer.
+        let raw_a = 0u128;
+        let raw_b = 1u128 << 96;
+        let views_a = ScalarBuffer::from(vec![raw_a]);
+        let views_b = ScalarBuffer::from(vec![raw_b]);
+        let buffers: Arc<[Buffer]> = Arc::from([Buffer::from_slice_ref([0u8])]);
+        let a =
+            unsafe { arrow_array::StringViewArray::new_unchecked(views_a, buffers.clone(), None) };
+        let b = unsafe { arrow_array::StringViewArray::new_unchecked(views_b, buffers, None) };
+        assert!(has_buffers(&a));
+        assert!(has_buffers(&b));
+        assert!(<&arrow_array::StringViewArray as ArrayOrd>::is_eq(
+            (&a, 0),
+            (&b, 0)
+        ));
+    }
+
+    #[test]
+    fn test_string_view_long_prefix_mismatch_array_ord() {
+        // Long strings with differing prefixes should short-circuit on prefix ordering.
+        let a =
+            arrow_array::StringViewArray::from(vec![Some("apple long string exceeding 12 bytes")]);
+        let b =
+            arrow_array::StringViewArray::from(vec![Some("banana long string exceeding 12 bytes")]);
+        assert!(has_buffers(&a));
+        assert!(has_buffers(&b));
+        assert!(<&arrow_array::StringViewArray as ArrayOrd>::is_lt(
+            (&a, 0),
+            (&b, 0)
+        ));
+    }
+
+    #[test]
+    fn test_string_view_inline_mismatch_array_ord() {
+        // Long strings with differing prefixes should short-circuit on prefix ordering.
+        let a = arrow_array::StringViewArray::from(vec![Some("ap")]);
+        let b = arrow_array::StringViewArray::from(vec![Some("ba")]);
+        assert!(!has_buffers(&a));
+        assert!(!has_buffers(&b));
+        assert!(<&arrow_array::StringViewArray as ArrayOrd>::is_lt(
+            (&a, 0),
+            (&b, 0)
+        ));
+    }
+    #[test]
+    fn test_compare_byte_view_inline_fast_path() {
+        // Inline-only views should compare via inline key in compare_byte_view.
+        let a = arrow_array::StringViewArray::from(vec![Some("ab")]);
+        let b = arrow_array::StringViewArray::from(vec![Some("ac")]);
+        assert!(!has_buffers(&a));
+        assert!(!has_buffers(&b));
+        assert_eq!(compare_byte_view(&a, 0, &b, 0), Ordering::Less);
+    }
+
+    fn has_buffers<T: ByteViewType>(array: &GenericByteViewArray<T>) -> bool {
+        !array.data_buffers().is_empty()
+    }
+
+    fn ree_str(runs: &[(Option<&str>, i32)]) -> arrow_array::RunArray<Int32Type> {
+        let mut ends = Vec::new();
+        let mut vals = Vec::new();
+        let mut end = 0i32;
+        for &(v, n) in runs {
+            end += n;
+            ends.push(end);
+            vals.push(v);
+        }
+        arrow_array::RunArray::try_new(&Int32Array::from(ends), &StringArray::from(vals)).unwrap()
+    }
+
+    #[test]
+    fn test_ree_scalar() {
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]);
+
+        let s = Scalar::new(StringArray::from(vec!["b"]));
+        assert_eq!(
+            eq(&a, &s).unwrap(),
+            BooleanArray::from(vec![false, false, false, true, true])
+        );
+        assert_eq!(
+            neq(&a, &s).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false])
+        );
+        assert_eq!(
+            lt(&a, &s).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false])
+        );
+        assert_eq!(lt_eq(&a, &s).unwrap(), BooleanArray::from(vec![true; 5]));
+        assert_eq!(gt(&a, &s).unwrap(), BooleanArray::from(vec![false; 5]));
+        assert_eq!(
+            gt_eq(&a, &s).unwrap(),
+            BooleanArray::from(vec![false, false, false, true, true])
+        );
+
+        // Scalar on left side
+        let scalar = Scalar::new(ree_str(&[(Some("a"), 1)]));
+        assert_eq!(
+            eq(&scalar, &a).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false])
+        );
+        assert_eq!(
+            lt_eq(&scalar, &a).unwrap(),
+            BooleanArray::from(vec![true; 5])
+        );
+
+        // REE-wrapped scalar (DataFusion's ScalarValue::RunEndEncoded)
+        assert_eq!(
+            eq(&a, &Scalar::new(ree_str(&[(Some("a"), 1)]))).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false]),
+        );
+
+        // Single run
+        let a = ree_str(&[(Some("x"), 100)]);
+        let r = eq(&a, &Scalar::new(StringArray::from(vec!["x"]))).unwrap();
+        assert_eq!(r.true_count(), 100);
+    }
+
+    #[test]
+    fn test_ree_ree() {
+        // Different run boundaries, all ops.
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]);
+        let b = ree_str(&[(Some("a"), 2), (Some("b"), 3)]);
+        // a=[a,a,a,b,b] vs b=[a,a,b,b,b]
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, true, false, true, true])
+        );
+        assert_eq!(
+            neq(&a, &b).unwrap(),
+            BooleanArray::from(vec![false, false, true, false, false])
+        );
+        assert_eq!(
+            lt(&a, &b).unwrap(),
+            BooleanArray::from(vec![false, false, true, false, false])
+        );
+        assert_eq!(
+            gt_eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, true, false, true, true])
+        );
+    }
+
+    #[test]
+    fn test_ree_sliced() {
+        // Scalar with sliced REE
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]).slice(2, 3);
+        let s = Scalar::new(StringArray::from(vec!["b"]));
+        assert_eq!(
+            eq(&a, &s).unwrap(),
+            BooleanArray::from(vec![false, true, true])
+        );
+
+        // Both sides sliced, REE vs REE
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]).slice(1, 4);
+        let b = ree_str(&[(Some("a"), 2), (Some("b"), 3)]).slice(1, 4);
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, false, true, true])
+        );
+    }
+
+    #[test]
+    fn test_ree_sliced_different_offsets() {
+        // left expands to ["a", "a", "b", "b"]
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]).slice(1, 4);
+        // right expands to ["a", "a", "b", "b"]
+        let b = ree_str(&[(Some("a"), 2), (Some("b"), 3)]).slice(0, 4);
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, true, true, true])
+        );
+    }
+
+    #[test]
+    fn test_ree_nullable() {
+        let a = ree_str(&[(Some("a"), 2), (None, 1), (Some("b"), 2)]);
+
+        // Scalar: null-aware ops
+        let s = Scalar::new(StringArray::from(vec!["a"]));
+        assert_eq!(
+            not_distinct(&a, &s).unwrap(),
+            BooleanArray::from(vec![true, true, false, false, false])
+        );
+        assert_eq!(
+            distinct(&a, &s).unwrap(),
+            BooleanArray::from(vec![false, false, true, true, true])
+        );
+
+        // REE vs REE with nulls
+        let b = ree_str(&[(Some("a"), 3), (None, 2)]);
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![Some(true), Some(true), None, None, None])
+        );
+    }
+
+    #[test]
+    fn test_ree_mixed() {
+        let a = ree_str(&[(Some("a"), 3), (Some("b"), 2)]);
+
+        // REE vs plain array
+        let b = StringArray::from(vec!["a", "a", "b", "b", "b"]);
+        assert_eq!(
+            eq(&a, &b).unwrap(),
+            BooleanArray::from(vec![true, true, false, true, true])
+        );
+
+        // REE wrapping a DictionaryArray
+        let dict = DictionaryArray::new(
+            Int32Array::from(vec![1, 0]),
+            Arc::new(StringArray::from(vec!["x", "y"])),
+        );
+        let ree_dict =
+            arrow_array::RunArray::try_new(&Int32Array::from(vec![3, 5]), &dict).unwrap();
+        let s = Scalar::new(StringArray::from(vec!["y"]));
+        assert_eq!(
+            eq(&ree_dict, &s).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false])
+        );
+
+        // Numeric REE (Int32 values)
+        let ree_int = arrow_array::RunArray::try_new(
+            &Int32Array::from(vec![3, 5]),
+            &Int32Array::from(vec![10, 20]),
+        )
+        .unwrap();
+        assert_eq!(
+            eq(&ree_int, &Scalar::new(Int32Array::from(vec![10]))).unwrap(),
+            BooleanArray::from(vec![true, true, true, false, false])
+        );
+
+        // Empty REE
+        let empty_a = ree_str(&[(Some("a"), 1)]).slice(0, 0);
+        let empty_b = ree_str(&[(Some("b"), 1)]).slice(0, 0);
+        assert_eq!(eq(&empty_a, &empty_b).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_byte_view() {
+        let a = arrow_array::StringViewArray::from(vec![
+            Some("apple"),
+            Some("banana"),
+            Some("very long apple exceeding 12 bytes"),
+            Some("very long banana exceeding 12 bytes"),
+        ]);
+        let b = arrow_array::StringViewArray::from(vec![
+            Some("apple"),
+            Some("apple"),
+            Some("very long apple exceeding 12 bytes"),
+            Some("very long apple exceeding 12 bytes"),
+        ]);
+
+        assert_eq!(compare_byte_view(&a, 0, &b, 0), Ordering::Equal);
+        assert_eq!(compare_byte_view(&a, 1, &b, 1), Ordering::Greater);
+        assert_eq!(compare_byte_view(&a, 2, &b, 2), Ordering::Equal);
+        assert_eq!(compare_byte_view(&a, 3, &b, 3), Ordering::Greater);
+    }
+}
