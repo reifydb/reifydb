@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry-otlp"
-version = "0.31.1"
+version = "0.33.0"
 build = false
 autolib = false
 autobins = false
@@ -56,6 +56,7 @@ default = [
 ]
 grpc-tonic = [
     "tonic",
+    "tonic-types",
     "prost",
     "http",
     "tokio",
@@ -70,6 +71,7 @@ http-json = [
     "opentelemetry-proto/gen-tonic-messages",
     "opentelemetry-proto/with-serde",
     "http",
+    "httpdate",
     "trace",
     "metrics",
 ]
@@ -78,10 +80,14 @@ http-proto = [
     "opentelemetry-http",
     "opentelemetry-proto/gen-tonic-messages",
     "http",
+    "httpdate",
     "trace",
     "metrics",
 ]
-hyper-client = ["opentelemetry-http/hyper"]
+hyper-client = [
+    "opentelemetry-http/hyper",
+    "tokio",
+]
 integration-testing = [
     "tonic",
     "prost",
@@ -90,9 +96,8 @@ integration-testing = [
     "logs",
 ]
 internal-logs = [
-    "tracing",
     "opentelemetry_sdk/internal-logs",
-    "opentelemetry-http/internal-logs",
+    "opentelemetry/internal-logs",
 ]
 logs = [
     "opentelemetry/logs",
@@ -111,31 +116,17 @@ reqwest-blocking-client = [
 reqwest-client = [
     "reqwest",
     "opentelemetry-http/reqwest",
+    "tokio",
 ]
 reqwest-rustls = [
     "reqwest",
     "opentelemetry-http/reqwest-rustls",
 ]
-reqwest-rustls-webpki-roots = [
-    "reqwest",
-    "opentelemetry-http/reqwest-rustls-webpki-roots",
-]
-serialize = [
-    "serde",
-    "serde_json",
-]
-tls = ["tonic/tls-ring"]
 tls-aws-lc = ["tonic/tls-aws-lc"]
 tls-provider-agnostic = ["tonic/_tls-any"]
 tls-ring = ["tonic/tls-ring"]
-tls-roots = [
-    "tls",
-    "tonic/tls-native-roots",
-]
-tls-webpki-roots = [
-    "tls",
-    "tonic/tls-webpki-roots",
-]
+tls-roots = ["tonic/tls-native-roots"]
+tls-webpki-roots = ["tonic/tls-webpki-roots"]
 trace = [
     "opentelemetry/trace",
     "opentelemetry_sdk/trace",
@@ -164,21 +155,25 @@ features = ["std"]
 optional = true
 default-features = false
 
+[dependencies.httpdate]
+version = "1.0.3"
+optional = true
+
 [dependencies.opentelemetry]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.opentelemetry-http]
-version = "0.31"
+version = "0.33"
 optional = true
 default-features = false
 
 [dependencies.opentelemetry-proto]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.opentelemetry_sdk]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.prost]
@@ -186,13 +181,7 @@ version = "0.14"
 optional = true
 
 [dependencies.reqwest]
-version = "0.12"
-optional = true
-default-features = false
-
-[dependencies.serde]
-version = "1.0"
-features = ["derive"]
+version = "0.13.1"
 optional = true
 default-features = false
 
@@ -209,6 +198,7 @@ version = "1"
 features = [
     "sync",
     "rt",
+    "time",
 ]
 optional = true
 default-features = false
@@ -218,10 +208,9 @@ version = "0.14.1"
 optional = true
 default-features = false
 
-[dependencies.tracing]
-version = ">=0.1.40"
+[dependencies.tonic-types]
+version = "0.14.1"
 optional = true
-default-features = false
 
 [dependencies.zstd]
 version = "0.13"
@@ -230,12 +219,15 @@ optional = true
 [dev-dependencies.async-trait]
 version = "0.1"
 
+[dev-dependencies.futures-executor]
+version = "0.3"
+
 [dev-dependencies.futures-util]
 version = "0.3"
 default-features = false
 
 [dev-dependencies.opentelemetry_sdk]
-version = "0.31"
+version = "0.33"
 features = [
     "trace",
     "testing",

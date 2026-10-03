@@ -306,10 +306,10 @@ tracing = { version = "=0.1.44" }
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "json", "fmt"] }
 
 # OpenTelemetry - compatible versions
-opentelemetry = { version = "=0.31.0", features = ["tracing"] }
-opentelemetry_sdk = { version = "=0.31.0",features = ["tokio", "trace"] }
-opentelemetry-otlp = { version = "=0.31.1", features = ["grpc-tonic", "tracing", "tokio"] }
-tracing-opentelemetry = { version = "=0.32.1" , features = ["default"]}
+opentelemetry = { version = "=0.33.0", features = ["tracing"] }
+opentelemetry_sdk = { version = "=0.33.0",features = ["tokio", "trace"] }
+opentelemetry-otlp = { version = "=0.33.0", features = ["grpc-tonic", "tokio"] }
+tracing-opentelemetry = { version = "=0.34.0" , features = ["default"]}
 
 libc = { version = "=0.2.190" }
 libloading = { version = "=0.9.0" }

@@ -4,13 +4,19 @@
 //!
 
 #[cfg(any(feature = "http-proto", feature = "http-json", feature = "grpc-tonic"))]
-use crate::HasExportConfig;
+use crate::exporter::HasExportConfig;
 
 #[cfg(any(feature = "http-proto", feature = "http-json"))]
-use crate::{exporter::http::HttpExporterBuilder, HasHttpConfig, HttpExporterBuilderSet};
+use crate::{
+    exporter::http::{HasHttpConfig, HttpExporterBuilder},
+    HttpExporterBuilderSet,
+};
 
 #[cfg(feature = "grpc-tonic")]
-use crate::{exporter::tonic::TonicExporterBuilder, HasTonicConfig, TonicExporterBuilderSet};
+use crate::{
+    exporter::tonic::{HasTonicConfig, TonicExporterBuilder},
+    TonicExporterBuilderSet,
+};
 
 use crate::{ExporterBuildError, NoExporterBuilderSet};
 
@@ -36,12 +42,20 @@ pub const OTEL_EXPORTER_OTLP_METRICS_COMPRESSION: &str = "OTEL_EXPORTER_OTLP_MET
 /// Example: `k1=v1,k2=v2`
 /// Note: this is only supported for HTTP.
 pub const OTEL_EXPORTER_OTLP_METRICS_HEADERS: &str = "OTEL_EXPORTER_OTLP_METRICS_HEADERS";
+/// Protocol to use for metrics exports. Valid values: `grpc`, `http/protobuf`, `http/json`.
+pub const OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: &str = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL";
+/// Whether to disable TLS for gRPC metrics exports.
+/// Only applies to gRPC; HTTP security is determined by URL scheme.
+pub const OTEL_EXPORTER_OTLP_METRICS_INSECURE: &str = "OTEL_EXPORTER_OTLP_METRICS_INSECURE";
+/// Temporality preference for metrics, defaults to cumulative.
+pub const OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: &str =
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE";
 
 /// A builder for creating a new [MetricExporter].
 #[derive(Debug, Default, Clone)]
 pub struct MetricExporterBuilder<C> {
     client: C,
-    temporality: Temporality,
+    temporality: Option<Temporality>,
 }
 
 impl MetricExporterBuilder<NoExporterBuilderSet> {
@@ -49,9 +63,32 @@ impl MetricExporterBuilder<NoExporterBuilderSet> {
     pub fn new() -> Self {
         MetricExporterBuilder::default()
     }
-}
 
-impl<C> MetricExporterBuilder<C> {
+    /// Build the [MetricExporter] with the default transport selected by environment
+    /// variable or feature flags.
+    ///
+    /// The transport is chosen based on:
+    /// 1. `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` environment variable
+    /// 2. `OTEL_EXPORTER_OTLP_PROTOCOL` environment variable
+    /// 3. Enabled features, with priority: `http-json` > `http-proto` > `grpc-tonic`
+    ///
+    /// Use [`with_tonic`](Self::with_tonic) or [`with_http`](Self::with_http) to
+    /// explicitly select a transport and access transport-specific configuration.
+    #[cfg(any(feature = "grpc-tonic", feature = "http-proto", feature = "http-json"))]
+    pub fn build(self) -> Result<MetricExporter, ExporterBuildError> {
+        use crate::WithExportConfig;
+
+        let protocol = crate::exporter::resolve_protocol(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, None);
+        match protocol {
+            #[cfg(feature = "grpc-tonic")]
+            crate::Protocol::Grpc => self.with_tonic().with_protocol(protocol).build(),
+            #[cfg(feature = "http-proto")]
+            crate::Protocol::HttpBinary => self.with_http().with_protocol(protocol).build(),
+            #[cfg(feature = "http-json")]
+            crate::Protocol::HttpJson => self.with_http().with_protocol(protocol).build(),
+        }
+    }
+
     /// With the gRPC Tonic transport.
     #[cfg(feature = "grpc-tonic")]
     pub fn with_tonic(self) -> MetricExporterBuilder<TonicExporterBuilderSet> {
@@ -69,21 +106,52 @@ impl<C> MetricExporterBuilder<C> {
             temporality: self.temporality,
         }
     }
+}
 
+impl<C> MetricExporterBuilder<C> {
     /// Set the temporality for the metrics.
+    ///
+    /// Note: Programmatically setting this will override any value set via the environment variable.
     pub fn with_temporality(self, temporality: Temporality) -> MetricExporterBuilder<C> {
         MetricExporterBuilder {
             client: self.client,
-            temporality,
+            temporality: Some(temporality),
         }
     }
+}
+
+/// Resolve temporality with priority:
+/// 1. Provided config value
+/// 2. OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE environment variable
+/// 3. Default (Cumulative)
+#[cfg(any(feature = "http-proto", feature = "http-json", feature = "grpc-tonic"))]
+fn resolve_temporality(provided: Option<Temporality>) -> Temporality {
+    if let Some(temporality) = provided {
+        return temporality;
+    }
+
+    if let Some(value) =
+        crate::exporter::read_enum_env_var(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE)
+    {
+        return value.parse::<Temporality>().unwrap_or_else(|_| {
+            crate::exporter::warn_ignored_enum_env_var(
+                OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE,
+                &value,
+                "expected 'cumulative', 'delta', or 'lowmemory'",
+            );
+            Temporality::default()
+        });
+    }
+
+    Temporality::default()
 }
 
 #[cfg(feature = "grpc-tonic")]
 impl MetricExporterBuilder<TonicExporterBuilderSet> {
     /// Build the [MetricExporter] with the gRPC Tonic transport.
     pub fn build(self) -> Result<MetricExporter, ExporterBuildError> {
-        let exporter = self.client.0.build_metrics_exporter(self.temporality)?;
+        let temporality = resolve_temporality(self.temporality);
+        let exporter = self.client.0.build_metrics_exporter(temporality)?;
         opentelemetry::otel_debug!(name: "MetricExporterBuilt");
         Ok(exporter)
     }
@@ -93,28 +161,29 @@ impl MetricExporterBuilder<TonicExporterBuilderSet> {
 impl MetricExporterBuilder<HttpExporterBuilderSet> {
     /// Build the [MetricExporter] with the HTTP transport.
     pub fn build(self) -> Result<MetricExporter, ExporterBuildError> {
-        let exporter = self.client.0.build_metrics_exporter(self.temporality)?;
+        let temporality = resolve_temporality(self.temporality);
+        let exporter = self.client.0.build_metrics_exporter(temporality)?;
         Ok(exporter)
     }
 }
 
 #[cfg(feature = "grpc-tonic")]
 impl HasExportConfig for MetricExporterBuilder<TonicExporterBuilderSet> {
-    fn export_config(&mut self) -> &mut crate::ExportConfig {
+    fn export_config(&mut self) -> &mut crate::exporter::ExportConfig {
         &mut self.client.0.exporter_config
     }
 }
 
 #[cfg(any(feature = "http-proto", feature = "http-json"))]
 impl HasExportConfig for MetricExporterBuilder<HttpExporterBuilderSet> {
-    fn export_config(&mut self) -> &mut crate::ExportConfig {
+    fn export_config(&mut self) -> &mut crate::exporter::ExportConfig {
         &mut self.client.0.exporter_config
     }
 }
 
 #[cfg(feature = "grpc-tonic")]
 impl HasTonicConfig for MetricExporterBuilder<TonicExporterBuilderSet> {
-    fn tonic_config(&mut self) -> &mut crate::TonicConfig {
+    fn tonic_config(&mut self) -> &mut crate::exporter::tonic::TonicConfig {
         &mut self.client.0.tonic_config
     }
 }
@@ -214,5 +283,127 @@ impl MetricExporter {
             client: SupportedTransportClient::Http(client),
             temporality,
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(any(feature = "grpc-tonic", feature = "http-proto", feature = "http-json"))]
+mod build_tests {
+    use crate::MetricExporter;
+
+    // Uses a tokio runtime because, under a gRPC-only build, the auto-selected
+    // tonic transport needs an active reactor to construct its channel.
+    #[tokio::test]
+    async fn build_with_default_transport() {
+        // Unset the temporality env var so parallel tests (e.g.
+        // invalid_env_var_returns_error) that set it to invalid values
+        // don't cause this build to fail.
+        temp_env::with_var_unset(
+            super::OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE,
+            || {
+                let result = MetricExporter::builder().build();
+                assert!(result.is_ok(), "build() should succeed: {:?}", result.err());
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run_env_test<T, F>(env_vars: T, f: F)
+    where
+        F: FnOnce(),
+        T: Into<Vec<(&'static str, &'static str)>>,
+    {
+        temp_env::with_vars(
+            env_vars
+                .into()
+                .iter()
+                .map(|&(k, v)| (k, Some(v)))
+                .collect::<Vec<(&'static str, Option<&'static str>)>>(),
+            f,
+        )
+    }
+
+    #[test]
+    fn code_config_overrides_env_var() {
+        run_env_test(
+            vec![(
+                OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE,
+                "cumulative",
+            )],
+            || {
+                let result = resolve_temporality(Some(Temporality::Delta));
+                assert_eq!(result, Temporality::Delta);
+            },
+        );
+    }
+
+    #[test]
+    fn env_var_sets_delta() {
+        run_env_test(
+            vec![(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "delta")],
+            || {
+                let result = resolve_temporality(None);
+                assert_eq!(result, Temporality::Delta);
+            },
+        );
+    }
+
+    #[test]
+    fn env_var_sets_lowmemory() {
+        run_env_test(
+            vec![(
+                OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE,
+                "lowmemory",
+            )],
+            || {
+                let result = resolve_temporality(None);
+                assert_eq!(result, Temporality::LowMemory);
+            },
+        );
+    }
+
+    #[test]
+    fn env_var_case_insensitive() {
+        run_env_test(
+            vec![(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "Delta")],
+            || {
+                let result = resolve_temporality(None);
+                assert_eq!(result, Temporality::Delta);
+            },
+        );
+    }
+
+    #[test]
+    fn invalid_env_var_uses_default() {
+        run_env_test(
+            vec![(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "invalid")],
+            || {
+                let result = resolve_temporality(None);
+                assert_eq!(result, Temporality::Cumulative);
+            },
+        );
+    }
+
+    #[test]
+    fn empty_env_var_uses_default() {
+        run_env_test(
+            vec![(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "")],
+            || {
+                let result = resolve_temporality(None);
+                assert_eq!(result, Temporality::Cumulative);
+            },
+        );
+    }
+
+    #[test]
+    fn test_use_default_when_nothing_set() {
+        temp_env::with_var_unset(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, || {
+            let result = resolve_temporality(None);
+            assert_eq!(result, Temporality::Cumulative);
+        });
     }
 }

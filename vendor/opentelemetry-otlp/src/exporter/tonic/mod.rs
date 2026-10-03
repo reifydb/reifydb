@@ -9,7 +9,6 @@ use tonic::metadata::{KeyAndValueRef, MetadataMap};
 use tonic::service::Interceptor;
 use tonic::transport::Channel;
 #[cfg(any(
-    feature = "tls",
     feature = "tls-ring",
     feature = "tls-aws-lc",
     feature = "tls-provider-agnostic"
@@ -19,7 +18,19 @@ use tonic::transport::ClientTlsConfig;
 use super::{default_headers, parse_header_string, OTEL_EXPORTER_OTLP_GRPC_ENDPOINT_DEFAULT};
 use super::{resolve_timeout, ExporterBuildError};
 use crate::exporter::Compression;
-use crate::{ExportConfig, OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS};
+use crate::{exporter::ExportConfig, OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS};
+
+#[cfg(all(
+    feature = "grpc-tonic",
+    any(feature = "trace", feature = "metrics", feature = "logs")
+))]
+use crate::retry::retry_with_backoff;
+use crate::RetryPolicy;
+#[cfg(all(
+    feature = "grpc-tonic",
+    any(feature = "trace", feature = "metrics", feature = "logs")
+))]
+use std::future::Future;
 
 #[cfg(feature = "logs")]
 pub(crate) mod logs;
@@ -35,12 +46,11 @@ pub(crate) mod trace;
 /// [tonic]: https://github.com/hyperium/tonic
 #[derive(Debug, Default)]
 #[non_exhaustive]
-pub struct TonicConfig {
+pub(crate) struct TonicConfig {
     /// Custom metadata entries to send to the collector.
     pub(crate) metadata: Option<MetadataMap>,
     /// TLS settings for the collector endpoint.
     #[cfg(any(
-        feature = "tls",
         feature = "tls-ring",
         feature = "tls-aws-lc",
         feature = "tls-provider-agnostic"
@@ -50,28 +60,28 @@ pub struct TonicConfig {
     pub(crate) compression: Option<Compression>,
     pub(crate) channel: Option<tonic::transport::Channel>,
     pub(crate) interceptor: Option<BoxInterceptor>,
+    /// The retry policy to use for gRPC requests.
+    pub(crate) retry_policy: Option<RetryPolicy>,
 }
 
-impl TryFrom<Compression> for tonic::codec::CompressionEncoding {
-    type Error = ExporterBuildError;
-
-    fn try_from(value: Compression) -> Result<Self, ExporterBuildError> {
-        match value {
-            #[cfg(feature = "gzip-tonic")]
-            Compression::Gzip => Ok(tonic::codec::CompressionEncoding::Gzip),
-            #[cfg(not(feature = "gzip-tonic"))]
-            Compression::Gzip => Err(ExporterBuildError::FeatureRequiredForCompressionAlgorithm(
-                "gzip-tonic",
-                Compression::Gzip,
-            )),
-            #[cfg(feature = "zstd-tonic")]
-            Compression::Zstd => Ok(tonic::codec::CompressionEncoding::Zstd),
-            #[cfg(not(feature = "zstd-tonic"))]
-            Compression::Zstd => Err(ExporterBuildError::FeatureRequiredForCompressionAlgorithm(
-                "zstd-tonic",
-                Compression::Zstd,
-            )),
-        }
+fn to_tonic_compression(
+    compression: Compression,
+) -> Result<tonic::codec::CompressionEncoding, ExporterBuildError> {
+    match compression {
+        #[cfg(feature = "gzip-tonic")]
+        Compression::Gzip => Ok(tonic::codec::CompressionEncoding::Gzip),
+        #[cfg(not(feature = "gzip-tonic"))]
+        Compression::Gzip => Err(ExporterBuildError::invalid_configuration(
+            "compression",
+            "feature 'gzip-tonic' is required to use the compression algorithm 'gzip'",
+        )),
+        #[cfg(feature = "zstd-tonic")]
+        Compression::Zstd => Ok(tonic::codec::CompressionEncoding::Zstd),
+        #[cfg(not(feature = "zstd-tonic"))]
+        Compression::Zstd => Err(ExporterBuildError::invalid_configuration(
+            "compression",
+            "feature 'zstd-tonic' is required to use the compression algorithm 'zstd'",
+        )),
     }
 }
 
@@ -79,7 +89,7 @@ impl TryFrom<Compression> for tonic::codec::CompressionEncoding {
 ///
 /// It allows you to
 /// - add additional metadata
-/// - set tls config (via the `tls`, `tls-ring`, `tls-aws-lc`, or `tls-provider-agnostic` features)
+/// - set tls config (via the `tls-ring`, `tls-aws-lc`, or `tls-provider-agnostic` features)
 /// - specify custom [channel]s
 ///
 /// [tonic]: <https://github.com/hyperium/tonic>
@@ -110,7 +120,7 @@ impl TryFrom<Compression> for tonic::codec::CompressionEncoding {
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct TonicExporterBuilder {
+pub(crate) struct TonicExporterBuilder {
     pub(crate) tonic_config: TonicConfig,
     pub(crate) exporter_config: ExportConfig,
 }
@@ -138,7 +148,6 @@ impl Default for TonicExporterBuilder {
                         .expect("Invalid tonic headers"),
                 )),
                 #[cfg(any(
-                    feature = "tls",
                     feature = "tls-ring",
                     feature = "tls-aws-lc",
                     feature = "tls-provider-agnostic"
@@ -147,9 +156,10 @@ impl Default for TonicExporterBuilder {
                 compression: None,
                 channel: Option::default(),
                 interceptor: Option::default(),
+                retry_policy: None,
             },
             exporter_config: ExportConfig {
-                protocol: crate::Protocol::Grpc,
+                protocol: Some(crate::Protocol::Grpc),
                 ..Default::default()
             },
         }
@@ -158,17 +168,58 @@ impl Default for TonicExporterBuilder {
 
 impl TonicExporterBuilder {
     // This is for clippy to work with only the grpc-tonic feature enabled
-    #[allow(unused)]
+    #[allow(unused, clippy::type_complexity)]
     fn build_channel(
         self,
         signal_endpoint_var: &str,
         signal_timeout_var: &str,
         signal_compression_var: &str,
         signal_headers_var: &str,
-    ) -> Result<(Channel, BoxInterceptor, Option<CompressionEncoding>), ExporterBuildError> {
+        signal_protocol_var: &str,
+        signal_insecure_var: &str,
+    ) -> Result<
+        (
+            Channel,
+            BoxInterceptor,
+            Option<CompressionEncoding>,
+            Option<RetryPolicy>,
+            std::time::Duration,
+        ),
+        ExporterBuildError,
+    > {
+        // Resolve protocol and validate compatibility with gRPC transport.
+        // Note: TonicExporterBuilder defaults protocol to Some(Grpc), so for the
+        // typical `.with_tonic().build()` path, resolve_protocol returns Grpc
+        // immediately (env vars are skipped because programmatic config takes
+        // precedence). This validation primarily catches programmatic misuse like
+        // `.with_tonic().with_protocol(Protocol::HttpBinary).build()`.
+        // Env var-based transport selection is handled at the auto-select layer
+        // (e.g., SpanExporter::builder().build()), which routes to the correct
+        // transport before reaching this code.
+        #[cfg(any(feature = "grpc-tonic", feature = "http-proto", feature = "http-json"))]
+        {
+            let protocol =
+                super::resolve_protocol(signal_protocol_var, self.exporter_config.protocol);
+
+            let is_http_protocol = false;
+            #[cfg(feature = "http-proto")]
+            let is_http_protocol =
+                is_http_protocol || matches!(protocol, crate::Protocol::HttpBinary);
+            #[cfg(feature = "http-json")]
+            let is_http_protocol =
+                is_http_protocol || matches!(protocol, crate::Protocol::HttpJson);
+            if is_http_protocol {
+                return Err(ExporterBuildError::invalid_configuration(
+                    "protocol",
+                    "HTTP protocol is not compatible with gRPC transport; use `.with_http()` instead",
+                ));
+            }
+        }
+
         let compression = self.resolve_compression(signal_compression_var)?;
 
         let (headers_from_env, headers_for_logging) = parse_headers_from_env(signal_headers_var);
+
         let metadata = merge_metadata_with_headers_from_env(
             self.tonic_config.metadata.unwrap_or_default(),
             headers_from_env,
@@ -196,39 +247,88 @@ impl TonicExporterBuilder {
             None => BoxInterceptor(Box::new(add_metadata)),
         };
 
+        // Get retry policy before consuming self
+        let retry_policy = self.tonic_config.retry_policy.clone();
+
+        // Resolve timeout early so it's available for both custom-channel and built-channel paths
+        let timeout = resolve_timeout(signal_timeout_var, self.exporter_config.timeout.as_ref());
+
         // If a custom channel was provided, use that channel instead of creating one
         if let Some(channel) = self.tonic_config.channel {
-            return Ok((channel, interceptor, compression));
+            return Ok((channel, interceptor, compression, retry_policy, timeout));
         }
 
         let config = self.exporter_config;
 
-        let endpoint = Self::resolve_endpoint(signal_endpoint_var, config.endpoint);
+        let (endpoint_str, endpoint_source) =
+            Self::resolve_endpoint(signal_endpoint_var, config.endpoint)?;
+        let endpoint_str =
+            apply_insecure_scheme(endpoint_str, super::resolve_insecure(signal_insecure_var));
 
         // Used for logging the endpoint
-        let endpoint_clone = endpoint.clone();
+        let endpoint_clone = endpoint_str.clone();
 
-        let endpoint = Channel::from_shared(endpoint)
-            .map_err(|op| ExporterBuildError::InvalidUri(endpoint_clone.clone(), op.to_string()))?;
-        let timeout = resolve_timeout(signal_timeout_var, config.timeout.as_ref());
+        let endpoint = tonic::transport::Endpoint::from_shared(endpoint_str).map_err(|error| {
+            ExporterBuildError::invalid_configuration(
+                endpoint_source,
+                format!(
+                    "invalid endpoint '{endpoint_clone}': {}",
+                    render_source_chain(&error)
+                ),
+            )
+        })?;
 
+        let is_https = endpoint
+            .uri()
+            .scheme()
+            .is_some_and(|s| *s == http::uri::Scheme::HTTPS);
+
+        #[cfg(not(any(
+            feature = "tls-ring",
+            feature = "tls-aws-lc",
+            feature = "tls-provider-agnostic"
+        )))]
+        if is_https {
+            return Err(ExporterBuildError::invalid_configuration(
+                endpoint_source,
+                format!(
+                    "endpoint '{}' uses HTTPS but no TLS feature is enabled; \
+                     enable one of the `tls-ring`, `tls-aws-lc`, or `tls-provider-agnostic` features on `opentelemetry-otlp`",
+                    endpoint_clone
+                ),
+            ));
+        }
         #[cfg(any(
-            feature = "tls",
             feature = "tls-ring",
             feature = "tls-aws-lc",
             feature = "tls-provider-agnostic"
         ))]
         let channel = match self.tonic_config.tls_config {
-            Some(tls_config) => endpoint
-                .tls_config(tls_config)
-                .map_err(|er| ExporterBuildError::InternalFailure(er.to_string()))?,
+            Some(tls_config) => endpoint.tls_config(tls_config).map_err(|error| {
+                ExporterBuildError::invalid_configuration(
+                    "tls_config",
+                    render_source_chain(&error),
+                )
+            })?,
+            None if is_https => endpoint
+                .tls_config(ClientTlsConfig::new())
+                .map_err(|error| {
+                    ExporterBuildError::invalid_configuration(
+                        endpoint_source,
+                        format!(
+                            "failed to configure default TLS for HTTPS endpoint '{endpoint_clone}': {}; \
+                             ensure an appropriate TLS provider feature is enabled"
+                            ,
+                            render_source_chain(&error)
+                        ),
+                    )
+                })?,
             None => endpoint,
         }
         .timeout(timeout)
         .connect_lazy();
 
         #[cfg(not(any(
-            feature = "tls",
             feature = "tls-ring",
             feature = "tls-aws-lc",
             feature = "tls-provider-agnostic"
@@ -236,10 +336,13 @@ impl TonicExporterBuilder {
         let channel = endpoint.timeout(timeout).connect_lazy();
 
         otel_debug!(name: "TonicChannelBuilt", endpoint = endpoint_clone, timeout_in_millisecs = timeout.as_millis(), compression = format!("{:?}", compression), headers = format!("{:?}", headers_for_logging));
-        Ok((channel, interceptor, compression))
+        Ok((channel, interceptor, compression, retry_policy, timeout))
     }
 
-    fn resolve_endpoint(default_endpoint_var: &str, provided_endpoint: Option<String>) -> String {
+    fn resolve_endpoint(
+        signal_endpoint_var: &str,
+        provided_endpoint: Option<String>,
+    ) -> Result<(String, &str), ExporterBuildError> {
         // resolving endpoint string
         // grpc doesn't have a "path" like http(See https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
         // the path of grpc calls are based on the protobuf service definition
@@ -248,13 +351,16 @@ impl TonicExporterBuilder {
         //
         // programmatic configuration overrides any value set via environment variables
         if let Some(endpoint) = provided_endpoint.filter(|s| !s.is_empty()) {
-            endpoint
-        } else if let Ok(endpoint) = env::var(default_endpoint_var) {
-            endpoint
-        } else if let Ok(endpoint) = env::var(OTEL_EXPORTER_OTLP_ENDPOINT) {
-            endpoint
+            Ok((endpoint, "endpoint"))
+        } else if let Some(endpoint) = endpoint_from_env(signal_endpoint_var)? {
+            Ok((endpoint, signal_endpoint_var))
+        } else if let Some(endpoint) = endpoint_from_env(OTEL_EXPORTER_OTLP_ENDPOINT)? {
+            Ok((endpoint, OTEL_EXPORTER_OTLP_ENDPOINT))
         } else {
-            OTEL_EXPORTER_OTLP_GRPC_ENDPOINT_DEFAULT.to_string()
+            Ok((
+                OTEL_EXPORTER_OTLP_GRPC_ENDPOINT_DEFAULT.to_string(),
+                "endpoint",
+            ))
         }
     }
 
@@ -262,9 +368,11 @@ impl TonicExporterBuilder {
         &self,
         env_override: &str,
     ) -> Result<Option<CompressionEncoding>, ExporterBuildError> {
-        super::resolve_compression_from_env(self.tonic_config.compression, env_override)?
-            .map(|c| c.try_into())
-            .transpose()
+        super::resolve_compression_from_env(
+            self.tonic_config.compression,
+            env_override,
+            to_tonic_compression,
+        )
     }
 
     /// Build a new tonic log exporter
@@ -274,14 +382,16 @@ impl TonicExporterBuilder {
 
         otel_debug!(name: "LogsTonicChannelBuilding");
 
-        let (channel, interceptor, compression) = self.build_channel(
+        let (channel, interceptor, compression, retry_policy, timeout) = self.build_channel(
             crate::logs::OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
             crate::logs::OTEL_EXPORTER_OTLP_LOGS_TIMEOUT,
             crate::logs::OTEL_EXPORTER_OTLP_LOGS_COMPRESSION,
             crate::logs::OTEL_EXPORTER_OTLP_LOGS_HEADERS,
+            crate::logs::OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
+            crate::logs::OTEL_EXPORTER_OTLP_LOGS_INSECURE,
         )?;
 
-        let client = TonicLogsClient::new(channel, interceptor, compression);
+        let client = TonicLogsClient::new(channel, interceptor, compression, retry_policy, timeout);
 
         Ok(crate::logs::LogExporter::from_tonic(client))
     }
@@ -297,14 +407,17 @@ impl TonicExporterBuilder {
 
         otel_debug!(name: "MetricsTonicChannelBuilding");
 
-        let (channel, interceptor, compression) = self.build_channel(
+        let (channel, interceptor, compression, retry_policy, timeout) = self.build_channel(
             crate::metric::OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
             crate::metric::OTEL_EXPORTER_OTLP_METRICS_TIMEOUT,
             crate::metric::OTEL_EXPORTER_OTLP_METRICS_COMPRESSION,
             crate::metric::OTEL_EXPORTER_OTLP_METRICS_HEADERS,
+            crate::metric::OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
+            crate::metric::OTEL_EXPORTER_OTLP_METRICS_INSECURE,
         )?;
 
-        let client = TonicMetricsClient::new(channel, interceptor, compression);
+        let client =
+            TonicMetricsClient::new(channel, interceptor, compression, retry_policy, timeout);
 
         Ok(MetricExporter::from_tonic(client, temporality))
     }
@@ -316,16 +429,162 @@ impl TonicExporterBuilder {
 
         otel_debug!(name: "TracesTonicChannelBuilding");
 
-        let (channel, interceptor, compression) = self.build_channel(
+        let (channel, interceptor, compression, retry_policy, timeout) = self.build_channel(
             crate::span::OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
             crate::span::OTEL_EXPORTER_OTLP_TRACES_TIMEOUT,
             crate::span::OTEL_EXPORTER_OTLP_TRACES_COMPRESSION,
             crate::span::OTEL_EXPORTER_OTLP_TRACES_HEADERS,
+            crate::span::OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+            crate::span::OTEL_EXPORTER_OTLP_TRACES_INSECURE,
         )?;
 
-        let client = TonicTracesClient::new(channel, interceptor, compression);
+        let client =
+            TonicTracesClient::new(channel, interceptor, compression, retry_policy, timeout);
 
         Ok(crate::SpanExporter::from_tonic(client))
+    }
+}
+
+/// Retries a tonic export operation with exponential backoff.
+///
+/// Delays between retries adapt to the calling context: cooperative
+/// `tokio::time::sleep` inside a Tokio runtime, or `std::thread::sleep`
+/// on bare OS threads.
+#[cfg(all(
+    feature = "grpc-tonic",
+    any(feature = "trace", feature = "metrics", feature = "logs")
+))]
+async fn tonic_retry_with_backoff<F, Fut, T>(
+    policy: &RetryPolicy,
+    timeout: std::time::Duration,
+    classify_fn: fn(&tonic::Status) -> crate::retry::RetryErrorType,
+    operation_name: &'static str,
+    operation: F,
+) -> Result<T, tonic::Status>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T, tonic::Status>>,
+{
+    retry_with_backoff(policy, timeout, classify_fn, operation_name, operation).await
+}
+
+#[cfg(any(feature = "trace", feature = "metrics", feature = "logs"))]
+/// Log and convert a `tonic::Status` from a failed export into an `OTelSdkError`.
+///
+/// The gRPC code, message, and details are logged at DEBUG level only, since
+/// the message may contain sensitive information such as authentication tokens
+/// echoed back by the server.
+///
+/// The returned `OTelSdkError` never contains the gRPC message, only the code.
+/// When `status.source()` is `Some`, the status was locally generated by
+/// tonic's transport stack (connect failure, invalid URL, DNS, etc.); its
+/// source chain is library-deterministic text and is appended to the returned
+/// error so misconfigurations surface at ERROR via the SDK processors.
+/// We don't log at WARN here because SDK processors (BatchLogProcessor,
+/// BatchSpanProcessor, PeriodicReader) already log the returned error via
+/// `otel_error!`.
+///
+/// `$client_name` must be a string literal so that `concat!` can produce
+/// compile-time event names consistent with the codebase naming convention.
+macro_rules! handle_tonic_export_error {
+    ($client_name:literal, $tonic_status:expr) => {{
+        let status = &$tonic_status;
+        let code = status.code();
+        otel_debug!(
+            name: concat!($client_name, ".ExportFailed"),
+            grpc_code = format!("{:?}", code),
+            grpc_message = status.message(),
+            grpc_details = format!("{:?}", status.details())
+        );
+        let mut err_msg = format!(
+            concat!($client_name, " export failed with gRPC code: {:?}"),
+            code
+        );
+        if let Some(src) = std::error::Error::source(status) {
+            err_msg.push_str(": ");
+            err_msg.push_str(&$crate::exporter::tonic::render_source_chain(src));
+        }
+        Err(opentelemetry_sdk::error::OTelSdkError::InternalFailure(
+            err_msg,
+        ))
+    }};
+}
+
+#[cfg(any(feature = "trace", feature = "metrics", feature = "logs"))]
+/// Log and convert a `tonic::Status` from a failed interceptor into a new
+/// `tonic::Status` suitable for retry classification.
+///
+/// Interceptor errors are always treated as potentially sensitive since
+/// interceptors are the primary mechanism for adding auth tokens. Only the
+/// gRPC code is included in the returned status message; the original message
+/// and details are logged at DEBUG level only.
+macro_rules! handle_interceptor_error {
+    ($client_name:literal, $e:expr) => {{
+        let status = &$e;
+        otel_debug!(
+            name: concat!($client_name, ".InterceptorFailed"),
+            grpc_code = format!("{:?}", status.code()),
+            grpc_message = status.message(),
+            grpc_details = format!("{:?}", status.details())
+        );
+        tonic::Status::internal(format!(
+            concat!(
+                $client_name,
+                " export failed in interceptor with gRPC code: {:?}"
+            ),
+            status.code()
+        ))
+    }};
+}
+
+// Make macros available to submodules (logs, trace, metrics).
+#[cfg(any(feature = "trace", feature = "metrics", feature = "logs"))]
+pub(crate) use handle_interceptor_error;
+#[cfg(any(feature = "trace", feature = "metrics", feature = "logs"))]
+pub(crate) use handle_tonic_export_error;
+
+/// Render an `std::error::Error` and its `source()` chain into a single
+/// colon-separated string (e.g. `"transport error: invalid URL, scheme is missing"`).
+pub(crate) fn render_source_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    use std::fmt::Write;
+    let mut out = err.to_string();
+    let mut next = err.source();
+    while let Some(cur) = next {
+        let _ = write!(&mut out, ": {cur}");
+        next = cur.source();
+    }
+    out
+}
+
+fn endpoint_from_env(variable: &str) -> Result<Option<String>, ExporterBuildError> {
+    super::read_env_var(variable)
+}
+
+/// Apply the OTLP `INSECURE` rule to a (possibly schemeless) gRPC endpoint.
+///
+/// Per the [OTLP exporter spec], `INSECURE` only governs endpoints that have no
+/// explicit scheme. An endpoint that already carries a scheme — `http://`,
+/// `https://`, `unix://`, etc. — is returned unchanged so its transport security
+/// is decided by that scheme. A schemeless endpoint (e.g.
+/// `collector.example.com:4317`) is prefixed with `http://` when `insecure` is
+/// `true` and `https://` otherwise.
+///
+/// An endpoint carries an explicit scheme only when `://` precedes any
+/// path/query/fragment delimiter, so `unix:///tmp/x` is treated as schemed
+/// while `collector:4317/p://q` is not.
+///
+/// [OTLP exporter spec]: https://opentelemetry.io/docs/specs/otel/protocol/exporter/#configuration-options
+fn apply_insecure_scheme(endpoint: String, insecure: bool) -> String {
+    let has_scheme = endpoint
+        .split_once("://")
+        .is_some_and(|(scheme, _)| !scheme.contains(['/', '?', '#']));
+
+    if has_scheme {
+        endpoint
+    } else if insecure {
+        format!("http://{endpoint}")
+    } else {
+        format!("https://{endpoint}")
     }
 }
 
@@ -343,7 +602,7 @@ fn merge_metadata_with_headers_from_env(
     }
 }
 
-fn parse_headers_from_env(signal_headers_var: &str) -> (HeaderMap, Vec<(String, String)>) {
+fn parse_headers_from_env(signal_headers_var: &str) -> (HeaderMap, Vec<String>) {
     let mut headers = Vec::new();
 
     (
@@ -352,7 +611,7 @@ fn parse_headers_from_env(signal_headers_var: &str) -> (HeaderMap, Vec<(String, 
             .map(|input| {
                 parse_header_string(&input)
                     .filter_map(|(key, value)| {
-                        headers.push((key.to_owned(), value.clone()));
+                        headers.push(key.to_owned());
                         Some((
                             HeaderName::from_str(key).ok()?,
                             HeaderValue::from_str(&value).ok()?,
@@ -366,7 +625,7 @@ fn parse_headers_from_env(signal_headers_var: &str) -> (HeaderMap, Vec<(String, 
 }
 
 /// Expose interface for modifying [TonicConfig] fields within the exporter builders.
-pub trait HasTonicConfig {
+pub(crate) trait HasTonicConfig {
     /// Return a mutable reference to the export config within the exporter builders.
     fn tonic_config(&mut self) -> &mut TonicConfig;
 }
@@ -378,9 +637,7 @@ impl HasTonicConfig for TonicExporterBuilder {
     }
 }
 
-/// Expose methods to override [TonicConfig].
-///
-/// This trait will be implemented for every struct that implemented [`HasTonicConfig`] trait.
+/// Expose methods to override tonic-specific configuration.
 ///
 /// ## Examples
 /// ```
@@ -392,10 +649,11 @@ impl HasTonicConfig for TonicExporterBuilder {
 ///     .with_compression(opentelemetry_otlp::Compression::Gzip);
 /// # }
 /// ```
-pub trait WithTonicConfig {
+///
+/// This trait is sealed and cannot be implemented for types outside this crate.
+pub trait WithTonicConfig: super::sealed::WithTonicConfig {
     /// Set the TLS settings for the collector endpoint.
     #[cfg(any(
-        feature = "tls",
         feature = "tls-ring",
         feature = "tls-aws-lc",
         feature = "tls-provider-agnostic"
@@ -438,7 +696,7 @@ pub trait WithTonicConfig {
     /// this will override tls config and should only be used
     /// when working with non-HTTP transports.
     ///
-    /// Users MUST make sure the [`ExportConfig::timeout`] is
+    /// Users MUST make sure the timeout is
     /// the same as the channel's timeout.
     fn with_channel(self, channel: tonic::transport::Channel) -> Self;
 
@@ -505,11 +763,15 @@ pub trait WithTonicConfig {
     fn with_interceptor<I>(self, interceptor: I) -> Self
     where
         I: tonic::service::Interceptor + Clone + Send + Sync + 'static;
+
+    /// Set the retry policy for gRPC requests.
+    fn with_retry_policy(self, policy: RetryPolicy) -> Self;
 }
+
+impl<B: HasTonicConfig> super::sealed::WithTonicConfig for B {}
 
 impl<B: HasTonicConfig> WithTonicConfig for B {
     #[cfg(any(
-        feature = "tls",
         feature = "tls-ring",
         feature = "tls-aws-lc",
         feature = "tls-provider-agnostic"
@@ -551,6 +813,11 @@ impl<B: HasTonicConfig> WithTonicConfig for B {
         self.tonic_config().interceptor = Some(BoxInterceptor(Box::new(interceptor)));
         self
     }
+
+    fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.tonic_config().retry_policy = Some(policy);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -559,10 +826,68 @@ mod tests {
     use crate::exporter::tonic::WithTonicConfig;
     #[cfg(feature = "grpc-tonic")]
     use crate::exporter::Compression;
-    use crate::{TonicExporterBuilder, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT};
+    use crate::OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+
+    use super::TonicExporterBuilder;
     use crate::{OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_TRACES_HEADERS};
     use http::{HeaderMap, HeaderName, HeaderValue};
     use tonic::metadata::{MetadataMap, MetadataValue};
+
+    // Scheme-resolution unit tests. These are intentionally free of env vars, a
+    // tokio runtime, and TLS features so they run under every feature
+    // combination (including CI's `--all-features`), unlike the TLS-gated
+    // integration tests below which compile out when a TLS feature is enabled.
+    #[test]
+    fn apply_insecure_scheme_defaults_to_https() {
+        assert_eq!(
+            super::apply_insecure_scheme("collector.example.com:4317".to_string(), false),
+            "https://collector.example.com:4317"
+        );
+    }
+
+    #[test]
+    fn apply_insecure_scheme_uses_http_when_insecure() {
+        assert_eq!(
+            super::apply_insecure_scheme("collector.example.com:4317".to_string(), true),
+            "http://collector.example.com:4317"
+        );
+    }
+
+    #[test]
+    fn apply_insecure_scheme_preserves_explicit_scheme() {
+        // An explicit scheme always wins over INSECURE, regardless of its value.
+        // The `unix://` case is the regression guard for an endpoint with a
+        // non-http(s) scheme being rewritten to `https://unix://...`.
+        for endpoint in [
+            "http://collector.example.com:4317",
+            "https://collector.example.com:4317",
+            "unix:///tmp/test",
+        ] {
+            assert_eq!(
+                super::apply_insecure_scheme(endpoint.to_string(), true),
+                endpoint
+            );
+            assert_eq!(
+                super::apply_insecure_scheme(endpoint.to_string(), false),
+                endpoint
+            );
+        }
+    }
+
+    #[test]
+    fn apply_insecure_scheme_ignores_delimited_scheme_separator() {
+        // A `://` that appears after a path/query/fragment delimiter is not a
+        // scheme, so the (schemeless) endpoint must still be prefixed rather than
+        // passed through and left to fail URI parsing.
+        assert_eq!(
+            super::apply_insecure_scheme("collector:4317/path://foo".to_string(), false),
+            "https://collector:4317/path://foo"
+        );
+        assert_eq!(
+            super::apply_insecure_scheme("collector:4317/path://foo".to_string(), true),
+            "http://collector:4317/path://foo"
+        );
+    }
 
     #[test]
     fn test_with_metadata() {
@@ -599,9 +924,6 @@ mod tests {
     #[test]
     #[cfg(feature = "gzip-tonic")]
     fn test_with_gzip_compression() {
-        // metadata should merge with the current one with priority instead of just replacing it
-        let mut metadata = MetadataMap::new();
-        metadata.insert("foo", "bar".parse().unwrap());
         let builder = TonicExporterBuilder::default().with_compression(Compression::Gzip);
         assert_eq!(builder.tonic_config.compression.unwrap(), Compression::Gzip);
     }
@@ -616,13 +938,13 @@ mod tests {
     #[test]
     fn test_convert_compression() {
         #[cfg(feature = "gzip-tonic")]
-        assert!(tonic::codec::CompressionEncoding::try_from(Compression::Gzip).is_ok());
+        assert!(super::to_tonic_compression(Compression::Gzip).is_ok());
         #[cfg(not(feature = "gzip-tonic"))]
-        assert!(tonic::codec::CompressionEncoding::try_from(Compression::Gzip).is_err());
+        assert!(super::to_tonic_compression(Compression::Gzip).is_err());
         #[cfg(feature = "zstd-tonic")]
-        assert!(tonic::codec::CompressionEncoding::try_from(Compression::Zstd).is_ok());
+        assert!(super::to_tonic_compression(Compression::Zstd).is_ok());
         #[cfg(not(feature = "zstd-tonic"))]
-        assert!(tonic::codec::CompressionEncoding::try_from(Compression::Zstd).is_err());
+        assert!(super::to_tonic_compression(Compression::Zstd).is_err());
     }
 
     #[cfg(feature = "zstd-tonic")]
@@ -744,8 +1066,15 @@ mod tests {
                 let url = TonicExporterBuilder::resolve_endpoint(
                     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
                     None,
+                )
+                .unwrap();
+                assert_eq!(
+                    url,
+                    (
+                        "http://localhost:1234".to_string(),
+                        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+                    )
                 );
-                assert_eq!(url, "http://localhost:1234");
             },
         );
     }
@@ -761,8 +1090,9 @@ mod tests {
                 let url = TonicExporterBuilder::resolve_endpoint(
                     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
                     Some("http://localhost:3456".to_string()),
-                );
-                assert_eq!(url, "http://localhost:3456");
+                )
+                .unwrap();
+                assert_eq!(url, ("http://localhost:3456".to_string(), "endpoint"));
             },
         );
     }
@@ -771,8 +1101,9 @@ mod tests {
     fn test_use_default_when_others_missing_for_endpoint() {
         run_env_test(vec![], || {
             let url =
-                TonicExporterBuilder::resolve_endpoint(OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, None);
-            assert_eq!(url, "http://localhost:4317");
+                TonicExporterBuilder::resolve_endpoint(OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, None)
+                    .unwrap();
+            assert_eq!(url, ("http://localhost:4317".to_string(), "endpoint"));
         });
     }
 
@@ -782,8 +1113,668 @@ mod tests {
             let url = TonicExporterBuilder::resolve_endpoint(
                 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
                 Some(String::new()),
-            );
-            assert_eq!(url, "http://localhost:4317");
+            )
+            .unwrap();
+            assert_eq!(url, ("http://localhost:4317".to_string(), "endpoint"));
         });
+    }
+
+    #[test]
+    fn test_empty_endpoint_envs_are_treated_as_unset() {
+        run_env_test(
+            vec![
+                (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, ""),
+                (super::OTEL_EXPORTER_OTLP_ENDPOINT, ""),
+            ],
+            || {
+                let url = TonicExporterBuilder::resolve_endpoint(
+                    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+                    None,
+                )
+                .unwrap();
+                assert_eq!(url, ("http://localhost:4317".to_string(), "endpoint"));
+            },
+        );
+    }
+
+    #[test]
+    fn test_empty_signal_env_falls_through_to_generic_env() {
+        run_env_test(
+            vec![
+                (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, ""),
+                (super::OTEL_EXPORTER_OTLP_ENDPOINT, "http://collector:4317"),
+            ],
+            || {
+                let url = TonicExporterBuilder::resolve_endpoint(
+                    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+                    None,
+                )
+                .unwrap();
+                assert_eq!(
+                    url,
+                    (
+                        "http://collector:4317".to_string(),
+                        super::OTEL_EXPORTER_OTLP_ENDPOINT
+                    )
+                );
+            },
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_non_unicode_endpoint_env_returns_error() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        temp_env::with_var(
+            OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+            Some(OsStr::from_bytes(b"http://example.com/\x80")),
+            || {
+                let result = TonicExporterBuilder::resolve_endpoint(
+                    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+                    None,
+                );
+                assert!(matches!(
+                    result,
+                    Err(crate::exporter::ExporterBuildError::InvalidConfiguration(message))
+                        if message.contains(OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
+                            && message.contains("not valid Unicode")
+                ));
+            },
+        );
+    }
+
+    #[cfg(feature = "trace")]
+    #[test]
+    fn invalid_endpoint_error_identifies_environment_source() {
+        use crate::{ExporterBuildError, Protocol, SpanExporter, WithExportConfig};
+
+        for (signal_endpoint, expected_source) in [
+            (Some("http://[invalid"), OTEL_EXPORTER_OTLP_TRACES_ENDPOINT),
+            (None, super::OTEL_EXPORTER_OTLP_ENDPOINT),
+        ] {
+            temp_env::with_vars(
+                [
+                    (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, signal_endpoint),
+                    (super::OTEL_EXPORTER_OTLP_ENDPOINT, Some("http://[invalid")),
+                ],
+                || {
+                    let error = SpanExporter::builder()
+                        .with_tonic()
+                        .with_protocol(Protocol::Grpc)
+                        .build()
+                        .unwrap_err();
+                    assert!(
+                        matches!(error, ExporterBuildError::InvalidConfiguration(ref message)
+                            if message.starts_with(&format!("{expected_source}:"))
+                                && message.contains("invalid endpoint")),
+                        "expected endpoint source {expected_source}, got {error}"
+                    );
+                },
+            );
+        }
+    }
+
+    #[cfg(all(
+        feature = "trace",
+        not(any(
+            feature = "tls-ring",
+            feature = "tls-aws-lc",
+            feature = "tls-provider-agnostic"
+        ))
+    ))]
+    #[test]
+    fn missing_tls_error_identifies_environment_source() {
+        use crate::{ExporterBuildError, Protocol, SpanExporter, WithExportConfig};
+
+        for (signal_endpoint, expected_source) in [
+            (
+                Some("https://collector.example.com:4317"),
+                OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+            ),
+            (None, super::OTEL_EXPORTER_OTLP_ENDPOINT),
+        ] {
+            temp_env::with_vars(
+                [
+                    (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, signal_endpoint),
+                    (
+                        super::OTEL_EXPORTER_OTLP_ENDPOINT,
+                        Some("https://collector.example.com:4317"),
+                    ),
+                ],
+                || {
+                    let error = SpanExporter::builder()
+                        .with_tonic()
+                        .with_protocol(Protocol::Grpc)
+                        .build()
+                        .unwrap_err();
+                    assert!(
+                        matches!(error, ExporterBuildError::InvalidConfiguration(ref message)
+                            if message.starts_with(&format!("{expected_source}:"))
+                                && message.contains("no TLS feature")),
+                        "expected endpoint source {expected_source}, got {error}"
+                    );
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn test_with_retry_policy() {
+        use crate::RetryPolicy;
+        use crate::WithTonicConfig;
+
+        let custom_policy = RetryPolicy::default()
+            .with_max_retries(5)
+            .with_initial_delay(std::time::Duration::from_millis(200))
+            .with_max_delay(std::time::Duration::from_millis(3200))
+            .with_max_jitter(std::time::Duration::from_millis(50));
+
+        let builder = TonicExporterBuilder::default().with_retry_policy(custom_policy);
+
+        // Verify the retry policy was set
+        let retry_policy = builder.tonic_config.retry_policy.as_ref().unwrap();
+        assert_eq!(retry_policy.max_retries, 5);
+        assert_eq!(
+            retry_policy.initial_delay,
+            std::time::Duration::from_millis(200)
+        );
+        assert_eq!(
+            retry_policy.max_delay,
+            std::time::Duration::from_millis(3200)
+        );
+        assert_eq!(
+            retry_policy.max_jitter,
+            std::time::Duration::from_millis(50)
+        );
+    }
+
+    #[test]
+    fn test_default_retry_policy_when_none_configured() {
+        // This test requires us to create a tonic client, but we can't easily do that without
+        // a channel in a unit test. The default behavior is tested implicitly in integration tests.
+        let builder = TonicExporterBuilder::default();
+        assert!(builder.tonic_config.retry_policy.is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(all(
+        feature = "trace",
+        not(any(
+            feature = "tls-ring",
+            feature = "tls-aws-lc",
+            feature = "tls-provider-agnostic"
+        ))
+    ))]
+    async fn test_schemeless_endpoint_insecure_false_errors_without_tls() {
+        use crate::exporter::tests::run_env_test;
+        use crate::exporter::ExporterBuildError;
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        // INSECURE=false (default) + schemeless endpoint → https:// prepended → error (no TLS)
+        // Unset signal-specific var to ensure generic takes effect
+        temp_env::with_var_unset(crate::OTEL_EXPORTER_OTLP_TRACES_INSECURE, || {
+            run_env_test(vec![(crate::OTEL_EXPORTER_OTLP_INSECURE, "false")], || {
+                let result = SpanExporter::builder()
+                    .with_tonic()
+                    .with_endpoint("collector.example.com:4317")
+                    .build();
+
+                assert!(result.is_err());
+                let err = result.unwrap_err();
+                assert!(
+                    matches!(err, ExporterBuildError::InvalidConfiguration(_)),
+                    "expected InvalidConfiguration error for schemeless+secure without TLS, got: {err:?}"
+                );
+                let message = err.to_string();
+                assert!(
+                    message.contains("collector.example.com:4317")
+                        && message.contains("HTTPS")
+                        && message.contains("TLS"),
+                    "error should identify the endpoint and TLS requirement, got: {message}"
+                );
+            });
+        });
+    }
+
+    #[tokio::test]
+    #[cfg(all(
+        feature = "trace",
+        not(any(
+            feature = "tls-ring",
+            feature = "tls-aws-lc",
+            feature = "tls-provider-agnostic"
+        ))
+    ))]
+    async fn test_schemeless_endpoint_insecure_true_succeeds_without_tls() {
+        use crate::exporter::tests::run_env_test;
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        // INSECURE=true + schemeless endpoint → http:// prepended → no TLS needed
+        // Unset signal-specific var to ensure generic takes effect
+        temp_env::with_var_unset(crate::OTEL_EXPORTER_OTLP_TRACES_INSECURE, || {
+            run_env_test(vec![(crate::OTEL_EXPORTER_OTLP_INSECURE, "true")], || {
+                let result = SpanExporter::builder()
+                    .with_tonic()
+                    .with_endpoint("collector.example.com:4317")
+                    .build();
+
+                assert!(
+                    result.is_ok(),
+                    "schemeless + INSECURE=true should succeed without TLS, got: {:?}",
+                    result.unwrap_err()
+                );
+            });
+        });
+    }
+
+    #[tokio::test]
+    #[cfg(all(
+        feature = "trace",
+        not(any(
+            feature = "tls-ring",
+            feature = "tls-aws-lc",
+            feature = "tls-provider-agnostic"
+        ))
+    ))]
+    async fn test_schemeless_endpoint_defaults_to_https() {
+        use crate::exporter::ExporterBuildError;
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        // No INSECURE env var set → defaults to secure (https://) → error without TLS
+        // This verifies the behavioral change: schemeless endpoints now get https:// prepended
+        temp_env::with_vars_unset(
+            [
+                crate::OTEL_EXPORTER_OTLP_TRACES_INSECURE,
+                crate::OTEL_EXPORTER_OTLP_INSECURE,
+            ],
+            || {
+                let result = SpanExporter::builder()
+                    .with_tonic()
+                    .with_endpoint("collector.example.com:4317")
+                    .build();
+
+                assert!(result.is_err());
+                let err = result.unwrap_err();
+                assert!(
+                    matches!(err, ExporterBuildError::InvalidConfiguration(_)),
+                    "schemeless endpoint should default to https:// and fail without TLS, got: {err:?}"
+                );
+                let message = err.to_string();
+                assert!(
+                    message.contains("collector.example.com:4317")
+                        && message.contains("HTTPS")
+                        && message.contains("TLS"),
+                    "error should identify the endpoint and TLS requirement, got: {message}"
+                );
+            },
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "trace")]
+    async fn test_explicit_http_scheme_ignores_insecure_env() {
+        use crate::exporter::tests::run_env_test;
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        // Explicit http:// scheme should succeed regardless of INSECURE value
+        // Unset signal-specific var to ensure generic takes effect
+        temp_env::with_var_unset(crate::OTEL_EXPORTER_OTLP_TRACES_INSECURE, || {
+            run_env_test(vec![(crate::OTEL_EXPORTER_OTLP_INSECURE, "false")], || {
+                let result = SpanExporter::builder()
+                    .with_tonic()
+                    .with_endpoint("http://collector.example.com:4317")
+                    .build();
+
+                assert!(
+                    result.is_ok(),
+                    "explicit http:// should succeed even with INSECURE=false, got: {:?}",
+                    result.unwrap_err()
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[cfg(not(any(
+        feature = "tls-ring",
+        feature = "tls-aws-lc",
+        feature = "tls-provider-agnostic"
+    )))]
+    fn test_https_endpoint_errors_without_tls_feature() {
+        use crate::exporter::ExporterBuildError;
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint("https://example.com")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ExporterBuildError::InvalidConfiguration(_)),
+            "expected InvalidConfiguration error, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("HTTPS") && msg.contains("TLS"),
+            "error message should mention HTTPS and TLS, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(any(
+        feature = "tls-ring",
+        feature = "tls-aws-lc",
+        feature = "tls-provider-agnostic"
+    ))]
+    async fn test_https_endpoint_succeeds_with_tls_feature() {
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint("https://example.com")
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "https endpoint should succeed when TLS feature is enabled, got: {:?}",
+            result.unwrap_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_http_endpoint_succeeds_without_tls_feature() {
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint("http://localhost:4317")
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "http endpoint should always succeed, got: {:?}",
+            result.unwrap_err()
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "gzip-tonic"))]
+    fn test_gzip_compression_errors_without_feature() {
+        use crate::exporter::ExporterBuildError;
+        use crate::SpanExporter;
+        use crate::WithTonicConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_compression(crate::Compression::Gzip)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ExporterBuildError::InvalidConfiguration(_)),
+            "expected InvalidConfiguration error, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("gzip-tonic"),
+            "error message should mention 'gzip-tonic' feature, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "gzip-tonic")]
+    async fn test_gzip_compression_succeeds_with_feature() {
+        use crate::SpanExporter;
+        use crate::WithTonicConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_compression(crate::Compression::Gzip)
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "gzip compression should succeed when gzip-tonic feature is enabled, got: {:?}",
+            result.unwrap_err()
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "zstd-tonic"))]
+    fn test_zstd_compression_errors_without_feature() {
+        use crate::exporter::ExporterBuildError;
+        use crate::SpanExporter;
+        use crate::WithTonicConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_compression(crate::Compression::Zstd)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ExporterBuildError::InvalidConfiguration(_)),
+            "expected InvalidConfiguration error, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("zstd-tonic"),
+            "error message should mention 'zstd-tonic' feature, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "zstd-tonic")]
+    async fn test_zstd_compression_succeeds_with_feature() {
+        use crate::SpanExporter;
+        use crate::WithTonicConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_compression(crate::Compression::Zstd)
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "zstd compression should succeed when zstd-tonic feature is enabled, got: {:?}",
+            result.unwrap_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unix_socket_endpoint_succeeds() {
+        use crate::SpanExporter;
+        use crate::WithExportConfig;
+
+        let result = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint("unix:///tmp/test")
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "unix socket endpoint should succeed, got: {:?}",
+            result.unwrap_err()
+        );
+    }
+
+    #[cfg(any(feature = "trace", feature = "metrics", feature = "logs"))]
+    mod error_handling_tests {
+        use opentelemetry::otel_debug;
+        use opentelemetry_sdk::error::OTelSdkError;
+
+        #[test]
+        fn export_error_includes_grpc_code_but_not_sensitive_message() {
+            let status = tonic::Status::unauthenticated("Bearer secret-token-123");
+            let result: Result<(), OTelSdkError> =
+                super::super::handle_tonic_export_error!("TestExporter", status);
+            let msg = format!("{}", result.unwrap_err());
+
+            assert!(
+                msg.contains("Unauthenticated"),
+                "Error should contain the gRPC code, got: {msg}"
+            );
+            assert!(
+                !msg.contains("secret-token-123"),
+                "Error must not contain the sensitive token, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn export_error_includes_exporter_name() {
+            let status = tonic::Status::unavailable("connection refused");
+            let result: Result<(), OTelSdkError> =
+                super::super::handle_tonic_export_error!("TonicLogsClient", status);
+            let msg = format!("{}", result.unwrap_err());
+
+            assert!(
+                msg.contains("TonicLogsClient"),
+                "Error should identify the exporter, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn export_error_never_includes_grpc_message() {
+            // Neither connection nor sensitive codes should leak the message
+            // into the returned error (messages are only logged, not returned)
+            let statuses = [
+                tonic::Status::unavailable("safe connection info"),
+                tonic::Status::unknown("safe connection info"),
+                tonic::Status::deadline_exceeded("safe connection info"),
+                tonic::Status::resource_exhausted("safe connection info"),
+                tonic::Status::aborted("safe connection info"),
+                tonic::Status::cancelled("safe connection info"),
+                tonic::Status::unauthenticated("Bearer my-secret-token"),
+                tonic::Status::permission_denied("Bearer my-secret-token"),
+                tonic::Status::internal("Bearer my-secret-token"),
+            ];
+            for status in &statuses {
+                let result: Result<(), OTelSdkError> =
+                    super::super::handle_tonic_export_error!("TestExporter", status);
+                let msg = format!("{}", result.unwrap_err());
+                assert!(
+                    msg.contains("TestExporter export failed with gRPC code"),
+                    "Expected structured error message, got: {msg}"
+                );
+                assert!(
+                    !msg.contains("safe connection info") && !msg.contains("my-secret-token"),
+                    "Error message should not include the gRPC message, got: {msg}"
+                );
+            }
+        }
+
+        #[test]
+        fn interceptor_error_returns_internal_status_without_sensitive_data() {
+            let original = tonic::Status::unauthenticated("Bearer secret");
+            let result = super::super::handle_interceptor_error!("TestExporter", original);
+
+            assert_eq!(result.code(), tonic::Code::Internal);
+            assert!(
+                result.message().contains("Unauthenticated"),
+                "Interceptor error should contain original gRPC code, got: {}",
+                result.message()
+            );
+            assert!(
+                !result.message().contains("secret"),
+                "Interceptor error must not leak sensitive data, got: {}",
+                result.message()
+            );
+        }
+
+        #[test]
+        fn interceptor_error_includes_exporter_name() {
+            let original = tonic::Status::internal("some error");
+            let result = super::super::handle_interceptor_error!("TonicTracesClient", original);
+
+            assert!(
+                result.message().contains("TonicTracesClient"),
+                "Interceptor error should identify the exporter, got: {}",
+                result.message()
+            );
+        }
+
+        #[test]
+        fn export_error_surfaces_transport_source_chain() {
+            // `Status::from_error` is how tonic wraps local transport failures
+            // (connect errors, URL parse errors, DNS). These sources are
+            // library-deterministic text and safe to surface at ERROR level.
+            let transport_err = std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid URL, scheme is missing",
+            );
+            let status = tonic::Status::from_error(Box::new(transport_err));
+            let result: Result<(), OTelSdkError> =
+                super::super::handle_tonic_export_error!("TonicTracesClient", status);
+            let msg = format!("{}", result.unwrap_err());
+
+            assert!(
+                msg.contains("TonicTracesClient export failed with gRPC code"),
+                "Expected structured error message, got: {msg}"
+            );
+            assert!(
+                msg.contains("invalid URL, scheme is missing"),
+                "Pre-flight transport error text should be surfaced, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn server_returned_status_does_not_surface_message_even_when_similar_to_transport() {
+            // Server-returned statuses have no `source()`. Even if the server's
+            // message resembles a transport error, it must not leak.
+            let status = tonic::Status::unknown("invalid URL, scheme is missing");
+            let result: Result<(), OTelSdkError> =
+                super::super::handle_tonic_export_error!("TestExporter", status);
+            let msg = format!("{}", result.unwrap_err());
+
+            assert!(
+                !msg.contains("invalid URL, scheme is missing"),
+                "Server-returned status message must not leak, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn render_source_chain_joins_nested_sources() {
+            #[derive(Debug)]
+            struct Wrap {
+                msg: &'static str,
+                src: Box<dyn std::error::Error + Send + Sync + 'static>,
+            }
+            impl std::fmt::Display for Wrap {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str(self.msg)
+                }
+            }
+            impl std::error::Error for Wrap {
+                fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                    Some(self.src.as_ref())
+                }
+            }
+
+            let inner = std::io::Error::other("invalid URL");
+            let middle = Wrap {
+                msg: "connect error",
+                src: Box::new(inner),
+            };
+            let outer = Wrap {
+                msg: "transport error",
+                src: Box::new(middle),
+            };
+
+            let rendered = super::super::render_source_chain(&outer);
+            assert_eq!(rendered, "transport error: connect error: invalid URL");
+        }
     }
 }

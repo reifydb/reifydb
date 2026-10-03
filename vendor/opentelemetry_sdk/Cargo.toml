@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry_sdk"
-version = "0.31.0"
+version = "0.33.0"
 build = false
 autolib = false
 autobins = false
@@ -34,18 +34,27 @@ rustdoc-args = [
 ]
 
 [features]
+bench_profiling = []
 default = [
     "trace",
     "metrics",
     "logs",
     "internal-logs",
 ]
-experimental_async_runtime = []
+experimental_async_runtime = [
+    "dep:futures-channel",
+    "dep:futures-executor",
+    "dep:futures-util",
+    "dep:thiserror",
+]
 experimental_logs_batch_log_processor_with_async_runtime = [
     "logs",
     "experimental_async_runtime",
 ]
-experimental_logs_concurrent_log_processor = ["logs"]
+experimental_metrics_bound_instruments = [
+    "metrics",
+    "opentelemetry/experimental_metrics_bound_instruments",
+]
 experimental_metrics_custom_reader = ["metrics"]
 experimental_metrics_disable_name_validation = ["metrics"]
 experimental_metrics_periodicreader_with_async_runtime = [
@@ -67,8 +76,19 @@ jaeger_remote_sampler = [
     "url",
     "experimental_async_runtime",
 ]
-logs = ["opentelemetry/logs"]
-metrics = ["opentelemetry/metrics"]
+logs = [
+    "opentelemetry/logs",
+    "dep:futures-channel",
+    "dep:futures-executor",
+    "dep:futures-util",
+]
+metrics = [
+    "opentelemetry/metrics",
+    "dep:futures-channel",
+    "dep:futures-executor",
+    "dep:futures-util",
+    "dep:thiserror",
+]
 rt-tokio = [
     "tokio/rt",
     "tokio/time",
@@ -81,25 +101,22 @@ rt-tokio-current-thread = [
     "tokio-stream",
     "experimental_async_runtime",
 ]
-spec_unstable_logs_enabled = [
-    "logs",
-    "opentelemetry/spec_unstable_logs_enabled",
-]
 spec_unstable_metrics_views = ["metrics"]
 testing = [
     "opentelemetry/testing",
     "trace",
     "metrics",
     "logs",
-    "rt-tokio",
-    "rt-tokio-current-thread",
-    "tokio/macros",
-    "tokio/rt-multi-thread",
+    "tokio/sync",
 ]
 trace = [
     "opentelemetry/trace",
     "rand",
     "percent-encoding",
+    "dep:futures-channel",
+    "dep:futures-executor",
+    "dep:futures-util",
+    "dep:thiserror",
 ]
 
 [lib]
@@ -107,11 +124,30 @@ name = "opentelemetry_sdk"
 path = "src/lib.rs"
 bench = false
 
+[[test]]
+name = "miri_smoke"
+path = "tests/miri_smoke.rs"
+
+[[test]]
+name = "otel_default_constants"
+path = "tests/otel_default_constants.rs"
+
 [[bench]]
 name = "batch_span_processor"
 path = "benches/batch_span_processor.rs"
 harness = false
 required-features = ["testing"]
+
+[[bench]]
+name = "bound_instruments"
+path = "benches/bound_instruments.rs"
+harness = false
+required-features = [
+    "metrics",
+    "experimental_metrics_custom_reader",
+    "experimental_metrics_bound_instruments",
+    "spec_unstable_metrics_views",
+]
 
 [[bench]]
 name = "context"
@@ -128,10 +164,6 @@ required-features = ["logs"]
 name = "log_enabled"
 path = "benches/log_enabled.rs"
 harness = false
-required-features = [
-    "spec_unstable_logs_enabled",
-    "experimental_logs_concurrent_log_processor",
-]
 
 [[bench]]
 name = "log_exporter"
@@ -193,9 +225,11 @@ harness = false
 
 [dependencies.futures-channel]
 version = "0.3"
+optional = true
 
 [dependencies.futures-executor]
 version = "0.3"
+optional = true
 
 [dependencies.futures-util]
 version = "0.3"
@@ -204,6 +238,7 @@ features = [
     "sink",
     "async-await-macro",
 ]
+optional = true
 default-features = false
 
 [dependencies.http]
@@ -213,11 +248,11 @@ optional = true
 default-features = false
 
 [dependencies.opentelemetry]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.opentelemetry-http]
-version = "0.31"
+version = "0.33"
 optional = true
 default-features = false
 
@@ -252,6 +287,7 @@ optional = true
 
 [dependencies.thiserror]
 version = "2"
+optional = true
 default-features = false
 
 [dependencies.tokio]
@@ -273,10 +309,23 @@ version = "0.5"
 features = ["html_reports"]
 
 [dev-dependencies.rstest]
-version = "0.23.0"
+version = "0.26.1"
 
 [dev-dependencies.temp-env]
 version = "0.3.6"
+
+[dev-dependencies.tokio]
+version = "1"
+features = [
+    "macros",
+    "rt-multi-thread",
+]
+default-features = false
+
+[target.'cfg(not(target_has_atomic = "64"))'.dependencies.portable-atomic]
+version = "1"
+features = ["fallback"]
+default-features = false
 
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies.pprof]
 version = "0.14"
