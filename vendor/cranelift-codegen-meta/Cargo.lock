@@ -4,25 +4,25 @@ version = 4
 
 [[package]]
 name = "cranelift-assembler-x64-meta"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fd76237df1f4e26edb5ad7971d20280ed1e193331fd257f1b4e4dfefd88dda2"
+checksum = "a0661d63dcf8fc4a6538c1ee4d523917c5b27e9fce7a4114cdf9e2b30b4043cf"
 dependencies = [
  "cranelift-srcgen",
 ]
 
 [[package]]
 name = "cranelift-bitset"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4811e3e4502de04257e90c0a93225b56d9b85e0f9ad10b81446b415511009610"
+checksum = "c3af4f7d421b2354deb01d714266022f38fcdbebc9f5f1ec6d310d3c27286d9e"
 dependencies = [
  "wasmtime-internal-core",
 ]
 
 [[package]]
 name = "cranelift-codegen-meta"
-version = "0.131.2"
+version = "0.131.3"
 dependencies = [
  "cranelift-assembler-x64-meta",
  "cranelift-codegen-shared",
@@ -33,15 +33,15 @@ dependencies = [
 
 [[package]]
 name = "cranelift-codegen-shared"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e1b2aad7d055925a4ea9cdbfa9d1d987f9dfc8ad6b708be28f901ac620a298"
+checksum = "c34b9c8dbc9edf37744918e56898d4979ef1e764e8e4bbe8b4d50250838ddfe8"
 
 [[package]]
 name = "cranelift-srcgen"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "faa4bbad54fc28cc0da1f9a5d7f7f826ec8cafda3d503b401b2daaaa93c63ef0"
+checksum = "ce0d5c2b4d719566816a0f1c9a9712d35d61e27df0ffd6c72a9afec9048db6c0"
 
 [[package]]
 name = "foldhash"
@@ -87,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "pulley-interpreter"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dff0ead8b4616f81b3d3efd41ce41bcf9ea364a5d8df8be8a8a1f98b50104349"
+checksum = "34dff5fd3d9ac4845939fcb4597cd413cb244bc530448ed4766d11b1725e53d0"
 dependencies = [
  "cranelift-bitset",
  "log",
@@ -98,9 +98,9 @@ dependencies = [
 
 [[package]]
 name = "pulley-macros"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4389e5820b1b39810ac12a27aa665320cab3caa51913a79637c06f284cfe223"
+checksum = "6c60fb1c885bdb1efd7c50e8e973714de558b75a65f20c3e9a41398c652aa44b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -135,9 +135,9 @@ checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
 
 [[package]]
 name = "wasmtime-internal-core"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4364d345719bba7fc4c435992ea1cb0c118f1e90a88c6e6f22a7a4fc507700c6"
+checksum = "aedd3947487d0afdd37accb981466fcd60571e898004c8955111f88686581dfc"
 dependencies = [
  "hashbrown",
  "libm",

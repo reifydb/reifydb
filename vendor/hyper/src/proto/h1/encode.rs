@@ -132,7 +132,7 @@ impl Encoder {
         let len = msg.remaining();
         debug_assert!(len > 0, "encode() called with empty buf");
 
-        let kind = match self.kind {
+        let kind = match &mut self.kind {
             Kind::Chunked(_) => {
                 trace!("encoding chunked {}B", len);
                 let buf = ChunkSize::new(len)
@@ -140,7 +140,7 @@ impl Encoder {
                     .chain(b"\r\n" as &'static [u8]);
                 BufKind::Chunked(buf)
             }
-            Kind::Length(ref mut remaining) => {
+            Kind::Length(remaining) => {
                 trace!("sized write, len = {}", len);
                 if len as u64 > *remaining {
                     let limit = *remaining as usize;
@@ -181,7 +181,7 @@ impl Encoder {
 
                     if allowed_set.contains(name) {
                         if is_valid_trailer_field(name) {
-                            allowed_trailers.insert(name, value);
+                            allowed_trailers.append(name, value);
                         } else {
                             debug!("trailer field is not valid: {}", &name);
                         }
@@ -285,45 +285,45 @@ where
 {
     #[inline]
     fn remaining(&self) -> usize {
-        match self.kind {
-            BufKind::Exact(ref b) => b.remaining(),
-            BufKind::Limited(ref b) => b.remaining(),
-            BufKind::Chunked(ref b) => b.remaining(),
-            BufKind::ChunkedEnd(ref b) => b.remaining(),
-            BufKind::Trailers(ref b) => b.remaining(),
+        match &self.kind {
+            BufKind::Exact(b) => b.remaining(),
+            BufKind::Limited(b) => b.remaining(),
+            BufKind::Chunked(b) => b.remaining(),
+            BufKind::ChunkedEnd(b) => b.remaining(),
+            BufKind::Trailers(b) => b.remaining(),
         }
     }
 
     #[inline]
     fn chunk(&self) -> &[u8] {
-        match self.kind {
-            BufKind::Exact(ref b) => b.chunk(),
-            BufKind::Limited(ref b) => b.chunk(),
-            BufKind::Chunked(ref b) => b.chunk(),
-            BufKind::ChunkedEnd(ref b) => b.chunk(),
-            BufKind::Trailers(ref b) => b.chunk(),
+        match &self.kind {
+            BufKind::Exact(b) => b.chunk(),
+            BufKind::Limited(b) => b.chunk(),
+            BufKind::Chunked(b) => b.chunk(),
+            BufKind::ChunkedEnd(b) => b.chunk(),
+            BufKind::Trailers(b) => b.chunk(),
         }
     }
 
     #[inline]
     fn advance(&mut self, cnt: usize) {
-        match self.kind {
-            BufKind::Exact(ref mut b) => b.advance(cnt),
-            BufKind::Limited(ref mut b) => b.advance(cnt),
-            BufKind::Chunked(ref mut b) => b.advance(cnt),
-            BufKind::ChunkedEnd(ref mut b) => b.advance(cnt),
-            BufKind::Trailers(ref mut b) => b.advance(cnt),
+        match &mut self.kind {
+            BufKind::Exact(b) => b.advance(cnt),
+            BufKind::Limited(b) => b.advance(cnt),
+            BufKind::Chunked(b) => b.advance(cnt),
+            BufKind::ChunkedEnd(b) => b.advance(cnt),
+            BufKind::Trailers(b) => b.advance(cnt),
         }
     }
 
     #[inline]
     fn chunks_vectored<'t>(&'t self, dst: &mut [IoSlice<'t>]) -> usize {
-        match self.kind {
-            BufKind::Exact(ref b) => b.chunks_vectored(dst),
-            BufKind::Limited(ref b) => b.chunks_vectored(dst),
-            BufKind::Chunked(ref b) => b.chunks_vectored(dst),
-            BufKind::ChunkedEnd(ref b) => b.chunks_vectored(dst),
-            BufKind::Trailers(ref b) => b.chunks_vectored(dst),
+        match &self.kind {
+            BufKind::Exact(b) => b.chunks_vectored(dst),
+            BufKind::Limited(b) => b.chunks_vectored(dst),
+            BufKind::Chunked(b) => b.chunks_vectored(dst),
+            BufKind::ChunkedEnd(b) => b.chunks_vectored(dst),
+            BufKind::Trailers(b) => b.chunks_vectored(dst),
         }
     }
 }
@@ -352,7 +352,7 @@ impl ChunkSize {
             pos: 0,
             len: 0,
         };
-        write!(&mut size, "{:X}\r\n", len).expect("CHUNK_SIZE_MAX_BYTES should fit any usize");
+        write!(&mut size, "{len:X}\r\n").expect("CHUNK_SIZE_MAX_BYTES should fit any usize");
         size
     }
 }
@@ -564,6 +564,32 @@ mod tests {
         assert_eq!(
             dst,
             b"0\r\nchunky-trailer: header data\r\nchunky-trailer-2: more header data\r\n\r\n"
+        );
+    }
+
+    #[test]
+    fn chunked_with_duplicate_trailer_values() {
+        let encoder = Encoder::chunked();
+        let trailers = vec![HeaderName::from_static("chunky-trailer")];
+        let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+
+        let mut headers = HeaderMap::new();
+        headers.append(
+            HeaderName::from_static("chunky-trailer"),
+            HeaderValue::from_static("first"),
+        );
+        headers.append(
+            HeaderName::from_static("chunky-trailer"),
+            HeaderValue::from_static("second"),
+        );
+
+        let buf1 = encoder.encode_trailers::<&[u8]>(headers, false).unwrap();
+
+        let mut dst = Vec::new();
+        dst.put(buf1);
+        assert_eq!(
+            dst,
+            b"0\r\nchunky-trailer: first\r\nchunky-trailer: second\r\n\r\n"
         );
     }
 

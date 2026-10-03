@@ -8,11 +8,11 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
-arbitrary = { version = "1", features = ["derive"] }
-bumpalo = { version = "3", features = ["collections", "boxed"] }
-serde = { version = "1", features = ["derive"] }
-serde_bytes = "0.11"
+libfuzzer-sys = "=0.4.12"
+arbitrary = { version = "=1.4.2", features = ["derive"] }
+bumpalo = { version = "=3.20.3", features = ["collections", "boxed"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_bytes = "=0.11.19"
 
 reifydb-rql = { path = "../../../../crates/rql" }
 reifydb-codec = { path = "../../../../crates/codec" }

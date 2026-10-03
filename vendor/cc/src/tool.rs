@@ -1,5 +1,6 @@
 use crate::{
-    command_helpers::{run_output, spawn_and_wait_for_output, CargoOutput},
+    build_env::{BuildEnv, EnvSnapshot, EnvVars},
+    command_helpers::{run_output, spawn_and_wait_for_output, CargoOutput, CommandExt},
     run,
     tempfile::NamedTempfile,
     Error, ErrorKind, OutputKind,
@@ -15,7 +16,20 @@ use std::{
     sync::RwLock,
 };
 
-pub(crate) type CompilerFamilyLookupCache = HashMap<Box<[Box<OsStr>]>, ToolFamily>;
+pub(crate) type CompilerFamilyLookupCache = HashMap<CompilerFamilyKey, ToolFamily>;
+
+/// Key of the [`CompilerFamilyLookupCache`].
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) struct CompilerFamilyKey {
+    /// The compiler's path followed by its arguments.
+    command: Box<[Box<OsStr>]>,
+    /// The detected family depends on the environment the probes run in
+    /// (`PATH` decides what a bare compiler name even resolves to), so two
+    /// lookups that agree on the command but differ in their environment must
+    /// not share an entry.
+    inherited: EnvSnapshot,
+    explicit: Box<EnvVars>,
+}
 
 /// Configuration used to represent an invocation of a C compiler.
 ///
@@ -32,6 +46,8 @@ pub struct Tool {
     pub(crate) cc_wrapper_args: Vec<OsString>,
     pub(crate) args: Vec<OsString>,
     pub(crate) env: Vec<(OsString, OsString)>,
+    /// The environment of the `Build` this came from, applied before `env`.
+    pub(crate) inherited_env: EnvSnapshot,
     pub(crate) family: ToolFamily,
     pub(crate) cuda: bool,
     pub(crate) removed_args: Vec<OsString>,
@@ -39,12 +55,16 @@ pub struct Tool {
 }
 
 impl Tool {
-    pub(crate) fn from_find_msvc_tools(tool: ::find_msvc_tools::Tool) -> Self {
+    pub(crate) fn from_find_msvc_tools(
+        tool: ::find_msvc_tools::Tool,
+        inherited_env: EnvSnapshot,
+    ) -> Self {
         let mut cc_tool = Self::with_family(
             tool.path().into(),
             ToolFamily::Msvc {
                 clang_cl: tool.is_clang_cl(),
             },
+            inherited_env,
         );
 
         cc_tool.env = tool
@@ -58,6 +78,7 @@ impl Tool {
 
     pub(crate) fn new(
         path: PathBuf,
+        env: &BuildEnv,
         cached_compiler_family: &RwLock<CompilerFamilyLookupCache>,
         cargo_output: &CargoOutput,
         out_dir: Option<&Path>,
@@ -66,6 +87,7 @@ impl Tool {
             path,
             vec![],
             false,
+            env,
             cached_compiler_family,
             cargo_output,
             out_dir,
@@ -75,6 +97,7 @@ impl Tool {
     pub(crate) fn with_args(
         path: PathBuf,
         args: Vec<String>,
+        env: &BuildEnv,
         cached_compiler_family: &RwLock<CompilerFamilyLookupCache>,
         cargo_output: &CargoOutput,
         out_dir: Option<&Path>,
@@ -83,6 +106,7 @@ impl Tool {
             path,
             args,
             false,
+            env,
             cached_compiler_family,
             cargo_output,
             out_dir,
@@ -90,13 +114,18 @@ impl Tool {
     }
 
     /// Explicitly set the `ToolFamily`, skipping name-based detection.
-    pub(crate) fn with_family(path: PathBuf, family: ToolFamily) -> Self {
+    pub(crate) fn with_family(
+        path: PathBuf,
+        family: ToolFamily,
+        inherited_env: EnvSnapshot,
+    ) -> Self {
         Self {
             path,
             cc_wrapper_path: None,
             cc_wrapper_args: Vec::new(),
             args: Vec::new(),
             env: Vec::new(),
+            inherited_env,
             family,
             cuda: false,
             removed_args: Vec::new(),
@@ -108,13 +137,16 @@ impl Tool {
         path: PathBuf,
         args: Vec<String>,
         cuda: bool,
+        env: &BuildEnv,
         cached_compiler_family: &RwLock<CompilerFamilyLookupCache>,
         cargo_output: &CargoOutput,
         out_dir: Option<&Path>,
     ) -> Self {
-        fn is_zig_cc(path: &Path, cargo_output: &CargoOutput) -> bool {
+        fn is_zig_cc(path: &Path, env: &BuildEnv, cargo_output: &CargoOutput) -> bool {
             run_output(
-                Command::new(path).arg("--version"),
+                Command::new(path)
+                    .arg("--version")
+                    .set_family_detection_env(env),
                 // tool detection issues should always be shown as warnings
                 cargo_output,
             )
@@ -132,6 +164,7 @@ impl Tool {
             stdout: &str,
             path: &Path,
             args: &[String],
+            env: &BuildEnv,
             cargo_output: &CargoOutput,
         ) -> Result<ToolFamily, Error> {
             cargo_output.print_debug(&stdout);
@@ -139,11 +172,14 @@ impl Tool {
             // https://gitlab.kitware.com/cmake/cmake/-/blob/69a2eeb9dff5b60f2f1e5b425002a0fd45b7cadb/Modules/CMakeDetermineCompilerId.cmake#L267-271
             // stdin is set to null to ensure that the help output is never paginated.
             let accepts_cl_style_flags = run(
-                Command::new(path).args(args).arg("-?").stdin(Stdio::null()),
+                Command::new(path)
+                    .args(args)
+                    .arg("-?")
+                    .stdin(Stdio::null())
+                    .set_family_detection_env(env),
                 &{
                     // the errors are not errors!
-                    let mut cargo_output = cargo_output.clone();
-                    cargo_output.warnings = cargo_output.debug;
+                    let mut cargo_output = cargo_output.quiet_unless_debug();
                     cargo_output.output = OutputKind::Discard;
                     cargo_output
                 },
@@ -158,7 +194,7 @@ impl Tool {
             match (clang, accepts_cl_style_flags, gcc, emscripten, vxworks) {
                 (clang_cl, true, _, false, false) => Ok(ToolFamily::Msvc { clang_cl }),
                 (true, _, _, _, false) | (_, _, _, true, false) => Ok(ToolFamily::Clang {
-                    zig_cc: is_zig_cc(path, cargo_output),
+                    zig_cc: is_zig_cc(path, env, cargo_output),
                 }),
                 (false, false, true, _, false) | (_, _, _, _, true) => Ok(ToolFamily::Gnu),
                 (false, false, false, false, false) => {
@@ -174,6 +210,7 @@ impl Tool {
         fn detect_family_inner(
             path: &Path,
             args: &[String],
+            env: &BuildEnv,
             cargo_output: &CargoOutput,
             out_dir: Option<&Path>,
         ) -> Result<ToolFamily, Error> {
@@ -211,11 +248,10 @@ impl Tool {
             // that it is not an error, but related to expanding itself.
             //
             // cc would have to disable warning here to prevent generation of too many warnings.
-            let mut compiler_detect_output = cargo_output.clone();
-            compiler_detect_output.warnings = compiler_detect_output.debug;
+            let compiler_detect_output = cargo_output.quiet_unless_debug();
 
             let mut cmd = Command::new(path);
-            cmd.arg("-E").arg(tmp.path());
+            cmd.arg("-E").arg(tmp.path()).set_family_detection_env(env);
 
             // The -Wslash-u-filename warning is normally part of stdout.
             // But with clang-cl it can be part of stderr instead and exit with a
@@ -233,37 +269,43 @@ impl Tool {
                 .any(|o| String::from_utf8_lossy(o).contains("-Wslash-u-filename"))
             {
                 run_output(
-                    Command::new(path).arg("-E").arg("--").arg(tmp.path()),
+                    Command::new(path)
+                        .arg("-E")
+                        .arg("--")
+                        .arg(tmp.path())
+                        .set_family_detection_env(env),
                     &compiler_detect_output,
                 )?
             } else {
                 if !status.success() {
-                    return Err(Error::new(
-                        ErrorKind::ToolExecError,
-                        format!(
-                            "command did not execute successfully (status code {status}): {cmd:?}"
-                        ),
-                    ));
+                    return Err(compiler_detect_output.command_failed(&cmd, status));
                 }
 
                 stdout
             };
 
             let stdout = String::from_utf8_lossy(&stdout);
-            guess_family_from_stdout(&stdout, path, args, cargo_output)
+            guess_family_from_stdout(&stdout, path, args, env, cargo_output)
         }
+        // The commands below only detect the compiler family, and cc falls
+        // back to the compiler's name when they fail.
+        let cargo_output = &cargo_output.for_detection_cmd();
         let detect_family = |path: &Path, args: &[String]| -> Result<ToolFamily, Error> {
-            let cache_key = [path.as_os_str()]
-                .iter()
-                .cloned()
-                .chain(args.iter().map(OsStr::new))
-                .map(Into::into)
-                .collect();
+            let cache_key = CompilerFamilyKey {
+                command: [path.as_os_str()]
+                    .iter()
+                    .cloned()
+                    .chain(args.iter().map(OsStr::new))
+                    .map(Into::into)
+                    .collect(),
+                inherited: env.inherited().clone(),
+                explicit: env.explicit.clone().into_boxed_slice(),
+            };
             if let Some(family) = cached_compiler_family.read().unwrap().get(&cache_key) {
                 return Ok(*family);
             }
 
-            let family = detect_family_inner(path, args, cargo_output, out_dir)?;
+            let family = detect_family_inner(path, args, env, cargo_output, out_dir)?;
             cached_compiler_family
                 .write()
                 .unwrap()
@@ -288,7 +330,7 @@ impl Tool {
                         ToolFamily::Msvc { clang_cl: true }
                     } else {
                         ToolFamily::Clang {
-                            zig_cc: is_zig_cc(&path, cargo_output),
+                            zig_cc: is_zig_cc(&path, env, cargo_output),
                         }
                     }
                 }
@@ -303,6 +345,7 @@ impl Tool {
             cc_wrapper_args: Vec::new(),
             args: Vec::new(),
             env: Vec::new(),
+            inherited_env: env.inherited().clone(),
             family,
             cuda,
             removed_args: Vec::new(),
@@ -361,7 +404,7 @@ impl Tool {
     /// Don't push optimization arg if it conflicts with existing args.
     pub(crate) fn push_opt_unless_duplicate(&mut self, flag: OsString) {
         if self.is_duplicate_opt_arg(&flag) {
-            eprintln!("Info: Ignoring duplicate arg {:?}", &flag);
+            eprintln!("Info: Ignoring duplicate arg {:?}", flag);
         } else {
             self.push_cc_arg(flag);
         }
@@ -372,6 +415,11 @@ impl Tool {
     /// This is useful for when the compiler needs to be executed and the
     /// command returned will already have the initial arguments and environment
     /// variables configured.
+    ///
+    /// The command does not inherit the process environment when it is
+    /// spawned. Its environment is set in full: the copy of the process
+    /// environment this `Tool` was made with (a [`Build`](crate::Build)'s copy,
+    /// see its docs), then [`Tool::env`].
     pub fn to_command(&self) -> Command {
         let mut cmd = match self.cc_wrapper_path {
             Some(ref cc_wrapper_path) => {
@@ -381,6 +429,7 @@ impl Tool {
             }
             None => Command::new(&self.path),
         };
+        self.inherited_env.apply(&mut cmd);
         cmd.args(&self.cc_wrapper_args);
 
         cmd.args(self.args.iter().filter(|a| !self.removed_args.contains(a)));
@@ -548,16 +597,6 @@ impl ToolFamily {
         }
     }
 
-    /// What the flag to force frame pointers.
-    pub(crate) fn add_force_frame_pointer(&self, cmd: &mut Tool) {
-        match *self {
-            ToolFamily::Gnu | ToolFamily::Clang { .. } => {
-                cmd.push_cc_arg("-fno-omit-frame-pointer".into());
-            }
-            _ => (),
-        }
-    }
-
     /// What the flags to enable all warnings
     pub(crate) fn warnings_flags(&self) -> &'static str {
         match *self {
@@ -591,5 +630,26 @@ impl ToolFamily {
 
     pub(crate) fn verbose_stderr(&self) -> bool {
         matches!(*self, ToolFamily::Clang { .. })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_env_wins_over_inherited_env() {
+        let mut tool = Tool::with_family(
+            "cc".into(),
+            ToolFamily::Gnu,
+            EnvSnapshot::from_pairs(&[("CC_TEST_ORDER", "inherited")]),
+        );
+        tool.env.push(("CC_TEST_ORDER".into(), "tool".into()));
+        let cmd = tool.to_command();
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert_eq!(
+            envs,
+            [(OsStr::new("CC_TEST_ORDER"), Some(OsStr::new("tool")))]
+        );
     }
 }

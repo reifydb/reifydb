@@ -2,6 +2,10 @@
 //!
 //! User can define own [Category](struct.Category.html) if you want to create new error wrapper.
 //!
+//! ## Features
+//!
+//! - `std` - Enables `std::error::Error` implementation and conversion from `std::io::Error`
+//!
 //! ## Usage
 //!
 //! ```rust
@@ -15,7 +19,7 @@
 
 #![no_std]
 #![warn(missing_docs)]
-#![cfg_attr(feature = "cargo-clippy", allow(clippy::style))]
+#![allow(clippy::style)]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -32,6 +36,8 @@ pub const FAIL_ERROR_FORMAT: &str = "Failed to format error into utf-8";
 pub const MESSAGE_BUF_SIZE: usize = 256;
 ///Type alias for buffer to hold error code description.
 pub type MessageBuf = [mem::MaybeUninit<u8>; MESSAGE_BUF_SIZE];
+///Type alias for Result with `ErrorCode` as error variant by default
+pub type Result<T, E = ErrorCode> = core::result::Result<T, E>;
 
 pub mod defs;
 pub mod types;
@@ -76,8 +82,22 @@ pub use system::SYSTEM_CATEGORY;
 ///}
 ///
 ///let error = handle_error(Err(MyError::Error)).expect_err("Should return error");
+///assert_eq!(MyError::Error, error);
 ///assert_eq!(error.to_string(), "MyError(1): This is bad");
 ///assert_eq!(error.to_string(), MyError::Error.to_string());
+///define_category!(
+///    ///This is documentation for my error
+///    ///
+///    ///Documentation of variants only allow 1 line comment and it should be within 256 characters
+///    pub enum DuplicateError {
+///        ///Success
+///        Success = 0,
+///        ///This is bad
+///        Error = 1,
+///    }
+///);
+///assert_ne!(MyError::Error, DuplicateError::Error.into_error_code());
+///assert_ne!(MyError::Error.into_error_code(), DuplicateError::Error.into_error_code());
 ///```
 macro_rules! define_category {
     (
@@ -113,6 +133,13 @@ macro_rules! define_category {
             }
         }
 
+        impl PartialEq<$crate::ErrorCode> for $name {
+            #[inline(always)]
+            fn eq(&self, other: &$crate::ErrorCode) -> bool {
+                core::ptr::eq($name::category(), other.category()) && self.raw_code() == other.raw_code()
+            }
+        }
+
         impl $name {
             const _ASSERT: () = {
                 $(
@@ -120,6 +147,35 @@ macro_rules! define_category {
                 )+
             };
 
+
+            #[inline(always)]
+            ///Converts self into raw integer code
+            pub const fn raw_code(&self) -> $crate::types::c_int {
+                *self as _
+            }
+
+            ///Returns error code category pointer
+            pub const fn category() -> &'static $crate::Category {
+                let _ = Self::_ASSERT;
+
+                static CATEGORY: $crate::Category = $crate::Category {
+                    name: core::stringify!($name),
+                    message: $name::message,
+                    equivalent,
+                    is_would_block
+                };
+
+                fn equivalent(code: $crate::types::c_int, other: &$crate::ErrorCode) -> bool {
+                    core::ptr::eq(&CATEGORY, other.category()) && code == other.raw_code()
+                }
+
+                fn is_would_block(_: $crate::types::c_int) -> bool {
+                    false
+                }
+
+
+                &CATEGORY
+            }
 
             #[inline(always)]
             ///Map raw error code to textual representation.
@@ -145,26 +201,10 @@ macro_rules! define_category {
                 }
             }
 
-            ///Converts into error code
-            pub fn into_error_code(self) -> $crate::ErrorCode {
-                let _ = Self::_ASSERT;
-
-                static CATEGORY: $crate::Category = $crate::Category {
-                    name: core::stringify!($name),
-                    message: $name::message,
-                    equivalent,
-                    is_would_block
-                };
-
-                fn equivalent(code: $crate::types::c_int, other: &$crate::ErrorCode) -> bool {
-                    core::ptr::eq(&CATEGORY, other.category()) && code == other.raw_code()
-                }
-
-                fn is_would_block(_: $crate::types::c_int) -> bool {
-                    false
-                }
-
-                $crate::ErrorCode::new(self as _, &CATEGORY)
+            #[inline]
+            ///Converts `self` into error code
+            pub const fn into_error_code(self) -> $crate::ErrorCode {
+                $crate::ErrorCode::new(self.raw_code(), Self::category())
             }
         }
     }

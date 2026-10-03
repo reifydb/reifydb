@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime-internal-versioned-export-macros"
-version = "44.0.2"
+version = "44.0.3"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false

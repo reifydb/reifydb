@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "rustyline"
-version = "18.0.0"
+version = "18.0.1"
 authors = ["Katsu Kawakami <kkawa1570@gmail.com>"]
 build = false
 exclude = [

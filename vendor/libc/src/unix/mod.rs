@@ -14,6 +14,7 @@ pub type intptr_t = isize;
 pub type uintptr_t = usize;
 pub type ssize_t = isize;
 
+#[cfg(not(target_os = "nuttx"))]
 pub type pid_t = i32;
 pub type in_addr_t = u32;
 pub type in_port_t = u16;
@@ -28,7 +29,7 @@ cfg_if! {
     ))] {
         pub type uid_t = c_ushort;
         pub type gid_t = c_ushort;
-    } else if #[cfg(target_os = "nto")] {
+    } else if #[cfg(any(target_os = "nto", target_os = "qnx"))] {
         pub type uid_t = i32;
         pub type gid_t = i32;
     } else {
@@ -38,26 +39,35 @@ cfg_if! {
 }
 
 extern_ty! {
-    pub enum DIR {}
+    pub type DIR;
 }
+
+// Deprecated impls: see #5296
+unsafe impl Send for DIR {}
+unsafe impl Sync for DIR {}
 
 #[cfg(not(target_os = "nuttx"))]
 pub type locale_t = *mut c_void;
 
-s! {
+s2! {
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct group {
+        #[custom_default(ptr::null_mut())]
         pub gr_name: *mut c_char,
+        #[custom_default(ptr::null_mut())]
         pub gr_passwd: *mut c_char,
         pub gr_gid: crate::gid_t,
+        #[custom_default(ptr::null_mut())]
         pub gr_mem: *mut *mut c_char,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct utimbuf {
         pub actime: time_t,
         pub modtime: time_t,
     }
 
-    #[derive(Default)]
+    #[exhaustive] // This one is not likely to ever change
     pub struct timeval {
         pub tv_sec: time_t,
         #[cfg(not(gnu_time_bits64))]
@@ -70,7 +80,7 @@ s! {
 
     // linux x32 compatibility
     // See https://sourceware.org/bugzilla/show_bug.cgi?id=16437
-    #[derive(Default)]
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[cfg(not(target_env = "gnu"))]
     pub struct timespec {
         pub tv_sec: time_t,
@@ -84,11 +94,13 @@ s! {
         __pad0: Padding<u32>,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct rlimit {
         pub rlim_cur: rlim_t,
         pub rlim_max: rlim_t,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct rusage {
         pub ru_utime: timeval,
         pub ru_stime: timeval,
@@ -139,6 +151,7 @@ s! {
         __reserved: Padding<[c_long; 16]>,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[cfg(not(target_os = "nuttx"))]
     pub struct ipv6_mreq {
         pub ipv6mr_multiaddr: in6_addr,
@@ -148,20 +161,27 @@ s! {
         pub ipv6mr_interface: c_uint,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[cfg(all(not(target_os = "cygwin"), not(target_os = "horizon")))]
     pub struct hostent {
+        #[custom_default(ptr::null_mut())]
         pub h_name: *mut c_char,
+        #[custom_default(ptr::null_mut())]
         pub h_aliases: *mut *mut c_char,
         pub h_addrtype: c_int,
         pub h_length: c_int,
+        #[custom_default(ptr::null_mut())]
         pub h_addr_list: *mut *mut c_char,
     }
 
+    #[exhaustive] // Shouldn't ever change
     pub struct iovec {
+        #[custom_default(ptr::null_mut())]
         pub iov_base: *mut c_void,
         pub iov_len: size_t,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[cfg(not(target_os = "horizon"))]
     pub struct pollfd {
         pub fd: c_int,
@@ -169,6 +189,7 @@ s! {
         pub revents: c_short,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct winsize {
         pub ws_row: c_ushort,
         pub ws_col: c_ushort,
@@ -176,24 +197,29 @@ s! {
         pub ws_ypixel: c_ushort,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[cfg(not(target_os = "cygwin"))]
     pub struct linger {
         pub l_onoff: c_int,
         pub l_linger: c_int,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct sigval {
         // Actually a union of an int and a void*
+        #[custom_default(ptr::null_mut())]
         pub sival_ptr: *mut c_void,
     }
 
     // <sys/time.h>
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct itimerval {
         pub it_interval: crate::timeval,
         pub it_value: crate::timeval,
     }
 
     // <sys/times.h>
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct tms {
         pub tms_utime: crate::clock_t,
         pub tms_stime: crate::clock_t,
@@ -201,18 +227,25 @@ s! {
         pub tms_cstime: crate::clock_t,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct servent {
+        #[custom_default(ptr::null_mut())]
         pub s_name: *mut c_char,
+        #[custom_default(ptr::null_mut())]
         pub s_aliases: *mut *mut c_char,
         #[cfg(target_os = "cygwin")]
         pub s_port: c_short,
         #[cfg(not(target_os = "cygwin"))]
         pub s_port: c_int,
+        #[custom_default(ptr::null_mut())]
         pub s_proto: *mut c_char,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     pub struct protoent {
+        #[custom_default(ptr::null_mut())]
         pub p_name: *mut c_char,
+        #[custom_default(ptr::null_mut())]
         pub p_aliases: *mut *mut c_char,
         #[cfg(not(target_os = "cygwin"))]
         pub p_proto: c_int,
@@ -220,14 +253,17 @@ s! {
         pub p_proto: c_short,
     }
 
+    #[exhaustive] // FIXME(exhaustive): review for 1.0
     #[repr(align(4))]
     pub struct in6_addr {
         pub s6_addr: [u8; 16],
     }
 }
 
-pub const INT_MIN: c_int = -2147483648;
-pub const INT_MAX: c_int = 2147483647;
+#[deprecated(since = "0.2.190", note = "Use `c_int::MIN` instead.")]
+pub const INT_MIN: c_int = c_int::MIN;
+#[deprecated(since = "0.2.190", note = "Use `c_int::MAX` instead.")]
+pub const INT_MAX: c_int = c_int::MAX;
 
 pub const SIG_DFL: sighandler_t = 0 as sighandler_t;
 pub const SIG_IGN: sighandler_t = 1 as sighandler_t;
@@ -235,7 +271,7 @@ pub const SIG_ERR: sighandler_t = !0 as sighandler_t;
 
 cfg_if! {
     if #[cfg(all(
-        not(target_os = "nto"),
+        not(any(target_os = "nto", target_os = "qnx")),
         not(target_os = "aix"),
         not(target_os = "espidf")
     ))] {
@@ -256,7 +292,11 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(not(any(target_os = "nto", target_os = "l4re")))] {
+    if #[cfg(not(any(
+        target_os = "nto",
+        target_os = "qnx",
+        target_os = "l4re"
+    )))] {
         pub const USRQUOTA: c_int = 0;
         pub const GRPQUOTA: c_int = 1;
     }
@@ -319,7 +359,7 @@ pub const LOG_PRIMASK: c_int = 7;
 pub const LOG_FACMASK: c_int = 0x3f8;
 
 cfg_if! {
-    if #[cfg(not(target_os = "nto"))] {
+    if #[cfg(not(any(target_os = "nto", target_os = "qnx")))] {
         pub const PRIO_MIN: c_int = -20;
         pub const PRIO_MAX: c_int = 20;
     }
@@ -344,16 +384,26 @@ pub const IN6ADDR_ANY_INIT: in6_addr = in6_addr {
     s6_addr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
 
-pub const ARPOP_REQUEST: u16 = 1;
-pub const ARPOP_REPLY: u16 = 2;
+cfg_if! {
+    // Not present on iOS/tvOS/watchOS/visionOS
+    if #[cfg(not(any(
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos",
+    )))] {
+        pub const ARPOP_REQUEST: u16 = 1;
+        pub const ARPOP_REPLY: u16 = 2;
 
-pub const ATF_COM: c_int = 0x02;
-pub const ATF_PERM: c_int = 0x04;
-pub const ATF_PUBL: c_int = 0x08;
-pub const ATF_USETRAILERS: c_int = 0x10;
+        pub const ATF_COM: c_int = 0x02;
+        pub const ATF_PERM: c_int = 0x04;
+        pub const ATF_PUBL: c_int = 0x08;
+        pub const ATF_USETRAILERS: c_int = 0x10;
+    }
+}
 
 cfg_if! {
-    if #[cfg(any(target_os = "nto", target_os = "aix"))] {
+    if #[cfg(any(target_os = "nto", target_os = "qnx", target_os = "aix"))] {
         pub const FNM_PERIOD: c_int = 1 << 1;
     } else {
         pub const FNM_PERIOD: c_int = 1 << 2;
@@ -375,8 +425,9 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(any(
-        target_os = "macos",
+        target_vendor = "apple",
         target_os = "freebsd",
+        target_os = "dragonfly",
         target_os = "android",
         target_os = "openbsd",
         target_os = "cygwin",
@@ -390,15 +441,16 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(any(
-        target_os = "macos",
+        target_vendor = "apple",
         target_os = "freebsd",
+        target_os = "dragonfly",
         target_os = "android",
         target_os = "openbsd",
         target_os = "netbsd",
         target_os = "cygwin",
     ))] {
         pub const FNM_NOESCAPE: c_int = 1 << 0;
-    } else if #[cfg(target_os = "nto")] {
+    } else if #[cfg(any(target_os = "nto", target_os = "qnx"))] {
         pub const FNM_NOESCAPE: c_int = 1 << 2;
     } else if #[cfg(target_os = "aix")] {
         pub const FNM_NOESCAPE: c_int = 1 << 3;
@@ -407,11 +459,31 @@ cfg_if! {
     }
 }
 
+f! {
+    // It seems htonl, etc are macros on macOS. So we have to reimplement them. So let's
+    // reimplement them for all UNIX platforms
+    pub const safe fn htonl(hostlong: u32) -> u32 {
+        u32::to_be(hostlong)
+    }
+    pub const safe fn htons(hostshort: u16) -> u16 {
+        u16::to_be(hostshort)
+    }
+    pub const safe fn ntohl(netlong: u32) -> u32 {
+        u32::from_be(netlong)
+    }
+    pub const safe fn ntohs(netshort: u16) -> u16 {
+        u16::from_be(netshort)
+    }
+}
+
 extern "C" {
     pub static in6addr_loopback: in6_addr;
     pub static in6addr_any: in6_addr;
 }
 
+// FIXME(1.0): We want to remove these directives and instead expect that no-std users add their
+// own link configuration when required, rather than unconditionally linking everything that may
+// possibly be needed.
 cfg_if! {
     if #[cfg(any(
         target_os = "l4re",
@@ -496,7 +568,17 @@ cfg_if! {
         #[link(name = "dl", cfg(not(target_feature = "crt-static")))]
         #[link(name = "c", cfg(not(target_feature = "crt-static")))]
         extern "C" {}
-    } else if #[cfg(any(target_env = "musl", target_env = "ohos"))] {
+    } else if #[cfg(libc_pauthtest)] {
+        #[link(name = "c")]
+        #[link(name = "m")]
+        #[link(name = "rt")]
+        #[link(name = "pthread")]
+        #[link(name = "dl")]
+        extern "C" {}
+    } else if #[cfg(any(
+        all(target_env = "musl", not(libc_pauthtest)),
+        target_env = "ohos"
+    ))] {
         #[cfg_attr(
             feature = "rustc-dep-of-std",
             link(
@@ -531,14 +613,11 @@ cfg_if! {
         #[link(name = "c", cfg(not(target_feature = "crt-static")))]
         extern "C" {}
     } else if #[cfg(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos",
-        target_os = "visionos",
+        target_vendor = "apple",
         target_os = "android",
         target_os = "openbsd",
         target_os = "nto",
+        target_os = "qnx",
     ))] {
         #[link(name = "c")]
         #[link(name = "m")]
@@ -586,15 +665,18 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(not(all(target_os = "linux", target_env = "gnu")))] {
+    if #[cfg(not(any(
+        target_os = "hurd",
+        all(target_os = "linux", target_env = "gnu")
+    )))] {
         extern_ty! {
-            pub enum fpos_t {} // FIXME(unix): fill this out with a struct
+            pub type fpos_t; // FIXME(unix): fill this out with a struct
         }
     }
 }
 
 extern_ty! {
-    pub enum FILE {}
+    pub type FILE;
 }
 
 extern "C" {
@@ -704,6 +786,13 @@ extern "C" {
         all(target_os = "macos", target_arch = "x86"),
         link_name = "system$UNIX2003"
     )]
+    // Not available on iOS/tvOS/watchOS/visionOS
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos"
+    )))]
     pub fn system(s: *const c_char) -> c_int;
     pub fn getenv(s: *const c_char) -> *mut c_char;
 
@@ -881,7 +970,7 @@ extern "C" {
     pub fn fchmod(fd: c_int, mode: mode_t) -> c_int;
 
     #[cfg_attr(
-        all(target_os = "macos", not(target_arch = "aarch64")),
+        all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
         link_name = "fstat$INODE64"
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__fstat50")]
@@ -900,7 +989,7 @@ extern "C" {
     pub fn mkdir(path: *const c_char, mode: mode_t) -> c_int;
 
     #[cfg_attr(
-        all(target_os = "macos", not(target_arch = "aarch64")),
+        all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
         link_name = "stat$INODE64"
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__stat50")]
@@ -957,9 +1046,18 @@ extern "C" {
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__opendir30")]
     pub fn opendir(dirname: *const c_char) -> *mut crate::DIR;
+    #[cfg_attr(
+        all(target_os = "macos", target_arch = "x86_64"),
+        link_name = "fdopendir$INODE64"
+    )]
+    #[cfg_attr(
+        all(target_os = "macos", target_arch = "x86"),
+        link_name = "fdopendir$INODE64$UNIX2003"
+    )]
+    pub fn fdopendir(fd: c_int) -> *mut crate::DIR;
 
     #[cfg_attr(
-        all(target_os = "macos", not(target_arch = "aarch64")),
+        all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
         link_name = "readdir$INODE64"
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__readdir30")]
@@ -994,8 +1092,10 @@ extern "C" {
         group: crate::gid_t,
         flags: c_int,
     ) -> c_int;
+    #[cfg_attr(gnu_file_offset_bits64, link_name = "openat64")]
+    pub fn openat(dirfd: c_int, pathname: *const c_char, flags: c_int, ...) -> c_int;
     #[cfg_attr(
-        all(target_os = "macos", not(target_arch = "aarch64")),
+        all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
         link_name = "fstatat$INODE64"
     )]
     #[cfg_attr(
@@ -1018,6 +1118,8 @@ extern "C" {
         newpath: *const c_char,
         flags: c_int,
     ) -> c_int;
+    #[cfg(not(target_os = "l4re"))]
+    pub fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int;
     #[cfg(not(target_os = "l4re"))]
     pub fn renameat(
         olddirfd: c_int,
@@ -1052,19 +1154,27 @@ extern "C" {
     pub fn dup(fd: c_int) -> c_int;
     pub fn dup2(src: c_int, dst: c_int) -> c_int;
 
+    // exec* marked as prohibited on tvOS and watchOS.
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execl(path: *const c_char, arg0: *const c_char, ...) -> c_int;
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execle(path: *const c_char, arg0: *const c_char, ...) -> c_int;
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execlp(file: *const c_char, arg0: *const c_char, ...) -> c_int;
 
     // DIFF(main): changed to `*const *mut` in e77f551de9
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execv(prog: *const c_char, argv: *const *const c_char) -> c_int;
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execve(
         prog: *const c_char,
         argv: *const *const c_char,
         envp: *const *const c_char,
     ) -> c_int;
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn execvp(c: *const c_char, argv: *const *const c_char) -> c_int;
 
+    #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     pub fn fork() -> pid_t;
     pub fn fpathconf(filedes: c_int, name: c_int) -> c_long;
     pub fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char;
@@ -1090,6 +1200,11 @@ extern "C" {
     #[cfg_attr(gnu_file_offset_bits64, link_name = "lseek64")]
     pub fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t;
     pub fn pathconf(path: *const c_char, name: c_int) -> c_long;
+    #[cfg_attr(
+        all(target_os = "macos", target_arch = "x86"),
+        link_name = "pause$UNIX2003"
+    )]
+    pub fn pause() -> c_int;
     pub fn pipe(fds: *mut c_int) -> c_int;
     pub fn posix_memalign(memptr: *mut *mut c_void, align: size_t, size: size_t) -> c_int;
     pub fn aligned_alloc(alignment: size_t, size: size_t) -> *mut c_void;
@@ -1205,7 +1320,7 @@ extern "C" {
     pub fn if_indextoname(ifindex: c_uint, ifname: *mut c_char) -> *mut c_char;
 
     #[cfg_attr(
-        all(target_os = "macos", not(target_arch = "aarch64")),
+        all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
         link_name = "lstat$INODE64"
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__lstat50")]
@@ -1253,16 +1368,7 @@ extern "C" {
     #[cfg_attr(musl_redir_time64, link_name = "__getrusage_time64")]
     pub fn getrusage(resource: c_int, usage: *mut rusage) -> c_int;
 
-    #[cfg_attr(
-        any(
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "tvos",
-            target_os = "watchos",
-            target_os = "visionos"
-        ),
-        link_name = "realpath$DARWIN_EXTSN"
-    )]
+    #[cfg_attr(target_vendor = "apple", link_name = "realpath$DARWIN_EXTSN")]
     pub fn realpath(pathname: *const c_char, resolved: *mut c_char) -> *mut c_char;
 
     #[cfg_attr(target_os = "netbsd", link_name = "__times13")]
@@ -1440,16 +1546,7 @@ extern "C" {
         ),
         link_name = "__res_init"
     )]
-    #[cfg_attr(
-        any(
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "tvos",
-            target_os = "watchos",
-            target_os = "visionos"
-        ),
-        link_name = "res_9_init"
-    )]
+    #[cfg_attr(target_vendor = "apple", link_name = "res_9_init")]
     #[cfg_attr(target_os = "aix", link_name = "_res_init")]
     #[cfg(not(target_os = "l4re"))]
     pub fn res_init() -> c_int;
@@ -1572,8 +1669,10 @@ extern "C" {
     pub fn sem_wait(sem: *mut sem_t) -> c_int;
     pub fn sem_trywait(sem: *mut sem_t) -> c_int;
     pub fn sem_post(sem: *mut sem_t) -> c_int;
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))] // defined in new/glibc
     #[cfg_attr(gnu_file_offset_bits64, link_name = "statvfs64")]
     pub fn statvfs(path: *const c_char, buf: *mut crate::statvfs) -> c_int;
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))] // defined in new/glibc
     #[cfg_attr(gnu_file_offset_bits64, link_name = "fstatvfs64")]
     pub fn fstatvfs(fd: c_int, buf: *mut crate::statvfs) -> c_int;
 
@@ -1664,7 +1763,8 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "big"
+            target_endian = "big",
+            not(libc_elfv2)
         ),
         link_name = "cfgetispeed@GLIBC_2.3"
     )]
@@ -1673,7 +1773,7 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "little"
+            any(target_endian = "little", libc_elfv2)
         ),
         link_name = "cfgetispeed@GLIBC_2.17"
     )]
@@ -1765,7 +1865,8 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "big"
+            target_endian = "big",
+            not(libc_elfv2)
         ),
         link_name = "cfgetospeed@GLIBC_2.3"
     )]
@@ -1774,7 +1875,7 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "little"
+            any(target_endian = "little", libc_elfv2)
         ),
         link_name = "cfgetospeed@GLIBC_2.17"
     )]
@@ -1866,7 +1967,8 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "big"
+            target_endian = "big",
+            not(libc_elfv2)
         ),
         link_name = "cfsetispeed@GLIBC_2.3"
     )]
@@ -1875,7 +1977,7 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "little"
+            any(target_endian = "little", libc_elfv2)
         ),
         link_name = "cfsetispeed@GLIBC_2.17"
     )]
@@ -1967,7 +2069,8 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "big"
+            target_endian = "big",
+            not(libc_elfv2)
         ),
         link_name = "cfsetospeed@GLIBC_2.3"
     )]
@@ -1976,7 +2079,7 @@ extern "C" {
             target_os = "linux",
             target_env = "gnu",
             target_arch = "powerpc64",
-            target_endian = "little"
+            any(target_endian = "little", libc_elfv2)
         ),
         link_name = "cfsetospeed@GLIBC_2.17"
     )]
@@ -2057,6 +2160,10 @@ extern "C" {
     pub fn mkstemp(template: *mut c_char) -> c_int;
     pub fn mkdtemp(template: *mut c_char) -> *mut c_char;
 
+    #[deprecated(
+        since = "0.2.190",
+        note = "function is obsolete; prefer tmpfile, mkstemp, or similar"
+    )]
     pub fn tmpnam(ptr: *mut c_char) -> *mut c_char;
 
     pub fn openlog(ident: *const c_char, logopt: c_int, facility: c_int);
@@ -2088,29 +2195,13 @@ extern "C" {
 
 }
 
-safe_f! {
-    // It seems htonl, etc are macros on macOS. So we have to reimplement them. So let's
-    // reimplement them for all UNIX platforms
-    pub const fn htonl(hostlong: u32) -> u32 {
-        u32::to_be(hostlong)
-    }
-    pub const fn htons(hostshort: u16) -> u16 {
-        u16::to_be(hostshort)
-    }
-    pub const fn ntohl(netlong: u32) -> u32 {
-        u32::from_be(netlong)
-    }
-    pub const fn ntohs(netshort: u16) -> u16 {
-        u16::from_be(netshort)
-    }
-}
-
 cfg_if! {
     if #[cfg(not(any(
         target_os = "emscripten",
         target_os = "android",
         target_os = "haiku",
         target_os = "nto",
+        target_os = "qnx",
         target_os = "solaris",
         target_os = "cygwin",
         target_os = "aix",
@@ -2145,7 +2236,7 @@ cfg_if! {
         target_os = "dragonfly",
         target_os = "emscripten",
         target_os = "hurd",
-        target_os = "macos",
+        target_vendor = "apple",
         target_os = "openbsd",
         target_os = "l4re",
     )))] {
@@ -2197,28 +2288,7 @@ cfg_if! {
         extern "C" {
             pub fn getsid(pid: pid_t) -> pid_t;
             #[cfg_attr(
-                all(target_os = "macos", target_arch = "x86"),
-                link_name = "pause$UNIX2003"
-            )]
-            pub fn pause() -> c_int;
-
-            #[cfg(not(target_os = "l4re"))]
-            pub fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int;
-            #[cfg_attr(gnu_file_offset_bits64, link_name = "openat64")]
-            pub fn openat(dirfd: c_int, pathname: *const c_char, flags: c_int, ...) -> c_int;
-
-            #[cfg_attr(
-                all(target_os = "macos", target_arch = "x86_64"),
-                link_name = "fdopendir$INODE64"
-            )]
-            #[cfg_attr(
-                all(target_os = "macos", target_arch = "x86"),
-                link_name = "fdopendir$INODE64$UNIX2003"
-            )]
-            pub fn fdopendir(fd: c_int) -> *mut crate::DIR;
-
-            #[cfg_attr(
-                all(target_os = "macos", not(target_arch = "aarch64")),
+                all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")),
                 link_name = "readdir_r$INODE64"
             )]
             #[cfg_attr(target_os = "netbsd", link_name = "__readdir_r30")]
@@ -2230,13 +2300,13 @@ cfg_if! {
                 all(target_os = "freebsd", not(any(freebsd11, freebsd10))),
                 link_name = "readdir_r@FBSD_1.5"
             )]
-            #[allow(non_autolinks)] // FIXME(docs): `<>` breaks line length limit.
             /// The 64-bit libc on Solaris and illumos only has readdir_r. If a
             /// 32-bit Solaris or illumos target is ever created, it should use
             /// __posix_readdir_r. See libc(3LIB) on Solaris or illumos:
-            /// https://illumos.org/man/3lib/libc
-            /// https://docs.oracle.com/cd/E36784_01/html/E36873/libc-3lib.html
-            /// https://www.unix.com/man-page/opensolaris/3LIB/libc/
+            ///
+            /// * <https://illumos.org/man/3lib/libc>
+            /// * <https://docs.oracle.com/cd/E36784_01/html/E36873/libc-3lib.html>
+            /// * <https://www.unix.com/man-page/opensolaris/3LIB/libc/>
             #[cfg_attr(gnu_file_offset_bits64, link_name = "readdir64_r")]
             pub fn readdir_r(
                 dirp: *mut crate::DIR,
@@ -2248,7 +2318,7 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(target_os = "nto")] {
+    if #[cfg(any(target_os = "nto", target_os = "qnx"))] {
         extern "C" {
             pub fn readlinkat(
                 dirfd: c_int,
@@ -2282,6 +2352,7 @@ cfg_if! {
             #[cfg(not(target_os = "l4re"))]
             pub fn open_memstream(ptr: *mut *mut c_char, sizeloc: *mut size_t) -> *mut FILE;
             pub fn atexit(cb: extern "C" fn()) -> c_int;
+            #[cfg(not(all(target_os = "linux", target_env = "gnu")))] // defined in new/glibc
             #[cfg_attr(target_os = "netbsd", link_name = "__sigaction14")]
             pub fn sigaction(signum: c_int, act: *const sigaction, oldact: *mut sigaction)
                 -> c_int;
@@ -2322,10 +2393,7 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(any(
-        target_os = "aix",
-        all(target_os = "nto", target_env = "nto80")
-    ))] {
+    if #[cfg(any(target_os = "aix", target_os = "qnx",))] {
         extern "C" {
             pub fn cfsetspeed(termios: *mut crate::termios, speed: crate::speed_t) -> c_int;
         }
@@ -2393,7 +2461,8 @@ cfg_if! {
                     target_os = "linux",
                     target_env = "gnu",
                     target_arch = "powerpc64",
-                    target_endian = "big"
+                    target_endian = "big",
+                    not(libc_elfv2)
                 ),
                 link_name = "cfsetspeed@GLIBC_2.3"
             )]
@@ -2402,7 +2471,7 @@ cfg_if! {
                     target_os = "linux",
                     target_env = "gnu",
                     target_arch = "powerpc64",
-                    target_endian = "little"
+                    any(target_endian = "little", libc_elfv2)
                 ),
                 link_name = "cfsetspeed@GLIBC_2.17"
             )]
@@ -2458,11 +2527,7 @@ cfg_if! {
         mod linux_like;
         pub use self::linux_like::*;
     } else if #[cfg(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos",
-        target_os = "visionos",
+        target_vendor = "apple",
         target_os = "freebsd",
         target_os = "dragonfly",
         target_os = "openbsd",
@@ -2482,7 +2547,7 @@ cfg_if! {
     } else if #[cfg(target_os = "cygwin")] {
         mod cygwin;
         pub use self::cygwin::*;
-    } else if #[cfg(target_os = "nto")] {
+    } else if #[cfg(any(target_os = "nto", target_os = "qnx"))] {
         mod nto;
         pub use self::nto::*;
     } else if #[cfg(target_os = "aix")] {

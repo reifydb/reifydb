@@ -32,6 +32,9 @@
 
 extern crate alloc;
 
+#[cfg(not(target_feature = "atomics"))]
+mod jspi;
+
 use crate::Promise;
 use alloc::rc::Rc;
 use core::cell::RefCell;
@@ -40,10 +43,18 @@ use core::future::{Future, IntoFuture};
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-#[cfg(all(target_family = "wasm", feature = "std", panic = "unwind"))]
+#[cfg(all(
+    all(target_family = "wasm", not(target_os = "wasi")),
+    feature = "std",
+    panic = "unwind"
+))]
 use futures_util::FutureExt;
 use wasm_bindgen::__rt::marker::ErasableGeneric;
-#[cfg(all(target_family = "wasm", feature = "std", panic = "unwind"))]
+#[cfg(all(
+    all(target_family = "wasm", not(target_os = "wasi")),
+    feature = "std",
+    panic = "unwind"
+))]
 use wasm_bindgen::__rt::panic_to_panic_error;
 use wasm_bindgen::convert::{FromWasmAbi, Upcast};
 use wasm_bindgen::sys::Promising;
@@ -79,6 +90,16 @@ mod task {
 /// The `future` will always be run on the next microtask tick even if it
 /// immediately returns `Poll::Ready`.
 ///
+/// # JSPI
+///
+/// When called from within a JSPI context — a `#[wasm_bindgen(jspi)]` export
+/// or a task itself spawned from one — the task's polls are entered through
+/// a `WebAssembly.promising` boundary, so sync code reached from the future
+/// may suspend via [`jspi_block_on_promise`]. The capability is inherited
+/// transitively down the spawn tree; a suspension parks only that task's
+/// poll. In modules that never use JSPI attributes this branch compiles to a
+/// constant and no JSPI machinery is emitted.
+///
 /// # Panics
 ///
 /// This function has the same panic behavior as `future_to_promise`.
@@ -87,7 +108,33 @@ pub fn spawn_local<F>(future: F)
 where
     F: Future<Output = ()> + 'static,
 {
+    #[cfg(not(target_feature = "atomics"))]
+    if jspi::in_context() {
+        jspi::spawn_promising(future);
+        return;
+    }
     task::Task::spawn(future);
+}
+
+/// Suspend the current JSPI execution until `promise` settles, returning the
+/// resolved value as `Ok` or the rejection reason as `Err` — without
+/// blocking the event loop, and without an `async` call chain.
+///
+/// May only be called where a `WebAssembly.promising` frame is on the stack:
+/// within a `#[wasm_bindgen(jspi)]` export, or a task spawned (transitively)
+/// from a JSPI context. Calling it elsewhere throws a `SuspendError` at
+/// runtime.
+///
+/// Promises are eager, so concurrency composes at the promise level: start
+/// several JS calls, then suspend on each or on a `Promise::all` /
+/// `Promise::race` combination. A Rust `Future` is awaited by suspending on
+/// its completion promise: `jspi_block_on_promise(&future_to_promise(fut))`.
+#[cfg(not(target_feature = "atomics"))]
+#[deprecated(note = "JSPI support is experimental and subject to change; \
+            `jspi_block_on_promise` requires a runtime with WebAssembly \
+            JS Promise Integration enabled")]
+pub fn jspi_block_on_promise(promise: &Promise) -> Result<JsValue, JsValue> {
+    jspi::suspend(promise)
 }
 
 struct Inner<T = JsValue> {
@@ -246,7 +293,11 @@ impl<T: FromWasmAbi + 'static> IntoFuture for Promise<T> {
 /// Note that in Wasm panics are currently translated to aborts, but "abort" in
 /// this case means that a JavaScript exception is thrown. The Wasm module is
 /// still usable (likely erroneously) after Rust panics.
-#[cfg(not(all(target_family = "wasm", feature = "std", panic = "unwind")))]
+#[cfg(not(all(
+    all(target_family = "wasm", not(target_os = "wasi")),
+    feature = "std",
+    panic = "unwind"
+)))]
 pub fn future_to_promise<F>(future: F) -> Promise
 where
     F: Future<Output = Result<JsValue, JsValue>> + 'static,
@@ -284,7 +335,11 @@ where
 ///
 /// If the `future` provided panics then the returned `Promise` will be rejected
 /// with a PanicError.
-#[cfg(all(target_family = "wasm", feature = "std", panic = "unwind"))]
+#[cfg(all(
+    all(target_family = "wasm", not(target_os = "wasi")),
+    feature = "std",
+    panic = "unwind"
+))]
 pub fn future_to_promise<F>(future: F) -> Promise
 where
     F: Future<Output = Result<JsValue, JsValue>> + 'static + std::panic::UnwindSafe,

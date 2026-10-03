@@ -1,6 +1,6 @@
 [package]
 name = "error-code"
-version = "3.3.2"
+version = "3.4.0"
 authors = ["Douman <douman@gmx.se>"]
 edition = "2018"
 description = "Error code"

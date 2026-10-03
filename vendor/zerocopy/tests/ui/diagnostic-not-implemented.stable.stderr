@@ -19,12 +19,14 @@ help: the trait `FromBytes` is not implemented for `NotZerocopy`
              (A, B, C, D, E, F)
              (A, B, C, D, E, F, G)
              (A, B, C, D, E, F, G, H)
-           and 79 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_from_bytes`
   --> $DIR/diagnostic-not-implemented.rs:77:24
    |
 77 | fn takes_from_bytes<T: FromBytes>() {}
    |                        ^^^^^^^^^ required by this bound in `takes_from_bytes`
+   = note: the full name for the type has been written to '/long-type-HASH.txt'
+   = note: consider using `--verbose` to print the full type name to the console
 
 error[E0277]: the trait bound `NotZerocopy: FromZeros` is not satisfied
   --> $DIR/diagnostic-not-implemented.rs:18:24
@@ -47,12 +49,14 @@ help: the trait `FromZeros` is not implemented for `NotZerocopy`
              (A, B, C, D, E, F)
              (A, B, C, D, E, F, G)
              (A, B, C, D, E, F, G, H)
-           and 141 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_from_zeros`
   --> $DIR/diagnostic-not-implemented.rs:78:24
    |
 78 | fn takes_from_zeros<T: FromZeros>() {}
    |                        ^^^^^^^^^ required by this bound in `takes_from_zeros`
+   = note: the full name for the type has been written to '/long-type-HASH.txt'
+   = note: consider using `--verbose` to print the full type name to the console
 
 error[E0277]: the trait bound `NotZerocopy: Immutable` is not satisfied
   --> $DIR/diagnostic-not-implemented.rs:20:23
@@ -75,12 +79,14 @@ help: the trait `Immutable` is not implemented for `NotZerocopy`
              (A, B, C, D)
              (A, B, C, D, E)
              (A, B, C, D, E, F)
-           and 128 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_immutable`
   --> $DIR/diagnostic-not-implemented.rs:79:23
    |
 79 | fn takes_immutable<T: Immutable>() {}
    |                       ^^^^^^^^^ required by this bound in `takes_immutable`
+   = note: the full name for the type has been written to '/long-type-HASH.txt'
+   = note: consider using `--verbose` to print the full type name to the console
 
 error[E0277]: the trait bound `NotZerocopy: IntoBytes` is not satisfied
   --> $DIR/diagnostic-not-implemented.rs:22:24
@@ -103,7 +109,7 @@ help: the trait `IntoBytes` is not implemented for `NotZerocopy`
              AtomicI64
              AtomicI8
              AtomicIsize
-           and 68 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_into_bytes`
   --> $DIR/diagnostic-not-implemented.rs:80:24
    |
@@ -131,7 +137,7 @@ help: the trait `KnownLayout` is not implemented for `NotZerocopy`
              AU16
              AtomicBool
              AtomicI16
-           and 65 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_known_layout`
   --> $DIR/diagnostic-not-implemented.rs:81:26
    |
@@ -159,12 +165,14 @@ help: the trait `TryFromBytes` is not implemented for `NotZerocopy`
              (A, B, C, D, E, F)
              (A, B, C, D, E, F, G)
              (A, B, C, D, E, F, G, H)
-           and 153 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_try_from_bytes`
   --> $DIR/diagnostic-not-implemented.rs:82:28
    |
 82 | fn takes_try_from_bytes<T: TryFromBytes>() {}
    |                            ^^^^^^^^^^^^ required by this bound in `takes_try_from_bytes`
+   = note: the full name for the type has been written to '/long-type-HASH.txt'
+   = note: consider using `--verbose` to print the full type name to the console
 
 error[E0277]: the trait bound `NotZerocopy: zerocopy::Unaligned` is not satisfied
   --> $DIR/diagnostic-not-implemented.rs:28:23
@@ -187,7 +195,7 @@ help: the trait `zerocopy::Unaligned` is not implemented for `NotZerocopy`
              F32<O>
              F64<O>
              I128<O>
-           and 26 others
+           and $OTHER_TYPES others
 note: required by a bound in `takes_unaligned`
   --> $DIR/diagnostic-not-implemented.rs:83:23
    |
@@ -237,7 +245,7 @@ help: the trait `IntoBytes` is not implemented for `NotZerocopy`
              AtomicI64
              AtomicI8
              AtomicIsize
-           and 68 others
+           and $OTHER_TYPES others
 note: required by a bound in `Foo::write_obj`
   --> $DIR/diagnostic-not-implemented.rs:73:37
    |

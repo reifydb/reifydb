@@ -37,9 +37,9 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "wasmtime-internal-core"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4364d345719bba7fc4c435992ea1cb0c118f1e90a88c6e6f22a7a4fc507700c6"
+checksum = "aedd3947487d0afdd37accb981466fcd60571e898004c8955111f88686581dfc"
 dependencies = [
  "hashbrown",
  "libm",
@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-internal-jit-icache-coherence"
-version = "44.0.2"
+version = "44.0.3"
 dependencies = [
  "cfg-if",
  "libc",

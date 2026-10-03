@@ -4,7 +4,6 @@
 //!
 
 use std::marker::PhantomData;
-use std::sync::atomic;
 
 use crate::gen_impl::Generator;
 use crate::rt::{Context, ContextStack, Error};
@@ -32,7 +31,11 @@ impl<'a, A, T> Scope<'_, 'a, A, T> {
     /// set current generator return value
     #[inline]
     fn set_ret(&mut self, v: T) {
-        *self.ret = Some(v);
+        // use volatile write to prevent compiler optimization reordering
+        // *self.ret = Some(v);
+        unsafe {
+            core::ptr::write_volatile(self.ret, Some(v));
+        }
     }
 
     /// raw yield without catch passed in para
@@ -64,7 +67,14 @@ impl<'a, A, T> Scope<'_, 'a, A, T> {
     /// get current generator send para
     #[inline]
     pub fn get_yield(&mut self) -> Option<A> {
-        self.para.take()
+        // in latest nightly (since 2026-08-15) Rust, `Option::take` seems calculated in advance,
+        // here we use volatile read to prevent compiler reordering
+        // self.para.take()
+        unsafe {
+            let r = core::ptr::read_volatile(self.para);
+            core::ptr::write(self.para, None);
+            r
+        }
     }
 
     /// yield and get the send para
@@ -74,7 +84,7 @@ impl<'a, A, T> Scope<'_, 'a, A, T> {
     #[inline]
     pub unsafe fn yield_unsafe(&mut self, v: T) -> Option<A> {
         self.yield_with(v);
-        atomic::compiler_fence(atomic::Ordering::Acquire);
+        // atomic::compiler_fence(atomic::Ordering::Acquire);
         self.get_yield()
     }
 
@@ -88,10 +98,8 @@ impl<'a, A, T> Scope<'_, 'a, A, T> {
         let context = env.top();
         let mut p = self.get_yield();
         while !g.is_done() {
-            match g.raw_send(p) {
-                None => return None,
-                Some(r) => self.raw_yield(&env, context, r),
-            }
+            let r = g.raw_send(p)?;
+            self.raw_yield(&env, context, r);
             p = self.get_yield();
         }
         drop(g); // explicitly consume g

@@ -12,7 +12,7 @@ use core::{char, ops::RangeBounds, ops::RangeInclusive};
 use potential_utf::PotentialCodePoint;
 use yoke::Yokeable;
 use zerofrom::ZeroFrom;
-use zerovec::{ule::AsULE, zerovec, ZeroVec};
+use zerovec::{ZeroVec, ule::AsULE, zerovec};
 
 use super::InvalidSetError;
 use crate::codepointinvlist::utils::{deconstruct_range, is_valid_zv};
@@ -33,7 +33,7 @@ const ALL_VEC: ZeroVec<PotentialCodePoint> = zerovec!(PotentialCodePoint; Potent
 #[zerovec::make_varule(CodePointInversionListULE)]
 #[zerovec::skip_derive(Ord)]
 #[zerovec::derive(Debug)]
-#[derive(Debug, Eq, PartialEq, Clone, Yokeable, ZeroFrom)]
+#[derive(Debug, Eq, PartialEq, Clone, Yokeable, ZeroFrom, Hash)]
 #[cfg_attr(not(feature = "alloc"), zerovec::skip_derive(ZeroMapKV, ToOwned))]
 pub struct CodePointInversionList<'data> {
     // If we wanted to use an array to keep the memory on the stack, there is an unsafe nightly feature
@@ -617,7 +617,6 @@ impl<'data> CodePointInversionList<'data> {
     ///
     /// ```
     /// use icu::collections::codepointinvlist::CodePointInversionList;
-    /// use std::char;
     /// let check =
     ///     char::from_u32(0xD7FE).unwrap()..char::from_u32(0xE001).unwrap();
     /// let example_list = [0xD7FE, 0xD7FF, 0xE000, 0xE001];
@@ -659,8 +658,8 @@ impl<'data> CodePointInversionList<'data> {
     ///     &example_list,
     /// )
     /// .unwrap();
-    /// let a_to_d = CodePointInversionList::try_from_u32_inversion_list_slice(&[
-    ///     0x41, 0x45,
+    /// let a_b_d = CodePointInversionList::try_from_u32_inversion_list_slice(&[
+    ///     0x41, 0x42, 0x44, 0x45,
     /// ])
     /// .unwrap();
     /// let f_to_t = CodePointInversionList::try_from_u32_inversion_list_slice(&[
@@ -671,7 +670,7 @@ impl<'data> CodePointInversionList<'data> {
     ///     0x52, 0x58,
     /// ])
     /// .unwrap();
-    /// assert!(example.contains_set(&a_to_d)); // contains all
+    /// assert!(example.contains_set(&a_b_d)); // contains all
     /// assert!(!example.contains_set(&f_to_t)); // contains none
     /// assert!(!example.contains_set(&r_to_x)); // contains some
     /// ```
@@ -685,15 +684,15 @@ impl<'data> CodePointInversionList<'data> {
 
         let ranges = self.iter_ranges();
         for range in ranges {
-            match check_elem {
-                Some(ref check_range) => {
-                    if check_range.start() >= range.start()
-                        && check_range.end() <= &(range.end() + 1)
-                    {
-                        check_elem = set_ranges.next();
-                    }
+            loop {
+                let Some(ref check_range) = check_elem else {
+                    return true;
+                };
+                if check_range.start() >= range.start() && check_range.end() <= &(range.end() + 1) {
+                    check_elem = set_ranges.next();
+                } else {
+                    break;
                 }
-                _ => break,
             }
         }
         check_elem.is_none()

@@ -4,9 +4,9 @@
 Refs:
 - RISC-V Instruction Set Manual
   Machine Status (mstatus and mstatush) Registers
-  https://github.com/riscv/riscv-isa-manual/blob/riscv-isa-release-56e76be-2025-08-26/src/machine.adoc#machine-status-mstatus-and-mstatush-registers
+  https://docs.riscv.org/reference/isa/v20260120/priv/machine.html#3-1-1-6-machine-status-mstatus-and-mstatush-registers
   Supervisor Status (sstatus) Register
-  https://github.com/riscv/riscv-isa-manual/blob/riscv-isa-release-56e76be-2025-08-26/src/supervisor.adoc#supervisor-status-sstatus-register
+  https://docs.riscv.org/reference/isa/v20260120/priv/supervisor.html#sstatus
 
 See also src/imp/riscv.rs.
 
@@ -43,6 +43,7 @@ cfg_sel!({
                 "0x2"
             };
         }
+        const MASK: State = 0x2;
     }
     // Machine-mode (M-mode)
     #[cfg(else)]
@@ -59,6 +60,7 @@ cfg_sel!({
                 "0x8"
             };
         }
+        const MASK: State = 0x8;
     }
 });
 
@@ -90,11 +92,11 @@ pub(crate) fn disable() -> State {
 pub(crate) unsafe fn restore(prev_status: State) {
     // SAFETY: the caller must guarantee that the state was retrieved by the previous `disable`,
     //
-    // This clobbers the entire mstatus/sstatus register. See msp430.rs to safety on this.
+    // This avoids clobbering other fields in the mstatus/sstatus register.
     unsafe {
         asm!(
-            concat!("csrw ", status!(), ", {prev_status}"), // atomic { status!() = prev_status }
-            prev_status = in(reg) prev_status,
+            concat!("csrs ", status!(), ", {mask}"), // atomic { status!() |= mask }
+            mask = in(reg) prev_status & MASK,
             // Do not use `nomem` and `readonly` because prevent preceding memory accesses from being reordered after interrupts are enabled.
             options(nostack, preserves_flags),
         );

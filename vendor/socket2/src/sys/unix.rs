@@ -135,7 +135,7 @@ pub(crate) use libc::MSG_TRUNC;
 #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
 pub(crate) use libc::SO_OOBINLINE;
 // Used in `Socket`.
-#[cfg(not(target_os = "nto"))]
+#[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
 pub(crate) use libc::ipv6_mreq as Ipv6Mreq;
 #[cfg(all(feature = "all", target_os = "linux"))]
 pub(crate) use libc::IPV6_HDRINCL;
@@ -170,6 +170,7 @@ pub(crate) use libc::IPV6_RECVHOPLIMIT;
     target_os = "solaris",
     target_os = "haiku",
     target_os = "espidf",
+    target_os = "nuttx",
     target_os = "vita",
     target_os = "wasi",
     target_os = "horizon"
@@ -180,6 +181,7 @@ pub(crate) use libc::IPV6_RECVTCLASS;
     not(any(
         target_os = "redox",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "wasi",
         target_os = "horizon"
     ))
@@ -198,6 +200,7 @@ pub(crate) use libc::IP_HDRINCL;
     target_os = "hurd",
     target_os = "nto",
     target_os = "espidf",
+    target_os = "nuttx",
     target_os = "vita",
     target_os = "wasi",
     target_os = "cygwin",
@@ -209,7 +212,6 @@ pub(crate) use libc::IP_RECVTOS;
     target_os = "redox",
     target_os = "solaris",
     target_os = "haiku",
-    target_os = "illumos",
     target_os = "wasi",
 )))]
 pub(crate) use libc::IP_TOS;
@@ -273,6 +275,7 @@ pub(crate) use libc::{
     target_os = "solaris",
     target_os = "tvos",
     target_os = "watchos",
+    target_os = "nuttx",
     target_os = "wasi",
 )))]
 pub(crate) use libc::{IPV6_ADD_MEMBERSHIP, IPV6_DROP_MEMBERSHIP};
@@ -301,6 +304,7 @@ pub(crate) use libc::{IPV6_MULTICAST_HOPS, IPV6_MULTICAST_IF, IP_MULTICAST_IF, M
     any(
         target_os = "android",
         target_os = "dragonfly",
+        target_os = "emscripten",
         target_os = "freebsd",
         target_os = "fuchsia",
         target_os = "illumos",
@@ -312,6 +316,7 @@ pub(crate) use libc::{IPV6_MULTICAST_HOPS, IPV6_MULTICAST_IF, IP_MULTICAST_IF, M
         target_os = "tvos",
         target_os = "watchos",
         target_os = "cygwin",
+        target_os = "nuttx",
         all(target_os = "wasi", not(target_env = "p1")),
     )
 ))]
@@ -411,6 +416,7 @@ type IovLen = usize;
     ),
     target_os = "aix",
     target_os = "dragonfly",
+    target_os = "emscripten",
     target_os = "freebsd",
     target_os = "fuchsia",
     target_os = "haiku",
@@ -430,6 +436,8 @@ type IovLen = usize;
     target_os = "cygwin",
 ))]
 type IovLen = c_int;
+#[cfg(target_os = "nuttx")]
+type IovLen = libc::c_ulong;
 
 /// Unix only API.
 impl Domain {
@@ -466,6 +474,7 @@ impl Type {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -486,6 +495,7 @@ impl Type {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "hurd",
@@ -505,6 +515,7 @@ impl Type {
     #[cfg(any(
         target_os = "android",
         target_os = "dragonfly",
+        target_os = "emscripten",
         target_os = "freebsd",
         target_os = "fuchsia",
         target_os = "hurd",
@@ -1278,6 +1289,7 @@ pub(crate) fn set_tcp_keepalive(fd: RawSocket, keepalive: &TcpKeepalive) -> io::
         target_os = "aix",
         target_os = "android",
         target_os = "dragonfly",
+        target_os = "emscripten",
         target_os = "freebsd",
         target_os = "fuchsia",
         target_os = "hurd",
@@ -1290,6 +1302,7 @@ pub(crate) fn set_tcp_keepalive(fd: RawSocket, keepalive: &TcpKeepalive) -> io::
         target_os = "tvos",
         target_os = "watchos",
         target_os = "cygwin",
+        target_os = "nuttx",
         all(target_os = "wasi", not(target_env = "p1")),
     ))]
     {
@@ -2205,6 +2218,7 @@ impl crate::Socket {
             target_os = "solaris",
             target_os = "illumos",
             target_os = "cygwin",
+            target_os = "nuttx",
             target_os = "wasi"
         ))
     ))]
@@ -2226,6 +2240,7 @@ impl crate::Socket {
             target_os = "solaris",
             target_os = "illumos",
             target_os = "cygwin",
+            target_os = "nuttx",
             target_os = "wasi"
         ))
     ))]
@@ -2637,6 +2652,7 @@ impl crate::Socket {
             target_os = "netbsd",
             target_os = "openbsd",
             target_os = "cygwin",
+            target_os = "illumos",
         )
     ))]
     pub fn tclass_v6(&self) -> io::Result<u32> {
@@ -2662,6 +2678,7 @@ impl crate::Socket {
             target_os = "netbsd",
             target_os = "openbsd",
             target_os = "cygwin",
+            target_os = "illumos",
         )
     ))]
     pub fn set_tclass_v6(&self, tclass: u32) -> io::Result<()> {

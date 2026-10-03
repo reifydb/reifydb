@@ -37,16 +37,32 @@ pub struct CheckSupportsInstanceProperty<T: SupportsInstanceProperty>(T);
 pub trait SupportsStaticProperty {}
 pub struct CheckSupportsStaticProperty<T: SupportsStaticProperty>(T);
 
-#[cfg(all(feature = "std", target_family = "wasm", panic = "unwind"))]
+#[cfg(all(
+    feature = "std",
+    all(target_family = "wasm", not(target_os = "wasi")),
+    panic = "unwind"
+))]
 use core::panic::UnwindSafe;
+
+/// Seal for `wasm_bindgen::JsStringLike`: only string shapes provided by
+/// `wasm-bindgen` and `js-sys` may implement it.
+pub trait JsStringLikeSealed {}
 
 /// Marker trait for types that are UnwindSafe only when building with panic unwind
 pub trait MaybeUnwindSafe {}
 
-#[cfg(all(feature = "std", target_family = "wasm", panic = "unwind"))]
+#[cfg(all(
+    feature = "std",
+    all(target_family = "wasm", not(target_os = "wasi")),
+    panic = "unwind"
+))]
 impl<T: UnwindSafe + ?Sized> MaybeUnwindSafe for T {}
 
-#[cfg(not(all(feature = "std", target_family = "wasm", panic = "unwind")))]
+#[cfg(not(all(
+    feature = "std",
+    all(target_family = "wasm", not(target_os = "wasi")),
+    panic = "unwind"
+)))]
 impl<T: ?Sized> MaybeUnwindSafe for T {}
 
 /// Private marker trait for erasable generics - types with this trait have the same

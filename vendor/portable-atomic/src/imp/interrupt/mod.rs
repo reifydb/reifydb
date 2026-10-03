@@ -30,14 +30,10 @@ See README.md of this directory for details.
 #[cfg_attr(target_arch = "xtensa", path = "xtensa.rs")]
 pub(super) mod arch;
 
-#[cfg_attr(
-    portable_atomic_no_cfg_target_has_atomic,
-    cfg(any(test, portable_atomic_no_atomic_cas, portable_atomic_unsafe_assume_single_core))
-)]
-#[cfg_attr(
-    not(portable_atomic_no_cfg_target_has_atomic),
-    cfg(any(test, not(target_has_atomic = "ptr"), portable_atomic_unsafe_assume_single_core))
-)]
+#[cfg(not(all(
+    portable_atomic_unsafe_assume_privileged,
+    not(portable_atomic_unsafe_assume_single_core),
+)))]
 items!({
     use core::{cell::UnsafeCell, sync::atomic::Ordering};
 
@@ -400,7 +396,6 @@ items!({
                         ))]
                         {
                             atomic_int!(emulate_arithmetic, $atomic_type, $int_type);
-                            atomic_int!(emulate_bit, $atomic_type, $int_type);
                         }
                         // RISC-V RMW with Zaamo extension
                         #[cfg(all(
@@ -610,10 +605,10 @@ items!({
         #[cfg(not(target_pointer_width = "16"))]
         atomic_int!(load_store_atomic, AtomicU32, u32, 4);
 
-        cfg_has_fast_atomic_64! {
+        cfg_has_fast_atomic_64!({
             atomic_int!(load_store_atomic, AtomicI64, i64, 8);
             atomic_int!(load_store_atomic, AtomicU64, u64, 8);
-        }
+        });
     });
 
     // Double or more width atomics (require fallback feature for consistency with other situations).
@@ -651,10 +646,10 @@ items!({
         not(portable_atomic_no_cfg_target_has_atomic),
         cfg(any(test, not(target_has_atomic = "64")))
     )]
-    cfg_no_fast_atomic_64! {
+    cfg_no_fast_atomic_64!({
         atomic_int!(all_critical_session, AtomicI64, i64, 8);
         atomic_int!(all_critical_session, AtomicU64, u64, 8);
-    }
+    });
     #[cfg(any(
         test,
         all(

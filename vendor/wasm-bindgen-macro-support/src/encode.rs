@@ -1,4 +1,3 @@
-use crate::hash::ShortHash;
 use proc_macro2::{Ident, Span};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -44,7 +43,6 @@ struct Interner {
     bump: bumpalo::Bump,
     files: RefCell<HashMap<String, LocalFile>>,
     root: PathBuf,
-    crate_name: String,
     has_package_json: Cell<bool>,
 }
 
@@ -60,12 +58,10 @@ impl Interner {
         let root = env::var_os("CARGO_MANIFEST_DIR")
             .expect("should have CARGO_MANIFEST_DIR env var")
             .into();
-        let crate_name = env::var("CARGO_PKG_NAME").expect("should have CARGO_PKG_NAME env var");
         Interner {
             bump: bumpalo::Bump::new(),
             files: RefCell::new(HashMap::new()),
             root,
-            crate_name,
             has_package_json: Cell::new(false),
         }
     }
@@ -121,7 +117,7 @@ impl Interner {
     }
 
     fn unique_crate_identifier(&self) -> String {
-        format!("{}-{}", self.crate_name, ShortHash(0))
+        crate::hash::unique_crate_identifier()
     }
 
     fn check_for_package_json(&self) {
@@ -245,7 +241,16 @@ fn shared_function<'a>(func: &'a ast::Function, _intern: &'a Interner) -> Functi
 
     Function {
         args,
-        asyncness: func.r#async,
+        // `jspi, experimental_tokio` runs the future to completion inside the
+        // export with `block_on`, so to JS it is a sync jspi export.
+        asyncness: func.r#async && !(func.jspi && func.tokio.is_some()),
+        // Reported truthfully alongside `asyncness`: every jspi export is a
+        // JSPI context root (the CLI wraps its activation with the in-wasm
+        // fiber wrapper), while only sync jspi exports are additionally
+        // promising-wrapped in JS. An async jspi export keeps the plain
+        // async-export JS contract; its internal `spawn_local` inherits the
+        // context from the rooted activation.
+        jspi: func.jspi,
         name: &func.name,
         generate_typescript: func.generate_typescript,
         generate_jsdoc: func.generate_jsdoc,
@@ -382,9 +387,15 @@ fn shared_import_function<'a>(
         catch: i.catch,
         method,
         assert_no_shim: i.assert_no_shim,
+        suspending: i.suspending,
         structural: i.structural,
         function: shared_function(&i.function, intern),
         variadic: i.variadic,
+        // Only imports that opted into the per-monomorphisation path are bound
+        // via the `__wbindgen_describe_generic_import` marker rather than a
+        // single named descriptor shim. Type-erasure generic imports keep the
+        // normal binding path.
+        generic_per_mono: i.generic_per_mono,
     })
 }
 

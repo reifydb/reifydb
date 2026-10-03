@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "leb128"
-version = "0.2.6"
+version = "0.2.7"
 authors = [
     "Nick Fitzgerald <fitzgen@gmail.com>",
     "Philip Craig <philipjcraig@gmail.com>",

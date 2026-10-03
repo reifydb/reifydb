@@ -30,7 +30,7 @@ serde_json = { workspace = true }
 
 tracing = { workspace = true }
 
-clap = { version = "4.6", features = ["derive", "env"] }
+clap = { version = "=4.6.7", features = ["derive", "env"] }
 libc = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true }

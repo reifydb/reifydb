@@ -10,6 +10,7 @@
     <a href="https://github.com/wasm-bindgen/wasm-bindgen/actions/workflows/main.yml?query=branch%3Amain"><img src="https://github.com/wasm-bindgen/wasm-bindgen/actions/workflows/main.yml/badge.svg?branch=main" alt="Build Status" /></a>
     <a href="https://crates.io/crates/wasm-bindgen"><img src="https://img.shields.io/crates/v/wasm-bindgen.svg?style=flat-square" alt="Crates.io version" /></a>
     <a href="https://crates.io/crates/wasm-bindgen"><img src="https://img.shields.io/crates/d/wasm-bindgen.svg?style=flat-square" alt="Download" /></a>
+<a href="https://inspect.software/software/wasm-bindgen/wasm-bindgen"><img src="https://raw.githubusercontent.com/inspect-software/badges/main/v1/w/wasm-bindgen/wasm-bindgen.svg" alt="inspect.software score badge for wasm-bindgen/wasm-bindgen" /></a>
     <a href="https://docs.rs/wasm-bindgen"><img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square" alt="docs.rs docs" /></a>
   </p>
 
@@ -107,7 +108,7 @@ greet("World!");
 
 ## MSRV Policy
 
-* Libraries that are released on [crates.io](https://crates.io) have a MSRV of v1.77.
+* Libraries that are released on [crates.io](https://crates.io) have a MSRV of v1.81.
 * CLI tools and their corresponding support libraries have a MSRV of v1.86.
 
 The project aims to maintain a 2-year MSRV policy for libraries (meaning we support Rust versions released within the last 2 years), but with a shorter MSRV policy for the CLI. Changes to the MSRV may be made in patch versions, and will be logged in the CHANGELOG and MSRV history below.
@@ -116,6 +117,7 @@ The project aims to maintain a 2-year MSRV policy for libraries (meaning we supp
 
 | Version | Library MSRV | CLI MSRV | Date       |
 |---------|--------------|----------|------------|
+| 0.2.129 | 1.81         | 1.86     | 2026-09-23 |
 | 0.2.118 | 1.77         | 1.86     | 2026-04-10 |
 | 0.2.106 | 1.71         | 1.82     | 2025-11-27 |
 | 0.2.103 | 1.57         | 1.82     | 2025-09-17 |

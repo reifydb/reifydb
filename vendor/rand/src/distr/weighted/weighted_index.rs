@@ -127,7 +127,7 @@ impl<X: SampleUniform + PartialOrd> WeightedIndex<X> {
         if total_weight == zero {
             return Err(Error::InsufficientNonZero);
         }
-        let distr = X::Sampler::new(zero, total_weight.clone()).unwrap();
+        let distr = X::Sampler::new(zero, total_weight.clone()).map_err(|_| Error::Overflow)?;
 
         Ok(WeightedIndex {
             cumulative_weights: weights,
@@ -152,6 +152,7 @@ impl<X: SampleUniform + PartialOrd> WeightedIndex<X> {
     ///     Note that due to floating-point loss of precision, this case is not
     ///     always correctly detected; usage of a fixed-point weight type may be
     ///     preferred.
+    /// -   [`Error::Overflow`] when the sum of all weights overflows.
     ///
     /// Updates take `O(N)` time. If you need to frequently update weights, consider
     /// [`rand_distr::weighted_tree`](https://docs.rs/rand_distr/*/rand_distr/weighted_tree/index.html)
@@ -203,6 +204,8 @@ impl<X: SampleUniform + PartialOrd> WeightedIndex<X> {
         if total_weight <= zero {
             return Err(Error::InsufficientNonZero);
         }
+        let weight_distribution =
+            X::Sampler::new(zero.clone(), total_weight.clone()).map_err(|_| Error::Overflow)?;
 
         // Update the weights. Because we checked all the preconditions in the
         // previous loop, this should never panic.
@@ -233,7 +236,7 @@ impl<X: SampleUniform + PartialOrd> WeightedIndex<X> {
         }
 
         self.total_weight = total_weight;
-        self.weight_distribution = X::Sampler::new(zero, self.total_weight.clone()).unwrap();
+        self.weight_distribution = weight_distribution;
 
         Ok(())
     }
@@ -286,6 +289,16 @@ where
             }
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.weighted_index.cumulative_weights.len() + 1 - self.index;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<X> ExactSizeIterator for WeightedIndexIter<'_, X> where
+    X: for<'b> core::ops::SubAssign<&'b X> + SampleUniform + PartialOrd + Clone
+{
 }
 
 impl<X: SampleUniform + PartialOrd + Clone> WeightedIndex<X> {
@@ -309,12 +322,12 @@ impl<X: SampleUniform + PartialOrd + Clone> WeightedIndex<X> {
     where
         X: for<'a> core::ops::SubAssign<&'a X>,
     {
-        use core::cmp::Ordering::*;
-
-        let mut weight = match index.cmp(&self.cumulative_weights.len()) {
-            Less => self.cumulative_weights[index].clone(),
-            Equal => self.total_weight.clone(),
-            Greater => return None,
+        let mut weight = if let Some(weight) = self.cumulative_weights.get(index) {
+            weight.clone()
+        } else if index == self.cumulative_weights.len() {
+            self.total_weight.clone()
+        } else {
+            return None;
         };
 
         if index > 0 {
@@ -465,7 +478,10 @@ mod test {
                 4
             );
         }
+    }
 
+    #[test]
+    fn weighted_index_new_errors() {
         assert_eq!(
             WeightedIndex::new(&[10][0..0]).unwrap_err(),
             Error::InvalidInput
@@ -483,6 +499,10 @@ mod test {
             Error::InvalidWeight
         );
         assert_eq!(WeightedIndex::new([-10]).unwrap_err(), Error::InvalidWeight);
+        assert_eq!(
+            WeightedIndex::new([f64::INFINITY]).unwrap_err(),
+            Error::Overflow
+        );
     }
 
     #[test]
@@ -512,6 +532,15 @@ mod test {
             assert_eq!(distr.total_weight, expected_distr.total_weight);
             assert_eq!(distr.cumulative_weights, expected_distr.cumulative_weights);
         }
+    }
+
+    #[test]
+    fn weighted_index_update_errors() {
+        let mut distr = WeightedIndex::new([1.0, 10.0]).unwrap();
+        assert_eq!(
+            distr.update_weights(&[(0, &f32::INFINITY)]).unwrap_err(),
+            Error::Overflow
+        );
     }
 
     #[test]
@@ -565,6 +594,7 @@ mod test {
                 assert_eq!(distr.weight(i), Some(*weight));
             }
             assert_eq!(distr.weight(weights.len()), None);
+            assert_eq!(distr.weight(usize::MAX), None);
         }
     }
 
@@ -580,6 +610,20 @@ mod test {
         for weights in data.iter() {
             let distr = WeightedIndex::new(weights.to_vec()).unwrap();
             assert_eq!(distr.weights().collect::<Vec<_>>(), weights.to_vec());
+
+            let mut iter = distr.weights();
+            for (index, expected) in weights.iter().enumerate() {
+                let remaining = weights.len() - index;
+                assert_eq!(iter.size_hint(), (remaining, Some(remaining)));
+                assert_eq!(iter.len(), remaining);
+                assert_eq!(iter.clone().collect::<Vec<_>>(), weights[index..]);
+                assert_eq!(iter.next(), Some(*expected));
+            }
+            for _ in 0..2 {
+                assert_eq!(iter.size_hint(), (0, Some(0)));
+                assert_eq!(iter.len(), 0);
+                assert_eq!(iter.next(), None);
+            }
         }
     }
 
@@ -628,5 +672,26 @@ mod test {
     #[test]
     fn overflow() {
         assert_eq!(WeightedIndex::new([2, usize::MAX]), Err(Error::Overflow));
+    }
+
+    #[test]
+    fn overflow_float() {
+        assert_eq!(
+            WeightedIndex::new([f64::MAX, f64::MAX]),
+            Err(Error::Overflow)
+        );
+        assert_eq!(
+            WeightedIndex::new([f32::MAX, f32::MAX]),
+            Err(Error::Overflow)
+        );
+        assert_eq!(WeightedIndex::new([f64::INFINITY]), Err(Error::Overflow));
+
+        // In case of error, self is not modified.
+        let mut distr = WeightedIndex::new([1.0f64, 2.0]).unwrap();
+        assert_eq!(
+            distr.update_weights(&[(0, &f64::MAX), (1, &f64::MAX)]),
+            Err(Error::Overflow)
+        );
+        assert_eq!(distr, WeightedIndex::new([1.0f64, 2.0]).unwrap());
     }
 }

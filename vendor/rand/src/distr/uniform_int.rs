@@ -74,6 +74,23 @@ pub struct UniformInt<X> {
 
 macro_rules! uniform_int_impl {
     ($ty:ty, $uty:ty, $sample_ty:ident) => {
+        impl UniformInt<$ty> {
+            /// Get the maximum possible value
+            #[allow(unused)]
+            #[inline]
+            pub(crate) fn max(&self) -> $ty {
+                if self.range == 0 {
+                    return <$ty>::MAX;
+                } else {
+                    // Wrapping through <$ty>::MIN is possible with a valid
+                    // sampler over signed types. Wrapping through <$ty>::MAX is
+                    // possible with a bad sampler (constructible using serde).
+                    let max = self.low.wrapping_add(self.range.wrapping_sub(1));
+                    if max < self.low { <$ty>::MAX } else { max }
+                }
+            }
+        }
+
         impl SampleUniform for $ty {
             type Sampler = UniformInt<$ty>;
         }
@@ -693,6 +710,7 @@ mod tests {
         let r = Uniform::try_from(2u32..7).unwrap();
         assert_eq!(r.0.low, 2);
         assert_eq!(r.0.range, 5);
+        assert_eq!(r.0.max(), 6);
     }
 
     #[test]
@@ -707,6 +725,7 @@ mod tests {
         let r = Uniform::try_from(2u32..=6).unwrap();
         assert_eq!(r.0.low, 2);
         assert_eq!(r.0.range, 5);
+        assert_eq!(r.0.max(), 6);
     }
 
     #[test]

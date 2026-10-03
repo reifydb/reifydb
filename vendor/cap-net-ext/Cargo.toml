@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "cap-net-ext"
-version = "3.4.5"
+version = "3.4.6"
 authors = [
     "Dan Gohman <dev@sunfishcode.online>",
     "Jakub Konka <kubkon@jakubkonka.com>",
@@ -35,10 +35,10 @@ name = "cap_net_ext"
 path = "src/lib.rs"
 
 [dependencies.cap-primitives]
-version = "^3.4.5"
+version = "^3.4.6"
 
 [dependencies.cap-std]
-version = "^3.4.5"
+version = "^3.4.6"
 
 [dependencies.rustix]
 version = "1.0.0"

@@ -12,15 +12,36 @@
 [package]
 edition = "2021"
 name = "rustls-platform-verifier-android"
-version = "0.1.1"
-include = [
-    "src/*",
-    "maven/pom.xml",
-    "maven/rustls/rustls-platform-verifier/**/",
-    "maven/rustls/rustls-platform-verifier/maven-metadata-local.xml",
-]
+version = "0.2.0"
+build = false
+include = ["src/*"]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "The internal JVM support component of the rustls-platform-verifier crate. You shouldn't depend on this directly."
+readme = false
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/rustls/rustls-platform-verifier"
 
+[lib]
+name = "rustls_platform_verifier_android"
+path = "src/lib.rs"
+
 [dependencies]
+
+[dev-dependencies.rustls]
+version = "0.23"
+features = ["aws-lc-rs"]
+default-features = false
+
+[dev-dependencies.similar-asserts]
+version = "2"
+
+[dev-dependencies.tokio]
+version = "1"
+features = ["macros"]
+
+[dev-dependencies.webpki-ccadb]
+version = "0.2.2"

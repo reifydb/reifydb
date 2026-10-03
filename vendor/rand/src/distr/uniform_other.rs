@@ -33,7 +33,22 @@ impl SampleUniform for char {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UniformChar {
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "deser_sampler"))]
     sampler: UniformInt<u32>,
+}
+
+#[cfg(feature = "serde")]
+fn deser_sampler<'de, D>(d: D) -> Result<UniformInt<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let sampler = <UniformInt<u32> as serde::Deserialize>::deserialize(d)?;
+    if sampler.max() > char::MAX as u32 - CHAR_SURROGATE_LEN {
+        return Err(serde::de::Error::custom(
+            "bad sampler range for UniformChar",
+        ));
+    }
+    Ok(sampler)
 }
 
 /// UTF-16 surrogate range start
@@ -83,10 +98,9 @@ impl UniformSampler for UniformChar {
         if x >= CHAR_SURROGATE_START {
             x += CHAR_SURROGATE_LEN;
         }
-        // SAFETY: x must not be in surrogate range or greater than char::MAX.
-        // This relies on range constructors which accept char arguments.
-        // Validity of input char values is assumed.
-        unsafe { core::char::from_u32_unchecked(x) }
+
+        char::from_u32(x)
+            .expect("rand::distr::uniform::UniformChar: invalid Unicode scalar value (likely memory corruption)")
     }
 }
 
@@ -297,6 +311,31 @@ mod tests {
             .sample_string(&mut rng, 100);
             assert_eq!(string3.capacity(), 200);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_char_bad_deser() {
+        fn do_test(json: &str, col: usize) {
+            let result = serde_json::from_str::<Uniform<char>>(json);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.classify(), serde_json::error::Category::Data);
+
+            #[cfg(feature = "alloc")]
+            {
+                let msg =
+                    alloc::format!("bad sampler range for UniformChar at line 1 column {col}");
+                assert_eq!(alloc::string::ToString::to_string(&err), msg);
+            }
+        }
+
+        do_test(r#"{"sampler":{"low":5,"range":0,"thresh":0}}"#, 42);
+        do_test(r#"{"sampler":{"low":4294967200,"range":0,"thresh":0}}"#, 51);
+        do_test(
+            r#"{"sampler":{"low":4294967280,"range":32,"thresh":0}}"#,
+            52,
+        );
     }
 
     #[test]

@@ -28,6 +28,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(target_feature = "atomics", feature(thread_local))]
 #![cfg_attr(target_feature = "atomics", feature(stdarch_wasm_atomic_wait))]
+#![cfg_attr(
+    all(target_feature = "atomics", target_arch = "wasm64"),
+    feature(simd_wasm64)
+)]
 
 extern crate alloc;
 
@@ -52,7 +56,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsError;
 
 // Re-export sys types as js-sys types
-pub use wasm_bindgen::sys::{JsOption, Null, Promising, Undefined};
+pub use wasm_bindgen::sys::{JsNullable, JsOption, Null, Promising, Undefined};
 pub use wasm_bindgen::{IntoJsGeneric, JsGeneric};
 
 // When adding new imports:
@@ -1803,7 +1807,7 @@ impl_tuple!(8 [JsTuple1 JsTuple2 JsTuple3 JsTuple4 JsTuple5 JsTuple6 JsTuple7 Js
 
 // Macro to generate structural covariance impls for each arity
 macro_rules! impl_tuple_covariance {
-    ([$($T:ident)+] [$($Target:ident)+] [$($Ts:ident)+]) => {
+    ([$($T:ident)+] [$($Target:ident)+]) => {
         // ArrayTuple -> Array
         // Allows (T1, T2, ...) to be used where (Target) is expected
         // when all T1, T2, ... are covariant to Target
@@ -1816,25 +1820,27 @@ macro_rules! impl_tuple_covariance {
         where
             $(Target: UpcastFrom<$T>,)+
         {}
-        // Array<T> -> ArrayTuple<T, ...>
-        impl<T> UpcastFrom<Array<T>> for ArrayTuple<($($Ts,)+)> {}
-        impl<T: JsGeneric> UpcastFrom<Array<T>> for ArrayTuple<($(JsOption<$Ts>,)+)> {}
+        impl<$($T,)+ Target> UpcastFrom<ArrayTuple<($($T,)+)>> for JsNullable<Array<Target>>
+        where
+            $(Target: UpcastFrom<$T>,)+
+        {}
     };
 }
 
-impl_tuple_covariance!([T1][Target1][T]);
-impl_tuple_covariance!([T1 T2] [Target1 Target2] [T T]);
-impl_tuple_covariance!([T1 T2 T3] [Target1 Target2 Target3] [T T T]);
-impl_tuple_covariance!([T1 T2 T3 T4] [Target1 Target2 Target3 Target4] [T T T T]);
-impl_tuple_covariance!([T1 T2 T3 T4 T5] [Target1 Target2 Target3 Target4 Target5] [T T T T T]);
-impl_tuple_covariance!([T1 T2 T3 T4 T5 T6] [Target1 Target2 Target3 Target4 Target5 Target6] [T T T T T T]);
-impl_tuple_covariance!([T1 T2 T3 T4 T5 T6 T7] [Target1 Target2 Target3 Target4 Target5 Target6 Target7] [T T T T T T T]);
-impl_tuple_covariance!([T1 T2 T3 T4 T5 T6 T7 T8] [Target1 Target2 Target3 Target4 Target5 Target6 Target7 Target8] [T T T T T T T T]);
+impl_tuple_covariance!([T1][Target1]);
+impl_tuple_covariance!([T1 T2] [Target1 Target2]);
+impl_tuple_covariance!([T1 T2 T3] [Target1 Target2 Target3]);
+impl_tuple_covariance!([T1 T2 T3 T4] [Target1 Target2 Target3 Target4]);
+impl_tuple_covariance!([T1 T2 T3 T4 T5] [Target1 Target2 Target3 Target4 Target5]);
+impl_tuple_covariance!([T1 T2 T3 T4 T5 T6] [Target1 Target2 Target3 Target4 Target5 Target6]);
+impl_tuple_covariance!([T1 T2 T3 T4 T5 T6 T7] [Target1 Target2 Target3 Target4 Target5 Target6 Target7]);
+impl_tuple_covariance!([T1 T2 T3 T4 T5 T6 T7 T8] [Target1 Target2 Target3 Target4 Target5 Target6 Target7 Target8]);
 
 // Tuple casting is implemented in core
 impl<T: JsTuple, U: JsTuple> UpcastFrom<ArrayTuple<T>> for ArrayTuple<U> where U: UpcastFrom<T> {}
 impl<T: JsTuple> UpcastFrom<ArrayTuple<T>> for JsValue {}
 impl<T: JsTuple> UpcastFrom<ArrayTuple<T>> for JsOption<JsValue> {}
+impl<T: JsTuple> UpcastFrom<ArrayTuple<T>> for JsNullable<JsValue> {}
 
 /// Iterator returned by `Array::into_iter`
 #[derive(Debug, Clone)]
@@ -4581,8 +4587,10 @@ extern "C" {
 // Basic UpcastFrom impls for Function<T>
 impl<T: JsFunction> UpcastFrom<Function<T>> for JsValue {}
 impl<T: JsFunction> UpcastFrom<Function<T>> for JsOption<JsValue> {}
+impl<T: JsFunction> UpcastFrom<Function<T>> for JsNullable<JsValue> {}
 impl<T: JsFunction> UpcastFrom<Function<T>> for Object {}
 impl<T: JsFunction> UpcastFrom<Function<T>> for JsOption<Object> {}
+impl<T: JsFunction> UpcastFrom<Function<T>> for JsNullable<Object> {}
 
 // Blanket trait for Function upcast
 // Function<T> upcasts to Function<U> when the underlying fn type T upcasts to U.
@@ -9031,6 +9039,49 @@ pub mod WebAssembly {
         #[wasm_bindgen(method, js_namespace = WebAssembly)]
         pub fn grow(this: &Memory, pages: u32) -> u32;
     }
+
+    // WebAssembly.Suspending / WebAssembly.promising (JSPI — JS Promise Integration)
+    #[wasm_bindgen]
+    extern "C" {
+        /// A `WebAssembly.Suspending` object wraps a JavaScript async function
+        /// so it can be used as a WebAssembly import under
+        /// [JSPI (JS Promise Integration)][jspi].
+        ///
+        /// When WASM calls a `Suspending`-wrapped import that returns a
+        /// `Promise`, the WASM fiber suspends until the promise settles; the
+        /// resolved value is then returned to WASM as if the call had returned
+        /// synchronously.  The browser's event loop is **not** blocked.
+        ///
+        /// [jspi]: https://github.com/WebAssembly/js-promise-integration
+        ///
+        /// [MDN documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Suspending)
+        #[wasm_bindgen(
+            js_namespace = WebAssembly,
+            extends = Object,
+            typescript_type = "WebAssembly.Suspending"
+        )]
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        pub type Suspending;
+
+        /// Wraps `func` (an async function) in a `WebAssembly.Suspending` object.
+        ///
+        /// Pass the returned object as a WASM import.  Every call to that
+        /// import from WASM will suspend the current fiber and resume it with
+        /// the resolved value once `func`'s returned `Promise` settles.
+        #[wasm_bindgen(constructor, js_namespace = WebAssembly)]
+        pub fn new(func: &Function) -> Suspending;
+
+        /// Wraps a WebAssembly exported `Function` so that calling it returns a
+        /// `Promise` and enables JSPI suspension inside.
+        ///
+        /// Use `WebAssembly.promising` to obtain a "promising" wrapper around a
+        /// raw WASM export; any JSPI suspensions that occur while the function
+        /// executes will resolve the returned `Promise` when the fiber finishes.
+        ///
+        /// [MDN documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/promising)
+        #[wasm_bindgen(js_namespace = WebAssembly)]
+        pub fn promising(func: &Function) -> Function;
+    }
 }
 
 /// The `JSON` object contains methods for parsing [JavaScript Object
@@ -9821,6 +9872,11 @@ impl UpcastFrom<JsString> for &str {}
 
 impl UpcastFrom<char> for JsString {}
 impl UpcastFrom<JsString> for char {}
+
+impl wasm_bindgen::__rt::marker::JsStringLikeSealed for JsString {}
+impl wasm_bindgen::__rt::marker::JsStringLikeSealed for &JsString {}
+impl wasm_bindgen::JsStringLike for JsString {}
+impl wasm_bindgen::JsStringLike for &JsString {}
 
 impl JsString {
     /// Returns the `JsString` value of this JS value if it's an instance of a
@@ -13576,20 +13632,12 @@ impl Promise {
 /// This allows access to the global properties and global names by accessing
 /// the `Object` returned.
 pub fn global() -> Object {
-    use once_cell::unsync::Lazy;
-
-    struct Wrapper<T>(Lazy<T>);
-
-    #[cfg(not(target_feature = "atomics"))]
-    unsafe impl<T> Sync for Wrapper<T> {}
-
-    #[cfg(not(target_feature = "atomics"))]
-    unsafe impl<T> Send for Wrapper<T> {}
+    use wasm_bindgen::__rt::LazyCell;
 
     #[cfg_attr(target_feature = "atomics", thread_local)]
-    static GLOBAL: Wrapper<Object> = Wrapper(Lazy::new(get_global_object));
+    static GLOBAL: LazyCell<Object> = LazyCell::new(get_global_object);
 
-    return GLOBAL.0.clone();
+    return GLOBAL.clone();
 
     fn get_global_object() -> Object {
         // Accessing the global object is not an easy thing to do, and what we

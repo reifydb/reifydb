@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.81"
 name = "wasm-bindgen-shared"
-version = "0.2.122"
+version = "0.2.129"
 authors = ["The wasm-bindgen Developers"]
 build = "build.rs"
 links = "wasm_bindgen"
@@ -62,4 +62,8 @@ check-cfg = [
     "cfg(wasm_bindgen_unstable_test_coverage)",
     "cfg(wasm_bindgen_use_js_sys)",
     "cfg(xxx_debug_only_print_generated_code)",
+    "cfg(legacy_eh)",
+    "cfg(tokio_unstable)",
+    "cfg(wasm_bindgen_unstable_tokio)",
+    "cfg(wasm_bindgen_unstable_jspi)",
 ]

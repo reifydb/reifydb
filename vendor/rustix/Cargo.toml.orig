@@ -1,6 +1,6 @@
 [package]
 name = "rustix"
-version = "1.1.4"
+version = "1.1.5"
 authors = [
     "Dan Gohman <dev@sunfishcode.online>",
     "Jakub Konka <kubkon@jakubkonka.com>",
@@ -13,7 +13,7 @@ edition = "2021"
 keywords = ["api", "file", "network", "safe", "syscall"]
 categories = ["os::unix-apis", "date-and-time", "filesystem", "network-programming"]
 include = ["src", "build.rs", "Cargo.toml", "COPYRIGHT", "LICENSE*", "/*.md", "benches"]
-rust-version = "1.63"
+rust-version = "1.65"
 
 [hints]
 # Most users use a fraction of the rustix API surface area, so this reduces compilation times
@@ -170,7 +170,7 @@ stdio = []
 # Enable `rustix::system::*`.
 system = ["linux-raw-sys/system"]
 
-# Enable `rustix::runtime::*`. ⚠ This API is undocumented and unstable and
+# Enable `rustix::runtime_*::*`. ⚠ This API is undocumented and unstable and
 # experimental and not intended for general-purpose use. ⚠
 runtime = ["linux-raw-sys/prctl"]
 
@@ -264,11 +264,9 @@ check-cfg = [
     'cfg(lower_upper_exp_for_non_zero)',
     'cfg(sanitize_memory)',
     'cfg(netbsdlike)',
-    'cfg(rustc_attrs)',
     'cfg(rustc_diagnostics)',
     'cfg(solarish)',
     'cfg(staged_api)',
-    'cfg(static_assertions)',
     'cfg(thumb_mode)',
     'cfg(wasi)',
     'cfg(wasi_ext)',

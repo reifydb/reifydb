@@ -28,20 +28,39 @@ pub type fsfilcnt_t = u32;
 pub type rlim_t = u64;
 pub type nlink_t = u32;
 
-pub type ino64_t = crate::ino_t;
-pub type off64_t = off_t;
-pub type blkcnt64_t = crate::blkcnt_t;
-pub type rlim64_t = crate::rlim_t;
+// FIXME(1.0,deprecate): lfs binding to be removed
+pub type ino64_t = ino_t;
 
+// FIXME(1.0,deprecate): lfs binding to be removed
+pub type off64_t = off_t;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type blkcnt64_t = blkcnt_t;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type rlim64_t = rlim_t;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
 pub type rlimit64 = crate::rlimit;
-pub type flock64 = crate::flock;
-pub type stat64 = crate::stat;
-pub type statfs64 = crate::statfs;
-pub type statvfs64 = crate::statvfs;
-pub type dirent64 = crate::dirent;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type flock64 = flock;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type stat64 = stat;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type statfs64 = statfs;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type statvfs64 = statvfs;
+
+//FIXME(1.0,deprecate): lfs binding to be removed
+pub type dirent64 = dirent;
 
 extern_ty! {
-    pub enum fpos64_t {} // FIXME(emscripten): fill this out with a struct
+    //FIXME(1.0,deprecate): lfs binding to be removed
+    pub type fpos64_t;
 }
 
 s! {
@@ -93,7 +112,7 @@ s! {
         __f_unused: Padding<c_int>,
         pub f_flag: c_ulong,
         pub f_namemax: c_ulong,
-        __f_spare: [c_int; 6],
+        __f_spare: Padding<[c_int; 6]>,
     }
 
     pub struct signalfd_siginfo {
@@ -188,7 +207,8 @@ s! {
     }
 
     pub struct pthread_attr_t {
-        __size: [u32; 11],
+        // 11 pointer-width words: 44 bytes on wasm32, 88 on wasm64 (MEMORY64).
+        __size: [usize; 11],
     }
 
     pub struct sigset_t {
@@ -209,6 +229,11 @@ s! {
         pub cmsg_len: crate::socklen_t,
         pub cmsg_level: c_int,
         pub cmsg_type: c_int,
+    }
+
+    pub struct in6_pktinfo {
+        pub ipi6_addr: crate::in6_addr,
+        pub ipi6_ifindex: c_uint,
     }
 
     pub struct sem_t {
@@ -367,6 +392,11 @@ s! {
     pub struct pthread_cond_t {
         size: [u8; crate::__SIZEOF_PTHREAD_COND_T],
     }
+
+    pub struct mmsghdr {
+        pub msg_hdr: crate::msghdr,
+        pub msg_len: c_uint,
+    }
 }
 
 s_no_extra_traits! {
@@ -375,6 +405,16 @@ s_no_extra_traits! {
         priv_: [f64; 3],
     }
 }
+
+// socket.h
+
+pub const SHUT_RD: c_int = 0;
+pub const SHUT_WR: c_int = 1;
+pub const SHUT_RDWR: c_int = 2;
+
+pub const SOCK_RAW: c_int = 3;
+pub const SOCK_RDM: c_int = 4;
+pub const SOCK_CLOEXEC: c_int = O_CLOEXEC;
 
 pub const MADV_SOFT_OFFLINE: c_int = 101;
 pub const MS_NOUSER: c_ulong = 0x80000000;
@@ -453,6 +493,7 @@ pub const NOSTR: crate::nl_item = 0x50003;
 
 pub const FILENAME_MAX: c_uint = 4096;
 pub const L_tmpnam: c_uint = 20;
+pub const HOST_NAME_MAX: c_int = 255;
 pub const _PC_LINK_MAX: c_int = 0;
 pub const _PC_MAX_CANON: c_int = 1;
 pub const _PC_MAX_INPUT: c_int = 2;
@@ -782,6 +823,8 @@ pub const O_TRUNC: c_int = 512;
 pub const O_NOATIME: c_int = 0o1000000;
 pub const O_CLOEXEC: c_int = 0x80000;
 
+pub const EPOLL_CLOEXEC: c_int = 0x80000;
+
 // Defined as wasi value.
 pub const EPERM: c_int = 63;
 pub const ENOENT: c_int = 44;
@@ -920,7 +963,7 @@ pub const EHWPOISON: c_int = 155;
 pub const EL2NSYNC: c_int = 156;
 
 pub const SA_NODEFER: c_int = 0x40000000;
-pub const SA_RESETHAND: c_int = 0x80000000;
+pub const SA_RESETHAND: c_int = u32_cast_int(0x80000000);
 pub const SA_RESTART: c_int = 0x10000000;
 pub const SA_NOCLDSTOP: c_int = 0x00000001;
 
@@ -947,10 +990,6 @@ pub const RLIMIT_NLIMITS: c_int = 16;
 pub const RLIM_NLIMITS: c_int = RLIMIT_NLIMITS;
 
 pub const MAP_ANONYMOUS: c_int = MAP_ANON;
-
-#[doc(hidden)]
-#[deprecated(since = "0.2.55", note = "Use SIGSYS instead")]
-pub const SIGUNUSED: c_int = crate::SIGSYS;
 
 pub const __SIZEOF_PTHREAD_CONDATTR_T: usize = 4;
 pub const __SIZEOF_PTHREAD_MUTEXATTR_T: usize = 4;
@@ -1058,14 +1097,21 @@ pub const B3500000: crate::speed_t = 0o010016;
 pub const B4000000: crate::speed_t = 0o010017;
 
 pub const SO_BINDTODEVICE: c_int = 25;
+pub const SCM_TIMESTAMP: c_int = SO_TIMESTAMP;
 pub const SO_TIMESTAMP: c_int = 63;
 pub const SO_MARK: c_int = 36;
 pub const SO_RXQ_OVFL: c_int = 40;
 pub const SO_PEEK_OFF: c_int = 42;
 pub const SO_BUSY_POLL: c_int = 46;
 
+#[cfg(target_pointer_width = "32")]
 pub const __SIZEOF_PTHREAD_RWLOCK_T: usize = 32;
+#[cfg(target_pointer_width = "64")]
+pub const __SIZEOF_PTHREAD_RWLOCK_T: usize = 56;
+#[cfg(target_pointer_width = "32")]
 pub const __SIZEOF_PTHREAD_MUTEX_T: usize = 24;
+#[cfg(target_pointer_width = "64")]
+pub const __SIZEOF_PTHREAD_MUTEX_T: usize = 40;
 
 pub const O_DIRECT: c_int = 0x4000;
 pub const O_DIRECTORY: c_int = 0x10000;
@@ -1120,6 +1166,7 @@ pub const IPPROTO_MAX: c_int = 263;
 
 pub const SOL_SOCKET: c_int = 1;
 
+pub const SO_DEBUG: c_int = 1;
 pub const SO_REUSEADDR: c_int = 2;
 pub const SO_TYPE: c_int = 3;
 pub const SO_ERROR: c_int = 4;
@@ -1250,53 +1297,51 @@ pub const PRIO_USER: c_int = 2;
 
 pub const SOMAXCONN: c_int = 128;
 
+// include/paths.h
+pub const _PATH_DEFPATH: *const c_char = cstr(b"/usr/local/bin:/bin:/usr/bin\0");
+pub const _PATH_BSHELL: *const c_char = cstr(b"/bin/sh\0");
+
 f! {
-    pub fn CMSG_NXTHDR(mhdr: *const msghdr, cmsg: *const cmsghdr) -> *mut cmsghdr {
+    pub unsafe fn CMSG_NXTHDR(mhdr: *const msghdr, cmsg: *const cmsghdr) -> *mut cmsghdr {
         if ((*cmsg).cmsg_len as usize) < size_of::<cmsghdr>() {
-            return core::ptr::null_mut::<cmsghdr>();
+            return ptr::null_mut();
         }
         let next = (cmsg as usize + super::CMSG_ALIGN((*cmsg).cmsg_len as usize)) as *mut cmsghdr;
         let max = (*mhdr).msg_control as usize + (*mhdr).msg_controllen as usize;
         if (next.offset(1)) as usize >= max {
-            core::ptr::null_mut::<cmsghdr>()
+            ptr::null_mut()
         } else {
-            next as *mut cmsghdr
+            next.cast()
         }
     }
 
-    pub fn CPU_ZERO(cpuset: &mut cpu_set_t) -> () {
-        for slot in cpuset.bits.iter_mut() {
-            *slot = 0;
-        }
+    pub unsafe fn CPU_ZERO(cpuset: &mut cpu_set_t) -> () {
+        cpuset.bits.fill(0);
     }
 
-    pub fn CPU_SET(cpu: usize, cpuset: &mut cpu_set_t) -> () {
+    pub unsafe fn CPU_SET(cpu: usize, cpuset: &mut cpu_set_t) -> () {
         let size_in_bits = 8 * size_of_val(&cpuset.bits[0]); // 32, 64 etc
         let (idx, offset) = (cpu / size_in_bits, cpu % size_in_bits);
         cpuset.bits[idx] |= 1 << offset;
-        ()
     }
 
-    pub fn CPU_CLR(cpu: usize, cpuset: &mut cpu_set_t) -> () {
+    pub unsafe fn CPU_CLR(cpu: usize, cpuset: &mut cpu_set_t) -> () {
         let size_in_bits = 8 * size_of_val(&cpuset.bits[0]); // 32, 64 etc
         let (idx, offset) = (cpu / size_in_bits, cpu % size_in_bits);
         cpuset.bits[idx] &= !(1 << offset);
-        ()
     }
 
-    pub fn CPU_ISSET(cpu: usize, cpuset: &cpu_set_t) -> bool {
+    pub unsafe fn CPU_ISSET(cpu: usize, cpuset: &cpu_set_t) -> bool {
         let size_in_bits = 8 * size_of_val(&cpuset.bits[0]);
         let (idx, offset) = (cpu / size_in_bits, cpu % size_in_bits);
         0 != (cpuset.bits[idx] & (1 << offset))
     }
 
-    pub fn CPU_EQUAL(set1: &cpu_set_t, set2: &cpu_set_t) -> bool {
+    pub unsafe fn CPU_EQUAL(set1: &cpu_set_t, set2: &cpu_set_t) -> bool {
         set1.bits == set2.bits
     }
-}
 
-safe_f! {
-    pub const fn makedev(major: c_uint, minor: c_uint) -> crate::dev_t {
+    pub const safe fn makedev(major: c_uint, minor: c_uint) -> crate::dev_t {
         let major = major as crate::dev_t;
         let minor = minor as crate::dev_t;
         let mut dev = 0;
@@ -1307,7 +1352,7 @@ safe_f! {
         dev
     }
 
-    pub const fn major(dev: crate::dev_t) -> c_uint {
+    pub const safe fn major(dev: crate::dev_t) -> c_uint {
         // see
         // https://github.com/emscripten-core/emscripten/blob/
         // main/system/lib/libc/musl/include/sys/sysmacros.h
@@ -1317,7 +1362,7 @@ safe_f! {
         major as c_uint
     }
 
-    pub const fn minor(dev: crate::dev_t) -> c_uint {
+    pub const safe fn minor(dev: crate::dev_t) -> c_uint {
         // see
         // https://github.com/emscripten-core/emscripten/blob/
         // main/system/lib/libc/musl/include/sys/sysmacros.h
@@ -1448,8 +1493,34 @@ extern "C" {
         buflen: size_t,
         result: *mut *mut crate::group,
     ) -> c_int;
+    pub fn sigwait(set: *const crate::sigset_t, sig: *mut c_int) -> c_int;
+    pub fn sigwaitinfo(set: *const crate::sigset_t, info: *mut crate::siginfo_t) -> c_int;
+    pub fn sigtimedwait(
+        set: *const crate::sigset_t,
+        info: *mut crate::siginfo_t,
+        timeout: *const crate::timespec,
+    ) -> c_int;
+    pub fn faccessat(dirfd: c_int, pathname: *const c_char, mode: c_int, flags: c_int) -> c_int;
+    pub fn epoll_create(size: c_int) -> c_int;
+    pub fn epoll_create1(flags: c_int) -> c_int;
+    pub fn epoll_ctl(epfd: c_int, op: c_int, fd: c_int, event: *mut crate::epoll_event) -> c_int;
+    pub fn epoll_wait(
+        epfd: c_int,
+        events: *mut crate::epoll_event,
+        maxevents: c_int,
+        timeout: c_int,
+    ) -> c_int;
+    pub fn epoll_pwait(
+        epfd: c_int,
+        events: *mut crate::epoll_event,
+        maxevents: c_int,
+        timeout: c_int,
+        sigmask: *const crate::sigset_t,
+    ) -> c_int;
 }
 
 // Alias <foo> to <foo>64 to mimic glibc's LFS64 support
 mod lfs64;
+
+// FIXME(1.0,deprecate): lfs bindings to be removed
 pub use self::lfs64::*;

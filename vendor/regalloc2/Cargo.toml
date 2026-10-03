@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "regalloc2"
-version = "0.15.1"
+version = "0.15.2"
 authors = [
     "Chris Fallin <chris@cfallin.org>",
     "Mozilla SpiderMonkey Developers",

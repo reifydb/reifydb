@@ -17,7 +17,7 @@ include!("include.rs");
 
 #[test]
 fn zst() {
-    crate::util::test_is_bit_valid::<(), _>((), true);
+    crate::util::test_is_safe::<(), _>((), true);
 }
 
 #[derive(imp::TryFromBytes, imp::Immutable, imp::IntoBytes)]
@@ -31,8 +31,8 @@ util_assert_impl_all!(One: imp::TryFromBytes);
 
 #[test]
 fn one() {
-    crate::util::test_is_bit_valid::<One, _>(One { a: 42 }, true);
-    crate::util::test_is_bit_valid::<One, _>(One { a: 43 }, true);
+    crate::util::test_is_safe::<One, _>(One { a: 42 }, true);
+    crate::util::test_is_safe::<One, _>(One { a: 43 }, true);
 }
 
 #[derive(imp::TryFromBytes, imp::Immutable, imp::IntoBytes)]
@@ -47,9 +47,40 @@ util_assert_impl_all!(Two: imp::TryFromBytes);
 
 #[test]
 fn two() {
-    crate::util::test_is_bit_valid::<Two, _>(Two { a: false, b: () }, true);
-    crate::util::test_is_bit_valid::<Two, _>(Two { a: true, b: () }, true);
-    crate::util::test_is_bit_valid::<Two, _>([2u8], false);
+    crate::util::test_is_safe::<Two, _>(Two { a: false, b: () }, true);
+    crate::util::test_is_safe::<Two, _>(Two { a: true, b: () }, true);
+    crate::util::test_is_safe::<Two, _>([2u8], false);
+}
+
+#[derive(imp::TryFromBytes)]
+#[zerocopy(crate = "zerocopy_renamed")]
+#[repr(C)]
+struct FieldBindings {
+    candidate: bool,
+    candidate_: bool,
+    field: bool,
+    r#type: bool,
+}
+
+#[derive(imp::TryFromBytes)]
+#[zerocopy(crate = "zerocopy_renamed")]
+#[repr(C)]
+struct TupleFields(bool, bool, bool, bool);
+
+#[test]
+fn field_bindings() {
+    // User field names must not shadow the source pointer or generated
+    // temporaries, and tuple indices must produce valid local bindings.
+    for bytes in [[0u8; 4], [1u8; 4]] {
+        util::test_is_safe::<FieldBindings, _>(bytes, true);
+        util::test_is_safe::<TupleFields, _>(bytes, true);
+    }
+    for idx in 0..4 {
+        let mut bytes = [0u8; 4];
+        bytes[idx] = 2;
+        util::test_is_safe::<FieldBindings, _>(bytes, false);
+        util::test_is_safe::<TupleFields, _>(bytes, false);
+    }
 }
 
 #[derive(imp::KnownLayout, imp::TryFromBytes)]
@@ -76,8 +107,8 @@ fn un_sized() {
 
     // SAFETY: `candidate`'s referent is as-initialized as `Two`.
     let mut candidate = unsafe { candidate.assume_initialized() };
-    let is_bit_valid = <Unsized as imp::TryFromBytes>::is_bit_valid(candidate.reborrow_shared());
-    imp::assert!(is_bit_valid);
+    let is_safe = <Unsized as imp::TryFromBytes>::is_safe(candidate.reborrow_shared());
+    imp::assert!(is_safe);
 }
 
 #[derive(imp::TryFromBytes)]
@@ -121,12 +152,12 @@ struct MaybeFromBytes<T>(T);
 #[test]
 fn test_maybe_from_bytes() {
     // When deriving `FromBytes` on a type with no generic parameters, we emit a
-    // trivial `is_bit_valid` impl that always returns true. This test confirms
-    // that we *don't* spuriously do that when generic parameters are present.
+    // trivial `is_safe` impl that always returns true. This test confirms that
+    // we *don't* spuriously do that when generic parameters are present.
 
-    crate::util::test_is_bit_valid::<MaybeFromBytes<bool>, _>(MaybeFromBytes(false), true);
-    crate::util::test_is_bit_valid::<MaybeFromBytes<bool>, _>(MaybeFromBytes(true), true);
-    crate::util::test_is_bit_valid::<MaybeFromBytes<bool>, _>([2u8], false);
+    crate::util::test_is_safe::<MaybeFromBytes<bool>, _>(MaybeFromBytes(false), true);
+    crate::util::test_is_safe::<MaybeFromBytes<bool>, _>(MaybeFromBytes(true), true);
+    crate::util::test_is_safe::<MaybeFromBytes<bool>, _>([2u8], false);
 }
 
 #[derive(Debug, PartialEq, Eq, imp::TryFromBytes, imp::Immutable, imp::KnownLayout)]

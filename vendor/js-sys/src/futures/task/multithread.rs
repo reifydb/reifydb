@@ -12,6 +12,11 @@ use core::sync::atomic::Ordering::SeqCst;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use core::arch::wasm32 as wasm;
+#[cfg(target_arch = "wasm64")]
+use core::arch::wasm64 as wasm;
+
 const SLEEPING: i32 = 0;
 const AWAKE: i32 = 1;
 
@@ -38,7 +43,7 @@ impl AtomicWaker {
         // the corresponding `waitAsync` that was waiting for the transition
         // from SLEEPING to AWAKE.
         unsafe {
-            core::arch::wasm32::memory_atomic_notify(
+            wasm::memory_atomic_notify(
                 self.state.as_ptr(),
                 1, // Number of threads to notify
             );
@@ -99,7 +104,11 @@ impl Task {
 
         let closure = {
             let this = Rc::clone(&this);
-            Closure::new(move |_| {
+
+            // `own_assert_unwind_safe` is required because the closure captures
+            // `Rc<Task>`, which isn't `UnwindSafe`. A poll unwinding out of
+            // `run` frees the `Task` via a drop guard to avoid a leak.
+            Closure::own_assert_unwind_safe(move |_| {
                 // The promise resolution acts like a wake, so ensure the state
                 // transitions to AWAKE before entering `run`.
                 this.atomic.wake_by_ref();
@@ -116,13 +125,30 @@ impl Task {
     }
 
     pub(crate) fn run(&self) {
+        // A poll can unwind via either a Rust panic or a JS
+        // exception. `catch_unwind` only catches the former, but both run
+        // drops, so a drop guard covers both: if a poll unwinds we drop
+        // `Inner`, releasing the future and breaking the
+        // `Inner -> closure -> Rc<Task>` cycle that would otherwise leak the
+        // `Task`. The guard is forgotten on a normal return.
+        struct ClearOnUnwind<'a>(&'a RefCell<Option<Inner>>);
+        impl Drop for ClearOnUnwind<'_> {
+            fn drop(&mut self) {
+                *self.0.borrow_mut() = None;
+            }
+        }
+        let clear_on_unwind = ClearOnUnwind(&self.inner);
+
         let mut borrow = self.inner.borrow_mut();
 
         // Same as `singlethread.rs`, handle spurious wakeups happening after we
         // finished.
         let inner = match borrow.as_mut() {
             Some(inner) => inner,
-            None => return,
+            None => {
+                core::mem::forget(clear_on_unwind);
+                return;
+            }
         };
 
         loop {
@@ -170,6 +196,8 @@ impl Task {
             }
             break;
         }
+
+        core::mem::forget(clear_on_unwind);
     }
 }
 

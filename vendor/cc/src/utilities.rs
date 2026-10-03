@@ -94,12 +94,20 @@ impl<T> OnceLock<T> {
     }
 
     pub(crate) fn get(&self) -> Option<&T> {
-        if self.is_initialized() {
-            // Safe b/c checked is_initialized
-            Some(unsafe { self.get_unchecked() })
-        } else {
-            None
+        self.is_initialized().then(|| {
+            // SAFETY: `is_initialized()` returned `true`, so the value is initialized.
+            unsafe { self.get_unchecked() }
+        })
+    }
+}
+
+impl<T: Clone> Clone for OnceLock<T> {
+    fn clone(&self) -> Self {
+        let cell = Self::new();
+        if let Some(value) = self.get() {
+            cell.get_or_init(|| value.clone());
         }
+        cell
     }
 }
 

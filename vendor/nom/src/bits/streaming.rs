@@ -3,15 +3,15 @@
 
 use crate::error::{ErrorKind, ParseError};
 use crate::internal::{Err, IResult, Needed};
-use crate::lib::std::ops::{AddAssign, Div, RangeFrom, Shl, Shr};
-use crate::traits::{InputIter, InputLength, Slice, ToUsize};
+use crate::lib::std::ops::{AddAssign, Div, Shl, Shr};
+use crate::traits::{Input, ToUsize};
 
 /// Generates a parser taking `count` bits
 pub fn take<I, O, C, E: ParseError<(I, usize)>>(
   count: C,
 ) -> impl Fn((I, usize)) -> IResult<(I, usize), O, E>
 where
-  I: Slice<RangeFrom<usize>> + InputIter<Item = u8> + InputLength,
+  I: Input<Item = u8>,
   C: ToUsize,
   O: From<u8> + AddAssign + Shl<usize, Output = O> + Shr<usize, Output = O>,
 {
@@ -22,7 +22,7 @@ where
     } else {
       let cnt = (count + bit_offset).div(8);
       if input.input_len() * 8 < count + bit_offset {
-        Err(Err::Incomplete(Needed::new(count as usize)))
+        Err(Err::Incomplete(Needed::new(count)))
       } else {
         let mut acc: O = 0_u8.into();
         let mut offset: usize = bit_offset;
@@ -36,7 +36,7 @@ where
           let val: O = if offset == 0 {
             byte.into()
           } else {
-            ((byte << offset) as u8 >> offset).into()
+            ((byte << offset) >> offset).into()
           };
 
           if remaining < 8 - offset {
@@ -49,7 +49,7 @@ where
             offset = 0;
           }
         }
-        Ok(((input.slice(cnt..), end_offset), acc))
+        Ok(((input.take_from(cnt), end_offset), acc))
       }
     }
   }
@@ -61,7 +61,7 @@ pub fn tag<I, O, C, E: ParseError<(I, usize)>>(
   count: C,
 ) -> impl Fn((I, usize)) -> IResult<(I, usize), O, E>
 where
-  I: Slice<RangeFrom<usize>> + InputIter<Item = u8> + InputLength + Clone,
+  I: Input<Item = u8> + Clone,
   C: ToUsize,
   O: From<u8> + AddAssign + Shl<usize, Output = O> + Shr<usize, Output = O> + PartialEq,
 {
@@ -96,7 +96,7 @@ where
 /// ```
 pub fn bool<I, E: ParseError<(I, usize)>>(input: (I, usize)) -> IResult<(I, usize), bool, E>
 where
-  I: Slice<RangeFrom<usize>> + InputIter<Item = u8> + InputLength,
+  I: Input<Item = u8>,
 {
   let (res, bit): (_, u32) = take(1usize)(input)?;
   Ok((res, bit != 0))

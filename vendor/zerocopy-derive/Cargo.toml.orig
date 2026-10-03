@@ -9,8 +9,7 @@
 [package]
 edition = "2021"
 name = "zerocopy-derive"
-version = "0.8.50"
-authors = ["Joshua Liebow-Feeser <joshlf@google.com>", "Jack Wrenn <jswrenn@amazon.com>"]
+version = "0.8.59"
 description = "Custom derive for traits from the zerocopy crate"
 license = "BSD-2-Clause OR Apache-2.0 OR MIT"
 repository = "https://github.com/google/zerocopy"
@@ -25,8 +24,12 @@ exclude = [".*", "tests/enum_from_bytes.rs", "tests/ui-nightly/enum_from_bytes_u
 [lints.rust]
 # See #1792 for more context.
 unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(__ZEROCOPY_INTERNAL_USE_ONLY_NIGHTLY_FEATURES_IN_TESTS)',
+  'cfg(__ZEROCOPY_INTERNAL_USE_ONLY_TOOLCHAIN, values("msrv", "stable", "nightly"))',
+  'cfg(coverage_nightly)',
   'cfg(zerocopy_derive_union_into_bytes)',
-  'cfg(zerocopy_unstable_derive_on_error)',
+  'cfg(zerocopy_unstable_linux)',
+  'cfg(zerocopy_unstable_ptr)',
 ] }
 
 [lib]
@@ -39,7 +42,7 @@ syn = { version = "2.0.46", features = ["full"] }
 
 [dev-dependencies]
 dissimilar = "1.0.9"
-prettyplease = "=0.2.17"
+prettyplease = "0.2.17"
 rustversion = "1.0"
 static_assertions = "1.1"
 syn = { version = "2.0.46", features = ["visit"] }

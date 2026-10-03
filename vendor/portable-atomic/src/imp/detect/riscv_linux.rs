@@ -6,7 +6,7 @@ Run-time CPU feature detection on RISC-V Linux/Android by using riscv_hwprobe.
 On RISC-V, detection using auxv only supports single-letter extensions.
 So, we use riscv_hwprobe that supports multi-letter extensions.
 
-Refs: https://github.com/torvalds/linux/blob/v6.16/Documentation/arch/riscv/hwprobe.rst
+Refs: https://github.com/torvalds/linux/blob/v6.19/Documentation/arch/riscv/hwprobe.rst
 */
 
 include!("common.rs");
@@ -19,7 +19,7 @@ mod ffi {
     pub(crate) use crate::utils::ffi::{c_long, c_size_t, c_uint, c_ulong};
 
     sys_struct!({
-        // https://github.com/torvalds/linux/blob/v6.16/arch/riscv/include/uapi/asm/hwprobe.h
+        // https://github.com/torvalds/linux/blob/v6.19/arch/riscv/include/uapi/asm/hwprobe.h
         pub(crate) struct riscv_hwprobe {
             pub(crate) key: i64,
             pub(crate) value: u64,
@@ -29,7 +29,7 @@ mod ffi {
     sys_const!({
         pub(crate) const __NR_riscv_hwprobe: c_long = 258;
 
-        // https://github.com/torvalds/linux/blob/v6.16/arch/riscv/include/uapi/asm/hwprobe.h
+        // https://github.com/torvalds/linux/blob/v6.19/arch/riscv/include/uapi/asm/hwprobe.h
         // Linux 6.4+
         // https://github.com/torvalds/linux/commit/00e76e2c6a2bd3976d44d4a1fdd0b7a3c2566607
         pub(crate) const RISCV_HWPROBE_KEY_BASE_BEHAVIOR: i64 = 3;
@@ -50,23 +50,18 @@ mod ffi {
 
     cfg_sel!({
         // Use asm-based syscall on Linux for compatibility with non-libc targets if possible.
-        // Do not use it on Android, see https://github.com/bytecodealliance/rustix/issues/1095 for details.
+        // Do not use this on Android. See comments on syscall_helper module in src/utils.rs for details.
         #[cfg(all(
             target_os = "linux",
             any(
                 target_arch = "riscv32",
                 all(target_arch = "riscv64", target_pointer_width = "64"),
             ),
+            not(portable_atomic_no_asm_syscall),
         ))]
         {
-            #[cfg(not(portable_atomic_no_asm))]
-            use core::arch::asm;
-
             use crate::utils::{RegISize, RegSize};
 
-            // Refs:
-            // - https://github.com/bminor/musl/blob/v1.2.5/arch/riscv32/syscall_arch.h
-            // - https://github.com/bminor/musl/blob/v1.2.5/arch/riscv64/syscall_arch.h
             #[inline]
             pub(crate) unsafe fn syscall5(
                 number: c_long,
@@ -76,7 +71,6 @@ mod ffi {
                 arg4: *mut c_ulong,
                 arg5: c_uint,
             ) -> c_long {
-                // arguments must be extended to 64-bit if 64-bit arch
                 #[allow(clippy::cast_possible_truncation)]
                 let number = number as RegISize;
                 let arg1 = ptr_reg!(arg1);
@@ -86,51 +80,9 @@ mod ffi {
                 let arg5 = arg5 as RegSize;
                 let r: RegISize;
                 // SAFETY: the caller must uphold the safety contract.
+                // we've extended the syscall number and arguments to the register size.
                 unsafe {
-                    asm!(
-                        "ecall",
-                        in("a7") number,
-                        inout("a0") arg1 => r,
-                        in("a1") arg2,
-                        in("a2") arg3,
-                        in("a3") arg4,
-                        in("a4") arg5,
-                        // Clobber vector registers and do not use `preserves_flags` because RISC-V Linux syscalls don't preserve them.
-                        // https://github.com/torvalds/linux/blob/v6.18/Documentation/arch/riscv/vector.rst#3--vector-register-state-across-system-calls
-                        out("v0") _,
-                        out("v1") _,
-                        out("v2") _,
-                        out("v3") _,
-                        out("v4") _,
-                        out("v5") _,
-                        out("v6") _,
-                        out("v7") _,
-                        out("v8") _,
-                        out("v9") _,
-                        out("v10") _,
-                        out("v11") _,
-                        out("v12") _,
-                        out("v13") _,
-                        out("v14") _,
-                        out("v15") _,
-                        out("v16") _,
-                        out("v17") _,
-                        out("v18") _,
-                        out("v19") _,
-                        out("v20") _,
-                        out("v21") _,
-                        out("v22") _,
-                        out("v23") _,
-                        out("v24") _,
-                        out("v25") _,
-                        out("v26") _,
-                        out("v27") _,
-                        out("v28") _,
-                        out("v29") _,
-                        out("v30") _,
-                        out("v31") _,
-                        options(nostack),
-                    );
+                    asm_syscall!(number, r, arg1, arg2, arg3, arg4, arg5);
                 }
                 #[allow(clippy::cast_possible_truncation)]
                 {
@@ -150,7 +102,7 @@ mod ffi {
         }
     });
 
-    // https://github.com/torvalds/linux/blob/v6.16/Documentation/arch/riscv/hwprobe.rst
+    // https://github.com/torvalds/linux/blob/v6.19/Documentation/arch/riscv/hwprobe.rst
     pub(crate) unsafe fn __riscv_hwprobe(
         pairs: *mut riscv_hwprobe,
         pair_count: c_size_t,
@@ -173,7 +125,8 @@ fn riscv_hwprobe(out: &mut [ffi::riscv_hwprobe]) -> bool {
 }
 
 #[cold]
-fn _detect(info: &mut CpuInfo) {
+#[must_use]
+fn _detect(mut info: CpuInfo) -> CpuInfo {
     let mut out = [
         ffi::riscv_hwprobe { key: ffi::RISCV_HWPROBE_KEY_BASE_BEHAVIOR, value: 0 },
         ffi::riscv_hwprobe { key: ffi::RISCV_HWPROBE_KEY_IMA_EXT_0, value: 0 },
@@ -197,6 +150,7 @@ fn _detect(info: &mut CpuInfo) {
         #[cfg(test)]
         check!(zalasr, RISCV_HWPROBE_EXT_ZALASR);
     }
+    info
 }
 
 #[allow(

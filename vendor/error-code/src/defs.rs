@@ -1,5 +1,6 @@
 //! Definitions used by this library
 
+#![allow(unexpected_cfgs)]
 #[allow(unused)]
 use crate::types::c_int;
 

@@ -143,7 +143,7 @@ impl<'s, T> SliceVec<'s, T> {
   /// assert_eq!(drained_values.as_slice(), &[7, 8][..]);
   ///
   /// sv.drain(..);
-  /// assert_eq!(sv.as_slice(), &[]);
+  /// assert_eq!(sv.as_slice(), &[] as &[i32]);
   /// ```
   #[inline]
   pub fn drain<'p, R: RangeBounds<usize>>(
@@ -345,7 +345,7 @@ impl<'s, T> SliceVec<'s, T> {
   /// # use tinyvec::*;
   /// let mut arr = [0, 0];
   /// let mut sv = SliceVec::from_slice_len(&mut arr, 0);
-  /// assert_eq!(&sv[..], []);
+  /// assert_eq!(&sv[..], [] as [i32; 0]);
   /// sv.push(1);
   /// assert_eq!(&sv[..], [1]);
   /// sv.push(2);
@@ -1104,6 +1104,7 @@ mod test {
   #[test]
   fn array_like_debug() {
     #[derive(Debug, Default, Copy, Clone)]
+    #[allow(unused)]
     struct S {
       x: u8,
       y: u8,
@@ -1113,11 +1114,11 @@ mod test {
 
     let mut ar: [S; 2] = [S { x: 1, y: 2 }, S { x: 3, y: 4 }];
     let mut buf_ar = alloc::string::String::new();
-    write!(&mut buf_ar, "{ar:#?}");
+    write!(&mut buf_ar, "{ar:#?}").unwrap();
 
     let av: SliceVec<S> = SliceVec::from(&mut ar);
     let mut buf_av = alloc::string::String::new();
-    write!(&mut buf_av, "{av:#?}");
+    write!(&mut buf_av, "{av:#?}").unwrap();
 
     assert_eq!(buf_av, buf_ar)
   }

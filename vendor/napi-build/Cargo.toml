@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.88"
 name = "napi-build"
-version = "2.4.1"
+version = "2.6.0"
 authors = ["LongYinan <lynweklm@gmail.com>"]
 build = false
 include = [
@@ -40,6 +40,9 @@ repository = "https://github.com/napi-rs/napi-rs"
 
 [package.metadata.workspaces]
 independent = true
+
+[features]
+wasi-heap-sync = []
 
 [lib]
 name = "napi_build"

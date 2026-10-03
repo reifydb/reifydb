@@ -12,6 +12,28 @@
 
 include!("include.rs");
 
+#[derive(imp::TryFromBytes)]
+#[zerocopy(crate = "zerocopy_renamed")]
+#[repr(u8)]
+enum FieldBindings {
+    Named { candidate: bool, candidate_: bool, field: bool, r#type: bool },
+    Tuple(bool, bool, bool, bool),
+}
+
+#[test]
+fn field_bindings() {
+    for tag in 0..2 {
+        util::test_is_safe::<FieldBindings, _>([tag, 0u8, 0, 0, 0], true);
+        util::test_is_safe::<FieldBindings, _>([tag, 1u8, 1, 1, 1], true);
+        for idx in 1..5 {
+            let mut bytes = [tag, 0u8, 0, 0, 0];
+            bytes[idx] = 2;
+            util::test_is_safe::<FieldBindings, _>(bytes, false);
+        }
+    }
+    util::test_is_safe::<FieldBindings, _>([2u8, 0, 0, 0, 0], false);
+}
+
 #[derive(Eq, PartialEq, Debug, imp::Immutable, imp::KnownLayout, imp::TryFromBytes)]
 #[zerocopy(crate = "zerocopy_renamed")]
 #[repr(u8)]
@@ -639,12 +661,12 @@ enum FooU8 {
 }
 
 #[test]
-fn test_trivial_is_bit_valid() {
+fn test_trivial_is_safe() {
     // Though we don't derive `FromBytes`, `FooU8` *could* soundly implement
-    // `FromBytes`. Therefore, `TryFromBytes` derive's `is_bit_valid` impl is
-    // trivial - it unconditionally returns `true`.
+    // `FromBytes`. Therefore, `TryFromBytes` derive's `is_safe` impl is trivial
+    // - it unconditionally returns `true`.
     util_assert_not_impl_any!(FooU8: imp::FromBytes);
-    util::test_trivial_is_bit_valid::<FooU8>();
+    util::test_trivial_is_safe::<FooU8>();
 }
 
 #[deny(non_camel_case_types)]

@@ -40,10 +40,37 @@ pub(crate) fn detect() -> CpuInfo {
     // Note: detect_false cfg is intended to make it easy for developers to test
     // cases where features usually available is not available, and is not a public API.
     if !cfg!(portable_atomic_test_detect_false) {
-        _detect(&mut info);
+        info = _detect(info);
     }
-    CACHE.store(info.0, Ordering::Relaxed);
-    info
+    if cfg!(any(
+        all(
+            target_arch = "x86_64",
+            not(any(target_feature = "cmpxchg16b", portable_atomic_target_feature = "cmpxchg16b")),
+        ),
+        all(
+            target_arch = "powerpc64",
+            not(any(
+                target_feature = "quadword-atomics",
+                portable_atomic_target_feature = "quadword-atomics",
+            )),
+        ),
+        all(
+            any(target_arch = "riscv32", target_arch = "riscv64"),
+            not(any(target_feature = "zacas", portable_atomic_target_feature = "zacas")),
+        ),
+    )) {
+        // Use CAS if the detection result affects lock-freeness.
+        match CACHE.compare_exchange(0, info.0, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => info,
+            Err(info) => {
+                debug_assert_ne!(info, 0);
+                CpuInfo(info)
+            }
+        }
+    } else {
+        CACHE.store(info.0, Ordering::Relaxed);
+        info
+    }
 }
 
 macro_rules! flags {
@@ -149,6 +176,12 @@ flags! {
 
     // The Armv9.6 architecture extension
     // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv9-6-architecture-extension
+    // FEAT_LS64WB, LS64 for Write-back cacheable memory
+    // > This feature is supported in AArch64 state only.
+    // > FEAT_LS64WB is OPTIONAL from Armv9.2.
+    // > If FEAT_LS64WB is implemented, then FEAT_LS64_ACCDATA is implemented.
+    #[cfg(test)] // test-only
+    ls64wb("ls64wb", any(/* no corresponding target feature */)),
     // FEAT_LSFE, Large System Float Extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LSFE is OPTIONAL from Armv9.3.
@@ -213,7 +246,7 @@ mod tests_common {
         let mut flags = vec![("init", CpuInfoFlag::Init)];
         flags.extend(CpuInfo::ALL_FLAGS.iter().map(|&(name, flag, _)| (name, flag)));
         let flag_set = flags.iter().map(|(_, flag)| flag).collect::<BTreeSet<_>>();
-        let name_set = flags.iter().map(|(_, flag)| flag).collect::<BTreeSet<_>>();
+        let name_set = flags.iter().map(|(name, _)| name).collect::<BTreeSet<_>>();
         if flag_set.len() != flags.len() {
             panic!("CpuInfo flag values must be unique")
         }

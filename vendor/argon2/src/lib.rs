@@ -237,6 +237,7 @@ impl fmt::Debug for Argon2<'_> {
 
 impl<'key> Argon2<'key> {
     /// Create a new Argon2 context.
+    #[must_use]
     pub fn new(algorithm: Algorithm, version: Version, params: Params) -> Self {
         Self {
             algorithm,
@@ -249,6 +250,9 @@ impl<'key> Argon2<'key> {
     }
 
     /// Create a new Argon2 context.
+    ///
+    /// # Errors
+    /// Returns [`Error::SecretTooLong`] in the event `secret` is too long.
     pub fn new_with_secret(
         secret: &'key [u8],
         algorithm: Algorithm,
@@ -270,6 +274,13 @@ impl<'key> Argon2<'key> {
     }
 
     /// Hash a password and associated parameters into the provided output buffer.
+    ///
+    /// # Errors
+    /// - Returns [`Error::PwdTooLong`] if `pwd` is longer than `MAX_PWD_LEN`.
+    /// - Returns [`Error::SaltTooShort`] if `salt` is shorter than `MIN_SALT_LEN`.
+    /// - Returns [`Error::SaltTooLong`] if `salt` is longer than `MAX_SALT_LEN`.
+    /// - Returns [`Error::OutputTooShort`] if `out` is too short.
+    /// - Returns [`Error::OutputTooLong`] if `out` is too long.
     #[cfg(feature = "alloc")]
     pub fn hash_password_into(&self, pwd: &[u8], salt: &[u8], out: &mut [u8]) -> Result<()> {
         let blocks_len = self.params.block_count();
@@ -286,6 +297,13 @@ impl<'key> Argon2<'key> {
     ///   to have it allocated for them.
     /// - `no_std` users on "heapless" targets can use an array of the [`Block`] type
     ///   to stack allocate this buffer.
+    ///
+    /// # Errors
+    /// - Returns [`Error::PwdTooLong`] if `pwd` is longer than `MAX_PWD_LEN`.
+    /// - Returns [`Error::SaltTooShort`] if `salt` is shorter than `MIN_SALT_LEN`.
+    /// - Returns [`Error::SaltTooLong`] if `salt` is longer than `MAX_SALT_LEN`.
+    /// - Returns [`Error::OutputTooShort`] if `out` is too short.
+    /// - Returns [`Error::OutputTooLong`] if `out` is too long.
     pub fn hash_password_into_with_memory(
         &self,
         pwd: &[u8],
@@ -306,7 +324,6 @@ impl<'key> Argon2<'key> {
 
         // Hashing all inputs
         let initial_hash = self.initial_hash(pwd, salt, out);
-
         self.fill_blocks(memory_blocks.as_mut(), initial_hash)?;
         self.finalize(memory_blocks.as_mut(), out)
     }
@@ -316,6 +333,11 @@ impl<'key> Argon2<'key> {
     /// This method omits the calculation of a hash and can be used when only the
     /// filled memory is required. It is not necessary to call this method
     /// before calling any of the hashing functions.
+    ///
+    /// # Errors
+    /// - Returns [`Error::PwdTooLong`] if `pwd` is longer than `MAX_PWD_LEN`.
+    /// - Returns [`Error::SaltTooShort`] if `salt` is shorter than `MIN_SALT_LEN`.
+    /// - Returns [`Error::SaltTooLong`] if `salt` is longer than `MAX_SALT_LEN`.
     pub fn fill_memory(
         &self,
         pwd: &[u8],
@@ -325,7 +347,6 @@ impl<'key> Argon2<'key> {
         Self::verify_inputs(pwd, salt)?;
 
         let initial_hash = self.initial_hash(pwd, salt, &[]);
-
         self.fill_blocks(memory_blocks.as_mut(), initial_hash)
     }
 
@@ -521,6 +542,7 @@ impl<'key> Argon2<'key> {
     }
 
     /// Get default configured [`Params`].
+    #[must_use]
     pub const fn params(&self) -> &Params {
         &self.params
     }
@@ -540,7 +562,7 @@ impl<'key> Argon2<'key> {
         let mut blockhash_bytes = [0u8; Block::SIZE];
 
         for (chunk, v) in blockhash_bytes.chunks_mut(8).zip(blockhash.iter()) {
-            chunk.copy_from_slice(&v.to_le_bytes())
+            chunk.copy_from_slice(&v.to_le_bytes());
         }
 
         blake2b_long(&[&blockhash_bytes], out)?;
@@ -709,7 +731,10 @@ impl From<&Params> for Argon2<'_> {
 #[cfg(all(test, feature = "alloc", feature = "password-hash"))]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use crate::{Algorithm, Argon2, CustomizedPasswordHasher, Params, PasswordHasher, Version};
+    use crate::{
+        Algorithm, Argon2, CustomizedPasswordHasher, Params, PasswordHasher, PasswordVerifier,
+        Version,
+    };
 
     /// Example password only: don't use this as a real password!!!
     const EXAMPLE_PASSWORD: &[u8] = b"hunter42";
@@ -755,5 +780,18 @@ mod tests {
                 value,
             );
         }
+    }
+
+    #[test]
+    fn non_default_output_len_round_trip_should_verify() {
+        let params = Params::new(8, 1, 1, Some(16)).unwrap();
+        let hash = Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+            .hash_password_with_salt(EXAMPLE_PASSWORD, EXAMPLE_SALT)
+            .unwrap();
+
+        assert_eq!(
+            Argon2::default().verify_password(EXAMPLE_PASSWORD, &hash),
+            Ok(())
+        );
     }
 }

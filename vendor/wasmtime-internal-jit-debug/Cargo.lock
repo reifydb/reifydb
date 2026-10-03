@@ -117,7 +117,7 @@ checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
 
 [[package]]
 name = "wasmtime-internal-jit-debug"
-version = "44.0.2"
+version = "44.0.3"
 dependencies = [
  "cc",
  "object",
@@ -127,9 +127,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-internal-versioned-export-macros"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a12754f1ffc4a3300d56d324c418b8b32cf029606618da22c7d076213882a3f"
+checksum = "910e5393af4aca456113581a5913b8d499cd2189013e983f8764d06ebc42b2ed"
 dependencies = [
  "proc-macro2",
  "quote",

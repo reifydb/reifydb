@@ -138,9 +138,9 @@ dependencies = [
 
 [[package]]
 name = "cranelift-bforest"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "380f0bc43e535df6855bbee649efb00bde39c3f33434c47c8e10ac836d21bf47"
+checksum = "a8d535b489159ea63e3c40dfbe8d0e12bfb71f2a14845ef2407353e06c5a697c"
 dependencies = [
  "cranelift-entity",
  "wasmtime-internal-core",
@@ -148,9 +148,9 @@ dependencies = [
 
 [[package]]
 name = "cranelift-bitset"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4811e3e4502de04257e90c0a93225b56d9b85e0f9ad10b81446b415511009610"
+checksum = "c3af4f7d421b2354deb01d714266022f38fcdbebc9f5f1ec6d310d3c27286d9e"
 dependencies = [
  "serde",
  "serde_derive",
@@ -159,9 +159,9 @@ dependencies = [
 
 [[package]]
 name = "cranelift-entity"
-version = "0.131.2"
+version = "0.131.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43f4847d93ce2c80d2bff929aa1004dfb3ce2cf5d881f6ced54b8d654d967ba3"
+checksum = "9aa2846b239a046217ecf95cfed0e31be4e86843785d07438ad33f456871e888"
 dependencies = [
  "cranelift-bitset",
  "serde",
@@ -750,9 +750,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-environ"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e84dbe3208c1336a41546beb75927b3b37e2e4fce06653d214b407136fbe295"
+checksum = "48b945309908f22473ebcd585ac2993948044228491cd96941d367aa81a49c3f"
 dependencies = [
  "anyhow",
  "cranelift-bforest",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-internal-cache"
-version = "44.0.2"
+version = "44.0.3"
 dependencies = [
  "base64",
  "directories-next",
@@ -796,9 +796,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-internal-core"
-version = "44.0.2"
+version = "44.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4364d345719bba7fc4c435992ea1cb0c118f1e90a88c6e6f22a7a4fc507700c6"
+checksum = "aedd3947487d0afdd37accb981466fcd60571e898004c8955111f88686581dfc"
 dependencies = [
  "hashbrown",
  "libm",

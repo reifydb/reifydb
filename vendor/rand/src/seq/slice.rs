@@ -88,6 +88,7 @@ pub trait IndexedRandom: Index<usize> {
     /// Chooses `amount` elements from the slice at random, without repetition,
     /// and in random order. The returned iterator is appropriate both for
     /// collection into a `Vec` and filling an existing buffer (see example).
+    /// If `amount > self.len()`, all available elements are sampled.
     ///
     /// In case this API is not sufficiently flexible, use [`index::sample`].
     ///
@@ -126,7 +127,7 @@ pub trait IndexedRandom: Index<usize> {
     /// Uniformly sample a fixed-size array of distinct elements from self
     ///
     /// Chooses `N` elements from the slice at random, without repetition,
-    /// and in random order.
+    /// and in random order. Returns `None` if (and only if) `N > self.len()`.
     ///
     /// For slices, complexity is the same as [`index::sample_array`].
     ///
@@ -151,7 +152,7 @@ pub trait IndexedRandom: Index<usize> {
     /// Biased sampling for one element
     ///
     /// Returns a reference to one element of the slice, sampled according
-    /// to the provided weights. Returns `None` if and only if `self.is_empty()`.
+    /// to the provided weights.
     ///
     /// The specified function `weight` maps each item `x` to a relative
     /// likelihood `weight(x)`. The probability of each item being selected is
@@ -198,7 +199,6 @@ pub trait IndexedRandom: Index<usize> {
     ///
     /// Returns an iterator which samples elements from `self` according to the
     /// given weights with replacement (i.e. elements may be repeated).
-    /// Returns `None` if and only if `self.is_empty()`.
     ///
     /// See also doc for [`Self::choose_weighted`].
     #[cfg(feature = "alloc")]
@@ -347,7 +347,7 @@ pub trait IndexedMutRandom: IndexedRandom + IndexMut<usize> {
     /// Biased sampling for one element (mut)
     ///
     /// Returns a mutable reference to one element of the slice, sampled according
-    /// to the provided weights. Returns `None` only if the slice is empty.
+    /// to the provided weights.
     ///
     /// The specified function `weight` maps each item `x` to a relative
     /// likelihood `weight(x)`. The probability of each item being selected is
@@ -420,23 +420,35 @@ pub trait SliceRandom: IndexedMutRandom {
     where
         R: Rng + ?Sized;
 
-    /// Shuffle a slice in place, but exit early.
+    /// Sample `amount` shuffled elements
     ///
-    /// Returns two mutable slices from the source slice. The first contains
-    /// `amount` elements randomly permuted. The second has the remaining
-    /// elements that are not fully shuffled.
+    /// Shuffles `amount` random elements into the end of the slice (`n..` where
+    /// `n = self.len() - amount`). The rest of the slice (`..n`) contains the
+    /// remaining elements in a permuted but not fully shuffled order.
+    ///
+    /// Returns a tuple of the sampled elements (`&mut self[n..]`) and the
+    /// remaining elements (`&mut self[..n]`).
     ///
     /// This is an efficient method to select `amount` elements at random from
     /// the slice, provided the slice may be mutated.
     ///
-    /// If you only need to choose elements randomly and `amount > self.len()/2`
-    /// then you may improve performance by taking
-    /// `amount = self.len() - amount` and using only the second slice.
-    ///
-    /// If `amount` is greater than the number of elements in the slice, this
-    /// will perform a full shuffle.
-    ///
     /// For slices, complexity is `O(m)` where `m = amount`.
+    /// If `amount >= self.len()` this is equivalent to [`Self::shuffle`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rand::seq::SliceRandom;
+    ///
+    /// let mut rng = rand::rng();
+    /// let mut y = [1, 2, 3, 4, 5];
+    /// let (shuffled, rest) = y.partial_shuffle(&mut rng, 3);
+    /// assert_eq!(shuffled.len(), 3);
+    /// assert_eq!(rest.len(), 2);
+    /// let sampled = shuffled.to_vec();
+    /// assert_eq!(&sampled, &y[2..5]);
+    /// ```
+    #[must_use]
     fn partial_shuffle<R>(
         &mut self,
         rng: &mut R,
@@ -464,14 +476,14 @@ impl<T> SliceRandom for [T] {
             // There is no need to shuffle an empty or single element slice
             return;
         }
-        self.partial_shuffle(rng, self.len());
+        let _ = self.partial_shuffle(rng, self.len());
     }
 
     fn partial_shuffle<R>(&mut self, rng: &mut R, amount: usize) -> (&mut [T], &mut [T])
     where
         R: Rng + ?Sized,
     {
-        let m = self.len().saturating_sub(amount);
+        let n = self.len().saturating_sub(amount);
 
         // The algorithm below is based on Durstenfeld's algorithm for the
         // [Fisher–Yates shuffle](https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm)
@@ -483,18 +495,18 @@ impl<T> SliceRandom for [T] {
         // but only works for 32 bit integers
         // So we must use the slow method if the slice is longer than that.
         if self.len() < (u32::MAX as usize) {
-            let mut chooser = IncreasingUniform::new(rng, m as u32);
-            for i in m..self.len() {
+            let mut chooser = IncreasingUniform::new(rng, n as u32);
+            for i in n..self.len() {
                 let index = chooser.next_index();
                 self.swap(i, index);
             }
         } else {
-            for i in m..self.len() {
+            for i in n..self.len() {
                 let index = rng.random_range(..i + 1);
                 self.swap(i, index);
             }
         }
-        let r = self.split_at_mut(m);
+        let r = self.split_at_mut(n);
         (r.1, r.0)
     }
 }
@@ -812,6 +824,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "std")]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_multiple_weighted_distributions() {
         use super::*;
 
