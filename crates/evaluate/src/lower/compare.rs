@@ -7,14 +7,11 @@ use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{
 	BinaryExpr, ColumnarValue, Expr, Operator, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature,
 };
-use reifydb_core::{
-	expression::{BetweenExpression, Expression, name::display_label},
-	internal_error,
-};
+use reifydb_core::expression::{BetweenExpression, Expression, name::display_label};
 use reifydb_value::{
 	error::{BinaryOp, Diagnostic, Error, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
-	value::value_type::{ValueType, field::from_field},
+	value::value_type::ValueType,
 };
 
 use crate::{
@@ -25,8 +22,8 @@ use crate::{
 		logic::execute_logical_op,
 	},
 	lower::{
-		Lowered, Node, bool_field, error::into_external, is_untyped_none, literal::none_bool, lower_node,
-		typed_field, udf, volatile,
+		Lowered, Node, bool_field, error::into_external, inner_type, is_untyped_none, literal::none_bool,
+		lower_node, typed_field, udf, volatile,
 	},
 };
 
@@ -110,13 +107,6 @@ fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, fragment: &
 		},
 		vec![node.expr],
 	)
-}
-
-fn inner_type(field: &FieldRef) -> Result<ValueType> {
-	match from_field(field)?.value_type {
-		Some(value_type) => Ok(value_type.inner_type().clone()),
-		None => Err(internal_error!("compare operand {} has no value type", field.name())),
-	}
 }
 
 fn not_applicable(operator: BinaryOp, left: ValueType, right: ValueType, fragment: Fragment) -> Error {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod arith;
 mod compare;
 mod error;
 mod literal;
@@ -17,6 +18,7 @@ use datafusion_expr::{
 use datafusion_physical_expr::{PhysicalExpr, create_physical_expr};
 use reifydb_core::{
 	expression::{Expression, PrefixExpression, PrefixOperator, name::display_label},
+	internal_error,
 	value::column::factory::default_typed,
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -36,6 +38,7 @@ use reifydb_value::{
 use crate::{
 	Result,
 	expression::{
+		arith::ArithOp,
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 		logic::execute_logical_op,
@@ -58,6 +61,11 @@ pub const CLAIMED: &[&str] = &[
 	"GreaterThan",
 	"GreaterThanEqual",
 	"Between",
+	"Add",
+	"Sub",
+	"Mul",
+	"Div",
+	"Rem",
 ];
 
 pub fn kind(expression: &Expression) -> &'static str {
@@ -230,6 +238,11 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		Expression::LessThanEqual(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::GreaterThan(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::GreaterThanEqual(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Add(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Sub(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Mul(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Div(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Rem(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::Between(e) => first_unclaimed(&e.value)
 			.or_else(|| first_unclaimed(&e.lower))
 			.or_else(|| first_unclaimed(&e.upper)),
@@ -341,6 +354,46 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			(BinaryOp::GreaterThanEqual, Operator::GtEq),
 		),
 		Expression::Between(e) => compare::lower_between(ctx, operator, expression, e),
+		Expression::Add(e) => arith::lower_arith(
+			ctx,
+			operator,
+			expression,
+			(&e.left, &e.right),
+			e.full_fragment_owned(),
+			ArithOp::Add,
+		),
+		Expression::Sub(e) => arith::lower_arith(
+			ctx,
+			operator,
+			expression,
+			(&e.left, &e.right),
+			e.full_fragment_owned(),
+			ArithOp::Sub,
+		),
+		Expression::Mul(e) => arith::lower_arith(
+			ctx,
+			operator,
+			expression,
+			(&e.left, &e.right),
+			e.full_fragment_owned(),
+			ArithOp::Mul,
+		),
+		Expression::Div(e) => arith::lower_arith(
+			ctx,
+			operator,
+			expression,
+			(&e.left, &e.right),
+			e.full_fragment_owned(),
+			ArithOp::Div,
+		),
+		Expression::Rem(e) => arith::lower_arith(
+			ctx,
+			operator,
+			expression,
+			(&e.left, &e.right),
+			e.full_fragment_owned(),
+			ArithOp::Rem,
+		),
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }
@@ -404,6 +457,13 @@ fn bool_operand(node: Node) -> Result<Expr> {
 
 fn is_untyped_none(field: &FieldRef) -> Result<bool> {
 	Ok(ColumnView::try_from(&empty_of(field))?.is_untyped_none())
+}
+
+fn inner_type(field: &FieldRef) -> Result<ValueType> {
+	match from_field(field)?.value_type {
+		Some(value_type) => Ok(value_type.inner_type().clone()),
+		None => Err(internal_error!("operand {} has no value type", field.name())),
+	}
 }
 
 fn empty_of(field: &FieldRef) -> (FieldRef, ArrayRef) {

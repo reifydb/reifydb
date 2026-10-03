@@ -38,7 +38,7 @@ fn compare<Op: CompareOp>(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef
 fn add(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
 	let ctx = EvalContext::testing();
 	let fragment = Fragment::testing_empty();
-	add_columns(&ctx, &factory::rename(left, "left"), &factory::rename(right, "right"), &fragment)
+	add_columns(&ctx.arith(), &factory::rename(left, "left"), &factory::rename(right, "right"), &fragment)
 }
 
 fn prefix(column: (FieldRef, ArrayRef), operator: PrefixOperator) -> (FieldRef, ArrayRef) {

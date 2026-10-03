@@ -22,7 +22,7 @@ use reifydb_value::value::{
 
 use crate::common::{COMPARE_OPS, Env, batch, between, column, compare, none, number, strings, text};
 
-fn samples() -> Vec<(Value, Value)> {
+pub fn samples() -> Vec<(Value, Value)> {
 	vec![
 		(Value::Boolean(false), Value::Boolean(true)),
 		(Value::Int1(1), Value::Int1(2)),
@@ -62,7 +62,7 @@ fn samples() -> Vec<(Value, Value)> {
 	]
 }
 
-fn nullable_column(name: &str, (first, second): (Value, Value)) -> (FieldRef, ArrayRef) {
+pub fn nullable_column(name: &str, (first, second): (Value, Value)) -> (FieldRef, ArrayRef) {
 	let value_type = first.get_type();
 	let parts = [factory::from_many(name, first, 1), factory::from_many(name, second, 1)];
 	let (field, missing) = factory::none_typed(name, value_type, 1);

@@ -74,6 +74,19 @@ impl<'a> EvalContext<'a> {
 		ctx
 	}
 
+	pub fn arith(&self) -> ArithContext {
+		ArithContext {
+			target: self.target.clone(),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ArithContext {
+	pub target: Option<TargetColumn>,
+}
+
+impl ArithContext {
 	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {
 		TargetConvert {
 			target: self.target.as_ref(),

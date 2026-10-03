@@ -7,9 +7,10 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
-		AccessObjectExpression, AndExpression, BetweenExpression, ColumnExpression, ConstantExpression,
-		EqExpression, Expression, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
-		LessThanExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, XorExpression,
+		AccessObjectExpression, AddExpression, AndExpression, BetweenExpression, ColumnExpression,
+		ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
+		GreaterThanExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression,
+		OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -232,4 +233,38 @@ pub fn between(value: Expression, lower: Expression, upper: Expression) -> Expre
 		upper: Box::new(upper),
 		fragment: frag("between"),
 	})
+}
+
+pub const ARITH_OPS: [&str; 5] = ["+", "-", "*", "/", "%"];
+
+pub fn arith(op: &str, left: Expression, right: Expression) -> Expression {
+	let (left, right, fragment) = (Box::new(left), Box::new(right), frag(op));
+	match op {
+		"+" => Expression::Add(AddExpression {
+			left,
+			right,
+			fragment,
+		}),
+		"-" => Expression::Sub(SubExpression {
+			left,
+			right,
+			fragment,
+		}),
+		"*" => Expression::Mul(MulExpression {
+			left,
+			right,
+			fragment,
+		}),
+		"/" => Expression::Div(DivExpression {
+			left,
+			right,
+			fragment,
+		}),
+		"%" => Expression::Rem(RemExpression {
+			left,
+			right,
+			fragment,
+		}),
+		other => panic!("no arithmetic operator {other}"),
+	}
 }

@@ -140,7 +140,7 @@ macro_rules! compile_arith {
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			let col = $op_fn(ctx, &l, &r, || fragment.clone())?;
+			let col = $op_fn(&ctx.arith(), &l, &r, || fragment.clone())?;
 			Ok(rename(col, label.text()))
 		})
 	}};

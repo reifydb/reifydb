@@ -7,7 +7,7 @@ use reifydb_core::{expression::PrefixOperator, value::batch::batch};
 use reifydb_evaluate::{
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		context::EvalContext,
+		context::ArithContext,
 		prefix::prefix_apply,
 	},
 	stack::Variable,
@@ -21,7 +21,7 @@ impl<'a> Vm<'a> {
 	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>
 	where
 		F: FnOnce(
-			&EvalContext,
+			&ArithContext,
 			&(FieldRef, ArrayRef),
 			&(FieldRef, ArrayRef),
 			fn() -> Fragment,
@@ -31,7 +31,7 @@ impl<'a> Vm<'a> {
 		let left = self.pop_as_column()?;
 		let (left, right) = broadcast_to_match(left, right)?;
 		let ctx = self.eval_ctx();
-		let result = op(&ctx, &left, &right, frag)?;
+		let result = op(&ctx.arith(), &left, &right, frag)?;
 		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
