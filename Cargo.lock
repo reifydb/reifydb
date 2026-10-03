@@ -2726,15 +2726,6 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.39.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "object"
 version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
@@ -3706,7 +3697,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-schema",
  "libloading",
- "object 0.39.1",
+ "object",
  "postcard",
  "reifydb-build",
  "reifydb-codec",
@@ -6362,7 +6353,7 @@ dependencies = [
  "log",
  "mach2",
  "memfd",
- "object 0.40.0",
+ "object",
  "once_cell",
  "postcard",
  "pulley-interpreter",
@@ -6409,7 +6400,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
  "log",
- "object 0.40.0",
+ "object",
  "postcard",
  "rustc-demangle",
  "semver",
@@ -6492,7 +6483,7 @@ dependencies = [
  "gimli",
  "itertools 0.14.0",
  "log",
- "object 0.40.0",
+ "object",
  "pulley-interpreter",
  "smallvec",
  "target-lexicon",
@@ -6525,7 +6516,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0356a1a09dee1239904e09e962456d9f6edfa5da61c5e3e1b0e4669710f48fba"
 dependencies = [
  "cc",
- "object 0.40.0",
+ "object",
  "rustix",
  "wasmtime-internal-versioned-export-macros",
 ]
@@ -6549,7 +6540,7 @@ checksum = "69ffac8fc893de2958b263d9d7274cf4c531ba9ff582558348d4e28d97b8a0f2"
 dependencies = [
  "cranelift-codegen",
  "log",
- "object 0.40.0",
+ "object",
  "wasmtime-environ",
 ]
 
