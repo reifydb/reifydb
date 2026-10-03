@@ -854,6 +854,7 @@ impl Executor {
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> ExecutionResult {
+		let probe_setup = std::time::Instant::now();
 		let symbols = match self.setup_symbols(&qry.params, &mut Transaction::Query(&mut *txn)) {
 			Ok(s) => s,
 			Err(e) => {
@@ -879,6 +880,8 @@ impl Executor {
 			};
 		}
 
+		crate::probe::add(&crate::probe::SETUP_NS, probe_setup);
+		let probe_compile = std::time::Instant::now();
 		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled = match self.compile_query(&mut Transaction::Query(txn), qry.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
@@ -899,7 +902,9 @@ impl Executor {
 			}
 		};
 		let compile_duration = Duration::from_std(start_compile.elapsed());
+		crate::probe::add(&crate::probe::COMPILE_NS, probe_compile);
 
+		let probe_execute = std::time::Instant::now();
 		let exec_result = execute_compiled_units(
 			&self.0,
 			&mut Transaction::Query(txn),
@@ -908,6 +913,8 @@ impl Executor {
 			symbols,
 			compile_duration,
 		);
+		crate::probe::add(&crate::probe::EXECUTE_NS, probe_execute);
+		crate::probe::finish_query();
 
 		match exec_result {
 			Ok((output, last, saw_output, _, metrics)) => {

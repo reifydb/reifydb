@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	collections::HashMap,
 	fmt::{self, Display, Formatter},
 	slice,
 	sync::{Arc, LazyLock},
@@ -10,7 +11,7 @@ use std::{
 use arrow_array::{
 	Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, RecordBatchOptions, TimestampNanosecondArray, UInt64Array,
 };
-use arrow_schema::{ArrowError, Field, FieldRef, Metadata, Schema};
+use arrow_schema::{ArrowError, Field, FieldRef, Schema};
 
 use crate::{
 	Result,
@@ -195,7 +196,7 @@ pub fn restamp_row_numbers(batch: &RecordBatch, keep: &[SystemColumn], row_numbe
 }
 
 fn stamped(
-	metadata: Metadata,
+	metadata: HashMap<String, String>,
 	mut fields: Vec<FieldRef>,
 	mut columns: Vec<ArrayRef>,
 	num_rows: usize,

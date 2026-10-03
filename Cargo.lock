@@ -141,19 +141,19 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c14b3d39f306bc28fd639d59f06e17a0f377d0021e1b7e9054e4d6fedc98774"
 dependencies = [
- "arrow-arith 59.3.0",
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-buffer",
  "arrow-cast",
  "arrow-csv",
- "arrow-data 59.3.0",
+ "arrow-data",
  "arrow-ipc",
  "arrow-json",
- "arrow-ord 59.3.0",
- "arrow-row 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
- "arrow-string 59.3.0",
+ "arrow-ord",
+ "arrow-row",
+ "arrow-schema",
+ "arrow-select",
+ "arrow-string",
 ]
 
 [[package]]
@@ -162,24 +162,10 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce2961626677665b2195eb59242af4c7befe7b8737ca2050295389362380104e"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "chrono",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-arith"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2303ebedb1071f4f72d71171e383859a9a285c94d99e4892685a96fca9890720"
-dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "chrono",
  "num-traits",
 ]
@@ -191,29 +177,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e5f6adeffdf587d7a31db5d2266189624b526730cd3627f9ff9fedae97ad584"
 dependencies = [
  "ahash",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "chrono",
  "chrono-tz",
- "half",
- "hashbrown 0.17.1",
- "num-complex",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-array"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
-dependencies = [
- "ahash",
- "arrow-buffer 60.0.0",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
- "chrono",
  "half",
  "hashbrown 0.17.1",
  "num-complex",
@@ -234,29 +202,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-buffer"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
-dependencies = [
- "bytes",
- "half",
- "num-bigint",
- "num-traits",
-]
-
-[[package]]
 name = "arrow-cast"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "635c9c635668ad26adf76cce8fb276c4be7cf06e63bd516de7da514f9680ee53"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-ord 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-ord",
+ "arrow-schema",
+ "arrow-select",
  "atoi",
  "base64 0.23.1",
  "chrono",
@@ -268,25 +224,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-cmp"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
-dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
-]
-
-[[package]]
 name = "arrow-csv"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c2ebf8d631e79b02c16cf5ae860561272c26024ec88fce389a56aaddd558e86"
 dependencies = [
- "arrow-array 59.3.0",
+ "arrow-array",
  "arrow-cast",
- "arrow-schema 59.3.0",
+ "arrow-schema",
  "chrono",
  "csv",
  "csv-core",
@@ -299,21 +244,8 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ba2f832eaeca24b8f26143dba750e42ee4ab51cf7d65e701ca9607cfda9f358"
 dependencies = [
- "arrow-buffer 59.3.0",
- "arrow-schema 59.3.0",
- "half",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-data"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
-dependencies = [
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-buffer",
+ "arrow-schema",
  "half",
  "num-integer",
  "num-traits",
@@ -325,11 +257,11 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcc41681ea80f521df14c36725b74d4c60702c47f0793af2be469c04527e2599"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "arrow-select",
  "flatbuffers",
  "lz4_flex",
 ]
@@ -340,12 +272,12 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2f57d7a81969f24ccf80809587b76c09897e6f829d2d65a5976bfb3218851f1"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
+ "arrow-array",
+ "arrow-buffer",
  "arrow-cast",
- "arrow-ord 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
+ "arrow-ord",
+ "arrow-schema",
+ "arrow-select",
  "chrono",
  "half",
  "indexmap",
@@ -365,25 +297,11 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c900759f3bd8354fd4196bc4403eee846894dc2adf66b4225472006a0bf18c5"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
-]
-
-[[package]]
-name = "arrow-ord"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7ac2c6a9cdc782fa9548d3763461eaec8c93347e297fddbaa44807e70a3698"
-dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-cmp",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "arrow-select",
 ]
 
 [[package]]
@@ -392,23 +310,10 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4c6425032e28266e3fc4ff680805e57e670d6ea92473043f3e65b7ed6ac79f2"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "half",
-]
-
-[[package]]
-name = "arrow-row"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758b87e9648d80001e0916c083334ed93074c677a81a96144d5c84bd2d8eab2a"
-dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "half",
 ]
 
@@ -423,37 +328,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-schema"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
-
-[[package]]
 name = "arrow-select"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc58569193c2525915f3cc6310edba3792f1200f65d6e9ed330aa33e691493b8"
 dependencies = [
  "ahash",
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-select"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
-dependencies = [
- "ahash",
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-cmp",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "num-traits",
 ]
 
@@ -463,28 +347,11 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e0813f3c35c1cfea65e14c20a953440f7783c088b7ad2d0db162ccdeefcec14"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
- "memchr",
- "num-traits",
- "regex",
- "regex-syntax",
-]
-
-[[package]]
-name = "arrow-string"
-version = "60.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f300b4400b1e7cd58f7cbbd5dd2a0072cc59e73bfaee2a152b3ac660e46d9dd1"
-dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-data 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "arrow-select",
  "memchr",
  "num-traits",
  "regex",
@@ -1263,7 +1130,7 @@ version = "55.1.0"
 dependencies = [
  "arrow",
  "arrow-ipc",
- "arrow-schema 59.3.0",
+ "arrow-schema",
  "chrono",
  "foldhash 0.2.0",
  "half",
@@ -1291,7 +1158,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea229af8b73e566fc6ebb1c8dd42ab250f8855c5304bd173f4b50ead78b64304"
 dependencies = [
  "arrow",
- "arrow-schema 59.3.0",
+ "arrow-schema",
  "async-trait",
  "chrono",
  "datafusion-common",
@@ -1365,7 +1232,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1e37a25b5aa1f3a1db114f0ee3605bf01639b83a831dcde35119ee61f0b11d6"
 dependencies = [
  "arrow",
- "arrow-schema 59.3.0",
+ "arrow-schema",
  "datafusion-common",
  "datafusion-expr",
  "datafusion-expr-common",
@@ -3414,15 +3281,15 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "reifydb"
 version = "0.9.3"
 dependencies = [
- "arrow-arith 60.0.0",
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-data 60.0.0",
- "arrow-ord 60.0.0",
- "arrow-row 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
- "arrow-string 60.0.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-ord",
+ "arrow-row",
+ "arrow-schema",
+ "arrow-select",
+ "arrow-string",
  "datafusion-common",
  "datafusion-expr",
  "datafusion-expr-common",
@@ -3543,9 +3410,9 @@ dependencies = [
 name = "reifydb-benches"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "hdrhistogram",
  "rand 0.10.3",
  "reifydb",
@@ -3577,8 +3444,8 @@ version = "0.9.3"
 name = "reifydb-catalog"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "crossbeam-skiplist",
  "once_cell",
  "postcard",
@@ -3606,7 +3473,7 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
@@ -3633,8 +3500,8 @@ dependencies = [
 name = "reifydb-client"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "async-trait",
  "bs58",
  "ed25519-dalek",
@@ -3673,9 +3540,9 @@ dependencies = [
 name = "reifydb-codec"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "crc32fast",
  "postcard",
  "reifydb-build",
@@ -3694,11 +3561,11 @@ dependencies = [
 name = "reifydb-column"
 version = "0.9.3"
 dependencies = [
- "arrow-arith 60.0.0",
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "arrow-select",
  "postcard",
  "reifydb-build",
  "reifydb-core",
@@ -3722,11 +3589,11 @@ dependencies = [
 name = "reifydb-core"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-row 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-row",
+ "arrow-schema",
+ "arrow-select",
  "crossbeam-skiplist",
  "indexmap",
  "paste",
@@ -3757,11 +3624,11 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-ord 60.0.0",
- "arrow-row 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ord",
+ "arrow-row",
+ "arrow-schema",
  "bumpalo",
  "postcard",
  "reifydb-auth",
@@ -3799,12 +3666,12 @@ dependencies = [
 name = "reifydb-evaluate"
 version = "0.9.3"
 dependencies = [
- "arrow-arith 60.0.0",
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-ord 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ord",
+ "arrow-schema",
+ "arrow-select",
  "datafusion-common",
  "datafusion-expr",
  "datafusion-physical-expr",
@@ -3831,9 +3698,9 @@ dependencies = [
 name = "reifydb-extension"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "libloading",
  "object",
  "postcard",
@@ -3867,8 +3734,8 @@ dependencies = [
 name = "reifydb-flow"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -3889,9 +3756,9 @@ dependencies = [
 name = "reifydb-flow-async"
 version = "0.9.3"
 dependencies = [
- "arrow-arith 60.0.0",
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "indexmap",
  "postcard",
@@ -3923,8 +3790,8 @@ dependencies = [
 name = "reifydb-flow-sync"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "postcard",
  "reifydb-build",
  "reifydb-codec",
@@ -3940,9 +3807,9 @@ dependencies = [
 name = "reifydb-macro"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "reifydb-codec",
  "reifydb-macro-impl",
  "reifydb-runtime",
@@ -3962,7 +3829,7 @@ dependencies = [
 name = "reifydb-node"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "napi",
  "napi-build",
  "napi-derive",
@@ -3981,7 +3848,7 @@ dependencies = [
 name = "reifydb-policy"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "bumpalo",
  "reifydb-build",
  "reifydb-catalog",
@@ -4023,11 +3890,11 @@ dependencies = [
 name = "reifydb-routine"
 version = "0.9.3"
 dependencies = [
- "arrow-arith 60.0.0",
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-string 60.0.0",
+ "arrow-arith",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "arrow-string",
  "bumpalo",
  "indexmap",
  "postcard",
@@ -4055,9 +3922,9 @@ dependencies = [
 name = "reifydb-routine-abi"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "indexmap",
  "reifydb-build",
  "reifydb-catalog",
@@ -4143,9 +4010,9 @@ dependencies = [
 name = "reifydb-sdk"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "bumpalo",
  "postcard",
  "rand 0.10.3",
@@ -4340,7 +4207,7 @@ dependencies = [
 name = "reifydb-sub-core"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "dashmap",
  "reifydb-build",
  "reifydb-client",
@@ -4361,8 +4228,8 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "libloading",
  "rand 0.10.3",
  "reifydb",
@@ -4426,8 +4293,8 @@ dependencies = [
 name = "reifydb-sub-metrics"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "libc",
  "reifydb",
@@ -4501,8 +4368,8 @@ dependencies = [
 name = "reifydb-sub-server-grpc"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "futures-util",
  "prost",
  "reifydb-auth",
@@ -4568,8 +4435,8 @@ dependencies = [
 name = "reifydb-sub-server-ws"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
@@ -4596,8 +4463,8 @@ dependencies = [
 name = "reifydb-sub-store"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "reifydb",
  "reifydb-build",
@@ -4621,8 +4488,8 @@ dependencies = [
 name = "reifydb-sub-subscription"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-schema 60.0.0",
+ "arrow-array",
+ "arrow-schema",
  "dashmap",
  "rand 0.10.3",
  "reifydb",
@@ -4679,7 +4546,7 @@ dependencies = [
 name = "reifydb-subscription"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
@@ -4737,7 +4604,7 @@ dependencies = [
 name = "reifydb-testing-chaos"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "rand 0.10.3",
  "reifydb-codec",
  "reifydb-core",
@@ -4750,7 +4617,7 @@ dependencies = [
 name = "reifydb-testing-flow"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -4786,7 +4653,7 @@ dependencies = [
 name = "reifydb-testing-sdk"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "rand 0.10.3",
  "reifydb-build",
  "reifydb-catalog",
@@ -4808,7 +4675,7 @@ dependencies = [
 name = "reifydb-transaction"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
+ "arrow-array",
  "crossbeam-skiplist",
  "dashmap",
  "indexmap",
@@ -4869,10 +4736,10 @@ dependencies = [
 name = "reifydb-value"
 version = "0.9.3"
 dependencies = [
- "arrow-array 60.0.0",
- "arrow-buffer 60.0.0",
- "arrow-schema 60.0.0",
- "arrow-select 60.0.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "arrow-select",
  "libm",
  "num-traits",
  "postcard",
