@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "tikv-jemalloc-ctl"
-version = "0.6.1"
+version = "0.7.0"
 authors = [
     "Steven Fackler <sfackler@gmail.com>",
     "Gonzalo Brito Gadeschi <gonzalobg88@gmail.com>",
@@ -72,6 +72,10 @@ repository = "tikv/jemallocator"
 default = []
 disable_initial_exec_tls = ["tikv-jemalloc-sys/disable_initial_exec_tls"]
 profiling = ["tikv-jemalloc-sys/profiling"]
+profiling_libunwind = [
+    "tikv-jemalloc-sys/profiling_libunwind",
+    "profiling",
+]
 stats = ["tikv-jemalloc-sys/stats"]
 use_std = ["libc/use_std"]
 
@@ -87,7 +91,7 @@ default-features = false
 version = "1"
 
 [dependencies.tikv-jemalloc-sys]
-version = "0.6.1"
+version = "0.7.0"
 
 [dev-dependencies.tikv-jemallocator]
-version = "0.6.0"
+version = "0.7.0"

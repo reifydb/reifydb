@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "tikv-jemallocator"
-version = "0.6.1"
+version = "0.7.0"
 authors = [
     "Alex Crichton <alex@alexcrichton.com>",
     "Gonzalo Brito Gadeschi <gonzalobg88@gmail.com>",
@@ -78,6 +78,10 @@ override_allocator_on_supported_platforms = [
     "tikv-jemalloc-sys/override_allocator_on_supported_platforms",
 ]
 profiling = ["tikv-jemalloc-sys/profiling"]
+profiling_libunwind = [
+    "tikv-jemalloc-sys/profiling_libunwind",
+    "profiling",
+]
 stats = ["tikv-jemalloc-sys/stats"]
 unprefixed_malloc_on_supported_platforms = ["tikv-jemalloc-sys/unprefixed_malloc_on_supported_platforms"]
 
@@ -133,11 +137,8 @@ version = "^0.2.8"
 default-features = false
 
 [dependencies.tikv-jemalloc-sys]
-version = "0.6.1"
+version = "0.7.0"
 default-features = false
 
 [dev-dependencies.paste]
 version = "1"
-
-[dev-dependencies.tikv-jemalloc-ctl]
-version = "0.6.1"
