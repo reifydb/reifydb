@@ -20,6 +20,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
+	internal_err,
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -261,6 +262,28 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn remove_batch(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
+		Ok(())
+	}
+
+	fn replace_batch(
+		&mut self,
+		pre_keys: Vec<EncodedKey>,
+		post_keys: Vec<EncodedKey>,
+		rows: Vec<EncodedBytes>,
+	) -> Result<()> {
+		if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
+			return internal_err!(
+				"replace_batch got {} pre keys, {} post keys and {} rows",
+				pre_keys.len(),
+				post_keys.len(),
+				rows.len()
+			);
+		}
+		let pending = self.pending_mut();
+		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
+			pending.remove(pre_key);
+			pending.insert(post_key, row);
+		}
 		Ok(())
 	}
 

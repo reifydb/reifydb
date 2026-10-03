@@ -222,9 +222,7 @@ impl SinkSeriesViewOperator {
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
-		for (key, encoded) in keys.iter().zip(encoded_bytes_list.iter()) {
-			txn.set(key, encoded.clone())?;
-		}
+		txn.set_batch(keys, encoded_bytes_list)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
 	}
@@ -321,12 +319,7 @@ impl SinkSeriesViewOperator {
 			post_keys.push(post_key);
 			post_encoded_bytes_vec.push(post_encoded);
 		}
-		for ((pre_key, post_key), post_encoded) in
-			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_bytes_vec.iter())
-		{
-			txn.remove(pre_key)?;
-			txn.set(post_key, post_encoded.clone())?;
-		}
+		txn.replace_batch(pre_keys, post_keys, post_encoded_bytes_vec)?;
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())
 	}
@@ -367,9 +360,7 @@ impl SinkSeriesViewOperator {
 			};
 			keys.push(key);
 		}
-		for key in keys.iter() {
-			txn.remove(key)?;
-		}
+		txn.remove_batch(keys)?;
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}

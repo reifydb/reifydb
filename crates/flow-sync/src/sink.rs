@@ -44,8 +44,8 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	value::{
-		Value, blob::Blob, column_view::ColumnView, partition::Partition, system_columns::require_row_numbers,
-		value_type::ValueType,
+		Value, blob::Blob, column_view::ColumnView, datetime::DateTime, partition::Partition,
+		system_columns::require_row_numbers, value_type::ValueType,
 	},
 };
 
@@ -144,9 +144,7 @@ impl TableSink {
 			encoded_bytes_list.push(encoded);
 		}
 
-		for (key, encoded) in keys.iter().zip(encoded_bytes_list) {
-			txn.set(key, encoded)?;
-		}
+		txn.set_many(&keys, encoded_bytes_list)?;
 
 		txn.emit(self.view.id(), Diff::insert(coerced))
 	}
@@ -168,7 +166,6 @@ impl TableSink {
 		let encoder = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?;
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
 			(&[][..], &[][..])
 		} else {
@@ -177,7 +174,7 @@ impl TableSink {
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
 		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
 		let encoded = encoder.encode_all()?;
-		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
+		for row_idx in 0..row_count {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
 
@@ -213,40 +210,41 @@ impl TableSink {
 				)
 			};
 
-			let mut prior_created = match txn.get(&post_key)? {
-				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-					Some(read_created_at(&prior)).filter(|c| !c.is_epoch())
-				}
-				_ => None,
-			};
-			if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
-				prior_created = match txn.get(&pre_key)? {
-					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-						Some(read_created_at(&prior)).filter(|c| !c.is_epoch())
-					}
-					_ => None,
-				};
-			}
-			if let Some(c) = prior_created
-				&& post_encoded.len() >= SHAPE_HEADER_SIZE
-			{
-				let updated = self.shape.updated_at(&post_encoded);
-				let mut builder = EncodedTableRow::from(post_encoded).thaw();
-				builder.set_timestamps(c, updated);
-				post_encoded = builder.freeze_bytes();
-			}
-
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
-			post_encoded_bytes_vec.push(post_encoded);
 		}
 
-		for key in &pre_keys {
-			txn.remove(key)?;
+		let mut priors: Vec<Option<DateTime>> =
+			txn.get_many(&post_keys)?.iter().map(|prior| prior_created_at(prior.as_ref())).collect();
+		let fallback: Vec<usize> = (0..row_count)
+			.filter(|&row_idx| {
+				priors[row_idx].is_none()
+					&& pre_keys[row_idx].as_slice() != post_keys[row_idx].as_slice()
+			})
+			.collect();
+		let fallback_keys: Vec<EncodedKey> =
+			fallback.iter().map(|&row_idx| pre_keys[row_idx].clone()).collect();
+		for (row_idx, prior) in fallback.into_iter().zip(txn.get_many(&fallback_keys)?) {
+			priors[row_idx] = prior_created_at(prior.as_ref());
 		}
-		for (key, encoded) in post_keys.iter().zip(post_encoded_bytes_vec) {
-			txn.set(key, encoded)?;
-		}
+		let post_rows: Vec<EncodedBytes> = encoded
+			.into_iter()
+			.zip(priors)
+			.map(|(mut post_encoded, prior_created)| {
+				if let Some(c) = prior_created
+					&& post_encoded.len() >= SHAPE_HEADER_SIZE
+				{
+					let updated = self.shape.updated_at(&post_encoded);
+					let mut builder = EncodedTableRow::from(post_encoded).thaw();
+					builder.set_timestamps(c, updated);
+					post_encoded = builder.freeze_bytes();
+				}
+				post_encoded
+			})
+			.collect();
+
+		txn.remove_many(&pre_keys)?;
+		txn.set_many(&post_keys, post_rows)?;
 
 		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
 	}
@@ -278,9 +276,7 @@ impl TableSink {
 			keys.push(key);
 		}
 
-		for key in &keys {
-			txn.remove(key)?;
-		}
+		txn.remove_many(&keys)?;
 
 		txn.emit(self.view.id(), Diff::remove(coerced))
 	}
@@ -360,6 +356,15 @@ fn dictionary_lookup_view_columns<T: Lookup + Intern>(
 
 fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
 	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
+}
+
+fn prior_created_at(prior: Option<&EncodedBytes>) -> Option<DateTime> {
+	match prior {
+		Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
+			Some(read_created_at(prior)).filter(|c| !c.is_epoch())
+		}
+		_ => None,
+	}
 }
 
 fn resolve_partition_flow<T: Rows>(

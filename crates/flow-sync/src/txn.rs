@@ -14,6 +14,7 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
+	internal_err,
 };
 use reifydb_value::{
 	Result,
@@ -38,6 +39,27 @@ pub trait Rows {
 	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		keys.iter().map(|key| self.get(key)).collect()
+	}
+
+	fn set_many(&mut self, keys: &[EncodedKey], rows: Vec<EncodedBytes>) -> Result<()> {
+		if keys.len() != rows.len() {
+			return internal_err!("set_many got {} keys and {} rows", keys.len(), rows.len());
+		}
+		for (key, row) in keys.iter().zip(rows) {
+			self.set(key, row)?;
+		}
+		Ok(())
+	}
+
+	fn remove_many(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.remove(key)?;
+		}
+		Ok(())
+	}
 }
 
 pub trait Emit {
