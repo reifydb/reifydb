@@ -17,8 +17,6 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_transaction::transaction::Transaction;
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{
 	byte_size::ByteSize,
 	error,
@@ -83,7 +81,7 @@ impl QueryNode for Box<dyn QueryNode> {
 		if let Some(ref batch) = result {
 			check_user_columns(batch)?;
 			reifydb_assertions! {
-				assert_canonical_floats(batch, "volcano next");
+				reifydb_value::value::canonical::assert_canonical_floats(batch, "volcano next");
 			}
 		}
 		Ok(result)

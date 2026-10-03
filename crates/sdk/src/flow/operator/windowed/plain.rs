@@ -13,8 +13,6 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	state::timer::StateStore,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_flow_async::operator::state::reaper::queued;
 use reifydb_flow_async::{
 	operator::{
 		state::{
@@ -273,7 +271,7 @@ where
 		}
 		if *reap_queue_empty {
 			reifydb_assertions! {
-				let pending = queued(store, 1)?;
+				let pending = reifydb_flow_async::operator::state::reaper::queued(store, 1)?;
 				assert!(
 					pending.groups.is_empty(),
 					"the reap queue still holds {:?} while the driver believes it drained the \

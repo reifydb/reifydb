@@ -5,10 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::{
-		keyspace::KEYSPACES,
-		state::{KeyspaceId, KeyspaceMask, OperatorStateKey},
-	},
+	key::operator::state::{KeyspaceId, KeyspaceMask, OperatorStateKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
@@ -30,7 +27,7 @@ pub struct KeyspaceOccupancy {
 impl KeyspaceOccupancy {
 	pub fn new() -> Self {
 		reifydb_assertions! {
-			for spec in KEYSPACES {
+			for spec in reifydb_core::key::operator::keyspace::KEYSPACES {
 				assert!(
 					KeyspaceMask::of([spec.id]).holds(spec.id),
 					"store::operator::occupancy keyspace {} has no occupancy bit",

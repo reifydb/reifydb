@@ -4,8 +4,6 @@
 use arrow_array::RecordBatch;
 use reifydb_core::internal;
 use reifydb_evaluate::stack::Variable;
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{error, reifydb_assertions};
 
 use crate::Result;
@@ -31,7 +29,7 @@ impl Stack {
 				| Variable::ForIterator {
 					batch,
 					..
-				} => assert_canonical_floats(batch, "stack push"),
+				} => reifydb_value::value::canonical::assert_canonical_floats(batch, "stack push"),
 				Variable::Closure(_) => {}
 			}
 		}

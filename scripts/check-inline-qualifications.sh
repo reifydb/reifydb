@@ -168,7 +168,7 @@ while IFS= read -r file; do
         }
 
         # Detect start of macro_rules! blocks and skip their bodies
-        if (match(stripped, /^macro_rules![[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*/)) {
+        if (match(stripped, /^(macro_rules![[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*|reifydb_assertions![[:space:]]*)/)) {
             in_macro_rules = 1
             macro_brace_depth = 0
             tmp = line

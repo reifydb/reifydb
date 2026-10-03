@@ -22,8 +22,6 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
-#[cfg(reifydb_assertions)]
-use crate::operator::state::expiry::{expiry_all, expiry_earliest};
 use crate::{
 	operator::{
 		state::{
@@ -352,7 +350,7 @@ where
 			self.earliest = None;
 		}
 		reifydb_assertions! {
-			for entry in expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+			for entry in crate::operator::state::expiry::expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
 					"the expiry index still holds a row for a group that is about to be queued for \
@@ -368,7 +366,7 @@ where
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
 		if let Some(known) = self.earliest {
 			reifydb_assertions! {
-				let grounded = expiry_earliest::<TumblingExpiry>(store)?;
+				let grounded = crate::operator::state::expiry::expiry_earliest::<TumblingExpiry>(store)?;
 				assert!(
 					known == grounded,
 					"the earliest expiry held in memory is {known:?} but the index holds {grounded:?}; \

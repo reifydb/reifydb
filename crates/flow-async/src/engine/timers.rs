@@ -9,8 +9,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator::keyspace::timer::TimerWheelKey,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
@@ -153,7 +151,7 @@ impl FlowEngineInner {
 				reifydb_assertions! {
 					for diff in &result.diffs {
 						for batch in diff.pre().into_iter().chain(diff.post()) {
-							assert_canonical_floats(batch, "flow timer");
+							reifydb_value::value::canonical::assert_canonical_floats(batch, "flow timer");
 						}
 					}
 				}

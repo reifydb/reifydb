@@ -22,11 +22,7 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{
-		column_view::ColumnView,
-		identity::IdentityId,
-		value_type::{ValueType, field::from_field},
-	},
+	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
 use crate::{
@@ -104,7 +100,7 @@ fn routine_field(name: &str, function: &dyn Function, args: &[FieldRef]) -> Resu
 fn assert_routine_field(fragment: &Fragment, actual: &FieldRef, declared: &FieldRef) {
 	reifydb_assertions! {
 		let inner = |field: &FieldRef| {
-			from_field(field)
+			reifydb_value::value::value_type::field::from_field(field)
 				.expect("a routine field always carries a parsable type")
 				.value_type
 				.map(|value_type| value_type.inner_type().clone())

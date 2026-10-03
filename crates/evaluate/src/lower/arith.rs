@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::value_type::field::{FieldType, from_field, to_field},
+	value::value_type::field::{FieldType, to_field},
 };
 
 use crate::{
@@ -82,7 +82,7 @@ fn arith_field(name: &str, op: ArithOp, arith: &ArithContext, left: &FieldRef, r
 fn assert_kernel_field(op: ArithOp, fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef) {
 	reifydb_assertions! {
 		let inner = |field: &FieldRef| {
-			from_field(field)
+			reifydb_value::value::value_type::field::from_field(field)
 				.expect("an arithmetic field always carries a parsable type")
 				.value_type
 				.map(|value_type| value_type.inner_type().clone())
