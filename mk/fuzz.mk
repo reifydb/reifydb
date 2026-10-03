@@ -11,7 +11,7 @@
 
 DURATION ?= 60
 FUZZ_DIR := pkg/rust/tests/fuzz
-FUZZ_TOOLCHAIN := nightly-2026-02-27
+FUZZ_TOOLCHAIN := nightly-2026-09-25
 FUZZ_CFG := .cargo/config.toml
 FUZZ_CFG_BAK := .cargo/config.toml.fuzz-bak
 

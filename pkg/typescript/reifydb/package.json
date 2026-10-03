@@ -4,10 +4,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "napi": {
-    "name": "reifydb"
+    "binaryName": "reifydb"
   },
   "scripts": {
-    "prebuild": "napi build --platform --release --cargo-cwd ../../rust/reifydb-node native",
+    "prebuild": "napi build --platform --release --manifest-path ../../rust/reifydb-node/Cargo.toml -o native",
     "build": "tsup src/index.ts --dts --format cjs --sourcemap --external ../native",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,7 +20,7 @@
     "@reifydb/store": "workspace:*"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.4",
+    "@napi-rs/cli": "^3.10.6",
     "@types/node": "^24.0.10",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
