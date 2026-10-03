@@ -10,4 +10,3 @@ pub mod ioc;
 pub mod multi;
 pub mod retry;
 pub mod slab;
-pub mod sorted;
