@@ -94,6 +94,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::{Body, WithTrailers};
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
+    use bytes::Bytes;
     use flate2::read::GzDecoder;
     use http::header::{
         ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_ENCODING, CONTENT_RANGE, CONTENT_TYPE, RANGE,
@@ -106,7 +107,7 @@ mod tests {
     use std::sync::{Arc, RwLock};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_util::io::StreamReader;
-    use tower::{service_fn, Service, ServiceExt};
+    use tower::{service_fn, BoxError, Service, ServiceExt};
 
     // Compression filter allows every other request to be compressed
     #[derive(Clone)]
@@ -523,6 +524,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn trailers_with_empty_body() {
+        let svc = service_fn(|_req: Request<Body>| async {
+            let mut trailers = HeaderMap::new();
+            trailers.insert("grpc-status", "0".parse().unwrap());
+            trailers.insert("grpc-message", "OK".parse().unwrap());
+            let body = Body::empty().with_trailers(trailers);
+            Ok::<_, Infallible>(Response::builder().body(body).unwrap())
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        assert_eq!(trailers["grpc-status"], "0");
+        assert_eq!(trailers["grpc-message"], "OK");
+    }
+
+    #[tokio::test]
+    async fn trailers_with_streamed_body() {
+        // Simulate a gRPC-like streamed response: multiple data frames followed by trailers
+        let svc = service_fn(|_req: Request<Body>| async {
+            let stream = futures_util::stream::iter(vec![
+                Ok::<_, BoxError>(Bytes::from("chunk1")),
+                Ok(Bytes::from("chunk2")),
+                Ok(Bytes::from("chunk3")),
+            ]);
+            let mut trailers = HeaderMap::new();
+            trailers.insert("grpc-status", "0".parse().unwrap());
+            let body = Body::from_stream(stream).with_trailers(trailers);
+            Ok::<_, Infallible>(Response::builder().body(body).unwrap())
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let compressed_data = collected.to_bytes();
+
+        let mut decoder = GzDecoder::new(&compressed_data[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert_eq!(decompressed, "chunk1chunk2chunk3");
+        assert_eq!(trailers["grpc-status"], "0");
+    }
+
+    #[tokio::test]
+    async fn trailers_with_grpc_web_content_type() {
+        let svc = service_fn(|_req: Request<Body>| async {
+            let mut trailers = HeaderMap::new();
+            trailers.insert("grpc-status", "0".parse().unwrap());
+            let body = Body::from("a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize))
+                .with_trailers(trailers);
+            let mut res = Response::new(body);
+            res.headers_mut()
+                .insert(CONTENT_TYPE, "application/grpc-web+proto".parse().unwrap());
+            Ok::<_, Infallible>(res)
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        assert_eq!(trailers["grpc-status"], "0");
+    }
+
+    #[tokio::test]
     async fn size_hint_identity() {
         let msg = "Hello, world!";
         let svc = service_fn(|_| async { Ok::<_, std::io::Error>(Response::new(Body::from(msg))) });
@@ -532,5 +615,94 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
         let body = res.into_body();
         assert_eq!(body.size_hint().exact().unwrap(), msg.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn wildcard_q_zero_returns_406() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*;q=0")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::NOT_ACCEPTABLE);
+        assert!(res
+            .headers()
+            .get_all(http::header::VARY)
+            .iter()
+            .any(|v| v.to_str().unwrap().contains("accept-encoding")));
+    }
+
+    #[tokio::test]
+    async fn wildcard_q_zero_with_gzip_picks_gzip() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*;q=0,gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok()),
+            Some("gzip")
+        );
+    }
+
+    #[tokio::test]
+    async fn wildcard_alone_compresses() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        // Should pick the best supported encoding (not identity)
+        assert!(res.headers().contains_key(CONTENT_ENCODING));
+    }
+
+    #[tokio::test]
+    async fn identity_q_zero_alone_returns_406() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "identity;q=0")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::NOT_ACCEPTABLE);
+    }
+
+    #[tokio::test]
+    async fn identity_q_zero_with_gzip_picks_gzip() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "identity;q=0,gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok()),
+            Some("gzip")
+        );
     }
 }

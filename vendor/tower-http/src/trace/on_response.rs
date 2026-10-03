@@ -102,7 +102,7 @@ impl DefaultOnResponse {
 }
 
 impl<B> OnResponse<B> for DefaultOnResponse {
-    fn on_response(self, response: &Response<B>, latency: Duration, _: &Span) {
+    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span) {
         let latency = Latency {
             unit: self.latency_unit,
             duration: latency,
@@ -112,6 +112,7 @@ impl<B> OnResponse<B> for DefaultOnResponse {
             .then(|| tracing::field::debug(response.headers()));
 
         event_dynamic_lvl!(
+            parent: span,
             self.level,
             %latency,
             status = status(response),
@@ -147,10 +148,8 @@ fn status<B>(res: &Response<B>) -> Option<i32> {
             res.headers(),
             crate::classify::GrpcCode::Ok.into_bitmask(),
         ) {
-            ParsedGrpcStatus::Success
-            | ParsedGrpcStatus::HeaderNotString
-            | ParsedGrpcStatus::HeaderNotInt => Some(0),
-            ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+            ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => Some(0),
+            ParsedGrpcStatus::NonSuccess(status) => Some(status.code_raw()),
             // if `grpc-status` is missing then its a streaming response and there is no status
             // _yet_, so its neither success nor error
             ParsedGrpcStatus::GrpcStatusHeaderMissing => None,

@@ -1,7 +1,7 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.6.11"
+version = "0.7.1"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
-rust-version = "1.64"
+rust-version = "1.65"
 
 [dependencies]
 bitflags = "2.0.2"
@@ -27,10 +27,10 @@ futures-core = { version = "0.3", optional = true, default-features = false }
 futures-util = { version = "0.3.14", optional = true, default-features = false }
 http-body = { version = "1.0.0", optional = true }
 http-body-util = { version = "0.1.0", optional = true }
-http-range-header = { version = "0.4.0", optional = true }
+http-range-header = { version = "0.4.2", optional = true }
 mime = { version = "0.3.17", optional = true, default-features = false }
 mime_guess = { version = "2", optional = true, default-features = false }
-percent-encoding = { version = "2.1.0", optional = true }
+percent-encoding = { version = "2.1.0" }
 url = { version = "2.5", optional = true }
 tokio = { version = "1.6", optional = true, default-features = false }
 tokio-util = { version = "0.7", optional = true, default-features = false, features = ["io"] }
@@ -64,6 +64,7 @@ full = [
     "catch-panic",
     "compression-full",
     "cors",
+    "csrf",
     "decompression-full",
     "follow-redirect",
     "fs",
@@ -89,8 +90,9 @@ add-extension = []
 auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std", "dep:http-body", "dep:http-body-util"]
 cors = []
+csrf = []
 follow-redirect = ["futures-util", "dep:http-body", "dep:url", "tower/util"]
-fs = ["dep:tokio", "tokio?/fs", "tokio?/io-util", "futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio-util/io", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc"]
+fs = ["dep:tokio", "tokio?/fs", "tokio?/io-util", "futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio-util/io", "dep:http-range-header", "mime_guess", "mime", "httpdate", "set-status", "futures-util/alloc"]
 limit = ["dep:http-body", "dep:http-body-util"]
 map-request-body = []
 map-response-body = []
@@ -119,11 +121,6 @@ decompression-deflate = ["dep:async-compression", "async-compression?/zlib", "fu
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
 decompression-gzip = ["dep:async-compression", "async-compression?/gzip", "futures-core", "dep:http-body", "dep:http-body-util", "tokio-util", "dep:tokio"]
 decompression-zstd = ["dep:async-compression", "async-compression?/zstd", "futures-core", "dep:http-body", "dep:http-body-util", "tokio-util", "dep:tokio"]
-
-# FIXME: rip this out come 0.7.0.
-# ref: https://github.com/tower-rs/tower-http/pull/666#issuecomment-4382555061
-tokio = []
-async-compression = []
 
 [package.metadata.docs.rs]
 all-features = true

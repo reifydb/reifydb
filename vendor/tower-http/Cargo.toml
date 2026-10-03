@@ -11,9 +11,9 @@
 
 [package]
 edition = "2018"
-rust-version = "1.64"
+rust-version = "1.65"
 name = "tower-http"
-version = "0.6.11"
+version = "0.7.1"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 build = false
 autolib = false
@@ -66,7 +66,6 @@ allowed_external_types = [
 
 [features]
 add-extension = []
-async-compression = []
 auth = [
     "base64",
     "validate-request",
@@ -116,6 +115,7 @@ compression-zstd = [
     "dep:tokio",
 ]
 cors = []
+csrf = []
 decompression-br = [
     "dep:async-compression",
     "async-compression?/brotli",
@@ -177,7 +177,6 @@ fs = [
     "dep:http-range-header",
     "mime_guess",
     "mime",
-    "percent-encoding",
     "httpdate",
     "set-status",
     "futures-util/alloc",
@@ -188,6 +187,7 @@ full = [
     "catch-panic",
     "compression-full",
     "cors",
+    "csrf",
     "decompression-full",
     "follow-redirect",
     "fs",
@@ -232,7 +232,6 @@ timeout = [
     "dep:tokio",
     "tokio?/time",
 ]
-tokio = []
 trace = [
     "dep:http-body",
     "tracing",
@@ -281,7 +280,7 @@ version = "0.1.0"
 optional = true
 
 [dependencies.http-range-header]
-version = "0.4.0"
+version = "0.4.2"
 optional = true
 
 [dependencies.httpdate]
@@ -300,7 +299,6 @@ default-features = false
 
 [dependencies.percent-encoding]
 version = "2.1.0"
-optional = true
 
 [dependencies.pin-project-lite]
 version = "0.2.7"

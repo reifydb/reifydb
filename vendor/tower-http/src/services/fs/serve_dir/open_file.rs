@@ -1,29 +1,38 @@
 use super::{
-    headers::{IfModifiedSince, IfUnmodifiedSince, LastModified},
+    backend::{Backend, File as _, Metadata as _},
+    headers::{ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSince, LastModified},
     ServeVariant,
 };
 use crate::content_encoding::{Encoding, QValue};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
 use http_body_util::Empty;
-use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
-    fs::Metadata,
     io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
-use tokio::{fs::File, io::AsyncSeekExt};
+use tokio::io::AsyncSeekExt;
 
 pub(super) enum OpenFileOutput {
     FileOpened(Box<FileOpened>),
-    Redirect { location: HeaderValue },
+    Redirect {
+        location: HeaderValue,
+    },
     FileNotFound,
     PreconditionFailed,
-    NotModified,
+    NotModified {
+        etag: Option<ETag>,
+        last_modified: Option<LastModified>,
+    },
     InvalidRedirectUri,
     InvalidFilename,
+}
+
+pub(super) enum RangeError {
+    Unsatisfiable,
+    MultipleRangesNotSupported,
 }
 
 pub(super) struct FileOpened {
@@ -31,46 +40,83 @@ pub(super) struct FileOpened {
     pub(super) chunk_size: usize,
     pub(super) mime_header_value: HeaderValue,
     pub(super) maybe_encoding: Option<Encoding>,
-    pub(super) maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
+    pub(super) maybe_range: Option<Result<RangeInclusive<u64>, RangeError>>,
     pub(super) last_modified: Option<LastModified>,
+    pub(super) precompression_configured: bool,
+    pub(super) etag: Option<ETag>,
 }
 
 pub(super) enum FileRequestExtent {
-    Full(File, Metadata),
-    Head(Metadata),
+    Full(Box<dyn tokio::io::AsyncRead + Unpin + Send>, u64),
+    Head(u64),
 }
 
-pub(super) async fn open_file(
-    variant: ServeVariant,
-    mut path_to_file: PathBuf,
-    req: Request<Empty<Bytes>>,
-    negotiated_encodings: Vec<(Encoding, QValue)>,
-    range_header: Option<String>,
-    buf_chunk_size: usize,
-) -> io::Result<OpenFileOutput> {
-    let if_unmodified_since = req
-        .headers()
-        .get(header::IF_UNMODIFIED_SINCE)
-        .and_then(IfUnmodifiedSince::from_header_value);
+pub(super) struct OpenFileRequest<B> {
+    pub(super) variant: ServeVariant,
+    pub(super) redirect_path_prefix: String,
+    pub(super) path_to_file: PathBuf,
+    pub(super) req: Request<Empty<Bytes>>,
+    pub(super) negotiated_encodings: Vec<(Encoding, QValue)>,
+    pub(super) range_header: Option<String>,
+    pub(super) buf_chunk_size: usize,
+    pub(super) ignore_multi_range_requests: bool,
+    pub(super) precompression_configured: bool,
+    pub(super) backend: B,
+}
 
-    let if_modified_since = req
-        .headers()
-        .get(header::IF_MODIFIED_SINCE)
-        .and_then(IfModifiedSince::from_header_value);
+pub(super) async fn open_file<B: Backend>(
+    request: OpenFileRequest<B>,
+) -> io::Result<OpenFileOutput> {
+    let OpenFileRequest {
+        variant,
+        redirect_path_prefix,
+        mut path_to_file,
+        req,
+        negotiated_encodings,
+        range_header,
+        buf_chunk_size,
+        ignore_multi_range_requests,
+        precompression_configured,
+        backend,
+    } = request;
+    let preconditions = Preconditions {
+        if_match: req
+            .headers()
+            .get(header::IF_MATCH)
+            .and_then(IfMatch::from_header_value),
+        if_unmodified_since: req
+            .headers()
+            .get(header::IF_UNMODIFIED_SINCE)
+            .and_then(IfUnmodifiedSince::from_header_value),
+        if_none_match: req
+            .headers()
+            .get(header::IF_NONE_MATCH)
+            .and_then(IfNoneMatch::from_header_value),
+        if_modified_since: req
+            .headers()
+            .get(header::IF_MODIFIED_SINCE)
+            .and_then(IfModifiedSince::from_header_value),
+    };
 
     let mime = match variant {
         ServeVariant::Directory {
             append_index_html_on_directories,
+            redirect_to_trailing_slash,
+            html_as_default_extension,
         } => {
             // Might already at this point know a redirect or not found result should be
             // returned which corresponds to a Some(output). Otherwise the path might be
             // modified and proceed to the open file/metadata future.
             if let Some(output) = maybe_redirect_or_append_path(
+                &redirect_path_prefix,
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
+                redirect_to_trailing_slash,
+                html_as_default_extension,
+                &backend,
             )
-            .await
+            .await?
             {
                 return Ok(output);
             }
@@ -87,31 +133,50 @@ pub(super) async fn open_file(
     };
 
     if req.method() == Method::HEAD {
+        #[cfg(feature = "tracing")]
+        let _path_str = path_to_file.display().to_string();
         let (meta, maybe_encoding) =
-            file_metadata_with_fallback(path_to_file, negotiated_encodings).await?;
+            file_metadata_with_fallback(&backend, path_to_file, negotiated_encodings).await?;
 
         let last_modified = meta.modified().ok().map(LastModified::from);
-        if let Some(output) = check_modified_headers(
-            last_modified.as_ref(),
-            if_unmodified_since,
-            if_modified_since,
-        ) {
+        let etag = meta
+            .modified()
+            .ok()
+            .and_then(|mtime| ETag::from_metadata(meta.len(), mtime));
+
+        #[cfg(feature = "tracing")]
+        if etag.is_none() {
+            rate_limited!(
+                std::time::Duration::from_secs(60),
+                tracing::warn!(path = %_path_str, "ETag generation failed (mtime unavailable or pre-epoch)")
+            );
+        }
+
+        if let Some(output) = preconditions.check(etag.as_ref(), last_modified.as_ref()) {
             return Ok(output);
         }
 
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
+        let maybe_range = try_parse_range(
+            range_header.as_deref(),
+            meta.len(),
+            ignore_multi_range_requests,
+        );
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
-            extent: FileRequestExtent::Head(meta),
+            extent: FileRequestExtent::Head(meta.len()),
             chunk_size: buf_chunk_size,
             mime_header_value: mime,
             maybe_encoding,
             maybe_range,
             last_modified,
+            precompression_configured,
+            etag,
         })))
     } else {
+        #[cfg(feature = "tracing")]
+        let _path_str = path_to_file.display().to_string();
         let (mut file, maybe_encoding) =
-            match open_file_with_fallback(path_to_file, negotiated_encodings).await {
+            match open_file_with_fallback(&backend, path_to_file, negotiated_encodings).await {
                 Ok(result) => result,
 
                 Err(err) if is_invalid_filename_error(&err) => {
@@ -121,31 +186,41 @@ pub(super) async fn open_file(
             };
 
         let meta = file.metadata().await?;
+
         let last_modified = meta.modified().ok().map(LastModified::from);
-        if let Some(output) = check_modified_headers(
-            last_modified.as_ref(),
-            if_unmodified_since,
-            if_modified_since,
-        ) {
+        let etag = meta
+            .modified()
+            .ok()
+            .and_then(|mtime| ETag::from_metadata(meta.len(), mtime));
+
+        #[cfg(feature = "tracing")]
+        if etag.is_none() {
+            rate_limited!(
+                std::time::Duration::from_secs(60),
+                tracing::warn!(path = %_path_str, "ETag generation failed (mtime unavailable or pre-epoch)")
+            );
+        }
+
+        if let Some(output) = preconditions.check(etag.as_ref(), last_modified.as_ref()) {
             return Ok(output);
         }
 
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
-        if let Some(Ok(ranges)) = maybe_range.as_ref() {
-            // if there is any other amount of ranges than 1 we'll return an
-            // unsatisfiable later as there isn't yet support for multipart ranges
-            if ranges.len() == 1 {
-                file.seek(SeekFrom::Start(*ranges[0].start())).await?;
-            }
+        let size = meta.len();
+        let maybe_range =
+            try_parse_range(range_header.as_deref(), size, ignore_multi_range_requests);
+        if let Some(Ok(range)) = maybe_range.as_ref() {
+            file.seek(SeekFrom::Start(*range.start())).await?;
         }
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
-            extent: FileRequestExtent::Full(file, meta),
+            extent: FileRequestExtent::Full(Box::new(file), size),
             chunk_size: buf_chunk_size,
             mime_header_value: mime,
             maybe_encoding,
             maybe_range,
             last_modified,
+            precompression_configured,
+            etag,
         })))
     }
 }
@@ -170,34 +245,82 @@ fn is_invalid_filename_error(err: &io::Error) -> bool {
     false
 }
 
-fn check_modified_headers(
-    modified: Option<&LastModified>,
+/// Precondition headers parsed from the request.
+struct Preconditions {
+    if_match: Option<IfMatch>,
     if_unmodified_since: Option<IfUnmodifiedSince>,
+    if_none_match: Option<IfNoneMatch>,
     if_modified_since: Option<IfModifiedSince>,
-) -> Option<OpenFileOutput> {
-    if let Some(since) = if_unmodified_since {
-        let precondition = modified
-            .as_ref()
-            .map(|time| since.precondition_passes(time))
-            .unwrap_or(false);
+}
 
-        if !precondition {
-            return Some(OpenFileOutput::PreconditionFailed);
+impl Preconditions {
+    /// Evaluate preconditions per [RFC 9110 §13.2.2](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.2).
+    ///
+    /// Precedence order:
+    /// 1. If-Match (strong comparison) → 412 on failure
+    /// 2. If-Unmodified-Since (only if If-Match absent) → 412 on failure
+    /// 3. If-None-Match (weak comparison) → 304 on failure (for GET/HEAD)
+    /// 4. If-Modified-Since (only if If-None-Match absent) → 304 on failure
+    fn check(
+        self,
+        etag: Option<&ETag>,
+        last_modified: Option<&LastModified>,
+    ) -> Option<OpenFileOutput> {
+        // Step 1: If-Match
+        if let Some(if_match) = self.if_match {
+            // RFC 9110 §13.1.1: "If the field value is '*', the condition is FALSE
+            // if the origin server does not have a current representation."
+            // No ETag means no current representation → fail.
+            let passes = etag
+                .map(|etag| if_match.precondition_passes(etag))
+                .unwrap_or(false);
+            if !passes {
+                return Some(OpenFileOutput::PreconditionFailed);
+            }
+        } else {
+            // Step 2: If-Unmodified-Since (only when If-Match is absent)
+            // RFC 9110 §13.1.4: "MUST ignore if the resource does not have a
+            // modification date available."
+            if let Some(since) = self.if_unmodified_since {
+                let passes = last_modified
+                    .map(|lm| since.precondition_passes(lm))
+                    .unwrap_or(true);
+                if !passes {
+                    return Some(OpenFileOutput::PreconditionFailed);
+                }
+            }
         }
-    }
 
-    if let Some(since) = if_modified_since {
-        let unmodified = modified
-            .as_ref()
-            .map(|time| !since.is_modified(time))
-            // no last_modified means its always modified
-            .unwrap_or(false);
-        if unmodified {
-            return Some(OpenFileOutput::NotModified);
+        // Step 3: If-None-Match
+        if let Some(if_none_match) = self.if_none_match {
+            // No ETag available → condition is vacuously true (passes), serve normally.
+            let passes = etag
+                .map(|etag| if_none_match.precondition_passes(etag))
+                .unwrap_or(true);
+            if !passes {
+                return Some(OpenFileOutput::NotModified {
+                    etag: etag.cloned(),
+                    last_modified: last_modified.map(|lm| LastModified(lm.0)),
+                });
+            }
+        } else {
+            // Step 4: If-Modified-Since (only when If-None-Match is absent)
+            // No Last-Modified → treat as modified (serve normally).
+            if let Some(since) = self.if_modified_since {
+                let unmodified = last_modified
+                    .map(|lm| !since.is_modified(lm))
+                    .unwrap_or(false);
+                if unmodified {
+                    return Some(OpenFileOutput::NotModified {
+                        etag: etag.cloned(),
+                        last_modified: last_modified.map(|lm| LastModified(lm.0)),
+                    });
+                }
+            }
         }
-    }
 
-    None
+        None
+    }
 }
 
 // Returns the preferred_encoding encoding and modifies the path extension
@@ -229,16 +352,19 @@ fn preferred_encoding(
 // Attempts to open the file with any of the possible negotiated_encodings in the
 // preferred order. If none of the negotiated_encodings have a corresponding precompressed
 // file the uncompressed file is used as a fallback.
-async fn open_file_with_fallback(
+async fn open_file_with_fallback<B: Backend>(
+    backend: &B,
     mut path: PathBuf,
     mut negotiated_encoding: Vec<(Encoding, QValue)>,
-) -> io::Result<(File, Option<Encoding>)> {
+) -> io::Result<(B::File, Option<Encoding>)> {
     let (file, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (File::open(&path).await, encoding) {
+        match (backend.open(path.clone()).await, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
-            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+            (Err(err), Some(encoding))
+                if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
+            {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
                 // to reset the path before the next iteration.
                 path.set_extension(OsStr::new(""));
@@ -255,16 +381,19 @@ async fn open_file_with_fallback(
 // Attempts to get the file metadata with any of the possible negotiated_encodings in the
 // preferred order. If none of the negotiated_encodings have a corresponding precompressed
 // file the uncompressed file is used as a fallback.
-async fn file_metadata_with_fallback(
+async fn file_metadata_with_fallback<B: Backend>(
+    backend: &B,
     mut path: PathBuf,
     mut negotiated_encoding: Vec<(Encoding, QValue)>,
-) -> io::Result<(Metadata, Option<Encoding>)> {
-    let (file, encoding) = loop {
+) -> io::Result<(B::Metadata, Option<Encoding>)> {
+    let (meta, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (tokio::fs::metadata(&path).await, encoding) {
-            (Ok(file), maybe_encoding) => break (file, maybe_encoding),
-            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+        match (backend.metadata(path.clone()).await, encoding) {
+            (Ok(meta), maybe_encoding) => break (meta, maybe_encoding),
+            (Err(err), Some(encoding))
+                if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
+            {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
                 // to reset the path before the next iteration.
                 path.set_extension(OsStr::new(""));
@@ -275,52 +404,93 @@ async fn file_metadata_with_fallback(
             (Err(err), _) => return Err(err),
         }
     };
-    Ok((file, encoding))
+    Ok((meta, encoding))
 }
 
-async fn maybe_redirect_or_append_path(
+async fn maybe_redirect_or_append_path<B: Backend>(
+    redirect_path_prefix: &str,
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
-) -> Option<OpenFileOutput> {
-    if !is_dir(path_to_file).await {
-        return None;
+    redirect_to_trailing_slash: bool,
+    html_as_default_extension: bool,
+    backend: &B,
+) -> io::Result<Option<OpenFileOutput>> {
+    let uri_path = uri.path();
+
+    let is_directory = is_dir(path_to_file, backend).await?;
+
+    if uri_path.ends_with('/') && uri_path != "/" && is_directory != Some(true) {
+        return Ok(Some(OpenFileOutput::FileNotFound));
+    }
+
+    // If the path has no extension and doesn't exist as a file, try appending .html
+    if html_as_default_extension && is_directory.is_none() && path_to_file.extension().is_none() {
+        path_to_file.set_extension("html");
+        return Ok(None);
+    }
+
+    if is_directory != Some(true) {
+        return Ok(None);
     }
 
     if !append_index_html_on_directories {
-        return Some(OpenFileOutput::FileNotFound);
+        return Ok(Some(OpenFileOutput::FileNotFound));
     }
 
-    if uri.path().ends_with('/') {
+    if uri_path.ends_with('/') || !redirect_to_trailing_slash {
         path_to_file.push("index.html");
-        None
+        Ok(None)
     } else {
-        let uri = match append_slash_on_path(uri.clone()) {
+        let uri = match append_slash_on_path(uri.clone(), redirect_path_prefix) {
             Ok(uri) => uri,
-            Err(err) => return Some(err),
+            Err(err) => return Ok(Some(err)),
         };
         let location = HeaderValue::from_str(&uri.to_string()).unwrap();
-        Some(OpenFileOutput::Redirect { location })
+        Ok(Some(OpenFileOutput::Redirect { location }))
     }
 }
 
 fn try_parse_range(
     maybe_range_ref: Option<&str>,
     file_size: u64,
-) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
-    maybe_range_ref.map(|header_value| {
-        http_range_header::parse_range_header(header_value)
-            .and_then(|first_pass| first_pass.validate(file_size))
-    })
+    ignore_multi_range_requests: bool,
+) -> Option<Result<RangeInclusive<u64>, RangeError>> {
+    let header_value = maybe_range_ref?;
+    let parsed = match http_range_header::parse_range_header(header_value) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(Err(RangeError::Unsatisfiable)),
+    };
+
+    if parsed.ranges.len() > 1 {
+        // ServeDir/ServeFile do not support multipart responses. Optionally ignore
+        // the Range header before validate() runs semantic and overlap checks.
+        return if ignore_multi_range_requests {
+            None
+        } else {
+            Some(Err(RangeError::MultipleRangesNotSupported))
+        };
+    }
+
+    Some(
+        parsed
+            .validate(file_size)
+            .map_err(|_| RangeError::Unsatisfiable)
+            .and_then(|mut ranges| ranges.pop().ok_or(RangeError::Unsatisfiable)),
+    )
 }
 
-async fn is_dir(path_to_file: &Path) -> bool {
-    tokio::fs::metadata(path_to_file)
-        .await
-        .map_or(false, |meta_data| meta_data.is_dir())
+async fn is_dir<B: Backend>(path_to_file: &Path, backend: &B) -> io::Result<Option<bool>> {
+    match backend.metadata(path_to_file.to_owned()).await {
+        Ok(metadata) => Ok(Some(metadata.is_dir())),
+        Err(err) if err.kind() == io::ErrorKind::NotFound || is_invalid_filename_error(&err) => {
+            Ok(None)
+        }
+        Err(err) => Err(err),
+    }
 }
 
-fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
+fn append_slash_on_path(uri: Uri, redirect_path_prefix: &str) -> Result<Uri, OpenFileOutput> {
     let http::uri::Parts {
         scheme,
         authority,
@@ -340,12 +510,16 @@ fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
 
     let uri_builder = if let Some(path_and_query) = path_and_query {
         if let Some(query) = path_and_query.query() {
-            uri_builder.path_and_query(format!("{}/?{}", path_and_query.path(), query))
+            uri_builder.path_and_query(format!(
+                "{redirect_path_prefix}{}/?{}",
+                path_and_query.path(),
+                query
+            ))
         } else {
-            uri_builder.path_and_query(format!("{}/", path_and_query.path()))
+            uri_builder.path_and_query(format!("{redirect_path_prefix}{}/", path_and_query.path()))
         }
     } else {
-        uri_builder.path_and_query("/")
+        uri_builder.path_and_query(format!("{redirect_path_prefix}/"))
     };
 
     uri_builder.build().map_err(|_err| {

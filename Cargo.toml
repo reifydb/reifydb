@@ -376,7 +376,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["json"] }
 rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
 surge-ping = { version = "=0.8.4" }
 tower = { version = "=0.5.3", features = ["limit", "timeout"] }
-tower-http = { version = "=0.6.11", features = ["trace", "timeout"] }
+tower-http = { version = "=0.7.1", features = ["trace", "timeout"] }
 
 # Node native addon bindings, shared by uptime's DST test bridge and @reifydb/reifydb
 napi = { version = "=2.16.17", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] }

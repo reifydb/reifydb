@@ -84,7 +84,7 @@ impl DefaultOnEos {
 }
 
 impl OnEos for DefaultOnEos {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
         let stream_duration = Latency {
             unit: self.latency_unit,
             duration: stream_duration,
@@ -94,14 +94,12 @@ impl OnEos for DefaultOnEos {
                 trailers,
                 crate::classify::GrpcCode::Ok.into_bitmask(),
             ) {
-                ParsedGrpcStatus::Success
-                | ParsedGrpcStatus::HeaderNotString
-                | ParsedGrpcStatus::HeaderNotInt => Some(0),
-                ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+                ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => Some(0),
+                ParsedGrpcStatus::NonSuccess(status) => Some(status.code_raw()),
                 ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
             }
         });
 
-        event_dynamic_lvl!(self.level, %stream_duration, status, "end of stream");
+        event_dynamic_lvl!(parent: span, self.level, %stream_duration, status, "end of stream");
     }
 }
