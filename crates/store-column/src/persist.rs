@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{path::Path, sync::Arc};
+use std::{path::Path, result::Result as StdResult, sync::Arc};
 
 use arrow_array::new_empty_array;
+use postcard::{from_bytes, to_stdvec};
 use reifydb_runtime::io::fs::{FsError, Len, Pread, Pwrite};
 use reifydb_value::{
 	Result,
@@ -126,7 +127,7 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 		encodings: array_ctx.to_ids().iter().map(|id| id.as_str().to_string()).collect(),
 		columns,
 	};
-	let header = postcard::to_stdvec(&header).map_err(|err| ColumnError::PersistSerialize {
+	let header = to_stdvec(&header).map_err(|err| ColumnError::PersistSerialize {
 		reason: err.to_string(),
 	})?;
 	let header_len = u32::try_from(header.len()).map_err(|_| ColumnError::PersistSerialize {
@@ -172,10 +173,9 @@ impl<R: Pread + Len> BlockHandle<R> {
 		if !read_exact(&file, PREFIX as u64, &mut header).map_err(fs("open"))? {
 			return Err(corrupt("header runs past the end of the block"));
 		}
-		let header: BorgHeader =
-			postcard::from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
-				reason: err.to_string(),
-			})?;
+		let header: BorgHeader = from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
+			reason: err.to_string(),
+		})?;
 		let align = header.align as u64;
 		if !align.is_power_of_two() {
 			return Err(corrupt("alignment is not a power of two"));
@@ -269,7 +269,7 @@ fn align_up(offset: usize, align: usize) -> usize {
 	offset.div_ceil(align) * align
 }
 
-fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> std::result::Result<bool, FsError> {
+fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> StdResult<bool, FsError> {
 	let mut read = 0;
 	while read < buf.len() {
 		let n = file.pread(offset, &mut buf[read..])?;
@@ -282,12 +282,7 @@ fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> std::resul
 	Ok(true)
 }
 
-pub(crate) fn write_all<W: Pwrite>(
-	file: &W,
-	path: &Path,
-	mut offset: u64,
-	buf: &[u8],
-) -> std::result::Result<(), FsError> {
+pub(crate) fn write_all<W: Pwrite>(file: &W, path: &Path, mut offset: u64, buf: &[u8]) -> StdResult<(), FsError> {
 	let mut written = 0;
 	while written < buf.len() {
 		let n = file.pwrite(offset, &buf[written..])?;
