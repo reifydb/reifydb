@@ -25,7 +25,9 @@ pub use pnet_macros_support::packet::*;
 
 pub mod arp;
 pub mod dhcp;
+pub mod dns;
 pub mod ethernet;
+pub mod flowcontrol;
 pub mod gre;
 pub mod icmp;
 pub mod icmpv6;
@@ -38,5 +40,6 @@ pub mod usbpcap;
 pub mod vlan;
 pub mod sll;
 pub mod sll2;
+pub mod vxlan;
 
 pub mod util;

@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "pnet_packet"
-version = "0.34.0"
+version = "0.35.0"
 authors = ["Robert Clipsham <robert@octarineparrot.com>"]
 description = "Cross-platform, binary packet parsing and manipulation"
 homepage = "https://github.com/libpnet/libpnet"
@@ -27,7 +27,7 @@ categories = [
     "network-programming",
     "parser-implementations",
 ]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/libpnet/libpnet"
 
 [[bench]]
@@ -36,14 +36,14 @@ path = "benches/packet_benchmarks.rs"
 harness = false
 
 [dependencies.pnet_base]
-version = "0.34.0"
+version = "0.35.0"
 default-features = false
 
 [dependencies.pnet_macros]
-version = "0.34.0"
+version = "0.35.0"
 
 [dependencies.pnet_macros_support]
-version = "0.34.0"
+version = "0.35.0"
 
 [dev-dependencies.criterion]
 version = "0.5.1"

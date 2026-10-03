@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "pnet_base"
-version = "0.34.0"
+version = "0.35.0"
 authors = [
     "Robert Clipsham <robert@octarineparrot.com>",
     "Linus Färnstrand <faern@faern.net>",
@@ -25,7 +25,7 @@ keywords = [
     "ethernet",
 ]
 categories = ["network-programming"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/libpnet/libpnet"
 
 [package.metadata.docs.rs]

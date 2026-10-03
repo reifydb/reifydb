@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "pnet_macros_support"
-version = "0.34.0"
+version = "0.35.0"
 authors = ["Robert Clipsham <robert@octarineparrot.com>"]
 description = "Support library for libpnet_macros"
 homepage = "https://github.com/libpnet/libpnet"
@@ -23,9 +23,9 @@ keywords = [
     "packet",
     "protocol",
 ]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/libpnet/libpnet"
 
 [dependencies.pnet_base]
-version = "0.34.0"
+version = "0.35.0"
 default-features = false
