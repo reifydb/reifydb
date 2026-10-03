@@ -98,9 +98,31 @@ struct BatchSession<S> {
 	group: GroupId,
 }
 
+enum SessionRow<A: Emit> {
+	Admit {
+		group: A::GroupKey,
+		number: RowNumber,
+		coord: A::Coord,
+		contribution: Contribution<A>,
+	},
+	Retract {
+		group: A::GroupKey,
+		number: RowNumber,
+		contribution: Contribution<A>,
+	},
+	Update {
+		number: RowNumber,
+		pre_coord: Option<A::Coord>,
+		post_coord: Option<A::Coord>,
+		before: Option<(A::GroupKey, Contribution<A>)>,
+		after: Option<(A::GroupKey, Contribution<A>)>,
+	},
+}
+
 struct SessionBatch<A: Emit> {
 	trackers: Trackers<A>,
 	sessions: BTreeMap<(A::GroupKey, u64), BatchSession<A::Coord>>,
+	absent: BTreeSet<(A::GroupKey, u64)>,
 	buckets: Buckets<A>,
 	dropped: u64,
 	refused: u64,
@@ -592,19 +614,11 @@ where
 		Ok(emitted)
 	}
 
-	fn batch_tracker<C: GuestContext>(
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		batch: &mut SessionBatch<A>,
-		ctx: &mut C,
-		group: &A::GroupKey,
-	) -> Result<GuestSession<A::Coord>> {
-		if let Some((_, _, now)) = batch.trackers.get(group) {
-			return Ok(*now);
-		}
-		let partition = Self::partition_of(group);
-		let loaded = engine.load_tracker(&mut GuestAsHost(ctx), partition)?;
-		batch.trackers.insert(group.clone(), (partition, loaded, loaded));
-		Ok(loaded)
+	fn tracker_now(batch: &SessionBatch<A>, group: &A::GroupKey) -> GuestSession<A::Coord> {
+		batch.trackers
+			.get(group)
+			.map(|(_, _, now)| *now)
+			.expect("every routed group's tracker is loaded before the rows are routed")
 	}
 
 	fn batch_session<C: GuestContext>(
@@ -619,6 +633,9 @@ where
 			return Ok((session.group, Some(*session)));
 		}
 		let session_group = Self::session_group(group, id);
+		if batch.absent.contains(&key) {
+			return Ok((session_group, None));
+		}
 		let Some((start, last)) = engine.load_record(&mut GuestAsHost(ctx), session_group)? else {
 			return Ok((session_group, None));
 		};
@@ -643,7 +660,7 @@ where
 		contribution: Contribution<A>,
 		horizon: A::Coord,
 	) -> Result<()> {
-		let mut tracker = Self::batch_tracker(engine, batch, ctx, &group)?;
+		let mut tracker = Self::tracker_now(batch, &group);
 		let id = match engine.assign(&mut tracker, coord) {
 			SessionAssignment::Refused => return Ok(()),
 			SessionAssignment::Opened(id)
@@ -703,7 +720,7 @@ where
 		row: RowNumber,
 		horizon: A::Coord,
 	) -> Result<Option<(u64, GroupId)>> {
-		let mut id = Self::batch_tracker(engine, batch, ctx, group)?.session_id;
+		let mut id = Self::tracker_now(batch, group).session_id;
 		while let (_, Some(session)) = Self::batch_session(engine, batch, ctx, group, id)? {
 			if engine.holds_row(&mut GuestAsHost(ctx), session.group, row)? {
 				let anchor = session.before.map_or(session.last, |(_, last)| last);
@@ -742,20 +759,13 @@ where
 		Ok(())
 	}
 
-	fn route_session<C: GuestContext>(
+	fn extract_session_rows<C: GuestContext>(
 		aggregator: &A,
-		engine: &mut SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
 		ctx: &mut C,
 		change: &impl ChangeView,
-		horizon: A::Coord,
-	) -> Result<SessionBatch<A>> {
-		let mut batch = SessionBatch {
-			trackers: BTreeMap::new(),
-			sessions: BTreeMap::new(),
-			buckets: BTreeMap::new(),
-			dropped: 0,
-			refused: 0,
-		};
+		refused: &mut u64,
+	) -> Result<Vec<SessionRow<A>>> {
+		let mut rows = Vec::new();
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
 				continue;
@@ -770,7 +780,7 @@ where
 							continue;
 						};
 						let Some(number) = row.row_number() else {
-							batch.refused += 1;
+							*refused += 1;
 							continue;
 						};
 						let Some(coord) = aggregator.coord(&row)? else {
@@ -779,16 +789,12 @@ where
 						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
 							continue;
 						};
-						Self::admit_session_row(
-							engine,
-							&mut batch,
-							ctx,
+						rows.push(SessionRow::Admit {
 							group,
 							number,
 							coord,
 							contribution,
-							horizon,
-						)?;
+						});
 					}
 				}
 				DiffType::Remove => {
@@ -800,21 +806,17 @@ where
 							continue;
 						};
 						let Some(number) = row.row_number() else {
-							batch.refused += 1;
+							*refused += 1;
 							continue;
 						};
 						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
 							continue;
 						};
-						Self::retract_session_row(
-							engine,
-							&mut batch,
-							ctx,
+						rows.push(SessionRow::Retract {
 							group,
 							number,
 							contribution,
-							horizon,
-						)?;
+						});
 					}
 				}
 				DiffType::Update => {
@@ -826,82 +828,213 @@ where
 							continue;
 						};
 						let Some(number) = pre_row.row_number() else {
-							batch.refused += 2;
+							*refused += 2;
 							continue;
 						};
 						let pre_coord = aggregator.coord(&pre_row)?;
 						let post_coord = aggregator.coord(&post_row)?;
 						let before = aggregator.extract(ctx, &pre_row)?;
 						let after = aggregator.extract(ctx, &post_row)?;
-						if let (
-							Some(pre_coord),
-							Some(post_coord),
-							Some((pre_group, pre_value)),
-							Some((post_group, post_value)),
-						) = (pre_coord, post_coord, &before, &after)
-							&& pre_group == post_group
-							&& (pre_coord == post_coord
-								|| engine.refuses(
-									&Self::batch_tracker(
-										engine, &mut batch, ctx, pre_group,
-									)?,
-									post_coord,
-								)) {
-							match Self::holding_session(
-								engine, &mut batch, ctx, pre_group, number, horizon,
-							)? {
-								Some((id, _)) => {
-									let events = batch
-										.buckets
-										.entry((
-											pre_group.clone(),
-											Self::session_span(id),
-										))
-										.or_default();
-									events.push(AccumulatorEvent::Remove(
-										pre_value.clone(),
-									));
-									events.push(AccumulatorEvent::Add(
-										post_value.clone(),
-									));
-								}
-								None => Self::admit_session_row(
-									engine,
-									&mut batch,
-									ctx,
-									post_group.clone(),
-									number,
-									post_coord,
-									post_value.clone(),
-									horizon,
-								)?,
+						rows.push(SessionRow::Update {
+							number,
+							pre_coord,
+							post_coord,
+							before,
+							after,
+						});
+					}
+				}
+			}
+		}
+		Ok(rows)
+	}
+
+	fn load_session_state<C: GuestContext>(
+		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		batch: &mut SessionBatch<A>,
+		ctx: &mut C,
+		rows: &[SessionRow<A>],
+	) -> Result<()> {
+		let mut groups: BTreeSet<A::GroupKey> = BTreeSet::new();
+		for row in rows {
+			match row {
+				SessionRow::Admit {
+					group,
+					..
+				}
+				| SessionRow::Retract {
+					group,
+					..
+				} => {
+					groups.insert(group.clone());
+				}
+				SessionRow::Update {
+					before,
+					after,
+					..
+				} => {
+					for (group, _) in before.iter().chain(after.iter()) {
+						groups.insert(group.clone());
+					}
+				}
+			}
+		}
+		if groups.is_empty() {
+			return Ok(());
+		}
+		let partitions: Vec<GroupId> = groups.iter().map(Self::partition_of).collect();
+		let trackers = engine.load_trackers(&mut GuestAsHost(ctx), &partitions)?;
+		let current: Vec<GroupId> = groups
+			.iter()
+			.zip(&trackers)
+			.map(|(group, tracker)| Self::session_group(group, tracker.session_id))
+			.collect();
+		let records = engine.load_records(&mut GuestAsHost(ctx), &current)?;
+		for (slot, group) in groups.into_iter().enumerate() {
+			let tracker = trackers[slot];
+			batch.trackers.insert(group.clone(), (partitions[slot], tracker, tracker));
+			let key = (group, tracker.session_id);
+			match records[slot] {
+				Some((start, last)) => {
+					batch.sessions.insert(
+						key,
+						BatchSession {
+							before: Some((start, last)),
+							start,
+							last,
+							group: current[slot],
+						},
+					);
+				}
+				None => {
+					batch.absent.insert(key);
+				}
+			}
+		}
+		Ok(())
+	}
+
+	fn route_session<C: GuestContext>(
+		aggregator: &A,
+		engine: &mut SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		ctx: &mut C,
+		change: &impl ChangeView,
+		horizon: A::Coord,
+	) -> Result<SessionBatch<A>> {
+		let mut batch = SessionBatch {
+			trackers: BTreeMap::new(),
+			sessions: BTreeMap::new(),
+			absent: BTreeSet::new(),
+			buckets: BTreeMap::new(),
+			dropped: 0,
+			refused: 0,
+		};
+		let rows = Self::extract_session_rows(aggregator, ctx, change, &mut batch.refused)?;
+		Self::load_session_state(engine, &mut batch, ctx, &rows)?;
+		for row in rows {
+			match row {
+				SessionRow::Admit {
+					group,
+					number,
+					coord,
+					contribution,
+				} => {
+					Self::admit_session_row(
+						engine,
+						&mut batch,
+						ctx,
+						group,
+						number,
+						coord,
+						contribution,
+						horizon,
+					)?;
+				}
+				SessionRow::Retract {
+					group,
+					number,
+					contribution,
+				} => {
+					Self::retract_session_row(
+						engine,
+						&mut batch,
+						ctx,
+						group,
+						number,
+						contribution,
+						horizon,
+					)?;
+				}
+				SessionRow::Update {
+					number,
+					pre_coord,
+					post_coord,
+					before,
+					after,
+				} => {
+					if let (
+						Some(pre_coord),
+						Some(post_coord),
+						Some((pre_group, pre_value)),
+						Some((post_group, post_value)),
+					) = (pre_coord, post_coord, &before, &after)
+						&& pre_group == post_group
+						&& (pre_coord == post_coord
+							|| engine.refuses(
+								&Self::tracker_now(&batch, pre_group),
+								post_coord,
+							)) {
+						match Self::holding_session(
+							engine, &mut batch, ctx, pre_group, number, horizon,
+						)? {
+							Some((id, _)) => {
+								let events = batch
+									.buckets
+									.entry((
+										pre_group.clone(),
+										Self::session_span(id),
+									))
+									.or_default();
+								events.push(AccumulatorEvent::Remove(
+									pre_value.clone(),
+								));
+								events.push(AccumulatorEvent::Add(post_value.clone()));
 							}
-							continue;
-						}
-						if let Some((group, contribution)) = before {
-							Self::retract_session_row(
+							None => Self::admit_session_row(
 								engine,
 								&mut batch,
 								ctx,
-								group,
+								post_group.clone(),
 								number,
-								contribution,
+								post_coord,
+								post_value.clone(),
 								horizon,
-							)?;
+							)?,
 						}
-						if let (Some(coord), Some((group, contribution))) = (post_coord, after)
-						{
-							Self::admit_session_row(
-								engine,
-								&mut batch,
-								ctx,
-								group,
-								number,
-								coord,
-								contribution,
-								horizon,
-							)?;
-						}
+						continue;
+					}
+					if let Some((group, contribution)) = before {
+						Self::retract_session_row(
+							engine,
+							&mut batch,
+							ctx,
+							group,
+							number,
+							contribution,
+							horizon,
+						)?;
+					}
+					if let (Some(coord), Some((group, contribution))) = (post_coord, after) {
+						Self::admit_session_row(
+							engine,
+							&mut batch,
+							ctx,
+							group,
+							number,
+							coord,
+							contribution,
+							horizon,
+						)?;
 					}
 				}
 			}
@@ -927,6 +1060,7 @@ where
 		let SessionBatch {
 			trackers,
 			sessions,
+			absent: _,
 			buckets,
 			dropped,
 			refused,
@@ -977,12 +1111,13 @@ where
 			|| aggregator.new_accumulator(settings),
 		)?;
 
+		let mut records = Vec::new();
 		for ((group, id), session) in &sessions {
 			if session.before == Some((session.start, session.last)) {
 				continue;
 			}
 			let (session_group, key) = group_of(&groups, group, <A::Coord as Coord>::from_order(*id));
-			mode.engine.save_record(&mut store, session_group, session.start, session.last)?;
+			records.push((session_group, session.start, session.last));
 			mode.engine.reindex_session(
 				&mut store,
 				group,
@@ -993,11 +1128,12 @@ where
 				session.last,
 			)?;
 		}
-		for (partition, before, now) in trackers.values() {
-			if before != now {
-				mode.engine.save_tracker(&mut store, *partition, now)?;
-			}
-		}
+		let changed: Vec<(GroupId, GuestSession<A::Coord>)> = trackers
+			.values()
+			.filter(|(_, before, now)| before != now)
+			.map(|(partition, _, now)| (*partition, *now))
+			.collect();
+		mode.engine.save_sessions(&mut store, &records, &changed)?;
 
 		let gap = mode.engine.gap();
 		let (mut inserts, mut updates, mut removes) = emitted;

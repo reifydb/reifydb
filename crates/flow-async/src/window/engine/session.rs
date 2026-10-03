@@ -13,7 +13,7 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use crate::{
 	operator::{
 		state::seal::coord::Coord,
-		state_access::{get_classified, put, remove},
+		state_access::{batch, get_classified, get_many, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -60,6 +60,22 @@ impl<S: Coord> GuestSession<S> {
 
 fn session_state_key(group: GroupId) -> RunningKey {
 	RunningKey::new(KeyspaceFamily::Guest, group, EncodedKey::new(Vec::new()))
+}
+
+fn tracker_of<S: Coord>(state: Option<SessionState>) -> GuestSession<S> {
+	let Some(state) = state else {
+		return GuestSession::unopened();
+	};
+	GuestSession {
+		session_id: state.session_id,
+		start: S::from_order(state.session_start),
+		last: S::from_order(state.last_event_time),
+		opened: true,
+	}
+}
+
+fn record_of<S: Coord>(state: SessionState) -> (S, S) {
+	(S::from_order(state.session_start), S::from_order(state.last_event_time))
 }
 
 fn row_index_key(session: GroupId, row: RowNumber) -> BufferKey {
@@ -127,50 +143,60 @@ where
 		&mut self.tumbling
 	}
 
-	pub fn load_tracker(&self, store: &mut dyn StateStore, partition: GroupId) -> Result<GuestSession<S>> {
-		let Some(state) = get_classified::<_, SessionState>(store, &session_state_key(partition))? else {
-			return Ok(GuestSession::unopened());
-		};
-		Ok(GuestSession {
-			session_id: state.session_id,
-			start: S::from_order(state.session_start),
-			last: S::from_order(state.last_event_time),
-			opened: true,
-		})
-	}
-
-	pub fn save_tracker(
+	pub fn load_trackers(
 		&self,
 		store: &mut dyn StateStore,
-		partition: GroupId,
-		tracker: &GuestSession<S>,
-	) -> Result<()> {
-		put(
-			store,
-			&session_state_key(partition),
-			SessionState {
-				session_id: tracker.session_id,
-				last_event_time: tracker.last.to_order(),
-				session_start: tracker.start.to_order(),
-			},
-		)
+		partitions: &[GroupId],
+	) -> Result<Vec<GuestSession<S>>> {
+		let keys: Vec<RunningKey> = partitions.iter().map(|partition| session_state_key(*partition)).collect();
+		Ok(get_many::<_, SessionState>(store, &keys)?.into_iter().map(tracker_of).collect())
 	}
 
 	pub fn load_record(&self, store: &mut dyn StateStore, session: GroupId) -> Result<Option<(S, S)>> {
-		Ok(get_classified::<_, SessionState>(store, &session_state_key(session))?
-			.map(|state| (S::from_order(state.session_start), S::from_order(state.last_event_time))))
+		Ok(get_classified::<_, SessionState>(store, &session_state_key(session))?.map(record_of))
 	}
 
-	pub fn save_record(&self, store: &mut dyn StateStore, session: GroupId, start: S, last: S) -> Result<()> {
-		put(
-			store,
-			&session_state_key(session),
-			SessionState {
-				session_id: 0,
-				last_event_time: last.to_order(),
-				session_start: start.to_order(),
-			},
-		)
+	pub fn load_records(&self, store: &mut dyn StateStore, sessions: &[GroupId]) -> Result<Vec<Option<(S, S)>>> {
+		let keys: Vec<RunningKey> = sessions.iter().map(|session| session_state_key(*session)).collect();
+		Ok(get_many::<_, SessionState>(store, &keys)?.into_iter().map(|state| state.map(record_of)).collect())
+	}
+
+	pub fn save_sessions(
+		&self,
+		store: &mut dyn StateStore,
+		records: &[(GroupId, S, S)],
+		trackers: &[(GroupId, GuestSession<S>)],
+	) -> Result<()> {
+		if records.is_empty() && trackers.is_empty() {
+			return Ok(());
+		}
+		let keys: Vec<RunningKey> = records
+			.iter()
+			.map(|(session, _, _)| session_state_key(*session))
+			.chain(trackers.iter().map(|(partition, _)| session_state_key(*partition)))
+			.collect();
+		let mut batch = batch::<_, SessionState>(store, &keys)?;
+		for (slot, (_, start, last)) in records.iter().enumerate() {
+			batch.set(
+				slot,
+				&SessionState {
+					session_id: 0,
+					last_event_time: last.to_order(),
+					session_start: start.to_order(),
+				},
+			)?;
+		}
+		for (offset, (_, tracker)) in trackers.iter().enumerate() {
+			batch.set(
+				records.len() + offset,
+				&SessionState {
+					session_id: tracker.session_id,
+					last_event_time: tracker.last.to_order(),
+					session_start: tracker.start.to_order(),
+				},
+			)?;
+		}
+		batch.commit(store)
 	}
 
 	pub fn index_row(&self, store: &mut dyn StateStore, id: u64, session: GroupId, row: RowNumber) -> Result<()> {
@@ -292,21 +318,21 @@ mod tests {
 		let mut store = MockStore::default();
 		let partition = group_id("BTC");
 
-		let mut fresh = engine.load_tracker(&mut store, partition).unwrap();
+		let mut fresh = engine.load_trackers(&mut store, &[partition]).unwrap()[0];
 		assert_eq!(engine.assign(&mut fresh, at_millis(0)), SessionAssignment::Opened(0));
 
-		let mut tracker = engine.load_tracker(&mut store, partition).unwrap();
+		let mut tracker = engine.load_trackers(&mut store, &[partition]).unwrap()[0];
 		engine.assign(&mut tracker, at_millis(100));
 		engine.assign(&mut tracker, at_millis(111));
 		engine.assign(&mut tracker, at_millis(105));
-		engine.save_tracker(&mut store, partition, &tracker).unwrap();
+		engine.save_sessions(&mut store, &[], &[(partition, tracker)]).unwrap();
 
-		let resumed = engine.load_tracker(&mut store, partition).unwrap();
+		let resumed = engine.load_trackers(&mut store, &[partition]).unwrap()[0];
 		assert_eq!(resumed, tracker);
 		assert_eq!((resumed.session_id, resumed.start, resumed.last), (1, at_millis(105), at_millis(111)));
 		assert_eq!(
-			engine.load_tracker(&mut store, group_id("ETH")).unwrap(),
-			GuestSession::unopened(),
+			engine.load_trackers(&mut store, &[partition, group_id("ETH")]).unwrap(),
+			vec![tracker, GuestSession::unopened()],
 			"another group must not see this group's tracker"
 		);
 	}
@@ -319,9 +345,13 @@ mod tests {
 		let (first, second) = (group_id("s0"), group_id("s1"));
 
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), None);
-		engine.save_record(&mut store, first, at_millis(95), at_millis(107)).unwrap();
+		engine.save_sessions(&mut store, &[(first, at_millis(95), at_millis(107))], &[]).unwrap();
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), Some((at_millis(95), at_millis(107))));
 		assert_eq!(engine.load_record(&mut store, second).unwrap(), None);
+		assert_eq!(
+			engine.load_records(&mut store, &[first, second]).unwrap(),
+			vec![Some((at_millis(95), at_millis(107))), None]
+		);
 
 		engine.index_row(&mut store, 0, first, RowNumber(2)).unwrap();
 		assert!(engine.holds_row(&mut store, first, RowNumber(2)).unwrap());

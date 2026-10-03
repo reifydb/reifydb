@@ -14,15 +14,14 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		host::TxnHostContext,
-		state_access::{get, get_or_default, set, update},
+		state_access::{get, get_or_default, set},
 	},
 	transaction::FlowTransaction,
 };
 use reifydb_macro::operator_state;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{mount::context::InProcessContext, windowed::guest_as_host::GuestAsHost};
-use reifydb_testing_sdk::{builders::TestChangeBuilder, in_process::transaction::TestFlowTransaction};
-use reifydb_value::value::Value;
+use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 
 const OPERATOR: OperatorId = OperatorId(1);
 
@@ -205,50 +204,6 @@ fn test_get_or_default_returns_existing() {
 }
 
 #[test]
-fn test_update() {
-	let mut host = Host::new();
-
-	let key = TestKey::new("counter");
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
-			s.count += 10;
-			Ok(())
-		})
-		.expect("Update failed");
-
-		assert_eq!(result.count, 10);
-	}
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
-			s.count += 5;
-			Ok(())
-		})
-		.expect("Update failed");
-
-		assert_eq!(result.count, 15);
-	}
-
-	// The returned value must agree with host storage, otherwise the second update read a stale base.
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
-		assert_eq!(
-			result,
-			Some(CounterState {
-				count: 15
-			})
-		);
-	}
-}
-
-#[test]
 fn test_multiple_keys() {
 	let mut host = Host::new();
 
@@ -317,37 +272,6 @@ fn test_tuple_keys() {
 }
 
 #[test]
-fn test_tuple_key_update() {
-	let mut host = Host::new();
-
-	let key = TestPair(TestKey::new("account"), TestKey::new("balance"));
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
-			s.total += 500;
-			Ok(())
-		})
-		.expect("Update failed");
-
-		assert_eq!(result.total, 500);
-	}
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
-			s.total += 250;
-			Ok(())
-		})
-		.expect("Update failed");
-
-		assert_eq!(result.total, 750);
-	}
-}
-
-#[test]
 fn test_get_reloads_from_host_storage() {
 	let mut host = Host::new();
 
@@ -376,52 +300,5 @@ fn test_get_reloads_from_host_storage() {
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value));
-	}
-}
-
-#[test]
-fn test_with_operator_apply() {
-	let mut host = Host::new();
-
-	// Every apply gets a fresh context, so the count must accumulate through host storage, never restart at zero.
-	let input = TestChangeBuilder::new()
-		.insert_row(1, vec![Value::Int8(10i64)])
-		.insert_row(2, vec![Value::Int8(20i64)])
-		.build();
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let diff_count = input.row_count() as i64;
-		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
-			s.count += diff_count;
-			Ok(())
-		})
-		.expect("Update failed");
-	}
-
-	let input2 = TestChangeBuilder::new().insert_row(3, vec![Value::Int8(30i64)]).build();
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let diff_count = input2.row_count() as i64;
-		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
-			s.count += diff_count;
-			Ok(())
-		})
-		.expect("Update failed");
-	}
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result = get(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter")).expect("Get failed");
-		assert_eq!(
-			result,
-			Some(CounterState {
-				count: 3
-			})
-		);
 	}
 }

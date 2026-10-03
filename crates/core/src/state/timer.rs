@@ -13,9 +13,13 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::{
-	keyspace::{RootSibling, root_sibling_of},
-	state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+use crate::{
+	actors::pending::PendingWrite,
+	key::operator::{
+		keyspace::{RootSibling, root_sibling_of},
+		state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+	},
+	state::batch::StateBatch,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -82,6 +86,26 @@ pub trait StateStore {
 	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
 		for key in keys {
 			self.state_remove(key)?;
+		}
+		Ok(())
+	}
+
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		let batch = StateBatch::read(keys, |keys| self.state_get_many(keys))?;
+		for slot in 0..batch.len() {
+			self.state_classify(batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
+		}
+		Ok(batch)
+	}
+
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		for (key, write) in batch.into_writes() {
+			match write {
+				PendingWrite::Set(bytes) => self.state_set(&key, EncodedPodRow::from(bytes))?,
+				PendingWrite::Remove {
+					..
+				} => self.state_remove(&key)?,
+			}
 		}
 		Ok(())
 	}
