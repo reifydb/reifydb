@@ -13,9 +13,12 @@ use reifydb_core::{
 	},
 	value::{batch::empty_batch, column::factory::rename},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
+use reifydb_evaluate::{
+	expression::{
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
+	lower::LoweredExpr,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -38,7 +41,7 @@ pub struct MapOperator {
 	operator: OperatorId,
 	expressions: Vec<Expression>,
 	labels: Vec<String>,
-	compiled_expressions: Vec<CompiledExpr>,
+	lowered_expressions: Vec<LoweredExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -56,8 +59,11 @@ impl MapOperator {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_expressions: Vec<CompiledExpr> =
-			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		for expression in &expressions {
+			compile_expression(&compile_ctx, expression)?;
+		}
+		let lowered_expressions: Vec<LoweredExpr> =
+			expressions.iter().map(|expression| LoweredExpr::new(expression.clone(), "map")).collect();
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 
 		Ok(Self {
@@ -65,7 +71,7 @@ impl MapOperator {
 			operator,
 			expressions,
 			labels,
-			compiled_expressions,
+			lowered_expressions,
 			routines,
 			runtime_context,
 			ctx,
@@ -104,8 +110,8 @@ impl MapOperator {
 
 		let mut result_columns = Vec::with_capacity(self.expressions.len());
 
-		for (compiled_expr, label) in self.compiled_expressions.iter().zip(&self.labels) {
-			let evaluated_col = compiled_expr.execute(&exec_ctx)?;
+		for (lowered_expr, label) in self.lowered_expressions.iter().zip(&self.labels) {
+			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
 			result_columns.push(rename(evaluated_col, label));
 		}
 
