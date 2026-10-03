@@ -1308,7 +1308,7 @@ fn apply_cast(
 		.map_err(|e| wrap_cast_error(e, fragment.clone(), target))
 }
 
-fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
+pub(crate) fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
 	if err.0.code.starts_with("CAST_") {
 		return err;
 	}

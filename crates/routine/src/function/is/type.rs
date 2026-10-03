@@ -101,4 +101,8 @@ impl Function for IsType {
 	fn type_argument_positions(&self) -> &[usize] {
 		&[1]
 	}
+
+	fn has_fixed_return_type(&self) -> bool {
+		true
+	}
 }

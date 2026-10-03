@@ -178,8 +178,7 @@ fn wrong_return_type_trips_the_output_check() {
 
 #[test]
 fn a_row_changing_routine_falls_back_and_keeps_its_rows() {
-	// DataFusion refuses a routine whose output length differs from its input, so such a routine must run on the
-	// old path.
+	// DataFusion refuses a routine that changes the row count, so such a routine must run on the old path.
 	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
 	let expression = call("gen::series", vec![number("1"), number("3")]);
 	let mut ctx = env.ctx(empty_batch());
@@ -202,8 +201,7 @@ fn a_row_changing_routine_falls_back_and_keeps_its_rows() {
 
 #[test]
 fn an_all_none_call_into_a_non_propagating_routine_falls_back_with_the_old_type() {
-	// clamp declares float8 for untyped nones but answers an untyped none, so the plan must never declare its
-	// field.
+	// clamp declares float8 for untyped nones but answers an untyped none, so its field must never be declared.
 	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
 	let expression = call("math::clamp", vec![none(), none(), none()]);
 

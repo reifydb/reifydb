@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod arith;
+mod cast;
 mod compare;
 mod error;
 mod literal;
@@ -71,6 +72,7 @@ pub const CLAIMED: &[&str] = &[
 	"Variable",
 	"FieldAccess(Variable)",
 	"Alias",
+	"Cast",
 ];
 
 pub fn kind(expression: &Expression) -> &'static str {
@@ -148,7 +150,7 @@ struct Node {
 enum Stop<'e> {
 	Unsupported(&'e Expression),
 	RowChanging,
-	AllNone,
+	NonPropagating,
 	Error(Error),
 }
 
@@ -237,7 +239,7 @@ impl LoweredExpr {
 				assert_not_claimed(self.operator, node);
 				self.old_plan(ctx)
 			}
-			Err(Stop::RowChanging) | Err(Stop::AllNone) => self.old_plan(ctx),
+			Err(Stop::RowChanging) | Err(Stop::NonPropagating) => self.old_plan(ctx),
 		}
 	}
 
@@ -263,6 +265,7 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		| Expression::Variable(_)
 		| Expression::FieldAccess(_) => None,
 		Expression::Alias(e) => first_unclaimed(&e.expression),
+		Expression::Cast(e) => first_unclaimed(&e.expression),
 		Expression::Prefix(e) => first_unclaimed(&e.expression),
 		Expression::And(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::Or(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
@@ -446,6 +449,7 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 				field: Arc::new(inner.field.as_ref().clone().with_name(alias.alias.name())),
 			})
 		}
+		Expression::Cast(cast) => cast::lower_cast(ctx, operator, expression, cast),
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

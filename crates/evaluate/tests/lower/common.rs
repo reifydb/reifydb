@@ -8,10 +8,11 @@ use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
 		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
-		CallExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
-		FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression,
+		Expression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
 		LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression, OrExpression,
-		PrefixExpression, PrefixOperator, RemExpression, SubExpression, VariableExpression, XorExpression,
+		PrefixExpression, PrefixOperator, RemExpression, SubExpression, TypeExpression, VariableExpression,
+		XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -32,7 +33,7 @@ use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,
-	value::{column_view::ColumnView, identity::IdentityId},
+	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
 pub struct Env {
@@ -312,6 +313,17 @@ pub fn alias(name: &str, inner: Expression) -> Expression {
 		alias: IdentExpression(frag(name)),
 		expression: Box::new(inner),
 		fragment: frag(":"),
+	})
+}
+
+pub fn cast(inner: Expression, to: ValueType) -> Expression {
+	Expression::Cast(CastExpression {
+		fragment: frag("cast"),
+		expression: Box::new(inner),
+		to: TypeExpression {
+			fragment: frag("type"),
+			ty: to,
+		},
 	})
 }
 

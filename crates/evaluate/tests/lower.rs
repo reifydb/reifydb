@@ -5,6 +5,8 @@
 mod alias;
 #[path = "lower/arith.rs"]
 mod arith;
+#[path = "lower/cast.rs"]
+mod cast;
 #[path = "lower/common.rs"]
 mod common;
 #[path = "lower/compare.rs"]

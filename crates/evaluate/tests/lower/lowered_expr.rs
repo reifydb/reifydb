@@ -5,18 +5,22 @@ use std::collections::BTreeSet;
 
 use reifydb_core::{
 	expression::PrefixOperator,
-	interface::identifier::ColumnObject,
+	interface::{
+		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
+		evaluate::TargetColumn,
+		identifier::ColumnObject,
+	},
 	value::{batch::empty_batch, column::factory},
 };
 use reifydb_evaluate::{
 	expression::{compile::compile_expression, context::CompileContext},
 	lower::{CLAIMED, LoweredExpr, kind},
 };
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
-	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, column, compare,
-	field_access, frag, not, number, or, prefix, registry, rows, strings, variable, xor,
+	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, cast, column, compare,
+	field_access, frag, not, number, or, prefix, rows, strings, variable, xor,
 };
 
 #[test]
@@ -46,6 +50,7 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Variable",
 		"FieldAccess(Variable)",
 		"Alias",
+		"Cast",
 	]
 	.into_iter()
 	.collect();
@@ -72,6 +77,7 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.push(variable("$x"));
 	samples.push(field_access(variable("$x"), "a"));
 	samples.push(alias("x", number("1")));
+	samples.push(cast(number("1"), ValueType::Int4));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
@@ -176,8 +182,7 @@ fn a_lowering_error_is_returned_on_every_evaluate() {
 
 #[test]
 fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
-	// A map with no input runs on an empty batch, so the row count must come from the context, never from the
-	// batch.
+	// A map with no input runs on an empty batch, so its row count must come from the context, never the batch.
 	let env = Env::new();
 	let expression = arith("+", number("1"), number("2"));
 	let mut ctx = env.ctx(empty_batch());
@@ -201,14 +206,28 @@ fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
 #[test]
 fn a_field_that_holds_a_none_is_widened_to_an_option() {
 	// A map builds a batch from the field, and a non-nullable field holding a none is refused there.
-	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
-	let input = batch(vec![factory::int4("a", [4, 1]), factory::int4("b", [2, 0])]);
-	let expression = call("math::div_none", vec![column("a"), column("b")]);
+	let env = Env::new();
+	let expression = cast(column("a"), ValueType::Int1);
+	let mut ctx = env.ctx(batch(vec![factory::int4("a", [1, 300])]));
+	ctx.target = Some(TargetColumn::Partial {
+		source_name: None,
+		column_name: None,
+		column_type: ValueType::Int1,
+		properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
+	});
 
-	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
+	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
+	let old = compile_expression(
+		&CompileContext {
+			symbols: &env.symbols,
+		},
+		&expression,
+	)
+	.unwrap()
+	.execute(&ctx)
+	.unwrap();
 
 	assert!(lowered.0.is_nullable());
 	assert_eq!(lowered, old);
-	assert_eq!(strings(&lowered), vec!["2", "none"]);
+	assert_eq!(strings(&lowered), vec!["1", "none"]);
 }
