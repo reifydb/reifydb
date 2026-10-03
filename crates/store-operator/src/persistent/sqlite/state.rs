@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
@@ -22,23 +20,19 @@ use crate::{
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::state_sizes", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
-		let mut sizes = HashMap::with_capacity(keys.len());
+	pub fn state_sizes(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<ByteSize>> {
 		if keys.is_empty() || !self.state_written() {
-			return sizes;
+			return vec![None; keys.len()];
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return sizes;
+			return vec![None; keys.len()];
 		};
-		let refs: Vec<&EncodedKey> = keys.iter().collect();
-		for (key, bytes) in keys.iter().zip(route::get_many(conn, operator, tables, &refs)) {
-			if let Some(bytes) = bytes {
-				sizes.insert(key.clone(), ByteSize::from_bytes(bytes.len() as u64));
-			}
-		}
-		sizes
+		route::sizes_many(conn, operator, tables, keys)
+			.into_iter()
+			.map(|size| size.map(ByteSize::from_bytes))
+			.collect()
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]

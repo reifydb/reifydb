@@ -42,13 +42,15 @@ pub trait RangeTier: Send + Sync {
 		suffixes: &[&[u8]],
 	) -> Vec<Option<Option<EncodedPodRow>>>;
 
-	fn overwrite(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow);
-
 	fn insert(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow);
 
-	fn mark_deleted(&self, operator: OperatorId, group: GroupId, suffix: &[u8]);
-
 	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]);
+
+	fn overwrite_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]);
+
+	fn insert_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]);
+
+	fn mark_deleted_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]);
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId);
 
@@ -116,17 +118,6 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 		answers
 	}
 
-	fn overwrite(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow) {
-		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
-			return;
-		};
-		let partition = TypedPartition {
-			operator,
-			group,
-		};
-		self.overwrite_in(partition, partition, key, row);
-	}
-
 	fn insert(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow) {
 		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
 			return;
@@ -136,17 +127,6 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 			group,
 		};
 		self.insert_in(partition, partition, key, row);
-	}
-
-	fn mark_deleted(&self, operator: OperatorId, group: GroupId, suffix: &[u8]) {
-		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
-			return;
-		};
-		let partition = TypedPartition {
-			operator,
-			group,
-		};
-		self.mark_deleted_in(partition, partition, &key);
 	}
 
 	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]) {
@@ -159,6 +139,46 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 			group,
 		};
 		StandardRangeTier::<K>::retract_run(self, partition, &keys);
+	}
+
+	fn overwrite_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]) {
+		let rows: Vec<(K::Suffix, EncodedPodRow)> = rows
+			.iter()
+			.filter_map(|(suffix, row)| {
+				<K::Suffix as SuffixBytes>::from_suffix_bytes(suffix).map(|key| (key, (*row).clone()))
+			})
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::overwrite_run(self, partition, rows);
+	}
+
+	fn insert_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]) {
+		let rows: Vec<(K::Suffix, EncodedPodRow)> = rows
+			.iter()
+			.filter_map(|(suffix, row)| {
+				<K::Suffix as SuffixBytes>::from_suffix_bytes(suffix).map(|key| (key, (*row).clone()))
+			})
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::insert_run(self, partition, rows);
+	}
+
+	fn mark_deleted_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]) {
+		let keys: Vec<K::Suffix> = suffixes
+			.iter()
+			.filter_map(|suffix| <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix))
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::mark_deleted_run(self, partition, &keys);
 	}
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
@@ -292,30 +312,12 @@ impl RangeTiers {
 		answers
 	}
 
-	pub fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
-		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
-			return;
-		};
-		if let Some(tier) = self.of(keyspace) {
-			tier.overwrite(operator, group, suffix, row);
-		}
-	}
-
 	pub fn insert(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
 		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
 			tier.insert(operator, group, suffix, row);
-		}
-	}
-
-	pub fn mark_deleted(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
-			return;
-		};
-		if let Some(tier) = self.of(keyspace) {
-			tier.mark_deleted(operator, group, suffix);
 		}
 	}
 
@@ -329,6 +331,62 @@ impl RangeTiers {
 			}
 			if let Some(tier) = self.of(keyspace) {
 				tier.retract_run(operator, group, &suffixes);
+			}
+		}
+	}
+
+	pub fn overwrite_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		let mut decoded = rows
+			.iter()
+			.filter_map(|(key, row)| {
+				OperatorStateKey::decode_inner(key.as_slice())
+					.map(|(group, keyspace, suffix)| (group, keyspace, suffix, *row))
+			})
+			.peekable();
+		while let Some((group, keyspace, suffix, row)) = decoded.next() {
+			let mut run = vec![(suffix, row)];
+			while let Some((_, _, next, row)) =
+				decoded.next_if(|(g, k, _, _)| *g == group && *k == keyspace)
+			{
+				run.push((next, row));
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.overwrite_run(operator, group, &run);
+			}
+		}
+	}
+
+	pub fn insert_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		let mut decoded = rows
+			.iter()
+			.filter_map(|(key, row)| {
+				OperatorStateKey::decode_inner(key.as_slice())
+					.map(|(group, keyspace, suffix)| (group, keyspace, suffix, *row))
+			})
+			.peekable();
+		while let Some((group, keyspace, suffix, row)) = decoded.next() {
+			let mut run = vec![(suffix, row)];
+			while let Some((_, _, next, row)) =
+				decoded.next_if(|(g, k, _, _)| *g == group && *k == keyspace)
+			{
+				run.push((next, row));
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.insert_run(operator, group, &run);
+			}
+		}
+	}
+
+	pub fn mark_deleted_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
+		let mut decoded =
+			keys.iter().filter_map(|key| OperatorStateKey::decode_inner(key.as_slice())).peekable();
+		while let Some((group, keyspace, suffix)) = decoded.next() {
+			let mut suffixes = vec![suffix];
+			while let Some((_, _, next)) = decoded.next_if(|(g, k, _)| *g == group && *k == keyspace) {
+				suffixes.push(next);
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.mark_deleted_run(operator, group, &suffixes);
 			}
 		}
 	}

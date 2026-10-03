@@ -84,13 +84,18 @@ impl AdaptiveKeyFilter {
 		}
 	}
 
-	pub fn add(&self, hash: u64) {
-		let state = self.state.read();
-		if let Some(active) = &state.active {
-			active.add_hash(hash);
+	pub fn add_many(&self, hashes: &[u64]) {
+		if hashes.is_empty() {
+			return;
 		}
-		if let Some(building) = &state.building {
-			building.add_hash(hash);
+		let state = self.state.read();
+		for hash in hashes {
+			if let Some(active) = &state.active {
+				active.add_hash(*hash);
+			}
+			if let Some(building) = &state.building {
+				building.add_hash(*hash);
+			}
 		}
 	}
 

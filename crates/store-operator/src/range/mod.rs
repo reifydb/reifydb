@@ -58,11 +58,7 @@ pub struct TypedPartition {
 pub trait RangeSink: Send + Sync + 'static {
 	fn lookup(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>>;
 
-	fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow);
-
 	fn insert(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow);
-
-	fn mark_deleted(&self, operator: OperatorId, key: &EncodedKey);
 
 	fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]);
 
@@ -84,11 +80,7 @@ impl RangeSink for NoRange {
 		None
 	}
 
-	fn overwrite(&self, _operator: OperatorId, _key: &EncodedKey, _row: EncodedPodRow) {}
-
 	fn insert(&self, _operator: OperatorId, _key: &EncodedKey, _row: EncodedPodRow) {}
-
-	fn mark_deleted(&self, _operator: OperatorId, _key: &EncodedKey) {}
 
 	fn retract_run(&self, _operator: OperatorId, _keys: &[&EncodedKey]) {}
 
@@ -132,6 +124,24 @@ impl OperatorRangeTier {
 			Self::Standard(tiers) => tiers.lookup_run(operator, keys),
 		}
 	}
+
+	pub fn overwrite_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		if let Self::Standard(tiers) = self {
+			tiers.overwrite_run(operator, rows);
+		}
+	}
+
+	pub fn insert_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		if let Self::Standard(tiers) = self {
+			tiers.insert_run(operator, rows);
+		}
+	}
+
+	pub fn mark_deleted_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
+		if let Self::Standard(tiers) = self {
+			tiers.mark_deleted_run(operator, keys);
+		}
+	}
 }
 
 impl RangeSink for OperatorRangeTier {
@@ -142,21 +152,9 @@ impl RangeSink for OperatorRangeTier {
 		}
 	}
 
-	fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
-		if let Self::Standard(tiers) = self {
-			tiers.overwrite(operator, key, row);
-		}
-	}
-
 	fn insert(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
 		if let Self::Standard(tiers) = self {
 			tiers.insert(operator, key, row);
-		}
-	}
-
-	fn mark_deleted(&self, operator: OperatorId, key: &EncodedKey) {
-		if let Self::Standard(tiers) = self {
-			tiers.mark_deleted(operator, key);
 		}
 	}
 

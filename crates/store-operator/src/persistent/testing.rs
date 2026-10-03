@@ -3,7 +3,6 @@
 
 use std::{
 	borrow::Borrow,
-	collections::HashMap,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -223,11 +222,11 @@ impl Page for TestingPersistent {
 }
 
 impl Measure for TestingPersistent {
-	fn state_sizes(
+	fn state_sizes<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, ByteSize>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<ByteSize>>> {
 		self.call();
 		self.0.durable.state_sizes(operator, keys)
 	}

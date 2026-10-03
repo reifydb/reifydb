@@ -29,8 +29,9 @@ impl<D: FilterDomain> KeyFilter<D> {
 		Self(Arc::new(AdaptiveKeyFilter::armed(size_for_keys)), PhantomData)
 	}
 
-	pub fn add(&self, key: D::Key<'_>) {
-		self.0.add(D::hash(key));
+	pub fn add_many<'a>(&self, keys: impl IntoIterator<Item = D::Key<'a>>) {
+		let hashes: Vec<u64> = keys.into_iter().map(D::hash).collect();
+		self.0.add_many(&hashes);
 	}
 
 	pub fn may_contain(&self, key: D::Key<'_>) -> bool {

@@ -750,7 +750,7 @@ mod tests {
 		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
 		let settled = tier.metrics().evictions;
 
-		tier.overwrite(OP_A, late.clone(), row("late"));
+		tier.overwrite_run(TestPartition::of(OP_A, &late), vec![(late.clone(), row("late"))]);
 
 		assert_eq!(
 			tier.metrics().evictions,
@@ -838,7 +838,7 @@ mod tests {
 		assert!(scan.gaps() > 0, "the fixture must plan a miss, or the arming is not under test");
 		let settled = tier.metrics().evictions;
 
-		tier.overwrite(OP_A, late.clone(), row("late"));
+		tier.overwrite_run(TestPartition::of(OP_A, &late), vec![(late.clone(), row("late"))]);
 
 		assert_eq!(
 			tier.metrics().evictions,

@@ -35,25 +35,6 @@ fn write_interlock() {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
-		self.overwrite_within(dimension, None, key, row)
-	}
-
-	pub fn overwrite_in(&self, dimension: D::Dimension, partition: D::Partition, key: D::Key, row: D::Row) {
-		self.overwrite_within(dimension, Some(partition), key, row)
-	}
-
-	fn overwrite_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: D::Key, row: D::Row) {
-		self.lower_head(dimension, &key);
-		let Some(partition) = self.cacheable(dimension, confined, &key) else {
-			return;
-		};
-		let index = self.shard_index(&partition);
-		if self.place(index, &partition, key, Entry::row(row)) {
-			self.evict_to_capacity(index);
-		}
-	}
-
 	pub fn insert(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		self.insert_within(dimension, None, key, row)
 	}
@@ -78,32 +59,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.evict_to_capacity(index);
 	}
 
-	pub fn mark_deleted(&self, dimension: D::Dimension, key: &D::Key) {
-		self.mark_deleted_within(dimension, None, key)
-	}
-
-	pub fn mark_deleted_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
-		self.mark_deleted_within(dimension, Some(partition), key)
-	}
-
-	fn mark_deleted_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, confined, key) else {
-			return;
-		};
-		let index = self.shard_index(&partition);
-		if !self.participates(index, &partition) {
-			return;
-		}
-		if self.coverage().read().contains(dimension, key) {
-			if self.place(index, &partition, key.clone(), Entry::deleted()) {
-				self.evict_to_capacity(index);
-			}
-			return;
-		}
-		self.withdraw(dimension, key);
-		self.discard(index, &partition, key);
-	}
-
 	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
 		if let Some(partition) = self.cacheable(dimension, None, key) {
 			self.retract_run(partition, slice::from_ref(key));
@@ -116,6 +71,101 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 		let index = self.shard_index(&partition);
 		if self.place_absences(index, &partition, keys) {
+			self.evict_to_capacity(index);
+		}
+	}
+
+	pub fn overwrite_run(&self, partition: D::Partition, rows: Vec<(D::Key, D::Row)>) {
+		if rows.is_empty() {
+			return;
+		}
+		let dimension = D::dimension(&partition);
+		for (key, _) in &rows {
+			self.lower_head(dimension, key);
+		}
+		if !D::caches_ranges(&partition) {
+			return;
+		}
+		let index = self.shard_index(&partition);
+		let placed = {
+			let mut shard = self.shard(index).lock();
+			let mut placed = false;
+			for (key, row) in rows {
+				placed |= self.place_locked(&mut shard, &partition, key, Entry::row(row));
+			}
+			placed
+		};
+		if placed {
+			self.evict_to_capacity(index);
+		}
+	}
+
+	pub fn insert_run(&self, partition: D::Partition, rows: Vec<(D::Key, D::Row)>) {
+		if rows.is_empty() {
+			return;
+		}
+		let dimension = D::dimension(&partition);
+		for (key, _) in &rows {
+			self.lower_head(dimension, key);
+		}
+		if !D::caches_ranges(&partition) {
+			return;
+		}
+		let index = self.shard_index(&partition);
+		let mut claims: Vec<(D::Key, u64)> = Vec::with_capacity(rows.len());
+		{
+			let mut shard = self.shard(index).lock();
+			for (key, row) in rows {
+				let token = self.retractions();
+				if self.place_locked(&mut shard, &partition, key.clone(), Entry::row(row)) {
+					claims.push((key, token));
+				}
+			}
+		}
+		if claims.is_empty() {
+			return;
+		}
+		#[cfg(test)]
+		write_interlock();
+		for (key, token) in &claims {
+			self.claim_island(dimension, key, *token);
+		}
+		self.evict_to_capacity(index);
+	}
+
+	pub fn mark_deleted_run(&self, partition: D::Partition, keys: &[D::Key]) {
+		if keys.is_empty() || !D::caches_ranges(&partition) {
+			return;
+		}
+		let dimension = D::dimension(&partition);
+		let index = self.shard_index(&partition);
+		let claimed: Vec<bool> = {
+			let coverage = self.coverage().read();
+			keys.iter().map(|key| coverage.contains(dimension, key)).collect()
+		};
+		let placed = {
+			let mut shard = self.shard(index).lock();
+			if !shard.partitions.get(&partition).is_some_and(|target| target.covered) {
+				return;
+			}
+			let mut placed = false;
+			for (key, _) in keys.iter().zip(&claimed).filter(|(_, claimed)| **claimed) {
+				placed |= self.place_locked(&mut shard, &partition, key.clone(), Entry::deleted());
+			}
+			placed
+		};
+		let unclaimed: Vec<&D::Key> =
+			keys.iter().zip(&claimed).filter(|(_, claimed)| !**claimed).map(|(key, _)| key).collect();
+		if !unclaimed.is_empty() {
+			self.withdraw_run(dimension, &unclaimed);
+			#[cfg(test)]
+			write_interlock();
+			let mut shard = self.shard(index).lock();
+			for key in unclaimed {
+				Self::discard_locked(&mut shard, &partition, key);
+			}
+		}
+		if placed {
 			self.evict_to_capacity(index);
 		}
 	}
@@ -283,12 +333,18 @@ impl<D: RangeDomain> RangeTier<D> {
 		Some(confined.unwrap_or_else(|| D::partition(dimension, key))).filter(D::caches_ranges)
 	}
 
-	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
-		self.shard(index).lock().partitions.get(partition).is_some_and(|target| target.covered)
-	}
-
 	fn place(&self, index: usize, partition: &D::Partition, key: D::Key, entry: Entry<D::Row>) -> bool {
 		let mut shard = self.shard(index).lock();
+		self.place_locked(&mut shard, partition, key, entry)
+	}
+
+	fn place_locked(
+		&self,
+		shard: &mut Shard<D>,
+		partition: &D::Partition,
+		key: D::Key,
+		entry: Entry<D::Row>,
+	) -> bool {
 		let resident = shard.partitions.get(partition).map(|target| target.covered);
 		let admit = D::admits_unproven_writes()
 			|| match resident {
@@ -355,11 +411,15 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn discard(&self, index: usize, partition: &D::Partition, key: &D::Key) {
 		let mut shard = self.shard(index).lock();
+		Self::discard_locked(&mut shard, partition, key);
+	}
+
+	fn discard_locked(shard: &mut Shard<D>, partition: &D::Partition, key: &D::Key) {
 		let Shard {
 			partitions,
 			budget,
 			..
-		} = &mut *shard;
+		} = shard;
 		let Some(target) = partitions.get_mut(partition) else {
 			return;
 		};
@@ -388,6 +448,20 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
+	fn withdraw_run(&self, dimension: D::Dimension, keys: &[&D::Key]) {
+		let mut coverage = self.coverage().write();
+		for key in keys {
+			coverage.shrink_range(dimension, &Edge::Key((*key).clone()), &D::just_past(key));
+			if in_head_band::<D>(dimension, key) {
+				if coverage.head(dimension).is_some_and(|current| current.covers(key)) {
+					coverage.set_head(dimension, Edge::Key((*key).clone()));
+				}
+				self.record_head_change();
+			}
+			self.record_retraction();
+		}
+	}
+
 	fn claim_island(&self, dimension: D::Dimension, key: &D::Key, token: u64) {
 		if self.coverage().read().contains(dimension, key) {
 			return;
@@ -412,6 +486,7 @@ fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>
 mod tests {
 	use std::{
 		collections::BTreeMap,
+		slice,
 		sync::{
 			Arc,
 			atomic::{AtomicBool, Ordering},
@@ -546,7 +621,7 @@ mod tests {
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 
 		assert!(!has_partition(&tier, &id), "an ignored overwrite must not conjure a partition");
 		assert_eq!(residency(&tier, &id, &at), None);
@@ -561,7 +636,7 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 
 		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("v"))));
 		assert!(intervals(&tier, OP_A).is_empty(), "an overwrite claimed a span the writer never observed");
@@ -576,9 +651,9 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		let one = bytes(&tier, &id);
-		tier.overwrite(OP_A, at.clone(), row("w"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("w"))]);
 
 		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("w"))));
 		assert_eq!(bytes(&tier, &id), one, "an equal-sized replacement must not move the tally");
@@ -638,10 +713,10 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		let before = tier.retractions();
 
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(
 			residency(&tier, &id, &at),
@@ -663,10 +738,10 @@ mod tests {
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		let before = tier.retractions();
 
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(residency(&tier, &id, &at), None, "a removal outside a claim must store nothing");
 		assert!(
@@ -685,7 +760,7 @@ mod tests {
 		let at = key(CACHED, b"m");
 		let before = tier.retractions();
 
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(tier.retractions(), before);
 		assert!(!has_partition(&tier, &partition(OP_A, CACHED)));
@@ -699,8 +774,8 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
-		tier.overwrite(OP_A, at.clone(), row("v"));
-		tier.mark_deleted(OP_A, &at);
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		tier.retract(OP_A, &at);
 
@@ -736,7 +811,7 @@ mod tests {
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 
 		tier.retract(OP_A, &at);
 
@@ -764,11 +839,11 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
-		tier.overwrite(OP_A, at.clone(), row("v"));
-		tier.mark_deleted(OP_A, &at);
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 		assert_eq!(pinned(&tier, &id).removals(), 1);
 
-		tier.overwrite(OP_A, at.clone(), row("w"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("w"))]);
 
 		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("w"))));
 		assert_eq!((pinned(&tier, &id).removals(), pinned(&tier, &id).total()), (0, 1));
@@ -790,10 +865,10 @@ mod tests {
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
 		claim(&tier, OP_A, &key(OTHER, b"a"), &key(OTHER, b"z"));
 		claim(&tier, OP_B, &key(CACHED, b"a"), &key(CACHED, b"z"));
-		tier.overwrite(OP_A, at.clone(), row("v"));
-		tier.overwrite(OP_A, elsewhere.clone(), row("v"));
-		tier.overwrite(OP_B, at.clone(), row("v"));
-		tier.mark_deleted(OP_A, &elsewhere);
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
+		tier.overwrite_run(TestPartition::of(OP_A, &elsewhere), vec![(elsewhere.clone(), row("v"))]);
+		tier.overwrite_run(TestPartition::of(OP_B, &at), vec![(at.clone(), row("v"))]);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &elsewhere), &[elsewhere.clone()]);
 		assert_eq!(pinned(&tier, &second).removals(), 1);
 		let charged = tier.shard_for(&live).lock().budget.used();
 		let before = tier.retractions();
@@ -891,7 +966,8 @@ mod tests {
 			0 => {
 				participate(tier, id);
 				for name in ["b", "d", "f"] {
-					tier.overwrite(OP_A, key(CACHED, name.as_bytes()), row("v"));
+					let at = key(CACHED, name.as_bytes());
+					tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at, row("v"))]);
 				}
 			}
 			1 => seat_unclaimed_holding(tier, id, &key(CACHED, b"c"), Entry::row(row("v"))),
@@ -978,6 +1054,170 @@ mod tests {
 		assert_eq!(bytes(&claimed, &id), PARTITION_OVERHEAD + absent("n") + absent("b") + absent("p"));
 	}
 
+	#[derive(Clone, Copy, Debug)]
+	enum WriteForm {
+		Overwrite,
+		Insert,
+		MarkDeleted,
+	}
+
+	fn write_run(tier: &RangeTier<D>, form: WriteForm, id: TestPartition, keys: &[EncodedKey]) {
+		let rows = || keys.iter().map(|at| (at.clone(), row("w"))).collect();
+		match form {
+			WriteForm::Overwrite => tier.overwrite_run(id, rows()),
+			WriteForm::Insert => tier.insert_run(id, rows()),
+			WriteForm::MarkDeleted => tier.mark_deleted_run(id, keys),
+		}
+	}
+
+	fn seat_write_case(case: usize, tier: &RangeTier<D>) {
+		// A removal run must meet claimed and unclaimed keys at once, or one judged by its first key passes.
+		match case {
+			0..=2 => seat_run_case(case, tier),
+			_ => {
+				let id = partition(OP_A, CACHED);
+				participate(tier, id);
+				claim(tier, OP_A, &key(CACHED, b"d"), &key(CACHED, b"g"));
+				let seated = ["b", "d", "f"]
+					.into_iter()
+					.map(|name| (key(CACHED, name.as_bytes()), row("v")));
+				tier.overwrite_run(id, seated.collect());
+			}
+		}
+	}
+
+	#[test]
+	fn each_write_run_leaves_what_writing_each_key_in_turn_leaves() {
+		// A run must place, pin, charge, stamp and claim exactly as its keys one by one, or it corrupts a tier.
+		let id = partition(OP_A, CACHED);
+		let at = |name: &str| key(CACHED, name.as_bytes());
+		let universe: Vec<EncodedKey> = ["a", "b", "c", "d", "f", "m", "n", "p"].into_iter().map(at).collect();
+		let runs: [Vec<EncodedKey>; 4] = [
+			["f", "a", "d", "c", "a"].into_iter().map(at).collect(),
+			["a", "c"].into_iter().map(at).collect(),
+			["c", "n", "b", "p"].into_iter().map(at).collect(),
+			["a", "d", "c", "f"].into_iter().map(at).collect(),
+		];
+		let forms = [WriteForm::Overwrite, WriteForm::Insert, WriteForm::MarkDeleted];
+
+		for (case, run) in runs.iter().enumerate() {
+			for form in forms {
+				let one = tier();
+				seat_write_case(case, &one);
+				write_run(&one, form, id, run);
+
+				let each = tier();
+				seat_write_case(case, &each);
+				for at in run {
+					write_run(&each, form, id, slice::from_ref(at));
+				}
+
+				assert_eq!(
+					(run_snapshot(&one, &id, &universe), intervals(&one, OP_A)),
+					(run_snapshot(&each, &id, &universe), intervals(&each, OP_A)),
+					"case {case}, {form:?}: the run must leave the tier exactly as its keys written in turn"
+				);
+			}
+		}
+
+		let written = |case: usize, form: WriteForm| {
+			let tier = tier();
+			seat_write_case(case, &tier);
+			let before = tier.retractions();
+			write_run(&tier, form, id, &runs[case]);
+			(tier, before)
+		};
+		let held = |tier: &RangeTier<D>, name: &str| residency(tier, &id, &at(name));
+		let new_row = Some(Entry::Row(row("w")));
+		let old_row = Some(Entry::Row(row("v")));
+		let span = |start: &str, end: &str| Interval::new(Edge::Key(at(start)), Edge::Key(at(end)));
+
+		let placed: [&[&str]; 4] = [&["f", "a", "d", "c"], &[], &["n", "b", "p"], &["a", "d", "c", "f"]];
+		for form in [WriteForm::Overwrite, WriteForm::Insert] {
+			for (case, names) in placed.iter().enumerate() {
+				let (tier, _) = written(case, form);
+				for name in *names {
+					assert_eq!(
+						held(&tier, name),
+						new_row,
+						"case {case}, {form:?}: {name} must hold the run's row"
+					);
+				}
+			}
+			let (refused, _) = written(1, form);
+			assert_eq!(
+				held(&refused, "c"),
+				old_row,
+				"{form:?}: a partition no claim proved must refuse the run"
+			);
+			assert_eq!(held(&refused, "a"), None);
+			let (claimed, _) = written(2, form);
+			assert_eq!(
+				held(&claimed, "c"),
+				None,
+				"{form:?}: a key before the claimed key that seats the partition must store nothing"
+			);
+		}
+
+		let overwritten: Vec<Vec<Interval<OpaqueKey>>> =
+			(0..4).map(|case| intervals(&written(case, WriteForm::Overwrite).0, OP_A)).collect();
+		assert_eq!(
+			overwritten,
+			vec![vec![], vec![], vec![span("m", "z")], vec![span("d", "g")]],
+			"an overwrite run must never claim a span"
+		);
+
+		let inserted: Vec<Vec<Interval<OpaqueKey>>> =
+			(0..4).map(|case| intervals(&written(case, WriteForm::Insert).0, OP_A)).collect();
+		assert_eq!(
+			inserted,
+			vec![
+				vec![island(&at("a")), island(&at("c")), island(&at("d")), island(&at("f"))],
+				vec![],
+				vec![island(&at("b")), span("m", "z")],
+				vec![island(&at("a")), island(&at("c")), span("d", "g")],
+			],
+			"an insert run must claim exactly one island per placed key no claim already covered"
+		);
+
+		let (unclaimed, before) = written(0, WriteForm::MarkDeleted);
+		for name in ["f", "a", "d", "c"] {
+			assert_eq!(held(&unclaimed, name), None, "{name}: an unclaimed removal must store nothing");
+		}
+		assert_eq!(held(&unclaimed, "b"), old_row, "a key outside the run must survive");
+		assert!(unclaimed.retractions() > before, "an unclaimed removal must shrink coverage");
+
+		let (mixed, before) = written(3, WriteForm::MarkDeleted);
+		for name in ["d", "f"] {
+			assert_eq!(
+				held(&mixed, name),
+				Some(Entry::Deleted),
+				"{name}: a claimed removal must stay as a tombstone"
+			);
+		}
+		for name in ["a", "c"] {
+			assert_eq!(held(&mixed, name), None, "{name}: an unclaimed removal must store nothing");
+		}
+		assert_eq!(held(&mixed, "b"), old_row);
+		assert_eq!(
+			intervals(&mixed, OP_A),
+			vec![span("d", "g")],
+			"a claimed removal must leave its claim standing"
+		);
+		assert!(mixed.retractions() > before, "the unclaimed keys of a mixed run must still shrink coverage");
+
+		for case in [1, 2] {
+			let (idle, before) = written(case, WriteForm::MarkDeleted);
+			assert_eq!(
+				idle.retractions(),
+				before,
+				"case {case}: a partition taking part in nothing must not withdraw"
+			);
+		}
+		assert_eq!(held(&written(1, WriteForm::MarkDeleted).0, "c"), old_row);
+		assert!(!has_partition(&written(2, WriteForm::MarkDeleted).0, &id));
+	}
+
 	#[test]
 	fn a_retract_the_tier_cannot_prove_forgets_the_removal_instead_of_keeping_it() {
 		// Deleted is never evictable and only a retract clears one. Refusing that retract for want of
@@ -1009,10 +1249,10 @@ mod tests {
 		seat_unclaimed(&tier, id);
 		let before = tier.retractions();
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		tier.insert(OP_A, at.clone(), row("v"));
 		tier.retract(OP_A, &at);
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(residency(&tier, &id, &at), None);
 		assert!(intervals(&tier, OP_A).is_empty());
@@ -1029,10 +1269,10 @@ mod tests {
 		claim(&tier, OP_A, &key(UNCACHED, b"a"), &key(UNCACHED, b"z"));
 		let before = tier.retractions();
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		tier.insert(OP_A, at.clone(), row("v"));
 		tier.retract(OP_A, &at);
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(residency(&tier, &id, &at), None);
 		assert_eq!(tier.retractions(), before);
@@ -1045,10 +1285,10 @@ mod tests {
 		let at = EncodedKey::new(b"short");
 		let before = tier.retractions();
 
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 		tier.insert(OP_A, at.clone(), row("v"));
 		tier.retract(OP_A, &at);
-		tier.mark_deleted(OP_A, &at);
+		tier.mark_deleted_run(TestPartition::of(OP_A, &at), &[at.clone()]);
 
 		assert_eq!(resident_entries(&tier), 0);
 		assert_eq!(tier.retractions(), before);
@@ -1065,7 +1305,7 @@ mod tests {
 		let at = key(CACHED, b"m");
 		participate(&tier, id);
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
-		tier.overwrite(OP_A, at.clone(), row("v"));
+		tier.overwrite_run(TestPartition::of(OP_A, &at), vec![(at.clone(), row("v"))]);
 
 		let fired = Arc::new(AtomicBool::new(false));
 		let covered = Arc::new(AtomicBool::new(false));
@@ -1182,5 +1422,101 @@ mod tests {
 		assert!(intervals(&tier, OP_A).is_empty(), "a cleared tier must hold no claim for any dimension");
 		assert!(intervals(&tier, OP_B).is_empty());
 		assert_eq!(resident_entries(&tier), 0, "and no rows, or the clear left the two halves disagreeing");
+	}
+
+	#[test]
+	fn a_run_of_inserts_publishes_no_claim_when_a_withdrawal_lands_between_its_rows_and_its_claims() {
+		// Each key's token must predate its row, or a claim published past a withdrawal reinstates its span.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let first = key(CACHED, b"m");
+		let second = key(CACHED, b"n");
+		let elsewhere = key(CACHED, b"z");
+		participate(&tier, id);
+		{
+			let writing = tier.clone();
+			let raced = elsewhere.clone();
+			arm_write_interlock(move || writing.invalidate(OP_A, &raced));
+		}
+
+		tier.insert_run(id, vec![(first.clone(), row("v")), (second.clone(), row("v"))]);
+
+		assert!(residency(&tier, &id, &first).is_some(), "the rows must survive, only the claims are refused");
+		assert!(residency(&tier, &id, &second).is_some());
+		assert!(
+			!covers(&tier, OP_A, &first),
+			"a claim published across a withdrawal reinstates a retracted span"
+		);
+		assert!(
+			!covers(&tier, OP_A, &second),
+			"a claim published across a withdrawal reinstates a retracted span"
+		);
+	}
+
+	#[test]
+	fn a_run_of_inserts_never_claims_a_key_an_invalidate_removed_inside_its_window() {
+		// A run must never claim a key the window's invalidate removed, or every read of it answers absent.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let first = key(CACHED, b"m");
+		let second = key(CACHED, b"n");
+		participate(&tier, id);
+		{
+			let writing = tier.clone();
+			let raced = second.clone();
+			arm_write_interlock(move || writing.invalidate(OP_A, &raced));
+		}
+
+		tier.insert_run(id, vec![(first.clone(), row("v")), (second.clone(), row("v"))]);
+
+		assert_eq!(
+			residency(&tier, &id, &second),
+			None,
+			"the invalidate in the window must have removed the row"
+		);
+		assert!(
+			!covers(&tier, OP_A, &second),
+			"a run republished a claim over the key an invalidate in its window removed"
+		);
+	}
+
+	#[test]
+	fn a_run_of_removals_withdraws_each_unclaimed_key_before_its_entry_leaves_ram() {
+		// A key's coverage must go before its entry, or a reader serving the span reports a durable key absent.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let first = key(CACHED, b"m");
+		let second = key(CACHED, b"n");
+		participate(&tier, id);
+		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"c"));
+		tier.overwrite_run(id, vec![(first.clone(), row("v")), (second.clone(), row("v"))]);
+
+		let fired = Arc::new(AtomicBool::new(false));
+		let covered = Arc::new(AtomicBool::new(false));
+		let resident = Arc::new(AtomicBool::new(false));
+		{
+			let (fired, covered, resident) = (fired.clone(), covered.clone(), resident.clone());
+			let watching = tier.clone();
+			let seen = [first.clone(), second.clone()];
+			arm_write_interlock(move || {
+				fired.store(true, Ordering::SeqCst);
+				covered.store(seen.iter().any(|at| covers(&watching, OP_A, at)), Ordering::SeqCst);
+				resident.store(
+					seen.iter().all(|at| residency(&watching, &id, at).is_some()),
+					Ordering::SeqCst,
+				);
+			});
+		}
+
+		tier.mark_deleted_run(id, &[first.clone(), second.clone()]);
+
+		assert!(fired.load(Ordering::SeqCst), "the seam hook never fired, so the invariant went unchecked");
+		assert!(!covered.load(Ordering::SeqCst), "every key must be withdrawn before its entry leaves ram");
+		assert!(
+			resident.load(Ordering::SeqCst),
+			"every entry must still be resident at that instant, or the window under test never arose"
+		);
+		assert_eq!(residency(&tier, &id, &first), None, "an unclaimed removal must leave nothing behind");
+		assert_eq!(residency(&tier, &id, &second), None);
 	}
 }

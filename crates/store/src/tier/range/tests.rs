@@ -237,7 +237,10 @@ fn growing_past_the_budget_evicts_a_whole_partition_and_releases_its_bytes() {
 	assert_eq!(tier.partitions(), 2, "two partitions fit exactly, so nothing may be evicted yet");
 	assert_eq!(tier.metrics().evictions, 0);
 
-	tier.overwrite(OP_A, grown.clone(), row("a very much longer row body than the one it replaces"));
+	tier.overwrite_run(
+		TestPartition::of(OP_A, &grown),
+		vec![(grown.clone(), row("a very much longer row body than the one it replaces"))],
+	);
 
 	assert_eq!(tier.metrics().evictions, 1, "the growth must push exactly one victim out, not the whole shard");
 	assert_eq!(tier.partitions(), 1);
@@ -293,7 +296,10 @@ fn a_range_hit_refreshes_the_partition_against_eviction() {
 	let (tier, touched, idle, grown) = three_partition_tier();
 
 	assert!(serve_ram(&tier, OP_A, &keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR), 64).is_some());
-	tier.overwrite(OP_A, grown.clone(), row("a very much longer row body than the one it replaces"));
+	tier.overwrite_run(
+		TestPartition::of(OP_A, &grown),
+		vec![(grown.clone(), row("a very much longer row body than the one it replaces"))],
+	);
 
 	assert_idle_partition_was_the_victim(&tier, &touched, &idle);
 }
@@ -303,7 +309,10 @@ fn a_lookup_hit_refreshes_the_partition_against_eviction() {
 	let (tier, touched, idle, grown) = three_partition_tier();
 
 	assert_eq!(tier.lookup(OP_A, &touched), Some(Some(row("v"))));
-	tier.overwrite(OP_A, grown.clone(), row("a very much longer row body than the one it replaces"));
+	tier.overwrite_run(
+		TestPartition::of(OP_A, &grown),
+		vec![(grown.clone(), row("a very much longer row body than the one it replaces"))],
+	);
 
 	assert_idle_partition_was_the_victim(&tier, &touched, &idle);
 }
@@ -326,11 +335,11 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition);
 	balanced("materialize");
 
-	tier.overwrite(OP_A, k.clone(), row("a much longer row body"));
+	tier.overwrite_run(TestPartition::of(OP_A, &k), vec![(k.clone(), row("a much longer row body"))]);
 	assert!(tier.resident_bytes().as_bytes() > per_partition, "a larger row must be charged the difference");
 	balanced("overwrite with a larger row");
 
-	tier.overwrite(OP_A, k.clone(), row("v"));
+	tier.overwrite_run(TestPartition::of(OP_A, &k), vec![(k.clone(), row("v"))]);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition, "shrinking an entry must release the difference");
 	balanced("overwrite with a smaller row");
 
@@ -346,7 +355,11 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 		KeyspaceId::ACCUMULATOR,
 		&[(key(group_b(), KeyspaceId::ACCUMULATOR, b"a"), row("v"))],
 	);
-	tier.overwrite(OP_A, key(group_b(), KeyspaceId::ACCUMULATOR, b"a"), row("a very much longer row body indeed"));
+	let grown = key(group_b(), KeyspaceId::ACCUMULATOR, b"a");
+	tier.overwrite_run(
+		TestPartition::of(OP_A, &grown),
+		vec![(grown.clone(), row("a very much longer row body indeed"))],
+	);
 	assert!(tier.metrics().evictions > 0, "the fixture must actually evict, or this stage proves nothing");
 	balanced("evict");
 
@@ -371,7 +384,7 @@ fn a_long_key_charges_its_heap_bytes() {
 
 	materialize(&tier, OP_A, group_a(), KeyspaceId::ACCUMULATOR, &[(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
-	tier.overwrite(OP_A, long.clone(), row("v"));
+	tier.overwrite_run(TestPartition::of(OP_A, &long), vec![(long.clone(), row("v"))]);
 
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
@@ -505,7 +518,10 @@ fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 	materialize(&tier, OP_A, group_a(), KeyspaceId::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
 	materialize(&tier, OP_A, group_a(), KeyspaceId::BUFFER, &[(buffer.clone(), row("v"))]);
 
-	tier.overwrite(OP_A, buffer.clone(), row("a very much longer row body than the one it replaces"));
+	tier.overwrite_run(
+		TestPartition::of(OP_A, &buffer),
+		vec![(buffer.clone(), row("a very much longer row body than the one it replaces"))],
+	);
 
 	assert_eq!(tier.metrics().evictions, 1, "the fixture must evict, or the attribution below proves nothing");
 	let accumulator = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
@@ -525,7 +541,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 	let raced = victim.clone();
 	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
 		if !seen.swap(true, Ordering::Relaxed) {
-			tier.mark_deleted(OP_A, &raced);
+			tier.mark_deleted_run(TestPartition::of(OP_A, &raced), &[raced.clone()]);
 		}
 	});
 

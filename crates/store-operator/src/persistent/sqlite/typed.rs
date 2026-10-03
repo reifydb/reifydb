@@ -29,6 +29,7 @@ enum Statement {
 	Remove(usize),
 	Get,
 	GetBatch(usize),
+	Sizes(usize),
 	Bounded(Bound<()>, Bound<()>, &'static str),
 	KeysAfter(Bound<()>),
 	Census,
@@ -60,6 +61,13 @@ impl Template {
 			}
 			Statement::GetBatch(rows) => (
 				format!("SELECT {}\"bytes\" FROM \"", K::key_columns()),
+				format!("\"{}", K::key_in(rows)),
+			),
+			Statement::Sizes(rows) => (
+				format!(
+					"SELECT {}CASE typeof(\"bytes\") WHEN 'blob' THEN length(\"bytes\") END FROM \"",
+					K::key_columns()
+				),
 				format!("\"{}", K::key_in(rows)),
 			),
 			Statement::Bounded(start, end, order) => {
@@ -419,6 +427,31 @@ pub fn get_batch<K: Keyspace>(
 	out
 }
 
+pub fn sizes_batch<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	keys: &[K::GroupedKey],
+) -> Vec<(K::GroupedKey, u64)> {
+	let mut out = Vec::with_capacity(keys.len());
+	for chunk in keys.chunks(READ_CHUNK) {
+		let sql = sql::<K>(Statement::Sizes(chunk.len()), operator, None);
+		let mut params = Vec::with_capacity(chunk.len() * K::columns().len());
+		for key in chunk {
+			params.extend(K::bind_key(key));
+		}
+		let mut stmt = conn.prepare_cached(&sql).expect("operator state batch sizes could not be prepared");
+		let mut rows = stmt.query(params_from_iter(params)).expect("operator state batch sizes failed");
+		while let Some(row) = rows.next().expect("operator state batch sizes row failed") {
+			let key = K::read_key(row, 0)
+				.expect("an operator state row does not decode as its own key layout");
+			let size: Option<i64> =
+				row.get(K::columns().len()).expect("operator state payload size could not be read");
+			out.push((key, size.expect("operator state payload is not a blob") as u64));
+		}
+	}
+	out
+}
+
 fn bound_clause<K: Keyspace>(bound: Bound<()>, op_included: &str, op_excluded: &str, from: usize) -> String {
 	if K::columns().is_empty() {
 		return String::new();
@@ -755,6 +788,20 @@ mod tests {
 		});
 
 		get::<JoinLeft>(&store, OperatorId(1), &key);
+	}
+
+	#[test]
+	#[should_panic(expected = "operator state payload is not a blob")]
+	fn a_payload_that_is_not_a_blob_stops_the_sizes_read_instead_of_counting_its_text() {
+		// length() of a non-blob payload is its text length, so the sizes read must fail rather than bill it.
+		let store = open();
+		let key = left(7, 1);
+		set_one::<JoinLeft>(&store, OperatorId(1), &key, b"payload");
+		with_conn(&store, |conn| {
+			conn.execute(r#"UPDATE "operator_join_left_1" SET "bytes" = 12345"#, []).unwrap()
+		});
+
+		store.state_sizes(OperatorId(1), &[encode::<JoinLeft>(&key).as_encoded()]);
 	}
 
 	#[test]

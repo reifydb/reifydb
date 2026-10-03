@@ -8,7 +8,7 @@ pub mod memory;
 pub mod sqlite;
 pub mod testing;
 
-use std::{borrow::Borrow, collections::HashMap, sync::Arc};
+use std::{borrow::Borrow, sync::Arc};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -168,8 +168,11 @@ pub trait Page: Persistent {
 }
 
 pub trait Measure: Persistent {
-	fn state_sizes(&self, operator: OperatorId, keys: &[GroupStateKey])
-	-> Result<HashMap<GroupStateKey, ByteSize>>;
+	fn state_sizes<Q: Borrow<GroupStateKey>>(
+		&self,
+		operator: OperatorId,
+		keys: &[Q],
+	) -> Result<Vec<Option<ByteSize>>>;
 
 	fn bytes(&self, operator: OperatorId) -> Result<ByteSize>;
 }
@@ -306,24 +309,19 @@ impl Page for PersistentTier {
 }
 
 impl Measure for PersistentTier {
-	fn state_sizes(
+	fn state_sizes<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, ByteSize>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<ByteSize>>> {
 		match self {
-			Self::Absent => Ok(HashMap::new()),
+			Self::Absent => Ok(vec![None; keys.len()]),
 			Self::Memory(memory) => Measure::state_sizes(memory, operator, keys),
 			Self::Testing(testing) => Measure::state_sizes(testing, operator, keys),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
-				let encoded: Vec<EncodedKey> =
-					keys.iter().map(|key| key.as_encoded().clone()).collect();
-				Ok(storage
-					.state_sizes(operator, &encoded)
-					.into_iter()
-					.map(|(key, size)| (GroupStateKey::bound_unchecked(key), size))
-					.collect())
+				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
+				Ok(storage.state_sizes(operator, &refs))
 			}
 		}
 	}

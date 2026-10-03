@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::{
 	cmp::{Ordering, Reverse},
 	collections::HashMap,
+	mem::{Discriminant, discriminant},
 	ops::Bound,
 };
 
@@ -169,41 +170,23 @@ impl StandardOperatorStore {
 		}
 	}
 
-	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		self.range.overwrite(operator, key, row.clone());
-	}
-
-	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		self.range.insert(operator, key, row.clone());
-	}
-
-	fn remove_range_read(&self, operator: OperatorId, key: &EncodedKey) {
-		self.range.mark_deleted(operator, key);
-	}
-
 	#[instrument(name = "store::operator::invalidate_read_batch", level = "debug", skip_all, fields(write_count = writes.len()))]
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
 		if self.range.is_absent() {
 			return;
 		}
-		for write in writes {
-			match write {
+		for run in writes.chunk_by(|left, right| run_of(left) == run_of(right)) {
+			let (operator, _) = run_of(&run[0]);
+			match &run[0] {
 				OperatorWrite::Replace {
-					operator,
-					key,
-					post,
 					..
-				} => self.overwrite_range_read(*operator, key.as_encoded(), post),
+				} => self.range.overwrite_run(operator, &posted_rows(run)),
 				OperatorWrite::Insert {
-					operator,
-					key,
-					post,
-				} => self.insert_range_read(*operator, key.as_encoded(), post),
-				OperatorWrite::Remove {
-					operator,
-					key,
 					..
-				} => self.remove_range_read(*operator, key.as_encoded()),
+				} => self.range.insert_run(operator, &posted_rows(run)),
+				OperatorWrite::Remove {
+					..
+				} => self.range.mark_deleted_run(operator, &run_keys(run)),
 			}
 		}
 	}
@@ -211,26 +194,24 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::state_sizes", level = "trace", skip(self, probes), fields(probe_count = probes.len()))]
 	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
 		let mut sizes: Vec<Option<ByteSize>> = Vec::with_capacity(probes.len());
-		let mut residual: HashMap<OperatorId, Vec<(usize, EncodedKey)>> = HashMap::new();
+		let mut residual: HashMap<OperatorId, (Vec<usize>, Vec<&GroupStateKey>)> = HashMap::new();
 		for (index, (operator, key)) in probes.iter().enumerate() {
-			let key = key.as_encoded();
-			match self.resolve_size(*operator, key) {
+			match self.resolve_size(*operator, key.as_encoded()) {
 				SizeProbe::Known(size) => sizes.push(size),
 				SizeProbe::Persistent => {
 					sizes.push(None);
-					residual.entry(*operator).or_default().push((index, key.clone()));
+					let (positions, keys) = residual.entry(*operator).or_default();
+					positions.push(index);
+					keys.push(key);
 				}
 			}
 		}
 		if self.persistent.is_absent() {
 			return Ok(sizes);
 		}
-		for (operator, pending) in residual {
-			let keys: Vec<GroupStateKey> =
-				pending.iter().map(|(_, key)| GroupStateKey::bound_unchecked(key.clone())).collect();
-			let found = self.persistent.state_sizes(operator, &keys)?;
-			for (index, key) in pending {
-				sizes[index] = found.get(&GroupStateKey::bound_unchecked(key)).copied();
+		for (operator, (positions, keys)) in residual {
+			for (index, size) in positions.into_iter().zip(self.persistent.state_sizes(operator, &keys)?) {
+				sizes[index] = size;
 			}
 		}
 		Ok(sizes)
@@ -978,6 +959,63 @@ impl<'a> GroupBuffer<'a> {
 
 fn row_size(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+fn run_of(write: &OperatorWrite) -> (OperatorId, Discriminant<OperatorWrite>) {
+	let operator = match write {
+		OperatorWrite::Insert {
+			operator,
+			..
+		}
+		| OperatorWrite::Replace {
+			operator,
+			..
+		}
+		| OperatorWrite::Remove {
+			operator,
+			..
+		} => *operator,
+	};
+	(operator, discriminant(write))
+}
+
+fn posted_rows(run: &[OperatorWrite]) -> Vec<(&EncodedKey, &EncodedPodRow)> {
+	run.iter()
+		.filter_map(|write| match write {
+			OperatorWrite::Insert {
+				key,
+				post,
+				..
+			}
+			| OperatorWrite::Replace {
+				key,
+				post,
+				..
+			} => Some((key.as_encoded(), post)),
+			OperatorWrite::Remove {
+				..
+			} => None,
+		})
+		.collect()
+}
+
+fn run_keys(run: &[OperatorWrite]) -> Vec<&EncodedKey> {
+	run.iter()
+		.map(|write| match write {
+			OperatorWrite::Insert {
+				key,
+				..
+			}
+			| OperatorWrite::Replace {
+				key,
+				..
+			}
+			| OperatorWrite::Remove {
+				key,
+				..
+			} => key.as_encoded(),
+		})
+		.collect()
 }
 
 fn buffered_rows(items: &[(GroupStateKey, Option<EncodedPodRow>)]) -> usize {

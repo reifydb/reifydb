@@ -185,8 +185,8 @@ fn serve_never_returns_an_empty_chunk_that_reports_more_work() {
 
 	assert!(claim(&tiers, &span, &[(at(1), row("a")), (at(2), row("b")), (at(3), row("c"))])
 		== Materialize::Materialized);
-	tier(&tiers).mark_deleted_in(part(), part(), &at(1));
-	tier(&tiers).mark_deleted_in(part(), part(), &at(2));
+	tier(&tiers).mark_deleted_run(part(), &[at(1)]);
+	tier(&tiers).mark_deleted_run(part(), &[at(2)]);
 
 	let scan = plan(&tiers);
 	let mut cursor: Cursor<(), Suffix> = Cursor::new();
@@ -198,7 +198,7 @@ fn serve_never_returns_an_empty_chunk_that_reports_more_work() {
 	);
 	assert!(cursor.is_exhausted(), "the segment held nothing after the row, so the chunk must be final");
 
-	tier(&tiers).mark_deleted_in(part(), part(), &at(3));
+	tier(&tiers).mark_deleted_run(part(), &[at(3)]);
 	let scan = plan(&tiers);
 	let mut cursor: Cursor<(), Suffix> = Cursor::new();
 	let chunk = tier(&tiers).serve(&scan, &span, &mut cursor, 1);

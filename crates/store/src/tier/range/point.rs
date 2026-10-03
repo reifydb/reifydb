@@ -381,7 +381,9 @@ mod tests {
 
 		let withdrawing = tier.clone();
 		let outside = key(CACHED, b"zz");
-		arm_absence_interlock(move || withdrawing.mark_deleted(OP_A, &outside));
+		arm_absence_interlock(move || {
+			withdrawing.mark_deleted_run(TestPartition::of(OP_A, &outside), &[outside.clone()])
+		});
 
 		assert_eq!(
 			tier.lookup(OP_A, &at),
@@ -403,7 +405,9 @@ mod tests {
 
 		let withdrawing = tier.clone();
 		let outside = key(CACHED, b"zz");
-		arm_absence_interlock(move || withdrawing.mark_deleted(OP_A, &outside));
+		arm_absence_interlock(move || {
+			withdrawing.mark_deleted_run(TestPartition::of(OP_A, &outside), &[outside.clone()])
+		});
 
 		assert_eq!(
 			tier.lookup_run(id, &[seated, unseated]),
@@ -424,7 +428,9 @@ mod tests {
 
 		let writing = tier.clone();
 		let landing = at.clone();
-		arm_absence_interlock(move || writing.overwrite(OP_A, landing.clone(), row("v")));
+		arm_absence_interlock(move || {
+			writing.overwrite_run(TestPartition::of(OP_A, &landing), vec![(landing.clone(), row("v"))])
+		});
 
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
 	}
@@ -441,7 +447,9 @@ mod tests {
 
 		let writing = tier.clone();
 		let written = landing.clone();
-		arm_absence_interlock(move || writing.overwrite(OP_A, written.clone(), row("v")));
+		arm_absence_interlock(move || {
+			writing.overwrite_run(TestPartition::of(OP_A, &written), vec![(written.clone(), row("v"))])
+		});
 
 		assert_eq!(tier.lookup_run(id, &[landing, untouched]), vec![Some(Some(row("v"))), Some(None)]);
 	}

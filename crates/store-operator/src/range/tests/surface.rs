@@ -295,7 +295,7 @@ fn an_overwrite_never_creates_a_claim() {
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = at(1);
 
-	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v"));
+	tier.overwrite_run(part(group_a()), vec![(k, row("v"))]);
 
 	assert_eq!(tier.partitions(), 0, "a write against no claim must leave the tier empty");
 	assert_eq!(tier.entries(), 0);
@@ -308,7 +308,7 @@ fn an_overwrite_never_creates_a_claim() {
 	);
 
 	materialize::<JoinLeft>(&tiers, group_a(), &[]);
-	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v"));
+	tier.overwrite_run(part(group_a()), vec![(k, row("v"))]);
 	assert_eq!(
 		tier.lookup_in(part(group_a()), part(group_a()), &k),
 		Some(Some(row("v"))),
@@ -324,7 +324,7 @@ fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 	materialize::<JoinLeft>(&tiers, group_a(), &[(k, row("v1"))]);
 
 	let scan = plan::<JoinLeft>(&tiers, group_b(), &whole()).expect("an uncovered group must be plannable");
-	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v2"));
+	tier.overwrite_run(part(group_a()), vec![(k, row("v2"))]);
 	let gap = first_gap(&scan).expect("the uncovered group must plan as a gap");
 	tier.materialize(&scan, &gap, &[(at(1), row("other"))]);
 

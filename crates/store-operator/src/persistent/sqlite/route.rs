@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Reverse, collections::HashMap, ops::Bound};
+use std::{cmp::Reverse, collections::HashMap, marker::PhantomData, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -94,15 +94,54 @@ impl KeyspaceVisitor for Get<'_> {
 
 type GetManyItem<'a> = (KeyspaceId, usize, GroupId, &'a [u8]);
 
-struct GetMany<'a> {
+trait BatchRead {
+	type Out: Clone;
+
+	fn read<K: Keyspace>(
+		conn: &Connection,
+		operator: OperatorId,
+		probes: &[K::GroupedKey],
+	) -> Vec<(K::GroupedKey, Self::Out)>;
+}
+
+struct Payloads;
+
+impl BatchRead for Payloads {
+	type Out = Vec<u8>;
+
+	fn read<K: Keyspace>(
+		conn: &Connection,
+		operator: OperatorId,
+		probes: &[K::GroupedKey],
+	) -> Vec<(K::GroupedKey, Vec<u8>)> {
+		typed::get_batch::<K>(conn, operator, probes)
+	}
+}
+
+struct Sizes;
+
+impl BatchRead for Sizes {
+	type Out = u64;
+
+	fn read<K: Keyspace>(
+		conn: &Connection,
+		operator: OperatorId,
+		probes: &[K::GroupedKey],
+	) -> Vec<(K::GroupedKey, u64)> {
+		typed::sizes_batch::<K>(conn, operator, probes)
+	}
+}
+
+struct GetMany<'a, R> {
 	conn: &'a Connection,
 	operator: OperatorId,
 	tables: TableMask,
 	items: &'a [GetManyItem<'a>],
+	read: PhantomData<R>,
 }
 
-impl KeyspaceVisitor for GetMany<'_> {
-	type Output = Vec<(usize, Vec<u8>)>;
+impl<R: BatchRead> KeyspaceVisitor for GetMany<'_, R> {
+	type Output = Vec<(usize, R::Out)>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
 		if !self.tables.holds(K::ID) {
@@ -120,15 +159,15 @@ impl KeyspaceVisitor for GetMany<'_> {
 		}
 		matcher.sort_unstable();
 		let mut out = Vec::with_capacity(matcher.len());
-		for (typed, bytes) in typed::get_batch::<K>(self.conn, self.operator, &probes) {
+		for (typed, answer) in R::read::<K>(self.conn, self.operator, &probes) {
 			let found = encode::<K>(&typed);
 			let start = matcher.partition_point(|(key, _)| *key < found);
 			let end = matcher.partition_point(|(key, _)| *key <= found);
 			if let Some(((_, last), rest)) = matcher[start..end].split_last() {
 				for (_, position) in rest {
-					out.push((*position, bytes.clone()));
+					out.push((*position, answer.clone()));
 				}
-				out.push((*last, bytes));
+				out.push((*last, answer));
 			}
 		}
 		out
@@ -141,6 +180,24 @@ pub(super) fn get_many(
 	tables: TableMask,
 	keys: &[&EncodedKey],
 ) -> Vec<Option<Vec<u8>>> {
+	read_many::<Payloads>(conn, operator, tables, keys)
+}
+
+pub(super) fn sizes_many(
+	conn: &Connection,
+	operator: OperatorId,
+	tables: TableMask,
+	keys: &[&EncodedKey],
+) -> Vec<Option<u64>> {
+	read_many::<Sizes>(conn, operator, tables, keys)
+}
+
+fn read_many<R: BatchRead>(
+	conn: &Connection,
+	operator: OperatorId,
+	tables: TableMask,
+	keys: &[&EncodedKey],
+) -> Vec<Option<R::Out>> {
 	let mut items: Vec<GetManyItem> = keys
 		.iter()
 		.enumerate()
@@ -154,16 +211,17 @@ pub(super) fn get_many(
 	for run in items.chunk_by(|left, right| left.0 == right.0) {
 		let found = dispatch(
 			run[0].0,
-			GetMany {
+			GetMany::<R> {
 				conn,
 				operator,
 				tables,
 				items: run,
+				read: PhantomData,
 			},
 		)
 		.expect("an operator state key must name a keyspace in the catalogue");
-		for (position, bytes) in found {
-			answers[position] = Some(bytes);
+		for (position, answer) in found {
+			answers[position] = Some(answer);
 		}
 	}
 	answers

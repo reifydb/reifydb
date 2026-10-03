@@ -871,6 +871,7 @@ impl Resident {
 		let mut staged = 0usize;
 		let mut staged_bytes = ByteSize::ZERO;
 		let mut exhausted = false;
+		let mut hashes: Vec<u64> = Vec::new();
 
 		for group in self.pending_groups() {
 			if staged > 0 && consumed >= slice {
@@ -893,7 +894,7 @@ impl Resident {
 						staged_write(entry.post.clone()),
 					));
 					staged += 1;
-					self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
+					hashes.push(state_hash(operator, keyspace, group, suffix));
 				});
 				consumed = consumed.saturating_add(carried);
 				staged_bytes = staged_bytes.saturating_add(
@@ -903,6 +904,7 @@ impl Resident {
 				touched.push(operator);
 			}
 		}
+		self.shared.filter.add_many(&hashes);
 		self.shared.release_dirty(staged);
 		self.shared.release_dirty_bytes(staged_bytes);
 		batch.bytes = consumed;
