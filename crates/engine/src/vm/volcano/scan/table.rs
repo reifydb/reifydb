@@ -296,7 +296,6 @@ impl QueryNode for TableScanNode {
 
 		let storage: StorageId = self.table.def().id.into();
 
-		let probe_storage = std::time::Instant::now();
 		let (scanned, next_resume, resumed) = match self.resume {
 			Resume::Partitioned(last) if self.oldest_first => {
 				let partition = self.partition;
@@ -359,9 +358,6 @@ impl QueryNode for TableScanNode {
 				(scanned, Resume::Row(new_last), last.is_some())
 			}
 		};
-		crate::probe::add(&crate::probe::SCAN_STORAGE_NS, probe_storage);
-		crate::probe::bump(&crate::probe::SCAN_CALLS, 1);
-		crate::probe::bump(&crate::probe::SCAN_ROWS, scanned.rows.len() as u64);
 
 		if scanned.exhausted {
 			self.exhausted = true;
@@ -377,7 +373,6 @@ impl QueryNode for TableScanNode {
 
 		self.resume = next_resume;
 
-		let probe_decode = std::time::Instant::now();
 		let columns = match &self.storage_batch {
 			Some(storage) => storage.clone(),
 			None => {
@@ -387,9 +382,7 @@ impl QueryNode for TableScanNode {
 			}
 		};
 		let columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
-		crate::probe::add(&crate::probe::SCAN_DECODE_NS, probe_decode);
 
-		let probe_stamp = std::time::Instant::now();
 		let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 		if !scanned.partitions.is_empty() {
 			stamps.push((SystemColumn::Partitions, partition_array(&scanned.partitions)));
@@ -397,9 +390,7 @@ impl QueryNode for TableScanNode {
 		stamps.push((SystemColumn::CommitVersion, Arc::new(UInt64Array::from(scanned.commit_versions))));
 		let columns = stamp_system_columns(columns, stamps)?;
 
-		let decoded = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
-		crate::probe::add(&crate::probe::SCAN_STAMP_NS, probe_stamp);
-		Ok(Some(decoded))
+		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

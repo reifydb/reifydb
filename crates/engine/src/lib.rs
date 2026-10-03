@@ -17,7 +17,6 @@ pub mod error;
 pub mod flow_sync;
 pub mod partition;
 pub mod policy;
-pub mod probe;
 pub mod queue;
 #[cfg(not(reifydb_single_threaded))]
 pub mod remote;

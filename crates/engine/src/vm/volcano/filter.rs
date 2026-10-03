@@ -96,7 +96,6 @@ impl FilterNode {
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		let probe_init = std::time::Instant::now();
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
 				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
@@ -114,7 +113,6 @@ impl QueryNode for FilterNode {
 
 		let lowered = self.expressions.iter().map(|e| LoweredExpr::new(e.clone(), self.operator)).collect();
 		self.context = Some((Arc::new(ctx.clone()), lowered));
-		crate::probe::add(&crate::probe::FILTER_INIT_NS, probe_init);
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -175,17 +173,10 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			crate::probe::bump(&crate::probe::FILTER_BATCHES, 1);
-			let probe_eval = std::time::Instant::now();
 			let result = Self::eval_predicate(&session, lowered_expr, &columns, row_count)?;
-			crate::probe::add(&crate::probe::FILTER_EVAL_NS, probe_eval);
-			let probe_mask = std::time::Instant::now();
 			let filter_mask = Self::build_mask(&ColumnView::try_from(&result)?, row_count);
-			crate::probe::add(&crate::probe::FILTER_MASK_NS, probe_mask);
 
-			let probe_compact = std::time::Instant::now();
 			columns = Self::compact(&columns, &filter_mask)?;
-			crate::probe::add(&crate::probe::FILTER_COMPACT_NS, probe_compact);
 			row_count = columns.num_rows();
 		}
 
