@@ -361,7 +361,6 @@ impl<K: ArrowDictionaryKeyType> DictionaryArray<K> {
     /// returns the corresponding key (index into the `values`
     /// array). Otherwise returns `None`.
     ///
-    /// # Panics
     /// Panics if `values` is not a [`StringArray`].
     pub fn lookup_key(&self, value: &str) -> Option<K::Native> {
         let rd_buf: &StringArray = self.values.as_any().downcast_ref::<StringArray>().unwrap();
@@ -403,17 +402,11 @@ impl<K: ArrowDictionaryKeyType> DictionaryArray<K> {
 
     /// Return the value of `keys` (the dictionary key) at index `i`,
     /// cast to `usize`, `None` if the value at `i` is `NULL`.
-    ///
-    /// # Panics
-    /// Panics if `i >= self.len()`
     pub fn key(&self, i: usize) -> Option<usize> {
         self.keys.is_valid(i).then(|| self.keys.value(i).as_usize())
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and length.
-    ///
-    /// # Panics
-    /// Panics if `offset + length > self.len()`
     pub fn slice(&self, offset: usize, length: usize) -> Self {
         Self {
             data_type: self.data_type.clone(),
@@ -495,7 +488,7 @@ impl<K: ArrowDictionaryKeyType> DictionaryArray<K> {
 
     /// Returns `PrimitiveDictionaryBuilder` of this dictionary array for mutating
     /// its keys and values if the underlying data buffer is not shared by others.
-    #[expect(clippy::result_large_err)]
+    #[allow(clippy::result_large_err)]
     pub fn into_primitive_dict_builder<V>(self) -> Result<PrimitiveDictionaryBuilder<K, V>, Self>
     where
         V: ArrowPrimitiveType,
@@ -552,7 +545,7 @@ impl<K: ArrowDictionaryKeyType> DictionaryArray<K> {
     /// assert_eq!(typed.value(1), 11);
     /// assert_eq!(typed.value(2), 21);
     /// ```
-    #[expect(clippy::result_large_err)]
+    #[allow(clippy::result_large_err)]
     pub fn unary_mut<F, V>(self, op: F) -> Result<DictionaryArray<K>, DictionaryArray<K>>
     where
         V: ArrowPrimitiveType,
@@ -1032,7 +1025,7 @@ pub trait AnyDictionaryArray: Array {
     /// The values for nulls will be arbitrary, but are guaranteed
     /// to be in the range `0..self.values.len()`
     ///
-    /// # Panics
+    /// # Panic
     ///
     /// Panics if `values.len() == 0`
     fn normalized_keys(&self) -> Vec<usize>;
@@ -1393,7 +1386,7 @@ mod tests {
     #[should_panic(expected = "Invalid dictionary key -100 at index 0, expected 0 <= key < 2")]
     fn test_try_new_index_too_small() {
         let values: StringArray = [Some("foo"), Some("bar")].into_iter().collect();
-        let keys: Int32Array = std::iter::once(Some(-100)).collect();
+        let keys: Int32Array = [Some(-100)].into_iter().collect();
         DictionaryArray::new(keys, Arc::new(values));
     }
 

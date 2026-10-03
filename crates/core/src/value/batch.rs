@@ -463,7 +463,11 @@ fn user_views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
 	Ok(views(batch)?.into_iter().filter(|view| !is_system_field(view.field)).collect())
 }
 
-fn assemble(columns: Vec<(FieldRef, ArrayRef)>, metadata: HashMap<String, String>, row_count: usize) -> Result<RecordBatch> {
+fn assemble(
+	columns: Vec<(FieldRef, ArrayRef)>,
+	metadata: HashMap<String, String>,
+	row_count: usize,
+) -> Result<RecordBatch> {
 	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
 	RecordBatch::try_new_with_options(
 		Arc::new(Schema::new_with_metadata(fields, metadata)),

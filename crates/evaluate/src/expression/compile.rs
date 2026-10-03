@@ -140,7 +140,7 @@ macro_rules! compile_arith {
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			let col = $op_fn(ctx, &l, &r, || fragment.clone())?;
+			let col = $op_fn(&ctx.arith(), &l, &r, || fragment.clone())?;
 			Ok(rename(col, label.text()))
 		})
 	}};
@@ -688,99 +688,19 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::FieldAccess(e) => {
 			let field_name = e.field.text().to_string();
 
-			let var_name = match e.object.as_ref() {
-				Expression::Variable(var_expr) => Some(var_expr.name().to_string()),
+			let variable = match e.object.as_ref() {
+				Expression::Variable(var_expr) => Some(var_expr.clone()),
 				_ => None,
-			};
-			let var_fragment = match e.object.as_ref() {
-				Expression::Variable(var_expr) => var_expr.fragment.clone(),
-				_ => Fragment::None,
 			};
 			let object = compile_expression(_ctx, &e.object)?;
 			CompiledExpr::new(move |ctx| {
-				if let Some(ref variable_name) = var_name {
-					match ctx.symbols.get(variable_name) {
-						Some(Variable::Columns {
-							batch,
-						}) if !is_scalar(batch) => {
-							let found = user_columns(batch)
-								.find(|(field, _)| field.name() == &field_name);
-							match found {
-								Some((field, array)) => {
-									let value = ColumnView::try_from((
-										array,
-										field.as_ref(),
-									))?
-									.get_value(0);
-									let row_count =
-										ctx.take.unwrap_or(ctx.row_count);
-									let mut data = ColumnBuilder::with_capacity(
-										value.get_type(),
-										row_count,
-									);
-									for _ in 0..row_count {
-										data.push_value(value.clone());
-									}
-									Ok(data.finish(&field_name))
-								}
-								None => {
-									let available: Vec<String> =
-										user_columns(batch)
-											.map(|(field, _)| {
-												field.name().to_string()
-											})
-											.collect();
-									Err(TypeError::Runtime {
-										kind: RuntimeErrorKind::FieldNotFound {
-											variable: variable_name
-												.to_string(),
-											field: field_name.to_string(),
-											available,
-										},
-										message: format!(
-											"Field '{}' not found on variable '{}'",
-											field_name, variable_name
-										),
-									}
-									.into())
-								}
-							}
-						}
-						Some(Variable::Columns {
-							..
-						})
-						| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::FieldNotFound {
-								variable: variable_name.to_string(),
-								field: field_name.to_string(),
-								available: vec![],
-							},
-							message: format!(
-								"Field '{}' not found on variable '{}'",
-								field_name, variable_name
-							),
-						}
-						.into()),
-						Some(Variable::ForIterator {
-							..
-						}) => Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::VariableIsDataframe {
-								name: variable_name.to_string(),
-							},
-							message: format!(
-								"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-								variable_name
-							),
-						}
-						.into()),
-						None => Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::VariableNotFound {
-								fragment: var_fragment.clone(),
-							},
-							message: format!("Variable '{}' is not defined", variable_name),
-						}
-						.into()),
-					}
+				if let Some(ref variable) = variable {
+					variable_field_column(
+						ctx,
+						variable,
+						&field_name,
+						ctx.take.unwrap_or(ctx.row_count),
+					)
 				} else {
 					let _obj_col = object.execute(ctx)?;
 					Err(TypeError::Runtime {
@@ -828,7 +748,11 @@ fn broadcast(
 	Ok((field.clone(), repeated))
 }
 
-fn variable_column(ctx: &EvalContext, expr: &VariableExpression, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
+pub(crate) fn variable_column(
+	ctx: &EvalContext,
+	expr: &VariableExpression,
+	row_count: usize,
+) -> Result<(FieldRef, ArrayRef)> {
 	let variable_name = expr.name();
 
 	if variable_name == "env" {
@@ -901,7 +825,81 @@ fn variable_column(ctx: &EvalContext, expr: &VariableExpression, row_count: usiz
 	}
 }
 
-fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
+pub(crate) fn variable_field_column(
+	ctx: &EvalContext,
+	variable: &VariableExpression,
+	field_name: &str,
+	row_count: usize,
+) -> Result<(FieldRef, ArrayRef)> {
+	let variable_name = variable.name();
+	match ctx.symbols.get(variable_name) {
+		Some(Variable::Columns {
+			batch,
+		}) if !is_scalar(batch) => {
+			let found = user_columns(batch).find(|(field, _)| field.name() == field_name);
+			match found {
+				Some((field, array)) => {
+					let value = ColumnView::try_from((array, field.as_ref()))?.get_value(0);
+					let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
+					for _ in 0..row_count {
+						data.push_value(value.clone());
+					}
+					Ok(data.finish(field_name))
+				}
+				None => {
+					let available: Vec<String> = user_columns(batch)
+						.map(|(field, _)| field.name().to_string())
+						.collect();
+					Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::FieldNotFound {
+							variable: variable_name.to_string(),
+							field: field_name.to_string(),
+							available,
+						},
+						message: format!(
+							"Field '{}' not found on variable '{}'",
+							field_name, variable_name
+						),
+					}
+					.into())
+				}
+			}
+		}
+		Some(Variable::Columns {
+			..
+		})
+		| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+			kind: RuntimeErrorKind::FieldNotFound {
+				variable: variable_name.to_string(),
+				field: field_name.to_string(),
+				available: vec![],
+			},
+			message: format!("Field '{}' not found on variable '{}'", field_name, variable_name),
+		}
+		.into()),
+		Some(Variable::ForIterator {
+			..
+		}) => Err(TypeError::Runtime {
+			kind: RuntimeErrorKind::VariableIsDataframe {
+				name: variable_name.to_string(),
+			},
+			message: format!(
+				"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+				variable_name
+			),
+		}
+		.into()),
+		None => Err(TypeError::Runtime {
+			kind: RuntimeErrorKind::VariableNotFound {
+				fragment: variable.fragment.clone(),
+			},
+			message: format!("Variable '{}' is not defined", variable_name),
+		}
+		.into()),
+	}
+}
+
+pub(crate) fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
 	let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
 	factory::any(fragment.text(), values)
 }

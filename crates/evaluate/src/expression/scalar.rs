@@ -17,11 +17,11 @@ use reifydb_value::{
 	},
 };
 
-use crate::expression::context::EvalContext;
+use crate::expression::context::ArithContext;
 
 macro_rules! impl_scalar_op {
 	($method:ident, $safe_trait:ident, $checked_method:ident) => {
-		impl EvalContext<'_> {
+		impl ArithContext {
 			pub fn $method<L, R>(
 				&self,
 				l: &L,
@@ -82,7 +82,7 @@ macro_rules! impl_scalar_op {
 
 macro_rules! impl_scalar_divisive_op {
 	($method:ident, $safe_trait:ident, $checked_method:ident) => {
-		impl EvalContext<'_> {
+		impl ArithContext {
 			pub fn $method<L, R>(
 				&self,
 				l: &L,
@@ -163,7 +163,7 @@ impl FitFamily for Decimal {
 	}
 }
 
-impl EvalContext<'_> {
+impl ArithContext {
 	pub(crate) fn fit_family<T: FitFamily>(
 		&self,
 		value: T,
@@ -197,35 +197,35 @@ pub mod tests {
 
 	#[test]
 	fn test_add() {
-		let test_instance = EvalContext::testing();
+		let test_instance = EvalContext::testing().arith();
 		let result = test_instance.add(&1i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(256i128)));
 	}
 
 	#[test]
 	fn test_sub() {
-		let test_instance = EvalContext::testing();
+		let test_instance = EvalContext::testing().arith();
 		let result = test_instance.sub(&1i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
 
 	#[test]
 	fn test_mul() {
-		let test_instance = EvalContext::testing();
+		let test_instance = EvalContext::testing().arith();
 		let result = test_instance.mul(&23i8, &255i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
 
 	#[test]
 	fn test_div() {
-		let test_instance = EvalContext::testing();
+		let test_instance = EvalContext::testing().arith();
 		let result = test_instance.div(&120i8, &20i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(6i128)));
 	}
 
 	#[test]
 	fn test_remainder() {
-		let test_instance = EvalContext::testing();
+		let test_instance = EvalContext::testing().arith();
 		let result = test_instance.remainder(&120i8, &21i16, Fragment::testing_empty);
 		assert_eq!(result, Ok(Some(15i128)));
 	}

@@ -34,7 +34,7 @@ impl<'a> BitIterator<'a> {
     /// Create a new [`BitIterator`] from the provided `buffer`,
     /// and `offset` and `len` in bits
     ///
-    /// # Panics
+    /// # Panic
     ///
     /// Panics if `buffer` is too short for the provided offset and length
     pub fn new(buffer: &'a [u8], offset: usize, len: usize) -> Self {
@@ -195,7 +195,6 @@ pub struct BitSliceIterator<'a> {
 impl<'a> BitSliceIterator<'a> {
     /// Create a new [`BitSliceIterator`] from the provided `buffer`,
     /// and `offset` and `len` in bits
-    #[inline]
     pub fn new(buffer: &'a [u8], offset: usize, len: usize) -> Self {
         let chunk = UnalignedBitChunk::new(buffer, offset, len);
         let mut iter = chunk.iter();
@@ -216,7 +215,6 @@ impl<'a> BitSliceIterator<'a> {
     ///
     /// Where `chunk_offset` is the bit offset to the current `u64` chunk
     /// and `bit_offset` is the offset of the first `1` bit in that chunk
-    #[inline]
     fn advance_to_set_bit(&mut self) -> Option<(i64, u32)> {
         loop {
             if self.current_chunk != 0 {
@@ -234,7 +232,6 @@ impl<'a> BitSliceIterator<'a> {
 impl Iterator for BitSliceIterator<'_> {
     type Item = (usize, usize);
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Used as termination condition
         if self.len == 0 {
@@ -353,7 +350,7 @@ impl<'a> BitIndexU32Iterator<'a> {
     }
 }
 
-impl Iterator for BitIndexU32Iterator<'_> {
+impl<'a> Iterator for BitIndexU32Iterator<'a> {
     type Item = u32;
 
     #[inline(always)]
@@ -417,7 +414,7 @@ mod tests {
     use super::*;
     use crate::BooleanBuffer;
     use rand::rngs::StdRng;
-    use rand::{RngExt, SeedableRng};
+    use rand::{Rng, SeedableRng};
     use std::fmt::Debug;
     use std::iter::Copied;
     use std::slice::Iter;
@@ -558,7 +555,7 @@ mod tests {
     #[test]
     fn test_bit_index_u32_long_all_set() {
         let len = 200;
-        let num_bytes = len / 8 + usize::from(len % 8 != 0);
+        let num_bytes = len / 8 + if len % 8 != 0 { 1 } else { 0 };
         let bytes = vec![0xFFu8; num_bytes];
 
         let result: Vec<u32> = BitIndexU32Iterator::new(&bytes, 0, len).collect();
@@ -571,7 +568,7 @@ mod tests {
     #[test]
     fn test_bit_index_u32_none_set() {
         let len = 50;
-        let num_bytes = len / 8 + usize::from(len % 8 != 0);
+        let num_bytes = len / 8 + if len % 8 != 0 { 1 } else { 0 };
         let bytes = vec![0u8; num_bytes];
 
         let result: Vec<u32> = BitIndexU32Iterator::new(&bytes, 0, len).collect();
@@ -934,9 +931,9 @@ mod tests {
                     let mut actual = actual.clone();
                     let mut expected = expected.clone();
                     for _ in 0..expected.len() {
-                        #[expect(clippy::iter_nth_zero)]
+                        #[allow(clippy::iter_nth_zero)]
                         let actual_val = actual.nth(0);
-                        #[expect(clippy::iter_nth_zero)]
+                        #[allow(clippy::iter_nth_zero)]
                         let expected_val = expected.nth(0);
                         assert_eq!(actual_val, expected_val, "Failed on nth(0)");
                     }
@@ -974,6 +971,7 @@ mod tests {
                     let mut actual = actual.clone();
                     let mut expected = expected.clone();
                     for _ in 0..expected.len() {
+                        #[allow(clippy::iter_nth_zero)]
                         let actual_val = actual.nth_back(0);
                         let expected_val = expected.nth_back(0);
                         assert_eq!(actual_val, expected_val, "Failed on nth_back(0)");

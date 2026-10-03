@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
+use factory::{float8, uint8};
 use reifydb_core::{
 	expression::{CastExpression, ConstantExpression, Expression, PrefixOperator, TypeExpression},
 	interface::evaluate::TargetColumn,
@@ -62,7 +63,7 @@ macro_rules! arith {
 	($op:ident, $left:expr, $right:expr) => {{
 		let ctx = EvalContext::testing();
 		let fragment = Fragment::testing_empty();
-		$op(&ctx, &factory::rename($left, "left"), &factory::rename($right, "right"), &fragment)
+		$op(&ctx.arith(), &factory::rename($left, "left"), &factory::rename($right, "right"), &fragment)
 	}};
 }
 
@@ -97,7 +98,7 @@ fn decimal_compares_against_int4_through_the_kernel() {
 fn decimal_compares_against_uint8_including_u64_max() {
 	// u64::MAX has 20 digits, so a target narrower than decimal(22, 2) would wrap it negative.
 	let left = || decimal(10, 2, &["1.50", "0.00", "3.00", "99999999.99"]);
-	let right = || factory::uint8("", [1, 0, 3, u64::MAX]);
+	let right = || uint8("", [1, 0, 3, u64::MAX]);
 
 	assert_eq!(compare::<GreaterThan>(left(), right()), [Some(true), Some(false), Some(false), Some(false)]);
 	assert_eq!(compare::<Equal>(left(), right()), [Some(false), Some(true), Some(true), Some(false)]);
@@ -108,7 +109,7 @@ fn decimal_compares_against_uint8_including_u64_max() {
 fn decimal_compares_against_float8() {
 	// The unscaled value must be divided by 10^scale, otherwise 1.50 would read as 150.0.
 	let left = || decimal(10, 2, &["1.50", "-2.25", "3.00", "0.10"]);
-	let right = || factory::float8("", [1.5, -2.25, 2.99, 0.1]);
+	let right = || float8("", [1.5, -2.25, 2.99, 0.1]);
 
 	assert_eq!(compare::<Equal>(left(), right()), [Some(true), Some(true), Some(false), Some(true)]);
 	assert_eq!(compare::<GreaterThan>(left(), right()), [Some(false), Some(false), Some(true), Some(false)]);

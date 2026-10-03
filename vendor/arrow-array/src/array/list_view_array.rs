@@ -146,14 +146,14 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
         nulls: Option<NullBuffer>,
     ) -> Result<Self, ArrowError> {
         let len = offsets.len();
-        if let Some(n) = nulls.as_ref()
-            && n.len() != len
-        {
-            return Err(ArrowError::InvalidArgumentError(format!(
-                "Incorrect length of null buffer for {}ListViewArray, expected {len} got {}",
-                OffsetSize::PREFIX,
-                n.len(),
-            )));
+        if let Some(n) = nulls.as_ref() {
+            if n.len() != len {
+                return Err(ArrowError::InvalidArgumentError(format!(
+                    "Incorrect length of null buffer for {}ListViewArray, expected {len} got {}",
+                    OffsetSize::PREFIX,
+                    n.len(),
+                )));
+            }
         }
         if len != sizes.len() {
             return Err(ArrowError::InvalidArgumentError(format!(
@@ -274,8 +274,9 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
         ArrayRef,
         Option<NullBuffer>,
     ) {
-        let (DataType::ListView(f) | DataType::LargeListView(f)) = self.data_type else {
-            unreachable!()
+        let f = match self.data_type {
+            DataType::ListView(f) | DataType::LargeListView(f) => f,
+            _ => unreachable!(),
         };
         (
             f,
@@ -284,14 +285,6 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
             self.values,
             self.nulls,
         )
-    }
-
-    /// The field that describes the values of this list.
-    pub fn value_field(&self) -> &FieldRef {
-        match &self.data_type {
-            DataType::ListView(f) | DataType::LargeListView(f) => f,
-            _ => unreachable!(),
-        }
     }
 
     /// Returns a reference to the offsets of this list
@@ -342,7 +335,7 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
     /// (but still well-defined) if [`is_null`](Self::is_null) returns true for the index.
     ///
     /// # Panics
-    /// Panics if `i >= self.len()`
+    /// Panics if the index is out of bounds
     pub fn value(&self, i: usize) -> ArrayRef {
         let offset = self.value_offsets()[i].as_usize();
         let length = self.value_sizes()[i].as_usize();
@@ -362,18 +355,12 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
     }
 
     /// Returns the size for value at index `i`.
-    ///
-    /// # Panics
-    /// Panics if `i >= self.len()`
     #[inline]
     pub fn value_size(&self, i: usize) -> OffsetSize {
         self.value_sizes[i]
     }
 
     /// Returns the offset for value at index `i`.
-    ///
-    /// # Panics
-    /// Panics if `i >= self.len()`
     pub fn value_offset(&self, i: usize) -> OffsetSize {
         self.value_offsets[i]
     }
@@ -394,9 +381,6 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and length.
-    ///
-    /// # Panics
-    /// Panics if `offset + length > self.len()`
     pub fn slice(&self, offset: usize, length: usize) -> Self {
         Self {
             data_type: self.data_type.clone(),
@@ -445,15 +429,6 @@ impl<OffsetSize: OffsetSizeTrait> GenericListViewArray<OffsetSize> {
             }
         }
         builder.finish()
-    }
-}
-
-impl<'a, OffsetSize: OffsetSizeTrait> IntoIterator for &'a GenericListViewArray<OffsetSize> {
-    type Item = Option<ArrayRef>;
-    type IntoIter = GenericListViewArrayIter<'a, OffsetSize>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        GenericListViewArrayIter::<'a, OffsetSize>::new(self)
     }
 }
 
@@ -568,8 +543,8 @@ impl<OffsetSize: OffsetSizeTrait> std::fmt::Debug for GenericListViewArray<Offse
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let prefix = OffsetSize::PREFIX;
         write!(f, "{prefix}ListViewArray\n[\n")?;
-        print_long_array(self, f, &mut |index, f| {
-            std::fmt::Debug::fmt(&self.value(index), f)
+        print_long_array(self, f, |array, index, f| {
+            std::fmt::Debug::fmt(&array.value(index), f)
         })?;
         write!(f, "]")
     }

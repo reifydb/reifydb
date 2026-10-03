@@ -24,14 +24,14 @@ use crate::{
 	expression::{
 		arith::{ArithOp, arith_target},
 		compare::length_mismatch,
-		context::EvalContext,
+		context::ArithContext,
 		option::arith_op_unwrap_option,
 		scalar::FitFamily,
 	},
 };
 
 pub fn add_columns(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
@@ -97,7 +97,7 @@ pub fn add_columns(
 }
 
 fn add_numeric<L, R>(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	l: &[L],
 	r: &[R],
 	target: ValueType,
@@ -126,7 +126,7 @@ where
 }
 
 fn add_numeric_clone<L, R>(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	l: &[L],
 	r: &[R],
 	target: ValueType,

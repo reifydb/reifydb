@@ -22,9 +22,6 @@ mod private {
     pub trait Sealed {}
 }
 
-// Required so that `[T]` satisfies the `Sealed` supertrait of `ToByteSlice`.
-impl<T: ArrowNativeType> private::Sealed for [T] {}
-
 /// Trait expressing a Rust type that has the same in-memory representation as
 /// Arrow.
 ///
@@ -268,7 +265,7 @@ impl ArrowNativeType for IntervalDayTime {
 }
 
 /// Allows conversion from supported Arrow types to a byte slice.
-pub trait ToByteSlice: private::Sealed {
+pub trait ToByteSlice {
     /// Converts this instance into a byte slice
     fn to_byte_slice(&self) -> &[u8];
 }
@@ -276,7 +273,7 @@ pub trait ToByteSlice: private::Sealed {
 impl<T: ArrowNativeType> ToByteSlice for [T] {
     #[inline]
     fn to_byte_slice(&self) -> &[u8] {
-        let raw_ptr = self.as_ptr().cast::<u8>();
+        let raw_ptr = self.as_ptr() as *const u8;
         unsafe { std::slice::from_raw_parts(raw_ptr, std::mem::size_of_val(self)) }
     }
 }
@@ -284,7 +281,7 @@ impl<T: ArrowNativeType> ToByteSlice for [T] {
 impl<T: ArrowNativeType> ToByteSlice for T {
     #[inline]
     fn to_byte_slice(&self) -> &[u8] {
-        let raw_ptr = std::ptr::from_ref::<T>(self).cast::<u8>();
+        let raw_ptr = self as *const T as *const u8;
         unsafe { std::slice::from_raw_parts(raw_ptr, std::mem::size_of::<T>()) }
     }
 }

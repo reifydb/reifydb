@@ -47,3 +47,8 @@ thiserror = { workspace = true }
 [dev-dependencies]
 reifydb-runtime = { workspace = true }
 reifydb-test-harness = { workspace = true, features = ["operator"] }
+
+[[test]]
+name = "filter"
+path = "tests/filter.rs"
+required-features = ["runtime"]

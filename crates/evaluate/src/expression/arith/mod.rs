@@ -109,7 +109,7 @@ use reifydb_value::value::{
 
 use crate::expression::compare::{family_digits, is_family};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum ArithOp {
 	Add,
 	Sub,

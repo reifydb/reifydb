@@ -20,6 +20,9 @@ arrow-buffer = { workspace = true }
 arrow-ord = { workspace = true }
 arrow-schema = { workspace = true }
 arrow-select = { workspace = true }
+datafusion-common = { workspace = true }
+datafusion-expr = { workspace = true }
+datafusion-physical-expr = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-rql = { workspace = true }
@@ -29,6 +32,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-routine = { workspace = true }
 
 [build-dependencies]
 reifydb-build = { workspace = true }
