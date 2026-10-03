@@ -361,13 +361,7 @@ impl Enumerate for PersistentTier {
 			Self::Memory(memory) => Enumerate::operators(memory),
 			Self::Testing(testing) => Enumerate::operators(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => {
-				let mut out: Vec<OperatorId> =
-					storage.census().into_iter().map(|entry| entry.operator).collect();
-				out.sort_unstable();
-				out.dedup();
-				Ok(out)
-			}
+			Self::Sqlite(storage) => Ok(storage.occupied_operators()),
 		}
 	}
 

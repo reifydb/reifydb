@@ -174,6 +174,20 @@ mod tests {
 	}
 
 	#[test]
+	fn only_operators_still_holding_rows_are_listed() {
+		// the key filter rebuild lists operators from here, so an unlisted live operator hides its keys and a
+		// listed emptied one is a wasted scan
+		let store = open();
+		set_one::<JoinLeft>(&store, STRANGER, &key(), b"left");
+		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
+		let mut listed = store.occupied_operators();
+		listed.sort_unstable();
+		assert_eq!(listed, vec![OWNER, STRANGER]);
+		remove_one::<JoinLeft>(&store, OWNER, &key());
+		assert_eq!(store.occupied_operators(), vec![STRANGER]);
+	}
+
+	#[test]
 	fn a_remove_only_flush_creates_no_table() {
 		// a delete against a table that never existed has nothing to delete, so creating one only leaves an
 		// empty table

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod census;
+pub(crate) mod census;
 mod checkpoint;
 pub mod occupancy;
 mod pager;
@@ -76,7 +76,7 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) resident: Resident,
 	pub(crate) occupancy: KeyspaceOccupancy,
-	pub(crate) census: OperatorCensus,
+	pub(crate) census: Arc<OperatorCensus>,
 	pub(crate) persistent: PersistentTier,
 	pub(crate) range: OperatorRangeTier,
 	pub(crate) pins: CheckpointPins,
@@ -155,29 +155,31 @@ impl StandardOperatorStore {
 			resident.attach_flusher(Waker::Spawned(flush.clone()));
 		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if !persistent.is_absent()
+		let persisted_state = !persistent.is_absent()
 			&& !persistent
 				.census()
 				.expect("operator census must load; a failed one skips the key filter")
-				.is_empty()
-		{
+				.is_empty();
+		let census =
+			Arc::new(OperatorCensus::seeded(&persistent).expect(
+				"operator census must load; an empty seed under-reports every operator's state",
+			));
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if persisted_state {
 			let actor = FilterActor::spawn(&spawner);
 			let _ = actor.send(FilterMessage::Register {
 				filter: resident.filter(),
-				source: Box::new(OperatorStateKeySource::new(persistent.clone())),
+				source: Box::new(OperatorStateKeySource::new(persistent.clone(), census.clone())),
 				config: FilterConfig {
 					min_size_keys: FILTER_KEYS,
 					..FilterConfig::default()
 				},
 			});
 		}
-
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
 			occupancy: KeyspaceOccupancy::new(),
-			census: OperatorCensus::seeded(&persistent).expect(
-				"operator census must load; an empty seed under-reports every operator's state",
-			),
+			census,
 			persistent,
 			range,
 			pins: CheckpointPins::new(),
