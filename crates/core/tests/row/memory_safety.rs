@@ -80,7 +80,7 @@ fn test_unaligned_access_all_types() {
 			}
 			ValueType::Float8 => {
 				shape.set::<f64>(&mut row, 1, f64::consts::PI);
-				assert!((shape.get::<f64>(&row, 1) - f64::consts::PI).abs() < f64::EPSILON);
+				assert!((shape.get::<f64>(&row, 1) - f64::consts::PI).abs() < <f64>::EPSILON);
 			}
 			ValueType::Utf8 => {
 				shape.set_utf8(&mut row, 1, "test");

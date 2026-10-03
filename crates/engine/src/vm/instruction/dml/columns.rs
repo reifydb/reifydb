@@ -667,7 +667,7 @@ mod tests {
 				"f4",
 				ValueType::Float4,
 				ValueType::Float4,
-				vec![Value::float4(1.5), Value::float4(-2.5), Value::float4(0.0), Value::float4(3.25)],
+				vec![Value::float4(1.5_f32), Value::float4(-2.5_f32), Value::float4(0.0_f32), Value::float4(3.25_f32)],
 			),
 			spec(
 				"f8",

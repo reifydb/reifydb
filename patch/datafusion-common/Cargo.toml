@@ -11,7 +11,7 @@
 
 [package]
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.99.0"
 name = "datafusion-common"
 version = "55.1.0"
 authors = ["Apache DataFusion <dev@datafusion.apache.org>"]
