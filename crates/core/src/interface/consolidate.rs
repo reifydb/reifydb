@@ -94,11 +94,11 @@ fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 			..
 		} => row_numbers(post),
 		Diff::Update {
-			pre,
 			post,
 			..
 		} => {
 			reifydb_assertions! {
+				let pre = diff.pre().expect("an update diff always carries a pre batch");
 				assert!(
 					row_numbers(pre)? == row_numbers(post)?,
 					"diff consolidation keys an update row by its post row number and pairs \
