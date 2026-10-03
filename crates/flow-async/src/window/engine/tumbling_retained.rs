@@ -91,8 +91,8 @@ impl<G, S, K, V> Reaper for RetainedTumblingEngine<G, S, K, V>
 where
 	S: WindowAnchor + Hash,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		store.state_remove(key)
+	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
+		store.state_remove_many(keys)
 	}
 }
 

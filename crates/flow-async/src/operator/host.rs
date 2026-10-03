@@ -253,6 +253,10 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove(self.operator, key)
 	}
 
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		self.txn.state_remove_many(self.operator, keys)
+	}
+
 	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,

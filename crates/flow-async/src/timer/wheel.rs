@@ -205,15 +205,17 @@ impl TimerWheel {
 		};
 		let mut armed = armed.into_iter();
 
+		let mut doomed = Vec::with_capacity(due.len());
 		for timer in &due {
-			txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
+			doomed.push(timer_key(timer.due, timer.kind, &timer.key));
 			if timer.kind.is_maintenance() {
 				let named = armed.next().flatten();
 				if named == Some(timer.due) {
-					txn.state_remove(operator, &index_key(timer.kind, &timer.key))?;
+					doomed.push(index_key(timer.kind, &timer.key));
 				}
 			}
 		}
+		txn.state_remove_many(operator, &doomed)?;
 
 		Ok(DueTimers {
 			resume: due.last().map(|timer| wheel_suffix(timer.due, timer.kind, &timer.key)),

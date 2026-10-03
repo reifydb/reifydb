@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	ops::Bound,
-};
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -75,25 +72,14 @@ pub fn counter_key() -> GroupStateKey {
 	row_number_counter_key()
 }
 
-fn present_keys(
-	txn: &mut impl FlowTransaction,
-	operator: OperatorId,
-	map_keys: &[GroupStateKey],
-) -> Result<HashSet<EncodedKey>> {
-	let answers = txn.state_get_many(operator, map_keys)?;
-	Ok(map_keys
-		.iter()
-		.zip(answers)
-		.filter_map(|(map_key, row)| row.map(|_| map_key.as_encoded().clone()))
-		.collect())
-}
-
 fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64> {
-	let seed = match txn.state_get(operator, &counter_key())? {
-		Some(row) => decode::<u64>(&row)?,
+	let mut counter = txn.state_batch(operator, vec![counter_key()])?;
+	let seed = match counter.value(0) {
+		Some(row) => decode::<u64>(row)?,
 		None => 1,
 	};
-	txn.state_set(operator, &counter_key(), (seed + count).encode_state()?)?;
+	counter.set(0, (seed + count).encode_state()?);
+	txn.state_write_batch(operator, counter)?;
 	Ok(seed)
 }
 
@@ -102,21 +88,21 @@ fn resolve_or_mint(
 	operator: OperatorId,
 	map_keys: Vec<GroupStateKey>,
 ) -> Result<Vec<(RowNumber, bool)>> {
-	let answers = txn.state_get_many(operator, &map_keys)?;
+	let mut batch = txn.state_batch(operator, map_keys)?;
 
-	let mut results: Vec<Option<(RowNumber, bool)>> = vec![None; map_keys.len()];
-	let mut new_slots: Vec<bool> = vec![false; map_keys.len()];
+	let mut results: Vec<Option<(RowNumber, bool)>> = vec![None; batch.len()];
+	let mut new_slots: Vec<bool> = vec![false; batch.len()];
 	let mut distinct_new: Vec<usize> = Vec::new();
 	let mut first_new_slot: HashMap<GroupStateKey, usize> = HashMap::new();
-	for (slot, (map_key, answer)) in map_keys.iter().zip(&answers).enumerate() {
-		match answer {
+	for slot in 0..batch.len() {
+		match batch.value(slot) {
 			Some(existing_row) => {
 				results[slot] = Some((RowNumber(decode::<u64>(existing_row)?), false));
 			}
 			None => {
 				new_slots[slot] = true;
-				if !first_new_slot.contains_key(map_key) {
-					first_new_slot.insert(map_key.clone(), slot);
+				if !first_new_slot.contains_key(batch.key(slot)) {
+					first_new_slot.insert(batch.key(slot).clone(), slot);
 					distinct_new.push(slot);
 				}
 			}
@@ -127,20 +113,19 @@ fn resolve_or_mint(
 		let start = mint(txn, operator, distinct_new.len() as u64)?;
 		let mut assigned: HashMap<GroupStateKey, RowNumber> = HashMap::with_capacity(distinct_new.len());
 		for (offset, &slot) in distinct_new.iter().enumerate() {
-			let map_key = &map_keys[slot];
 			let row_number = RowNumber(start + offset as u64);
-			txn.state_set(operator, map_key, row_number.0.encode_state()?)?;
-			assigned.insert(map_key.clone(), row_number);
+			batch.set(slot, row_number.0.encode_state()?);
+			assigned.insert(batch.key(slot).clone(), row_number);
 		}
-		for (slot, map_key) in map_keys.iter().enumerate() {
+		for slot in 0..batch.len() {
 			if new_slots[slot] {
-				let row_number = assigned[map_key];
-				let is_new = first_new_slot.get(map_key) == Some(&slot);
-				results[slot] = Some((row_number, is_new));
+				let map_key = batch.key(slot);
+				results[slot] = Some((assigned[map_key], first_new_slot.get(map_key) == Some(&slot)));
 			}
 		}
 	}
 
+	txn.state_write_batch(operator, batch)?;
 	Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
 }
 
@@ -235,14 +220,13 @@ pub trait RowNumberExtension: FlowTransaction {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		let map_keys: Vec<GroupStateKey> = keys.iter().map(join_mapping_key).collect();
-		let present = present_keys(self, operator, &map_keys)?;
-		for map_key in map_keys {
-			if present.contains(map_key.as_slice()) {
-				self.state_remove(operator, &map_key)?;
+		let mut batch = self.state_batch(operator, keys.iter().map(join_mapping_key).collect())?;
+		for slot in 0..batch.len() {
+			if batch.value(slot).is_some() {
+				batch.remove(slot);
 			}
 		}
-		Ok(())
+		self.state_write_batch(operator, batch)
 	}
 
 	fn remove_join_row_numbers_for_left(&mut self, operator: OperatorId, tag: u8, left: u64) -> Result<()> {
@@ -267,12 +251,13 @@ pub trait RowNumberExtension: FlowTransaction {
 		let mut lower = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(lower.clone(), base.end.clone());
-			let batch = self.state_range(
+			let page = self.state_range(
 				operator,
 				StateRange::forward(range, "rownum::remove_by_prefix").limit(MAPPING_SWEEP_PAGE),
 			)?;
-			let more = batch.has_more;
-			for item in batch.items {
+			let more = page.has_more;
+			let mut doomed = Vec::with_capacity(page.items.len());
+			for item in page.items {
 				let TaggedKey::OperatorState(decoded) = &item.key else {
 					panic!("state_range must return OperatorState keys");
 				};
@@ -282,8 +267,9 @@ pub trait RowNumberExtension: FlowTransaction {
 					&decoded.suffix,
 				);
 				lower = Bound::Excluded(inner.as_encoded().clone());
-				self.state_remove(operator, &inner)?;
+				doomed.push(inner);
 			}
+			self.state_remove_many(operator, &doomed)?;
 			if !more {
 				return Ok(());
 			}

@@ -58,9 +58,7 @@ pub trait ReclaimExtension: StateExtension {
 					.expect("operator state rows carry a framed inner key")
 			})
 			.collect();
-		for key in &keys {
-			self.state_remove(operator, key)?;
-		}
+		self.state_remove_many(operator, &keys)?;
 		Ok(ReclaimOutcome {
 			removed: Count::new(keys.len() as u64),
 			more: batch.has_more,

@@ -79,8 +79,8 @@ where
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		store.state_remove(key)
+	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
+		store.state_remove_many(keys)
 	}
 }
 

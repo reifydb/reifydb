@@ -13,6 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
+	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
@@ -25,7 +26,10 @@ use reifydb_core::{
 		},
 	},
 	metrics::scan::ScanCounters,
-	state::timer::sweep_order,
+	state::{
+		batch::{StateBatch, check_batch_keys},
+		timer::sweep_order,
+	},
 };
 use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
@@ -126,6 +130,30 @@ pub trait StateExtension: FlowTransaction {
 		self.classify(&scoped, pre);
 	}
 
+	#[instrument(name = "flow::state::batch", level = "debug", skip(self, keys), fields(
+		operator_id = id.0,
+		key_count = keys.len()
+	))]
+	fn state_batch(&mut self, id: OperatorId, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		let batch = StateBatch::read(keys, |keys| self.state_get_many(id, keys))?;
+		for slot in 0..batch.len() {
+			self.state_classify(id, batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
+		}
+		Ok(batch)
+	}
+
+	#[instrument(name = "flow::state::write_batch", level = "debug", skip(self, batch), fields(
+		operator_id = id.0,
+		write_count = field::Empty
+	))]
+	fn state_write_batch(&mut self, id: OperatorId, batch: StateBatch) -> Result<()> {
+		let writes: Vec<_> =
+			batch.into_writes().into_iter().map(|(key, write)| (scoped_key(id, &key), write)).collect();
+		Span::current().record("write_count", writes.len());
+		self.pending_mut().put_many(writes);
+		Ok(())
+	}
+
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len(),
@@ -143,6 +171,27 @@ pub trait StateExtension: FlowTransaction {
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
 		self.remove_silent(&scoped)
+	}
+
+	#[instrument(name = "flow::state::remove_many", level = "debug", skip(self, keys), fields(
+		operator_id = id.0,
+		key_count = keys.len()
+	))]
+	fn state_remove_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<()> {
+		check_batch_keys(keys)?;
+		let writes = keys
+			.iter()
+			.map(|key| {
+				(
+					scoped_key(id, key),
+					PendingWrite::Remove {
+						announce: RemoveVisibility::Silent,
+					},
+				)
+			})
+			.collect();
+		self.pending_mut().put_many(writes);
+		Ok(())
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -408,7 +457,7 @@ fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, Option<By
 		if let Some(pre) = pre {
 			txn.classify(&key, Some(pre));
 		}
-		txn.remove(&key)?;
+		txn.remove_silent(&key)?;
 	}
 	Ok(())
 }

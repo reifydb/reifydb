@@ -65,6 +65,12 @@ impl Pending {
 		self.entries.push((key, write));
 	}
 
+	pub fn put_many(&mut self, writes: Vec<(EncodedKey, PendingWrite)>) {
+		for (key, write) in writes {
+			self.put(key, write);
+		}
+	}
+
 	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
 		if is_state_key(key) {
 			self.state.get(key)

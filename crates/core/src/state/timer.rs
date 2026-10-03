@@ -79,6 +79,13 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			self.state_remove(key)?;
+		}
+		Ok(())
+	}
+
 	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
@@ -133,15 +140,13 @@ pub trait StateStore {
 	}
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		let mut siblings = Vec::new();
 		for (key, row) in swept {
-			let Some(sibling) = root_sibling_of(key, row) else {
-				continue;
-			};
-			if let RootSibling::Derived(sibling) = sibling {
-				self.state_remove(&sibling)?;
+			if let Some(RootSibling::Derived(sibling)) = root_sibling_of(key, row) {
+				siblings.push(sibling);
 			}
 		}
-		Ok(())
+		self.state_remove_many(&siblings)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
