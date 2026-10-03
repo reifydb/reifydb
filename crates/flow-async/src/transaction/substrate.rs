@@ -74,7 +74,7 @@ pub type DeferredClassification = FxHashMap<EncodedKey, Option<ByteSize>>;
 pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredClassification {
 	let mut keys = Vec::new();
 	let mut probes = Vec::new();
-	for (key, _) in pending.iter_sorted() {
+	for (key, _) in pending.state_sorted() {
 		if pending.is_classified(key) {
 			continue;
 		}
@@ -98,7 +98,7 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredCla
 #[instrument(name = "flow::substrate::operator_writes", level = "trace", skip_all, fields(pending_count = pending.len()))]
 pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> Vec<OperatorWrite> {
 	let mut writes = Vec::with_capacity(pending.len());
-	for (key, write) in pending.iter_sorted() {
+	for (key, write) in pending.state_sorted() {
 		let Some(OperatorScope {
 			operator,
 			inner,

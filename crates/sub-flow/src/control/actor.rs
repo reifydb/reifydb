@@ -785,7 +785,7 @@ impl FlowActor {
 				 would record a durability this commit never wrote, and the flow would stop \
 				 checkpointing because it believes it has nothing left to record"
 			);
-			for (key, _) in slice.combined.iter_ordered() {
+			for (key, _) in slice.combined.iter_sorted() {
 				assert!(
 					read_from(key) != ReadFrom::Query,
 					"flow {:?} committed {:?}, a key it reads back through the query pinned at its cursor, which never sees this commit",
@@ -960,7 +960,7 @@ impl FlowActor {
 		view_changes: Vec<Change>,
 	) {
 		reifydb_assertions! {
-			for (key, _) in pending.iter_ordered() {
+			for (key, _) in pending.iter_sorted() {
 				assert!(
 					read_from(key) != ReadFrom::Query,
 					"flow {:?} committed {:?} on a tick, a key it reads back through the query pinned at its cursor, which never sees this commit",

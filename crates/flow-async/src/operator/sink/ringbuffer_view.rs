@@ -925,7 +925,7 @@ impl SinkRingBufferViewOperator {
 			)?;
 		}
 
-		txn.set_batch(&row_keys, &values_bytes_vec)?;
+		txn.set_batch(row_keys, values_bytes_vec)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 
 		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted)? {
@@ -1193,7 +1193,7 @@ mod tests {
 			},
 			resolved::ResolvedNamespace,
 		},
-		key::{any::TaggedKey, tag::KeyTag},
+		key::any::TaggedKey,
 		value::column::factory::{int4, utf8},
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -1294,10 +1294,7 @@ mod tests {
 		// Mirrors the committer split: state to the operator state store, everything else to the multi store.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-		for (key, pw) in pending.iter_sorted() {
-			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
-				continue;
-			}
+		for (key, pw) in pending.rows_ordered() {
 			let key = TaggedKey::decode(key).unwrap();
 			match pw {
 				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),

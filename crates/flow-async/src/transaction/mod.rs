@@ -254,22 +254,18 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		Ok(())
 	}
 
-	fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
+	fn set_batch(&mut self, keys: Vec<EncodedKey>, values: Vec<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert_batch(keys, values);
 		Ok(())
 	}
 
-	fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_batch(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}
 
 	fn classify(&mut self, key: &EncodedKey, pre: Option<ByteSize>) {
 		self.pending_mut().classify(key.clone(), pre);
-	}
-
-	fn is_classified(&self, key: &EncodedKey) -> bool {
-		self.pending().is_classified(key)
 	}
 
 	#[inline]

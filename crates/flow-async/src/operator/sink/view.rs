@@ -171,7 +171,7 @@ impl SinkTableViewOperator {
 			encoded_bytes_list.push(encoded);
 		}
 
-		txn.set_batch(&keys, &encoded_bytes_list)?;
+		txn.set_batch(keys, encoded_bytes_list)?;
 
 		emit_view_change(txn, self.view.def(), Diff::insert(coerced));
 		Ok(())
@@ -286,8 +286,8 @@ impl SinkTableViewOperator {
 			post_encoded_bytes_vec.push(post_encoded);
 		}
 
-		txn.remove_batch(&pre_keys)?;
-		txn.set_batch(&post_keys, &post_encoded_bytes_vec)?;
+		txn.remove_batch(pre_keys)?;
+		txn.set_batch(post_keys, post_encoded_bytes_vec)?;
 
 		emit_view_change(txn, self.view.def(), Diff::update(coerced_pre, coerced_post));
 		Ok(())
@@ -319,7 +319,7 @@ impl SinkTableViewOperator {
 			keys.push(key);
 		}
 
-		txn.remove_batch(&keys)?;
+		txn.remove_batch(keys)?;
 
 		emit_view_change(txn, self.view.def(), Diff::remove(coerced));
 		Ok(())

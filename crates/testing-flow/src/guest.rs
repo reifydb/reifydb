@@ -12,7 +12,6 @@ use reifydb_core::{
 		catalog::{dictionary::Dictionary, flow::OperatorId},
 		change::Change,
 	},
-	key::tag::KeyTag,
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::{
@@ -82,10 +81,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			&pending,
 		);
 		let mut rest = Pending::new();
-		for (key, write) in pending.iter_sorted() {
-			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
-				continue;
-			}
+		for (key, write) in pending.rows_ordered() {
 			match write {
 				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
 				PendingWrite::Remove {

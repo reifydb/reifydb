@@ -13,7 +13,7 @@ use reifydb_core::{
 		cdc::{CdcConsumerId, ConsumerClass},
 		change::Change,
 	},
-	key::{any::TaggedKey, tag::KeyTag},
+	key::any::TaggedKey,
 	return_internal_error,
 };
 #[cfg(test)]
@@ -420,10 +420,7 @@ fn release_slices(slices: Arc<Vec<FlowSlice>>) {
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
-	for (encoded, pw) in combined.iter_ordered() {
-		if matches!(KeyTag::of(encoded), Some(KeyTag::OperatorState)) {
-			continue;
-		}
+	for (encoded, pw) in combined.rows_ordered() {
 		let Some(key) = TaggedKey::decode(encoded) else {
 			return_internal_error!(
 				"flow pending write carries a key no typed key decodes: {}",
