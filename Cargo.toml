@@ -361,7 +361,7 @@ httparse = { version = "=1.10.1" }
 # Async runtime and networking (tokio stack)
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
 tokio-stream = { version = "=0.1.19" }
-tokio-tungstenite = { version = "=0.29.0" }
+tokio-tungstenite = { version = "=0.30.0" }
 yamux = { version = "=0.14.1" }
 tokio-util = { version = "=0.7.19", features = ["compat"] }
 socket2 = { version = "=0.6.5", features = ["all"] }

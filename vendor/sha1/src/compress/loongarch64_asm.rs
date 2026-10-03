@@ -1,8 +1,10 @@
 //! LoongArch64 assembly backend
 
+use crate::consts::K;
 use core::arch::asm;
 
-const K: [u32; 4] = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+#[cfg(not(target_arch = "loongarch64"))]
+compile_error!("loongarch-asm backend can be used only on loongarch64 target arches");
 
 macro_rules! c {
     ($($l:expr)*) => {
@@ -102,7 +104,7 @@ macro_rules! roundtail {
     };
 }
 
-pub fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
+pub(crate) fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
     if blocks.is_empty() {
         return;
     }
