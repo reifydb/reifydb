@@ -3,29 +3,21 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::row::operator::state::decode;
+use reifydb_codec::row::operator::state::{StateCodec, decode};
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::StateStore,
-	value::batch::from_rows,
 };
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::engine::{PublishKey, publish::PublishState},
 };
-use reifydb_value::{
-	error::Error as ValueError,
-	value::{
-		Value, column_view::ColumnView, datetime::DateTime, row_number::RowNumber, system_columns::user_columns,
-	},
-};
+use reifydb_value::{error::Error as ValueError, value::row_number::RowNumber};
 
 use crate::{
-	error::{Result, SdkError},
+	error::Result,
 	flow::operator::{
-		column::{row::Row, sink::in_process::InProcessRowSink},
 		context::GuestContext,
-		view::in_process::InProcessRowView,
 		windowed::{
 			guest_as_host::GuestAsHost,
 			operator::{Emit, WindowedOperator},
@@ -38,51 +30,25 @@ pub(super) type UpdateRow<A> = (RowNumber, Option<<A as WindowedOperator>::Outpu
 pub(super) type UpdateRows<A> = Vec<UpdateRow<A>>;
 pub(super) type Emitted<A> = (Rows<A>, UpdateRows<A>, Rows<A>);
 
-pub fn row_to_values<R: Row>(row: &R) -> Result<Vec<Value>> {
-	let mut sink = InProcessRowSink::new(R::COLUMNS)?;
-	row.encode_into(&mut sink)?;
-	let columns = sink.finish(vec![RowNumber(0)], DateTime::default())?;
-	user_columns(&columns)
-		.map(|(field, array)| Ok(ColumnView::try_from((array, field.as_ref()))?.get_value(0)))
-		.collect()
-}
-
-pub fn values_to_row<R: Row>(values: &[Value]) -> Result<R> {
-	let names: Vec<&str> = R::COLUMNS.iter().map(|(name, _)| *name).collect();
-	if values.len() != names.len() {
-		return Err(SdkError::Other(format!(
-			"a published row holds {} values, but the output row has {} columns",
-			values.len(),
-			names.len()
-		)));
-	}
-	let columns = from_rows(&names, &[values.to_vec()])?;
-	R::decode_from(&InProcessRowView::new(&columns, 0))?
-		.ok_or_else(|| SdkError::Other("a published row does not decode as the output row".to_string()))
-}
-
 pub(super) fn publish_row<A>(
 	row_number: RowNumber,
 	out: Option<A::Output>,
-	state: &mut PublishState,
+	state: &mut PublishState<A::Output>,
 	watermark: Option<A::Coord>,
 	emitted: &mut Emitted<A>,
 ) -> Result<()>
 where
 	A: Emit,
-	A::Output: Row,
+	A::Output: Clone,
 {
-	let stored = match state.row.take() {
-		Some(values) => Some(values_to_row::<A::Output>(&values)?),
-		None => None,
-	};
+	let stored = state.row.take();
 	match (out, stored) {
 		(Some(out), None) => {
-			state.row = Some(row_to_values(&out)?);
+			state.row = Some(out.clone());
 			emitted.0.push((row_number, out));
 		}
 		(Some(out), Some(pre)) => {
-			state.row = Some(row_to_values(&out)?);
+			state.row = Some(out.clone());
 			emitted.1.push((row_number, Some(pre), out));
 		}
 		(None, Some(pre)) => emitted.2.push((row_number, pre)),
@@ -93,14 +59,14 @@ where
 	Ok(())
 }
 
-pub(super) fn load_publish_states<C: GuestContext>(
+pub(super) fn load_publish_states<C: GuestContext, O: StateCodec>(
 	store: &mut GuestAsHost<'_, C>,
 	keys: &[PublishKey],
-) -> Result<HashMap<GroupId, PublishState>> {
+) -> Result<HashMap<GroupId, PublishState<O>>> {
 	let by_key: HashMap<GroupStateKey, GroupId> =
 		keys.iter().map(|key| (key.into_group_state_key(), key.group)).collect();
 	let encoded: Vec<GroupStateKey> = by_key.keys().cloned().collect();
-	let mut states: HashMap<GroupId, PublishState> = HashMap::with_capacity(keys.len());
+	let mut states: HashMap<GroupId, PublishState<O>> = HashMap::with_capacity(keys.len());
 	let mut sizes = HashMap::new();
 	for (key, bytes) in encoded.iter().zip(store.state_get_many(&encoded)?) {
 		let Some(bytes) = bytes else {
@@ -108,71 +74,11 @@ pub(super) fn load_publish_states<C: GuestContext>(
 		};
 		if let Some(group) = by_key.get(key) {
 			sizes.insert(key.clone(), bytes.byte_size());
-			states.insert(*group, decode::<PublishState>(&bytes).map_err(ValueError::from)?);
+			states.insert(*group, decode::<PublishState<O>>(&bytes).map_err(ValueError::from)?);
 		}
 	}
 	for key in &encoded {
 		store.state_classify(key, sizes.get(key).copied());
 	}
 	Ok(states)
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_value::value::{Value, datetime::DateTime};
-
-	use super::{row_to_values, values_to_row};
-	use crate::row;
-
-	#[derive(Debug, Clone, PartialEq)]
-	struct Published {
-		group: String,
-		count: u64,
-		mean: f64,
-		start: DateTime,
-		best: Option<i64>,
-	}
-
-	row!(Published {
-		group: String,
-		count: u64,
-		mean: f64,
-		start: DateTime,
-		best: Option<i64>
-	});
-
-	#[test]
-	fn a_row_round_trips_through_its_stored_values() {
-		// A published row that does not come back intact makes the next update retract a value downstream never
-		// saw.
-		for row in [
-			Published {
-				group: "BTC".to_string(),
-				count: 7,
-				mean: 1.5,
-				start: DateTime::from_epoch_millis(1_700_000_000_123).unwrap(),
-				best: Some(-3),
-			},
-			Published {
-				group: String::new(),
-				count: 0,
-				mean: 0.0,
-				start: DateTime::default(),
-				best: None,
-			},
-		] {
-			let values = row_to_values(&row).unwrap();
-			assert_eq!(values.len(), 5);
-			assert_eq!(values[0], Value::Utf8(row.group.clone()));
-			assert_eq!(values[1], Value::Uint8(row.count));
-			assert_eq!(values_to_row::<Published>(&values).unwrap(), row);
-		}
-	}
-
-	#[test]
-	fn values_of_the_wrong_width_fail_to_decode() {
-		// A stored row from another output shape decoded by position would publish columns under the wrong
-		// names.
-		assert!(values_to_row::<Published>(&[Value::Uint8(1)]).is_err());
-	}
 }

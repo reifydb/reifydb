@@ -80,7 +80,8 @@ impl MergeAccumulator for PaneSum {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub(crate) struct SumOut {
 	group: String,
 	sum: f64,

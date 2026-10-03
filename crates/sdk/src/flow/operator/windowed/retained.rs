@@ -91,6 +91,7 @@ impl<A, K, V> RetainedDriver<A, K, V>
 where
 	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync,
@@ -233,7 +234,7 @@ where
 		emitted: &mut Emitted<A>,
 	) -> Result<()> {
 		let key = PublishKey::new(group_id, Self::row_key(group, window_start));
-		let Some(mut state) = get_classified::<_, PublishState>(store, &key)? else {
+		let Some(mut state) = get_classified::<_, PublishState<A::Output>>(store, &key)? else {
 			return Ok(());
 		};
 		if !state.dirty {
@@ -437,6 +438,7 @@ impl<A, K, V> MountedOperator for RetainedDriver<A, K, V>
 where
 	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync + 'static,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync + 'static,
@@ -548,6 +550,8 @@ mod tests {
 	use super::*;
 	use crate::row;
 
+	#[reifydb_macro::operator_state]
+	#[derive(Clone, HeapSize)]
 	struct Out {
 		v: i64,
 	}

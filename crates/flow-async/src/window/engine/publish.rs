@@ -3,14 +3,29 @@
 
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use reifydb_value::value::Value;
 
 #[operator_state]
-#[derive(Debug, Clone, Default, PartialEq, HeapSize)]
-pub struct PublishState {
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishState<O> {
 	pub last_publish: Option<u64>,
 	pub dirty: bool,
-	pub row: Option<Vec<Value>>,
+	pub row: Option<O>,
+}
+
+impl<O: HeapSize> HeapSize for PublishState<O> {
+	fn heap_size(&self) -> usize {
+		self.last_publish.heap_size() + self.dirty.heap_size() + self.row.heap_size()
+	}
+}
+
+impl<O> Default for PublishState<O> {
+	fn default() -> Self {
+		Self {
+			last_publish: None,
+			dirty: false,
+			row: None,
+		}
+	}
 }
 
 #[cfg(test)]
@@ -19,16 +34,25 @@ mod tests {
 		key::encoded::EncodedKey,
 		row::operator::state::{OperatorState, decode},
 	};
-	use reifydb_core::key::operator::state::{
-		GroupId, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_data_of_inner,
+	use reifydb_core::{
+		key::operator::state::{GroupId, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_data_of_inner},
+		metrics::heap::HeapSize,
 	};
-	use reifydb_value::{
-		util::hash::Hash128,
-		value::{Value, datetime::DateTime},
-	};
+	use reifydb_macro::operator_state;
+	use reifydb_value::{util::hash::Hash128, value::datetime::DateTime};
 
 	use super::PublishState;
 	use crate::window::engine::PublishKey;
+
+	#[operator_state]
+	#[derive(Debug, Clone, PartialEq, HeapSize)]
+	struct Published {
+		group: String,
+		count: u64,
+		mean: f64,
+		start: DateTime,
+		best: Option<i64>,
+	}
 
 	#[test]
 	fn publish_state_round_trips_every_field() {
@@ -36,18 +60,18 @@ mod tests {
 		let state = PublishState {
 			last_publish: Some(1_700_000_000_000),
 			dirty: true,
-			row: Some(vec![
-				Value::Utf8("BTC".into()),
-				Value::Uint8(7),
-				Value::float8(1.5),
-				Value::DateTime(DateTime::from_epoch_millis(1_700_000_000_123).unwrap()),
-				Value::none(),
-			]),
+			row: Some(Published {
+				group: "BTC".into(),
+				count: 7,
+				mean: 1.5,
+				start: DateTime::from_epoch_millis(1_700_000_000_123).unwrap(),
+				best: None,
+			}),
 		};
 		let bytes = state.encode_state().unwrap();
-		assert_eq!(decode::<PublishState>(&bytes).unwrap(), state);
-		let empty = PublishState::default();
-		assert_eq!(decode::<PublishState>(&empty.encode_state().unwrap()).unwrap(), empty);
+		assert_eq!(decode::<PublishState<Published>>(&bytes).unwrap(), state);
+		let empty = PublishState::<Published>::default();
+		assert_eq!(decode::<PublishState<Published>>(&empty.encode_state().unwrap()).unwrap(), empty);
 	}
 
 	#[test]

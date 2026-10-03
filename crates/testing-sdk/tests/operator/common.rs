@@ -156,7 +156,8 @@ impl WindowAccumulator for VolumeAccumulator {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct VolumeOut {
 	pub group: String,
 	pub window_start: u64,
@@ -245,7 +246,8 @@ impl WindowAccumulator for MinAccumulator {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct MinOut {
 	pub group: String,
 	pub window_start: u64,
@@ -375,7 +377,8 @@ impl WindowAccumulator for OhlcvAcc {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct OhlcvOut {
 	pub group: String,
 	pub window_start: u64,
@@ -500,7 +503,8 @@ impl MergeAccumulator for WindowSum {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct RollingOut {
 	pub group: String,
 	pub rolling_sum: f64,

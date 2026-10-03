@@ -12,7 +12,7 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
 		NostateOperator, OperatorMetadata,
-		column::{operator::OperatorColumn, row::Row},
+		column::operator::OperatorColumn,
 		context::{GuestContext, GuestEmitContext, Nostate},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -135,7 +135,10 @@ fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>)> {
 	let mut numbers = Vec::with_capacity(columns.row_count());
 	for position in 0..columns.row_count() {
 		let row = columns.row(position).expect("every counted row resolves");
-		rows.push(KvRow::decode_from(&row)?.expect("a row of optional cells always decodes"));
+		rows.push(KvRow {
+			k: row.u64("k")?,
+			v: row.f64("v")?,
+		});
 		numbers.push(row.row_number().expect("every chaos row is numbered"));
 	}
 	Ok((rows, numbers))

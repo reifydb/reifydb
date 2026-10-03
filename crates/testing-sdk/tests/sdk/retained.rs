@@ -8,6 +8,7 @@ use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
+	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
@@ -50,7 +51,8 @@ use reifydb_value::{
 
 use crate::read;
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct RetainedOut {
 	group: String,
 	count: u64,

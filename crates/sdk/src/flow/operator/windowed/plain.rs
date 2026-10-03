@@ -3,7 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	row::operator::state::StateCodec,
+};
 use reifydb_core::{
 	common::{WindowRequirements, WindowSizeDomain},
 	error::CoreError,
@@ -254,6 +257,7 @@ impl<A> PlainDriver<A>
 where
 	A: Emit + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	A::Accumulator: Send + Sync,
 	Contribution<A>: Send + Sync,
@@ -327,7 +331,7 @@ where
 	) -> Result<()> {
 		let slot = Self::row_key(group, window_start);
 		let key = PublishKey::new(group_id, slot.clone());
-		let Some(mut state) = get_classified::<_, PublishState>(store, &key)? else {
+		let Some(mut state) = get_classified::<_, PublishState<A::Output>>(store, &key)? else {
 			return Ok(());
 		};
 		if !state.dirty {
@@ -1206,6 +1210,7 @@ impl<A> MountedOperator for PlainDriver<A>
 where
 	A: Emit + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	Contribution<A>: Send + Sync,
@@ -1432,6 +1437,8 @@ mod tests {
 	use super::*;
 	use crate::row;
 
+	#[reifydb_macro::operator_state]
+	#[derive(Clone, HeapSize)]
 	struct Out {
 		v: i64,
 	}
